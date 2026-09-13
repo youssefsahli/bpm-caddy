@@ -330,6 +330,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Un collyre et un gel recevaient une conduite rénale systémique.**
+  La table du rein est indexée sur la molécule, si bien qu'une forme
+  locale y tombe : l'Exocine est un collyre à l'ofloxacine et le
+  Lithioderm un gel au gluconate de lithium pour la dermite
+  séborrhéique. Tous deux se voyaient adapter à la clairance, quand
+  leurs propres fiches écrivent « aucune adaptation posologique n'est
+  nécessaire compte tenu de l'administration locale ».
+
+  Le test qui existait pour ça ne les voyait pas : il cherchait
+  « aucune adaptation**.** » avec son point, et une fiche qui écrit
+  « aucune adaptation **posologique** n'est nécessaire » passait à
+  côté. La liste de phrases est élargie, et elle a immédiatement sorti
+  les deux.
+
+  Le remède, jusqu'ici, était d'amputer `needs` de la molécule —
+  l'indométacine y a perdu sa ligne rénale pour que l'Indocollyre n'en
+  ait pas. Les lignes portent désormais un `never` : ce qu'elles ne
+  réclament pas bien que leurs mots l'attrapent. La molécule reste
+  nommée, et la boîte qui n'en relève pas est écartée par son propre
+  nom.
+- **Le Ciflox recevait les paliers de l'Oflocet.**
+  « cipr**ofloxacine** » et « lév**ofloxacine** » contiennent
+  « ofloxacine », de sorte que le Ciflox et le Tavanic lisaient la
+  conduite de l'ofloxacine — qui parle en fractions de dose là où leurs
+  fiches parlent en plafonds, et dont les seuils ne sont pas les leurs.
+  Chacun a sa ligne, tirée de sa fiche, et l'ofloxacine les récuse par
+  son veto plutôt que par l'ordre des lignes : un ordre se déplace, un
+  veto non.
+- **Et la rosuvastatine ne disait rien entre 30 et 60.** Sa ligne ne
+  commençait qu'à la contre-indication, si bien qu'un dossier à 40 de
+  clairance portant le dosage le plus fort — que la fiche du Crestor
+  déclare contre-indiqué à ce niveau — ne levait rien du tout. Le
+  palier manquant y est, et la source cite enfin la fiche là où elle
+  disait seulement « RCP rosuvastatine ».
+- **`claims()` est écrit une fois.** `read` et les deux tests qui
+  confrontent la table aux fiches refaisaient chacun leur propre
+  « cette ligne réclame-t-elle cette boîte ». L'ajout du veto l'a
+  montré d'un coup : deux tests vérifiaient une règle que le comptoir
+  ne suivait plus.
 - **Le plafond de paracétamol du cirrhotique dénutri n'était écrit
   qu'à un endroit.** Les quatre fiches qui citent un plafond concordent
   — 3 g d'usage courant, 4 g sur avis seulement, 3 g et six heures

@@ -40,7 +40,21 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   collapsed bicarbonate is two readings and both are wanted),
   `src/renal.rs` (what renal function does to an ordonnance: a table of
   molecules, each with **steps** — a DFG, a level, what the RCP says —
-  and a source. `biology.rs` answers « this figure, under this
+  a source, and a `never`: what the row does *not* claim although its
+  words catch it. The table is keyed on the molecule, so a **local form
+  of a systemic molecule** falls into it — Exocine is an ofloxacin
+  collyre, Lithioderm a lithium gluconate gel, and both were being told
+  to adapt for renal function while their own fiches write « aucune
+  adaptation posologique n'est nécessaire compte tenu de
+  l'administration locale ». The old answer was to amputate the
+  molecule from `needs`, and indométacine lost its renal row that way so
+  that Indocollyre would not have one; a veto costs less. It also
+  settles « ciprofloxacine » and « lévofloxacine », which *contain*
+  « ofloxacine » — stated rather than left to row order, because an
+  order moves and a veto does not. And `claims()` is written **once**,
+  used by `read` and by both confrontation tests: they each had their
+  own copy, so adding the veto left two tests checking a rule the
+  counter no longer follows. `biology.rs` answers « this figure, under this
   treatment, means this » and `surveillance.rs` « this figure has not
   been asked for in too long »; this one answers the question actually
   asked at the counter — **this file has a DFG of 28, what becomes of

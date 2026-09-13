@@ -78,6 +78,21 @@ pub struct Adaptation {
     /// Cherchés dans le nom, la DCI, la classe et les étiquettes —
     /// repliés par `fuzzy::sort_key`, comme partout ici.
     pub needs: &'static [&'static str],
+    /// Ce que la ligne **ne réclame pas**, bien que ses mots l'attrapent.
+    ///
+    /// Cette table est indexée sur la molécule, si bien qu'une forme
+    /// locale de la même molécule tombe dedans : l'Exocine est un
+    /// collyre à l'ofloxacine et le Lithioderm un gel au gluconate de
+    /// lithium, et tous deux recevaient une conduite rénale systémique.
+    /// Leurs fiches disent d'ailleurs le contraire en toutes lettres —
+    /// « aucune adaptation posologique n'est nécessaire compte tenu de
+    /// l'administration locale ».
+    ///
+    /// Jusqu'ici on amputait `needs` de la molécule, et l'indométacine
+    /// y a perdu sa ligne rénale pour que l'Indocollyre n'en ait pas.
+    /// Un veto coûte moins cher : la molécule reste nommée, et la boîte
+    /// qui n'en relève pas est écartée par son propre nom.
+    pub never: &'static [&'static str],
     /// Ce que la ligne annonce : « Metformine », « AINS ».
     pub label: &'static str,
     /// **Du seuil le plus haut au plus bas.** L'ordre est celui de la
@@ -113,16 +128,29 @@ pub struct Finding {
 /// L'ordre est celui de la gravité, puis celui du dossier : deux lignes
 /// de même niveau ne doivent pas échanger leur place d'une image à
 /// l'autre.
+/// Cette ligne réclame-t-elle cette boîte ?
+///
+/// Écrit **une fois**, et appelé par `read` comme par les tests qui
+/// confrontent la table aux fiches livrées. Les trois le refaisaient
+/// chacun de leur côté, si bien que l'ajout du veto a laissé deux
+/// d'entre eux sur l'ancienne règle — c'est-à-dire deux tests qui
+/// vérifiaient autre chose que ce que le comptoir lit.
+fn claims(a: &Adaptation, hay: &str) -> bool {
+    a.needs
+        .iter()
+        .any(|n| crate::fuzzy::contains_folded(hay, n))
+        && !a
+            .never
+            .iter()
+            .any(|n| crate::fuzzy::contains_folded(hay, n))
+}
+
 pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Finding> {
     let mut out: Vec<Finding> = Vec::new();
     for t in treatments {
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
         for a in TABLE {
-            if !a
-                .needs
-                .iter()
-                .any(|n| crate::fuzzy::contains_folded(&hay, n))
-            {
+            if !claims(a, &hay) {
                 continue;
             }
             // **Le palier atteint est le plus bas des paliers
@@ -271,6 +299,7 @@ pub fn undecided(findings: &[Resolved]) -> usize {
 pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["metformine", "biguanide", "glucophage", "stagid"],
+        never: &[],
         label: "Metformine",
         steps: &[
             Step {
@@ -308,6 +337,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["dabigatran", "pradaxa"],
+        never: &[],
         label: "Dabigatran",
         steps: &[
             Step {
@@ -325,6 +355,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["rivaroxaban", "xarelto"],
+        never: &[],
         label: "Rivaroxaban",
         steps: &[
             Step {
@@ -342,6 +373,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["apixaban", "eliquis"],
+        never: &[],
         label: "Apixaban",
         steps: &[
             Step {
@@ -359,6 +391,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["edoxaban", "lixiana"],
+        never: &[],
         label: "Édoxaban",
         steps: &[
             Step {
@@ -401,6 +434,7 @@ pub const TABLE: &[Adaptation] = &[
             // un œil est le genre d'alerte qui apprend à ignorer les
             // alertes — la leçon du kétoconazole local dans `cyp.rs`.
         ],
+        never: &[],
         label: "AINS",
         steps: &[
             Step {
@@ -418,6 +452,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["nitrofurantoine", "furadantine"],
+        never: &[],
         label: "Nitrofurantoïne",
         steps: &[Step {
             below: 45,
@@ -428,6 +463,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["colchicine", "colchimax"],
+        never: &[],
         label: "Colchicine",
         steps: &[
             Step {
@@ -453,6 +489,7 @@ pub const TABLE: &[Adaptation] = &[
             "methotrexate",
             "novatrex",
         ],
+        never: &[],
         label: "Méthotrexate",
         steps: &[
             Step {
@@ -470,6 +507,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["spironolactone", "aldactone", "eplerenone", "inspra"],
+        never: &[],
         label: "Anti-aldostérone",
         steps: &[
             Step {
@@ -487,6 +525,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["allopurinol", "zyloric"],
+        never: &[],
         label: "Allopurinol",
         steps: &[Step {
             below: 60,
@@ -497,6 +536,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["alendronate", "risedronate", "acide zoledronique", "bisphosphonate"],
+        never: &[],
         label: "Bisphosphonates",
         steps: &[Step {
             below: 35,
@@ -507,6 +547,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["gabapentine", "neurontin", "pregabaline", "lyrica"],
+        never: &[],
         label: "Gabapentinoïdes",
         steps: &[Step {
             below: 60,
@@ -517,6 +558,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["baclofene", "liorésal"],
+        never: &[],
         label: "Baclofène",
         steps: &[Step {
             below: 60,
@@ -527,6 +569,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["digoxine", "hemigoxine", "digitalique"],
+        never: &[],
         label: "Digoxine",
         steps: &[Step {
             below: 60,
@@ -537,6 +580,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["valaciclovir", "aciclovir", "zelitrex", "zovirax"],
+        never: &[],
         label: "Aciclovir et valaciclovir",
         steps: &[Step {
             below: 50,
@@ -547,6 +591,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["fenofibrate", "lipanthyl", "bezafibrate", "fibrate"],
+        never: &[],
         label: "Fibrates",
         steps: &[
             Step {
@@ -564,16 +609,30 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["rosuvastatine", "crestor"],
+        never: &[],
         label: "Rosuvastatine",
-        steps: &[Step {
-            below: 30,
-            level: Level::Contraindicated,
-            conduct: "Au-dessous de 30 : contre-indication. Les autres statines s'utilisent, à dose prudente.",
-        }],
-        source: "RCP rosuvastatine",
+        steps: &[
+            // Ce palier manquait, et c'est celui qu'on rencontre : la
+            // ligne ne commençait qu'à 30, si bien qu'un dossier à 40 de
+            // clairance portant le dosage le plus fort — un dosage que
+            // la fiche déclare contre-indiqué à ce niveau — ne levait
+            // rien du tout.
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 60 : instauration au dosage le plus faible et plafond au dosage moyen ; le dosage le plus fort est contre-indiqué à ce niveau, comme il l'est aussi devant un antécédent musculaire, une hypothyroïdie ou une origine asiatique.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indication. Les autres statines s'utilisent, à dose prudente.",
+            },
+        ],
+        source: "Crestor : « Insuffisance rénale légère : pas d'adaptation. Modérée (clairance 30 à 60 mL/min) : débuter à 5 mg, ne pas dépasser 20 mg. Sévère (clairance inférieure à 30 mL/min) : contre-indiqué » ; contre-indications : « le dosage à 40 mg est en outre contre-indiqué en cas d'insuffisance rénale modérée ».",
     },
     Adaptation {
         needs: &["cotrimoxazole", "bactrim", "sulfamethoxazole"],
+        never: &[],
         label: "Cotrimoxazole",
         steps: &[
             Step {
@@ -601,6 +660,7 @@ pub const TABLE: &[Adaptation] = &[
             "oramorph",
             "moscontin",
         ],
+        never: &[],
         label: "Morphine",
         steps: &[Step {
             below: 30,
@@ -611,6 +671,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["tramadol", "contramal", "topalgic", "ixprim"],
+        never: &[],
         label: "Tramadol",
         steps: &[Step {
             below: 30,
@@ -621,6 +682,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["atenolol", "tenormine", "sotalol", "sotalex"],
+        never: &[],
         label: "Aténolol et sotalol",
         steps: &[Step {
             below: 60,
@@ -631,6 +693,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["amoxicilline", "clamoxyl", "augmentin"],
+        never: &[],
         label: "Amoxicilline",
         steps: &[Step {
             below: 30,
@@ -641,6 +704,11 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["lithium", "teralithe"],
+        // Le Lithioderm est un gel au gluconate de lithium pour la
+        // dermite séborrhéique, et sa fiche écrit « aucune adaptation
+        // nécessaire […] l'absorption étant négligeable ». Il recevait
+        // la surveillance d'une lithiémie.
+        never: &["lithioderm", "gluconate de lithium"],
         label: "Lithium",
         steps: &[Step {
             below: 60,
@@ -658,6 +726,7 @@ pub const TABLE: &[Adaptation] = &[
     // poids et de l'âge.
     Adaptation {
         needs: &["paracetamol"],
+        never: &[],
         label: "Paracétamol",
         steps: &[Step {
             below: 30,
@@ -668,6 +737,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["cetirizine", "zyrtec", "levocetirizine", "xyzall"],
+        never: &[],
         label: "Cétirizine",
         steps: &[
             Step {
@@ -690,6 +760,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["metoclopramide", "primperan"],
+        never: &[],
         label: "Métoclopramide",
         steps: &[
             Step {
@@ -707,6 +778,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["hbpm", "enoxaparine", "lovenox", "tinzaparine", "innohep", "nadroparine", "fraxiparine", "dalteparine", "fragmine"],
+        never: &[],
         label: "Héparines de bas poids moléculaire",
         steps: &[
             Step {
@@ -728,6 +800,7 @@ pub const TABLE: &[Adaptation] = &[
     // rénale — avec une demi-vie qui fait durer l'effet plusieurs jours.
     Adaptation {
         needs: &["fondaparinux", "arixtra"],
+        never: &[],
         label: "Fondaparinux",
         steps: &[
             Step {
@@ -750,6 +823,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["thiazidique", "hydrochlorothiazide", "esidrex", "indapamide", "fludex"],
+        never: &[],
         label: "Diurétiques thiazidiques",
         steps: &[Step {
             below: 30,
@@ -760,6 +834,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["duloxetine", "cymbalta"],
+        never: &[],
         label: "Duloxétine",
         steps: &[Step {
             below: 30,
@@ -770,6 +845,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["venlafaxine", "effexor"],
+        never: &[],
         label: "Venlafaxine",
         steps: &[Step {
             below: 30,
@@ -780,6 +856,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["cefpodoxime", "orelox"],
+        never: &[],
         label: "Cefpodoxime",
         steps: &[
             Step {
@@ -797,6 +874,7 @@ pub const TABLE: &[Adaptation] = &[
     },
     Adaptation {
         needs: &["cefixime", "oroken"],
+        never: &[],
         label: "Céfixime",
         steps: &[Step {
             below: 20,
@@ -805,8 +883,55 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "Oroken : « Clairance inférieure à 20 mL/min : réduire la posologie de moitié ».",
     },
+    // « Ciprofloxacine » et « lévofloxacine » contiennent tous deux
+    // « ofloxacine », si bien que le Ciflox et le Tavanic recevaient
+    // les paliers de l'Oflocet — qui ne sont pas les leurs, et qui
+    // parlent en fractions là où leurs fiches parlent en plafonds.
+    // Chacun a sa ligne, et la ligne de l'ofloxacine les récuse par son
+    // veto plutôt que par l'ordre : l'ordre se déplace, un veto non.
+    Adaptation {
+        needs: &["ciprofloxacine", "ciflox"],
+        never: &["collyre", "auriculaire"],
+        label: "Ciprofloxacine",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 60 : plafond à mille milligrammes par jour, toutes prises confondues.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : plafond à cinq cents milligrammes par jour.",
+            },
+        ],
+        source: "Ciflox : « Clairance 30 à 60 mL/min : ne pas dépasser 1000 mg par jour. Inférieure à 30 mL/min : ne pas dépasser 500 mg par jour ».",
+    },
+    Adaptation {
+        needs: &["levofloxacine", "tavanic"],
+        never: &["collyre"],
+        label: "Lévofloxacine",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Reduce,
+                conduct: "Entre 20 et 50 : dose de charge habituelle, puis entretien réduit de moitié. La première dose ne se réduit pas — c'est elle qui fait la concentration.",
+            },
+            Step {
+                below: 20,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 20 : dose de charge habituelle, puis entretien au quart.",
+            },
+        ],
+        source: "Tavanic : « Adaptation nécessaire dès une clairance inférieure à 50 mL/min : dose de charge habituelle, puis dose d'entretien réduite de moitié entre 20 et 50 mL/min et au quart en dessous de 20 mL/min ».",
+    },
     Adaptation {
         needs: &["ofloxacine", "oflocet"],
+        // L'Exocine est un collyre à l'ofloxacine, et sa fiche écrit
+        // « aucune adaptation posologique n'est nécessaire compte tenu
+        // de l'administration locale ». Les deux autres fluoroquinolones
+        // sont récusées par leur nom, puisqu'il contient celui-ci.
+        never: &["collyre", "exocine", "ciprofloxacine", "levofloxacine"],
         label: "Ofloxacine",
         steps: &[
             Step {
@@ -838,7 +963,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 35;
+        const FLOOR: usize = 37;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",
@@ -1112,11 +1237,7 @@ mod tests {
             let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
             // La ligne qui **revendique** cette fiche est la première
             // qui l'attrape, celle que `read` retiendra.
-            let Some(a) = TABLE.iter().find(|a| {
-                a.needs
-                    .iter()
-                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
-            }) else {
+            let Some(a) = TABLE.iter().find(|a| claims(a, &hay)) else {
                 continue;
             };
             let Some((_, renal)) = cards
@@ -1129,11 +1250,7 @@ mod tests {
             // d'adaptation » tout court disent tous deux que le rein ne
             // change rien ; une fiche qui chiffre un palier ailleurs
             // dans la même phrase, elle, ne dit pas cela.
-            let flat = [
-                "pas d'adaptation.",
-                "aucune adaptation.",
-                "pas d'adaptation en usage",
-            ];
+            let flat = ["pas d'adaptation", "aucune adaptation"];
             if flat.iter().any(|w| renal.contains(w)) && !renal.contains("ml/min") {
                 wrong.push(format!("{} → {name} : « {} »", a.label, renal.trim()));
             }
@@ -1153,13 +1270,12 @@ mod tests {
     fn no_two_rows_claim_the_same_treatment() {
         for a in TABLE {
             for n in a.needs {
+                // Par `claims`, comme `read` : un veto écarte une ligne
+                // ici exactement comme il l'écarte au comptoir.
+                let key = crate::fuzzy::sort_key(n);
                 let claimers: Vec<&str> = TABLE
                     .iter()
-                    .filter(|o| {
-                        o.needs
-                            .iter()
-                            .any(|m| crate::fuzzy::sort_key(n).contains(&crate::fuzzy::sort_key(m)))
-                    })
+                    .filter(|o| claims(o, &key))
                     .map(|o| o.label)
                     .collect();
                 assert_eq!(
