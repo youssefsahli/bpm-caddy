@@ -895,7 +895,15 @@ pub fn pt(ui: &egui::Ui, points: f32) -> f32 {
 }
 
 pub fn apply_scale(ctx: &egui::Context, scale: f32, density: Density) {
-    let scale = scale.clamp(0.7, 1.8);
+    // **Les bornes sont celles que la glissière offre.** Elles étaient
+    // plus larges — 0,7 à 1,8 — que ce que l'application propose et que
+    // ce que ses mises en page ont jamais vu : au-delà de 1,6, sur un
+    // écran de 1024, la barre du haut ne tient plus et ses deux groupes
+    // se peignent l'un sur l'autre, la barre d'état aussi. Un réglage
+    // écrit à la main dans `config.toml` entrait dans cette zone-là sans
+    // que rien ne le dise ; il y entre encore, mais ramené à ce que la
+    // glissière montre — et la glissière, elle, dit où l'on est.
+    let scale = scale.clamp(0.8, 1.6);
     let mut style = (*ctx.style()).clone();
     // Rebuild the ladder from the base sizes. Multiplying whatever is
     // already there compounds on every call, so two visits to the

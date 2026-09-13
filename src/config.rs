@@ -25,7 +25,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # Afficher le panneau de documentation d'équipe au démarrage.
 # show_docs_on_start = true
 # Échelle du texte (1.0 = taille de référence).
-# text_scale = 1.0
+# text_scale = 1.0   # de 0,8 à 1,6 — au-delà, la barre du haut ne tient
+#                    # plus sur un écran de 1024 de large
 # Densité de l'interface : "confortable" ou "compact".
 # density = "confortable"
 # Palette de l'interface : "motif", "cde", "decwindows", "indigo",

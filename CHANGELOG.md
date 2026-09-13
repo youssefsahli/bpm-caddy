@@ -222,6 +222,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Adalate LP, Dépakine Chrono, Tégrétol LP…) et deux écrites pour une
   *forme*. Elles sont nommées avec leur raison ; toute autre règle
   inatteignable est une faute de frappe.
+- **La barre du haut se peignait sur elle-même, et personne ne l'avait
+  vu.** Son groupe de droite est posé en `right_to_left` dans ce qui
+  reste : quand il ne reste pas assez, il déborde vers la gauche et
+  recouvre le dernier bouton de gauche. À 1024 de large et
+  `text_scale = 1,6` — la forme du comptoir — « Aller à… » s'y réduisait
+  à un liseré de six pixels, qui se lit comme un séparateur : c'est
+  pourquoi quatre passes de captures l'avaient laissé passer. Les deux
+  groupes sont mesurés, et la barre prend une seconde rangée plutôt que
+  d'en écraser un.
+- **Et l'échelle du texte s'arrête où la glissière s'arrête.**
+  `motif::apply_scale` acceptait de 0,7 à 1,8 quand l'application offre
+  de 0,8 à 1,6 : au-delà, sur un écran de 1024, la barre du haut et la
+  barre d'état ne tiennent plus. Un réglage écrit à la main dans
+  `config.toml` y entrait sans que rien ne le dise.
 - **Une bande d'onglets ne montre plus jamais un onglet à moitié.** Elle
   défilait au plus juste pour amener l'actif dans le hublot, ce qui
   laisse le précédent tranché : « À surveiller » s'y lisait « ller », le

@@ -45738,6 +45738,78 @@ impl App {
         }
     }
 
+    /// Le groupe de droite de la barre du haut : verrouiller, les
+    /// options, les modèles — et, base fermée, la documentation.
+    ///
+    /// Sorti de la rangée pour pouvoir être dessiné **ailleurs** : sur
+    /// une barre trop étroite il descend d'une rangée au lieu de se
+    /// peindre par-dessus le groupe de gauche.
+    fn toolbar_right(&mut self, ui: &mut egui::Ui) {
+        // Optional pictograms: painted, not typed (the
+        // bundled font has almost no symbols). They cost
+        // width, so they are off by default.
+        let icons = self.config.ui.icons;
+        let pict = |p: motif::Pict| if icons { Some(p) } else { None };
+        if !matches!(self.state, State::Unlocked(_))
+            && motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs")).clicked()
+        {
+            self.show_docs = !self.show_docs;
+        }
+        if let State::Unlocked(session) = &mut self.state {
+            if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock")).clicked() {
+                session.flush_date_edits();
+                self.state = State::Locked {
+                    password: String::new(),
+                    error: None,
+                };
+            }
+        }
+        if matches!(self.state, State::Unlocked(_))
+            && motif::icon_button(ui, pict(motif::Pict::Cog), tr("toolbar_options")).clicked()
+        {
+            self.options = if self.options.is_some() {
+                None
+            } else {
+                Some(OptionsEditor {
+                    page: OptionsPage::Pharmacy,
+                    loc_fee_text: self
+                        .config
+                        .locations
+                        .forfaits
+                        .iter()
+                        .map(|f| crate::codex::format_quantity(f.fee))
+                        .collect(),
+                    cfg: self.config.clone(),
+                    db_path_text: self
+                        .config
+                        .database
+                        .path
+                        .as_ref()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_default(),
+                    message: None,
+                    confirm_reset: false,
+                })
+            };
+        }
+        if matches!(self.state, State::Unlocked(_))
+            && motif::icon_button(ui, pict(motif::Pict::Template), tr("toolbar_template")).clicked()
+        {
+            self.tpl_editor = if self.tpl_editor.is_some() {
+                None
+            } else {
+                Some(TplEditor {
+                    key: "fiche",
+                    text: crate::pdf::template_source(
+                        "fiche",
+                        &self.config.doc_template_path("fiche"),
+                    ),
+                    message: None,
+                })
+            };
+        }
+    }
+
     /// Le compagnon : un champ, ce qu'il trouve, et quatre gestes.
     ///
     /// **Le champ garde le foyer.** C'est ce qui remplace le crochet
@@ -46196,6 +46268,41 @@ impl eframe::App for App {
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
+            // Ce que les deux groupes demandent, mesuré avant de les
+            // dessiner : le nom, les quatre bascules de gauche, les
+            // trois boutons de droite, et les gouttières entre eux.
+            let two_rows = {
+                let gap = ui.spacing().item_spacing.x;
+                let unlocked = matches!(self.state, State::Unlocked(_));
+                let left: f32 = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter())
+                    + 10.0
+                    + if unlocked {
+                        [
+                            tr("toolbar_nav"),
+                            tr("toolbar_docs"),
+                            tr("toolbar_keys"),
+                            tr("toolbar_goto"),
+                        ]
+                        .into_iter()
+                        .map(|l| Self::button_width(ui, l) + gap)
+                        .sum::<f32>()
+                    } else {
+                        0.0
+                    };
+                let right: f32 = if unlocked {
+                    [
+                        tr("toolbar_lock"),
+                        tr("toolbar_options"),
+                        tr("toolbar_template"),
+                    ]
+                    .into_iter()
+                    .map(|l| Self::button_width(ui, l) + gap)
+                    .sum::<f32>()
+                } else {
+                    Self::button_width(ui, tr("toolbar_docs")) + gap
+                };
+                left + right > ui.available_width()
+            };
             ui.horizontal(|ui| {
                 ui.label(egui::RichText::new("BPM-Caddy").strong())
                     .on_hover_text(format!(
@@ -46243,81 +46350,28 @@ impl eframe::App for App {
                         }
                     }
                 }
-                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    // Optional pictograms: painted, not typed (the
-                    // bundled font has almost no symbols). They cost
-                    // width, so they are off by default.
-                    let icons = self.config.ui.icons;
-                    let pict = |p: motif::Pict| if icons { Some(p) } else { None };
-                    if !matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs"))
-                            .clicked()
-                    {
-                        self.show_docs = !self.show_docs;
-                    }
-                    if let State::Unlocked(session) = &mut self.state {
-                        if motif::icon_button(ui, pict(motif::Pict::Lock), tr("toolbar_lock"))
-                            .clicked()
-                        {
-                            session.flush_date_edits();
-                            self.state = State::Locked {
-                                password: String::new(),
-                                error: None,
-                            };
-                        }
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(ui, pict(motif::Pict::Cog), tr("toolbar_options"))
-                            .clicked()
-                    {
-                        self.options = if self.options.is_some() {
-                            None
-                        } else {
-                            Some(OptionsEditor {
-                                page: OptionsPage::Pharmacy,
-                                loc_fee_text: self
-                                    .config
-                                    .locations
-                                    .forfaits
-                                    .iter()
-                                    .map(|f| crate::codex::format_quantity(f.fee))
-                                    .collect(),
-                                cfg: self.config.clone(),
-                                db_path_text: self
-                                    .config
-                                    .database
-                                    .path
-                                    .as_ref()
-                                    .map(|p| p.display().to_string())
-                                    .unwrap_or_default(),
-                                message: None,
-                                confirm_reset: false,
-                            })
-                        };
-                    }
-                    if matches!(self.state, State::Unlocked(_))
-                        && motif::icon_button(
-                            ui,
-                            pict(motif::Pict::Template),
-                            tr("toolbar_template"),
-                        )
-                        .clicked()
-                    {
-                        self.tpl_editor = if self.tpl_editor.is_some() {
-                            None
-                        } else {
-                            Some(TplEditor {
-                                key: "fiche",
-                                text: crate::pdf::template_source(
-                                    "fiche",
-                                    &self.config.doc_template_path("fiche"),
-                                ),
-                                message: None,
-                            })
-                        };
-                    }
-                });
+                if !two_rows {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.toolbar_right(ui);
+                    });
+                }
             });
+            // **Et la barre passe à deux rangées plutôt que de se
+            // peindre sur elle-même.** Le groupe de droite est posé en
+            // `right_to_left` dans ce qui reste : quand il ne reste pas
+            // assez, il déborde vers la gauche et recouvre le dernier
+            // bouton du groupe de gauche. À 1024 de large et
+            // `text_scale = 1,6`, « Aller à… » se réduisait ainsi à un
+            // liseré de six pixels — qui se lit comme un séparateur, et
+            // c'est pourquoi aucune des passes de captures ne l'avait
+            // vu.
+            if two_rows {
+                ui.horizontal(|ui| {
+                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                        self.toolbar_right(ui);
+                    });
+                });
+            }
             ui.add_space(4.0);
         });
 
