@@ -32,7 +32,7 @@
 //! les alertes — c'est la leçon du kétoconazole local dans `cyp.rs`, et
 //! celle de `crush.rs`, qui s'indexe justement sur la présentation parce
 //! qu'une table par DCI s'y tromperait une fois sur deux. Ici la
-//! molécule suffit pour les cent neuf lignes de la table ; le jour
+//! molécule suffit pour les cent dix lignes de la table ; le jour
 //! où elle ne suffira plus, c'est le type qui devra changer, pas la
 //! ligne qui devra ruser.
 //!
@@ -421,6 +421,41 @@ const fn step(from: Stage, level: Level, conduct: &'static str) -> Step {
 ///
 /// Les paliers sont écrits du plus léger au plus grave, pour la lecture.
 pub const TABLE: &[Adaptation] = &[
+    // **Avant le paracétamol seul**, parce que ces boîtes en contiennent
+    // et que ce n'est pas lui qui décide. Un Codoliprane, un Ixprim, un
+    // Izalgi tombaient sur la ligne du paracétamol : le verdict était
+    // juste au stade sévère, mais la conduite citait le Doliprane et
+    // parlait d'un plafond de trois grammes, là où c'est l'opioïde
+    // associé qui porte la contre-indication. La table de référence
+    // « Foie » le dit de son côté — « éviter la codéine ; si un opioïde
+    // est nécessaire, dose réduite, intervalle allongé » — et c'est en
+    // confrontant les deux que la ligne manquante s'est vue.
+    Adaptation {
+        needs: &[
+            "codoliprane",
+            "ixprim",
+            "izalgi",
+            "klipal",
+            "lamaline",
+            "paracétamol + codéine",
+            "paracétamol + tramadol",
+            "poudre d'opium",
+        ],
+        label: "Paracétamol associé à un opioïde",
+        steps: &[
+            step(
+                Mild,
+                Reduce,
+                "Dose réduite et intervalle allongé : c'est l'opioïde qui décide, pas le paracétamol. Un laxatif s'envisage d'emblée.",
+            ),
+            step(
+                Severe,
+                Contraindicated,
+                "Insuffisance hépatocellulaire sévère : contre-indiqué. Le paracétamol seul, à dose réduite, reste l'antalgique de première intention.",
+            ),
+        ],
+        source: "Codoliprane, Ixprim et Izalgi : contre-indication en « insuffisance hépatocellulaire sévère » ; Izalgi : « La dose est réduite chez le sujet âgé, l'insuffisant rénal ou hépatique et le patient de faible poids ».",
+    },
     Adaptation {
         needs: &["paracetamol"],
         label: "Paracétamol",
@@ -1385,6 +1420,33 @@ mod tests {
         }
     }
 
+    /// **Une association ne se lit pas sur son composant le plus
+    /// rassurant.**
+    ///
+    /// Un Codoliprane, un Ixprim, un Izalgi contiennent du paracétamol,
+    /// et la ligne du paracétamol les attrapait : le verdict était juste
+    /// au stade sévère — les deux sont contre-indiqués — mais la
+    /// conduite citait le Doliprane et parlait d'un plafond de trois
+    /// grammes, quand c'est l'opioïde associé qui porte la
+    /// contre-indication. Le comptoir aurait lu « espacer les prises »
+    /// là où la fiche dit « contre-indiqué ».
+    ///
+    /// C'est la table de référence « Foie » qui a montré le trou, en
+    /// disant de son côté « éviter la codéine ».
+    #[test]
+    fn a_combination_is_not_read_on_its_mildest_part() {
+        let codo = read(
+            &[t("Codoliprane", "paracétamol + codéine")],
+            Some(Stage::Mild),
+        );
+        assert_eq!(codo[0].label, "Paracétamol associé à un opioïde");
+        assert!(codo[0].conduct.contains("opioïde qui décide"));
+        // Le paracétamol seul garde la sienne.
+        let doli = read(&[t("Doliprane", "paracétamol")], Some(Stage::Mild));
+        assert_eq!(doli[0].label, "Paracétamol");
+        assert!(doli[0].conduct.contains("3 g"));
+    }
+
     /// **Le plus précis d'abord** : « esomeprazole » contient
     /// « omeprazole ».
     ///
@@ -1638,7 +1700,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 109;
+        const FLOOR: usize = 110;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

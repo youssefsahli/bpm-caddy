@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
-- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, cent neuf
+- **Ce que le foie fait à une ordonnance** — `src/hepatic.rs`, cent dix
   molécules, et la moitié manquante de `renal.rs`. Deux cents fiches
   livrées nomment le foie dans leurs contre-indications, et il fallait
   les ouvrir une par une pour savoir ce que devenait une ordonnance chez
@@ -117,6 +117,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Une association ne se lit pas sur son composant le plus
+  rassurant.** Un Codoliprane, un Ixprim, un Izalgi contiennent du
+  paracétamol, et la ligne du paracétamol les attrapait : le verdict
+  était juste au stade sévère — les deux sont contre-indiqués — mais la
+  conduite citait le Doliprane et parlait d'un plafond de trois grammes,
+  quand c'est l'opioïde associé qui porte la contre-indication. Le
+  comptoir aurait lu « espacer les prises » là où la fiche dit
+  « contre-indiqué ». C'est la table de référence « Foie » qui a montré
+  le trou, en disant de son côté « éviter la codéine » — les deux
+  moitiés étaient dans le logiciel, et c'est de les confronter qui le
+  révèle, une fois de plus.
 - **Dix lignes de plus au panneau rénal**, prises dans les quarante
   fiches livrées qui portent un seuil chiffré que la table ignorait. Le
   paracétamol d'abord, le plus dispensé de tous : sous 30, on espace

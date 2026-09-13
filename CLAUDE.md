@@ -51,7 +51,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   wrong score with a right score's confidence. The steps also read the
   other way: « from this stage up », where the kidney says « below this
   figure », which is why the two modules do not share a type. A hundred
-  and nine molecules, each copied from the card that says it, cited. Six rules,
+  and ten molecules, each copied from the card that says it, cited. Six rules,
   one test each — the three that are not `renal`'s: **« rien à changer »
   is an answer** (a line the table knows and this stage does not reach
   says so instead of vanishing; oxazépam justifies it alone — its card
