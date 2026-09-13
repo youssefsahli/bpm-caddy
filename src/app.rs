@@ -31558,6 +31558,25 @@ impl App {
 
         // Ce que l'axe couvre, dit avant le tableau.
         motif::inside(ui, strip[1], |ui| {
+            // **Et ce que la bande ne montre pas se dit.** Elle est
+            // plafonnée à une part du volet et défile, mais la barre
+            // d'egui est flottante : invisible au repos, si bien qu'à
+            // 1024x700 en texte 1,6 huit axes sur douze se voyaient et
+            // les quatre autres — neuro, peau, digestif, oreille — se
+            // lisaient comme n'existant pas. Même règle qu'au sélecteur
+            // de modèles et qu'à la carte de voisinage.
+            if Self::wrapped_band_height(
+                ui,
+                ui.available_width(),
+                labels.iter().map(|l| Self::button_width(ui, l)),
+            ) > head
+            {
+                ui.label(
+                    egui::RichText::new(trf("explorer_axes_more", labels.len()))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_faint()),
+                );
+            }
             ui.add(egui::Label::new(egui::RichText::new(note).color(motif::text_dim())).wrap());
         });
 

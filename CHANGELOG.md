@@ -326,6 +326,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **La bande des axes de l'explorateur montrait huit organes sur
+  douze.** Même défaut que le sélecteur de modèles, et la même cause :
+  la bande est plafonnée à une part du volet et défile, mais la barre
+  d'egui est flottante — invisible tant qu'on ne la survole pas. Neuro,
+  peau, digestif et oreille se lisaient donc comme n'existant pas. Elle
+  dit maintenant combien il y a d'axes, et seulement quand elle en
+  cache.
 - **Le sélecteur de modèles montrait sept documents sur trente-deux,
   sans le dire.** Sa zone est plafonnée à trois rangées entières et
   défile — mais la barre de défilement d'egui est flottante, donc

@@ -746,6 +746,19 @@ add clicking and typing; it is not the price of entry.
   the scans form asked for its eight rows and got them, and « Pièces au
   dossier » became a caption over nothing. Cap at half, and let both
   halves scroll.
+- **A capped band that scrolls hides its tail in silence, because
+  egui's scroll bar floats.** `spacing.scroll.floating` is egui's
+  default and nothing here changes it: the bar is invisible until the
+  pointer is near it, so a band capped with `whole_rows` shows whole
+  rows and *nothing at all* to say there are more. The template picker
+  read « there are seven » on thirty-two documents; the explorer's axes
+  read as eight organs on twelve, so neuro, peau, digestif and oreille
+  did not exist. Say the total when the band is cut — the condition is
+  `wrapped_band_height(...) > cap` — which is the rule the neighbourhood
+  map already follows for the rings it could not take. Turning the bars
+  solid instead would cost `bar_width` off every scrolling area, and
+  twelve pixels is exactly what `App::scrolled_width` exists to account
+  for: it would reflow rows all over the application.
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the
