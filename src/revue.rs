@@ -402,7 +402,11 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["colchicine"],
-            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "vastatine", "vérapamil", "antifongique azolé", "ciclosporine"],
+            // Sans les statines : elles n'inhibent rien et ne font pas
+            // monter la colchicine — la phrase de cette règle ne les
+            // nomme d'ailleurs pas. Ce qu'elles partagent avec elle est
+            // la myotoxicité, et « Statine + colchicine » le dit.
+            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "vérapamil", "antifongique azolé", "ciclosporine"],
         ]),
         severity: Severity::Alert,
         title: "Colchicine exposée",
@@ -1470,6 +1474,69 @@ mod tests {
             .expect("deux sources de paracétamol");
         assert_eq!(point.severity, Severity::Alert);
         assert_eq!(point.drugs.len(), 2);
+    }
+
+    /// Two rules for one reading, which `review` says twice.
+    ///
+    /// Like `read` in `biology.rs`, `review` runs the whole table and
+    /// does not stop at the first rule that answers — so two rules
+    /// claiming the same molecules both come out, often at two
+    /// severities and in two wordings. « Lévothyroxine à distance » and
+    /// « Lévothyroxine et chélation » did exactly that: a file carrying
+    /// Levothyrox and calcium got both, and a revue that repeats itself
+    /// is a revue people stop reading.
+    ///
+    /// Two rules are the same reading when they are the same **shape**
+    /// — the same variant, the same number of groups, the same `min`
+    /// for a `Duplicate` — and every group of one claims a molecule
+    /// some group of the other claims. The shape is what keeps
+    /// « Deux benzodiazépines » apart from « Trois sédatifs »: same
+    /// words, different `min`, and that difference *is* the rule.
+    ///
+    /// Group membership is tested with the matcher `review` itself
+    /// uses, never by comparing the lists: « IPP » and « oméprazole »
+    /// share no letter and name the same box.
+    #[test]
+    fn two_rules_never_make_one_reading_twice() {
+        // Un seul mot en commun ne fait pas deux fois la même lecture :
+        // le tramadol est un opioïde faible *et* un sérotoninergique, et
+        // « Deux opioïdes faibles » n'est pas « Deux sérotoninergiques ».
+        // Ce qui les confond, c'est qu'une liste soit **couverte** par
+        // l'autre — tous ses mots y désignant déjà quelque chose.
+        let covered = |x: &[&str], y: &[&str]| {
+            x.iter().all(|w| {
+                let key = crate::fuzzy::sort_key(w);
+                y.iter().any(|v| {
+                    crate::fuzzy::contains_folded(&key, v)
+                        || crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(v), w)
+                })
+            })
+        };
+        let same_group = |x: &[&str], y: &[&str]| covered(x, y) || covered(y, x);
+        let paired = |xs: &[&[&str]], ys: &[&[&str]]| {
+            xs.len() == ys.len()
+                && xs.iter().all(|x| ys.iter().any(|y| same_group(x, y)))
+                && ys.iter().all(|y| xs.iter().any(|x| same_group(x, y)))
+        };
+        let twins = |a: &Kind, b: &Kind| match (a, b) {
+            (Kind::Combination(x), Kind::Combination(y)) => paired(x, y),
+            (Kind::Duplicate(x, m), Kind::Duplicate(y, n)) => m == n && same_group(x, y),
+            (Kind::Without(x, xa), Kind::Without(y, ya)) => paired(x, y) && same_group(xa, ya),
+            _ => false,
+        };
+        let mut doubled: Vec<String> = Vec::new();
+        for (i, a) in RULES.iter().enumerate() {
+            for b in RULES.iter().skip(i + 1) {
+                if twins(&a.kind, &b.kind) {
+                    doubled.push(format!("« {} » et « {} »", a.title, b.title));
+                }
+            }
+        }
+        assert!(
+            doubled.is_empty(),
+            "la revue se répète — fondre les deux règles dans la plus complète :\n{}",
+            doubled.join("\n")
+        );
     }
 
     #[test]

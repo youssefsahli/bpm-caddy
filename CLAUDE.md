@@ -22,7 +22,22 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/entretien.rs` (what each thematic covers, printed on the fiche),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
-  tested),
+  tested. Two rules it turns on. **A target is not an interval**: an
+  HbA1c of 7,4 % is a failure in a recent diabetic and a good result in
+  a frail eighty-year-old, and the software does not know which one is
+  at the counter — so that analyte has *no* `high`, like the INR, and
+  what is genuinely sayable is said by a rule (« au-dessus de 9 %, au
+  delà de tous les objectifs »). Writing `high: 7.0` made the second
+  patient read « haute », which is the exact écueil the « HbA1c »
+  reference table names: intensifier parce que le chiffre dépasse 7,
+  « ce serait faire du mal ». And **two rules never make one reading**:
+  `read` runs the whole table rather than stopping at the first rule
+  that answers, so a pair keyed on the same analyte, side and threshold
+  both fire — four pairs had drifted that way, each correct alone.
+  `two_rules_on_one_value_never_both_answer_for_one_box` refuses the
+  next, on the boxes actually shipped and only when the two claim the
+  same *molecule*: Xigduo carries metformine and dapagliflozine, so its
+  collapsed bicarbonate is two readings and both are wanted),
   `src/renal.rs` (what renal function does to an ordonnance: a table of
   molecules, each with **steps** — a DFG, a level, what the RCP says —
   and a source. `biology.rs` answers « this figure, under this
@@ -115,7 +130,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   refuses markup in what they write: `RichText` interprets none, so an
   asterisk typed for emphasis reaches the screen as an asterisk),
   `src/revue.rs` (what a set of treatments says about itself:
-  doublons, associations, cascades — same shape, same discipline),
+  doublons, associations, cascades — same shape, same discipline, and
+  the same « two rules never make one reading » guard as `biology.rs`,
+  since `review` likewise runs the whole table. Here the key is the
+  rule's **shape** — the variant, the group count, the `min` of a
+  `Duplicate` — which is what keeps « Deux benzodiazépines » apart from
+  « Trois sédatifs »: same words, different `min`, and that difference
+  *is* the rule. A single shared word is not a duplicate either, or
+  tramadol would fold « Deux opioïdes faibles » into
+  « Deux sérotoninergiques »; what folds two rules is one word list
+  being **covered** by the other),
   `src/conciliation.rs` (the file's ordonnance against the one a patient
   brings back from hospital: reads a pasted list, matches each line to a
   fiche, and says what was stopped, changed, added or replaced — pure,

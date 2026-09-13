@@ -413,7 +413,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: Some(5.0),
-        note: "La cible usuelle est 2 à 3, et 2,5 à 3,5 pour certaines valves mécaniques : c'est l'ordonnance qui la fixe, pas un intervalle de laboratoire.",
+        note: "C'est l'ordonnance qui fixe la cible, jamais un intervalle de laboratoire : 2 à 3 en fibrillation atriale, en maladie thromboembolique et sur prothèse biologique ; 2,5 à 4,5 sur prothèse valvulaire mécanique, selon la prothèse et le patient. La grille de surdosage ne vaut que pour une cible 2 à 3.",
     },
     Analyte {
         code: "HB",
@@ -489,11 +489,18 @@ pub const CATALOGUE: &[Analyte] = &[
         code: "HBA1C",
         label: "Hémoglobine glyquée",
         unit: "%",
+        // Une cible et non un intervalle, comme l'INR : 7,4 % est un
+        // échec chez un diabétique récent et un bon résultat chez un
+        // sujet âgé fragile, et le logiciel ne sait pas lequel il a
+        // devant lui. Écrire `high: 7.0` faisait dire « haute » au
+        // second, c'est-à-dire exactement l'écueil que la table de
+        // référence « HbA1c » nomme : intensifier parce que le chiffre
+        // dépasse 7, « ce serait faire du mal ».
         low: None,
-        high: Some(7.0),
+        high: None,
         critical_low: None,
         critical_high: Some(10.0),
-        note: "La cible est individuelle : 7 % pour la plupart, 8 % ou plus chez le sujet âgé fragile où l'hypoglycémie coûte plus cher que l'hyperglycémie.",
+        note: "Une cible individuelle, pas une norme : 6,5 % pour un diabète récent, 7 % pour la plupart, 8 % en cas de comorbidité sévère ou de fragilité, 9 % chez le sujet âgé malade — où l'hypoglycémie coûte plus cher que l'hyperglycémie.",
     },
     Analyte {
         code: "GLY",
@@ -1086,17 +1093,12 @@ const RULES: &[Rule] = &[
         code: "PNN",
         side: Side::Below,
         threshold: 1.5,
-        needs: &["clozapine", "carbimazole", "méthotrexate", "immunosuppresseur", "anticancéreux"],
+        // Sans le carbimazole, qui a sa ligne d'antithyroïdien plus bas :
+        // elle dit l'agranulocytose et le signe qui l'annonce, là où
+        // celle-ci est la ligne générale.
+        needs: &["clozapine", "méthotrexate", "immunosuppresseur", "anticancéreux"],
         severity: Severity::Alert,
         text: "Neutropénie sous une molécule qui en induit : toute fièvre impose une consultation en urgence, et la délivrance ne se fait pas sans le contrôle hématologique prévu.",
-    },
-    Rule {
-        code: "NA",
-        side: Side::Below,
-        threshold: 130.0,
-        needs: &["ISRS", "sertraline", "paroxétine", "citalopram", "diurétique", "carbamazépine"],
-        severity: Severity::Warn,
-        text: "Hyponatrémie sous ISRS, diurétique ou carbamazépine : cause médicamenteuse fréquente chez la personne âgée, à signaler au prescripteur.",
     },
     Rule {
         code: "TSH",
@@ -1129,14 +1131,6 @@ const RULES: &[Rule] = &[
         needs: &[],
         severity: Severity::Alert,
         text: "Lithémie au-dessus de la zone thérapeutique : tremblement, diarrhée et somnolence signent le surdosage. Chercher une déshydratation, un AINS, un IEC ou un diurétique récemment ajouté.",
-    },
-    Rule {
-        code: "HBA1C",
-        side: Side::Below,
-        threshold: 6.5,
-        needs: &["sulfamide", "glicazide", "glimépiride", "insuline"],
-        severity: Severity::Warn,
-        text: "HbA1c basse sous sulfamide ou insuline chez un patient âgé : le sur-traitement expose à l'hypoglycémie, qui coûte plus cher ici que quelques dixièmes d'HbA1c.",
     },
     Rule {
         code: "URIC",
@@ -1222,14 +1216,6 @@ const RULES: &[Rule] = &[
         code: "MG",
         side: Side::Below,
         threshold: 0.7,
-        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "ésoméprazole", "pantoprazole"],
-        severity: Severity::Warn,
-        text: "Hypomagnésémie sous IPP : effet de classe des traitements prolongés, souvent découvert sur des crampes, une fatigue ou une hypokaliémie qui ne se corrige pas. Doser la magnésémie, supplémenter, et surtout réévaluer l'indication de l'IPP — la magnésémie ne remonte durablement qu'à son arrêt.",
-    },
-    Rule {
-        code: "MG",
-        side: Side::Below,
-        threshold: 0.7,
         needs: &["digoxine", "amiodarone", "sotalol", "citalopram", "hydroxyzine"],
         severity: Severity::Alert,
         text: "Hypomagnésémie sous une molécule qui allonge le QT ou sous digoxine : c'est le terrain de la torsade de pointes. Corriger le magnésium et le potassium ensemble, avant toute discussion de dose.",
@@ -1257,14 +1243,6 @@ const RULES: &[Rule] = &[
         needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "prednisone", "prednisolone", "antipsychotique"],
         severity: Severity::Warn,
         text: "Hyperglycémie sous corticoïde ou antipsychotique : le diabète cortico-induit monte surtout l'après-midi et le soir, et se dépiste sur une glycémie post-prandiale plutôt qu'à jeun. Surveiller pendant toute la corticothérapie, et prévenir le patient déjà diabétique que ses doses vont bouger.",
-    },
-    Rule {
-        code: "LDL",
-        side: Side::Above,
-        threshold: 1.0,
-        needs: &["vastatine", "ézétimibe", "atorvastatine", "rosuvastatine"],
-        severity: Severity::Warn,
-        text: "LDL au-dessus de 1 g/L sous statine : la cible dépend du risque — 0,55 g/L après un infarctus, 0,70 en haut risque. Avant de parler d'intensification, vérifier l'observance réelle, l'horaire de prise et ce qui a été arrêté sur une douleur musculaire jamais reparlée.",
     },
     Rule {
         code: "TG",
@@ -1298,14 +1276,6 @@ const RULES: &[Rule] = &[
     },
     Rule {
         code: "CA",
-        side: Side::Above,
-        threshold: 2.6,
-        needs: &["vitamine D", "cholécalciférol", "calcium", "hydrochlorothiazide"],
-        severity: Severity::Warn,
-        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation, faire boire, et contrôler. Nausées, constipation, soif et confusion sont les signes que le chiffre est déjà haut.",
-    },
-    Rule {
-        code: "CA",
         side: Side::Below,
         threshold: 2.2,
         needs: &["bisphosphonate", "alendronate", "dénosumab", "acide zolédronique", "cinacalcet"],
@@ -1335,14 +1305,6 @@ const RULES: &[Rule] = &[
         needs: &["Tardyferon", "ferreux", "fumarate ferreux"],
         severity: Severity::Warn,
         text: "Ferritine toujours basse sous fer oral : reprendre la prise avant tout. Le fer s'absorbe à jeun, jamais avec le thé, le café, le calcium ou un IPP, et un comprimé un jour sur deux est mieux absorbé que deux le même jour.",
-    },
-    Rule {
-        code: "ALB",
-        side: Side::Below,
-        threshold: 30.0,
-        needs: &["AVK", "warfarine", "fluindione", "acénocoumarol"],
-        severity: Severity::Warn,
-        text: "Hypoalbuminémie sous AVK : la fraction libre augmente et l'INR devient instable à dose inchangée. Contrôles rapprochés, et se méfier de tout ajout qui déplace la liaison protéique.",
     },
     Rule {
         code: "ASAT",
@@ -1522,7 +1484,7 @@ const RULES: &[Rule] = &[
         code: "HB",
         side: Side::Below,
         threshold: 11.0,
-        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "metformine"],
+        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "metformine"],
         severity: Severity::Warn,
         text: "Anémie sous IPP ou metformine au long cours : les deux gênent l'absorption de la vitamine B12, et l'IPP celle du fer. Un VGM élevé oriente vers la B12, un VGM bas vers le fer — le bilan tranche, et la carence se corrige.",
     },
@@ -1588,15 +1550,15 @@ const RULES: &[Rule] = &[
         threshold: 2.60,
         needs: &["vitamine D", "cholécalciférol", "calcifédiol", "calcium", "thiazidique", "hydrochlorothiazide"],
         severity: Severity::Alert,
-        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation et faire évaluer. Soif, nausées, urines abondantes, constipation et confusion sont les signes, et ils s'installent lentement — d'où le retard au diagnostic.",
+        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation, faire boire, et faire évaluer. Soif, nausées, urines abondantes, constipation et confusion sont les signes, et ils s'installent lentement — d'où le retard au diagnostic.",
     },
     Rule {
         code: "MG",
         side: Side::Below,
         threshold: 0.70,
-        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole"],
+        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         severity: Severity::Warn,
-        text: "Hypomagnésémie sous IPP au long cours : elle apparaît après des mois ou des années, entretient une hypokaliémie qui ne se corrige pas, et donne crampes, tétanie et troubles du rythme. C'est aussi un argument pour réévaluer l'indication de l'IPP.",
+        text: "Hypomagnésémie sous IPP au long cours : effet de classe, qui apparaît après des mois ou des années et se découvre souvent sur des crampes, une fatigue, une tétanie, des troubles du rythme ou une hypokaliémie qui ne se corrige pas. Doser, supplémenter, et surtout réévaluer l'indication de l'IPP : la magnésémie ne remonte durablement qu'à son arrêt.",
     },
     Rule {
         code: "TSH",
@@ -1614,13 +1576,25 @@ const RULES: &[Rule] = &[
         severity: Severity::Warn,
         text: "HbA1c basse sous insuline ou sulfamide chez un patient âgé : ce n'est pas un bon résultat, c'est un risque d'hypoglycémie. La cible se relâche après 75 ans et davantage encore en cas de fragilité — le sur-traitement du diabète de la personne âgée est aussi dangereux que le sous-traitement.",
     },
+    // L'analyte n'a plus de borne haute, parce qu'aucune ne vaut pour
+    // tout le monde. Neuf pour cent, si : c'est au-dessus de l'objectif
+    // le plus relâché du tableau, celui du sujet âgé malade. En deçà,
+    // le logiciel ne sait pas quelle cible il regarde et se tait.
+    Rule {
+        code: "HBA1C",
+        side: Side::Above,
+        threshold: 9.0,
+        needs: &[],
+        severity: Severity::Warn,
+        text: "HbA1c au-dessus de 9 % : au-delà de tous les objectifs, y compris le plus relâché — celui du sujet âgé malade, chez qui l'on vise seulement le confort. Entre 7 et 9 %, rien n'est dit ici : la cible se lit sur le dossier et non sur le compte rendu, et un même chiffre est un échec chez l'un et un bon résultat chez l'autre.",
+    },
     Rule {
         code: "LDL",
         side: Side::Above,
         threshold: 1.0,
         needs: &["vastatine", "ézétimibe", "anti-PCSK9"],
         severity: Severity::Warn,
-        text: "LDL au-dessus de la cible sous hypolipémiant : avant de monter la dose, vérifier que le traitement est pris — l'inobservance est la première cause d'échec, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent. En prévention secondaire, la cible est plus basse encore.",
+        text: "LDL au-dessus de la cible sous hypolipémiant : la cible dépend du risque et non des bornes du laboratoire — 0,55 g/L à très haut risque, 0,70 à haut risque, 1,00 à risque modéré. Avant de monter la dose, vérifier que le traitement est pris, et à quelle heure : l'inobservance est la première cause d'échec, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent, souvent sans que personne en ait reparlé.",
     },
     Rule {
         code: "CRP",
@@ -1634,9 +1608,9 @@ const RULES: &[Rule] = &[
         code: "ALB",
         side: Side::Below,
         threshold: 30.0,
-        needs: &["AVK", "warfarine", "fluindione", "phénytoïne", "furosémide"],
+        needs: &["AVK", "warfarine", "fluindione", "acénocoumarol", "phénytoïne", "furosémide"],
         severity: Severity::Warn,
-        text: "Hypoalbuminémie sous médicament fortement lié aux protéines : la fraction libre — celle qui agit — augmente à concentration totale inchangée. Un INR qui s'emballe chez un patient dénutri vient souvent de là, et la dose se revoit avec le prescripteur.",
+        text: "Hypoalbuminémie sous médicament fortement lié aux protéines : la fraction libre — celle qui agit — augmente à concentration totale inchangée. Sous AVK, l'INR devient instable à dose inchangée : contrôles rapprochés, et méfiance devant tout ajout qui déplace la liaison protéique. Un INR qui s'emballe chez un patient dénutri vient souvent de là, et la dose se revoit avec le prescripteur.",
     },
     Rule {
         code: "UREE",
@@ -1668,7 +1642,7 @@ const RULES: &[Rule] = &[
         threshold: 60.0,
         needs: &["paracétamol", "amiodarone", "méthotrexate", "isoniazide", "antifongique azolé", "vastatine"],
         severity: Severity::Alert,
-        text: "TP bas chez un patient qui ne prend pas d'AVK : le foie fabrique les facteurs de coagulation, et un TP qui chute sous un médicament hépatotoxique est un signe de gravité, plus parlant que les transaminases. Faire évaluer sans attendre, et vérifier la dose cumulée de paracétamol.",
+        text: "TP bas sous un médicament hépatotoxique : le foie fabrique les facteurs de coagulation, et un TP qui chute est ici un signe de gravité, plus parlant que les transaminases. Faire évaluer sans attendre, et vérifier la dose cumulée de paracétamol. Sous AVK, en revanche, un TP bas est attendu et c'est l'INR qui décide.",
     },
     Rule {
         code: "GB",
@@ -2026,6 +2000,90 @@ mod tests {
         }
     }
 
+    /// Two rules on one value, one box, and both of them speak.
+    ///
+    /// `read` does not stop at the first rule that answers — it runs
+    /// the whole table — so two rules keyed on the same analyte, the
+    /// same side and the same threshold both fire the moment one
+    /// treatment satisfies them both. That is not a near-miss to be
+    /// judged by eye: it is a reading said twice, often at two
+    /// severities and in two wordings, and a bilan that repeats itself
+    /// is a bilan people stop reading.
+    ///
+    /// Four pairs had drifted in that way — le sodium, l'HbA1c, le LDL
+    /// et l'albumine — and a fifth shared a single word (carbimazole).
+    /// None was visible to any test: each rule was correct on its own,
+    /// and only the encounter shows it.
+    ///
+    /// Two conditions, and both are needed.
+    ///
+    /// The first is that they **collide on a box actually shipped**,
+    /// never on their word lists: « IEC » and « pril » share no letter
+    /// and both catch a ramipril, so comparing the lists would miss it.
+    ///
+    /// The second is that they **claim the same molecule** — one rule's
+    /// own word satisfies the other. Without it the test cries wolf on
+    /// the combination boxes, and it would be wrong to: Xigduo carries
+    /// metformine *and* dapagliflozine, so a collapsed bicarbonate can
+    /// be a lactic acidosis or a euglycaemic ketoacidosis, and those
+    /// are two readings, both wanted. Néo-Mercazole is the other case —
+    /// one molecule, two rules that both name le carbimazole, and one
+    /// reading said twice.
+    ///
+    /// What this deliberately does not catch: two rules claiming one
+    /// molecule under two names that have no letters in common. Nothing
+    /// in the table does it, and widening the net here costs the
+    /// combination boxes.
+    ///
+    /// A rule with no `needs` is exempt: it says « whatever the
+    /// treatment », and it is meant to be read beside the others.
+    #[test]
+    fn two_rules_on_one_value_never_both_answer_for_one_box() {
+        let hit = |rule: &Rule, hay: &str| {
+            if rule.needs.is_empty() {
+                return None;
+            }
+            rule.needs
+                .iter()
+                .find(|n| crate::fuzzy::contains_folded(hay, n))
+        };
+        let mut doubled: Vec<String> = Vec::new();
+        for (i, a) in RULES.iter().enumerate() {
+            for b in RULES.iter().skip(i + 1) {
+                if a.code != b.code || a.side != b.side || a.threshold != b.threshold {
+                    continue;
+                }
+                // Same molecule, whichever side names it.
+                let same = |x: &Rule, y: &Rule| {
+                    x.needs.iter().any(|n| {
+                        let key = crate::fuzzy::sort_key(n);
+                        hit(y, &key).is_some()
+                    })
+                };
+                if !same(a, b) && !same(b, a) {
+                    continue;
+                }
+                for (name, dci, class, tags) in crate::db::STARTER_DRUGS {
+                    let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class} {tags}"));
+                    if hit(a, &hay).is_some() && hit(b, &hay).is_some() {
+                        doubled.push(format!(
+                            "{} sur « {name} » : « {} » et « {} »",
+                            a.code,
+                            &a.text[..a.text.len().min(60)],
+                            &b.text[..b.text.len().min(60)]
+                        ));
+                        break;
+                    }
+                }
+            }
+        }
+        assert!(
+            doubled.is_empty(),
+            "le bilan se répète — fondre les deux règles dans la plus complète :\n{}",
+            doubled.join("\n")
+        );
+    }
+
     /// An analyte with no rule is a number the application displays and
     /// says nothing about — the laboratory already does that, and does
     /// it better. What an officine adds is what the value changes for
@@ -2042,8 +2100,25 @@ mod tests {
         // The same slip had happened in `revue.rs` and in the toxicity
         // floor of `db.rs`: a number spelled out twice is a number that
         // will disagree with itself.
+        //
+        // **Descendu de 108 à 105 le 13/09/2026, et c'est le seul motif
+        // qui l'autorise :** quatre paires de règles disaient la même
+        // chose du même chiffre sous les mêmes traitements — le sodium,
+        // l'HbA1c, le LDL et l'albumine. Comme `read` ne s'arrête pas à
+        // la première qui répond, une hyponatrémie sous sertraline
+        // sortait deux fois, à deux gravités et en deux formulations
+        // voisines. Chaque paire est fondue dans la plus complète, qui
+        // reprend ce que l'autre avait de plus ; une cinquième règle est
+        // née du même passage (HbA1c au-dessus de 9 %). Le test
+        // `two_rules_on_one_value_never_both_answer_for_one_box`, écrit
+        // dans la foulée pour que la suivante ne se trouve pas à l'œil,
+        // en a immédiatement montré deux de plus que la relecture avait
+        // laissées passer — le magnésium et le calcium, dont les seuils
+        // s'écrivaient « 0,70 » et « 2,60 » là où leur jumelle écrivait
+        // « 0,7 » et « 2,6 » : à l'œil, deux règles différentes. **Aucune lecture n'a été perdue** — c'est ce qu'il faut
+        // pouvoir écrire ici pour baisser ce chiffre.
         const CATALOGUE_FLOOR: usize = 55;
-        const RULES_FLOOR: usize = 108;
+        const RULES_FLOOR: usize = 103;
         assert!(
             CATALOGUE.len() >= CATALOGUE_FLOOR,
             "{} analytes, il y en avait {CATALOGUE_FLOOR}",

@@ -330,6 +330,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   conduite systémique prêtée à deux gouttes dans un œil est le genre
   d'alerte qui apprend à ignorer les alertes. « ARA2 » ne visait rien et
   est retiré ; « sartan » fait le travail.
+- **Le bilan biologique disait six fois deux fois la même chose.**
+  `read` ne s'arrête pas à la première règle qui répond — il parcourt
+  toute la table —, de sorte que deux règles posées sur le même
+  analyte, du même côté et au même seuil sortent **toutes les deux**.
+  Six paires avaient dérivé ainsi, et chacune était juste toute seule :
+  le sodium (une règle dont les traitements étaient un sous-ensemble de
+  l'autre, l'une en avertissement et l'autre en alerte), l'HbA1c, le
+  LDL, l'albumine, le magnésium et le calcium — ces deux dernières
+  écrivant leur seuil « 0,70 » et « 2,60 » là où leur jumelle écrivait
+  « 0,7 » et « 2,6 », si bien qu'à l'œil ce n'étaient pas les mêmes
+  règles. Chaque paire est fondue dans la plus complète, qui reprend ce
+  que l'autre avait de plus. Une hyponatrémie à 126 sous sertraline
+  sortait deux fois ; elle sort une fois.
+
+  Et le carbimazole était nommé par la règle générale des neutropénies
+  *et* par celle des antithyroïdiens, qui dit mieux la même chose.
+
+  `two_rules_on_one_value_never_both_answer_for_one_box` refuse la
+  suivante. Il travaille sur les **boîtes réellement livrées** et non
+  sur les listes de mots — « IEC » et « pril » n'ont pas une lettre
+  commune et attrapent le même ramipril —, et seulement quand les deux
+  règles revendiquent la **même molécule** : le Xigduo porte de la
+  metformine *et* de la dapagliflozine, si bien qu'une réserve alcaline
+  effondrée y est soit une acidose lactique, soit une acidocétose
+  euglycémique. Deux lectures, toutes deux voulues. Écrit après la
+  relecture à l'œil, il a immédiatement montré deux paires qu'elle
+  avait laissées passer.
+- **L'HbA1c avait une borne haute, et son propre commentaire disait
+  qu'elle n'en a pas.** `Level::Unknown` est documenté depuis toujours
+  comme « INR, HbA1c : une cible, pas un intervalle » ; l'INR était
+  écrit ainsi, l'HbA1c non, avec un `high` à 7 %. Un sujet âgé fragile
+  dont l'objectif est 8 % lisait donc « Hémoglobine glyquée 7,4 % —
+  haute », c'est-à-dire mot pour mot l'écueil que la table de référence
+  « HbA1c » nomme : « intensifier parce que le chiffre dépasse 7, ce
+  serait faire du mal ». La borne est retirée. Ce qui reste vrai pour
+  tout le monde est dit par une règle — au-dessus de 9 %, on est au-delà
+  de tous les objectifs, y compris celui du sujet âgé malade — et entre
+  7 et 9 le logiciel se tait, parce que la cible se lit sur le dossier
+  et non sur le compte rendu.
+- **La cible d'INR d'une valve mécanique n'était pas la même dans les
+  deux endroits où l'application l'écrit** : « 2,5 à 3,5 » pour la fiche
+  de l'analyte, « 2,5 à 4,5 selon la prothèse et le patient » pour la
+  table « AVK », qui cite l'ESC. La seconde est la bonne, et la table
+  nomme justement comme écueil ce que la première invitait à faire —
+  appliquer la cible 2 à 3 et la grille de surdosage à des patients pour
+  qui elles ne valent pas. La note de l'analyte le dit maintenant.
+- **Une règle affirmait une condition qu'elle ne vérifie pas.** « TP bas
+  chez un patient **qui ne prend pas d'AVK** » se déclenche sur le
+  paracétamol, l'amiodarone, le méthotrexate ou une statine — sans rien
+  savoir des AVK. Un patient sous Previscan et Tahor, avec un TP à 55,
+  lisait donc qu'il ne prend pas d'AVK, deux lignes après en avoir lu
+  la conduite. La phrase énonce désormais la condition au lieu de la
+  supposer.
+- **Une statine ne fait pas monter la colchicine.** Elle figurait
+  pourtant dans la liste des inhibiteurs enzymatiques de « Colchicine
+  exposée », dont la phrase ne nomme qu'eux — « macrolides, azolés,
+  vérapamil et ciclosporine font grimper ses concentrations ». Ce
+  qu'une statine partage avec la colchicine est la myotoxicité, et
+  « Statine + colchicine » le dit déjà. Trouvé par le test ci-dessous,
+  qui signalait les deux règles comme jumelles.
 - **La revue disait deux fois la même chose de la lévothyroxine.**
   « Lévothyroxine à distance » et « Lévothyroxine et chélation »
   partaient des mêmes traitements — le fer, le calcium, les IPP — pour
@@ -343,6 +403,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Le plancher du cliquet descend donc de 87 à 86, et le commentaire qui
   l'accompagne dit pourquoi : **aucune question n'a été perdue**, c'est
   le seul motif qui autorise à baisser ce chiffre.
+
+  `two_rules_never_make_one_reading_twice` refuse la suivante, sur la
+  **forme** de la règle — la variante, le nombre de groupes, le `min`
+  d'un doublon —, qui est ce qui sépare « Deux benzodiazépines » de
+  « Trois sédatifs » : mêmes mots, `min` différent, et cette différence
+  *est* la règle. Un mot en commun ne suffit pas non plus, ou le
+  tramadol confondrait « Deux opioïdes faibles » avec « Deux
+  sérotoninergiques » ; ce qui fond deux règles, c'est qu'une liste soit
+  **couverte** par l'autre.
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.
