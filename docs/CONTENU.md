@@ -783,6 +783,20 @@ Deux règles valent partout :
   devenu « ne pas écraser » ne coûte qu'un appel, l'inverse casse la
   libération. Et le mot est « LP » **avec son espace de tête**, parce
   qu'« alprazolam » le contient sans elle.
+- **Une marque nue ne dit pas la forme.** C'est la même leçon que
+  l'Actiskénan, et elle se représente autrement : la ligne
+  « Nifédipine LP » réclamait « adalate », la ligne « Venlafaxine à
+  libération prolongée » réclamait « effexor » et « venlafaxine », et
+  ces trois mots-là désignent aussi bien la forme immédiate. Les fiches
+  livrées le disent en toutes lettres — « formes à libération immédiate
+  […] formes à libération prolongée » —, parce qu'une fiche est une
+  molécule quand cette table est une **présentation**. Le mot cherché
+  doit donc porter la forme : « adalate lp », « effexor lp ». Ce qui
+  reste sans elle tombe sur « à vérifier », et c'est la bonne réponse.
+  La venlafaxine s'était trahie toute seule : elle proposait en
+  remplacement « la forme à libération immédiate », c'est-à-dire celle à
+  laquelle elle s'appliquait aussi. **Un remplaçant qui tombe sous la
+  règle qu'il doit contourner est une ligne qui ne tient pas debout.**
 - **Ajouter une présentation** : une entrée `Rule`, et **au bon rang**.
   La table est lue dans l'ordre, la première qui accroche gagne, donc
   une entrée précise va *avant* une entrée large — un test le vérifie,
