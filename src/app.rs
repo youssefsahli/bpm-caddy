@@ -13401,6 +13401,13 @@ impl App {
                         ui.text_style_height(&egui::TextStyle::Body) + 6.0
                     };
                 let body_h = (ui.available_height() - footer).max(160.0);
+                // **Et la barre dit qu'il y a une suite.** À
+                // `text_scale = 1,6` la fenêtre montre les six
+                // antibiotiques et s'arrête sur le titre « Adjuvant » :
+                // l'adjuvant lui-même, les conseils à imprimer et les
+                // lignes libres sont dessous, et ce sont des choix que
+                // l'ordonnance imprimée portera.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::both()
                     .id_salt("ord_body")
                     .max_height(body_h)
