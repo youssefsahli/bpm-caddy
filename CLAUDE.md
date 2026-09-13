@@ -694,7 +694,11 @@ add clicking and typing; it is not the price of entry.
   in lines so the register's own *lines* survive; a chart kept at the
   price of the rows it illustrates is a chart of nothing.
 - `./scripts/eyeball.sh [dir]` captures every view at 1024x700 with
-  `text_scale = 1.25` into a directory. `smoke.sh` proves nothing
+  `text_scale = 1.25` into a directory. It sweeps **the same list as
+  `smoke.sh`**, and a test holds the two together: a view that smoke
+  opens and eyeball never captures is a view nobody ever *looks* at —
+  it does not panic, and that is all anyone knows about it. Three were
+  in that state (the two caisse pages and the Vitale reader). `smoke.sh` proves nothing
   panicked; it says nothing about a heading that wrapped, a button drawn
   half off a panel, or eight doors reflowing into three rows. Those are
   found by looking, and looking is only cheap when the pictures are one

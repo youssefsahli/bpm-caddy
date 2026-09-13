@@ -489,6 +489,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Trois vues que personne ne regardait jamais.** `smoke.sh` prouve
+  que rien n'a paniqué ; il ne dit rien d'un titre qui déborde, d'une
+  bande coupée ou d'une table vide — cela se voit en **regardant**, et
+  c'est `eyeball.sh` qui capture les images. Or sa liste avait trois
+  vues de moins que celle de la fumée : les deux pages de la caisse et
+  le lecteur de carte Vitale. Elles ne paniquaient pas, et c'est tout ce
+  qu'on en savait. Les deux listes sont désormais tenues ensemble par un
+  test.
 - **Les tests de confrontation voyaient un mot que le comptoir ne voit
   pas.** Ils construisaient leur botte de foin à partir du quatrième
   champ des tuples de `STARTER_DRUGS` — qui est l'**antidote**, semé

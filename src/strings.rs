@@ -737,6 +737,22 @@ livre = "Une phrase qui n'est plus livrée"
             documented.len()
         );
 
+        // Et `eyeball.sh` balaie les mêmes : `smoke.sh` prouve que rien
+        // n'a paniqué, il ne dit rien d'un titre qui déborde ou d'une
+        // bande coupée — **ça, c'est en regardant qu'on le voit**, et
+        // une vue absente de la liste des captures est une vue que
+        // personne ne regarde jamais. Trois l'étaient : les deux pages
+        // de la caisse et le lecteur de carte Vitale.
+        const EYEBALL: &str = include_str!("../scripts/eyeball.sh");
+        let eyed_block = EYEBALL
+            .split_once("views=(")
+            .expect("le tableau des vues dans eyeball.sh")
+            .1
+            .split_once(')')
+            .expect("le tableau se ferme")
+            .0;
+        let eyed: Vec<&str> = eyed_block.split_whitespace().collect();
+
         let swept_block = SMOKE
             .split_once("views=(")
             .expect("le tableau des vues dans smoke.sh")
@@ -759,6 +775,20 @@ livre = "Une phrase qui n'est plus livrée"
         assert!(
             missing.is_empty(),
             "vues documentées que `smoke.sh` n'ouvre jamais : {missing:?}"
+        );
+
+        let mut unseen: Vec<&str> = swept
+            .iter()
+            .filter(|k| !eyed.contains(k))
+            .copied()
+            .collect();
+        unseen.sort_unstable();
+        unseen.dedup();
+        assert!(
+            unseen.is_empty(),
+            "vues que `smoke.sh` ouvre et que `eyeball.sh` ne capture \
+             jamais — elles ne paniquent pas, et personne ne les \
+             regarde : {unseen:?}"
         );
 
         let mut undocumented: Vec<&str> = swept
