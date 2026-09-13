@@ -26497,7 +26497,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Previscan", "fluindione", "AVK", "Vitamine K"),
     ("Sintrom", "acénocoumarol", "AVK", "Vitamine K"),
     ("Héparine", "héparine sodique", "héparine", "Protamine"),
-    ("Lovenox", "énoxaparine", "HBPM", ""),
+    ("Lovenox", "énoxaparine", "HBPM", "Protamine (partiel)"),
     ("Kardégic", "acide acétylsalicylique", "antiagrégant", ""),
     ("Plavix", "clopidogrel", "antiagrégant", ""),
     ("Brilique", "ticagrélor", "antiagrégant", ""),
@@ -26545,17 +26545,22 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Amlor", "amlodipine", "inhibiteur calcique", ""),
     ("Isoptine", "vérapamil", "inhibiteur calcique", ""),
     ("Cordarone", "amiodarone", "antiarythmique", ""),
-    ("Cardensiel", "bisoprolol", "bêtabloquant", ""),
-    ("Ténormine", "aténolol", "bêtabloquant", ""),
+    ("Cardensiel", "bisoprolol", "bêtabloquant", "Glucagon"),
+    ("Ténormine", "aténolol", "bêtabloquant", "Glucagon"),
     ("Lasilix", "furosémide", "diurétique de l'anse", ""),
     ("Aldactone", "spironolactone", "diurétique épargneur K+", ""),
     ("Digoxine", "digoxine", "digitalique", "Fab antidigoxine"),
     // Diabète
     ("Glucophage", "metformine", "biguanide", ""),
-    ("Diamicron", "gliclazide", "sulfamide hypoglycémiant", ""),
+    (
+        "Diamicron",
+        "gliclazide",
+        "sulfamide hypoglycémiant",
+        "Glucagon",
+    ),
     ("Ozempic", "sémaglutide", "analogue GLP-1", ""),
     ("Wegovy", "sémaglutide", "analogue GLP-1 — obésité", ""),
-    ("Lantus", "insuline glargine", "insuline", ""),
+    ("Lantus", "insuline glargine", "insuline", "Glucagon"),
     // Respiratoire
     ("Ventoline", "salbutamol", "bêta-2 mimétique", ""),
     ("Symbicort", "budésonide + formotérol", "CSI + BDLA", ""),
@@ -26687,7 +26692,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "diurétique apparenté thiazidique",
         "",
     ),
-    ("Avlocardyl", "propranolol", "bêtabloquant", ""),
+    ("Avlocardyl", "propranolol", "bêtabloquant", "Glucagon"),
     ("Flécaïne", "flécaïnide", "antiarythmique", ""),
     (
         "Kaléorid",
@@ -26700,14 +26705,19 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Jardiance", "empagliflozine", "iSGLT2", ""),
     ("Trulicity", "dulaglutide", "analogue GLP-1", ""),
     ("Victoza", "liraglutide", "analogue GLP-1", ""),
-    ("NovoRapid", "insuline asparte", "insuline rapide", ""),
+    (
+        "NovoRapid",
+        "insuline asparte",
+        "insuline rapide",
+        "Glucagon",
+    ),
     // Divers courants
     ("Zyloric", "allopurinol", "hypo-uricémiant", ""),
     ("Adenuric", "fébuxostat", "hypo-uricémiant", ""),
     ("Colchicine", "colchicine", "anti-goutteux", ""),
     ("Fosamax", "alendronate", "bisphosphonate", ""),
     ("Uvedose", "cholécalciférol", "vitamine D", ""),
-    ("Tardyferon", "sulfate ferreux", "fer", ""),
+    ("Tardyferon", "sulfate ferreux", "fer", "Déféroxamine"),
     ("Spéciafoldine", "acide folique", "vitamine B9", ""),
     ("Bricanyl", "terbutaline", "bêta-2 mimétique", ""),
     ("Pulmicort", "budésonide", "corticoïde inhalé", ""),
@@ -26801,10 +26811,25 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Praluent", "alirocumab", "anti-PCSK9", ""),
     ("Trinitrine", "trinitrine", "dérivé nitré", ""),
     // Diabète complémentaires
-    ("Toujeo", "insuline glargine 300", "insuline lente", ""),
-    ("Abasaglar", "insuline glargine", "insuline lente", ""),
-    ("Humalog", "insuline lispro", "insuline rapide", ""),
-    ("Amarel", "glimépiride", "sulfamide hypoglycémiant", ""),
+    (
+        "Toujeo",
+        "insuline glargine 300",
+        "insuline lente",
+        "Glucagon",
+    ),
+    (
+        "Abasaglar",
+        "insuline glargine",
+        "insuline lente",
+        "Glucagon",
+    ),
+    ("Humalog", "insuline lispro", "insuline rapide", "Glucagon"),
+    (
+        "Amarel",
+        "glimépiride",
+        "sulfamide hypoglycémiant",
+        "Glucagon",
+    ),
     // Parkinson
     (
         "Modopar",
@@ -26886,7 +26911,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "Lamaline",
         "paracétamol + opium + caféine",
         "antalgique opiacé",
-        "",
+        "Naloxone",
     ),
     ("Célestène", "bétaméthasone", "corticoïde", ""),
     ("Médrol", "méthylprednisolone", "corticoïde", ""),
@@ -26947,7 +26972,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Efient", "prasugrel", "antiagrégant", ""),
     ("Inspra", "éplérénone", "antialdostérone", ""),
     ("Sotalex", "sotalol", "bêta-bloquant antiarythmique", ""),
-    ("Sectral", "acébutolol", "bêta-bloquant", ""),
+    ("Sectral", "acébutolol", "bêta-bloquant", "Glucagon"),
     ("Multaq", "dronédarone", "antiarythmique", ""),
     (
         "Adancor",
@@ -26979,10 +27004,25 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ),
     // Diabète / endocrinologie (suite)
     ("Mounjaro", "tirzépatide", "agoniste GIP/GLP-1", ""),
-    ("Tresiba", "insuline dégludec", "insuline ultralente", ""),
-    ("Levemir", "insuline détémir", "insuline lente", ""),
-    ("Apidra", "insuline glulisine", "insuline rapide", ""),
-    ("Insulatard", "insuline NPH", "insuline intermédiaire", ""),
+    (
+        "Tresiba",
+        "insuline dégludec",
+        "insuline ultralente",
+        "Glucagon",
+    ),
+    ("Levemir", "insuline détémir", "insuline lente", "Glucagon"),
+    (
+        "Apidra",
+        "insuline glulisine",
+        "insuline rapide",
+        "Glucagon",
+    ),
+    (
+        "Insulatard",
+        "insuline NPH",
+        "insuline intermédiaire",
+        "Glucagon",
+    ),
     (
         "Hydrocortisone",
         "hydrocortisone",
@@ -28990,7 +29030,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "facteur de croissance granulocytaire",
         "",
     ),
-    ("Semglee", "insuline glargine", "insuline lente", ""),
+    ("Semglee", "insuline glargine", "insuline lente", "Glucagon"),
     (
         "Retacrit",
         "époétine zêta",
@@ -29003,7 +29043,7 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "analogue de la PTH — ostéoporose",
         "",
     ),
-    ("Inhixa", "énoxaparine", "HBPM", ""),
+    ("Inhixa", "énoxaparine", "HBPM", "Protamine (partiel)"),
     // Six molécules, pas six marques de plus : chacune répond à une
     // question que la base ne savait pas traiter. L'aclidinium est le
     // seul anticholinergique inhalé à deux prises par jour et son
@@ -36037,6 +36077,84 @@ mod tests {
         assert!(
             split.is_empty(),
             "lignes non contiguës, la seconde série serait perdue : {split:?}"
+        );
+    }
+
+    /// **Dans une classe, la colonne « antidote » est tout ou rien.**
+    ///
+    /// Elle était remplie sur quatre insulines et vide sur dix, sur six
+    /// bêtabloquants et vide sur trois, sur deux sulfamides
+    /// hypoglycémiants et vide sur deux. Une officine qui compare le
+    /// Lantus et l'Actrapid y lit que l'un aurait un antidote et l'autre
+    /// non, pour le même danger — et c'est l'écran « Antidotes » de la
+    /// base médicaments qui en fait la liste.
+    ///
+    /// Les blancs qui restent sont **pharmacologiques et nommés ici**,
+    /// parce qu'un blanc justifié et un oubli se ressemblent :
+    ///
+    /// * le Lixiana : l'andexanet alfa n'est pas autorisé en Europe pour
+    ///   l'édoxaban, contrairement à l'apixaban et au rivaroxaban ;
+    /// * l'Alkeran : le mesna protège des métabolites du
+    ///   cyclophosphamide, pas de ceux du melphalan ;
+    /// * le Dexambutol et le Pirilène : la pyridoxine est l'affaire de
+    ///   l'isoniazide ;
+    /// * les immunosuppresseurs autres que le méthotrexate : l'acide
+    ///   folinique est son antidote à lui.
+    #[test]
+    fn within_a_class_the_antidote_column_is_all_or_nothing() {
+        use std::collections::BTreeMap;
+        const EXEMPT: &[&str] = &[
+            "Lixiana",
+            "Alkeran",
+            "Dexambutol",
+            "Pirilène",
+            "Imurel",
+            "Prograf",
+            "Néoral",
+            "Cellcept",
+            // Un collyre ne porte pas la conduite d'une voie générale,
+            // et c'est la règle de `classes::is_local_form`.
+            "Timoptol",
+            // Le néfopam n'a pas d'antidote : il partage sa classe
+            // canonique avec le paracétamol, dont la
+            // N-acétylcystéine est l'affaire à lui.
+            "Acupan",
+            // La rifampicine seule ne demande pas de pyridoxine — c'est
+            // l'isoniazide du Rifinah qui la demande.
+            "Rifadine",
+        ];
+        let mut by: BTreeMap<&'static str, (Vec<&str>, Vec<&str>)> = BTreeMap::new();
+        for (name, _, class, antidote) in STARTER_DRUGS {
+            if EXEMPT.contains(name) {
+                continue;
+            }
+            // **Sur la classe canonique**, pas sur la chaîne : c'est
+            // ce à quoi sert le référentiel. Le Lantus est classé
+            // « insuline » tout court, qui est un alias d'« insuline
+            // lente » — groupé sur la chaîne, il serait seul dans sa
+            // classe et aucun voisin ne pourrait le contredire.
+            let key = crate::classes::canonical(class).map_or(*class, |c| c.name);
+            let e = by.entry(key).or_default();
+            if antidote.trim().is_empty() {
+                e.1.push(name);
+            } else {
+                e.0.push(name);
+            }
+        }
+        let mut wrong: Vec<String> = Vec::new();
+        for (class, (with, without)) in by {
+            if !with.is_empty() && !without.is_empty() {
+                wrong.push(format!(
+                    "« {class} » : {with:?} portent un antidote, {without:?} non"
+                ));
+            }
+        }
+        assert!(
+            wrong.is_empty(),
+            "la colonne « antidote » se contredit dans une même classe — \
+             compléter la fiche, ou nommer le blanc dans EXEMPT avec sa \
+             raison :\n{}",
+            wrong.join("\n")
         );
     }
 

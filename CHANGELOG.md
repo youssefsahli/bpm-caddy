@@ -333,6 +333,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **La colonne « antidote » se contredisait dans une même classe.**
+  Elle était remplie sur quatre insulines et vide sur dix, sur neuf
+  bêtabloquants et vide sur un, sur deux sulfamides hypoglycémiants et
+  vide sur deux, sur trois HBPM et vide sur deux. Une officine qui
+  compare le Lantus et l'Actrapid y lisait que l'un aurait un antidote
+  et l'autre non, pour le même danger — et c'est l'écran « Antidotes »
+  de la base médicaments qui en fait la liste. Vingt fiches complétées,
+  de 86 à 106.
+
+  Les blancs qui restent sont pharmacologiques et **nommés dans le
+  test**, parce qu'un blanc justifié et un oubli se ressemblent :
+  l'andexanet alfa n'est pas autorisé en Europe pour l'édoxaban, le
+  mesna protège des métabolites du cyclophosphamide et non du melphalan,
+  la pyridoxine est l'affaire de l'isoniazide et non de la rifampicine
+  seule, le néfopam n'a pas d'antidote, et un collyre ne porte pas la
+  conduite d'une voie générale.
+
+  Le test groupe sur la classe **canonique** et non sur la chaîne : le
+  Lantus est classé « insuline » tout court, alias d'« insuline lente »,
+  et seul dans sa classe littérale aucun voisin n'aurait pu le
+  contredire. C'est ce groupement qui a trouvé les quatre derniers.
 - **« Anesthésique local » nomme une classe, pas une voie**, et les cinq
   de la base s'injectent. Xylocaïne, Naropéine, Marcaïne, Chirocaïne et
   Scandicaïne étaient rangées en formes locales par ce seul mot : les
