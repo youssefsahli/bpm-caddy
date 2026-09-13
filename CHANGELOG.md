@@ -296,6 +296,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« 14 gélule », « 12 comprimé », « -2 gélule ».** Le registre des
+  stupéfiants et ses deux pièces — le procès-verbal de destruction et la
+  feuille de contrôle — écrivaient l'unité au singulier quelle que soit
+  la quantité, et les neuf endroits de l'écran qui assemblaient un
+  nombre et une unité faisaient de même. Onze unités au catalogue, dont
+  trois qu'un « s » seul écrirait faux : « comprimé sublingual » fait
+  « comprimés sublinguaux », « comprimé gingival » fait « comprimés
+  gingivaux », et « comprimé avec applicateur buccal » ne prend le
+  pluriel que sur sa tête — c'est pourquoi la table des pluriels est
+  écrite et non devinée. L'accord se fait à partir de deux, comme en
+  français : « 1,5 gélule », « 2 gélules ». Une unité que la table ne
+  connaît pas est rendue telle quelle, et un test refuse qu'on ajoute
+  une présentation au catalogue sans son pluriel.
 - **« 4 semaine » sur le récapitulatif de facturation.** L'écran écrit
   « 4 semaines » et le papier écrivait le singulier : le mot était pris
   avec `Period::label()`, avant même que le nombre de périodes soit

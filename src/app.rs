@@ -32791,7 +32791,10 @@ impl App {
                                     if p.unit.is_empty() {
                                         String::new()
                                     } else {
-                                        format!(" {}", p.unit)
+                                        format!(
+                                            " {}",
+                                            crate::ordonnancier::agreed_unit(*stock, &p.unit)
+                                        )
                                     }
                                 ))
                                 .size(motif::pt(ui, 11.5));
@@ -32998,7 +33001,10 @@ impl App {
             // mesurent ensemble.
             let stock_txt = trn(
                 "stup_stock",
-                &[&crate::codex::format_quantity(*stock), &product.unit],
+                &[
+                    &crate::codex::format_quantity(*stock),
+                    &crate::ordonnancier::agreed_unit(*stock, &product.unit),
+                ],
             );
             let counted_txt = if last.is_empty() {
                 tr("stup_never_counted").to_owned()
@@ -33060,7 +33066,10 @@ impl App {
             let destroy_txt = if to_destroy.abs() > 1e-6 {
                 trn(
                     "stup_to_destroy_line",
-                    &[&crate::codex::format_quantity(*to_destroy), &product.unit],
+                    &[
+                        &crate::codex::format_quantity(*to_destroy),
+                        &crate::ordonnancier::agreed_unit(*to_destroy, &product.unit),
+                    ],
                 )
             } else {
                 String::new()
@@ -33072,7 +33081,10 @@ impl App {
             let expired_txt = if expired.abs() > 1e-6 {
                 trn(
                     "stup_expired_line",
-                    &[&crate::codex::format_quantity(*expired), &product.unit],
+                    &[
+                        &crate::codex::format_quantity(*expired),
+                        &crate::ordonnancier::agreed_unit(*expired, &product.unit),
+                    ],
                 )
             } else {
                 String::new()
@@ -33433,7 +33445,7 @@ impl App {
                             &[
                                 &db::format_french_date(&day),
                                 &crate::codex::format_quantity(daily[i]),
-                                &product.unit,
+                                &crate::ordonnancier::agreed_unit(daily[i], &product.unit),
                             ],
                         ))
                     });
@@ -34004,7 +34016,10 @@ impl App {
                                                     "batch_stock",
                                                     &[
                                                         &crate::codex::format_quantity(s.stock),
-                                                        &s.product.unit,
+                                                        &crate::ordonnancier::agreed_unit(
+                                                            s.stock,
+                                                            &s.product.unit,
+                                                        ),
                                                     ],
                                                 ))
                                                 .size(motif::pt(ui, 11.0))
@@ -34901,7 +34916,13 @@ impl App {
                                         } else {
                                             "stup_expired_line"
                                         },
-                                        &[&crate::codex::format_quantity(waiting), &product.unit],
+                                        &[
+                                            &crate::codex::format_quantity(waiting),
+                                            &crate::ordonnancier::agreed_unit(
+                                                waiting,
+                                                &product.unit,
+                                            ),
+                                        ],
                                     ))
                                     .size(motif::pt(ui, 11.0))
                                     .color(if waiting > 0.0 {
@@ -36453,7 +36474,7 @@ impl App {
                                         &[
                                             &a.label,
                                             &crate::codex::format_quantity(a.quantity),
-                                            &a.unit,
+                                            &crate::ordonnancier::agreed_unit(a.quantity, &a.unit),
                                         ],
                                     ),
                                     &match a.days {

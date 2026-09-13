@@ -1640,11 +1640,7 @@ fn destruction_list_values(
         body.push_str(&format!(
             "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [], [],\n",
             typst_str(&r.label),
-            typst_str(&format!(
-                "{} {}",
-                crate::codex::format_quantity(r.quantity),
-                r.unit
-            )),
+            typst_str(&crate::ordonnancier::quantity_and_unit(r.quantity, &r.unit)),
             typst_str(&since),
         ));
     }
@@ -1699,11 +1695,7 @@ fn stock_check_values(
         body.push_str(&format!(
             "  [#box(width: 4mm, height: 4mm, stroke: 0.6pt)], [*#{}*], [#{}], [#{}], [#{}], [], [],\n",
             typst_str(&r.label),
-            typst_str(&format!(
-                "{} {}",
-                crate::codex::format_quantity(r.stock),
-                r.unit
-            )),
+            typst_str(&crate::ordonnancier::quantity_and_unit(r.stock, &r.unit)),
             typst_str(crate::strings::tr(r.why.label_key())),
             typst_str(&since),
         ));

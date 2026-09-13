@@ -390,6 +390,64 @@ pub fn catalogue_size() -> usize {
     CATALOGUE.iter().map(|f| f.items.len()).sum()
 }
 
+/// Le pluriel de chaque unité de comptage du catalogue.
+///
+/// **Un « s » suffirait pour huit d'entre elles et écrirait faux pour
+/// trois** : « comprimé sublingual » fait « comprimés sublinguaux »,
+/// « comprimé gingival » fait « comprimés gingivaux », et « comprimé
+/// avec applicateur buccal » ne prend le pluriel que sur sa tête. C'est
+/// pour cela que la table est écrite plutôt que devinée.
+const UNIT_PLURALS: &[(&str, &str)] = &[
+    ("gélule", "gélules"),
+    ("comprimé", "comprimés"),
+    ("comprimé sublingual", "comprimés sublinguaux"),
+    ("comprimé orodispersible", "comprimés orodispersibles"),
+    ("comprimé gingival", "comprimés gingivaux"),
+    (
+        "comprimé avec applicateur buccal",
+        "comprimés avec applicateur buccal",
+    ),
+    ("dispositif transdermique", "dispositifs transdermiques"),
+    ("récipient unidose", "récipients unidoses"),
+    ("ampoule", "ampoules"),
+    ("flacon", "flacons"),
+    ("flacon pulvérisateur", "flacons pulvérisateurs"),
+];
+
+/// L'unité accordée avec le nombre qui la précède.
+///
+/// Le français met le pluriel **à partir de deux** : « 1,5 gélule » et
+/// « 2 gélules ». Zéro reste au singulier.
+///
+/// Une unité que la table ne connaît pas est rendue telle quelle. Une
+/// officine qui en écrit une à la main n'aura pas une faute de plus, et
+/// c'est la même règle que partout ici : ce qu'on ne sait pas, on ne le
+/// réécrit pas.
+pub fn agreed_unit(quantity: f64, unit: &str) -> &str {
+    if quantity.abs() < 2.0 {
+        return unit;
+    }
+    UNIT_PLURALS
+        .iter()
+        .find(|(one, _)| *one == unit)
+        .map_or(unit, |(_, many)| *many)
+}
+
+/// Une quantité et son unité, accordées : « 14 gélules », « 1 gélule »,
+/// « 21 comprimés sublinguaux ».
+///
+/// Écrit ici parce que les deux moitiés vont toujours ensemble et que
+/// les onze endroits qui les assemblaient à la main écrivaient tous
+/// « 14 gélule » — y compris le procès-verbal de destruction et la
+/// feuille de contrôle, qui sont des pièces.
+pub fn quantity_and_unit(quantity: f64, unit: &str) -> String {
+    format!(
+        "{} {}",
+        crate::codex::format_quantity(quantity),
+        agreed_unit(quantity, unit)
+    )
+}
+
 /// Ce qu'une ligne du registre fait au stock.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Kind {
@@ -2181,6 +2239,49 @@ mod tests {
         labs.dedup();
         assert_eq!(labs.len(), before);
         assert!(LABS.iter().all(|l| !l.trim().is_empty()));
+    }
+
+    /// **Chaque unité du catalogue a son pluriel écrit.**
+    ///
+    /// Sans quoi elle serait rendue au singulier, et « 14 gélule »
+    /// s'imprimerait sur un procès-verbal de destruction — ce qui est
+    /// exactement ce qui arrivait. Une unité ajoutée au catalogue sans
+    /// son pluriel est refusée ici plutôt que découverte sur une pièce.
+    #[test]
+    fn every_counting_unit_of_the_catalogue_has_its_plural() {
+        let mut missing: Vec<&str> = CATALOGUE
+            .iter()
+            .flat_map(|f| f.items.iter().map(|(_, u)| *u))
+            .filter(|u| !UNIT_PLURALS.iter().any(|(one, _)| one == u))
+            .collect();
+        missing.sort_unstable();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "unités du catalogue sans pluriel : {missing:?}"
+        );
+        // Et l'accord se fait à partir de deux, pas à partir d'un.
+        assert_eq!(agreed_unit(1.0, "gélule"), "gélule");
+        assert_eq!(agreed_unit(1.5, "gélule"), "gélule");
+        assert_eq!(agreed_unit(0.0, "gélule"), "gélule");
+        assert_eq!(agreed_unit(2.0, "gélule"), "gélules");
+        // Les trois que le « s » seul écrirait faux.
+        assert_eq!(
+            agreed_unit(21.0, "comprimé sublingual"),
+            "comprimés sublinguaux"
+        );
+        assert_eq!(agreed_unit(5.0, "comprimé gingival"), "comprimés gingivaux");
+        assert_eq!(
+            agreed_unit(6.0, "comprimé avec applicateur buccal"),
+            "comprimés avec applicateur buccal"
+        );
+        // Une unité inconnue est rendue telle quelle : on ne réécrit
+        // pas ce qu'on ne sait pas.
+        assert_eq!(agreed_unit(9.0, "pipette"), "pipette");
+        // Et un solde négatif s'accorde comme son nombre.
+        assert_eq!(quantity_and_unit(-2.0, "gélule"), "-2 gélules");
+        assert_eq!(quantity_and_unit(14.0, "gélule"), "14 gélules");
+        assert_eq!(quantity_and_unit(1.0, "comprimé"), "1 comprimé");
     }
 
     /// Deux produits ne portent jamais le même libellé.
