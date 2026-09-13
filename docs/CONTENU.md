@@ -518,6 +518,29 @@ Deux règles valent partout :
   au-dessous d'un seuil), et des mots cherchés dans les traitements du
   dossier (nom, DCI, classe, étiquettes). `needs` vide = la règle vaut
   pour tout le monde.
+- **`read` reçoit des traitements entiers**, et non une liste de mots
+  aplatie : la classe porte la **voie**, et les formes locales sont
+  écartées en tête par `classes::is_local_form`. Sans cela, un collyre à
+  l'indométacine rendait compte d'une insuffisance rénale, d'une anémie
+  et d'une carence martiale, et quatre crèmes antifongiques d'une
+  cholestase — vingt et une boîtes en tout. Ce qu'on y perd est écrit à
+  côté du filtre : un dermocorticoïde très fort sur une grande surface
+  peut freiner la surrénale, et cette lecture-là part avec les autres.
+- **Deux règles ne disent pas la même chose du même chiffre.** `read`
+  parcourt toute la table et ne s'arrête pas à la première qui répond,
+  si bien que deux règles posées sur le même analyte, du même côté et au
+  même seuil sortent toutes les deux. Six paires avaient dérivé ainsi.
+  `two_rules_on_one_value_never_both_answer_for_one_box` refuse la
+  suivante — sur les boîtes livrées, et seulement quand les deux règles
+  revendiquent la même molécule : un Xigduo porte de la metformine *et*
+  de la dapagliflozine, et sa réserve alcaline effondrée est deux
+  lectures, toutes deux voulues.
+- **Une cible n'est pas un intervalle.** L'INR et l'HbA1c n'ont ni
+  `low` ni `high` : 7,4 % est un échec chez un diabétique récent et un
+  bon résultat chez un sujet âgé fragile, et le logiciel ne sait pas
+  lequel il a devant lui. Ce qui reste vrai pour tout le monde se dit
+  par une règle — au-dessus de 9 %, on est au-delà de tous les
+  objectifs — et entre les deux le module se tait.
 - **Tests** : chaque règle nomme un analyte du catalogue, chaque règle
   doit pouvoir se déclencher sur la base livrée, et **chaque analyte du
   catalogue porte au moins une règle** — un analyte sans règle n'est
@@ -550,6 +573,31 @@ Deux règles valent partout :
   retirée parce que « Contraception sous inducteur » existait, plus
   complète. Deux points identiques sur la même ordonnance sont du
   bruit, et le bruit est ce qui fait cesser de lire la revue.
+  `two_rules_never_make_one_reading_twice` s'en charge désormais, sur la
+  **forme** de la règle — la variante, le nombre de groupes, le `min`
+  d'un doublon —, ce qui sépare « Deux benzodiazépines » de « Trois
+  sédatifs » : mêmes mots, `min` différent, et cette différence *est* la
+  règle. Un mot en commun ne suffit pas non plus, ou le tramadol
+  confondrait « Deux opioïdes faibles » avec « Deux sérotoninergiques » ;
+  ce qui fond deux règles, c'est qu'une liste soit **couverte** par
+  l'autre. Il a fallu le faire pour de vrai : la lévothyroxine avait
+  deux règles, l'une en information et l'autre en avertissement, et un
+  dossier Levothyrox + calcium levait les deux.
+- **Ce qu'une règle ne peut pas savoir.** Un traitement, ici, est un
+  nom, une DCI, une classe et des étiquettes. Ni âge, ni dose, ni durée,
+  ni diagnostic — c'est écrit en tête du module. « Benzodiazépine à
+  demi-vie longue après 75 ans » demande un âge, « digoxine au-delà de
+  0,125 mg/j » une dose, « IPP sans indication réévaluée » une durée,
+  « anticoagulant dans la fibrillation atriale » un diagnostic. Les
+  écrire quand même, c'est se déclencher sur chaque diazépam et chaque
+  Previscan. Cette limite décide de ce qui est une règle et de ce qui
+  est une **table de référence**, et c'est pour cela que la
+  confrontation avec « Sujet âgé — médicaments à réévaluer » n'a rien
+  donné à corriger.
+- Une règle qui **nomme une dose** le fait comme un plafond à vérifier
+  sur l'ordonnance, et le dit dans sa phrase : « Simvastatine au-dessus
+  de son plafond » ne connaît pas la dose et ne prétend pas la
+  connaître.
 - **Les sections toxicité des fiches sont un gisement de règles** : ce
   qui y est écrit comme « association contre-indiquée » ne sert au
   comptoir que si `revue.rs` la voit sur l'ordonnance. C'est de là que
@@ -567,6 +615,15 @@ Deux règles valent partout :
   d'avant — **quel chiffre n'a pas été demandé depuis trop longtemps**.
   Une règle ne peut rien dire d'un examen qu'on n'a pas fait, et c'est le
   trou que personne ne voit.
+- **Une forme locale ne réclame aucun examen** : le plan est indexé sur
+  la molécule, et sept lignes en sortaient pour cinq boîtes qui ne
+  passent pas dans le sang — une lithiémie, une TSH et un débit de
+  filtration pour un gel de dermite séborrhéique. Elles sont écartées en
+  tête de `due`, une fois, par `classes::is_local_form` : aucun de ces
+  suivis ne porte sur une forme locale, et le jour où l'un le fera — un
+  collyre bêta-bloquant ralentit le cœur —, c'est cette ligne qu'il
+  faudra rouvrir, avec un mot dans la règle plutôt qu'un oubli. Cette
+  feuille-là s'imprime et s'apporte au laboratoire.
 - **Tests** : chaque surveillance nomme un analyte du catalogue, dit
   pourquoi en une phrase (et pas en une étiquette), et doit pouvoir se
   déclencher sur la base livrée. Le compte est un cliquet.
@@ -605,9 +662,31 @@ Deux règles valent partout :
   répètent pas, la source est obligatoire, une conduite ne porte jamais
   de dose en milligrammes — elle dépend aussi de l'indication, du poids
   et de l'âge, et un chiffre écrit là se lirait comme une prescription.
-  Et **deux entrées ne peuvent pas réclamer le même mot** : si deux se
-  recouvrent, c'est un choix à faire dans la table, pas à laisser à
-  l'ordre de lecture.
+  Écrivez une **fraction de la dose usuelle** si le palier en demande
+  une, comme le fait la metformine : deux tiers, puis un tiers, puis
+  l'arrêt. Et **deux entrées ne peuvent pas réclamer le même mot** : si
+  deux se recouvrent, c'est un choix à faire dans la table, pas à
+  laisser à l'ordre de lecture.
+- **Le champ `never` : ce que la ligne ne réclame pas**, bien que ses
+  mots l'attrapent. La table est indexée sur la **molécule**, si bien
+  qu'une forme locale de la même molécule y tombe — l'Exocine est un
+  collyre à l'ofloxacine, le Lithioderm un gel au gluconate de lithium,
+  et tous deux recevaient une conduite écrite pour la voie générale.
+  Il sert aussi aux collisions de sous-chaîne : « ciprofloxacine » et
+  « lévofloxacine » **contiennent** « ofloxacine », et la ligne de
+  l'ofloxacine les récuse par leur nom plutôt que par l'ordre des
+  lignes — un ordre se déplace, un veto non. Avant lui, on amputait la
+  ligne de sa molécule, et l'indométacine y a perdu sa ligne rénale
+  pour que l'Indocollyre n'en ait pas.
+- **La voie se lit par la classe**, avec `classes::is_local_form`, et
+  cette fonction est écrite une fois pour les six modules. Trois mots
+  en sont délibérément absents — « sous-cutané », « percutané » et
+  « gel » seul : l'héparine, un gel d'estradiol et le Duodopa passent
+  tous les trois dans le sang. Et une forme locale n'est pas toujours
+  anodine : un collyre bêta-bloquant ralentit le cœur, et le Sterdex
+  garde son « à éviter » en grossesse parce que sa propre fiche le
+  déconseille. Le veto se pose donc **boîte par boîte**, avec sa raison
+  écrite à côté.
 - **Ce qui ne s'y met pas** : une molécule dont le RCP dit « prudence »
   sans chiffre. Une ligne sans seuil n'est pas une règle, et la fiche
   dit déjà « prudence » dans sa prose.
