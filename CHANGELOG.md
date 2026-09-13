@@ -117,6 +117,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
 ### Changed
+- **Dix lignes de plus au panneau rénal**, prises dans les quarante
+  fiches livrées qui portent un seuil chiffré que la table ignorait. Le
+  paracétamol d'abord, le plus dispensé de tous : sous 30, on espace
+  d'au moins huit heures et on réduit la dose du jour — on l'espace, on
+  ne le remplace pas. La cétirizine, qui passe à un jour sur deux puis
+  se contre-indique. Le métoclopramide, dont l'accumulation donne les
+  effets extrapyramidaux. Les HBPM, dont les doses curatives sont
+  contre-indiquées sous 30 et dont la clairance se calcule *avant*
+  d'instaurer. Les thiazidiques, qui sous 30 ne sont pas seulement
+  inefficaces mais délétères, et qu'un diurétique de l'anse remplace.
+  La duloxétine, la venlafaxine, le céfpodoxime, le céfixime et
+  l'ofloxacine.
+
+  Les conduites restent **sans milligrammes**, comme le reste de cette
+  table : le chiffre exact est dans la source, citée avec la fiche qui
+  le porte. Une dose écrite dans la conduite se lirait comme une
+  prescription, et elle dépend aussi de l'indication, du poids et de
+  l'âge.
 - **Sept lignes de plus au panneau grossesse**, pour ce que le comptoir
   rencontre vraiment. Cent quatre-vingt-huit fiches livrées portaient
   une contre-indication de grossesse que la table ignorait : elles

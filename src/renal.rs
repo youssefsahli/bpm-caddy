@@ -634,6 +634,153 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "RCP lithium",
     },
+    // --- Ce que le comptoir rencontre tous les jours -------------------
+    //
+    // Les conduites restent sans milligrammes, comme partout dans cette
+    // table : le chiffre exact est dans la source, où il est cité avec
+    // la fiche qui le porte. Une dose écrite dans la conduite se lirait
+    // comme une prescription, et elle dépend aussi de l'indication, du
+    // poids et de l'âge.
+    Adaptation {
+        needs: &["paracetamol"],
+        label: "Paracétamol",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 : espacer les prises d'au moins huit heures et réduire la dose journalière. Il reste l'antalgique de première intention — on l'espace, on ne le remplace pas.",
+        }],
+        source: "Doliprane : « Clairance inférieure à 30 mL/min : espacer les prises d'au moins 8 heures et réduire la dose journalière ».",
+    },
+    Adaptation {
+        needs: &["cetirizine", "zyrtec", "levocetirizine", "xyzall"],
+        label: "Cétirizine",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 49 : une seule prise par jour.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Entre 10 et 29 : une prise un jour sur deux.",
+            },
+            Step {
+                below: 10,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 10, ou en hémodialyse : contre-indiqué.",
+            },
+        ],
+        source: "Zyrtec : « Clairance de 30 à 49 mL/min : 5 mg par jour. Clairance de 10 à 29 mL/min : 5 mg un jour sur deux. Clairance inférieure à 10 mL/min ou hémodialyse : contre-indiqué ».",
+    },
+    Adaptation {
+        needs: &["metoclopramide", "primperan"],
+        label: "Métoclopramide",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 15 et 60 : réduire la dose quotidienne d'environ la moitié.",
+            },
+            Step {
+                below: 15,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 15 : réduire d'environ trois quarts, et surveiller les effets extrapyramidaux, qui viennent de l'accumulation.",
+            },
+        ],
+        source: "Primpéran : « Clairance inférieure à 15 mL/min : réduire la dose quotidienne d'environ 75 %. Clairance entre 15 et 60 mL/min : réduire d'environ 50 % ».",
+    },
+    Adaptation {
+        needs: &["hbpm", "enoxaparine", "lovenox", "tinzaparine", "innohep", "nadroparine", "fraxiparine", "dalteparine", "fragmine"],
+        label: "Héparines de bas poids moléculaire",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Watch,
+                conduct: "Entre 30 et 50 : surveillance clinique renforcée, et la dose curative se rediscute avec le prescripteur. La clairance se calcule avant d'instaurer, surtout chez le sujet âgé et de faible poids.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : les doses curatives sont contre-indiquées, l'anti-Xa s'accumulant. La prophylaxie se discute au cas par cas.",
+            },
+        ],
+        source: "Lovenox : « Clairance de 30 à 50 mL/min : surveillance clinique renforcée, réduction de dose à envisager selon l'indication. Clairance de 15 à 30 mL/min : doses curatives contre-indiquées ».",
+    },
+    Adaptation {
+        needs: &["thiazidique", "hydrochlorothiazide", "esidrex", "indapamide", "fludex"],
+        label: "Diurétiques thiazidiques",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : ils perdent leur effet diurétique et deviennent délétères. C'est un diurétique de l'anse qui prend le relais — le remplacement est une décision du prescripteur, pas une équivalence.",
+        }],
+        source: "Esidrex : « Perd son efficacité diurétique lorsque la clairance descend en dessous de 30 mL/min : à ce stade, un diurétique de l'anse doit lui être substitué » ; Fludex : « contre-indiqué ».",
+    },
+    Adaptation {
+        needs: &["duloxetine", "cymbalta"],
+        label: "Duloxétine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : contre-indiqué, les métabolites s'accumulant.",
+        }],
+        source: "Cymbalta : « Clairance inférieure à 30 mL/min : contre-indiqué, les métabolites s'accumulant ».",
+    },
+    Adaptation {
+        needs: &["venlafaxine", "effexor"],
+        label: "Venlafaxine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30, ou en hémodialyse : réduire la posologie quotidienne de moitié.",
+        }],
+        source: "Effexor : « Clairance inférieure à 30 mL/min ou hémodialyse : réduire la posologie quotidienne de moitié ».",
+    },
+    Adaptation {
+        needs: &["cefpodoxime", "orelox"],
+        label: "Cefpodoxime",
+        steps: &[
+            Step {
+                below: 39,
+                level: Level::Reduce,
+                conduct: "Entre 10 et 39 : une seule prise toutes les vingt-quatre heures.",
+            },
+            Step {
+                below: 10,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 10 : une prise toutes les quarante-huit heures.",
+            },
+        ],
+        source: "Orelox : « Clairance entre 10 et 39 mL/min : espacer les prises à une par 24 heures. Clairance inférieure à 10 mL/min : une prise toutes les 48 heures ».",
+    },
+    Adaptation {
+        needs: &["cefixime", "oroken"],
+        label: "Céfixime",
+        steps: &[Step {
+            below: 20,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 20 : réduire la posologie de moitié.",
+        }],
+        source: "Oroken : « Clairance inférieure à 20 mL/min : réduire la posologie de moitié ».",
+    },
+    Adaptation {
+        needs: &["ofloxacine", "oflocet"],
+        label: "Ofloxacine",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Reduce,
+                conduct: "Entre 20 et 50 : la moitié de la dose quotidienne habituelle.",
+            },
+            Step {
+                below: 20,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 20 : une seule prise toutes les vingt-quatre heures.",
+            },
+        ],
+        source: "Oflocet : « Clairance 20 à 50 mL/min : moitié de la dose quotidienne habituelle. Inférieure à 20 mL/min : 100 mg toutes les 24 heures ».",
+    },
 ];
 
 #[cfg(test)]
@@ -650,7 +797,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 24;
+        const FLOOR: usize = 34;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",
