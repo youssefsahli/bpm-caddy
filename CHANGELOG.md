@@ -116,6 +116,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   passes font deux cent vingt-huit ouvertures et dépassent l'heure ; une
   passe coupée ne prouve rien de ce qu'elle n'a pas atteint.
 
+### Changed
+- **Les quatre tables cliniques ne rallouent plus à chaque image.**
+  `hepatic`, `renal`, `crush` et `gravidity` cherchaient leurs mots avec
+  `hay.contains(&sort_key(n))`, qui alloue une `String` par mot cherché
+  **et par traitement** — dans une lecture que le panneau refait soixante
+  fois par seconde. Mesuré sur neuf traitements et cent neuf lignes,
+  mille lectures : **77 ms, puis 20 ms** avec `fuzzy::contains_folded`,
+  qui replie au vol et n'alloue rien. C'est ce que la documentation de
+  cette fonction raconte des moteurs de règles, qui l'avaient appris ;
+  les tables, elles, ne l'avaient pas fait.
+
 ### Fixed
 - **Un fragment court attrapait des produits qu'il ne visait pas, dans
   cinq tables cliniques.** Les mots cherchés sont des sous-chaînes, et

@@ -121,7 +121,7 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
             if !a
                 .needs
                 .iter()
-                .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+                .any(|n| crate::fuzzy::contains_folded(&hay, n))
             {
                 continue;
             }

@@ -157,7 +157,7 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
             let hit = TABLE.iter().find(|a| {
                 a.needs
                     .iter()
-                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+                    .any(|n| crate::fuzzy::contains_folded(&hay, n))
             });
             match hit {
                 Some(a) => Finding {

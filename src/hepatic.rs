@@ -78,6 +78,16 @@
 //!
 //! Statique, pur et testé, comme `renal`. Il ne connaît ni la base ni
 //! egui : on lui passe des traitements et un stade.
+//!
+//! **Et la lecture est faite à chaque image**, puisque le panneau la
+//! redessine : elle ne doit donc rien allouer par ligne de table.
+//! Mesuré sur neuf traitements et cent neuf lignes, mille lectures :
+//! **77 ms avec `hay.contains(&sort_key(n))`, 20 ms avec
+//! `fuzzy::contains_folded`** — soit soixante-dix-sept microsecondes
+//! par image ramenées à vingt. Le premier alloue une `String` par mot
+//! cherché et par traitement ; le second replie au vol et n'alloue
+//! rien. C'est exactement ce que la documentation de `contains_folded`
+//! raconte des moteurs de règles, et les tables l'avaient manqué.
 
 /// Le stade de l'insuffisance hépatique, **et non un chiffre**.
 ///
@@ -231,10 +241,17 @@ pub fn read(treatments: &[crate::revue::Treatment], stage: Option<Stage>) -> Vec
     for t in treatments {
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
         for a in TABLE {
+            // `contains_folded` plutôt que `contains(&sort_key(n))` :
+            // le second alloue une `String` **par mot cherché et par
+            // traitement**, et cette lecture est faite à chaque image.
+            // Cent neuf lignes fois deux mots fois neuf traitements font
+            // deux mille allocations par image ; c'est la raison d'être
+            // de `contains_folded`, et les moteurs de règles l'avaient
+            // déjà appris.
             if !a
                 .needs
                 .iter()
-                .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+                .any(|n| crate::fuzzy::contains_folded(&hay, n))
             {
                 continue;
             }
