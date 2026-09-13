@@ -1371,6 +1371,34 @@ pub const TABLE: &[Profile] = &[
 
 #[cfg(test)]
 mod tests {
+
+    /// **Un profil qu'aucune fiche n'atteint ne se voit jamais.**
+    ///
+    /// Même filet que dans `renal`, `hepatic` et `gravidity` : la base
+    /// livrée est ce contre quoi ces profils ont été écrits, et une
+    /// faute de frappe dans un `needs` ne se distingue autrement pas
+    /// d'une ligne correcte que la démonstration ne déclenche pas.
+    #[test]
+    fn every_row_can_fire_on_the_base_as_shipped() {
+        for row in TABLE {
+            let reachable = row.needs.iter().any(|needle| {
+                let needle = crate::fuzzy::sort_key(needle);
+                crate::db::STARTER_DRUGS
+                    .iter()
+                    .any(|(name, dci, class, _)| {
+                        crate::fuzzy::contains_folded(
+                            &crate::fuzzy::sort_key(&format!("{name} {dci} {class}")),
+                            &needle,
+                        )
+                    })
+            });
+            assert!(
+                reachable,
+                "{} : aucune fiche livrée ne correspond à {:?}",
+                row.label, row.needs
+            );
+        }
+    }
     /// **Le cliquet : la table ne perd pas de lignes.**
     ///
     /// La règle de la maison pour tout catalogue clinique — une ligne

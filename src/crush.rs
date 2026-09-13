@@ -657,6 +657,57 @@ pub const TABLE: &[Rule] = &[
 
 #[cfg(test)]
 mod tests {
+
+    /// **Une règle qu'aucune fiche n'atteint est une règle qui dort** —
+    /// mais ici, dormir est parfois normal.
+    ///
+    /// Cette table est rangée par **présentation** et non par molécule :
+    /// l'officine tape le nom de la boîte, et la base ne livre pas
+    /// toutes les formes LP du marché. Neuf règles attendent donc une
+    /// fiche que personne n'a encore créée, et deux autres sont écrites
+    /// pour une *forme* — « orodispersible », « gastro-résistant » — que
+    /// nulle fiche ne porte dans son nom. Elles sont nommées ici avec
+    /// leur raison ; toute autre règle inatteignable est une faute de
+    /// frappe, et c'est ce que le test attrape.
+    #[test]
+    fn every_rule_can_fire_or_says_why_not() {
+        // Des présentations que la base ne livre pas encore : la règle
+        // répondra le jour où l'officine créera la fiche de la boîte.
+        const WAITING: &[&str] = &[
+            "chronadalate",
+            "depakine chrono",
+            "tegretol lp",
+            "sinemet lp",
+            "aspirine protect",
+            "metformine lp",
+            "effexor lp",
+        ];
+        // Écrites pour une forme, pas pour un produit.
+        const BY_FORM: &[&str] = &["orodispersible", "gastro-résistant"];
+        for rule in TABLE {
+            let reachable = rule.needs.iter().any(|needle| {
+                let needle = crate::fuzzy::sort_key(needle);
+                crate::db::STARTER_DRUGS
+                    .iter()
+                    .any(|(name, dci, class, _)| {
+                        crate::fuzzy::contains_folded(
+                            &crate::fuzzy::sort_key(&format!("{name} {dci} {class}")),
+                            &needle,
+                        )
+                    })
+            });
+            let named = rule
+                .needs
+                .first()
+                .is_some_and(|n| WAITING.contains(n) || BY_FORM.contains(n));
+            assert!(
+                reachable || named,
+                "{:?} : aucune fiche livrée ne l'atteint, et la règle n'est pas \
+                 nommée parmi celles qui attendent une boîte",
+                rule.needs
+            );
+        }
+    }
     /// **Le cliquet : la table ne perd pas de lignes.**
     ///
     /// La règle de la maison pour tout catalogue clinique — une ligne

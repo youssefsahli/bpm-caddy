@@ -1339,6 +1339,40 @@ pub const TABLE: &[Adaptation] = &[
 
 #[cfg(test)]
 mod tests {
+
+    /// **Une ligne qu'aucune fiche n'atteint ne se voit jamais.**
+    ///
+    /// La base livrée est ce contre quoi ces lignes ont été écrites :
+    /// chacune doit donc y rencontrer quelque chose. C'est le filet qui
+    /// attrape une faute de frappe dans un `needs` le jour où la ligne
+    /// est ajoutée — jusque-là, la ligne se contentait de ne rien faire,
+    /// ce qu'aucun test ne distingue d'une ligne correcte que la
+    /// démonstration ne déclenche pas.
+    ///
+    /// Ajouter une molécule que la base ne porte pas encore reste
+    /// possible : c'est alors la **fiche** qui manque, et l'ajouter est
+    /// le geste attendu.
+    #[test]
+    fn every_row_can_fire_on_the_base_as_shipped() {
+        for row in TABLE {
+            let reachable = row.needs.iter().any(|needle| {
+                let needle = crate::fuzzy::sort_key(needle);
+                crate::db::STARTER_DRUGS
+                    .iter()
+                    .any(|(name, dci, class, _)| {
+                        crate::fuzzy::contains_folded(
+                            &crate::fuzzy::sort_key(&format!("{name} {dci} {class}")),
+                            &needle,
+                        )
+                    })
+            });
+            assert!(
+                reachable,
+                "{} : aucune fiche livrée ne correspond à {:?}",
+                row.label, row.needs
+            );
+        }
+    }
     use super::*;
 
     fn t<'a>(name: &'a str, dci: &'a str) -> crate::revue::Treatment<'a> {

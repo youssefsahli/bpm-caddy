@@ -183,6 +183,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Cinq tables cliniques exigent désormais que chacune de leurs lignes
+  rencontre une fiche livrée.** `biology`, `revue` et `surveillance` le
+  demandaient déjà ; `renal`, `hepatic`, `gravidity`, `cyp` et `crush`
+  ne le demandaient pas, et une faute de frappe dans un `needs` y était
+  indiscernable d'une ligne correcte que la démonstration ne déclenche
+  pas — la ligne se contente de ne rien faire, pour toujours. Les cinq
+  tables sont propres aujourd'hui : vérifié, puis tenu. `crush` fait
+  exception et le dit : rangée par **présentation**, elle porte neuf
+  règles qui attendent une boîte que la base ne livre pas encore
+  (Adalate LP, Dépakine Chrono, Tégrétol LP…) et deux écrites pour une
+  *forme*. Elles sont nommées avec leur raison ; toute autre règle
+  inatteignable est une faute de frappe.
 - **Une bande d'onglets ne montre plus jamais un onglet à moitié.** Elle
   défilait au plus juste pour amener l'actif dans le hublot, ce qui
   laisse le précédent tranché : « À surveiller » s'y lisait « ller », le
