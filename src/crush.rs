@@ -269,7 +269,16 @@ pub const TABLE: &[Rule] = &[
         source: "RCP Concerta",
     },
     Rule {
-        needs: &["chronadalate", "adalate"],
+        // **« adalate » tout court attrapait la forme à libération
+        // immédiate.** La fiche livrée couvre les deux — « formes à
+        // libération immédiate […] formes à libération prolongée » —, et
+        // cette table est indexée sur la **présentation** : c'est sa
+        // règle, et c'est la leçon de l'Actiskénan, qui recevait la
+        // réponse du Skenan parce que son nom contient le sien. La
+        // gélule immédiate tombe désormais dans la règle générale « LP »
+        // si la boîte le dit, et sur « à vérifier » sinon — ce que ce
+        // module répond quand il ne sait pas.
+        needs: &["chronadalate", "adalate lp"],
         label: "Nifédipine LP",
         verdict: Verdict::No,
         why: "Libération prolongée : écrasée, elle donne une chute tensionnelle brutale.",
@@ -835,6 +844,21 @@ mod tests {
         // simple bien que « metformine » soit contenu dans les deux.
         assert_eq!(read(&[treat("Metformine LP 1000")])[0].verdict, Verdict::No);
         assert_eq!(read(&[treat("Metformine 1000")])[0].verdict, Verdict::Yes);
+        // Et la nifédipine, où la marque seule ne dit pas la forme : la
+        // fiche livrée couvre les deux — « formes à libération immédiate
+        // […] formes à libération prolongée » —, et la ligne LP
+        // réclamait « adalate » tout court, si bien que la gélule
+        // immédiate recevait « ne s'écrase pas ».
+        assert_eq!(read(&[treat("Adalate LP 20 mg")])[0].verdict, Verdict::No);
+        assert_eq!(
+            read(&[treat("Chronadalate LP 30 mg")])[0].verdict,
+            Verdict::No
+        );
+        assert_eq!(
+            read(&[treat("Adalate 10 mg")])[0].verdict,
+            Verdict::Unknown,
+            "sans « LP » sur la boîte, ce module ne sait pas — et le dit"
+        );
     }
 
     /// **Un « non » sans solution laisse le problème entier.** Chaque

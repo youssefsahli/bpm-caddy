@@ -481,6 +481,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   est inefficace à la dose habituelle. C'est pourtant le tableau qu'on
   ouvre quand la question porte justement sur la contraception. Il porte
   la ligne, avec les deux méthodes que l'induction ne touche pas.
+- **Une gélule d'Adalate à libération immédiate lisait « ne s'écrase
+  pas ».** La ligne « Nifédipine LP » réclamait « adalate » tout court,
+  et la fiche livrée couvre explicitement les deux formes — « formes à
+  libération immédiate […] formes à libération prolongée ». C'est
+  exactement la leçon de l'Actiskénan, qui recevait la réponse du Skenan
+  parce que son nom contient le sien : **cette table est indexée sur la
+  présentation**, et une marque seule ne dit pas la forme. Elle réclame
+  désormais « adalate lp », et la gélule immédiate tombe sur « à
+  vérifier » — ce que ce module répond quand il ne sait pas. Le test qui
+  tient cette règle le vérifie maintenant sur la nifédipine aussi.
 - **Neuf listes de mots cherchés se répétaient**, dont une qui nommait
   quatre IPP deux fois chacun. Un doublon n'y casse rien — la règle
   attrape la même boîte deux fois pour le même prix —, et c'est
