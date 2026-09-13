@@ -489,6 +489,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Rien ne se sème dans le vide.** Une ligne de posologie, une conduite
+  de classe et une monographie sont rattachées à une fiche **par son
+  nom**, et le semis les joint par ce nom : une marque mal orthographiée
+  d'un accent ne lève aucune erreur, elle ne sème rien. La ligne existe
+  dans le binaire et n'arrive jamais dans la base. Aucune orpheline
+  aujourd'hui, dans les trois sens — 862 fiches, 862 monographies,
+  1 736 lignes de posologie —, et un test pour que la prochaine se voie
+  au lieu de se taire.
 - **Un Bactrim ne levait pas l'alerte d'hémolyse du déficit en G6PD.**
   La règle qui lit une LDH élevée sous molécule oxydante nomme la
   nitrofurantoïne, la dapsone, le **sulfaméthoxazole**, la primaquine et

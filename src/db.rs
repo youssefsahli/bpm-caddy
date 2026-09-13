@@ -42645,4 +42645,47 @@ mod tests {
 
         let _ = std::fs::remove_file(&path);
     }
+    /// **Rien ne se sème dans le vide.** Une ligne de posologie, une
+    /// conduite de classe ou une fiche détaillée sont toutes rattachées
+    /// à une fiche de `STARTER_DRUGS` **par son nom**, et le semis les
+    /// joint par ce nom : une marque mal orthographiée d'un accent ne
+    /// lève aucune erreur, elle ne sème rien. La ligne est écrite, elle
+    /// est dans le binaire, et elle n'arrive jamais dans la base.
+    ///
+    /// Zéro orpheline aujourd'hui, dans les deux sens : 862 fiches, 862
+    /// détails, 1 736 lignes de posologie. Ce test est là pour que la
+    /// prochaine se voie au lieu de se taire.
+    #[test]
+    fn nothing_is_seeded_against_a_card_that_does_not_exist() {
+        let cards: std::collections::HashSet<&str> =
+            STARTER_DRUGS.iter().map(|(name, ..)| *name).collect();
+        let mut orphans: Vec<String> = Vec::new();
+        for (brand, indication, ..) in STARTER_POSOLOGIES {
+            if !cards.contains(brand) {
+                orphans.push(format!("posologie « {brand} » ({indication})"));
+            }
+        }
+        for d in STARTER_DETAILS {
+            if !cards.contains(d.name) {
+                orphans.push(format!("fiche détaillée « {} »", d.name));
+            }
+        }
+        // Et l'autre sens : une fiche sans monographie est une fiche qui
+        // s'ouvre sur du vide.
+        let detailed: std::collections::HashSet<&str> =
+            STARTER_DETAILS.iter().map(|d| d.name).collect();
+        for (name, ..) in STARTER_DRUGS {
+            if !detailed.contains(name) {
+                orphans.push(format!("fiche « {name} » sans monographie"));
+            }
+        }
+        orphans.sort();
+        orphans.dedup();
+        assert!(
+            orphans.is_empty(),
+            "du contenu rattaché à une fiche qui n'existe pas — il ne \
+             lèvera aucune erreur, il ne sera simplement jamais semé :\n{}",
+            orphans.join("\n")
+        );
+    }
 }
