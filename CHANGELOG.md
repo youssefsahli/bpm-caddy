@@ -139,6 +139,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   l'indométacine, un bain de bouche à la benzydamine — restent dehors :
   une conduite rénale systémique prêtée à deux gouttes dans un œil est
   le genre d'alerte qui apprend à ignorer les alertes.
+- **Et quatre fragments du même genre dans les règles de biologie et de
+  surveillance**, dont trois font parler une règle devant un patient qui
+  n'a rien à voir : « cholécalci**fér**ol » et « inter**fér**on »
+  contiennent « fer », de sorte qu'un patient sous ZymaD ou sous Rebif
+  lisait « saturation de la transferrine basse sous fer oral » ;
+  « anti**sep**tique » contient « SEP », de sorte qu'un Ercéfuryl lisait
+  « lymphopénie sévère sous traitement de fond de la sclérose en
+  plaques » ; et « gr**ipp**e » contient « IPP », de sorte qu'un Tamiflu
+  lisait « hypomagnésémie sous IPP ». Les molécules sont nommées.
+
+  Le quatrième se corrige autrement, et c'est le plus joli : la classe du
+  Xyrem s'écrivait « narcolepsie — cataplexie », qui replié donne
+  « narcolepsie**c**ataplexie » et contient donc « iec ». Le Xyrem
+  recevait les règles des IEC — « kaliémie élevée sous bloqueur du
+  système rénine-angiotensine ». La classe s'écrit « narcolepsie et
+  cataplexie » : une conjonction défait la collision, se lit aussi bien,
+  et **« IEC » reste dans les règles** — une fiche saisie à la main porte
+  souvent une classe et pas de DCI, et la lui retirer aurait coûté une
+  alerte vraie pour en éviter une fausse.
 - **Aucune ligne de `renal.rs` ne prête plus sa conduite à une fiche qui
   dit n'avoir besoin d'aucune adaptation** — un test le tient, et il
   nomme le produit fautif.

@@ -346,13 +346,13 @@ pub const WATCHES: &[Watch] = &[
     },
     // --- Rein, tension, cœur ---
     Watch {
-        needs: &["IEC", "sartan", "ARA2"],
+        needs: &["pril", "IEC", "sartan"],
         code: "K",
         every_months: 12,
         why: "Un bloqueur du système rénine-angiotensine monte le potassium : kaliémie et créatinine une à deux semaines après l'instauration ou toute majoration, puis au moins une fois par an.",
     },
     Watch {
-        needs: &["IEC", "sartan", "ARA2"],
+        needs: &["pril", "IEC", "sartan"],
         code: "DFG",
         every_months: 12,
         why: "La fonction rénale se contrôle après l'instauration puis annuellement : une hausse de la créatinine de plus de 30 % fait rediscuter le traitement.",
@@ -555,19 +555,19 @@ pub const WATCHES: &[Watch] = &[
         why: "Une carence en vitamine D entretient l'hyperparathyroïdie et fait échouer le traitement de l'os : elle se corrige avant, et se recontrôle une fois par an.",
     },
     Watch {
-        needs: &["IPP", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole"],
+        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole"],
         code: "MG",
         every_months: 12,
         why: "Hypomagnésémie des IPP au long cours, après un an ou plus : elle empêche de corriger une hypokaliémie et donne crampes, tremblements et troubles du rythme. Elle justifie surtout de rediscuter l'indication.",
     },
     Watch {
-        needs: &["metformine", "IPP", "oméprazole", "pantoprazole"],
+        needs: &["metformine", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole"],
         code: "B12",
         every_months: 24,
         why: "Metformine et IPP au long cours font la carence en vitamine B12, qui se voit d'abord sur le VGM et donne une neuropathie que l'on met sur le compte du diabète.",
     },
     Watch {
-        needs: &["fer", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+        needs: &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         code: "FERR",
         every_months: 3,
         why: "Un traitement martial se juge sur la ferritine et l'hémoglobine à trois mois : reconstituer la réserve demande trois à six mois après la normalisation de l'hémoglobine.",
@@ -610,7 +610,7 @@ pub const WATCHES: &[Watch] = &[
         why: "Le bilan lipidique complet une fois par an quand la cible est tenue : c'est aussi ce qui dit si le traitement est pris.",
     },
     Watch {
-        needs: &["néphroprotection", "diabète", "metformine", "IEC", "sartan"],
+        needs: &["néphroprotection", "diabète", "metformine", "pril", "IEC", "sartan"],
         code: "RAC",
         every_months: 12,
         why: "L'albuminurie bouge des années avant le DFG chez le diabétique et l'hypertendu : c'est le marqueur qui permet d'agir tant qu'il reste quelque chose à protéger.",

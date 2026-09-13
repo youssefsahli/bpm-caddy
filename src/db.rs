@@ -28060,7 +28060,12 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "",
     ),
     ("Modiodal", "modafinil", "éveillant — narcolepsie", ""),
-    ("Xyrem", "oxybate de sodium", "narcolepsie — cataplexie", ""),
+    (
+        "Xyrem",
+        "oxybate de sodium",
+        "narcolepsie et cataplexie",
+        "",
+    ),
     ("Ritaline", "méthylphénidate", "psychostimulant — TDAH", ""),
     ("Strattera", "atomoxétine", "TDAH — non psychostimulant", ""),
     ("Séropram", "citalopram", "ISRS", ""),
