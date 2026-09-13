@@ -157,6 +157,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   l'autre ne voulait rien dire. La configuration de démonstration est
   écrite une fois, dans `scripts/demo-config.sh`, et les deux la
   sourcent — c'est le défaut que ce dépôt nomme partout ailleurs.
+- **Et la vue Vitale de la passe large se capturait sur son erreur.**
+  `eyeball.sh` écrivait « ceci n'est pas une carte » là où `smoke.sh`
+  pose une carte rejouable — et ne branchait même pas
+  `BPM_CADDY_VITALE_DUMP`, si bien que le fichier était écrit, passé au
+  sous-shell et jamais lu : la vue s'ouvrait sur « aucune commande APDU
+  n'est configurée », pas sur la forme du lecteur. Une vue qu'une passe
+  ne montre que fautive est une vue que personne ne regarde. La carte
+  capturée est écrite une fois elle aussi, dans `demo-config.sh`, à côté
+  de la configuration, et les deux scripts la posent.
 - **La passe de fumée couvre enfin la quatrième forme exigée.**
   `CLAUDE.md` demande que toute mise en page survive à quatre choses,
   dont « les deux volets tirés larges » — ils se plafonnent l'un contre

@@ -15,6 +15,14 @@
 # constructions d'une même chose finissent toujours par diverger.
 #
 # Usage : `demo_config <fichier> <échelle> <thème>`.
+#
+# `demo_vitale_card <fichier>` écrit la carte Vitale rejouée : le chemin
+# du lecteur s'exécute alors en entier sans matériel, sans carte réelle
+# et sans l'identité de personne. `smoke.sh` la posait, `eyeball.sh`
+# écrivait « ceci n'est pas une carte » — et ne s'en servait même pas,
+# faute de brancher `BPM_CADDY_VITALE_DUMP`. La vue Vitale y était donc
+# capturée sur son message d'erreur, alors qu'une passe qui regarde
+# toutes les vues doit les voir dans leur forme ordinaire.
 demo_config() {
     cat > "$1" <<EOF
 [ui]
@@ -46,4 +54,8 @@ horaires = [
   { jour = "samedi", de = "09:00", a = "12:30" },
 ]
 EOF
+}
+
+demo_vitale_card() {
+    printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00' > "$1"
 }

@@ -58,7 +58,7 @@ BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null
 cargo build
 
 card="$tmp/vitale.bin"
-printf 'ceci n%s est pas une carte' "'" > "$card"
+demo_vitale_card "$card"
 
 views=(
     search dashboard patient drugs drug_card drug_edit drug_kin
@@ -84,6 +84,10 @@ for view in "${views[@]}"; do
         case "$view" in
             drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
             drug_kin)  export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_KIN=class ;;
+            # La carte rejouee, comme dans smoke.sh : sans elle la vue se
+            # capture sur le message de lecteur absent, pas sur sa forme.
+            vitale)    export BPM_CADDY_START_VIEW=vitale
+                       export BPM_CADDY_VITALE_DUMP="$card" ;;
             search)    ;;
             *)         export BPM_CADDY_START_VIEW="$view" ;;
         esac

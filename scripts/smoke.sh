@@ -25,6 +25,8 @@
 # de ce qu'elle n'a pas atteint. Le nom de la forme en argument permet
 # de les faire l'une après l'autre, chacune sous le quart d'heure.
 set -uo pipefail
+# La carte Vitale rejouée est écrite une fois, pour les deux scripts.
+. "$(dirname "$0")/demo-config.sh"
 only=${1:-}
 
 tmp=$(mktemp -d)
@@ -37,7 +39,7 @@ export BPM_CADDY_NO_KEYRING=1
 # no real card, nobody's identity.
 card="$tmp/card.bin"
 export card
-printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00' > "$card"
+demo_vitale_card "$card"
 
 # Never touch the operator's own configuration: a throwaway one per
 # shape, so each pass starts from the same known state instead of
