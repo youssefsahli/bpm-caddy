@@ -276,6 +276,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Une bande enveloppée oubliait les gouttières entre ses rangées**, et
+  trois écrans en perdaient une commande. L'arithmétique sur laquelle
+  repose tout plafond de ce fichier est `n × hauteur de rangée +
+  (n − 1) × gouttière` — c'est ce que tient
+  `a_wrapped_band_is_as_tall_as_its_model_says` —, mais elle était
+  recopiée à chaque appel et plusieurs copies s'arrêtaient au premier
+  terme. Trois rangées à `text_scale = 1,6` y perdent trente-huit
+  pixels, presque une rangée entière ; une seule rangée ne coûte rien,
+  et c'est pourquoi l'oubli ne se voit qu'à la taille où il fait mal.
+  `App::wrapped_band_height` l'écrit une fois.
+
+  Ce que cela rendait : dans l'éditeur des carnets, la bande était même
+  taillée à **une** hauteur de bouton pour cinq commandes — à 1024x700
+  en texte 1,6 il ne restait que « Imprimer… » et « Textes… », et
+  « Réécrire », la porte de la réécriture, tombait dessous sans que rien
+  ne le dise. Dans « Textes imprimés », le compte des phrases se lisait
+  « 20 », le reste de la phrase passant sous le bord. Dans la feuille de
+  saisie du registre, la seconde ligne de l'avertissement rouge
+  débordait sous les boutons.
+
+  Et les trois phrases sont devenues insécables : la mesure les compte
+  comme un seul élément, alors que `horizontal_wrapped` enveloppait le
+  texte *dans* l'étiquette — la hauteur était juste et la phrase coupée
+  en deux, « 1 case(s) à » d'un côté, « corriger avant d'inscrire » de
+  l'autre.
 - **Quatre-vingts pixels de vide en haut de la vigilance.** Sa bande ne
   porte qu'une phrase — pas de titre, l'onglet au-dessus dit
   « Vigilance », et pas de commandes —, mais elle se mesurait avec

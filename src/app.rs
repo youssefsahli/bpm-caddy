@@ -18831,6 +18831,24 @@ impl App {
         Self::wrapped_rows_of(ui, width, labels.map(|l| Self::button_width(ui, l)))
     }
 
+    /// **La hauteur d'une bande enveloppée : `n` rangées et les `n − 1`
+    /// gouttières entre elles.**
+    ///
+    /// C'est l'arithmétique sur laquelle repose tout plafond de ce
+    /// fichier, et `a_wrapped_band_is_as_tall_as_its_model_says` la
+    /// tient — mais elle était recopiée à chaque appel, et plusieurs
+    /// copies oubliaient les gouttières. Une bande de trois rangées à
+    /// `text_scale = 1,6` en perd trente-huit pixels, c'est-à-dire
+    /// presque une rangée : dans l'éditeur des carnets, « Rétablir »
+    /// sortait coupé en deux ; dans la feuille de saisie, la seconde
+    /// ligne de la phrase rouge dépassait sous les boutons. Une seule
+    /// rangée ne coûte rien — et c'est pourquoi l'oubli ne se voit qu'à
+    /// la taille où il fait mal.
+    fn wrapped_band_height(ui: &egui::Ui, width: f32, widths: impl Iterator<Item = f32>) -> f32 {
+        let rows = Self::wrapped_rows_of(ui, width, widths);
+        rows * Self::row_height(ui) + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y
+    }
+
     /// How tall a « titre + boutons + sous-titre » band has to be.
     ///
     /// Measured, never a pixel constant. The codex, the protocols and
@@ -33827,7 +33845,7 @@ impl App {
             // en texte 1,6 le compte n'entrait plus et se lisait
             // « 1 case(s) à » — la seule chose que cette rangée existe
             // pour dire, coupée en son milieu.
-            let btn_h = Self::wrapped_rows_of(
+            let btn_h = Self::wrapped_band_height(
                 ui,
                 inner.width(),
                 [
@@ -33836,8 +33854,7 @@ impl App {
                     Self::widest(ui, 11.0, [status.as_str()].into_iter()),
                 ]
                 .into_iter(),
-            ) * Self::row_height(ui)
-                + 6.0;
+            ) + 6.0;
             let split = motif::split_rows(inner, &[0.0, btn_h], 4.0);
             motif::inside(ui, split[0], |ui| {
                 if session.stup_summary.is_empty() {
@@ -34068,11 +34085,19 @@ impl App {
                     {
                         clear = true;
                     }
-                    // La phrase que la rangée a été mesurée pour tenir.
-                    ui.label(
-                        egui::RichText::new(status.as_str())
-                            .size(motif::pt(ui, 11.0))
-                            .color(status_ink),
+                    // La phrase que la rangée a été mesurée pour tenir,
+                    // et insécable parce que la mesure la compte comme
+                    // un seul élément : laissée libre,
+                    // `horizontal_wrapped` enveloppe le texte *dans*
+                    // l'étiquette et coupe « 1 case(s) à » de
+                    // « corriger avant d'inscrire ».
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(status.as_str())
+                                .size(motif::pt(ui, 11.0))
+                                .color(status_ink),
+                        )
+                        .wrap_mode(egui::TextWrapMode::Extend),
                     );
                 });
             });
@@ -39607,6 +39632,23 @@ impl App {
         let title = open.map_or_else(|| tr("textes_pick").to_owned(), |d| d.label.clone());
         let phrases = open.map(|d| d.phrases.clone());
         let subject = open.map(|d| d.subject.clone());
+        // **Le compte est composé ici, parce que la rangée du bas se
+        // mesure avec.** Deux boutons et une phrase dans un
+        // `horizontal_wrapped` : à 1024x700 en texte 1,6 la phrase
+        // passait à une seconde ligne, et la bande — taillée à une
+        // rangée de bouton — la coupait. Il ne restait que « 20 », qui
+        // ne dit ni de quoi ni sur combien. Même famille que la feuille
+        // de saisie, et même remède : la mesure et le dessin portent sur
+        // la même phrase.
+        let count = phrases.as_ref().map(|ps| {
+            let rewritten = ps
+                .iter()
+                .filter(|(k, _, shipped)| {
+                    session.content.state(k, shipped) != crate::content::State::Shipped
+                })
+                .count();
+            trn("textes_count", &[&ps.len(), &rewritten])
+        });
         motif::panel(ui, sheet_rect, Some(&title), |ui| {
             let Some(phrases) = &phrases else {
                 ui.label(
@@ -39617,7 +39659,19 @@ impl App {
                 return;
             };
             let rect = ui.available_rect_before_wrap();
-            let btn = Self::button_height(ui) + 6.0;
+            // `motif::inside` ne rétrécit pas le rectangle qu'on lui
+            // donne : la largeur mesurée est exactement celle du dessin.
+            let count = count.as_deref().unwrap_or_default();
+            let btn = Self::wrapped_band_height(
+                ui,
+                rect.width(),
+                [
+                    Self::button_width(ui, tr("carnets_edit_save")),
+                    Self::button_width(ui, tr("carnets_edit_reset")),
+                    Self::widest(ui, 11.0, [count].into_iter()),
+                ]
+                .into_iter(),
+            ) + 6.0;
             let split = motif::split_rows(rect, &[0.0, btn], 4.0);
             motif::inside(ui, split[0], |ui| {
                 egui::ScrollArea::vertical()
@@ -39641,16 +39695,19 @@ impl App {
                     {
                         reset = subject.clone();
                     }
-                    let rewritten = phrases
-                        .iter()
-                        .filter(|(k, _, shipped)| {
-                            session.content.state(k, shipped) != crate::content::State::Shipped
-                        })
-                        .count();
-                    ui.label(
-                        egui::RichText::new(trn("textes_count", &[&phrases.len(), &rewritten]))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
+                    // Insécable, parce que la mesure la compte comme
+                    // un seul élément : laissée libre, `horizontal_wrapped`
+                    // enveloppe le texte *dans* l'étiquette et pose
+                    // « 20 » au bout de la première rangée et le reste
+                    // sur la seconde. La hauteur était juste, la phrase
+                    // coupée en deux.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(count)
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap_mode(egui::TextWrapMode::Extend),
                     );
                 });
             });
@@ -39803,7 +39860,41 @@ impl App {
                 // sur le bas avant que le texte soit dessiné : sous une
                 // zone qui grandit, une hauteur réservée dans le flux
                 // est toujours de quelques pixels trop courte.
-                let btn = Self::button_height(ui) + 6.0;
+                //
+                // **Et cette rangée se mesure, elle ne se suppose pas.**
+                // Taillée à une hauteur de bouton, elle en portait
+                // jusqu'à cinq : à 1024x700 en texte 1,6 il ne restait
+                // que « Imprimer… » et « Textes… », et « Modifier » —
+                // la porte de la réécriture, c'est-à-dire ce que cet
+                // écran-ci existe pour offrir — tombait dessous, sans
+                // rien pour le dire. Ce qui est édité ne compte que
+                // quand ce l'est : une rangée réservée pour des boutons
+                // qu'on ne dessine pas vole la place au texte.
+                let rewritten = crate::selfcheck::phrases(sheet)
+                    .iter()
+                    .filter(|(k, _, shipped)| {
+                        session.content.state(k, shipped) != crate::content::State::Shipped
+                    })
+                    .count();
+                let subject_now = format!("{}.{}", crate::selfcheck::DOC, sheet.key);
+                let editing_now = session
+                    .text_edit
+                    .as_ref()
+                    .is_some_and(|e| e.subject == subject_now);
+                let count_now = (rewritten > 0).then(|| trf("carnets_rewritten", rewritten));
+                let mut items = vec![
+                    Self::button_width(ui, tr("carnets_print")),
+                    Self::button_width(ui, tr("textes_button")),
+                    Self::button_width(ui, tr("carnets_edit")),
+                ];
+                if editing_now {
+                    items.push(Self::button_width(ui, tr("carnets_edit_save")));
+                    items.push(Self::button_width(ui, tr("carnets_edit_reset")));
+                }
+                if let Some(c) = &count_now {
+                    items.push(Self::widest(ui, 11.0, [c.as_str()].into_iter()));
+                }
+                let btn = Self::wrapped_band_height(ui, rect.width(), items.into_iter()) + 6.0;
                 let split = motif::split_rows(rect, &[0.0, btn], 4.0);
                 motif::inside(ui, split[0], |ui| {
                     egui::ScrollArea::vertical()
@@ -39938,18 +40029,19 @@ impl App {
                         // Combien de phrases de cette feuille ne sont
                         // plus celles qui sont livrées : une feuille
                         // qu'on a réécrite doit se reconnaître sans
-                        // l'ouvrir.
-                        let rewritten = crate::selfcheck::phrases(sheet)
-                            .iter()
-                            .filter(|(k, _, shipped)| {
-                                session.content.state(k, shipped) != crate::content::State::Shipped
-                            })
-                            .count();
-                        if rewritten > 0 {
-                            ui.label(
-                                egui::RichText::new(trf("carnets_rewritten", rewritten))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::accent()),
+                        // l'ouvrir. Composée plus haut, où la rangée se
+                        // mesure : deux constructions d'une même phrase
+                        // finissent toujours par diverger. Insécable,
+                        // parce que la mesure la compte comme un seul
+                        // élément.
+                        if let Some(c) = &count_now {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(c)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::accent()),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend),
                             );
                         }
                     });
