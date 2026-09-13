@@ -183,6 +183,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Et la bande du dossier cachait ce que l'ordonnance dit
+  d'elle-même.** Elle est plafonnée à une part du dossier et défile —
+  c'est ce qui protège le tableau des actes —, mais la barre flottante
+  d'egui est invisible au repos : à 1024x700 en `text_scale = 1,6` la
+  bande s'arrêtait après les traitements, et ce qui suivait — le champ
+  « + médicament », « 2 interaction(s) entre ces traitements » et la
+  revue d'ordonnance, « Statine + inhibiteur enzymatique » — se lisait
+  comme n'existant pas. Ce n'est pas de la garniture. La mesure compte
+  maintenant les douze pixels de la barre, comme le dessin.
 - **L'explorateur tranchait sa phrase de couverture.** La bande sous
   les axes porte deux choses et non une : quand les portes ne tiennent
   pas dans leur part, une ligne le dit — « 13 axes en tout — la bande

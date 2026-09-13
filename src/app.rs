@@ -13002,10 +13002,21 @@ impl App {
         let rows = motif::split_rows(body, &[band_h, 0.0], 8.0);
         motif::panel(ui, rows[0], None, |ui| {
             let inner = ui.max_rect();
+            // **Et la barre de la bande ne flotte pas.** Elle est
+            // plafonnée à une part du dossier et défile — c'est ce qui
+            // protège le tableau des actes —, mais la barre flottante
+            // d'egui est invisible au repos : à 1024x700 en
+            // `text_scale = 1,6` la bande s'arrêtait après les
+            // traitements, et ce qui suivait — le champ « + médicament »,
+            // « 2 interaction(s) entre ces traitements » et la revue
+            // d'ordonnance — se lisait comme n'existant pas. Ce n'est
+            // pas de la garniture : c'est ce que l'ordonnance dit
+            // d'elle-même.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("patient_band")
                 .show(ui, |ui| {
-                    ui.set_max_width(inner.width());
+                    ui.set_max_width(Self::scrolled_width(ui, inner.width()));
                     Self::patient_identity_pane(ui, ctx, session, patient, config, operator);
                 });
         });
@@ -19059,7 +19070,11 @@ impl App {
     /// mesure invérifiable — un test aurait dû ouvrir une base chiffrée
     /// pour demander combien de pixels une bande réclame.
     fn patient_band_height(ui: &egui::Ui, n: &BandNeeds) -> f32 {
-        let w = n.width - 40.0;
+        // La barre de défilement de la bande est pleine : ses douze
+        // pixels sont pris sur ce que les rangées ont pour s'étaler, et
+        // les compter ici est ce qui garde la mesure d'accord avec le
+        // dessin.
+        let w = Self::scrolled_width(ui, n.width - 40.0);
         // Replié : le nom, la date de naissance, et de quoi le rouvrir.
         // Une correction en cours le déplie d'office — on ne cache pas
         // le formulaire dans lequel on est en train de taper.
