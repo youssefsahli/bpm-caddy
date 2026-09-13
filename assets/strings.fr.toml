@@ -775,10 +775,17 @@ graph_tie_class = "même classe"
 graph_tie_interaction = "interaction citée"
 graph_omitted = "{} de plus en « {} » non dessinés"
 # Clé de l'anneau rouge de la carte de voisinage, et ce que son
-# infobulle ajoute. Mesuré : à 1024x700 en texte 1,6 la quatrième entrée
-# passe à la ligne quelle que soit sa longueur — « marge étroite » ne
-# rachetait pas la rangée —, donc autant écrire la phrase entière.
-graph_narrow = "marge thérapeutique étroite"
+# infobulle ajoute.
+#
+# **Il dit ce que la donnée dit, et pas plus.** L'anneau est tracé quand
+# la fiche porte une section « Toxicité / marge thérapeutique » — 484
+# fiches sur 862 —, ce qui n'est pas la même chose qu'une marge étroite
+# au sens clinique : Zeclar, Sporanox et Rifadine le portent, Digoxine
+# et Tégrétol aussi. Écrire « marge thérapeutique étroite » sur cette
+# clé aurait rendu visible une affirmation fausse pour la plupart des
+# nœuds cerclés, ce qui est pire qu'un anneau sans clé.
+graph_toxicity = "toxicité renseignée"
+graph_toxicity_tip = "La fiche documente une toxicité ou une marge thérapeutique."
 graph_node_tooltip = "{} — cliquer pour mettre au centre"
 graph_node_tooltip_dci = "{} · {} — cliquer pour mettre au centre"
 dispo_title = "Dispositifs médicaux"

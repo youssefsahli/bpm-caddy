@@ -276,6 +276,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Et cette clé disait plus que la donnée.** Écrite « marge
+  thérapeutique étroite », elle nommait une propriété clinique précise —
+  digoxine, lithium, AVK — là où l'anneau est en fait tracé dès que la
+  fiche porte une section « Toxicité / marge thérapeutique », remplie
+  sur 484 fiches sur 862. Zeclar, Sporanox et Rifadine le portent. Une
+  couleur sans clé est un défaut ; une clé qui affirme le faux en est un
+  plus grave, et rendre l'affirmation visible l'aurait aggravée. La clé
+  lit « toxicité renseignée », l'infobulle dit ce que la fiche
+  documente, et le champ s'appelle `toxicity_noted` : c'est son ancien
+  nom, `narrow`, qui avait fini par être recopié en commentaire puis en
+  légende.
 - **L'anneau rouge du voisinage n'était expliqué nulle part.** La carte
   cercle d'alerte les voisins à marge thérapeutique étroite — la seule
   propriété capable de changer ce qu'on fait d'un médicament qu'on

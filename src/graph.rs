@@ -40,9 +40,15 @@ pub struct Known<'a> {
     /// kind is found: the map looks for other cards' names in it.
     pub ddi: &'a str,
     /// Whether the card carries a « toxicité / marge thérapeutique »
-    /// section. Worth seeing on a map — it is the one property that
-    /// changes what you do with a neighbour you were about to suggest.
-    pub narrow: bool,
+    /// section. Worth seeing on a map: it is what makes you reopen the
+    /// card of a neighbour you were about to suggest.
+    ///
+    /// **Named for the data, not for a reading of it.** It was `narrow`,
+    /// and that name is what the view's comment and then its legend
+    /// ended up asserting — « marge thérapeutique étroite », which this
+    /// is not: the field is a prose section, filled on 484 of the 862
+    /// shipped cards, Zeclar and Sporanox among them.
+    pub toxicity_noted: bool,
 }
 
 /// How a neighbour is tied to the centre.
@@ -69,7 +75,7 @@ impl Tie {
     ///
     /// Deliberately **not** the red of series 3, which was the first
     /// choice for the interaction: `motif::alert()` is the red that
-    /// rings a narrow-margin card, and a red ring round a red node is
+    /// rings a card with a toxicity section, and a red ring round a red
     /// no ring at all. The interaction gets the ochre.
     pub fn series(self) -> usize {
         match self {
@@ -101,7 +107,7 @@ pub struct Node {
     pub name: String,
     pub dci: String,
     pub tie: Tie,
-    pub narrow: bool,
+    pub toxicity_noted: bool,
     /// Position on the unit circle: the centre is `(0, 0)` and no node
     /// is further than 1 from it. The view multiplies by whatever half
     /// -width it has and adds its own middle.
@@ -112,7 +118,8 @@ pub struct Node {
 /// A card's neighbourhood, laid out.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Map {
-    /// The card in the middle: id, name and whether it is narrow.
+    /// The card in the middle: id, name and whether its card documents
+    /// a toxicity or a therapeutic margin.
     pub centre: (i64, String, bool),
     pub nodes: Vec<Node>,
     /// Per tie, how many neighbours the ring could not take.
@@ -212,7 +219,11 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
     }
 
     Map {
-        centre: (centre.id, centre.name.trim().to_owned(), centre.narrow),
+        centre: (
+            centre.id,
+            centre.name.trim().to_owned(),
+            centre.toxicity_noted,
+        ),
         nodes,
         omitted,
     }
@@ -324,7 +335,7 @@ fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
             name: k.name.trim().to_owned(),
             dci: k.dci.trim().to_owned(),
             tie,
-            narrow: k.narrow,
+            toxicity_noted: k.toxicity_noted,
             x: r * a.sin(),
             y: -r * a.cos(),
         });
@@ -380,7 +391,7 @@ mod tests {
             dci,
             class,
             ddi: "",
-            narrow: false,
+            toxicity_noted: false,
         }
     }
 
@@ -392,7 +403,7 @@ mod tests {
                 dci: "apixaban",
                 class: "AOD",
                 ddi: "Association déconseillée avec le kétoconazole et la rifampicine.",
-                narrow: true,
+                toxicity_noted: true,
             },
             card(2, "Apixaban Viatris", "Apixaban", "aod"),
             card(3, "Xarelto", "rivaroxaban", "AOD"),
@@ -509,7 +520,7 @@ mod tests {
             dci: "ibuprofène",
             class: "AINS",
             ddi: "",
-            narrow: false,
+            toxicity_noted: false,
         };
         let caps = Caps {
             molecule: 8,
@@ -627,7 +638,7 @@ mod tests {
             dci: "kétoconazole",
             class: "antifongique local",
             ddi: "À ne pas appliquer en même temps que le Diprosone.",
-            narrow: false,
+            toxicity_noted: false,
         };
         let mut b2 = base();
         b2.insert(0, ketoderm);

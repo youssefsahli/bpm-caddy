@@ -5929,7 +5929,7 @@ impl Session {
                 dci: &d.dci,
                 class: &d.class,
                 ddi: &d.ddi,
-                narrow: !d.toxicity.trim().is_empty(),
+                toxicity_noted: !d.toxicity.trim().is_empty(),
             })
             .collect();
         self.graph_map = known
@@ -44110,10 +44110,18 @@ impl App {
                 let color = motif::chart::series_color(n.tie.series());
                 ui.painter().rect_filled(node, 0.0, color);
                 motif::bevel(ui.painter(), node, !resp.hovered());
-                // A narrow therapeutic margin gets the alert ring: it is
-                // the one property that changes what you do with a
-                // neighbour you were about to suggest.
-                if n.narrow {
+                // **Ce que la fiche documente d'une toxicité ou d'une
+                // marge** reçoit l'anneau d'alerte : c'est ce qui fait
+                // rouvrir la fiche d'un voisin qu'on allait proposer.
+                //
+                // Ce n'est **pas** « marge thérapeutique étroite » au
+                // sens clinique : le champ est une section de prose,
+                // remplie sur 484 fiches sur 862. Le commentaire qui
+                // l'affirmait ici a fini par être recopié dans une
+                // légende, où il devenait une erreur visible — Zeclar,
+                // Sporanox et Rifadine portent l'anneau. D'où le nom du
+                // champ, qui dit la donnée et non son interprétation.
+                if n.toxicity_noted {
                     ui.painter().rect_stroke(
                         node.expand(3.0),
                         0.0,
@@ -44184,8 +44192,8 @@ impl App {
                         trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
                     }
                     .as_str();
-                if n.narrow {
-                    tip = format!("{tip}\n{}", tr("graph_narrow"));
+                if n.toxicity_noted {
+                    tip = format!("{tip}\n{}", tr("graph_toxicity_tip"));
                 }
                 if resp.on_hover_text(tip).clicked() {
                     recentre = Some(n.id);
@@ -44225,11 +44233,10 @@ impl App {
                     omitted: Vec::new(),
                 });
             // **L'anneau rouge a sa clé, et seulement quand il est
-            // dessiné.** Il dit « marge thérapeutique étroite », qui est
-            // la seule propriété capable de changer ce qu'on fait d'un
-            // voisin qu'on allait proposer — et il n'était expliqué
-            // nulle part : ni dans la légende, qui ne portait que les
-            // trois liens, ni dans l'infobulle. Sept nœuds sur neuf le
+            // dessiné.** Il n'était expliqué nulle part : ni dans la
+            // légende, qui ne portait que les trois liens, ni dans
+            // l'infobulle. Et il dit ce que la donnée dit — « toxicité
+            // renseignée » — plutôt que ce qu'on aimerait qu'elle dise. Sept nœuds sur neuf le
             // portaient sur la carte d'Eliquis, dans la couleur la plus
             // alarmante de la palette, sans clé.
             //
@@ -44239,8 +44246,8 @@ impl App {
                 .iter()
                 .map(|t| (tr(t.label_key()), motif::chart::series_color(t.series())))
                 .collect();
-            if map.nodes.iter().any(|n| n.narrow) {
-                keys.push((tr("graph_narrow"), motif::alert()));
+            if map.nodes.iter().any(|n| n.toxicity_noted) {
+                keys.push((tr("graph_toxicity"), motif::alert()));
             }
             motif::chart::legend(ui, &keys);
             // What the rings could not take, never in silence: twelve of
