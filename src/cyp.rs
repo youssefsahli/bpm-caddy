@@ -1292,6 +1292,19 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Zophren : « Métabolisme hépatique étendu par les CYP3A4, CYP1A2 et CYP2D6 ».",
     },
+    // **Avant l'imipramine, et c'est tout l'intérêt de l'ordre.**
+    // « imipramine » est une sous-chaîne de « trimipramine » : sans
+    // cette ligne-ci en premier, le Surmontil recevait le profil du
+    // Tofranil — CYP2D6, 1A2 et 3A4 — alors que sa propre fiche écrit
+    // « principalement par le CYP2D6 ». Même piège que
+    // « esomeprazole »/« omeprazole », et que « actiskenan »/« skenan »
+    // dans `crush.rs`.
+    Profile {
+        needs: &["trimipramine"],
+        label: "Trimipramine",
+        actions: &[Action::new(Cyp2d6, Substrate, None)],
+        source: "Surmontil : « Métabolisme hépatique extensif, principalement par le CYP2D6, avec formation de métabolites dont la desméthyltrimipramine ».",
+    },
     Profile {
         needs: &["imipramine"],
         label: "Imipramine",
@@ -1637,14 +1650,22 @@ mod tests {
             .collect();
         let mut orphans: Vec<String> = Vec::new();
         let mut unbacked: Vec<String> = Vec::new();
-        for p in TABLE {
-            // La fiche qui porte cette molécule.
-            let Some((card, _)) = drugs.iter().find(|(_, hay)| {
+        // **Chaque fiche est jugée contre la ligne qui la revendique
+        // vraiment**, c'est-à-dire la première qui l'attrape — celle que
+        // `of` rendra. Le test ne regardait que la première *fiche*
+        // d'une ligne : il validait donc la ligne sur le produit visé et
+        // lui prêtait, en silence, tous ceux qu'elle attrape au passage.
+        // Les mots cherchés sont des sous-chaînes, et « imipramine » est
+        // dans « trimipramine » : le profil du Tofranil — CYP2D6, 1A2 et
+        // 3A4 — s'appliquait ainsi au Surmontil, dont la fiche écrit
+        // « principalement par le CYP2D6 ». Rien ne le disait, et rien
+        // ne pouvait le dire.
+        for (card, hay) in &drugs {
+            let Some(p) = TABLE.iter().find(|p| {
                 p.needs
                     .iter()
                     .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
             }) else {
-                orphans.push(p.label.to_owned());
                 continue;
             };
             let Some((_, body)) = cards.iter().find(|(n, _)| n == card) else {
@@ -1661,8 +1682,18 @@ mod tests {
                 let short = long.trim_start_matches("cyp").to_owned();
                 let named = body.contains(&long) || (body.contains("cyp") && body.contains(&short));
                 if !named {
-                    unbacked.push(format!("{} / {}", p.label, a.enzyme.label()));
+                    unbacked.push(format!("{} / {} → {card}", p.label, a.enzyme.label()));
                 }
+            }
+        }
+        // Et aucune ligne ne vise un produit que la base ne livre pas.
+        for p in TABLE {
+            if !drugs.iter().any(|(_, hay)| {
+                p.needs
+                    .iter()
+                    .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+            }) {
+                orphans.push(p.label.to_owned());
             }
         }
         assert!(

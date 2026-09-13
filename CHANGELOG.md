@@ -64,6 +64,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qu'« azithromycine » attrape aussi l'Azyter, qui est un collyre — une
   contre-indication hépatique systémique prêtée à deux gouttes dans un
   œil est le genre d'alerte qui apprend à ignorer les alertes.
+- **Le Surmontil recevait le profil du Tofranil.** « imipramine » est
+  une sous-chaîne de « trimipramine », et le test d'adossement des
+  cytochromes ne regardait que la première *fiche* qu'une ligne
+  attrape : il validait la ligne sur le produit visé et lui prêtait, en
+  silence, tous ceux qu'elle attrape au passage. Le Surmontil se voyait
+  donc attribuer le CYP1A2 et le CYP3A4 quand sa propre fiche écrit
+  « principalement par le CYP2D6 ». Il porte maintenant sa ligne, placée
+  avant l'imipramine — l'ordre de la table est ce qui décide, comme pour
+  « esomeprazole »/« omeprazole ».
+
+  Le test juge désormais **chaque fiche contre la ligne qui la
+  revendique vraiment**, c'est-à-dire la première qui l'attrape : celle
+  que `cyp::of` rendra. Il a trouvé du même coup deux fiches du même
+  pantoprazole qui se contredisaient — l'Inipomp nomme le CYP3A4 après
+  le CYP2C19, l'Eupantol ne le nommait pas. L'Eupantol le nomme.
 - **La table des cytochromes passe de cinquante et une molécules à cent
   douze**, cent quatre-vingt-seize actions, six prodrogues. Chaque rôle
   et chaque force viennent de la fiche, citée.
