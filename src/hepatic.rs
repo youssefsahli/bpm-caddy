@@ -450,6 +450,21 @@ pub const TABLE: &[Adaptation] = &[
         ],
         source: "Oxycontin : « chez le sujet âgé, fragile ou insuffisant rénal ou hépatique, débuter plus bas et espacer » ; contre-indication en « insuffisance hépatique sévère ».",
     },
+    // **Avant la morphine, parce qu'« apomorphine » la contient.**
+    // L'Apokinon est un agoniste dopaminergique injectable de la maladie
+    // de Parkinson, et il n'a rien d'un opioïde ; sans cette ligne, il
+    // recevait la conduite hépatique de la morphine. Sa fiche porte sa
+    // propre contre-indication, et c'est elle qui est écrite ici.
+    Adaptation {
+        needs: &["apomorphine"],
+        label: "Apomorphine",
+        steps: &[step(
+            Severe,
+            Contraindicated,
+            "Insuffisance hépatique sévère : contre-indiqué.",
+        )],
+        source: "Apokinon : contre-indication en « insuffisance hépatique sévère ».",
+    },
     Adaptation {
         needs: &["morphine"],
         label: "Morphine",

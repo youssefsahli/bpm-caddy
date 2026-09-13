@@ -401,13 +401,13 @@ pub const WATCHES: &[Watch] = &[
     },
     // --- Lipides, diabète ---
     Watch {
-        needs: &["statine", "atorvastatine", "rosuvastatine", "simvastatine", "pravastatine"],
+        needs: &["vastatine", "atorvastatine", "rosuvastatine", "simvastatine", "pravastatine"],
         code: "LDL",
         every_months: 12,
         why: "Le LDL est la cible du traitement : bilan lipidique deux à trois mois après l'instauration ou tout changement de dose, puis une fois par an quand la cible est atteinte.",
     },
     Watch {
-        needs: &["statine", "fibrate", "fénofibrate", "ézétimibe"],
+        needs: &["vastatine", "fibrate", "fénofibrate", "ézétimibe"],
         code: "ALAT",
         every_months: 12,
         why: "Transaminases avant l'instauration et à trois mois ; ensuite seulement si la dose change ou si un symptôme apparaît. Un dosage systématique de CPK n'a d'intérêt que devant des douleurs musculaires.",
@@ -604,7 +604,7 @@ pub const WATCHES: &[Watch] = &[
         why: "La colchicine s'accumule quand le rein filtre mal, et sa marge est étroite : la dose se réduit selon la clairance et l'association aux inhibiteurs du CYP3A4 est à vérifier.",
     },
     Watch {
-        needs: &["hypolipémiant", "statine", "ézétimibe", "fibrate", "bempédoïque", "évolocumab", "alirocumab"],
+        needs: &["hypolipémiant", "vastatine", "ézétimibe", "fibrate", "bempédoïque", "évolocumab", "alirocumab"],
         code: "CT",
         every_months: 12,
         why: "Le bilan lipidique complet une fois par an quand la cible est tenue : c'est aussi ce qui dit si le traitement est pris.",

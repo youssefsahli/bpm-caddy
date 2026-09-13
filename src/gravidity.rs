@@ -453,7 +453,7 @@ pub const TABLE: &[Advice] = &[
     },
     // --- Ce qui se remplace -------------------------------------------
     Advice {
-        needs: &["atorvastatine", "simvastatine", "rosuvastatine", "pravastatine", "statine", "tahor", "crestor"],
+        needs: &["atorvastatine", "simvastatine", "rosuvastatine", "pravastatine", "vastatine", "tahor", "crestor"],
         label: "Statines",
         pregnancy: Level::Eviter,
         term: "",
@@ -523,7 +523,15 @@ pub const TABLE: &[Advice] = &[
     // le contraire de sa fiche — et les deux textes étaient dans le
     // logiciel sans que rien ne les mette face à face.
     Advice {
-        needs: &["lamaline", "poudredopium", "opium"],
+        needs: &[
+            // **Jamais « opium » seul** : « tiotr**opium** » et
+            // « ipratr**opium** » le contiennent, et le Spiriva comme
+            // l'Atrovent recevaient alors la ligne d'un antalgique
+            // opiacé. Les deux spécialités concernées se nomment.
+            "lamaline",
+            "izalgi",
+            "poudre d'opium",
+        ],
         label: "Paracétamol + opium",
         pregnancy: Level::Eviter,
         term: "En fin de grossesse, une utilisation prolongée expose le nouveau-né à un syndrome de sevrage et à une dépression respiratoire.",
@@ -598,7 +606,22 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT",
     },
     Advice {
-        needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "corticoide"],
+        needs: &[
+            // **Jamais « corticoïde » seul**, pour une ligne intitulée
+            // « par voie générale » : le mot est dans la classe de tous
+            // les dermocorticoïdes, des corticoïdes inhalés, nasaux et
+            // ophtalmiques — et jusque dans « antagoniste **non
+            // stéroïdien** des récepteurs minéralo**corticoïde**s »,
+            // c'est-à-dire le Kerendia, qui n'en est justement pas un.
+            // Une crème et un collyre ne se lisent pas comme une
+            // corticothérapie générale.
+            "prednisone",
+            "prednisolone",
+            "cortancyl",
+            "solupred",
+            "célestène",
+            "médrol",
+        ],
         label: "Corticoïdes par voie générale",
         pregnancy: Level::Compatible,
         term: "",

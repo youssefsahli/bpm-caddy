@@ -575,7 +575,17 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP cotrimoxazole",
     },
     Adaptation {
-        needs: &["morphine", "skenan", "actiskenan", "oramorph", "moscontin"],
+        needs: &[
+            // **Par les présentations, jamais par « morphine » seul.**
+            // « apomorphine » contient « morphine », et l'Apokinon —
+            // un agoniste dopaminergique injectable de la maladie de
+            // Parkinson — recevait les paliers rénaux de la morphine.
+            "skenan",
+            "sevredol",
+            "actiskenan",
+            "oramorph",
+            "moscontin",
+        ],
         label: "Morphine",
         steps: &[Step {
             below: 30,

@@ -134,6 +134,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « anti**sep**tique » contient « SEP », d'où « lymphopénie sévère sous
   traitement de fond de la sclérose en plaques » devant un Ercéfuryl.
 
+  Trois de plus du même genre, trouvées en relisant ce que **chaque**
+  mot attrape : « nystatine » contient « statine », de sorte que la
+  Mycostatine — un antifongique — recevait les lignes des statines, du
+  bilan lipidique à la grossesse ; « apomorphine » contient
+  « morphine », de sorte que l'Apokinon — un agoniste dopaminergique
+  injectable de la maladie de Parkinson — recevait les paliers rénaux et
+  la conduite hépatique de la morphine ; et « diméthylfumarate »
+  contient « fumarate », de sorte qu'un patient sous Skilarence lisait
+  « ferritine toujours basse sous fer oral ». « vastatine » remplace
+  « statine » — la nystatine ne le contient pas —, la morphine se
+  désigne par ses présentations, et l'Apokinon porte désormais sa propre
+  ligne hépatique, que sa fiche adosse.
+
+  Deux dernières, sur des lignes de classe trop larges : « tiotr**opium** »
+  et « ipratr**opium** » contiennent « opium », de sorte que le Spiriva et
+  l'Atrovent recevaient la ligne d'un antalgique opiacé ; et
+  « corticoïde » est dans la classe de tous les dermocorticoïdes, des
+  corticoïdes inhalés, nasaux et ophtalmiques — et jusque dans
+  « antagoniste **non stéroïdien** des récepteurs minéralo**corticoïde**s »,
+  c'est-à-dire le Kerendia, qui n'en est justement pas un. Une crème et
+  un collyre ne se lisent pas comme une corticothérapie générale.
+
   Les molécules sont nommées une à une. Les AINS locaux — un collyre à
   l'indométacine, un bain de bouche à la benzydamine, dont les classes
   portent le mot « AINS » — sortent des lignes rénale et grossesse : une
