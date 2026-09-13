@@ -60,11 +60,21 @@ pub fn split_columns(rect: egui::Rect, n: usize, gutter: f32) -> Vec<egui::Rect>
 }
 
 /// Carve `rect` into rows of the given heights, separated by `gutter`.
-/// A height of `0.0` means "take whatever is left" (at most one such).
+///
+/// A height of `0.0` means « take what is left » — and when several rows
+/// ask for it, **they share it**. Chacune prenait le reste *entier* : à
+/// trois zéros, la première rangée valait toute la hauteur et les deux
+/// autres étaient posées en dessous du rectangle, hors de l'écran et
+/// hors d'atteinte — rien ne défile à cet endroit-là. C'est ce qui
+/// arrivait aux deux écrans d'accueil sur un poste de comptoir :
+/// « Aujourd'hui » remplissait la vue, « Derniers patients » et « Notes
+/// du jour » n'existaient pas. Un zéro qui veut dire « le reste » ne
+/// peut pas le vouloir dire deux fois.
 pub fn split_rows(rect: egui::Rect, heights: &[f32], gutter: f32) -> Vec<egui::Rect> {
     let fixed: f32 = heights.iter().sum();
     let gutters = gutter * heights.len().saturating_sub(1) as f32;
-    let flex = (rect.height() - fixed - gutters).max(0.0);
+    let shares = heights.iter().filter(|h| **h == 0.0).count().max(1) as f32;
+    let flex = (rect.height() - fixed - gutters).max(0.0) / shares;
     let mut y = rect.top();
     heights
         .iter()
@@ -668,5 +678,37 @@ mod tests {
         assert_eq!(column_count(300.0, 320.0, 4), 1);
         assert_eq!(column_count(1000.0, 320.0, 4), 3);
         assert_eq!(column_count(4000.0, 320.0, 4), 4);
+    }
+
+    /// **Plusieurs « le reste » se partagent le reste, et tout tient
+    /// dans le rectangle.**
+    ///
+    /// Chacun le prenait entier : à trois zéros, la première rangée
+    /// valait toute la hauteur et les deux autres étaient posées
+    /// *sous* le rectangle. Les deux écrans d'accueil s'en servaient
+    /// ainsi, et sur un poste de comptoir — moins de quatre-vingt-
+    /// quinze caractères de large, ce qui est le cas d'un 1024 avec
+    /// ses deux volets — on ne voyait qu'un panneau sur trois. Les
+    /// deux autres ne débordaient pas : ils n'étaient nulle part, et
+    /// rien ne défile à cet endroit.
+    ///
+    /// Le cas à un seul zéro ne bouge pas, et c'est pourquoi le défaut
+    /// a pu vivre : il est le cas de presque tous les appels.
+    #[test]
+    fn several_flexible_rows_share_what_is_left_and_stay_inside() {
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), Vec2::new(100.0, 316.0));
+        let rows = super::split_rows(rect, &[0.0, 0.0, 0.0], 8.0);
+        assert_eq!(rows.len(), 3);
+        for r in &rows {
+            assert!((r.height() - 100.0).abs() < 0.01, "{:?}", r.height());
+            assert!(
+                rect.contains_rect(*r),
+                "une rangée est posée hors du rectangle : {r:?}"
+            );
+        }
+        assert!(rows[2].bottom() <= rect.bottom() + 0.01);
+        // Et le cas ordinaire — un seul « le reste » — est inchangé.
+        let one = super::split_rows(rect, &[16.0, 0.0], 8.0);
+        assert!((one[1].height() - 292.0).abs() < 0.01, "{:?}", one[1]);
     }
 }

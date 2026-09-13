@@ -276,6 +276,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **Deux tiers de l'écran d'accueil n'existaient pas sur un poste de
+  comptoir.** `motif::split_rows` prend `0.0` pour « la hauteur qui
+  reste », et chaque rangée qui le demandait prenait le reste **entier**.
+  À trois zéros — ce qu'écrivent les deux écrans d'accueil dans leur
+  disposition étroite — la première rangée valait donc toute la hauteur,
+  et les deux autres étaient posées *sous* le rectangle : « Derniers
+  patients » et « Notes du jour » n'étaient pas rognés, ils n'étaient
+  nulle part, et rien ne défile à cet endroit.
+
+  La disposition étroite, c'est moins de quatre-vingt-quinze caractères
+  de large — c'est-à-dire un écran de 1024 avec ses deux volets ouverts,
+  la forme ordinaire d'un poste de comptoir. Les trois panneaux se
+  partagent maintenant ce qui reste, et un test le tient. Le cas à un
+  seul zéro ne bouge pas, et c'est pourquoi le défaut a pu vivre : c'est
+  le cas de presque tous les appels.
 - **Une puce de traitement se coupait au bord de la rangée.** Dans un
   `horizontal_wrapped`, egui enveloppe le texte *dans* l'étiquette et
   non seulement entre étiquettes : la puce « Lasilix » laissait ses deux
