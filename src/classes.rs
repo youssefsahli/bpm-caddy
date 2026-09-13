@@ -2137,15 +2137,32 @@ pub fn is_local_form(class: &str) -> bool {
     // par la voie générale, et le mot ne doit pas faire taire ses
     // lignes. Aucune classe livrée ne le porte aujourd'hui ; c'est une
     // précaution, et elle coûte une comparaison.
-    if crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(class), "localis") {
+    let folded = crate::fuzzy::sort_key(class);
+    if crate::fuzzy::contains_folded(&folded, "localis") {
         return false;
     }
+    // **« anesthésique local » nomme une classe, pas une voie.** C'est
+    // la même faute que « localisé », et elle était livrée : les cinq
+    // anesthésiques locaux de la base — Xylocaïne, Naropéine, Marcaïne,
+    // Chirocaïne, Scandicaïne — s'*injectent*, et leur antidote est
+    // l'émulsion lipidique, c'est-à-dire l'antidote d'une toxicité
+    // **systémique**. Les faire taire revenait à dire d'une lidocaïne
+    // injectable qu'elle ne rencontre aucune enzyme et ne demande aucun
+    // examen.
+    //
+    // Le mot est retiré avant l'examen plutôt qu'ajouté à une liste de
+    // vetos : l'Emla porte « anesthésique local — crème/patch » et
+    // reste une forme locale par « crème », qui n'est sur aucune autre
+    // fiche livrée. « patch » n'en est pas une et n'y sera pas : le
+    // Neupro, l'Evra et le Nicopatch passent tous dans le sang.
+    let folded = folded.replace("anesthesique local", "anesthesique");
     const LOCAL: &[&str] = &[
         "collyre",
         "topique",
+        "creme",
         // **« local » autant que « topique ».** Les fiches disent les
-        // deux — « antifongique local », « anesthésique local »,
-        // « corticoïde à action locale », « estrogène local vaginal » —
+        // deux — « antifongique local », « corticoïde à action
+        // locale », « estrogène local vaginal » —
         // et dix-neuf boîtes échappaient au filtre pour ce seul mot,
         // dont le Kétoderm que `cyp.rs` nomme depuis toujours comme
         // l'exemple à ne pas mettre face à une simvastatine.
@@ -2159,7 +2176,6 @@ pub fn is_local_form(class: &str) -> bool {
         "lotion",
         "shampoing",
     ];
-    let folded = crate::fuzzy::sort_key(class);
     LOCAL
         .iter()
         .any(|v| crate::fuzzy::contains_folded(&folded, v))
@@ -2455,9 +2471,11 @@ mod tests {
             "antifongique topique",
             // Les fiches disent « local » autant que « topique », et
             // dix-neuf boîtes échappaient au filtre pour ce seul mot :
-            // le Kétoderm, cinq anesthésiques, un estrogène vaginal.
+            // le Kétoderm, un estrogène vaginal, des gouttes.
             "antifongique local",
-            "anesthésique local",
+            // L'Emla tient par « crème », et c'est ce qui le distingue
+            // des cinq anesthésiques injectables ci-dessous.
+            "anesthésique local — crème/patch",
             "corticoïde à action locale",
             "estrogène local vaginal",
             "vasoconstricteur nasal",
@@ -2473,6 +2491,20 @@ mod tests {
         // « Roaccutane » contient « cutane », et c'est de
         // l'isotrétinoïne orale.
         assert!(!is_local_form("rétinoïde — tératogène"));
+        // **« anesthésique local » nomme une classe et non une voie.**
+        // Les cinq de la base s'injectent — Xylocaïne, Naropéine,
+        // Marcaïne, Chirocaïne, Scandicaïne — et leur antidote est
+        // l'émulsion lipidique, celui d'une toxicité systémique. Les
+        // faire taire disait d'une lidocaïne injectable qu'elle ne
+        // rencontre aucune enzyme et ne demande aucun examen.
+        assert!(!is_local_form("anesthésique local"));
+        // Et l'Emla reste local, par « crème » : c'est le mot de la
+        // voie, là où « local » était celui de la classe. « patch » n'en
+        // est pas un et n'en sera pas — le Neupro, l'Evra et le
+        // Nicopatch passent tous dans le sang.
+        assert!(is_local_form("anesthésique local — crème/patch"));
+        assert!(!is_local_form("agoniste dopaminergique — patch"));
+        assert!(!is_local_form("contraception — patch"));
         // « localisé » n'est pas une voie : un cancer localisé se traite
         // par la voie générale.
         assert!(!is_local_form("anticancéreux — cancer localisé"));

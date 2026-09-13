@@ -333,6 +333,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les tables, elles, ne l'avaient pas fait.
 
 ### Fixed
+- **« Anesthésique local » nomme une classe, pas une voie**, et les cinq
+  de la base s'injectent. Xylocaïne, Naropéine, Marcaïne, Chirocaïne et
+  Scandicaïne étaient rangées en formes locales par ce seul mot : les
+  sept lectures cliniques se taisaient donc sur elles, comme sur un
+  collyre. Or leur antidote est l'émulsion lipidique, c'est-à-dire
+  l'antidote d'une toxicité **systémique** — la fiche disait déjà le
+  contraire du filtre. C'est la même faute que « localisé », que la
+  fonction écarte depuis le début.
+
+  Le mot est retiré avant l'examen plutôt qu'ajouté à une liste de
+  vetos, et « crème » entre au vocabulaire : l'Emla porte
+  « anesthésique local — crème/patch » et reste une forme locale par sa
+  crème, qui n'est sur aucune autre fiche livrée. « patch » n'y entre
+  pas et n'y entrera pas — le Neupro, l'Evra et le Nicopatch passent
+  tous dans le sang.
 - **La carte vaccinale montrait six loupes sur sept.** L'encéphalite
   japonaise tombait sur une troisième rangée que la bande, plafonnée à
   une part du volet, ne montre pas — et la barre de défilement d'egui
