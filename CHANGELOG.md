@@ -481,6 +481,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   est inefficace à la dose habituelle. C'est pourtant le tableau qu'on
   ouvre quand la question porte justement sur la contraception. Il porte
   la ligne, avec les deux méthodes que l'induction ne touche pas.
+- **Neuf listes de mots cherchés se répétaient**, dont une qui nommait
+  quatre IPP deux fois chacun. Un doublon n'y casse rien — la règle
+  attrape la même boîte deux fois pour le même prix —, et c'est
+  précisément pour cela qu'il s'installe : c'est le résidu d'une
+  expansion de classe en molécules faite deux fois, à deux endroits, par
+  deux mains. Un mot en double est un mot que la relecture suivante
+  croira être un autre. `no_list_of_searched_words_repeats_itself` lit
+  le texte des huit tables et refuse le prochain.
 - **Deux astérisques partaient à l'écran et sur le papier.** Les trois
   tables cliniques ont un test qui refuse le balisage — `RichText`
   n'interprète rien, une astérisque tapée pour appuyer un mot arrive

@@ -555,6 +555,64 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Aucune liste de mots cherchés ne se répète.**
+    ///
+    /// Un doublon dans un `needs` ne casse rien — la règle attrape la
+    /// même boîte deux fois pour le même prix — et c'est précisément
+    /// pourquoi il s'installe. Il en est resté neuf, dont une liste
+    /// d'IPP qui nommait quatre molécules deux fois chacune : c'est le
+    /// résidu d'une expansion de classe en molécules faite deux fois, à
+    /// deux endroits, par deux mains. Un mot en double est un mot que la
+    /// relecture suivante croira être un autre.
+    ///
+    /// Lu dans le **texte** des modules, comme les deux tests d'à côté,
+    /// parce que les `needs` de huit tables n'ont pas le même type et
+    /// que la question, elle, est la même.
+    #[test]
+    fn no_list_of_searched_words_repeats_itself() {
+        const SOURCES: &[(&str, &str)] = &[
+            ("biology.rs", include_str!("biology.rs")),
+            ("crush.rs", include_str!("crush.rs")),
+            ("cyp.rs", include_str!("cyp.rs")),
+            ("gravidity.rs", include_str!("gravidity.rs")),
+            ("hepatic.rs", include_str!("hepatic.rs")),
+            ("renal.rs", include_str!("renal.rs")),
+            ("revue.rs", include_str!("revue.rs")),
+            ("surveillance.rs", include_str!("surveillance.rs")),
+        ];
+        let mut offenders: Vec<String> = Vec::new();
+        for (file, src) in SOURCES {
+            for (i, line) in src.lines().enumerate() {
+                let t = line.trim_start();
+                if t.starts_with("//") {
+                    continue;
+                }
+                // Une liste sur une seule ligne, telle que `cargo fmt`
+                // l'écrit dès qu'elle tient : c'est la forme de toutes
+                // celles de ces tables.
+                let Some(rest) = t
+                    .strip_prefix("needs: &[")
+                    .or_else(|| t.strip_prefix("never: &["))
+                else {
+                    continue;
+                };
+                let mut seen: Vec<&str> = Vec::new();
+                for word in rest.split('"').skip(1).step_by(2) {
+                    if seen.contains(&word) {
+                        offenders.push(format!("{file}:{} — « {word} »", i + 1));
+                    }
+                    seen.push(word);
+                }
+            }
+        }
+        offenders.dedup();
+        assert!(
+            offenders.is_empty(),
+            "un mot cherché deux fois dans la même liste :\n{}",
+            offenders.join("\n")
+        );
+    }
+
     /// **Aucune table statique n'écrit de balisage dans ce qu'elle
     /// dessine**, et la question se pose une fois pour toutes plutôt
     /// qu'une fois par module.

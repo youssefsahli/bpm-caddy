@@ -548,7 +548,7 @@ pub const WATCHES: &[Watch] = &[
         why: "Numération et transaminases tous les trois à six mois. Toute fièvre sous biothérapie fait suspendre l'injection et consulter.",
     },
     Watch {
-        needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "prednisone", "prednisolone", "corticothérapie"],
+        needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "corticothérapie"],
         code: "GLY",
         every_months: 6,
         why: "Une corticothérapie prolongée déséquilibre le diabète et en révèle : glycémie et kaliémie tous les trois à six mois, avec la tension et le poids.",
@@ -579,13 +579,13 @@ pub const WATCHES: &[Watch] = &[
         why: "Une carence en vitamine D entretient l'hyperparathyroïdie et fait échouer le traitement de l'os : elle se corrige avant, et se recontrôle une fois par an.",
     },
     Watch {
-        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole"],
+        needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         code: "MG",
         every_months: 12,
         why: "Hypomagnésémie des IPP au long cours, après un an ou plus : elle empêche de corriger une hypokaliémie et donne crampes, tremblements et troubles du rythme. Elle justifie surtout de rediscuter l'indication.",
     },
     Watch {
-        needs: &["metformine", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole"],
+        needs: &["metformine", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         code: "B12",
         every_months: 24,
         why: "Metformine et IPP au long cours font la carence en vitamine B12, qui se voit d'abord sur le VGM et donne une neuropathie que l'on met sur le compte du diabète.",
