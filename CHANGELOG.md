@@ -158,6 +158,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   désigne par ses présentations, et l'Apokinon porte désormais sa propre
   ligne hépatique, que sa fiche adosse.
 
+  Et « corticoïde » partout où il servait de mot de classe — revue,
+  biologie, surveillance, grossesse : il est dans la classe de tous les
+  dermocorticoïdes et des corticoïdes inhalés, nasaux et ophtalmiques.
+  Une crème levait « hyperglycémie sous corticoïde » et « cortisol bas
+  sous corticothérapie prolongée ». Les corticoïdes généraux sont
+  nommés, et l'hydrocortisone substitutive l'est par sa classe exacte —
+  « corticoïde substitutif », que « dermocorticoïde » ne contient pas.
+
   Deux dernières, sur des lignes de classe trop larges : « tiotr**opium** »
   et « ipratr**opium** » contiennent « opium », de sorte que le Spiriva et
   l'Atrovent recevaient la ligne d'un antalgique opiacé ; et

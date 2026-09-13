@@ -524,7 +524,7 @@ pub const WATCHES: &[Watch] = &[
         why: "Numération et transaminases tous les trois à six mois. Toute fièvre sous biothérapie fait suspendre l'injection et consulter.",
     },
     Watch {
-        needs: &["corticoïde", "prednisone", "prednisolone", "corticothérapie"],
+        needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "prednisone", "prednisolone", "corticothérapie"],
         code: "GLY",
         every_months: 6,
         why: "Une corticothérapie prolongée déséquilibre le diabète et en révèle : glycémie et kaliémie tous les trois à six mois, avec la tension et le poids.",

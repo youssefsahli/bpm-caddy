@@ -807,7 +807,7 @@ const RULES: &[Rule] = &[
         detail: "Une corticothérapie fait monter la glycémie dès les premiers jours, surtout en fin de journée avec une prise matinale, et un diabète équilibré ne l'est plus. Prévenir le patient d'augmenter l'autosurveillance pendant la cure et de ne pas s'inquiéter d'une baisse à l'arrêt : c'est l'adaptation qui suit la corticothérapie, et elle se fait avec le prescripteur. Chez un patient non diabétique connu, une cure prolongée justifie de vérifier la glycémie.",
     },
     Rule {
-        kind: Kind::Duplicate(&["corticoïde", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol"], 3),
+        kind: Kind::Duplicate(&["corticoïde", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif"], 3),
         severity: Severity::Info,
         title: "Charge corticoïde cumulée",
         detail: "Trois corticoïdes ou plus sur une même ordonnance — inhalé, nasal, cutané, collyre, oral — s'additionnent : chacun pris isolément est faible, la somme ne l'est pas. La freination surrénalienne, la fragilité cutanée, la cataracte et l'ostéoporose se jugent sur le total et non sur une ligne. Vérifier que chacun garde une indication actuelle et une durée, en particulier le dermocorticoïde renouvelé sans limite.",

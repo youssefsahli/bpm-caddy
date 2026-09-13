@@ -621,6 +621,9 @@ pub const TABLE: &[Advice] = &[
             "solupred",
             "célestène",
             "médrol",
+            // La classe exacte de l'hydrocortisone substitutive, et
+            // d'elle seule : « dermocorticoïde » ne la contient pas.
+            "corticoïde substitutif",
         ],
         label: "Corticoïdes par voie générale",
         pregnancy: Level::Compatible,
