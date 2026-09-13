@@ -42393,6 +42393,11 @@ mod tests {
         // c'est la fenêtre sur laquelle « ce qui sort » se lit, et un
         // registre de démonstration dont la dernière ligne date de cinq
         // mois montre un écran vide.
+        // Une commande de réassort avant les deux dernières
+        // délivrances : sans elle le solde passait sous le seuil, et la
+        // liste de contrôle s'ouvrait avec ses quatre produits en
+        // rouge — un écran où tout alerte n'apprend plus rien.
+        write(skenan, "ENTREE", 28.0, day(8, 1), 0, 0.0);
         write(skenan, "SORTIE", 14.0, day(8, 20), pid, 0.0);
         // **Et une qui revient trop tôt.** L'onglet « Vigilance » pose
         // trois questions au registre ; sans une délivrance rapprochée,

@@ -238,7 +238,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   s'écrire sur treize caractères — une grille ne sait pas faire cela,
   puisque ses colonnes s'alignent d'une rangée à l'autre, donc la forme
   repliée n'est pas une grille : un bloc par question, comme la fiche
-  d'un acte.
+  d'un acte. Un réassort est semé avec elle : sans lui le
+  solde du produit tombait sous son seuil et la liste de contrôle
+  s'ouvrait avec ses quatre produits en rouge, ce qui n'apprend plus
+  rien.
 - **La tête du registre coupait le solde en deux.** Trois fautes
   cumulées, toutes dans le même sens : le plafond gardait *trois*
   rangées de contrôles là où il n'y en a que deux — trente pixels
