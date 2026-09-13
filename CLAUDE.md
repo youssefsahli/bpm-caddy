@@ -1110,8 +1110,8 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_DB=<path>` — database path override
 - `BPM_CADDY_PASSWORD=<pw>` — unlock silently at startup
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
-- `BPM_CADDY_START_VIEW=dashboard|patient|drugs|drug_card|agenda|agenda_day|
-  agenda_filtre|agenda_month|planning|protocols|protocol_open|template|options|about|tables|
+- `BPM_CADDY_START_VIEW=search|dashboard|patient|drugs|drug_card|agenda|agenda_day|
+  agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|rein|grossesse|cyp|ddi|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|

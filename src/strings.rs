@@ -555,6 +555,85 @@ livre = "Une phrase qui n'est plus livrée"
         // The team-notes template survives as a multiline value.
         assert!(tr("team_doc_template").contains("## Consignes du jour"));
     }
+    /// **Toute vue documentée est balayée par le passage de fumée.**
+    ///
+    /// `BPM_CADDY_START_VIEW` est la seule façon d'atteindre certaines
+    /// vues — « aide » n'est dans aucune barre d'onglets, « finances »
+    /// n'a pas de porte du tout —, et `smoke.sh` est ce qui tient
+    /// l'interface à la place des tests qu'une vue ne peut pas avoir.
+    /// Une clé documentée mais absente de son tableau est donc une vue
+    /// que **rien** n'ouvre jamais, ni la main ni la garde.
+    ///
+    /// Deux l'étaient : « search » et « planning_mois », toutes deux
+    /// vraies clés du code, décrites en prose plus bas dans CLAUDE.md et
+    /// absentes de la liste qu'on lit pour savoir ce qui existe.
+    #[test]
+    fn every_documented_view_is_swept_by_the_smoke_pass() {
+        const CLAUDE: &str = include_str!("../CLAUDE.md");
+        const SMOKE: &str = include_str!("../scripts/smoke.sh");
+        // `smoke.sh` nomme aussi ses **formes** dans ce tableau —
+        // « drug_edit » et « drug_kin » ne sont pas des vues mais des
+        // variables d'environnement posées par-dessus `drug_card`, et
+        // CLAUDE.md les documente à leur place, avec elles.
+        const SHAPES_NOT_VIEWS: &[&str] = &["drug_edit", "drug_kin"];
+
+        let list = CLAUDE
+            .split_once("BPM_CADDY_START_VIEW=")
+            .expect("la liste des vues dans CLAUDE.md")
+            .1
+            .split_once('`')
+            .expect("la liste se ferme par une apostrophe inverse")
+            .0;
+        let documented: Vec<&str> = list
+            .split(['|', '\n', ' '])
+            .map(str::trim)
+            .filter(|k| !k.is_empty())
+            .collect();
+        assert!(
+            documented.len() > 60,
+            "seulement {} vues lues dans CLAUDE.md : le format de la liste \
+             a changé, et ce test ne lit plus rien",
+            documented.len()
+        );
+
+        let swept_block = SMOKE
+            .split_once("views=(")
+            .expect("le tableau des vues dans smoke.sh")
+            .1
+            .split_once(')')
+            .expect("le tableau se ferme")
+            .0;
+        let swept: Vec<&str> = swept_block
+            .split_whitespace()
+            .filter(|k| !k.is_empty())
+            .collect();
+
+        let mut missing: Vec<&str> = documented
+            .iter()
+            .filter(|k| !swept.contains(k))
+            .copied()
+            .collect();
+        missing.sort_unstable();
+        missing.dedup();
+        assert!(
+            missing.is_empty(),
+            "vues documentées que `smoke.sh` n'ouvre jamais : {missing:?}"
+        );
+
+        let mut undocumented: Vec<&str> = swept
+            .iter()
+            .filter(|k| !documented.contains(k) && !SHAPES_NOT_VIEWS.contains(k))
+            .copied()
+            .collect();
+        undocumented.sort_unstable();
+        undocumented.dedup();
+        assert!(
+            undocumented.is_empty(),
+            "vues ouvertes par `smoke.sh` que CLAUDE.md ne liste pas : \
+             {undocumented:?}"
+        );
+    }
+
     /// **Les chiffres que la documentation affirme, le code les tient.**
     ///
     /// `CLAUDE.md` et `docs/CONTENU.md` sont lus avant chaque décision,
