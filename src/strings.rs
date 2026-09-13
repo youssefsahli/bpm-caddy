@@ -820,6 +820,71 @@ livre = "Une phrase qui n'est plus livrée"
         );
     }
 
+    /// **Ce que « Aller à… » cherche est une liste, et une liste se
+    /// confronte à son registre.**
+    ///
+    /// Le manuel l'énumérait à la main et en avait perdu deux sur onze :
+    /// les vues elles-mêmes et les textes imprimés. Une liste recopiée
+    /// vieillit là où personne ne la relit — la règle que ce dépôt
+    /// applique déjà au mode d'emploi imprimé et aux comptes de
+    /// `CLAUDE.md`.
+    ///
+    /// Les mots ne peuvent pas être cherchés tels quels : le registre
+    /// dit « patient » là où le manuel écrit « dossiers ». La table
+    /// ci-dessous porte donc les deux, et un douzième genre ajouté à
+    /// `strings.fr.toml` fait tomber le test tant qu'il n'y figure pas.
+    #[test]
+    fn everything_the_jump_box_searches_is_named_in_the_manual() {
+        const AIDE: &str = include_str!("../assets/aide.md");
+        // Le genre tel que le registre le nomme, et le mot que le manuel
+        // emploie pour la même chose.
+        const SAID: &[(&str, &str)] = &[
+            ("goto_kind_view", "les vues"),
+            ("goto_kind_patient", "les dossiers"),
+            ("goto_kind_drug", "les fiches"),
+            ("goto_kind_table", "les tables de conversion"),
+            ("goto_kind_prep", "les préparations"),
+            ("goto_kind_protocol", "les protocoles"),
+            ("goto_kind_dispositif", "les dispositifs"),
+            ("goto_kind_stup", "le registre"),
+            ("goto_kind_carnet", "les carnets de suivi"),
+            ("goto_kind_script", "les scripts"),
+            ("goto_kind_text", "les textes imprimés"),
+        ];
+        let sentence = AIDE
+            .split("« Aller à… » cherche partout")
+            .nth(1)
+            .expect("la phrase du « Aller à… » a disparu du manuel")
+            .split("\n\n")
+            .next()
+            .unwrap_or_default()
+            // Le manuel est enveloppé à la main : « les\ndossiers » est
+            // le même mot que « les dossiers ».
+            .replace('\n', " ");
+        for (key, said) in SAID {
+            assert!(
+                shipped().contains_key(*key),
+                "{key} n'est plus dans la table des chaînes : le manuel parle \
+                 d'un genre que la boîte ne cherche plus"
+            );
+            assert!(
+                sentence.contains(said),
+                "« Aller à… » cherche {key} et le manuel ne dit pas « {said} »"
+            );
+        }
+        let known: usize = shipped()
+            .keys()
+            .filter(|k| k.starts_with("goto_kind_"))
+            .count();
+        assert_eq!(
+            known,
+            SAID.len(),
+            "la boîte cherche {known} genres et le manuel en nomme {} : \
+             ajouter le manquant des deux côtés",
+            SAID.len()
+        );
+    }
+
     /// **Un nombre décimal s'écrit à la virgule.**
     ///
     /// L'écran est en français et sept endroits l'écrivaient à

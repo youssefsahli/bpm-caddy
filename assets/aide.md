@@ -30,10 +30,11 @@ non recopiée ici.
 
 # Trouver quelque chose
 
-« Aller à… » cherche partout d'un seul champ : dossiers, fiches, tables
-de conversion, préparations, protocoles, dispositifs, registre, carnets
-de suivi, scripts. Tapez ce dont vous vous souvenez — le nom, un bout du
-nom, ou les initiales.
+« Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
+dossiers, les fiches, les tables de conversion, les préparations, les
+protocoles, les dispositifs, le registre, les carnets de suivi, les
+scripts et les textes imprimés. Tapez ce dont vous vous souvenez — le
+nom, un bout du nom, ou les initiales.
 
 La recherche ignore la casse et les accents, et accepte les lettres dans
 l'ordre sans qu'elles se suivent : « jndp » retrouve Jean Dupont.

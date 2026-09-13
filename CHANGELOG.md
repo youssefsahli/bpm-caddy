@@ -183,6 +183,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Le manuel avait perdu deux des onze genres que « Aller à… »
+  cherche** : les vues elles-mêmes et les textes imprimés. Une liste
+  recopiée à la main vieillit là où personne ne la relit ; celle-ci est
+  désormais confrontée au registre des `goto_kind_*`, avec le mot que le
+  manuel emploie en regard — il dit « dossiers » là où le code dit
+  « patient » —, et un douzième genre fera tomber le test tant qu'il n'y
+  figurera pas.
 - **Cinq tables cliniques exigent désormais que chacune de leurs lignes
   rencontre une fiche livrée.** `biology`, `revue` et `surveillance` le
   demandaient déjà ; `renal`, `hepatic`, `gravidity`, `cyp` et `crush`
