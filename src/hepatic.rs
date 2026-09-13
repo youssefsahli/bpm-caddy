@@ -24,6 +24,22 @@
 //! stade et la tairait aux autres, ce qui est faux des deux côtés. Ils
 //! ne sont pas dans cette table, et leur fiche le dit là où c'est vrai.
 //!
+//! **Ce module et la table de référence « Foie » se répondent, et ne se
+//! recouvrent pas.** La table est une page curée, sourcée EASL et HAS,
+//! qui parle de la cirrhose ; celui-ci répète les paliers des RCP,
+//! molécule par molécule. Les confronter les a trouvés d'accord partout
+//! où ils se rencontrent — les paliers des AOD, l'absence délibérée des
+//! statines, le choix des benzodiazépines qui ne passent pas par
+//! l'oxydation — et a montré un trou, celui des associations
+//! paracétamol-opioïde. Une différence subsiste et elle est **voulue** :
+//! la table écrit que les AINS sont à éviter en cirrhose « quelle qu'en
+//! soit la voie, gel compris chez le patient décompensé », là où ce
+//! module ne connaît que les formes systémiques. La raison est la règle
+//! d'adossement : les fiches des formes locales ne parlent pas du foie,
+//! et une ligne d'ici doit pouvoir se corriger en corrigeant une fiche.
+//! La nuance de la cirrhose décompensée vit donc dans la table, qui est
+//! faite pour cela. Ne pas « réparer » l'un avec l'autre.
+//!
 //! **Et cette table est indexée sur la molécule, non sur la
 //! présentation.** C'est une limite, et elle a un nom : l'azithromycine
 //! n'y est pas, parce qu'« azithromycine » attrape aussi l'Azyter, qui
