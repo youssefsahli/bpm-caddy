@@ -5,6 +5,19 @@ chaque chose est écrite, ce qui la contrôle, et ce qui se passe quand on
 en ajoute. Il s'adresse à qui reprend le projet — y compris à moi-même
 dans six mois.
 
+**Avant d'ajouter un mot cherché (`needs`), regardez ce qu'il attrape.**
+Les tables cliniques comparent des sous-chaînes sur un texte replié
+**sans espaces** — nom, DCI, classe et étiquettes collés — et c'est ce
+repli qui fabrique les collisions : « Apidra insuline glulisine » devient
+« apidrainsulineglulisine », qui contient « ains ». Deux insulines ont
+ainsi porté la conduite des AINS, au rein comme à la grossesse ;
+« grippe » contient « ipp », d'où le Tamiflu lu comme un IPP ; et
+« diméthylfumarate » contient « imeth », d'où le Skilarence lu comme du
+méthotrexate dans trois modules à la fois. **On nomme les molécules, pas
+l'abréviation de la classe** — et une table peut être parfaitement
+cohérente avec elle-même tout en se trompant de fiche, ce que seule la
+rencontre avec les fiches livrées révèle.
+
 Deux règles valent partout :
 
 1. **Ce que l'équipe écrit dans l'application n'est jamais réécrit par
