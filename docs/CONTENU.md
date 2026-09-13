@@ -690,6 +690,20 @@ Deux règles valent partout :
 - **Trois verdicts et non deux** : oui, non, et « sous condition » — la
   gélule s'ouvre, les microgranules ne se croquent pas. C'est le cas le
   plus fréquent en gériatrie.
+- **Le filet, en dernier** : deux règles générales lisent ce que la
+  boîte dit d'elle-même — « LP », « Chrono », « Continus », « libération
+  prolongée » d'un côté ; « gastro-résistant », « entérosoluble » de
+  l'autre. Elles ne répondent de rien dans la base livrée, dont les
+  fiches portent le nom nu (« Skenan », « Diamicron ») ; elles répondent
+  de ce que l'officine écrit sur ses propres fiches et de ce qu'on tape
+  au comptoir, qui est le nom de la boîte. **Elles restent les
+  dernières** — plus haut, elles refuseraient le Skenan LP, dont la
+  gélule s'ouvre justement, et le Kardégic, qui est gastro-résistant et
+  s'écrase quand même parce que sa fiche le dit. Un test le tient. Le
+  sens de la conversion est le seul acceptable : un « à vérifier »
+  devenu « ne pas écraser » ne coûte qu'un appel, l'inverse casse la
+  libération. Et le mot est « LP » **avec son espace de tête**, parce
+  qu'« alprazolam » le contient sans elle.
 - **Ajouter une présentation** : une entrée `Rule`, et **au bon rang**.
   La table est lue dans l'ordre, la première qui accroche gagne, donc
   une entrée précise va *avant* une entrée large — un test le vérifie,
