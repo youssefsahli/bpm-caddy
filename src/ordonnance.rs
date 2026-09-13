@@ -405,4 +405,59 @@ mod tests {
             }
         }
     }
+    /// **Toute phrase qui part chez le patient s'édite, et toute
+    /// réécriture arrive sur le papier.**
+    ///
+    /// Les deux sens, comme pour les huit autres documents réécrivables.
+    /// Une phrase absente de `phrases()` ne peut pas être corrigée ; une
+    /// phrase absente de la résolution **s'imprime telle que livrée
+    /// pendant qu'on croit l'avoir corrigée**, ce qui est pire. Ce
+    /// document-ci était le seul du registre à n'avoir ni l'un ni
+    /// l'autre écrit noir sur blanc.
+    #[test]
+    fn every_ordonnance_advice_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert!(!listed.is_empty(), "aucune phrase à éditer");
+        // Une adresse par phrase, et pas deux phrases à une adresse :
+        // la seconde hériterait de la réécriture de la première.
+        let mut keys: Vec<&String> = listed.iter().map(|(k, ..)| k).collect();
+        keys.sort();
+        let before = keys.len();
+        keys.dedup();
+        assert_eq!(before, keys.len(), "deux phrases à une même adresse");
+
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        // Tout coché : les deux familles de lignes partent sur la page.
+        let choices = Choice {
+            conseils: true,
+            temps_de_prise: true,
+            ..Choice::default()
+        };
+        let mut seen = 0usize;
+        for (_, protocol) in protocols() {
+            for line in choices.advice(protocol, &over) {
+                assert!(line.starts_with("réécrit:"), "{line}");
+                seen += 1;
+            }
+            // Et sans réécriture, ce sont les mots livrés.
+            let plain = choices.advice(protocol, &crate::content::Overrides::default());
+            assert_eq!(
+                plain.len(),
+                protocol.conseils.len() + protocol.temps_de_prise.len()
+            );
+            for line in &plain {
+                assert!(!line.starts_with("réécrit:"), "{line}");
+            }
+        }
+        assert_eq!(
+            seen,
+            listed.len(),
+            "toutes les phrases listées doivent atteindre la page"
+        );
+    }
 }

@@ -489,6 +489,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « jusqu'à 375 mg par jour avec les formes à libération immédiate en
   plusieurs prises ». Toutes les autres lignes LP de la table nommaient
   déjà la forme ; c'était la dernière.
+- **Deux documents réécrivables n'avaient pas leur test apparié.** Sur
+  les onze sources du registre, l'ordonnance du TROD et les conseils du
+  voyageur étaient les seules sans le test qui vérifie les deux sens :
+  toute phrase listée pour l'édition, toute réécriture arrivant sur la
+  page. Les deux étaient correctement câblées — aucune officine n'a
+  perdu une réécriture —, mais rien ne le disait, et c'est justement ce
+  qui manque le jour où quelqu'un déplace la résolution. Vérifié en
+  court-circuitant la résolution des conseils : le test s'en aperçoit.
+  Il vérifie aussi qu'une adresse ne sert qu'une phrase.
 - **Rien ne se sème dans le vide.** Une ligne de posologie, une conduite
   de classe et une monographie sont rattachées à une fiche **par son
   nom**, et le semis les joint par ce nom : une marque mal orthographiée

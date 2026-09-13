@@ -2467,4 +2467,63 @@ mod tests {
             assert_eq!(c.code.len(), 2, "{} : code ISO à deux lettres", c.name);
         }
     }
+    /// **Toute phrase du panneau voyageur s'édite, et toute réécriture
+    /// arrive à l'écran.**
+    ///
+    /// Les deux sens, comme pour les autres documents réécrivables.
+    /// Celui-ci ne s'imprime pas — il se lit au comptoir, et
+    /// `vaccines::detail` est son unique passage —, ce qui ne change
+    /// rien à la règle : une phrase absente de `phrases()` ne se corrige
+    /// pas, une phrase absente de la résolution s'affiche telle que
+    /// livrée pendant qu'on croit l'avoir corrigée.
+    ///
+    /// **Une adresse par phrase.** Le repère est le code du vaccin :
+    /// deux recommandations qui le partageraient hériteraient l'une de
+    /// la réécriture de l'autre, et c'est le défaut que les autres
+    /// tables tiennent par un test d'unicité. Les neuf recommandations
+    /// portent neuf codes distincts ; le test le vérifie au lieu de le
+    /// supposer.
+    #[test]
+    fn every_travel_phrase_is_editable_and_every_rewrite_arrives() {
+        let listed = phrases();
+        assert!(!listed.is_empty(), "aucune phrase à éditer");
+        let mut keys: Vec<&String> = listed.iter().map(|(k, ..)| k).collect();
+        keys.sort();
+        let before = keys.len();
+        keys.dedup();
+        assert_eq!(
+            before,
+            keys.len(),
+            "deux recommandations à une même adresse : la seconde \
+             hériterait de la réécriture de la première"
+        );
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        let mut seen = 0usize;
+        for reco in RECOS {
+            if reco.detail.trim().is_empty() {
+                continue;
+            }
+            assert!(
+                detail(reco, &over).starts_with("réécrit:"),
+                "« {} » ne reçoit pas sa réécriture",
+                reco.code
+            );
+            // Et sans réécriture, les mots livrés, au caractère près.
+            assert_eq!(
+                detail(reco, &crate::content::Overrides::default()),
+                reco.detail
+            );
+            seen += 1;
+        }
+        assert_eq!(
+            seen,
+            listed.len(),
+            "toute phrase listée doit être atteinte par la résolution"
+        );
+    }
 }

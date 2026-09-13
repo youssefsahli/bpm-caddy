@@ -985,6 +985,13 @@ subir.
   Sans les deux sens : une phrase absente de `phrases()` ne peut pas
   être corrigée, une phrase absente de `resolve()` part telle qu'elle
   est livrée alors qu'on la croit corrigée, ce qui est pire.
+  **Le test apparié est la moitié qu'on oublie.** Sur les onze sources
+  du registre, deux n'en avaient pas : l'ordonnance du TROD et les
+  conseils du voyageur. Les deux étaient correctement câblées — rien ne
+  manquait au patient —, mais rien ne le disait, et c'est précisément ce
+  qui manque le jour où quelqu'un déplace la résolution. Le test vérifie
+  aussi qu'**une adresse ne sert qu'une phrase** : deux qui la
+  partageraient, la seconde hériterait de la réécriture de la première.
 - **Deux portes, un seul éditeur** : « Réécrire » dans la vue qui montre
   le document, et l'écran « Textes imprimés » qui parcourt le registre.
   Les deux appellent le `phrases()` du module ; deux listes des mêmes
