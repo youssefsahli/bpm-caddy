@@ -243,8 +243,8 @@ Deux règles valent partout :
   canoniques, et pour chacune les libellés qu'on rencontre réellement
   dans le champ `class` des fiches.
 - **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
-  fiche est du texte libre et il a dérivé — 495 libellés pour 851
-  fiches, dont 331 sur une seule. Réécrire les 851 fiches écraserait ce
+  fiche est du texte libre et il a dérivé — 495 libellés pour 862
+  fiches, dont 330 sur une seule. Réécrire les 862 fiches écraserait ce
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où
   elle se voit.
@@ -380,10 +380,10 @@ Deux règles valent partout :
   la compacte, on l'essaie en copie — alors que le registre est une
   pièce comptable à conserver dix ans, qu'un contrôle demande seule.
 - **Le catalogue est livré, le registre ne l'est pas.**
-  `ordonnancier::CATALOGUE` porte 106 présentations du marché français
-  en 12 familles, avec le dosage, l'unité de comptage, la durée maximale
+  `ordonnancier::CATALOGUE` porte 158 présentations du marché français
+  en 13 familles, avec le dosage, l'unité de comptage, la durée maximale
   de prescription et la règle de la famille. On y **choisit** : une base
-  livrée avec 106 produits suivis serait 106 soldes à zéro et 106
+  livrée avec 158 produits suivis serait 158 soldes à zéro et 158
   « jamais compté » sur la liste de contrôle. Un produit qui n'y est pas
   s'inscrit quand même, sous le libellé qu'on tape.
   - **Ajouter une présentation** : une ligne dans la famille qui porte

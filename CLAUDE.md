@@ -124,7 +124,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   table's *order*, since the first row that matches wins: it earned its
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
-  `src/gravidity.rs` (pregnancy and breastfeeding as a level: thirty-five
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: thirty-six
   molecules, each with a `never` — the same veto as `renal.rs`, for the
   same reason: a collyre, a pommade or a gel of a systemic molecule
   falls into its row and wears a level written for the general route.
@@ -182,7 +182,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   collyre does slow the heart — it is that one line to reopen, with a
   word in the rule rather than an omission),
   There is no `stats` module: the figures the « Statistiques » view
-  shows are counts over lists the session already holds (the 851 cards,
+  shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only
   counted would be a module that only imports. What *is* worth writing
   down: the aggregate queries are covered by
@@ -190,7 +190,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 772 printed phrases the officine may rewrite —
+  `src/content.rs` (the 950 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -343,7 +343,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   never in the draw loop),
   `src/classes.rs` (the therapeutic classes: what they are and which of
   sixteen families they sit under. The `class` field of a card is free
-  text and it drifted — **495 distinct labels over 851 cards, 331 of
+  text and it drifted — **495 distinct labels over 862 cards, 330 of
   them on a single card** — and the drift was not cosmetic: `anti-TNF`
   and `anti-TNF alpha` were two classes, so Humira's chip said seven
   neighbours instead of ten and Remicade was nowhere, with nothing
@@ -374,13 +374,13 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   further line names it and undoes exactly what it did — never the
   quantity that line carries, which is the one thing that may have been
   wrong), the dispensing number, the inventory gap, and what to go and
-  count. Plus the **catalogue**: 106 presentations of the French market
-  in 12 families, each with its dosage, its counting unit, the maximum
+  count. Plus the **catalogue**: 158 presentations of the French market
+  in 13 families, each with its dosage, its counting unit, the maximum
   prescription length in days and the rule its family carries. A rule
   table, not seeded content — the officine *picks* from it, because a
-  base shipped with 106 followed products is 106 zero balances and a
-  control list nobody opens again. A box size is **not** in it: 106
-  packagings written down are 106 multiplications applied blind to every
+  base shipped with 158 followed products is 158 zero balances and a
+  control list nobody opens again. A box size is **not** in it: 158
+  packagings written down are 158 multiplications applied blind to every
   reception, right the day they are written and wrong the day a
   marketing authorisation holder repackages. The officine says it once,
   looking at the box — the same rule as a barcode, for the same reason.
@@ -1264,7 +1264,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 772 phrases were not, and they were exactly the ones
+always editable; 950 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

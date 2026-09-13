@@ -48580,23 +48580,6 @@ mod tests {
         }
     }
 
-    /// **Une taille de texte non plus.**
-    ///
-    /// `RichText::size(11.0)` est un nombre de pixels, point : l'échelle
-    /// de `[ui] text_scale` passe par le style, et un littéral ne passe
-    /// pas par le style. Quatre cent sept d'entre eux faisaient qu'à
-    /// 1,6 les légendes, les comptes, les dates du registre et les
-    /// libellés à côté de chaque chiffre restaient à onze pixels pendant
-    /// que les boutons autour d'eux grandissaient de moitié — c'est-à-
-    /// dire que le texte le plus petit, celui que quelqu'un qui
-    /// agrandit la typographie a le plus besoin de voir grandir, était
-    /// le seul à ne pas bouger. `motif::pt(ui, 11.0)`, c'est ce onze,
-    /// mis à l'échelle.
-    ///
-    /// Et **la mesure passe par la même fonction que le dessin** :
-    /// mesurée à onze et peinte à dix-huit, une colonne élide tout ce
-    /// qu'elle porte.
-
     /// **Un plafond constant ne se fie jamais à un plancher calculé.**
     ///
     /// `f32::clamp` **panique** quand le minimum dépasse le maximum, et
@@ -48651,6 +48634,22 @@ mod tests {
         );
     }
 
+    /// **Une taille de texte non plus.**
+    ///
+    /// `RichText::size(11.0)` est un nombre de pixels, point : l'échelle
+    /// de `[ui] text_scale` passe par le style, et un littéral ne passe
+    /// pas par le style. Quatre cent sept d'entre eux faisaient qu'à
+    /// 1,6 les légendes, les comptes, les dates du registre et les
+    /// libellés à côté de chaque chiffre restaient à onze pixels pendant
+    /// que les boutons autour d'eux grandissaient de moitié — c'est-à-
+    /// dire que le texte le plus petit, celui que quelqu'un qui
+    /// agrandit la typographie a le plus besoin de voir grandir, était
+    /// le seul à ne pas bouger. `motif::pt(ui, 11.0)`, c'est ce onze,
+    /// mis à l'échelle.
+    ///
+    /// Et **la mesure passe par la même fonction que le dessin** :
+    /// mesurée à onze et peinte à dix-huit, une colonne élide tout ce
+    /// qu'elle porte.
     #[test]
     fn no_font_size_is_written_in_pixels() {
         const SOURCE: &str = include_str!("app.rs");
