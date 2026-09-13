@@ -556,7 +556,8 @@ add clicking and typing; it is not the price of entry.
 - **The route is a question every molecule-keyed table has to ask, and
   it is asked in one place.** `classes::is_local_form` reads a card's
   *class* — « collyre — AINS », « dermocorticoïde fort », « antifongique
-  topique », « antifongique **local** », « anesthésique local » — and every clinical table consults it, because all seven are
+  topique », « antifongique **local** », « anesthésique local — crème »
+  — and every clinical table consults it, because all seven are
   keyed on the **molecule** and a local form of a systemic molecule
   falls straight into its row. Shipped instances found in one sweep on
   2026-09-13: seven printed surveillance lines (a lithiémie demanded for
@@ -565,9 +566,16 @@ add clicking and typing; it is not the price of entry.
   renal conducts, one CYP crossing. The older remedies were amputation
   (indométacine lost its renal row so Indocollyre would not have one;
   kétoconazole left the CYP table for Kétoderm) and they cost a true
-  row each time. Three mots are deliberately **out** of the vocabulary —
-  « sous-cutané », « percutané », « gel » alone — because heparin, an
-  estradiol gel and Duodopa all reach the blood. A local form is not
+  row each time. Four mots are deliberately **out** of the vocabulary —
+  « sous-cutané », « percutané », « patch », « gel » alone — because
+  heparin, an estradiol gel, the Neupro and Duodopa all reach the blood.
+  And « anesthésique local » is struck from the class *before* the words
+  are looked for: it names a class and not a route, and the five in the
+  base are injected — their antidote is the lipid emulsion, the antidote
+  of a **systemic** toxicity, so one column of the referential was
+  already contradicting the filter. Emla keeps its local status through
+  « crème », which no other shipped card carries. Same category error as
+  « localisé », struck for the same reason. A local form is not
   automatically harmless either: a beta-blocker collyre slows the heart,
   Sterdex keeps its « éviter » because its own card is cautious, and
   `renal`/`gravidity` carry a per-row `never` for exactly those
