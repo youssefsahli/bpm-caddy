@@ -158,6 +158,21 @@ pub fn trn(key: &'static str, args: &[&dyn std::fmt::Display]) -> String {
     out
 }
 
+/// Un nombre décimal **à la française** : la virgule, jamais le point.
+///
+/// Sept endroits l'écrivaient à l'anglaise sur un écran en français —
+/// « 15.00 € » sur l'infobulle d'un honoraire et dans les Options,
+/// « 1.2 Mo » sur une pièce scannée, « 6.3 » mégaoctets dans « À
+/// propos », « accumulation ×2.0 » au comptoir, et la demi-vie d'une
+/// fiche. C'est le même repli que `codex::format_quantity` fait depuis
+/// toujours pour les quantités ; il manquait partout ailleurs.
+///
+/// Les entiers n'ont pas de séparateur décimal et ne passent donc pas
+/// par ici : `{v:.0}` reste écrit tel quel.
+pub fn decimal(value: f64, places: usize) -> String {
+    format!("{value:.places$}").replace('.', ",")
+}
+
 /// One-placeholder convenience over [`trn`].
 pub fn trf(key: &'static str, value: impl std::fmt::Display) -> String {
     trn(key, &[&value])
@@ -802,6 +817,53 @@ livre = "Une phrase qui n'est plus livrée"
             undocumented.is_empty(),
             "vues ouvertes par `smoke.sh` que CLAUDE.md ne liste pas : \
              {undocumented:?}"
+        );
+    }
+
+    /// **Un nombre décimal s'écrit à la virgule.**
+    ///
+    /// L'écran est en français et sept endroits l'écrivaient à
+    /// l'anglaise : « 15.00 € » sur l'infobulle d'un honoraire et dans
+    /// les Options, « 1.2 Mo » sur une pièce scannée, « 6.3 »
+    /// mégaoctets dans « À propos », « accumulation ×2.0 » au comptoir,
+    /// la demi-vie sur deux fiches. Aucun n'est visible sur une capture
+    /// prise au bon endroit — ce sont des infobulles et des coins
+    /// d'écran —, et c'est exactement ce qu'un lint attrape.
+    ///
+    /// `{v:.0}` reste permis : un entier n'a pas de séparateur décimal.
+    /// `bulletin.rs` n'est pas lu : ses `{:.2}` sont de la syntaxe PDF,
+    /// où le point est la seule écriture valable.
+    #[test]
+    fn no_decimal_number_is_written_with_an_english_point() {
+        const SOURCES: [(&str, &str); 3] = [
+            ("app.rs", include_str!("app.rs")),
+            ("scans.rs", include_str!("scans.rs")),
+            ("caisse.rs", include_str!("caisse.rs")),
+        ];
+        let mut found = Vec::new();
+        for (name, src) in SOURCES {
+            for (n, line) in src.lines().enumerate() {
+                let trimmed = line.trim_start();
+                // Les tests écrivent des attendus, et un attendu porte
+                // justement la virgule qu'on exige ailleurs.
+                if trimmed.starts_with("//") || trimmed.starts_with("///") {
+                    continue;
+                }
+                if !(line.contains(":.1}") || line.contains(":.2}") || line.contains(":.3}")) {
+                    continue;
+                }
+                // Le repli explicite est la réponse attendue, et
+                // `strings::decimal` le fait pour tout le monde.
+                if line.contains("replace('.'") || line.contains("decimal(") {
+                    continue;
+                }
+                found.push(format!("{name}:{}", n + 1));
+            }
+        }
+        assert!(
+            found.is_empty(),
+            "un nombre décimal écrit au point sur un écran en français : {found:?} — \
+             passer par `strings::decimal`"
         );
     }
 

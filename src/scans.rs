@@ -249,7 +249,8 @@ pub fn human_size(bytes: u64) -> String {
     if kb < 1024.0 {
         return format!("{kb:.0} Ko");
     }
-    format!("{:.1} Mo", kb / 1024.0)
+    // La virgule décimale, comme partout ailleurs sur cet écran.
+    format!("{} Mo", crate::strings::decimal(kb / 1024.0, 1))
 }
 
 /// La commande du scanner, avec le chemin de sortie mis à sa place.
@@ -460,7 +461,8 @@ mod tests {
         assert_eq!(human_size(0), "0 o");
         assert_eq!(human_size(512), "512 o");
         assert_eq!(human_size(2048), "2 Ko");
-        assert_eq!(human_size(1024 * 1024), "1.0 Mo");
-        assert_eq!(human_size(3 * 1024 * 1024 + 512 * 1024), "3.5 Mo");
+        // La virgule, et non le point : l'écran est en français.
+        assert_eq!(human_size(1024 * 1024), "1,0 Mo");
+        assert_eq!(human_size(3 * 1024 * 1024 + 512 * 1024), "3,5 Mo");
     }
 }

@@ -723,6 +723,20 @@ pub fn column<R>(ui: &mut egui::Ui, width: f32, add: impl FnOnce(&mut egui::Ui) 
         egui::pos2(visible.center().x - w / 2.0, avail.top()),
         Vec2::new(w, avail.height()),
     );
+    // **Et la colonne ne dépasse jamais ce qui est visible.** Dans une
+    // région qui défile latéralement — la vue des tables en est une —
+    // `avail` est la largeur du *contenu* et non celle du hublot, et
+    // `allocate_new_ui` rend un enfant dont le rectangle s'étend
+    // jusque-là : la phrase des calculs enveloppait donc à cinq cent
+    // quatre-vingts pixels dans un volet qui en montre trois cent
+    // quatre-vingt-dix-sept, et « … · accumulat » se lisait coupé net
+    // au bord du panneau. Le calcul, lui, n'a rien à faire défiler de
+    // côté ; c'est le tableau en dessous qui défile, et il est dessiné
+    // hors de cette colonne.
+    let rect = egui::Rect::from_min_max(
+        egui::pos2(rect.left().max(visible.left()), rect.top()),
+        egui::pos2(rect.right().min(visible.right()), rect.bottom()),
+    );
     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(rect), add)
         .inner
 }

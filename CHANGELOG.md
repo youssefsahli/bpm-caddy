@@ -183,6 +183,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   maison ; mais la barre flottante d'egui est invisible tant que le
   pointeur n'en approche pas, si bien que « Poser » — le geste qui
   écrit — se trouvait sous la bande sans que rien ne le dise.
+- **Sept nombres décimaux écrits à l'anglaise sur un écran français.**
+  « 15.00 € » sur l'infobulle d'un honoraire et dans les Options,
+  « 1.2 Mo » sur une pièce scannée, « 6.3 » mégaoctets dans « À
+  propos », « accumulation ×2.0 » au comptoir, la demi-vie sur deux
+  fiches. `strings::decimal` fait le repli — celui que
+  `codex::format_quantity` faisait depuis toujours pour les quantités —
+  et `no_decimal_number_is_written_with_an_english_point` refuse le
+  prochain. Aucun de ces sept n'apparaît sur une capture prise au bon
+  endroit : ce sont des infobulles et des coins d'écran, c'est-à-dire
+  exactement ce qu'un lint attrape et pas l'œil.
+- **Et la phrase des calculs se coupait sur « … · accumulat ».** Les
+  calculs vivent dans la région qui fait défiler les tables de
+  conversion *latéralement* : la largeur disponible y est celle du
+  contenu, pas celle du hublot, si bien qu'un `.wrap()` n'y mord pas —
+  il enveloppe à une largeur qu'on ne voit pas. La galée est posée sur
+  le `clip_rect`, comme `motif::panel` pose la sienne, et ce qui était
+  perdu était le facteur d'accumulation : le second des deux chiffres
+  que la phrase donne.
 - **« Hors référentiel » disait « Aucune fiche dans cette classe ».**
   Sous une classe, la phrase est juste ; sous « hors référentiel »,
   aucune classe n'est choisie — elle parlait d'une sélection qui

@@ -859,7 +859,10 @@ fn drug_monograph(
                                 .size(motif::pt(ui, 10.0))
                                 .color(motif::ink_light()),
                         );
-                        resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
+                        resp.on_hover_text(trf(
+                            "drug_decay_tooltip",
+                            crate::strings::decimal(hl, 1),
+                        ));
                         ui.add_space(4.0);
                     }
                 }
@@ -20717,9 +20720,16 @@ impl App {
                     "itv_fee_tooltip",
                     &[
                         &format!(
-                            "{:.2} €",
-                            row.config
-                                .act_total(row.itv.kind, row.year, row.rank, row.itv.remote)
+                            "{} €",
+                            crate::strings::decimal(
+                                row.config.act_total(
+                                    row.itv.kind,
+                                    row.year,
+                                    row.rank,
+                                    row.itv.remote
+                                ),
+                                2
+                            )
                         ),
                         &(row.year + 1),
                         &row.itv.kind.coverage_rate(),
@@ -20732,7 +20742,10 @@ impl App {
                 && motif::toggle(ui, db::REMOTE_CODE, row.itv.remote)
                     .on_hover_text(trf(
                         "itv_remote_tooltip",
-                        format!("{:.2} €", row.config.billing.teleconsultation),
+                        format!(
+                            "{} €",
+                            crate::strings::decimal(row.config.billing.teleconsultation, 2)
+                        ),
                     ))
                     .clicked()
             {
@@ -28424,14 +28437,36 @@ impl App {
             let t12 = session.calc_half_life.max(0.1);
             let elimination = t12 * 5.0;
             let ratio = 1.0 / (1.0 - 0.5_f64.powf(session.calc_interval.max(0.1) / t12));
-            ui.label(
-                egui::RichText::new(trn(
+            // **Cette phrase enveloppe, et sur le hublot.** Elle
+            // sortait « … · accumulat » sur un volet de comptoir,
+            // coupée net par le bord du panneau : les calculs vivent
+            // dans la région qui fait défiler le tableau *latéralement*,
+            // si bien que la largeur disponible y est celle du contenu —
+            // cinq cent quatre-vingts pixels — et non celle du hublot,
+            // trois cent quatre-vingt-dix-sept. Un `.wrap()` ne mord
+            // donc pas : il enveloppe à une largeur qu'on ne voit pas.
+            // La galée est posée ici, sur le `clip_rect`, comme
+            // `motif::panel` pose la sienne — et ce qui était perdu est
+            // le facteur d'accumulation, c'est-à-dire le second des deux
+            // chiffres que la phrase donne.
+            let room = (ui.clip_rect().right() - ui.cursor().left() - 8.0).max(120.0);
+            let mut job = egui::text::LayoutJob::single_section(
+                trn(
                     "calc_halflife_result",
-                    &[&format!("{elimination:.0}"), &format!("{ratio:.1}")],
-                ))
-                .strong()
-                .color(motif::accent()),
+                    &[
+                        &format!("{elimination:.0}"),
+                        &crate::strings::decimal(ratio, 1),
+                    ],
+                ),
+                egui::TextFormat {
+                    font_id: egui::TextStyle::Body.resolve(ui.style()),
+                    color: motif::accent(),
+                    ..Default::default()
+                },
             );
+            job.wrap.max_width = room;
+            let galley = ui.fonts(|f| f.layout_job(job));
+            ui.add(egui::Label::new(galley));
             ui.add_space(4.0);
             // The curve: fraction remaining over five half-lives.
             let (rect, _) = ui.allocate_exact_size(
@@ -39677,7 +39712,10 @@ impl App {
                                 ],
                                 100.0,
                             );
-                            resp.on_hover_text(trf("drug_decay_tooltip", format!("{hl:.1}")));
+                            resp.on_hover_text(trf(
+                                "drug_decay_tooltip",
+                                crate::strings::decimal(hl, 1),
+                            ));
                             motif::chart::legend(
                                 ui,
                                 &[
@@ -47263,7 +47301,7 @@ impl eframe::App for App {
                                             ui.label(dim(tr("about_db_size")));
                                             ui.label(trf(
                                                 "about_megabytes",
-                                                format!("{:.1}", bytes as f64 / 1e6),
+                                                crate::strings::decimal(bytes as f64 / 1e6, 1),
                                             ));
                                             ui.end_row();
                                         }
@@ -48078,8 +48116,11 @@ impl eframe::App for App {
                                                 }
                                                 ui.label(
                                                     egui::RichText::new(format!(
-                                                        "{:.2} €",
-                                                        fees.year_total(year)
+                                                        "{} €",
+                                                        crate::strings::decimal(
+                                                            fees.year_total(year),
+                                                            2
+                                                        )
                                                     ))
                                                     .strong(),
                                                 );
