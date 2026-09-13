@@ -33430,9 +33430,13 @@ impl App {
             }) = &open
             else {
                 ui.label(
-                    egui::RichText::new(tr("stup_pick"))
-                        .size(motif::pt(ui, 11.5))
-                        .color(motif::text_dim()),
+                    egui::RichText::new(if session.stup_summary.is_empty() {
+                        tr("stup_pick_none")
+                    } else {
+                        tr("stup_pick")
+                    })
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
                 );
                 return;
             };
@@ -35113,9 +35117,13 @@ impl App {
             }) = open
             else {
                 ui.label(
-                    egui::RichText::new(tr("stup_pick"))
-                        .size(motif::pt(ui, 11.5))
-                        .color(motif::text_dim()),
+                    egui::RichText::new(if session.stup_summary.is_empty() {
+                        tr("stup_pick_none")
+                    } else {
+                        tr("stup_pick")
+                    })
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
                 );
                 return;
             };

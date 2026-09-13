@@ -1517,6 +1517,9 @@ stup_register = "Registre"
 stup_write = "Écrire au registre"
 stup_empty = "Aucun produit suivi."
 stup_pick = "Choisissez un produit à gauche."
+# Et quand il n'y en a aucun : envoyer choisir dans une liste vide ne
+# mène nulle part, c'est le catalogue qu'il faut ouvrir.
+stup_pick_none = "Aucun produit suivi : ouvrez « Catalogue… » pour en suivre un premier."
 stup_no_move = "Aucun mouvement inscrit."
 stup_stock = "{} {} au registre"
 stup_last_count = "compté le {}"

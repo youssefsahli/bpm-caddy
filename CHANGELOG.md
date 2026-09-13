@@ -278,6 +278,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   le `clip_rect`, comme `motif::panel` pose la sienne, et ce qui était
   perdu était le facteur d'accumulation : le second des deux chiffres
   que la phrase donne.
+- **Le registre envoyait choisir dans une liste vide.** Sur une base
+  neuve, le volet de gauche dit « Aucun produit suivi. » et les deux
+  panneaux de droite répondaient « Choisissez un produit à gauche. » :
+  ils disent maintenant où aller — « ouvrez « Catalogue… » pour en
+  suivre un premier ».
 - **Le panneau « Aujourd'hui » répondait par un tiret.** Ses deux
   voisins écrivent « Aucun entretien enregistré. » et « Aucune note
   aujourd'hui. » ; celui-là centrait un « — » dans un cadre vide. Sur
