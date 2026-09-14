@@ -798,6 +798,19 @@ add clicking and typing; it is not the price of entry.
   paints that handle from `widgets.*.bg_fill`, which `motif::apply` sets
   to `bg()`, so it is invisible even when shown — the same trap as every
   other recess egui draws for itself.
+- **An empty state is content, and it is the first content anyone
+  reads.** Every sweep here runs on the demo seed, so nothing had ever
+  shown what an officine meets on its *first* launch — starter cards, no
+  patient, no act, no register line. Point `BPM_CADDY_DB` at a new file,
+  skip `seed_demo`, let the app seed itself, and shoot: four faults in
+  ten views. « Aujourd'hui » answered with a centred « — » where its two
+  neighbours write a sentence; the register's right-hand panes said
+  « Choisissez un produit à gauche » beside a list saying there are
+  none; « Prochains RDV » left its frame blank; the caisse month printed
+  the *same* long sentence under both of its captions, which reads as a
+  rendering fault. Three rules fall out: a vide is written in words, it
+  says something **different** in each pane, and when the list it points
+  at is empty it points somewhere else (« ouvrez « Catalogue… » »).
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the
