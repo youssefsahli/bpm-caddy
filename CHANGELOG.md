@@ -8,6 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le nom du centre de la carte cherche sa place.** Il se posait sous
+  le moyeu quoi qu'il y ait, et l'anneau du milieu passe exactement à
+  cette hauteur : sur la carte d'Eliquis, « Eliquis » s'écrivait par-
+  dessus le carré d'un voisin de classe — le carré illisible, le nom
+  illisible, et le voisin privé du sien puisque la place était déjà
+  réservée. Quatre places essayées dans l'ordre (dessous, dessus,
+  droite, gauche), et une plaque de la couleur du puits sous le nom :
+  les rayons quittent le milieu dans toutes les directions, et un nom
+  écrit dessus se lit à travers trois traits.
 - **« Pièces au dossier » dit combien il y en a.** La bande est
   plafonnée par la forme où l'on dépose une pièce — c'est la bonne
   moitié à garder — mais à 1024x700 en texte 1,6 il ne restait que

@@ -45078,13 +45078,10 @@ impl App {
             // par-dessus les noms — et c'est le seul nom de la figure
             // qui ne peut pas être abandonné.
             let hub_font = egui::FontId::proportional(motif::pt(ui, 13.0));
-            let hub_at = egui::pos2(mid.x, mid.y + 24.0);
             let hub_size = ui.fonts(|f| {
                 f.layout_no_wrap(map.centre.1.clone(), hub_font.clone(), motif::text())
                     .size()
             });
-            let mut taken: Vec<egui::Rect> =
-                vec![egui::Align2::CENTER_TOP.anchor_size(hub_at, hub_size)];
             // **Et les carrés, tous, avant le premier nom.** Ils sont
             // peints dans la même boucle que les noms, si bien qu'un
             // carré dessiné au tour suivant passait par-dessus le nom du
@@ -45098,7 +45095,44 @@ impl App {
             // propre carré le *touche*, et deux rectangles qui se
             // touchent se croisent au sens d'egui — les trois quarts des
             // noms se refusaient eux-mêmes.
-            taken.extend(map.nodes.iter().map(|n| box_of(at(n), half + 1.0)));
+            let boxes: Vec<egui::Rect> = map
+                .nodes
+                .iter()
+                .map(|n| box_of(at(n), half + 1.0))
+                .collect();
+            // **Le nom du centre ne peut pas être abandonné, donc il se
+            // déplace.** Les voisins se refusent les uns les autres et
+            // celui qui n'a pas la place n'est pas peint ; celui-ci,
+            // lui, doit s'écrire — alors il cherche sa place au lieu de
+            // se poser dessous quoi qu'il y ait. Sur la carte d'Eliquis
+            // un voisin tombait juste sous le moyeu, et « Eliquis »
+            // s'écrivait par-dessus son carré : le carré illisible, le
+            // nom illisible, et le voisin privé du sien puisque la
+            // place était déjà réservée.
+            //
+            // Dessous d'abord — c'est là qu'on lit le nom d'un moyeu —
+            // puis dessus, puis à droite, puis à gauche. Quatre places
+            // parce que deux ne suffisaient pas : l'anneau du milieu
+            // passe exactement à la hauteur où ce nom s'écrit, et sur la
+            // carte d'Eliquis un voisin de classe occupait le dessous et
+            // un autre le dessus. Si les quatre sont prises, dessous :
+            // un nom écrit sur un carré se lit encore, un nom absent ne
+            // se lit pas du tout.
+            let hub_places = [
+                (egui::Align2::CENTER_TOP, egui::pos2(mid.x, mid.y + 24.0)),
+                (egui::Align2::CENTER_BOTTOM, egui::pos2(mid.x, mid.y - 24.0)),
+                (egui::Align2::LEFT_CENTER, egui::pos2(mid.x + 16.0, mid.y)),
+                (egui::Align2::RIGHT_CENTER, egui::pos2(mid.x - 16.0, mid.y)),
+            ];
+            let (hub_anchor, hub_at) = hub_places
+                .into_iter()
+                .find(|(anchor, at)| {
+                    let r = anchor.anchor_size(*at, hub_size).shrink(1.0);
+                    !boxes.iter().any(|b| b.intersects(r))
+                })
+                .unwrap_or(hub_places[0]);
+            let mut taken: Vec<egui::Rect> = vec![hub_anchor.anchor_size(hub_at, hub_size)];
+            taken.extend(boxes);
             for n in &map.nodes {
                 let p = at(n);
                 let node = box_of(p, half);
@@ -45214,13 +45248,19 @@ impl App {
             // Below the hub and clear of it: the spokes leave the middle
             // in every direction, and a name written against them is a
             // name read through three lines.
-            ui.painter().text(
-                hub_at,
-                egui::Align2::CENTER_TOP,
-                &map.centre.1,
-                hub_font,
-                motif::text(),
-            );
+            // **Et sur un fond à lui.** Les rayons quittent le milieu
+            // dans toutes les directions, et un nom écrit dessus se lit
+            // à travers trois traits ; la plaque les couvre. Elle sert
+            // aussi de dernier recours quand les quatre places sont
+            // prises : le nom du moyeu ne peut pas être abandonné, et
+            // écrit sur une plaque il se lit entier quoi qu'il croise —
+            // le carré qu'il effleure gardant sa zone de clic et son
+            // infobulle. C'est ce que fait un graphique quand une
+            // étiquette doit passer devant une courbe.
+            let plate = hub_anchor.anchor_size(hub_at, hub_size).expand(3.0);
+            ui.painter().rect_filled(plate, 0.0, motif::trough());
+            ui.painter()
+                .text(hub_at, hub_anchor, &map.centre.1, hub_font, motif::text());
         });
 
         motif::inside(ui, foot_rect, |ui| {
