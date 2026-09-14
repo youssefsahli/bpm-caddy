@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **La règle de l'écran de caisse se lit en entier.** « Modèle… » se
+  dessinait dans la bande de titre sans avoir été mesuré : elle
+  annonçait deux rangées là où elle en dessine trois, et la dernière
+  ligne du sous-titre tombait hors du rectangle, coupée au milieu d'un
+  mot. Ce qui disparaissait est la moitié de la phrase qui dit qu'un
+  écart se note et **ne se corrige pas en changeant le comptage**.
+  Tenu par un test qui dessine la vraie rangée à trois échelles et sept
+  largeurs : une liste mesurée et une rangée dessinée sont deux
+  écritures de la même chose, et rien dans le type ne les tient
+  ensemble.
 - **La liste des tables de conversion dit la taille de chacune.** Le
   compte était composé après le nom, donc à la fin de la ligne, donc la
   première chose que le volet étroit mangeait : « Statines 12 lignes »

@@ -42769,6 +42769,16 @@ impl App {
                 }) + 8.0,
                 Self::button_width(ui, tr("caisse_print")),
                 Self::button_width(ui, tr("caisse_save")),
+                // « Modèle… » manquait à cette liste alors qu'il se
+                // dessine avec les autres : la bande annonçait donc deux
+                // rangées là où elle en dessine trois, et la dernière
+                // ligne du sous-titre tombait hors du rectangle — coupée
+                // au milieu d'un mot, sans rien pour le dire. Ce qui
+                // disparaissait est la moitié de la phrase qui explique
+                // qu'un écart se note et ne se corrige pas en changeant
+                // le comptage. L'ordre est celui du dessin, parce que
+                // c'est dans cet ordre que la rangée enveloppe.
+                Self::button_width(ui, tr("caisse_template")),
                 Self::button_width(ui, tr("caisse_clear")),
                 Self::button_width(ui, tr("caisse_history_open")),
                 Self::button_width(ui, "‹"),
@@ -52661,6 +52671,111 @@ mod tests {
                 // temps : il ne regardait que le sens qui coupe, et ses
                 // trois largeurs sautaient par-dessus la fenêtre du
                 // défaut. 640, c'est un écran de 1024 avec ses volets.
+                assert!(
+                    band - drawn <= row,
+                    "échelle {scale}, largeur {width} : {} px réservés pour rien, \
+                     soit plus d'une rangée ({row} px)",
+                    band - drawn
+                );
+            }
+        }
+    }
+
+    /// **La bande de la caisse aussi, et ce n'est pas la même bande.**
+    ///
+    /// Celle du codex tient une zone de saisie, celle-ci six boutons,
+    /// une date et deux flèches — et c'est sur celle-ci que le défaut
+    /// vivait : « Modèle… » se dessinait sans avoir été mesuré. La
+    /// bande annonçait deux rangées là où elle en dessine trois, et la
+    /// dernière ligne du sous-titre tombait hors du rectangle, coupée au
+    /// milieu d'un mot. Ce qui disparaissait est la moitié de la phrase
+    /// qui explique qu'un écart se note et ne se corrige pas en
+    /// changeant le comptage — c'est-à-dire la règle de l'écran.
+    ///
+    /// Une liste mesurée et une rangée dessinée sont deux écritures de
+    /// la même chose, et rien dans le type ne les tient ensemble : seul
+    /// un dessin sans tête les confronte.
+    #[test]
+    fn the_caisse_title_band_is_as_tall_as_what_it_holds() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [420.0_f32, 560.0, 590.0, 620.0, 640.0, 700.0, 1100.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let day = db::format_french_date("2026-09-09");
+                        let day_w = ui.fonts(|f| {
+                            f.layout_no_wrap(
+                                day.clone(),
+                                egui::TextStyle::Body.resolve(ui.style()),
+                                motif::text(),
+                            )
+                            .size()
+                            .x
+                        });
+                        let band = App::title_band_height(
+                            ui,
+                            width,
+                            [
+                                // Mesurée comme la vue la mesure : la
+                                // largeur brute du titre plus les huit
+                                // pixels d'`add_space`, et non
+                                // `heading_width`, qui ajoute en plus la
+                                // gouttière que la rangée insère déjà.
+                                ui.fonts(|f| {
+                                    f.layout_no_wrap(
+                                        tr("caisse_title").to_owned(),
+                                        egui::TextStyle::Heading.resolve(ui.style()),
+                                        motif::text(),
+                                    )
+                                    .size()
+                                    .x
+                                }) + 8.0,
+                                App::button_width(ui, tr("caisse_print")),
+                                App::button_width(ui, tr("caisse_save")),
+                                App::button_width(ui, tr("caisse_template")),
+                                App::button_width(ui, tr("caisse_clear")),
+                                App::button_width(ui, tr("caisse_history_open")),
+                                App::button_width(ui, "‹"),
+                                day_w,
+                                App::button_width(ui, "›"),
+                            ]
+                            .into_iter(),
+                            tr("caisse_subtitle"),
+                        );
+                        let drawn = ui
+                            .scope(|ui| {
+                                ui.set_max_width(width);
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.heading(tr("caisse_title"));
+                                    ui.add_space(8.0);
+                                    motif::button(ui, tr("caisse_print"));
+                                    motif::button(ui, tr("caisse_save"));
+                                    motif::button(ui, tr("caisse_template"));
+                                    motif::button(ui, tr("caisse_clear"));
+                                    motif::button(ui, tr("caisse_history_open"));
+                                    motif::button(ui, "‹");
+                                    ui.label(day.clone());
+                                    motif::button(ui, "›");
+                                });
+                                ui.label(
+                                    egui::RichText::new(tr("caisse_subtitle"))
+                                        .size(motif::pt(ui, 11.5))
+                                        .color(motif::text_dim()),
+                                );
+                            })
+                            .response
+                            .rect
+                            .height();
+                        *seen.borrow_mut() = (band, drawn, App::row_height(ui));
+                    });
+                });
+                let (band, drawn, row) = seen.into_inner();
+                assert!(
+                    band >= drawn,
+                    "échelle {scale}, largeur {width} : bande de {band} px pour {drawn} px dessinés"
+                );
                 assert!(
                     band - drawn <= row,
                     "échelle {scale}, largeur {width} : {} px réservés pour rien, \
