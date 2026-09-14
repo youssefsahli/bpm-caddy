@@ -284,6 +284,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ils sont tous à un caractère, « 0 avec traitement » sortait « 0 avec
   traite… » avec la moitié de la tuile vide entre les deux. Elle prend
   maintenant ce que le chiffre laisse.
+- **L'historique de caisse imprimait deux fois la même phrase.** Sur un
+  mois sans comptage, « Aucun comptage sur ce mois… » s'écrivait sous le
+  tableau *et* mot pour mot sous le récapitulatif, ce qui se lit comme
+  un défaut de rendu. Le second dit maintenant ce qu'il fera : « Le
+  cumul du mois s'affiche dès le premier soir compté. »
 - **Et « Prochains RDV » montrait un cadre vide.** Le volet de gauche
   laissait l'absence muette là où le tableau de bord l'écrit en toutes
   lettres ; sur une base neuve, c'est le premier écran qu'une officine

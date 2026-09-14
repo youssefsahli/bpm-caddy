@@ -1836,6 +1836,9 @@ caisses_print_tooltip = "Le mois affiché, soir par soir, avec ses écarts"
 caisses_month_table = "Soirs du mois"
 caisses_summary = "Récapitulatif du mois"
 caisses_empty = "Aucun comptage sur ce mois. Un soir non compté n'est pas un soir à zéro : la ligne est absente, non nulle."
+# Le récapitulatif dit la sienne : la phrase du tableau, répétée mot
+# pour mot dessous, se lit comme un défaut de rendu.
+caisses_empty_summary = "Le cumul du mois s'affiche dès le premier soir compté."
 caisses_recounted = "recompté"
 caisses_col_day = "Jour"
 caisses_col_cash = "Espèces"

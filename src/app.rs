@@ -43486,12 +43486,16 @@ impl App {
         motif::panel(ui, panes[1], Some(tr("caisses_summary")), |ui| {
             // Un mois sans comptage ne rend pas « 0 soirs · 0,00 € » :
             // ces deux zéros se lisent comme une caisse vide, alors
-            // qu'ils veulent dire « personne n'a compté ». La même
-            // phrase que le tableau, et rien d'autre.
+            // qu'ils veulent dire « personne n'a compté ».
+            //
+            // **Mais pas la même phrase que le tableau.** Elle s'y
+            // trouve déjà, juste au-dessus : répétée mot pour mot sous
+            // la seconde légende, elle se lit comme un défaut de rendu.
+            // Celle-ci dit ce que ce panneau-là fera.
             if session.caisse_period.is_empty() {
                 ui.add(
                     egui::Label::new(
-                        egui::RichText::new(tr("caisses_empty"))
+                        egui::RichText::new(tr("caisses_empty_summary"))
                             .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     )
