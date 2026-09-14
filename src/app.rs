@@ -9700,6 +9700,17 @@ impl App {
                             session.patient_tab = PatientTab::Fil;
                             session.view = MainView::Search;
                         }
+                        // La création d'un dossier : le premier geste
+                        // d'une officine, et une grille de champs de
+                        // plus que personne n'avait regardée. Elle
+                        // s'ouvre dès qu'une recherche ne trouve rien —
+                        // il suffit donc de chercher ce qui n'existe
+                        // pas.
+                        Ok("patient_new") => {
+                            session.view = MainView::Search;
+                            session.query = "Zorglub".to_owned();
+                            session.selected = 0;
+                        }
                         // Le formulaire de correction, qu'aucune capture
                         // ne montrait : c'est une grille de champs, et
                         // c'est cette forme-là qui casse quand le texte

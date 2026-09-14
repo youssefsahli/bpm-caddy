@@ -81,7 +81,7 @@ if [ "$code" -ne 124 ]; then
 fi
 
 views=(
-    search dashboard patient patient_edit drugs drug_card drug_edit drug_kin
+    search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse cyp ddi libelles listes revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion script carnets carnets_edit textes caisse caisses aide

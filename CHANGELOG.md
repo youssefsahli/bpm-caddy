@@ -298,6 +298,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panneaux de droite répondaient « Choisissez un produit à gauche. » :
   ils disent maintenant où aller — « ouvrez « Catalogue… » pour en
   suivre un premier ».
+- **Et la création rapide d'un dossier non plus.**
+  `BPM_CADDY_START_VIEW=patient_new` l'ouvre — une recherche qui ne
+  trouve rien devient le formulaire, il suffit donc de chercher ce qui
+  n'existe pas. Elle se tient bien à toutes les échelles ; c'est
+  désormais vérifiable.
 - **Le formulaire de correction d'un dossier n'avait jamais été
   regardé**, faute de clé de vue : `BPM_CADDY_START_VIEW=patient_edit`
   l'ouvre, et les deux scripts de capture le balaient désormais. Ce
