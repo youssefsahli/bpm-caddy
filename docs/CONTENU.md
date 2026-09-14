@@ -657,8 +657,15 @@ Deux règles valent partout :
   contre-indiquée) ; *un seuil vient du RCP, jamais d'une
   interpolation* ; *la conduite est celle du RCP, la décision est celle
   du prescripteur* — et le panneau l'écrit en pied.
-- **Ajouter une molécule** : une entrée `Adaptation`. Deux tests la
-  tiennent : les paliers vont du plus haut au plus bas et ne se
+- **Ajouter une molécule** : une entrée `Adaptation`. Trois tests la
+  tiennent — et le troisième est le plus facile à oublier :
+  `every_row_can_fire_on_the_base_as_shipped` exige que la ligne
+  rencontre une **fiche livrée**, faute de quoi une faute de frappe dans
+  un `needs` ne se distingue pas d'une ligne correcte que la
+  démonstration ne déclenche pas ; elle se contente de ne rien faire,
+  pour toujours. Si la molécule n'est pas encore dans la base, c'est la
+  fiche qui manque, et l'ajouter est le geste attendu. Les deux autres :
+  les paliers vont du plus haut au plus bas et ne se
   répètent pas, la source est obligatoire, une conduite ne porte jamais
   de dose en milligrammes — elle dépend aussi de l'indication, du poids
   et de l'âge, et un chiffre écrit là se lirait comme une prescription.
@@ -724,7 +731,11 @@ Deux règles valent partout :
   `renal`, qui est en réalité leur section « adaptation posologique »
   (Zophren y écrit « Aucune adaptation en cas d'insuffisance rénale. En
   insuffisance hépatique modérée à sévère, ne pas dépasser 8 mg par
-  jour »). Le test d'adossement le lit avec les autres.
+  jour »). Le test d'adossement le lit avec les autres, et
+  `every_row_can_fire_on_the_base_as_shipped` refuse une ligne
+  qu'aucune fiche livrée n'atteint — même règle qu'au rein, et pour la
+  même raison : une ligne inatteignable ne se distingue pas d'une ligne
+  correcte, elle ne fait simplement jamais rien.
 - **Ce qui ne s'y met pas** : une molécule contre-indiquée en
   « affection hépatique évolutive » — les statines, le léflunomide,
   l'agomélatine, et le valproate, dont la fiche parle d'« hépatite aiguë
