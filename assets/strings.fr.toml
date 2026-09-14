@@ -1512,6 +1512,7 @@ stup_print_register_tooltip = "Imprimer le registre de ce produit : ses lignes d
 stup_print_tooltip = "Imprimer la liste d'inventaire, avec une colonne pour le stock constaté"
 stup_followed = "Produits suivis"
 stup_followed_count = "Produits suivis — {} à compter"
+stup_followed_short = "{} à compter"
 stup_why_since = "{} · dernier comptage il y a {} jours"
 stup_register = "Registre"
 stup_write = "Écrire au registre"

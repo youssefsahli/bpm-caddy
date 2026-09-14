@@ -42408,6 +42408,34 @@ mod tests {
         // de quarante : c'est exactement la forme que le module cherche,
         // et elle reste une question, pas un verdict.
         write(skenan, "SORTIE", 14.0, day(9, 2), pid, 0.0);
+        // **Et un comptage récent, qui tombe juste.** Sans lui les
+        // quatre produits suivis sortaient en rouge — « à recompter »
+        // pour trois d'entre eux, faute d'avoir jamais été comptés — et
+        // un écran où tout alerte n'apprend plus rien : la couleur ne
+        // dit quelque chose que s'il y a des lignes qui ne l'ont pas.
+        // Celui-ci ne porte aucun écart, c'est l'autre moitié du sujet :
+        // l'inventaire d'avril en porte un, celui-ci n'en porte pas, et
+        // la vue montre les deux.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: skenan,
+            kind: "INVENTAIRE".to_owned(),
+            happened_on: day(9, 5),
+            quantity: 41.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 41.0,
+            operator: "YS".to_owned(),
+            remark: "comptage mensuel".to_owned(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        })
+        .unwrap();
 
         // Un produit sous son seuil, jamais recompté : la liste de
         // contrôle a de quoi dire.
@@ -42472,6 +42500,26 @@ mod tests {
         write(metha, "SORTIE", 7.0, day(5, 11), pid, 0.0);
         write(metha, "ENTREE", 14.0, day(8, 24), 0, 0.0);
         write(metha, "SORTIE", 7.0, day(8, 28), pid, 0.0);
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: metha,
+            kind: "INVENTAIRE".to_owned(),
+            happened_on: day(9, 5),
+            quantity: 14.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 14.0,
+            operator: "YS".to_owned(),
+            remark: "comptage mensuel".to_owned(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        })
+        .unwrap();
         let subutex = follow("Subutex 8 mg", 14.0);
         write(subutex, "ENTREE", 28.0, day(6, 2), 0, 0.0);
         write(subutex, "SORTIE", 7.0, day(6, 9), pid, 0.0);

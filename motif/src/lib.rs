@@ -1409,22 +1409,33 @@ pub fn list_row_pair(
 /// Which is the right thing to lose: a truncated label is still
 /// recognisable and the selection says which row it is, whereas a
 /// missing number is simply absent.
+///
+/// `ink` est **la couleur de la ligne, ou celle de tout le monde** —
+/// et non un booléen « en gris ». Le booléen ne savait dire qu'une
+/// nuance, alors que la couleur d'une ligne de liste dit ici trois
+/// choses différentes selon l'écran : une classe que la base ne peuple
+/// pas, un produit archivé, un produit à aller compter. La liste des
+/// stupéfiants portait la troisième et ne pouvait donc pas employer ce
+/// widget : elle composait « libellé · solde » en une seule chaîne, que
+/// l'élision mangeait par la fin — « Méthadone AP-HP gélule 40 mg ·
+/// 1… », c'est-à-dire le solde perdu, qui est la seule raison de
+/// regarder cette liste. Sur la sélection, l'encre reste blanche quelle
+/// que soit la demande : un rouge sur le bleu de sélection ne se lit
+/// pas.
 pub fn list_row_count(
     ui: &mut egui::Ui,
     label: &str,
     count: &str,
     selected: bool,
-    dim: bool,
+    ink: Option<Color32>,
 ) -> egui::Response {
     let width = ui.available_width();
     let font = egui::TextStyle::Body.resolve(ui.style());
     let row = ui.fonts(|f| f.row_height(&font));
     let ink = if selected {
         Color32::WHITE
-    } else if dim {
-        crate::text_faint()
     } else {
-        crate::text()
+        ink.unwrap_or_else(crate::text)
     };
     // The figure keeps its own quieter ink, except on the selection blue
     // where a grey would be unreadable.
@@ -1443,15 +1454,37 @@ pub fn list_row_count(
         .painter()
         .layout_no_wrap(count.to_owned(), font.clone(), quiet);
     let reserved = num.size().x + 16.0;
-    let text = ui.painter().layout(
-        label.to_owned(),
-        font,
-        ink,
-        (width - 8.0 - reserved).max(8.0),
-    );
+    // **Et le chiffre cède la ligne quand il ne laisse plus de quoi
+    // lire le libellé.** Réservé à droite, « 14 gélules » prend les
+    // deux tiers d'une colonne étroite, et ce qui restait au nom était
+    // assez pour une lettre par ligne : « Mé / tha / don / e ». Un
+    // chiffre sauvé au prix d'un libellé en confettis n'a rien sauvé.
+    // Sous un seuil — la moitié de la ligne — les deux se superposent
+    // donc au lieu de se partager la largeur : le libellé sur toute la
+    // colonne, le chiffre dessous, et rien n'est perdu.
+    let stacked = width - 8.0 - reserved < width * 0.5;
+    let room = if stacked {
+        (width - 16.0).max(8.0)
+    } else {
+        (width - 8.0 - reserved).max(8.0)
+    };
+    // Deux lignes si le libellé peut se couper proprement, une sinon —
+    // la règle de [`label_rows`], qui manquait ici : `Painter::layout`
+    // enroule sans borne et coupe au milieu des mots, ce que le reste
+    // de la maison refuse depuis longtemps.
+    let mut job = egui::text::LayoutJob::simple(label.to_owned(), font.clone(), ink, room);
+    job.wrap.max_rows = label_rows(ui, label, &font, room);
+    job.wrap.break_anywhere = false;
+    job.wrap.overflow_character = Some('…');
+    let text = ui.fonts(|f| f.layout_job(job));
+    let content = if stacked {
+        text.size().y + num.size().y + 2.0
+    } else {
+        text.size().y
+    };
     let height = (ui.spacing().interact_size.y + 2.0)
         .max(row + 4.0)
-        .max(text.size().y + 6.0)
+        .max(content + 6.0)
         .max(18.0);
     let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
     if !ui.is_rect_visible(rect) {
@@ -1462,16 +1495,29 @@ pub fn list_row_count(
     } else if response.hovered() {
         ui.painter().rect_filled(rect, 0.0, crate::bg_hover());
     }
+    let top = rect.center().y - content / 2.0;
+    let text_h = text.size().y;
     ui.painter().galley(
-        egui::pos2(rect.left() + 8.0, rect.center().y - text.size().y / 2.0),
+        egui::pos2(
+            rect.left() + 8.0,
+            if stacked {
+                top
+            } else {
+                rect.center().y - text_h / 2.0
+            },
+        ),
         text,
         ink,
     );
     ui.painter().galley(
-        egui::pos2(
-            rect.right() - 8.0 - num.size().x,
-            rect.center().y - num.size().y / 2.0,
-        ),
+        if stacked {
+            egui::pos2(rect.left() + 8.0, top + text_h + 2.0)
+        } else {
+            egui::pos2(
+                rect.right() - 8.0 - num.size().x,
+                rect.center().y - num.size().y / 2.0,
+            )
+        },
         num,
         quiet,
     );

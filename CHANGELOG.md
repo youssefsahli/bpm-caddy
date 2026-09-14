@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le chiffre d'une ligne de liste n'est plus ce qu'on perd.**
+  `motif::list_row_count` réservait le nombre à droite et élidait le
+  libellé dans ce qui restait — ce qui est la bonne moitié perdue, sauf
+  quand il ne reste rien : dans le volet des produits suivis à
+  `text_scale = 1,6`, « 14 gélules » prenait les deux tiers de la ligne
+  et la méthadone sortait « Mé / tha / don / e ». Sous la moitié de la
+  largeur, le widget superpose donc au lieu de partager : le libellé sur
+  toute la colonne, le solde dessous. Il enroulait aussi sans borne et
+  coupait au milieu des mots ; il suit maintenant la règle de
+  `label_rows`, deux lignes si la coupe est propre, l'ellipse sinon.
+  Et sa couleur n'est plus un booléen « en gris » mais l'encre de la
+  ligne : c'est ce qui manquait à la liste des stupéfiants, dont le
+  rouge dit « à aller compter ».
+- **Et la légende qui porte ce compte le garde aussi.** « Produits
+  suivis — 4 à compter » sortait « PRODUITS SUIVI… » : le compte ajouté
+  au bout du libellé est la fin de la ligne, donc la première chose que
+  l'élision mange. Il est maintenant la forme pauvre — « 4 à compter » —
+  par `motif::panel_forms`, qui existait pour cela.
 - **La carte vaccinale et les carnets du patient entrent au manuel.**
   Six feuilles à emporter — automesure, glycémie, poids, débit de
   pointe, INR, douleur — avec la règle qui les gouverne : ce qui manque

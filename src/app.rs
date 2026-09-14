@@ -11511,7 +11511,7 @@ impl App {
                 // C'est la règle déjà écrite sur `list_row_count`, et ce
                 // volet-ci ne l'employait pas.
                 let row = if pending > 0 {
-                    motif::list_row_count(ui, &p.full_name(), &pending.to_string(), selected, false)
+                    motif::list_row_count(ui, &p.full_name(), &pending.to_string(), selected, None)
                 } else {
                     motif::list_row(ui, egui::RichText::new(p.full_name()), selected)
                 }
@@ -29856,7 +29856,7 @@ impl App {
                                 f.label,
                                 &cards.to_string(),
                                 session.class_family == i,
-                                false,
+                                None,
                             );
                             if row.clicked() {
                                 pick_family = Some(i);
@@ -29870,7 +29870,7 @@ impl App {
                                 tr("classes_outside"),
                                 &session.class_orphans.len().to_string(),
                                 session.class_family == crate::classes::FAMILIES.len(),
-                                true,
+                                Some(motif::text_faint()),
                             )
                             .on_hover_text(tr("classes_outside_tooltip"));
                             if row.clicked() {
@@ -29934,7 +29934,7 @@ impl App {
                                 c.name,
                                 &n.to_string(),
                                 session.class_open == Some(i),
-                                n == 0,
+                                (n == 0).then(motif::text_faint),
                             );
                             let row = if c.aliases.is_empty() {
                                 row
@@ -33297,126 +33297,139 @@ impl App {
         // garde pas son contenu, il le tient dans le `String` qu'on lui
         // prête.
         let mut lab = session.stup_lab.clone();
-        motif::panel(
-            ui,
-            list_rect,
-            Some(&if catalogue {
-                trf(
-                    "stup_catalogue_title",
-                    crate::ordonnancier::catalogue_size(),
-                )
-            } else if to_check.is_empty() {
-                tr("stup_followed").to_owned()
+        // Le compte sur la porte. Il n'existait nulle part : la liste
+        // de contrôle se lisait en couleur, ligne par ligne, et
+        // personne ne la totalisait — alors que « 3 à compter » est
+        // précisément ce qu'on vient vérifier en ouvrant l'onglet.
+        //
+        // **Et il est la forme pauvre, pas la riche.** Ajouté au bout
+        // du libellé, il était la fin de la ligne, donc la première
+        // chose que l'élision mange : à `text_scale = 1,6` la légende
+        // sortait « PRODUITS SUIVI… », c'est-à-dire le libellé seul et
+        // le compte perdu — l'inverse exact de ce qu'il fallait garder.
+        // C'est la règle que `list_row_count` suit déjà pour une ligne
+        // de liste, appliquée ici à une légende de panneau.
+        let title = if catalogue {
+            vec![trf(
+                "stup_catalogue_title",
+                crate::ordonnancier::catalogue_size(),
+            )]
+        } else if to_check.is_empty() {
+            vec![tr("stup_followed").to_owned()]
+        } else {
+            vec![
+                trf("stup_followed_count", to_check.len()),
+                trf("stup_followed_short", to_check.len()),
+            ]
+        };
+        let title: Vec<&str> = title.iter().map(String::as_str).collect();
+        motif::panel_forms(ui, list_rect, &title, |ui| {
+            let w = ui.available_width();
+            let hint = if catalogue {
+                tr("stup_catalogue_search")
             } else {
-                // Le compte sur la porte. Il n'existait nulle part :
-                // la liste de contrôle se lisait en couleur, ligne par
-                // ligne, et personne ne la totalisait — alors que
-                // « 3 à compter » est précisément ce qu'on vient
-                // vérifier en ouvrant l'onglet.
-                trf("stup_followed_count", to_check.len())
-            }),
-            |ui| {
-                let w = ui.available_width();
-                let hint = if catalogue {
-                    tr("stup_catalogue_search")
-                } else {
-                    tr("stup_search_hint")
-                };
-                let search = ui.add_sized(
-                    [w, Self::row_height(ui)],
-                    egui::TextEdit::singleline(&mut query)
-                        .hint_text(motif::hint(Self::hint_that_fits(ui, w, hint))),
-                );
-                if std::mem::take(&mut session.focus_list_search) {
-                    search.request_focus();
-                }
-                ui.add_space(4.0);
-                let body = ui.available_rect_before_wrap();
-                if body.height() < 30.0 {
-                    return;
-                }
-                let inner = motif::well(ui, body);
-                motif::inside(ui, inner, |ui| {
-                    egui::ScrollArea::vertical()
-                        .id_salt("stup_list")
-                        .auto_shrink([false, false])
-                        .show(ui, |ui| {
-                            if catalogue {
-                                Self::stup_catalogue_list(
-                                    ui,
-                                    session,
-                                    &query,
-                                    &mut lab,
-                                    &mut follow,
-                                );
-                                return;
-                            }
-                            if session.stup_summary.is_empty() {
-                                ui.label(
-                                    egui::RichText::new(tr("stup_empty"))
-                                        .size(motif::pt(ui, 11.5))
-                                        .color(motif::text_dim()),
-                                );
-                            }
-                            for db::Standing {
-                                product: p, stock, ..
-                            } in &session.stup_summary
+                tr("stup_search_hint")
+            };
+            let search = ui.add_sized(
+                [w, Self::row_height(ui)],
+                egui::TextEdit::singleline(&mut query)
+                    .hint_text(motif::hint(Self::hint_that_fits(ui, w, hint))),
+            );
+            if std::mem::take(&mut session.focus_list_search) {
+                search.request_focus();
+            }
+            ui.add_space(4.0);
+            let body = ui.available_rect_before_wrap();
+            if body.height() < 30.0 {
+                return;
+            }
+            let inner = motif::well(ui, body);
+            motif::inside(ui, inner, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("stup_list")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if catalogue {
+                            Self::stup_catalogue_list(ui, session, &query, &mut lab, &mut follow);
+                            return;
+                        }
+                        if session.stup_summary.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("stup_empty"))
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for db::Standing {
+                            product: p, stock, ..
+                        } in &session.stup_summary
+                        {
+                            if !query.trim().is_empty()
+                                && !fuzzy::contains_loose(&p.label, &query)
+                                && !fuzzy::contains_loose(&p.family, &query)
                             {
-                                if !query.trim().is_empty()
-                                    && !fuzzy::contains_loose(&p.label, &query)
-                                    && !fuzzy::contains_loose(&p.family, &query)
-                                {
-                                    continue;
-                                }
-                                let why = to_check.iter().find(|c| c.id == p.id).map(|c| c.why);
-                                let mut text = egui::RichText::new(format!(
-                                    "{}  ·  {}{}",
-                                    p.label,
-                                    crate::codex::format_quantity(*stock),
-                                    if p.unit.is_empty() {
-                                        String::new()
-                                    } else {
-                                        format!(
-                                            " {}",
-                                            crate::ordonnancier::agreed_unit(*stock, &p.unit)
-                                        )
-                                    }
-                                ))
-                                .size(motif::pt(ui, 11.5));
-                                // La couleur dit ce qui cloche, et le
-                                // libellé du motif est sous la souris : une
-                                // liste de quarante lignes dont chacune
-                                // porterait sa phrase ne se lit plus.
-                                if why.is_some() {
-                                    text = text.color(motif::alert());
-                                }
-                                if p.archived {
-                                    text = text.color(motif::text_dim());
-                                }
-                                let row =
-                                    motif::list_row(ui, text, session.stup_open == Some(p.id));
-                                // Le motif **et depuis combien de temps**.
-                                // `ToCheck.days` n'atteignait que le
-                                // papier : à l'écran on savait qu'il
-                                // fallait compter, jamais que le dernier
-                                // comptage datait de quatorze mois.
-                                let row = match to_check.iter().find(|c| c.id == p.id) {
-                                    Some(c) => row.on_hover_text(match c.days {
-                                        Some(d) => {
-                                            trn("stup_why_since", &[&tr(c.why.label_key()), &d])
-                                        }
-                                        None => tr(c.why.label_key()).to_owned(),
-                                    }),
-                                    None => row,
-                                };
-                                if row.clicked() {
-                                    pick = Some(p.id);
-                                }
+                                continue;
                             }
-                        });
-                });
-            },
-        );
+                            let why = to_check.iter().find(|c| c.id == p.id).map(|c| c.why);
+                            // **Le solde est réservé avant le
+                            // libellé.** Composé au bout du nom, il
+                            // était la fin de la ligne, donc la
+                            // première chose que l'élision mange :
+                            // dans un volet étroit la méthadone
+                            // sortait « … gélule 40 mg · 1… », et un
+                            // solde amputé se lit pour un autre — un
+                            // « 1… » qui vaut quatorze. Le nom tronqué
+                            // reste reconnaissable, le chiffre absent
+                            // ne s'invente pas.
+                            let count = format!(
+                                "{}{}",
+                                crate::codex::format_quantity(*stock),
+                                if p.unit.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(
+                                        " {}",
+                                        crate::ordonnancier::agreed_unit(*stock, &p.unit)
+                                    )
+                                }
+                            );
+                            // La couleur dit ce qui cloche, et le
+                            // libellé du motif est sous la souris : une
+                            // liste de quarante lignes dont chacune
+                            // porterait sa phrase ne se lit plus.
+                            let ink = if p.archived {
+                                Some(motif::text_dim())
+                            } else if why.is_some() {
+                                Some(motif::alert())
+                            } else {
+                                None
+                            };
+                            let row = motif::list_row_count(
+                                ui,
+                                &p.label,
+                                &count,
+                                session.stup_open == Some(p.id),
+                                ink,
+                            );
+                            // Le motif **et depuis combien de temps**.
+                            // `ToCheck.days` n'atteignait que le
+                            // papier : à l'écran on savait qu'il
+                            // fallait compter, jamais que le dernier
+                            // comptage datait de quatorze mois.
+                            let row = match to_check.iter().find(|c| c.id == p.id) {
+                                Some(c) => row.on_hover_text(match c.days {
+                                    Some(d) => trn("stup_why_since", &[&tr(c.why.label_key()), &d]),
+                                    None => tr(c.why.label_key()).to_owned(),
+                                }),
+                                None => row,
+                            };
+                            if row.clicked() {
+                                pick = Some(p.id);
+                            }
+                        }
+                    });
+            });
+        });
         session.stup_query = query;
         session.stup_lab = lab;
         if let Some(id) = pick.or(scan_pick) {
@@ -50631,6 +50644,75 @@ mod tests {
             assert!(
                 counted <= drawn_rows + 1.0,
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
+            );
+        }
+    }
+
+    /// **Le chiffre d'une ligne de liste n'est jamais ce qu'on perd.**
+    ///
+    /// `list_row_count` existe pour ça : le nombre est mesuré d'abord,
+    /// réservé à droite, et le libellé s'élide dans ce qui reste. Mais
+    /// dans une colonne étroite — le volet des produits suivis à
+    /// `text_scale = 1,6` fait cent soixante pixels — « 14 gélules »
+    /// prend les deux tiers de la ligne, et ce qui restait au nom
+    /// suffisait à une lettre par rangée : « Mé / tha / don / e ». Un
+    /// chiffre sauvé au prix d'un libellé en confettis n'a rien sauvé.
+    ///
+    /// Le widget superpose alors au lieu de partager, et c'est cette
+    /// bascule que le test tient — dans les deux sens, parce qu'une
+    /// superposition qui se déclencherait aussi dans une large colonne
+    /// doublerait la hauteur de toutes les listes de l'application.
+    #[test]
+    fn a_figure_in_a_list_row_is_never_the_thing_that_is_lost() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // Une vraie ligne de l'application, et la colonne
+                    // qu'elle occupe vraiment. `set_max_width` ne borne
+                    // pas `available_width` sans fenêtre : le rectangle
+                    // est donc donné à `motif::inside`.
+                    let draw = |ui: &mut egui::Ui, w: f32| {
+                        let top = ui.cursor().min;
+                        let rect = egui::Rect::from_min_size(top, egui::vec2(w, 400.0));
+                        let mut h = 0.0;
+                        motif::inside(ui, rect, |ui| {
+                            h = motif::list_row_count(
+                                ui,
+                                "Méthadone AP-HP gélule 40 mg",
+                                "14 gélules",
+                                false,
+                                None,
+                            )
+                            .rect
+                            .height();
+                        });
+                        h
+                    };
+                    let narrow = draw(ui, 160.0);
+                    let wide = draw(ui, 600.0);
+                    *seen.borrow_mut() =
+                        (narrow, wide, ui.text_style_height(&egui::TextStyle::Body));
+                });
+            });
+            let (narrow, wide, line) = seen.into_inner();
+            // Étroite : le libellé sur ses deux lignes *et* le chiffre
+            // sous lui, soit trois lignes de texte.
+            assert!(
+                narrow >= 3.0 * line,
+                "échelle {scale} : {narrow} px pour trois lignes de {line}"
+            );
+            // Large : les deux se partagent la ligne, et la ligne ne
+            // grandit pas.
+            assert!(
+                wide < narrow,
+                "échelle {scale} : la colonne large ({wide} px) n'est pas plus courte que l'étroite ({narrow} px)"
+            );
+            assert!(
+                wide <= 2.0 * line + 8.0,
+                "échelle {scale} : {wide} px pour une ligne de {line}"
             );
         }
     }
