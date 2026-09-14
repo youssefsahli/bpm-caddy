@@ -917,7 +917,29 @@ add clicking and typing; it is not the price of entry.
   reserved *before* the label, because a count appended after it is the
   end of the line and therefore the first thing elision eats — a row
   reading « Cardiologie et vaisseaux · … » has lost the only thing it
-  was there to say.
+  was there to say. **And it stacks when the column is too narrow to
+  share.** Reserved at the right, « 14 gélules » takes two thirds of a
+  160 px dock — the followed-stupéfiants list at `text_scale = 1,6` —
+  and what was left of the name ran one letter per row: « Mé / tha /
+  don / e ». A figure saved at the price of a label in confetti has
+  saved nothing, so below half the width the two go one above the
+  other. Its ink is the **row's**, not a `dim` boolean: the same widget
+  draws a class the base does not populate, an archived product and a
+  product to go and count, and only the third is red. A list that
+  composes « label · figure » into one string cannot use any of that,
+  which is how the balance was being elided in the one list that exists
+  to show it.
+- **A column measured on a template is a column that lies.** The caisse
+  history gave its five money columns the width of « -1 234,56 € », the
+  widest amount conceivable, so the écart — twenty euros on a big
+  evening — paid for a month's takings. Added up, those generosities
+  overran the panel and the table scrolled sideways (floating bar,
+  invisible): « +20,00 € » came out without its euro, in the only
+  column that screen exists for. Measure what the column *carries* —
+  and write the cell's text **once**, read by the measurement and by
+  the drawing, or the two diverge and it is the measurement that lies.
+  Same for « Par »: three letters of template, and an operator who
+  signs « Claire » read « Cla… ».
 - **Measure with the width the drawing will use.** A band measured on
   `rect.width()` and drawn at `ui.available_width()` differ by the
   panel's own margin, and that was enough for the scans form to reserve

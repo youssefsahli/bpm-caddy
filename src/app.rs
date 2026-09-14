@@ -12891,7 +12891,35 @@ impl App {
                     }
                 }
                 // No match: the search transitions into quick creation (spec 3.1).
-                let form = session.new_patient.get_or_insert_with(Default::default);
+                //
+                // **Et le nom cherché est déjà dans le champ.** On vient
+                // de le taper, il est écrit au-dessus, et le formulaire
+                // le redemandait à blanc : c'est ce que fait déjà la
+                // carte Vitale, qui remplit ce même formulaire avec ce
+                // qu'elle a lu. Le champ change avec la recherche — un
+                // `search.changed()` jette le formulaire — donc il n'y a
+                // pas de nom d'avant qui traîne.
+                //
+                // Tapé tel quel, sans majuscule ajoutée : « de La
+                // Fontaine » et « McDonald » ne survivent à aucune règle
+                // de capitalisation, et le champ est sous les yeux de
+                // qui va valider.
+                //
+                // Un seul mot, jamais deux : « jean dupont » et « dupont
+                // jean » se tapent tous les deux au comptoir, et rien
+                // ici ne dit lequel des deux est le nom. Deviner
+                // écrirait un prénom dans la case du nom une fois sur
+                // deux — et un dossier mal nommé ne se retrouve plus.
+                let seed = session.query.trim();
+                let seed = if seed.split_whitespace().count() == 1 {
+                    seed.to_owned()
+                } else {
+                    String::new()
+                };
+                let form = session.new_patient.get_or_insert_with(|| PatientForm {
+                    last_name: seed,
+                    ..Default::default()
+                });
                 let mut create = false;
                 ui.vertical_centered(|ui| {
                     ui.label(tr("search_no_match"));
@@ -17625,10 +17653,20 @@ impl App {
             .collect();
         series.sort_by(|a, b| a.0.cmp(&b.0));
         let analyte = crate::biology::find(&code);
-        let title = analyte
-            .map(|a| format!("{} — {}", tr("bio_trend"), a.label))
-            .unwrap_or_else(|| tr("bio_trend").to_owned());
-        motif::panel(ui, rect, Some(&title), |ui| {
+        // **Le nom de l'analyte est la forme pauvre, pas ce qui
+        // tombe.** « ÉVOLUTION — KALIÉMIE » sortait « ÉVOLUTION —
+        // KALI… » dans un volet de comptoir : le mot « Évolution » est
+        // lisible sur la courbe elle-même, le nom de l'analyte est la
+        // seule chose que cette légende apprenne.
+        let forms: Vec<String> = match analyte {
+            Some(a) => vec![
+                format!("{} — {}", tr("bio_trend"), a.label),
+                a.label.to_owned(),
+            ],
+            None => vec![tr("bio_trend").to_owned()],
+        };
+        let forms: Vec<&str> = forms.iter().map(String::as_str).collect();
+        motif::panel_forms(ui, rect, &forms, |ui| {
             if series.len() < 2 {
                 ui.label(
                     egui::RichText::new(tr("bio_trend_empty"))
@@ -37227,7 +37265,22 @@ impl App {
 
         let mut cancel_reason = session.stup_cancel_reason.clone();
         let mut line_action = StupLineAction::None;
-        motif::panel(ui, journal_rect, Some(tr("stup_destroy_journal")), |ui| {
+        // Le compte sur la porte, comme « Au coffre » juste au-dessus :
+        // la bande défile, sa barre est flottante donc invisible, et
+        // une ligne tranchée par le bas du volet est tout ce qui dit
+        // qu'il y en a d'autres. Et comme ailleurs, le compte est la
+        // forme **pauvre** : ajouté au bout du libellé, il serait la
+        // première chose que l'élision mange.
+        let journal_title: Vec<String> = if session.stup_destruction.is_empty() {
+            vec![tr("stup_destroy_journal").to_owned()]
+        } else {
+            vec![
+                trf("stup_destroy_journal_count", session.stup_destruction.len()),
+                trf("stup_destroy_journal_short", session.stup_destruction.len()),
+            ]
+        };
+        let journal_title: Vec<&str> = journal_title.iter().map(String::as_str).collect();
+        motif::panel_forms(ui, journal_rect, &journal_title, |ui| {
             let rect = ui.available_rect_before_wrap();
             if rect.height() < 24.0 {
                 return;

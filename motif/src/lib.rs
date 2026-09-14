@@ -1609,7 +1609,16 @@ pub fn section_ink(ui: &mut egui::Ui, label: &str, ink: Color32) {
         // son titre. Trois tentatives ont buté là-dessus en cherchant la
         // bonne largeur, alors que la largeur était bonne et que c'est
         // le chemin qui la jetait.
-        let room = (ui.available_width() - 12.0).max(pt(ui, 24.0));
+        //
+        // Et les douze pixels que le filet gardait en réserve, il les
+        // rend aussi : un intitulé qui va s'élider vaut mieux entier
+        // qu'accompagné d'un trait. « Médicaments » — le titre du dock
+        // du référentiel — en tenait à huit pixels près à
+        // `text_scale = 1,6`, et sortait « Médicame… » avec un filet
+        // impeccable à côté. Un intitulé court, lui, ne voit pas la
+        // différence : sa galée est plus étroite que les deux bornes, et
+        // le filet reprend tout ce qui reste.
+        let room = (ui.available_width() - 4.0).max(pt(ui, 24.0));
         let font = egui::FontId::proportional(sz);
         let rows = label_rows(ui, label, &font, room);
         let mut job = egui::text::LayoutJob::single_section(

@@ -8,6 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le nom cherché est déjà dans le champ.** « Aucun patient trouvé —
+  création rapide » redemandait à blanc le nom qu'on venait de taper, et
+  qui est écrit juste au-dessus. C'est ce que fait déjà la carte Vitale
+  avec ce même formulaire. Tapé tel quel, sans majuscule ajoutée — « de
+  La Fontaine » ne survit à aucune règle de capitalisation — et **un
+  seul mot, jamais deux** : « jean dupont » et « dupont jean » se tapent
+  tous les deux au comptoir, et deviner écrirait un prénom dans la case
+  du nom une fois sur deux.
+- **Trois légendes qui gardent ce qu'elles ont à dire.** L'intitulé de
+  `motif::section` récupère les douze pixels que le filet gardait en
+  réserve — « Médicaments », le titre du dock du référentiel, sortait
+  « Médicame… » à `text_scale = 1,6` avec un filet impeccable à côté.
+  La courbe de biologie garde le nom de l'analyte (« ÉVOLUTION —
+  KALI… » devient « KALIÉMIE »), et « Retours et destructions » dit
+  combien de lignes il porte, comme « Au coffre » juste au-dessus :
+  cette bande défile, sa barre est flottante donc invisible, et une
+  ligne tranchée par le bas du volet était tout ce qui disait qu'il y en
+  avait d'autres.
 - **Une colonne d'argent est large de ce qu'elle porte.** L'historique
   de caisse donnait aux cinq la mesure de « -1 234,56 € », le plus large
   montant concevable : l'écart, qui vaut vingt euros quand il est gros,
