@@ -1481,6 +1481,21 @@ pub fn list_row_count(
     job.wrap.break_anywhere = false;
     job.wrap.overflow_character = Some('…');
     let text = ui.fonts(|f| f.layout_job(job));
+    // **Superposé, le chiffre enveloppe plutôt que de déborder.** Posé
+    // sans borne il sortait du puits : « 21 comprimés sublinguaux » se
+    // lisait « 21 comprimés sublir », coupé par le cadre et sans rien
+    // pour le dire. Réservé à droite il tient par construction ; sous le
+    // libellé, il faut le lui dire. Deux lignes, et l'unité cède avant
+    // le nombre — c'est le nombre qu'on vient lire.
+    let num = if stacked {
+        let mut job = egui::text::LayoutJob::simple(count.to_owned(), font.clone(), quiet, room);
+        job.wrap.max_rows = 2;
+        job.wrap.break_anywhere = false;
+        job.wrap.overflow_character = Some('…');
+        ui.fonts(|f| f.layout_job(job))
+    } else {
+        num
+    };
     let content = if stacked {
         text.size().y + num.size().y + 2.0
     } else {
