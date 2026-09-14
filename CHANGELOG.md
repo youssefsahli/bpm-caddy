@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Trois autres bandes de titre mesuraient autre chose que ce qu'elles
+  dessinent.** Les carnets oubliaient leur propre titre, mesuré sur le
+  seul bouton « Fermer » — et ne provisionnaient qu'une ligne sous le
+  sous-titre là où une officine ayant réécrit une phrase en voit deux.
+  Les classes mesuraient `classes_subtitle`, cinquante-quatre
+  caractères, et dessinaient `classes_subtitle_count`, qui en fait cent
+  dix-huit : deux écritures d'une même phrase, et celle qui ment est la
+  mesure ; la phrase courte est supprimée. L'historique de caisse
+  ignorait dix pixels d'`add_space` et mesurait le nom du mois dans une
+  autre fonte que celle qui l'écrit.
 - **La règle de l'écran de caisse se lit en entier.** « Modèle… » se
   dessinait dans la bande de titre sans avoir été mesuré : elle
   annonçait deux rangées là où elle en dessine trois, et la dernière

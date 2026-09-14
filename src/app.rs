@@ -29819,11 +29819,24 @@ impl App {
         let body = motif::visible_rect(ui);
         let gap = ui.spacing().item_spacing.x;
         let line = ui.text_style_height(&egui::TextStyle::Body);
+        // **La phrase mesurée est celle qui se dessine.** La bande était
+        // mesurée sur `classes_subtitle` — cinquante-quatre caractères —
+        // et la vue dessine `classes_subtitle_count`, qui en fait cent
+        // dix-huit : deux fois plus de lignes à toute largeur de
+        // comptoir. Deux écritures d'une même phrase, et celle qui ment
+        // est la mesure.
+        let classes_subtitle = trn(
+            "classes_subtitle_count",
+            &[
+                &crate::classes::CLASSES.len(),
+                &crate::classes::FAMILIES.len(),
+            ],
+        );
         let band = Self::title_band_height(
             ui,
             body.width(),
             [Self::heading_width(ui, tr("classes_title"))].into_iter(),
-            tr("classes_subtitle"),
+            &classes_subtitle,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         motif::inside(ui, rows[0], |ui| {
@@ -29832,15 +29845,9 @@ impl App {
             });
             ui.add(
                 egui::Label::new(
-                    egui::RichText::new(trn(
-                        "classes_subtitle_count",
-                        &[
-                            &crate::classes::CLASSES.len(),
-                            &crate::classes::FAMILIES.len(),
-                        ],
-                    ))
-                    .size(motif::pt(ui, 11.5))
-                    .color(motif::text_dim()),
+                    egui::RichText::new(classes_subtitle.as_str())
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
                 )
                 .wrap(),
             );
@@ -40621,13 +40628,32 @@ impl App {
     fn carnets_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
+        // Le titre est **dans** la rangée enveloppée, avec le bouton :
+        // mesuré sans lui, la bande annonçait une rangée là où elle en
+        // dessine deux dès qu'un volet se rapproche. Même défaut que la
+        // caisse, même remède.
         let band = Self::title_band_height(
             ui,
             body.width(),
-            [Self::button_width(ui, tr("carnets_close"))].into_iter(),
+            [
+                Self::heading_width(ui, tr("carnets_title")),
+                Self::button_width(ui, tr("carnets_close")),
+            ]
+            .into_iter(),
             tr("carnets_subtitle"),
         );
-        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        // Sous le sous-titre, une ligne toujours — à qui la feuille sera
+        // au nom — et une seconde quand l'officine a réécrit des
+        // phrases. Provisionner la première seule laissait la ligne du
+        // nom coupée dans toute officine qui a repris ne serait-ce
+        // qu'une phrase : un cas qui n'arrive jamais sur une base de
+        // démonstration, donc jamais sur une capture.
+        let extra = if session.content.is_empty() {
+            line
+        } else {
+            2.0 * line
+        };
+        let rows = motif::split_rows(body, &[band + extra, 0.0], 6.0);
         let mut print: Option<&'static crate::selfcheck::Sheet> = None;
         // Ce que les boutons demandent : rendu hors du dessin,
         // comme partout ici — écrire dans la base au milieu d'une
@@ -43335,7 +43361,14 @@ impl App {
         // Le mois est **dans** la rangée enveloppée, avec les boutons :
         // il se mesure avec eux, sinon la bande annonce une rangée là
         // où elle en dessine deux.
-        let month_w = Self::widest(ui, 12.0, std::iter::once("septembre 2026"));
+        // Dans la fonte qui dessinera — le style Body de l'étiquette —
+        // et non une taille en points choisie ici : c'est la règle que
+        // la table du mois suit déjà quelques lignes plus bas.
+        let month_w = Self::widest_in(
+            ui,
+            egui::TextStyle::Body.resolve(ui.style()),
+            std::iter::once("septembre 2026"),
+        );
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -43351,7 +43384,10 @@ impl App {
                 }) + 8.0,
                 Self::button_width(ui, tr("caisses_count")),
                 Self::button_width(ui, tr("caisses_print")),
-                Self::button_width(ui, "‹"),
+                // Les dix pixels d'`add_space` qui séparent les boutons
+                // du sélecteur de mois : un espace que le dessin prend
+                // et que la mesure ignorait.
+                Self::button_width(ui, "‹") + 10.0,
                 month_w,
                 Self::button_width(ui, "›"),
             ]
