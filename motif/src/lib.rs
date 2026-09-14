@@ -1422,12 +1422,16 @@ pub fn list_row_pair(
 /// regarder cette liste. Sur la sélection, l'encre reste blanche quelle
 /// que soit la demande : un rouge sur le bleu de sélection ne se lit
 /// pas.
+///
+/// `indent` décale le libellé, pour une liste rangée sous des
+/// intertitres — même rôle que dans [`list_row_pair`].
 pub fn list_row_count(
     ui: &mut egui::Ui,
     label: &str,
     count: &str,
     selected: bool,
     ink: Option<Color32>,
+    indent: f32,
 ) -> egui::Response {
     let width = ui.available_width();
     let font = egui::TextStyle::Body.resolve(ui.style());
@@ -1462,11 +1466,11 @@ pub fn list_row_count(
     // Sous un seuil — la moitié de la ligne — les deux se superposent
     // donc au lieu de se partager la largeur : le libellé sur toute la
     // colonne, le chiffre dessous, et rien n'est perdu.
-    let stacked = width - 8.0 - reserved < width * 0.5;
+    let stacked = width - 8.0 - indent - reserved < width * 0.5;
     let room = if stacked {
-        (width - 16.0).max(8.0)
+        (width - 16.0 - indent).max(8.0)
     } else {
-        (width - 8.0 - reserved).max(8.0)
+        (width - 8.0 - indent - reserved).max(8.0)
     };
     // Deux lignes si le libellé peut se couper proprement, une sinon —
     // la règle de [`label_rows`], qui manquait ici : `Painter::layout`
@@ -1499,7 +1503,7 @@ pub fn list_row_count(
     let text_h = text.size().y;
     ui.painter().galley(
         egui::pos2(
-            rect.left() + 8.0,
+            rect.left() + 8.0 + indent,
             if stacked {
                 top
             } else {
@@ -1511,7 +1515,7 @@ pub fn list_row_count(
     );
     ui.painter().galley(
         if stacked {
-            egui::pos2(rect.left() + 8.0, top + text_h + 2.0)
+            egui::pos2(rect.left() + 8.0 + indent, top + text_h + 2.0)
         } else {
             egui::pos2(
                 rect.right() - 8.0 - num.size().x,

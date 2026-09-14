@@ -11511,7 +11511,14 @@ impl App {
                 // C'est la règle déjà écrite sur `list_row_count`, et ce
                 // volet-ci ne l'employait pas.
                 let row = if pending > 0 {
-                    motif::list_row_count(ui, &p.full_name(), &pending.to_string(), selected, None)
+                    motif::list_row_count(
+                        ui,
+                        &p.full_name(),
+                        &pending.to_string(),
+                        selected,
+                        None,
+                        0.0,
+                    )
                 } else {
                     motif::list_row(ui, egui::RichText::new(p.full_name()), selected)
                 }
@@ -29902,6 +29909,7 @@ impl App {
                                 &cards.to_string(),
                                 session.class_family == i,
                                 None,
+                                0.0,
                             );
                             if row.clicked() {
                                 pick_family = Some(i);
@@ -29916,6 +29924,7 @@ impl App {
                                 &session.class_orphans.len().to_string(),
                                 session.class_family == crate::classes::FAMILIES.len(),
                                 Some(motif::text_faint()),
+                                0.0,
                             )
                             .on_hover_text(tr("classes_outside_tooltip"));
                             if row.clicked() {
@@ -29980,6 +29989,7 @@ impl App {
                                 &n.to_string(),
                                 session.class_open == Some(i),
                                 (n == 0).then(motif::text_faint),
+                                0.0,
                             );
                             let row = if c.aliases.is_empty() {
                                 row
@@ -33455,6 +33465,7 @@ impl App {
                                 &count,
                                 session.stup_open == Some(p.id),
                                 ink,
+                                0.0,
                             );
                             // Le motif **et depuis combien de temps**.
                             // `ToCheck.days` n'atteignait que le
@@ -39154,11 +39165,20 @@ impl App {
                                 // before trusting the shipped one beside
                                 // it.
                                 let mark = if edited.contains(t.short) { " ·" } else { "" };
-                                let resp = motif::list_row_pair(
+                                // Le compte **réservé**, pas ajouté au
+                                // bout : composé après le nom il était la
+                                // fin de la ligne, et le volet étroit le
+                                // mangeait — « Benzodiaz… » là où
+                                // « Statines 12 lignes » tenait, si bien
+                                // que la seule liste qui dise la taille
+                                // des tables ne la disait qu'aux plus
+                                // courts des noms.
+                                let resp = motif::list_row_count(
                                     ui,
                                     &format!("{}{mark}", t.short),
                                     &trf("tables_row_count", t.rows.len()),
                                     i == session.table_selected,
+                                    None,
                                     10.0,
                                 );
                                 if resp.on_hover_text(t.title).clicked() {
@@ -50868,6 +50888,7 @@ mod tests {
                                 "14 gélules",
                                 false,
                                 None,
+                                0.0,
                             )
                             .rect
                             .height();

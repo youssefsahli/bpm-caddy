@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **La liste des tables de conversion dit la taille de chacune.** Le
+  compte était composé après le nom, donc à la fin de la ligne, donc la
+  première chose que le volet étroit mangeait : « Statines 12 lignes »
+  tenait, « Benzodiaz… » avait perdu le sien. Il est réservé maintenant,
+  par le même widget que les classes et les stupéfiants — qui prend un
+  décalage, pour une liste rangée sous des intertitres.
 - **Le premier écran de la journée ne cache plus qui arrive.** Les trois
   panneaux du tableau de bord — les rendez-vous du jour, les derniers
   dossiers, les notes du jour — défilaient derrière la barre flottante
