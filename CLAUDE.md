@@ -824,7 +824,11 @@ add clicking and typing; it is not the price of entry.
   panicked; it says nothing about a heading that wrapped, a button drawn
   half off a panel, or eight doors reflowing into three rows. Those are
   found by looking, and looking is only cheap when the pictures are one
-  command away. Every layout
+  command away. The three capture scripts share one configuration —
+  `scripts/demo-config.sh`, `demo_config` for the officine and
+  `demo_home` for the three throwaway XDG directories: `XDG_CONFIG_HOME`
+  alone leaves « À propos » reading the *operator's* installed launcher
+  version off `XDG_DATA_HOME`. Every layout
   must survive 1024x700 with both docks open — `scripts/smoke.sh` opens
   every view **four times**: at 1400x900, at 1024x700 with
   `text_scale = 1.25`, at 1024x700 with `text_scale = 1.6`, which is
