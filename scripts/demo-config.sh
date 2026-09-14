@@ -79,5 +79,11 @@ demo_home() {
 }
 
 demo_vitale_card() {
-    printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00' > "$1"
+    # **Trois bénéficiaires, pas un.** Une carte porte le titulaire et
+    # ses ayants droit, et la personne au comptoir n'est pas toujours le
+    # titulaire : c'est tout ce que l'écran du lecteur a à montrer, et
+    # avec un seul nom il ne le montrait pas. Les trois numéros portent
+    # leur clé de contrôle — c'est elle qui les fait reconnaître, jamais
+    # leur position.
+    printf '\x00DUPONT\x00JEAN\x00155087511600125\x0003081955\x00DUPONT\x00MARIE\x00260027511600221\x0012061962\x00DUPONT\x00LEA\x00105109911602589\x0027042005\x00' > "$1"
 }
