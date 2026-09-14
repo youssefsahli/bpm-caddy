@@ -50020,6 +50020,90 @@ mod tests {
         );
     }
 
+    /// **Ce qu'une bande de titre dessine, elle le mesure.**
+    ///
+    /// `title_band_height` reçoit la liste des largeurs de la rangée et
+    /// en déduit combien de rangées elle enveloppera. La liste et la
+    /// rangée sont deux écritures de la même chose, et rien dans le
+    /// type ne les tient ensemble : un bouton ajouté à l'une et oublié
+    /// à l'autre fait annoncer deux rangées là où il s'en dessine
+    /// trois, et la dernière ligne du sous-titre tombe hors du
+    /// rectangle — coupée au milieu d'un mot, sans rien pour le dire.
+    ///
+    /// Trois bandes mentaient le jour où ce test a été écrit : la
+    /// caisse (« Modèle… »), les carnets (leur propre titre) et
+    /// l'historique de caisse (dix pixels d'espace). Ce qui
+    /// disparaissait à la caisse est la moitié de la phrase qui dit
+    /// qu'un écart se note et ne se corrige pas en changeant le
+    /// comptage, c'est-à-dire la règle de l'écran.
+    ///
+    /// Le test lit le texte de ce fichier, comme les lints qui
+    /// l'entourent : pour chaque appel, il relève les clés que la
+    /// rangée passe à `ui.heading`, `motif::button` et
+    /// `motif::button_enabled`, et exige que la mesure les nomme. Un
+    /// contrôle dessiné sous condition compte comme les autres — c'est
+    /// le pire cas qui décide d'une disposition.
+    #[test]
+    fn every_control_a_title_band_draws_is_measured_with_it() {
+        const SOURCE: &str = include_str!("app.rs");
+        const CALL: &str = "Self::title_band_height(";
+        fn key_on<'a>(line: &'a str, after: &str) -> Option<&'a str> {
+            let at = line.find(after)?;
+            let rest = &line[at..];
+            let open = rest.find("tr(\"")?;
+            let key = &rest[open + 4..];
+            key.find('"').map(|e| &key[..e])
+        }
+        let mut missing = Vec::new();
+        let mut seen = 0_usize;
+        for (i, _) in SOURCE.match_indices(CALL) {
+            seen += 1;
+            // La mesure va de l'appel au découpage qui le suit
+            // immédiatement : toutes les vues écrivent
+            // `title_band_height` puis `split_rows` sur la bande
+            // obtenue.
+            let cut = SOURCE[i..]
+                .find("motif::split_rows(")
+                .map_or(SOURCE.len(), |k| i + k);
+            let measured = &SOURCE[i..cut];
+            // Le dessin est la première rangée enveloppée qui suit, et
+            // elle se ferme à son propre retrait.
+            let Some(start) = SOURCE[cut..].find("ui.horizontal_wrapped(|ui| {") else {
+                continue;
+            };
+            let start = cut + start;
+            let indent = SOURCE[..start]
+                .rsplit('\n')
+                .next()
+                .map_or(0, |l| l.len() - l.trim_start().len());
+            let close = format!("\n{}}});", " ".repeat(indent));
+            let end = SOURCE[start..]
+                .find(&close)
+                .map_or(SOURCE.len(), |k| start + k);
+            for line in SOURCE[start..end].lines() {
+                for after in ["ui.heading(", "motif::button(", "motif::button_enabled("] {
+                    let Some(key) = key_on(line, after) else {
+                        continue;
+                    };
+                    if !measured.contains(key) {
+                        missing.push(format!("« {key} » dessiné, jamais mesuré"));
+                    }
+                }
+            }
+        }
+        // Le compte des bandes, pour que le test ne devienne pas muet
+        // le jour où l'appel change de forme : un lint qui ne trouve
+        // plus rien à lire passe en silence.
+        assert!(
+            seen >= 9,
+            "seulement {seen} bande(s) de titre relue(s) : le test ne trouve plus les appels"
+        );
+        assert!(
+            missing.is_empty(),
+            "la bande annonce moins de rangées qu'elle n'en dessine : {missing:?}"
+        );
+    }
+
     /// **La glissière d'egui ne se voit pas sous le style Motif.**
     ///
     /// Elle peint son rail avec `widgets.inactive.bg_fill`, et

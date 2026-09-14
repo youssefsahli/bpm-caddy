@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Et un garde pour la prochaine.** Le test lit le texte d'`app.rs`,
+  relève pour chacun des neuf appels à `title_band_height` les clés que
+  la rangée passe à `ui.heading`, `motif::button` et
+  `motif::button_enabled`, et exige que la mesure les nomme — un
+  contrôle dessiné sous condition compte comme les autres, c'est le
+  pire cas qui décide d'une disposition.
 - **Trois autres bandes de titre mesuraient autre chose que ce qu'elles
   dessinent.** Les carnets oubliaient leur propre titre, mesuré sur le
   seul bouton « Fermer » — et ne provisionnaient qu'une ligne sous le

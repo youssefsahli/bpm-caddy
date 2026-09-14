@@ -1037,6 +1037,21 @@ add clicking and typing; it is not the price of entry.
   patient band, the drug card, the vaccine map and the scans form all
   depend on it. This is the cheap shape for the next one: a helper that
   measures, a headless draw, and an assertion in both directions.
+- **A measured list and a drawn row are two writings of one thing, and
+  nothing in the type holds them together.** `title_band_height` is
+  handed the widths of the row's controls and answers how many rows it
+  will wrap to; a control added to the row and forgotten in the list
+  makes the band announce two rows where it draws three, and the
+  subtitle's last line falls outside the rectangle — cut through a
+  word, with nothing to say so. Three of the nine bands were lying:
+  the caisse (« Modèle… »), the carnets (their own heading) and the
+  caisse history (ten pixels of `add_space`). What vanished on the
+  caisse was half the sentence saying a gap is noted and **not** fixed
+  by changing the count — the rule of that screen.
+  `every_control_a_title_band_draws_is_measured_with_it` reads the text
+  of `app.rs` and refuses the next one; and measure **the phrase that
+  is drawn**, not a shorter sibling of it (the classes band measured a
+  54-character subtitle and drew a 118-character one).
 - **Both directions, and the counter's own width among the samples.**
   `a_title_band_is_as_tall_as_what_it_holds` had the right shape and
   still missed a 70 px hole, twice over: it asserted only `band >=
