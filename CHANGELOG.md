@@ -278,6 +278,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   le `clip_rect`, comme `motif::panel` pose la sienne, et ce qui était
   perdu était le facteur d'accumulation : le second des deux chiffres
   que la phrase donne.
+- **Une tuile de statistiques élidait sa note à côté d'un chiffre
+  seul.** La note prenait quarante-cinq pour cent de la tuile, la même
+  place que le chiffre fasse « 862 » ou « 0 » : sur une base neuve, où
+  ils sont tous à un caractère, « 0 avec traitement » sortait « 0 avec
+  traite… » avec la moitié de la tuile vide entre les deux. Elle prend
+  maintenant ce que le chiffre laisse.
 - **Le registre envoyait choisir dans une liste vide.** Sur une base
   neuve, le volet de gauche dit « Aucun produit suivi. » et les deux
   panneaux de droite répondaient « Choisissez un produit à gauche. » :

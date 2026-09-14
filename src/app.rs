@@ -41999,10 +41999,26 @@ impl App {
             motif::accent(),
         );
         if let Some(note) = note {
+            // **La note prend ce que le chiffre laisse**, et non une
+            // part fixe. Quarante-cinq pour cent d'une tuile, c'est la
+            // même place que le chiffre fasse « 862 » ou « 0 » : sur une
+            // base neuve, où tous les chiffres sont à un caractère, la
+            // note sortait « 0 avec traite… » à côté d'un chiffre seul,
+            // avec la moitié de la tuile vide entre les deux.
+            let value_w = ui.fonts(|f| {
+                f.layout_no_wrap(
+                    value.to_owned(),
+                    egui::FontId::proportional(size),
+                    motif::accent(),
+                )
+                .size()
+                .x
+            });
+            let room = (rect.width() - value_w - 36.0).max(rect.width() * 0.3);
             ui.painter().text(
                 egui::pos2(rect.right() - 12.0, rect.top() + 46.0),
                 egui::Align2::RIGHT_CENTER,
-                elide(ui, note, rect.width() * 0.45, 10.5),
+                elide(ui, note, room, 10.5),
                 egui::FontId::proportional(motif::pt(ui, 10.5)),
                 motif::text_faint(),
             );
