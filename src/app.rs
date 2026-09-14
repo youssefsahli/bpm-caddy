@@ -43366,9 +43366,8 @@ impl App {
             // libellé finissent toujours par diverger, et celle qui
             // ment est alors la mesure.
             let money_text = |c: i64| format!("{} €", euros(c));
-            let expected_text = |c: &crate::caisse::Counted| {
-                c.expected.map_or_else(|| "—".to_owned(), &money_text)
-            };
+            let expected_text =
+                |c: &crate::caisse::Counted| c.expected.map_or_else(|| "—".to_owned(), &money_text);
             let gap_text = |c: &crate::caisse::Counted| match c.gap() {
                 None => "—".to_owned(),
                 Some(0) => "0,00 €".to_owned(),
@@ -43416,7 +43415,19 @@ impl App {
                 body.clone(),
                 [widest_day.as_str(), tr("caisses_col_day")].into_iter(),
             );
-            let by_w = Self::widest_in(ui, body, ["CLM", tr("caisses_col_by")].into_iter());
+            // Et « Par » de même : les initiales sont ce que l'officine
+            // tape, pas un gabarit de trois lettres. Quelqu'un qui signe
+            // « Claire » sortait « Cla… » dans une table où c'est la
+            // seule colonne qui dise qui a compté.
+            let by_w = Self::widest_in(
+                ui,
+                body,
+                session
+                    .caisse_period
+                    .iter()
+                    .map(|c| c.operator.as_str())
+                    .chain(std::iter::once(tr("caisses_col_by"))),
+            );
             // **Le détail cède avant le sujet.** Huit colonnes ne
             // tiennent pas dans un volet de comptoir, et la table
             // défilerait latéralement en emportant hors de vue « Écart »
