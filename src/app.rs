@@ -9700,6 +9700,23 @@ impl App {
                             session.patient_tab = PatientTab::Fil;
                             session.view = MainView::Search;
                         }
+                        // Le formulaire de correction, qu'aucune capture
+                        // ne montrait : c'est une grille de champs, et
+                        // c'est cette forme-là qui casse quand le texte
+                        // grossit. On corrige une identité tous les
+                        // jours ; personne ne l'avait jamais regardée.
+                        Ok("patient_edit") => {
+                            if let Some(p) = session
+                                .patients
+                                .iter()
+                                .find(|p| !p.email.is_empty())
+                                .or(session.patients.first())
+                                .cloned()
+                            {
+                                session.open_patient(p.clone());
+                                Self::patient_edit_started(&mut session, &p);
+                            }
+                        }
                         Ok(v @ ("patient" | "act_picker" | "revue")) => {
                             session.act_picker = v == "act_picker";
                             // Prefer the fullest record for screenshots;
@@ -19323,7 +19340,14 @@ impl App {
             h += 20.0;
         }
         if n.correcting {
-            h += 9.0 * 34.0 + 40.0;
+            // **Dix rangées et le geste qui enregistre**, mesurés dans
+            // la hauteur d'une rangée de cette échelle-là. « 9 × 34 + 40 »
+            // était un nombre de pixels : à `text_scale = 1,6` une
+            // rangée en fait quarante-sept, la bande réservait donc la
+            // moitié de ce que le formulaire dessine, et « Enregistrer »
+            // tombait hors de la bande — le bouton qui écrit, sous le
+            // pli, dans le seul écran où l'on corrige une identité.
+            h += 11.0 * (Self::row_height(ui) + ui.spacing().item_spacing.y) + 6.0;
         }
         if n.blocked {
             h += 46.0;
@@ -19395,7 +19419,32 @@ impl App {
         // cent tranchaient la bande au milieu d'une rangée de boutons
         // alors qu'il y avait la place pour tout. La bande grandit tant
         // que l'onglet garde de quoi travailler.
-        let cap = if n.acts_tab {
+        let cap = if n.correcting {
+            // **Une correction en cours gagne sur le tableau.** C'est la
+            // règle de la maison — celui des deux volets où l'on tape
+            // gagne — et elle manquait ici : à 1024x700 en
+            // `text_scale = 1,6` le formulaire d'identité montrait
+            // « Nom » et « Prénom » sur onze champs, et « Enregistrer »
+            // était sous le pli. On corrige une identité en quelques
+            // secondes ; le tableau des actes attend. Il lui reste la
+            // bande d'onglets et une rangée, de quoi dire où l'on est.
+            // Et pas jusqu'à les écraser : sous la bande vivent une
+            // bande d'onglets, le tableau et le journal, chacun avec son
+            // plancher. Leur laisser moins fait se chevaucher deux
+            // légendes — essayé, regardé, corrigé. On leur garde la
+            // bande d'onglets et trois rangées ; le reste est au
+            // formulaire, qui n'en prend que ce qu'il demande puisque
+            // `h <= cap` rend `h`.
+            // Quatre rangées et la bande d'onglets : c'est ce qu'il
+            // faut aux deux panneaux du dessous pour ne pas se
+            // chevaucher à `text_scale = 1,6`, où leurs propres
+            // planchers dépassent déjà le volet. Trois n'y suffisaient
+            // pas — deux légendes l'une sur l'autre — et le formulaire
+            // n'en prend de toute façon que ce qu'il demande, puisque
+            // `h <= cap` rend `h` : à 1400x900 il tient en entier,
+            // « Enregistrer » compris.
+            (avail - motif::tab_strip_height(ui) - Self::row_height(ui) * 4.0).max(avail * 0.45)
+        } else if n.acts_tab {
             (avail * 0.45).max(avail - 340.0)
         } else {
             (avail * 0.30).max(avail - 420.0)

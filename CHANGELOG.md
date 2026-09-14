@@ -298,6 +298,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panneaux de droite répondaient « Choisissez un produit à gauche. » :
   ils disent maintenant où aller — « ouvrez « Catalogue… » pour en
   suivre un premier ».
+- **Le formulaire de correction d'un dossier n'avait jamais été
+  regardé**, faute de clé de vue : `BPM_CADDY_START_VIEW=patient_edit`
+  l'ouvre, et les deux scripts de capture le balaient désormais. Ce
+  qu'il montrait : la bande réservait « 9 × 34 + 40 » pixels pour onze
+  rangées — un nombre de pixels, qui ne suit pas `[ui] text_scale` —,
+  soit la moitié de ce que le formulaire dessine à 1,6. « Enregistrer »
+  tombait sous le pli, y compris à 1400x900. Les rangées se mesurent
+  maintenant à la hauteur d'une rangée, et une correction en cours
+  gagne sur le tableau — la règle de la maison, celui des deux volets où
+  l'on tape gagne — en laissant au tableau et au journal la bande
+  d'onglets et quatre rangées, faute de quoi leurs deux légendes se
+  chevauchent à 1,6.
 - **Le panneau « Aujourd'hui » répondait par un tiret.** Ses deux
   voisins écrivent « Aucun entretien enregistré. » et « Aucune note
   aujourd'hui. » ; celui-là centrait un « — » dans un cadre vide. Sur

@@ -71,7 +71,7 @@ card="$tmp/vitale.bin"
 demo_vitale_card "$card"
 
 views=(
-    search dashboard patient drugs drug_card drug_edit drug_kin
+    search dashboard patient patient_edit drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse cyp ddi libelles listes revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
