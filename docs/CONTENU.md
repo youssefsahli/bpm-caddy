@@ -784,7 +784,16 @@ Deux règles valent partout :
   boîte dit d'elle-même — « LP », « Chrono », « Continus », « libération
   prolongée » d'un côté ; « gastro-résistant », « entérosoluble » de
   l'autre. Elles ne répondent de rien dans la base livrée, dont les
-  fiches portent le nom nu (« Skenan », « Diamicron ») ; elles répondent
+  fiches portent le nom nu (« Skenan », « Diamicron ») — et c'est
+  pourquoi cette table-ci est la seule dont le filet
+  `every_rule_can_fire_or_says_why_not` porte une liste d'exemptions :
+  neuf règles attendent une boîte que la base ne livre pas encore
+  (Adalate LP, Dépakine Chrono, Tégrétol LP…) et deux sont écrites pour
+  une *forme*. Elles y sont nommées avec leur raison ; toute autre règle
+  inatteignable est une faute de frappe. Ailleurs —
+  `renal`, `hepatic`, `gravidity`, `cyp` —, la règle est sans
+  exception : une ligne doit rencontrer une fiche livrée. Elles
+  répondent
   de ce que l'officine écrit sur ses propres fiches et de ce qu'on tape
   au comptoir, qui est le nom de la boîte. **Elles restent les
   dernières** — plus haut, elles refuseraient le Skenan LP, dont la
