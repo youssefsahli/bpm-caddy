@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **« Pièces au dossier » dit combien il y en a.** La bande est
+  plafonnée par la forme où l'on dépose une pièce — c'est la bonne
+  moitié à garder — mais à 1024x700 en texte 1,6 il ne restait que
+  l'en-tête de la table : un titre au-dessus de rien, quand le dossier
+  en porte trois.
 - **Le nom cherché est déjà dans le champ.** « Aucun patient trouvé —
   création rapide » redemandait à blanc le nom qu'on venait de taper, et
   qui est écrit juste au-dessus. C'est ce que fait déjà la carte Vitale
