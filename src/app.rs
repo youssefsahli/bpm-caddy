@@ -12519,12 +12519,30 @@ impl App {
             ui.painter().text(
                 egui::pos2(screen.center().x, box_rect.bottom() + 22.0),
                 egui::Align2::CENTER_CENTER,
-                elide(
-                    ui,
-                    &trf("lock_db_path", db_path.display()),
-                    screen.width() - 40.0,
-                    11.0,
-                ),
+                // **Et ce qui cède est le chemin, jamais le nom du
+                // fichier.** Élidée par la fin, cette ligne perdait
+                // précisément ce qu'on vient y lire — « …/scratchpad/d… »
+                // sur un chemin de réseau un peu long. De la plus riche
+                // à la plus pauvre : le chemin entier, le dossier parent
+                // et le fichier, le fichier seul.
+                {
+                    let full = db_path.display().to_string();
+                    let file = db_path
+                        .file_name()
+                        .map(|f| f.to_string_lossy().into_owned())
+                        .unwrap_or_else(|| full.clone());
+                    let parent = db_path
+                        .parent()
+                        .and_then(|p| p.file_name())
+                        .map(|p| format!("…/{}/{file}", p.to_string_lossy()))
+                        .unwrap_or_else(|| file.clone());
+                    let forms = [full, parent, file.clone()]
+                        .into_iter()
+                        .map(|f| trf("lock_db_path", f));
+                    richest_form(ui, forms, screen.width() - 40.0, 11.0).unwrap_or_else(|| {
+                        elide(ui, &trf("lock_db_path", &file), screen.width() - 40.0, 11.0)
+                    })
+                },
                 egui::FontId::proportional(motif::pt(ui, 11.0)),
                 motif::text_dim(),
             );

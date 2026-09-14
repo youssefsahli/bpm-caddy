@@ -298,6 +298,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panneaux de droite répondaient « Choisissez un produit à gauche. » :
   ils disent maintenant où aller — « ouvrez « Catalogue… » pour en
   suivre un premier ».
+- **L'écran de verrouillage entre dans les passes de capture.** C'est le
+  premier écran qu'on voit et le seul qu'aucune clé de vue ne peut
+  ouvrir : il se montre en *retirant* le mot de passe, ce que les deux
+  scripts font maintenant pour la vue « verrou ». Ce qu'il montrait : la
+  ligne qui dit **quelle base** on s'apprête à ouvrir s'élidait par la
+  fin — « …/scratchpad/d… » —, c'est-à-dire qu'elle perdait le nom du
+  fichier, la seule chose qu'on vient y lire. Elle raccourcit désormais :
+  le chemin entier, puis « …/dossier/fichier.db », puis le fichier seul.
 - **Et la création rapide d'un dossier non plus.**
   `BPM_CADDY_START_VIEW=patient_new` l'ouvre — une recherche qui ne
   trouve rien devient le formulaire, il suffit donc de chercher ce qui

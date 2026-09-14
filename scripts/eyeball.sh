@@ -71,7 +71,7 @@ card="$tmp/vitale.bin"
 demo_vitale_card "$card"
 
 views=(
-    search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
+    verrou search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse cyp ddi libelles listes revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open
@@ -99,6 +99,9 @@ for view in "${views[@]}"; do
             # capture sur le message de lecteur absent, pas sur sa forme.
             vitale)    export BPM_CADDY_START_VIEW=vitale
                        export BPM_CADDY_VITALE_DUMP="$card" ;;
+            # Le verrou : le premier ecran, et le seul qu aucune cle de
+            # vue ne peut ouvrir — il se montre en retirant le mot de passe.
+            verrou)    unset BPM_CADDY_PASSWORD ;;
             search)    ;;
             *)         export BPM_CADDY_START_VIEW="$view" ;;
         esac

@@ -81,7 +81,7 @@ if [ "$code" -ne 124 ]; then
 fi
 
 views=(
-    search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
+    verrou search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse cyp ddi libelles listes revue locations conciliation vaccine_map ordonnance
     protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion script carnets carnets_edit textes caisse caisses aide
@@ -152,7 +152,10 @@ for shape in "${shapes[@]}"; do
                     # in, and no patient of anybody is read.
                     vitale)    export BPM_CADDY_START_VIEW=vitale
                                export BPM_CADDY_VITALE_DUMP="$card" ;;
-                    search)    ;;
+                    # Le verrou : le premier ecran, et le seul qu aucune cle de
+            # vue ne peut ouvrir — il se montre en retirant le mot de passe.
+            verrou)    unset BPM_CADDY_PASSWORD ;;
+            search)    ;;
                     *)         export BPM_CADDY_START_VIEW="$view" ;;
                 esac
                 timeout 5 ./target/debug/bpm-caddy 2>&1
