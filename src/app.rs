@@ -15353,6 +15353,13 @@ impl App {
                 );
                 return;
             }
+            // **Barre pleine.** Le bandeau vaut quatre-vingt-dix pixels
+            // à 1024x700, et le bouton « Imprimer » en prend la moitié :
+            // il ne restait de la liste que le haut de sa première
+            // ligne, tranché, sans rien pour dire qu'il y en avait
+            // trois. Ce qui est sous le pli est ici le sujet même de
+            // l'onglet.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("bio_watch")
                 .auto_shrink([false, false])
