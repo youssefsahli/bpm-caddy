@@ -11872,6 +11872,20 @@ impl App {
         let today = session.today.clone();
         let mut open_id: Option<i64> = None;
         Self::nav_list(ui, |ui| {
+            // **Un creux se dit.** Sur une base neuve — le premier écran
+            // d'une officine — ce volet montrait un cadre vide sous son
+            // intitulé, là où le tableau de bord écrit la même absence
+            // en toutes lettres.
+            if session.appointments.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("dash_rdv_empty"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
             // **Le jour s'écrit une fois, au-dessus des noms.** Chaque
             // rangée portait « 12/09/2026  Jean Dupont » : sur un volet
             // de cent cinquante pixels à l'échelle 1,6, la date tient et

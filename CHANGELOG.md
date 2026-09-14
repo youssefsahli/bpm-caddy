@@ -284,6 +284,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ils sont tous à un caractère, « 0 avec traitement » sortait « 0 avec
   traite… » avec la moitié de la tuile vide entre les deux. Elle prend
   maintenant ce que le chiffre laisse.
+- **Et « Prochains RDV » montrait un cadre vide.** Le volet de gauche
+  laissait l'absence muette là où le tableau de bord l'écrit en toutes
+  lettres ; sur une base neuve, c'est le premier écran qu'une officine
+  voit.
 - **Le registre envoyait choisir dans une liste vide.** Sur une base
   neuve, le volet de gauche dit « Aucun produit suivi. » et les deux
   panneaux de droite répondaient « Choisissez un produit à gauche. » :
