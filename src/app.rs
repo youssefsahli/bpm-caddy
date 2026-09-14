@@ -13106,6 +13106,13 @@ impl App {
             })
             .collect();
         motif::inside(ui, rect, |ui| {
+            // **Barre pleine.** Chaque ligne est un geste — elle ouvre
+            // le dossier — et c'est le premier écran de la journée : à
+            // 1024x700 en texte 1,6 le volet en montrait deux sur cinq,
+            // la seconde tranchée par le bas, et rien ne disait qu'il y
+            // en avait d'autres. La barre flottante d'egui est
+            // invisible tant que le pointeur n'est pas dessus.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("home_today")
                 .show(ui, |ui| {
@@ -45949,6 +45956,9 @@ impl App {
         let mut open = None;
         let recent = session.recent.clone();
         motif::inside(ui, rect, |ui| {
+            // Même raison qu'« Aujourd'hui » : une ligne ouvre un
+            // dossier.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("dash_recent")
                 .show(ui, |ui| {
@@ -45985,6 +45995,10 @@ impl App {
         }
         let notes = session.today_notes.clone();
         motif::inside(ui, rect, |ui| {
+            // Ici le sujet lui-même : les notes du jour sont ce que
+            // l'équipe s'est écrit, et une note cachée est une note non
+            // lue.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("dash_notes")
                 .show(ui, |ui| {

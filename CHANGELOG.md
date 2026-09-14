@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le premier écran de la journée ne cache plus qui arrive.** Les trois
+  panneaux du tableau de bord — les rendez-vous du jour, les derniers
+  dossiers, les notes du jour — défilaient derrière la barre flottante
+  d'egui, invisible tant que le pointeur n'est pas dessus : à 1024x700
+  en texte 1,6, « Aujourd'hui » montrait deux lignes sur cinq, la
+  seconde tranchée, et rien ne disait qu'il y en avait d'autres. Chaque
+  ligne est pourtant un geste — elle ouvre le dossier. Barre pleine sur
+  les trois.
 - **Le nom du centre de la carte cherche sa place.** Il se posait sous
   le moyeu quoi qu'il y ait, et l'anneau du milieu passe exactement à
   cette hauteur : sur la carte d'Eliquis, « Eliquis » s'écrivait par-
