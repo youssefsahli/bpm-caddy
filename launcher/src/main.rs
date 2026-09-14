@@ -181,6 +181,19 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
         );
     }
 
+    // **Et ce qu'on installe est un exécutable, lu dans ses octets.**
+    // C'est la règle que l'application applique déjà aux pièces
+    // numérisées : accepter un fichier parce qu'il porte le bon nom,
+    // c'est accepter de rendre plus tard quelque chose que personne n'a
+    // regardé. Ici le nom vient de GitHub et la taille est vérifiée,
+    // mais un portail captif ou un proxy d'entreprise répond 200 à tout
+    // — et ce qui serait alors posé à la place du binaire se lancerait
+    // au démarrage suivant.
+    if let Err(e) = looks_executable(&tmp) {
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -190,6 +203,44 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     std::fs::write(version_file(), &tag)?;
 
     Ok(format!("Mise à jour vers {tag} effectuée"))
+}
+
+/// Les premiers octets d'un exécutable de cette plateforme — ELF, PE ou
+/// Mach-O. Quatre octets suffisent : il ne s'agit pas de valider un
+/// binaire, seulement de refuser ce qui n'en est visiblement pas un.
+fn looks_executable(path: &std::path::Path) -> Result<(), String> {
+    use std::io::Read as _;
+    let mut head = [0u8; 4];
+    let mut f = std::fs::File::open(path).map_err(|e| format!("fichier illisible : {e}"))?;
+    let n = f
+        .read(&mut head)
+        .map_err(|e| format!("fichier illisible : {e}"))?;
+    if n < 4 {
+        return Err("fichier téléchargé trop court pour être un programme".to_owned());
+    }
+    let ok = if cfg!(target_os = "windows") {
+        head.starts_with(b"MZ")
+    } else if cfg!(target_os = "macos") {
+        // Mach-O 64 bits (little et big endian) et les binaires
+        // universels, que `cargo build` produit sur les runners Apple.
+        matches!(
+            head,
+            [0xcf, 0xfa, 0xed, 0xfe]
+                | [0xfe, 0xed, 0xfa, 0xcf]
+                | [0xca, 0xfe, 0xba, 0xbe]
+                | [0xbe, 0xba, 0xfe, 0xca]
+        )
+    } else {
+        head == *b"\x7fELF"
+    };
+    if ok {
+        Ok(())
+    } else {
+        Err(format!(
+            "le fichier téléchargé n'est pas un programme ({head:02x?}) — \
+             réseau filtré, ou release incomplète"
+        ))
+    }
 }
 
 struct Launcher {
@@ -354,6 +405,39 @@ mod tests {
     /// The release workflow, read at compile time. It is the other half
     /// of this file's only external contract.
     const WORKFLOW: &str = include_str!("../../.github/workflows/release.yml");
+
+    /// **Ce qui est installé est lu dans ses octets.**
+    ///
+    /// La même règle que pour une pièce numérisée : accepter un fichier
+    /// parce qu'il porte le bon nom, c'est accepter de lancer plus tard
+    /// quelque chose que personne n'a regardé. Un portail captif répond
+    /// 200 à tout, et la page qu'il rend a une taille comme une autre.
+    #[test]
+    fn what_gets_installed_has_to_look_like_a_program() {
+        let dir = std::env::temp_dir().join("bpm-caddy-launcher-magic-check");
+        let _ = std::fs::create_dir_all(&dir);
+        let page = dir.join("portail.bin");
+        std::fs::write(&page, b"<!DOCTYPE html><html>Authentification requise").unwrap();
+        assert!(super::looks_executable(&page).is_err());
+
+        let court = dir.join("court.bin");
+        std::fs::write(&court, b"MZ").unwrap();
+        assert!(super::looks_executable(&court).is_err());
+
+        let vrai = dir.join("vrai.bin");
+        let magic: &[u8] = if cfg!(target_os = "windows") {
+            b"MZ\x90\x00"
+        } else if cfg!(target_os = "macos") {
+            &[0xcf, 0xfa, 0xed, 0xfe]
+        } else {
+            b"\x7fELF"
+        };
+        let mut bytes = magic.to_vec();
+        bytes.extend_from_slice(&[0u8; 64]);
+        std::fs::write(&vrai, &bytes).unwrap();
+        assert!(super::looks_executable(&vrai).is_ok());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// The names this launcher downloads must be the names the workflow
     /// uploads.

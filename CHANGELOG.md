@@ -765,6 +765,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cette fonction raconte des moteurs de règles, qui l'avaient appris ;
   les tables, elles, ne l'avaient pas fait.
 
+- **Le lanceur n'installe que ce qui ressemble à un programme.** Il
+  vérifiait la taille annoncée par GitHub — ce qui attrape un
+  téléchargement tronqué — mais pas les octets : un portail captif ou un
+  proxy d'entreprise répond 200 à tout, et la page qu'il rend a une
+  taille comme une autre. Quatre octets suffisent à refuser : ELF, PE ou
+  Mach-O selon la plateforme. C'est la règle que l'application applique
+  déjà aux pièces numérisées, et pour la même raison — accepter un
+  fichier parce qu'il porte le bon nom, c'est accepter de lancer plus
+  tard quelque chose que personne n'a regardé.
+
 ### Fixed
 - **Les commentaires du code comptaient encore 851 fiches.** Douze
   endroits portaient l'ancien chiffre ou son écriture en toutes
