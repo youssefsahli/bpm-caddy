@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Une colonne d'argent est large de ce qu'elle porte.** L'historique
+  de caisse donnait aux cinq la mesure de « -1 234,56 € », le plus large
+  montant concevable : l'écart, qui vaut vingt euros quand il est gros,
+  payait donc la largeur d'une recette. Additionnées, ces générosités
+  débordaient le volet, et la table défilait latéralement — barre
+  flottante, donc invisible : « +20,00 € » sortait sans son euro, sur la
+  seule colonne pour laquelle cet écran existe. Chaque colonne se mesure
+  maintenant sur les montants du mois, et les libellés sont écrits une
+  fois, lus par la mesure comme par le tableau. La barre de défilement,
+  elle, se soustrait avant de choisir la forme (`App::scrolled_width`).
 - **Le chiffre d'une ligne de liste n'est plus ce qu'on perd.**
   `motif::list_row_count` réservait le nombre à droite et élidait le
   libellé dans ce qui restait — ce qui est la bonne moitié perdue, sauf

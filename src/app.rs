@@ -43351,7 +43351,63 @@ impl App {
             // points et peintes à quatorze, les dates sortaient
             // « 06/09/2026 (reco… ».
             let body = egui::TextStyle::Body.resolve(ui.style());
-            let money_w = Self::widest_in(ui, body.clone(), std::iter::once("-1\u{a0}234,56 €"));
+            // **Et une colonne d'argent est large de ce qu'elle porte,
+            // non du plus large montant concevable.** Les cinq
+            // partageaient la mesure de « -1 234,56 € », si bien que
+            // l'écart — qui vaut vingt euros quand il est gros — payait
+            // la largeur d'une recette. Additionnées, ces générosités
+            // débordaient le volet d'une quarantaine de pixels, et la
+            // table défilait donc latéralement, barre flottante et
+            // invisible : « +20,00 € » sortait sans son euro, sur la
+            // seule colonne pour laquelle cet écran existe.
+            //
+            // Les montants sont écrits **une fois**, ici, et le tableau
+            // lit les mêmes chaînes : deux constructions d'un même
+            // libellé finissent toujours par diverger, et celle qui
+            // ment est alors la mesure.
+            let money_text = |c: i64| format!("{} €", euros(c));
+            let expected_text = |c: &crate::caisse::Counted| {
+                c.expected.map_or_else(|| "—".to_owned(), &money_text)
+            };
+            let gap_text = |c: &crate::caisse::Counted| match c.gap() {
+                None => "—".to_owned(),
+                Some(0) => "0,00 €".to_owned(),
+                Some(g) if g < 0 => money_text(g),
+                Some(g) => format!("+{}", money_text(g)),
+            };
+            let money_col = |key: &'static str, vals: &[String]| -> f32 {
+                Self::widest_in(
+                    ui,
+                    body.clone(),
+                    vals.iter()
+                        .map(String::as_str)
+                        .chain(std::iter::once(tr(key))),
+                )
+            };
+            let rows = &session.caisse_counted;
+            let cash_w = money_col(
+                "caisses_col_cash",
+                &rows.iter().map(|c| money_text(c.cash)).collect::<Vec<_>>(),
+            );
+            let other_w = money_col(
+                "caisses_col_other",
+                &rows.iter().map(|c| money_text(c.other)).collect::<Vec<_>>(),
+            );
+            let takings_w = money_col(
+                "caisses_col_takings",
+                &rows
+                    .iter()
+                    .map(|c| money_text(c.takings()))
+                    .collect::<Vec<_>>(),
+            );
+            let expected_w = money_col(
+                "caisses_col_expected",
+                &rows.iter().map(expected_text).collect::<Vec<_>>(),
+            );
+            let gap_w = money_col(
+                "caisses_col_gap",
+                &rows.iter().map(gap_text).collect::<Vec<_>>(),
+            );
             // Et la colonne du jour se mesure sur ce qui s'y écrira de
             // plus large : la date suivie de « (recompté) ».
             let widest_day = format!("08/09/2026 ({})", tr("caisses_recounted"));
@@ -43391,18 +43447,36 @@ impl App {
             // date **seule** : le mot « (recompté) » y pesait la moitié
             // d'une colonne d'argent, alors que la ligne éteinte le dit
             // déjà, et le survol l'écrit.
+            let with_expected = if want_expected {
+                expected_w + gap_w
+            } else {
+                0.0
+            };
             let full = day_w
-                + (3.0 + gap_cols) * money_w
+                + cash_w
+                + other_w
+                + takings_w
+                + with_expected
                 + by_w
                 + (4.0 + gap_cols) * gutter
                 + chars_wide(ui, 12.0);
-            let tight = full > inner.width();
+            // **Et la barre de défilement se soustrait avant la
+            // comparaison.** La table est dans un `ScrollArea::both` :
+            // sa barre verticale prend une douzaine de pixels sur la
+            // largeur, et une forme choisie sur la largeur *entière*
+            // dépasse donc d'autant. C'est assez pour que « +20,00 € »
+            // — le plus large écart du mois — perde son euro contre le
+            // bord du volet, sur la seule colonne pour laquelle cet
+            // écran existe.
+            let room = Self::scrolled_width(ui, inner.width());
+            let tight = full > room;
             let tight_w = day_w
-                + (1.0 + gap_cols) * money_w
+                + takings_w
+                + with_expected
                 + by_w
                 + (2.0 + gap_cols) * gutter
                 + chars_wide(ui, 8.0);
-            let bare = tight && tight_w > inner.width();
+            let bare = tight && tight_w > room;
             let day_w = if bare {
                 Self::widest_in(
                     ui,
@@ -43413,17 +43487,18 @@ impl App {
                 day_w
             };
             let detail_cols = if tight { 0.0 } else { 2.0 };
-            let money_cols = 1.0 + detail_cols + gap_cols;
             let cols = if bare {
                 2 + gap_cols as usize
             } else {
                 4 + detail_cols as usize + gap_cols as usize
             };
             let fixed = day_w
-                + money_cols * money_w
+                + if tight { 0.0 } else { cash_w + other_w }
+                + takings_w
+                + with_expected
                 + if bare { 0.0 } else { by_w }
                 + (cols as f32 - 1.0) * gutter;
-            let remark_w = (inner.width() - fixed).max(chars_wide(ui, 8.0));
+            let remark_w = (room - fixed).max(chars_wide(ui, 8.0));
             egui::ScrollArea::both()
                 .id_salt("caisse_history_table")
                 .show(ui, |ui| {
@@ -43444,13 +43519,13 @@ impl App {
                             };
                             head(ui, day_w, "caisses_col_day");
                             if !tight {
-                                head(ui, money_w, "caisses_col_cash");
-                                head(ui, money_w, "caisses_col_other");
+                                head(ui, cash_w, "caisses_col_cash");
+                                head(ui, other_w, "caisses_col_other");
                             }
-                            head(ui, money_w, "caisses_col_takings");
+                            head(ui, takings_w, "caisses_col_takings");
                             if want_expected {
-                                head(ui, money_w, "caisses_col_expected");
-                                head(ui, money_w, "caisses_col_gap");
+                                head(ui, expected_w, "caisses_col_expected");
+                                head(ui, gap_w, "caisses_col_gap");
                             }
                             if !bare {
                                 head(ui, by_w, "caisses_col_by");
@@ -43504,21 +43579,20 @@ impl App {
                                         cell.on_hover_text(hover);
                                     }
                                 }
-                                let detail: &[i64] = if tight {
+                                let detail: &[(f32, i64)] = if tight {
                                     &[]
                                 } else {
-                                    &[counted.cash, counted.other]
+                                    &[(cash_w, counted.cash), (other_w, counted.other)]
                                 };
-                                for amount in detail
+                                for (w, amount) in detail
                                     .iter()
                                     .copied()
-                                    .chain(std::iter::once(counted.takings()))
+                                    .chain(std::iter::once((takings_w, counted.takings())))
                                 {
                                     Self::grid_cell(
                                         ui,
-                                        money_w,
-                                        egui::RichText::new(format!("{} €", euros(amount)))
-                                            .color(ink),
+                                        w,
+                                        egui::RichText::new(money_text(amount)).color(ink),
                                     );
                                 }
                                 if want_expected {
@@ -43527,27 +43601,18 @@ impl App {
                                     // recette nulle.
                                     Self::grid_cell(
                                         ui,
-                                        money_w,
-                                        egui::RichText::new(counted.expected.map_or_else(
-                                            || "—".to_owned(),
-                                            |e| format!("{} €", euros(e)),
-                                        ))
-                                        .color(ink),
+                                        expected_w,
+                                        egui::RichText::new(expected_text(counted)).color(ink),
                                     );
-                                    let (gap, gap_ink) = match counted.gap() {
-                                        None => ("—".to_owned(), ink),
-                                        Some(0) => ("0,00 €".to_owned(), ink),
-                                        Some(g) if g < 0 => {
-                                            (format!("{} €", euros(g)), motif::alert())
-                                        }
-                                        Some(g) => {
-                                            (format!("+{} €", euros(g)), motif::emphasize(ink))
-                                        }
+                                    let gap_ink = match counted.gap() {
+                                        Some(g) if g < 0 => motif::alert(),
+                                        Some(g) if g > 0 => motif::emphasize(ink),
+                                        _ => ink,
                                     };
                                     Self::grid_cell(
                                         ui,
-                                        money_w,
-                                        egui::RichText::new(gap).color(if stale {
+                                        gap_w,
+                                        egui::RichText::new(gap_text(counted)).color(if stale {
                                             motif::text_dim()
                                         } else {
                                             gap_ink
