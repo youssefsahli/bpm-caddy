@@ -16434,30 +16434,35 @@ impl App {
                     // « 0 € par semaine » reads like a tarif the
                     // application decided on, which is exactly what it
                     // must never look like.
-                    if f.fee == 0.0 {
-                        ui.label(
-                            egui::RichText::new(tr("loc_fee_todo"))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::alert()),
-                        );
-                    } else {
-                        ui.label(
-                            egui::RichText::new(trn(
-                                "loc_forfait_line",
-                                &[
-                                    &crate::codex::format_quantity(f.fee),
-                                    &f.period.label(),
-                                    &if f.max_periods == 0 {
-                                        tr("loc_no_cap").to_owned()
-                                    } else {
-                                        trf("loc_cap", f.max_periods.to_string())
-                                    },
-                                ],
-                            ))
+                    // **La phrase ne se coupe pas au milieu, la rangée
+                    // se coupe avant elle.** `horizontal_wrapped`
+                    // enveloppe le texte *dans* l'étiquette : « forfait
+                    // à compléter (Options › Locations) » finissait la
+                    // rangée sur « forfait à » et reprenait le reste
+                    // dessous, ce qui se lit comme un défaut de rendu.
+                    // C'est le remède déjà écrit pour les puces de la
+                    // revue d'ordonnance, pour la même raison.
+                    let note = if f.fee == 0.0 {
+                        egui::RichText::new(tr("loc_fee_todo"))
                             .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
-                        );
-                    }
+                            .color(motif::alert())
+                    } else {
+                        egui::RichText::new(trn(
+                            "loc_forfait_line",
+                            &[
+                                &crate::codex::format_quantity(f.fee),
+                                &f.period.label(),
+                                &if f.max_periods == 0 {
+                                    tr("loc_no_cap").to_owned()
+                                } else {
+                                    trf("loc_cap", f.max_periods.to_string())
+                                },
+                            ],
+                        ))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim())
+                    };
+                    ui.add(egui::Label::new(note).wrap_mode(egui::TextWrapMode::Extend));
                 });
             }
             ui.add_space(6.0);
