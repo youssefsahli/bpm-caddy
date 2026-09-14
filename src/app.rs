@@ -42943,6 +42943,13 @@ impl App {
         };
 
         motif::panel(ui, panes[0], Some(tr("caisse_drawer")), |ui| {
+            // **Barre pleine.** C'est un formulaire, et le cas exact que
+            // la règle de la maison nomme : ce qui est sous le pli est
+            // le champ où l'on tape. Quinze coupures, sept visibles à
+            // 1024x700, et rien pour dire que la ligne des cinq
+            // centimes existe — sur l'écran dont c'est toute la
+            // fonction.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("caisse_count")
                 .show(ui, |ui| {
@@ -43077,6 +43084,12 @@ impl App {
         });
 
         motif::panel(ui, panes[1], Some(tr("caisse_summary")), |ui| {
+            // L'écart est écrit en premier parce que c'est la réponse,
+            // et le détail qui suit est le calcul — mais un calcul dont
+            // rien ne dit qu'il est là n'est pas un calcul qu'on vérifie.
+            // Le volet fait cinq lignes : sans barre, « Écart : -8,75 € »
+            // était tout ce que le soir montrait.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("caisse_summary")
                 .show(ui, |ui| {

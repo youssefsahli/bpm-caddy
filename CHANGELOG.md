@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le comptage de caisse montre qu'il continue.** Quinze coupures, sept
+  visibles à 1024x700, et rien pour dire que la ligne des cinq centimes
+  existe — sur l'écran dont c'est toute la fonction. Barre pleine sur le
+  tiroir et sur son récapitulatif, où « Écart : -8,75 € » était tout ce
+  que le soir montrait du calcul.
 - **Le carnet de vaccination et les résultats de biologie prennent la
   barre pleine.** Leurs lignes finissent par un geste — « Modifier », la
   croix qui retire —, et toutes deux cèdent à leur formulaire, ce qui
