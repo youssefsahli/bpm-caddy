@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Thirteen regions now set
+  fold is the control you came to use. Fifteen regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -790,7 +790,14 @@ add clicking and typing; it is not the price of entry.
   the notes of the day: at 1024x700 with `text_scale = 1,6` the first
   showed two of five, the second sliced, and every one of those lines is
   a gesture (it opens the file). It is the first screen of the day, and
-  what it hid was who is coming.
+  what it hid was who is coming. The two after them are the **tables of
+  records whose rows end in a gesture** — the vaccination carnet
+  (« Modifier », the cross) and the biology results (the cross that
+  removes one): both lose to their form, which is the house arbitration,
+  and both were then showing a row and a half, the second sliced through
+  its buttons. Their captions do say the total (« — 3 dose(s) »,
+  « (8) »); a total says how many there are, not that you can go and
+  reach them.
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A

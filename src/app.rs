@@ -14247,6 +14247,15 @@ impl App {
                     // atteindre « Enregistrer » puis à gauche pour relire le
                     // nom. La correction se tape maintenant dans la rangée
                     // de saisie, en bas, qui sait déjà se replier.
+                    // **Barre pleine.** La ligne finit par « Modifier »
+                    // et la croix : ce qui est sous le pli porte un
+                    // geste, et le formulaire ayant priorité sur la
+                    // table — c'est l'arbitrage de la maison — la table
+                    // se réduit souvent à une ligne et demie, la
+                    // seconde tranchée au milieu de ses boutons. La
+                    // légende dit bien le nombre de doses, mais elle ne
+                    // dit pas qu'on peut aller les chercher.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::vertical()
                         .id_salt("carnet_rows")
                         .auto_shrink([false, false])
@@ -17133,6 +17142,14 @@ impl App {
             if let Some(table) = table {
                 let inner = motif::well(ui, table);
                 motif::inside(ui, inner, |ui| {
+                    // **Barre pleine**, comme au carnet de vaccination
+                    // et à la table des actes : la ligne finit par la
+                    // croix qui retire le résultat, et le formulaire
+                    // ayant priorité — c'est l'arbitrage de la maison —
+                    // la table se réduit souvent à deux lignes sur huit.
+                    // La légende dit bien combien il y en a ; elle ne
+                    // dit pas qu'on peut aller les chercher.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::vertical()
                         .id_salt("bio_results")
                         .auto_shrink([false, false])

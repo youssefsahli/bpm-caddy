@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
+- **Le carnet de vaccination et les résultats de biologie prennent la
+  barre pleine.** Leurs lignes finissent par un geste — « Modifier », la
+  croix qui retire —, et toutes deux cèdent à leur formulaire, ce qui
+  est l'arbitrage de la maison : elles se réduisaient à une ligne et
+  demie, la seconde tranchée au milieu de ses boutons, derrière une
+  barre flottante invisible. La légende dit bien combien il y a de
+  doses ou de résultats ; elle ne dit pas qu'on peut aller les chercher.
 - **Et un garde pour la prochaine.** Le test lit le texte d'`app.rs`,
   relève pour chacun des neuf appels à `title_band_height` les clés que
   la rangée passe à `ui.heading`, `motif::button` et
