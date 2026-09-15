@@ -24,6 +24,17 @@
 #   ./scripts/eyeball.sh /tmp/larges 1280x800 1.0 motif \
 #       nav_width=420 docs_width=420
 #
+# `vierge=1` est la seule clé qui ne va pas dans `layout.toml` : elle
+# saute le semis de démonstration. L'application sème alors son contenu
+# livré — les 862 fiches, les préparations, les listes de contrôle — et
+# rien d'autre : ni dossier, ni entretien, ni ligne de registre, ni
+# comptage de caisse. C'est **le premier écran qu'une officine voit**,
+# et aucun script de capture ne l'avait jamais montré : les états vides
+# ne se relisent nulle part ailleurs, et c'est là qu'une bande mal
+# provisionnée tranche la seule phrase du volet.
+#
+#   ./scripts/eyeball.sh /tmp/vierge 1024x700 1.25 motif vierge=1
+#
 # Requires xvfb-run and ImageMagick. Run from the repo root.
 set -euo pipefail
 # La même configuration de démonstration que `shot.sh` : les deux
@@ -53,10 +64,18 @@ mkdir -p "$tmp/config/bpm-caddy"
 # onglet du volet droit, s'ouvrait sur ce que la vue d'avant avait
 # laissé, et réordonner la liste changeait des images. Une capture doit
 # ne dépendre que de sa vue.
+fresh=
 layout() {
     : > "$tmp/config/bpm-caddy/layout.toml"
     for kv in "$@"; do
-        printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+        # `vierge=` ne décrit pas la forme du plan de travail mais l'état
+        # de la base : elle est retenue ici plutôt qu'écrite dans
+        # `layout.toml`, comme `theme=` l'est dans `shot.sh`.
+        if [ "${kv%%=*}" = vierge ]; then
+            fresh=${kv#*=}
+        else
+            printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
+        fi
     done
 }
 layout "$@"
@@ -64,7 +83,9 @@ demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME"
 demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 
-BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null
+if [ -z "$fresh" ]; then
+    BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null
+fi
 cargo build
 
 card="$tmp/vitale.bin"

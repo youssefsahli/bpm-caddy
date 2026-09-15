@@ -836,7 +836,15 @@ add clicking and typing; it is not the price of entry.
   in lines so the register's own *lines* survive; a chart kept at the
   price of the rows it illustrates is a chart of nothing.
 - `./scripts/eyeball.sh [dir]` captures every view at 1024x700 with
-  `text_scale = 1.25` into a directory. It sweeps **the same list as
+  `text_scale = 1.25` into a directory. Its extra `clé=valeur` pairs go
+  into `layout.toml` (dock widths), except **`vierge=1`**, which skips
+  the demo seed: the application then seeds only what it ships — the
+  862 cards, the preparations, the checklists — and nothing else. No
+  file, no interview, no register line, no till count. That is **the
+  first screen an officine sees**, and no capture script had ever shown
+  it; the empty states are re-read nowhere else, and it is where a
+  badly-provisioned band cuts the pane's only sentence. It found one
+  the day it was written (`App::label_line`). It sweeps **the same list as
   `smoke.sh`**, and a test holds the two together: a view that smoke
   opens and eyeball never captures is a view nobody ever *looks* at —
   it does not panic, and that is all anyone knows about it. Three were
