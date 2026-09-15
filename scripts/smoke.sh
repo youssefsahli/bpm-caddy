@@ -152,10 +152,11 @@ for shape in "${shapes[@]}"; do
                     # in, and no patient of anybody is read.
                     vitale)    export BPM_CADDY_START_VIEW=vitale
                                export BPM_CADDY_VITALE_DUMP="$card" ;;
-                    # Le verrou : le premier ecran, et le seul qu aucune cle de
-            # vue ne peut ouvrir — il se montre en retirant le mot de passe.
-            verrou)    unset BPM_CADDY_PASSWORD ;;
-            search)    ;;
+                    # Le verrou : le premier ecran, et le seul qu aucune cle
+                    # de vue ne peut ouvrir — il se montre en retirant le
+                    # mot de passe.
+                    verrou)    unset BPM_CADDY_PASSWORD ;;
+                    search)    ;;
                     *)         export BPM_CADDY_START_VIEW="$view" ;;
                 esac
                 timeout 5 ./target/debug/bpm-caddy 2>&1
