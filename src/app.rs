@@ -32086,10 +32086,36 @@ impl App {
         let mut close = false;
         motif::panel(ui, rect, Some(tr("libelles_detail")), |ui| {
             let inner = ui.max_rect();
-            motif::inside(ui, inner, |ui| {
+            // **La rangée des boutons est carvée, pas dessinée dans le
+            // flux.** Elle l'était sous un champ qui grandit, dans la
+            // même zone défilante que tout le reste : les deux volets
+            // tirés larges, « Enregistrer », « Rétablir » et
+            // « Annuler » sortaient par le bas, coupés à leur bord
+            // supérieur, derrière une barre flottante donc invisible.
+            // L'écran où l'on réécrit un libellé n'avait plus le geste
+            // qui l'enregistre. C'est la règle de la maison : ce qui
+            // doit rester visible sous un widget qui grandit se prend
+            // sur le bas avant qu'il soit dessiné.
+            let btn = Self::wrapped_band_height(
+                ui,
+                inner.width(),
+                [
+                    Self::button_width(ui, tr("libelles_save")),
+                    Self::button_width(ui, tr("libelles_restore")),
+                    Self::button_width(ui, tr("libelles_cancel")),
+                ]
+                .into_iter(),
+            ) + 6.0;
+            let split = motif::split_rows(inner, &[0.0, btn], 4.0);
+            motif::inside(ui, split[0], |ui| {
+                // Et la barre est pleine : ce qui est sous le pli ici
+                // est le texte livré, celui contre lequel on relit.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("ui_text_detail")
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        ui.set_max_width(Self::scrolled_width(ui, split[0].width()));
                         ui.label(
                             egui::RichText::new(key.as_str())
                                 .size(motif::pt(ui, 10.5))
@@ -32128,33 +32154,35 @@ impl App {
                             }
                         }
                         ui.add_space(8.0);
-                        // Le champ prend sa propre rangée, et les
-                        // boutons la leur : une rangée de boutons sous
-                        // un champ qui grandit est une rangée qu'on
-                        // finit par dessiner à moitié.
+                        // Le champ prend sa propre rangée : une rangée
+                        // de boutons sous un champ qui grandit est une
+                        // rangée qu'on finit par dessiner à moitié — et
+                        // c'est pourquoi les boutons sont carvés
+                        // au-dessous, hors de cette zone défilante.
                         if let Some((_, text)) = session.ui_text_edit.as_mut() {
                             ui.add_sized(
                                 [ui.available_width(), Self::row_height(ui) * 2.0],
                                 egui::TextEdit::multiline(text),
                             );
                         }
-                        ui.add_space(6.0);
-                        ui.horizontal_wrapped(|ui| {
-                            if motif::button(ui, tr("libelles_save")).clicked() {
-                                save = true;
-                            }
-                            if session.ui_texts.contains_key(&key)
-                                && motif::button(ui, tr("libelles_restore"))
-                                    .on_hover_text(tr("libelles_restore_tooltip"))
-                                    .clicked()
-                            {
-                                restore = true;
-                            }
-                            if motif::button(ui, tr("libelles_cancel")).clicked() {
-                                close = true;
-                            }
-                        });
                     });
+            });
+            motif::inside(ui, split[1], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("libelles_save")).clicked() {
+                        save = true;
+                    }
+                    if session.ui_texts.contains_key(&key)
+                        && motif::button(ui, tr("libelles_restore"))
+                            .on_hover_text(tr("libelles_restore_tooltip"))
+                            .clicked()
+                    {
+                        restore = true;
+                    }
+                    if motif::button(ui, tr("libelles_cancel")).clicked() {
+                        close = true;
+                    }
+                });
             });
         });
         if restore {
@@ -41184,7 +41212,7 @@ impl App {
         let mut pick: Option<String> = None;
         // **Le compte sur la porte.** La liste défile derrière une barre
         // flottante, donc invisible au repos : les deux volets tirés
-        // larges elle montrait douze documents sur dix-huit, coupés au
+        // larges elle montrait douze documents sur seize, coupés au
         // milieu du treizième, et rien ne disait qu'il y en avait. Le
         // compte est la réponse de la maison à une bande coupée, comme
         // « 13 axes en tout » à l'explorateur et « 32 documents en
