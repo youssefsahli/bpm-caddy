@@ -9381,6 +9381,16 @@ pub struct App {
     companion: bool,
     /// La taille de la fenêtre avant le compagnon, pour la rendre.
     companion_was: Option<egui::Vec2>,
+    /// La fenêtre a-t-elle été rétrécie à la barre ?
+    ///
+    /// Ouvert par sa clé de vue, le compagnon n'était qu'un drapeau :
+    /// `toggle_companion` — qui déplace le plancher de taille et pose
+    /// la fenêtre à quatre cent soixante pixels — n'était jamais
+    /// appelé. Les captures le montraient donc dans la fenêtre
+    /// ordinaire, c'est-à-dire la seule forme qu'il n'a jamais à
+    /// l'usage : la fenêtre dont tout l'objet est d'être petite était
+    /// la seule qu'on ne regardait jamais petite.
+    companion_sized: bool,
     /// Ce qu'on tape dans le compagnon.
     companion_query: String,
 }
@@ -10646,6 +10656,7 @@ impl App {
             // trois formes, puisqu'on ne le rencontre qu'en pressant F9.
             companion: start_view == "companion",
             companion_was: None,
+            companion_sized: false,
             // Ouvert par sa clé, le compagnon porte déjà une question :
             // une barre vide n'exerce ni la recherche, ni la phrase, ni
             // le bouton qui ouvre la fiche. `BPM_CADDY_DRUG` la choisit,
@@ -46601,6 +46612,13 @@ impl App {
             let btn_h = Self::button_height(ui) + 8.0;
             let split = motif::split_rows(body, &[0.0, btn_h], 6.0);
             motif::inside(ui, split[0], |ui| {
+                // **Barre pleine.** La fenêtre fait quatre cent soixante
+                // pixels sur trois cents : la fiche n'y tient jamais
+                // entière, et la dernière ligne sortait tranchée par la
+                // rangée de boutons sans que rien ne dise qu'il y avait
+                // une suite — la phrase d'alerte, notamment, qui est la
+                // raison d'ouvrir cette barre au comptoir.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("companion_answer")
                     .auto_shrink([false, false])
@@ -46788,6 +46806,26 @@ enum CompanionGo {
 
 impl eframe::App for App {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // **Ouvert par sa clé, le compagnon prend sa taille.** C'était
+        // un drapeau et rien d'autre : la fenêtre gardait celle qu'on
+        // lui avait demandée, si bien que `smoke.sh` et `eyeball.sh`
+        // regardaient le compagnon dans une fenêtre de mille vingt-quatre
+        // pixels — la seule forme qu'il n'a jamais à l'usage. La taille
+        // d'avant est retenue comme au basculement, pour que F9 la
+        // rende.
+        if self.companion && !self.companion_sized {
+            self.companion_sized = true;
+            self.companion_was = Some(ctx.screen_rect().size());
+            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
+                320.0, 200.0,
+            )));
+            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::from(
+                Self::COMPANION_SIZE,
+            )));
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                egui::WindowLevel::AlwaysOnTop,
+            ));
+        }
         // The look follows the options: applied once, then only when
         // the scale, the density or the palette actually changes.
         let look = (

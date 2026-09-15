@@ -809,6 +809,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le compagnon ouvert par sa clé prend enfin sa taille.** C'était un
+  drapeau et rien d'autre : la fenêtre gardait celle qu'on lui avait
+  demandée, si bien que `smoke.sh` et `eyeball.sh` regardaient le
+  compagnon dans une fenêtre de mille vingt-quatre pixels — la seule
+  forme qu'il n'a jamais à l'usage. La fenêtre dont tout l'objet est
+  d'être petite était la seule qu'on ne regardait jamais petite. Et à
+  460 × 300, la fiche n'y tient jamais entière : sa dernière ligne
+  sortait tranchée par la rangée de boutons, la phrase d'alerte
+  au-dessous d'elle et rien pour le dire. Barre pleine.
 - **Un graphe compte ce qui ne tient pas au lieu de le peindre
   dehors.** `chart::hbars` posait ses rangées les unes sous les autres
   sans regarder la hauteur du rectangle : au-delà, elles se peignaient

@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Twenty-one regions now set
+  fold is the control you came to use. Twenty-two regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -1469,7 +1469,13 @@ add clicking and typing; it is not the price of entry.
   has to open it by key: nothing else would.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `companion` (F9) is the window **shrunk to a bar and put on top**, not
-  a second window: one field, one sentence, four buttons. `MinInnerSize`
+  a second window: one field, one sentence, four buttons. Opened by its
+  view key it now takes that size too — it used to be a flag and
+  nothing else, so `smoke.sh` and `eyeball.sh` looked at the companion
+  inside a 1024-pixel window, which is the one shape it never has in
+  use: the window whose whole point is being small was the only one
+  never looked at small. At 460×300 the card never fits, so its pane
+  carries a solid bar. `MinInnerSize`
   is sent with it, because `main.rs` gives the window a 960x640 floor and
   a window manager that honours it would make the companion 960 px wide.
   The size is deliberately *not* scaled by `[ui] text_scale`: a window is
