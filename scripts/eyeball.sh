@@ -113,19 +113,12 @@ for view in "${views[@]}"; do
     view="$view" out="$out" w="$w" h="$h" card="$card" \
     xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
-        case "$view" in
-            drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
-            drug_kin)  export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_KIN=class ;;
-            # La carte rejouee, comme dans smoke.sh : sans elle la vue se
-            # capture sur le message de lecteur absent, pas sur sa forme.
-            vitale)    export BPM_CADDY_START_VIEW=vitale
-                       export BPM_CADDY_VITALE_DUMP="$card" ;;
-            # Le verrou : le premier ecran, et le seul qu aucune cle de
-            # vue ne peut ouvrir — il se montre en retirant le mot de passe.
-            verrou)    unset BPM_CADDY_PASSWORD ;;
-            search)    ;;
-            *)         export BPM_CADDY_START_VIEW="$view" ;;
-        esac
+        . "'"$(cd "$(dirname "$0")" && pwd)"'/demo-config.sh"
+        # Les quatre vues qui demandent autre chose qu une cle de vue :
+        # ecrites une fois, dans `demo-config.sh`, et lues par les deux
+        # scripts de capture. `shot.sh` ne les connaissait pas, et rendait
+        # l ecran d accueil pour chacune des quatre.
+        demo_view_env "$view" "$card"
         ./target/debug/bpm-caddy &
         app=$!
         sleep 3

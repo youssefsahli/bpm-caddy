@@ -809,6 +809,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **`shot.sh` atteint les quatre vues qui ne sont pas des clés de vue.**
+  Le formulaire d'une fiche et sa liste de voisins sont des drapeaux
+  posés par-dessus `drug_card`, le lecteur Vitale demande une carte
+  rejouée, et le verrou se montre en *retirant* le mot de passe.
+  `eyeball.sh` le savait et `shot.sh` non : `./scripts/shot.sh drug_edit`
+  rendait l'écran d'accueil, c'est-à-dire une image de rien, sur l'outil
+  qui existe pour le coup d'œil qu'on répète vingt fois pendant qu'on
+  corrige une bande. Quatre formes qu'on ne pouvait corriger qu'à
+  l'aveugle, ou en relançant la passe entière. La correspondance est
+  écrite une fois, dans `demo-config.sh`, et lue par les deux scripts.
+- **La bande du dossier remontre ses traitements.** Le plafond de la
+  bande arrondissait tout ce qui suit l'en-tête en rangées de boutons,
+  rangées de puces comprises : chaque rangée de traitements était donc
+  payée au prix d'une rangée de boutons, et sur un dossier de six
+  traitements il en entrait deux là où il y en a place pour deux fois
+  plus. Les rangées de puces se comptent maintenant à leur propre
+  hauteur, et la coupe tombe toujours entre deux rangées — ce qui était
+  tout l'objet du plafond.
+- **Le libellé qu'on réécrit garde le bouton qui l'enregistre.** Les
+  trois boutons — « Enregistrer », « Rétablir », « Annuler » — étaient
+  dessinés dans le flux, sous un champ qui grandit et dans la même zone
+  défilante que tout le reste : les deux volets tirés larges, ils
+  sortaient par le bas, coupés à leur bord supérieur, derrière une barre
+  flottante donc invisible. L'écran où l'on réécrit un libellé n'avait
+  plus le geste qui l'enregistre. Ils ont leur propre rangée, prise sur
+  le bas avant que le champ soit dessiné.
+- **Le formulaire d'une fiche montre qu'il a des champs.** À
+  `text_scale = 1,6` il ne montrait que l'en-tête d'identité, et rien ne
+  disait que les champs étaient dessous : un formulaire dont on ne voit
+  aucun champ n'est pas un formulaire court. Barre pleine sur le
+  formulaire, flottante sur la monographie — une monographie est de la
+  prose, et une ligne coupée par le bas s'y lit « ça continue ».
 - **La posologie du dossier se lit en entier dans la conciliation.** Le
   champ prenait ce qui restait après le nom, et sur le volet de droite
   d'un onglet de dossier il ne restait pas de quoi lire ce qu'il porte :

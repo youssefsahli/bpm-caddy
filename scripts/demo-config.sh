@@ -78,6 +78,43 @@ demo_home() {
     mkdir -p "$XDG_DATA_HOME" "$XDG_CACHE_HOME"
 }
 
+# `demo_view_env <vue> <carte>` : ce qu'une vue demande **en plus** de
+# `BPM_CADDY_START_VIEW`, écrit une fois pour les deux scripts de
+# capture.
+#
+# Quatre des vues que `eyeball.sh` balaie ne sont pas des clés de vue :
+# le formulaire d'une fiche et sa liste de voisins sont des drapeaux
+# posés par-dessus `drug_card`, le lecteur Vitale demande une carte
+# rejouée, et le verrou se montre en *retirant* le mot de passe.
+# `eyeball.sh` le savait et `shot.sh` non : `./scripts/shot.sh drug_edit`
+# rendait l'écran d'accueil, c'est-à-dire une image de rien, sur l'outil
+# qui existe pour le coup d'œil qu'on répète vingt fois pendant qu'on
+# corrige une bande. Quatre formes qu'on ne pouvait corriger qu'à
+# l'aveugle, ou en relançant la passe entière.
+#
+# C'est le défaut que ce dépôt nomme partout ailleurs : deux
+# constructions d'une même chose finissent toujours par diverger.
+demo_view_env() {
+    case "$1" in
+        drug_edit) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_DRUG_EDIT=1 ;;
+        drug_kin) export BPM_CADDY_START_VIEW=drug_card BPM_CADDY_KIN=class ;;
+        # La carte rejouée : sans elle la vue se capture sur le message
+        # de lecteur absent, pas sur sa forme.
+        vitale)
+            export BPM_CADDY_START_VIEW=vitale
+            export BPM_CADDY_VITALE_DUMP="$2"
+            ;;
+        # Le premier écran, et le seul qu'aucune clé de vue ne peut
+        # ouvrir — il se montre en retirant le mot de passe.
+        verrou) unset BPM_CADDY_PASSWORD ;;
+        # « search » est l'accueil : c'est la vue par défaut, et lui
+        # poser une clé la ferait passer par le même chemin que les
+        # autres, ce qu'elle n'emprunte pas.
+        search) ;;
+        *) export BPM_CADDY_START_VIEW="$1" ;;
+    esac
+}
+
 demo_vitale_card() {
     # **Trois bénéficiaires, pas un.** Une carte porte le titulaire et
     # ses ayants droit, et la personne au comptoir n'est pas toujours le

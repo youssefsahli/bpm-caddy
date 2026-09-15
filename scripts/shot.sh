@@ -46,13 +46,21 @@ BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null 2>&1
 cargo build 2>/dev/null
 
 w=${SIZE%x*} h=${SIZE#*x}
+# La carte Vitale rejouée, pour que `shot.sh vitale` montre l'écran du
+# lecteur et non son message d'absence.
+card="$tmp/vitale.bin"
+demo_vitale_card "$card"
 # Trois fois la largeur, la fenêtre à gauche, et on recadre : Xvfb gare
 # le pointeur au centre de l'écran, donc *dans* la fenêtre si l'écran
 # fait sa taille, et chaque capture revenait avec une bulle d'aide.
-view="$view" out="$out" w="$w" h="$h" \
+view="$view" out="$out" w="$w" h="$h" card="$card" \
     xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
-        BPM_CADDY_START_VIEW="$view" ./target/debug/bpm-caddy &
+        . "'"$(cd "$(dirname "$0")" && pwd)"'/demo-config.sh"
+        # Les quatre vues qui demandent autre chose qu une cle : ecrites
+        # une fois, dans `demo-config.sh`, et lues par les deux scripts.
+        demo_view_env "$view" "$card"
+        ./target/debug/bpm-caddy &
         pid=$!
         sleep 6
         import -window root -crop "${w}x${h}+0+0" +repage "$out" 2>/dev/null
