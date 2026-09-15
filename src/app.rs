@@ -2125,70 +2125,108 @@ fn notes_box(
     // the docks were dragged wide and the journal was down to ninety
     // pixels: half a button, and nothing to click. The well can shrink
     // to nothing — it scrolls — but the row you type into stays whole.
-    let height = height.min(budget - reserve).max(0.0);
+    //
+    // **Mais un creux plus court qu'une ligne ne montre rien : il
+    // tranche.** Sur la fiche d'un médicament, à 1024x700, « Notes
+    // datées » en recevait quinze pixels : « Aucune note. » sortait
+    // coupée par le milieu de ses lettres, sous un cadre creusé qui
+    // annonçait un journal. Une phrase à demi peinte se lit « cassé »,
+    // et un creux vide se lit « il n'y a rien » — alors qu'ici il n'y a
+    // pas la place. Sous une ligne, le creux n'est donc pas dessiné du
+    // tout, et la place revient à la rangée où l'on tape, qui est ce
+    // que ce panneau garde en dernier.
+    //
+    // **Et il ne part pas en silence quand il y a des notes.** Un
+    // journal qui en porte trois et qu'on n'a pas la place de montrer
+    // se lit « ce médicament n'en a pas », ce qui est le contraire de
+    // ce qui se passe : tant qu'il reste une ligne, elle dit combien il
+    // y en a. C'est la règle du plafond qui s'annonce, appliquée à un
+    // plancher — la même qu'aux résultats de biologie.
+    let line = ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0))));
+    let full = height.min(budget - reserve).max(0.0);
+    let short = full < line + 10.0;
+    let notice = short && !notes.is_empty() && full >= line;
+    let height = if short { 0.0 } else { full };
     let rect =
         egui::Rect::from_min_size(egui::pos2(ui.cursor().left(), top), egui::vec2(w, height));
-    ui.painter().rect_filled(rect, 0.0, motif::trough());
-    motif::bevel(ui.painter(), rect, false);
+    if height > 0.0 {
+        ui.painter().rect_filled(rect, 0.0, motif::trough());
+        motif::bevel(ui.painter(), rect, false);
+    }
+    if notice {
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(trf("notes_too_short", notes.len()))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            )
+            .wrap_mode(egui::TextWrapMode::Truncate),
+        );
+    }
     // Clipped to the well it sits in. `allocate_new_ui` only sets a max
     // rect, and egui paints past that; an over-full journal therefore
     // spilled its last entries under the frame and pushed the "add" row
     // through the bottom edge of the panel.
-    motif::inside(ui, rect.shrink(5.0), |ui| {
-        egui::ScrollArea::vertical()
-            .id_salt(id_salt)
-            .max_height(rect.height() - 10.0)
-            .show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 2.0;
-                if notes.is_empty() {
-                    ui.label(
-                        egui::RichText::new(tr("notes_empty"))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
-                    );
-                }
-                for n in notes {
-                    ui.horizontal(|ui| {
-                        let head = if n.operator.is_empty() {
-                            n.stamp()
-                        } else {
-                            format!("{} · {}", n.stamp(), n.operator)
-                        };
-                        // Stamped in the operator's own colour, so a
-                        // journal can be scanned by who wrote what.
+    if height > 0.0 {
+        motif::inside(ui, rect.shrink(5.0), |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt(id_salt)
+                .max_height(rect.height() - 10.0)
+                .show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 2.0;
+                    if notes.is_empty() {
                         ui.label(
-                            egui::RichText::new(head)
+                            egui::RichText::new(tr("notes_empty"))
                                 .size(motif::pt(ui, 11.0))
-                                .color(operator_color(&n.operator)),
+                                .color(motif::text_dim()),
                         );
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let label = if *confirm == Some(n.id) {
-                                tr("itv_delete_confirm")
+                    }
+                    for n in notes {
+                        ui.horizontal(|ui| {
+                            let head = if n.operator.is_empty() {
+                                n.stamp()
                             } else {
-                                tr("itv_delete")
+                                format!("{} · {}", n.stamp(), n.operator)
                             };
-                            let x = ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(label).size(motif::pt(ui, 11.0)),
-                                )
-                                .sense(egui::Sense::click()),
+                            // Stamped in the operator's own colour, so a
+                            // journal can be scanned by who wrote what.
+                            ui.label(
+                                egui::RichText::new(head)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(operator_color(&n.operator)),
                             );
-                            if x.on_hover_text(tr("notes_delete_tooltip")).clicked() {
-                                if *confirm == Some(n.id) {
-                                    delete = Some(n.id);
-                                    *confirm = None;
-                                } else {
-                                    *confirm = Some(n.id);
-                                }
-                            }
+                            ui.with_layout(
+                                egui::Layout::right_to_left(egui::Align::Center),
+                                |ui| {
+                                    let label = if *confirm == Some(n.id) {
+                                        tr("itv_delete_confirm")
+                                    } else {
+                                        tr("itv_delete")
+                                    };
+                                    let x = ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(label).size(motif::pt(ui, 11.0)),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    );
+                                    if x.on_hover_text(tr("notes_delete_tooltip")).clicked() {
+                                        if *confirm == Some(n.id) {
+                                            delete = Some(n.id);
+                                            *confirm = None;
+                                        } else {
+                                            *confirm = Some(n.id);
+                                        }
+                                    }
+                                },
+                            );
                         });
-                    });
-                    let sz = motif::pt(ui, 13.0);
-                    ui.add(egui::Label::new(rich_text(&n.body, sz, motif::text())).wrap());
-                    ui.add_space(3.0);
-                }
-            });
-    });
+                        let sz = motif::pt(ui, 13.0);
+                        ui.add(egui::Label::new(rich_text(&n.body, sz, motif::text())).wrap());
+                        ui.add_space(3.0);
+                    }
+                });
+        });
+    }
     ui.add_space(6.0);
     if with_add {
         // The button is measured, and the field never floored above

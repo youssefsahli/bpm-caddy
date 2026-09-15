@@ -809,6 +809,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Un journal plus court qu'une ligne ne se dessine plus tranché.** Sur
+  la fiche d'un médicament, à 1024x700, « Notes datées » recevait quinze
+  pixels : « Aucune note. » sortait coupée par le milieu de ses lettres,
+  sous un cadre creusé qui annonçait un journal. Le creux pouvait déjà
+  se réduire à rien — c'est la rangée où l'on tape qui passe en premier,
+  et c'est juste —, mais il se réduisait à *presque* rien, ce qui est la
+  seule taille où il ment. Sous une ligne il n'est plus dessiné du tout ;
+  et tant qu'il reste une ligne, elle dit combien de notes le volet est
+  trop court pour montrer — un journal de trois notes qu'on n'a pas la
+  place d'afficher se lisait « ce médicament n'en a pas ».
 - **Les volets de gauche écrivent leur vide en mots.** Sur une base
   neuve — le premier écran d'une officine — « Patients » et « Journées »
   montraient un creux gris et rien d'autre, quand le panneau du milieu
