@@ -44599,6 +44599,10 @@ impl App {
             .map(|st| (st.label(), total(&|s| s.state == st)))
             .collect();
 
+        // Barre pleine, comme le tableau de bord et les statistiques :
+        // trois pages de chiffres qu'on lit de haut en bas, et dont la
+        // moitié est sous le pli dès 1024x700.
+        ui.spacing_mut().scroll.floating = false;
         egui::ScrollArea::vertical()
             .id_salt("finances")
             .show(ui, |ui| {
