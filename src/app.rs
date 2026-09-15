@@ -32762,9 +32762,14 @@ impl App {
         // La bande de saisie est mesurée : deux rangées de pastilles de
         // genre sur un volet étroit, plus la rangée des champs et celle
         // des boutons.
+        // **Et la barre de la rangée des genres est prise sur ce
+        // qu'elle a pour s'étaler.** Elle est pleine — le genre est un
+        // geste, et quatre des six se lisaient comme n'existant pas —,
+        // donc ses douze pixels manquent au dessin, et une mesure qui
+        // les ignore annonce une rangée là où il en faut deux.
         let kinds = Self::wrapped_rows(
             ui,
-            rect.width() - 24.0,
+            Self::scrolled_width(ui, rect.width() - 24.0),
             DocKind::ALL.iter().map(|k| tr(k.label_key())),
         );
         // Mesurée, **puis plafonnée**. Sur un onglet de dossier à
@@ -32878,10 +32883,20 @@ impl App {
             // les pastilles qui défilent dans ce qui reste.
             let split = motif::split_rows(body, &[0.0, field_row], 4.0);
             motif::inside(ui, split[0], |ui| {
+                // **Barre pleine.** Ce qui est sous le pli ici est un
+                // geste : le genre de la pièce. Sur un onglet de dossier
+                // à `text_scale = 1,6` la bande ne montrait que la
+                // première rangée — « Ordonnance » et « Accident du
+                // travail » — et rien ne disait que « Biologie »,
+                // « Courrier », « Facture » et « Autre » existaient.
+                // Quatre des six genres se lisaient comme n'existant
+                // pas, sur le volet qui range les pièces.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("scan_add")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        ui.set_max_width(Self::scrolled_width(ui, split[0].width()));
                         ui.horizontal_wrapped(|ui| {
                             for k in DocKind::ALL {
                                 if motif::toggle(ui, tr(k.label_key()), session.scan_new_kind == k)
