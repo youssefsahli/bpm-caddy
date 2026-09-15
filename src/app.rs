@@ -44852,10 +44852,24 @@ impl App {
                         return;
                     }
                     ui.add_space(6.0);
+                    // **Le compte dans le titre, qui ne coûte pas de
+                    // ligne.** Cette liste est dans une région qui
+                    // défile derrière une barre flottante : à 1400x900
+                    // elle montrait onze des treize soirs en écart, et
+                    // rien ne disait qu'il en manquait deux. Un total
+                    // dans la légende est le remède de la maison pour
+                    // une liste simple — « Antidotes (106) » — et il
+                    // vaut ici : ce sont les deux plus petits écarts qui
+                    // tombaient sous le pli, c'est-à-dire ceux qu'on ne
+                    // cherchait pas et qu'on croyait donc absents.
                     ui.label(
-                        egui::RichText::new(tr("caisses_off"))
-                            .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
+                        egui::RichText::new(if session.caisse_off.is_empty() {
+                            tr("caisses_off").to_owned()
+                        } else {
+                            trf("caisses_off_n", session.caisse_off.len())
+                        })
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
                     );
                     if session.caisse_off.is_empty() {
                         ui.label(

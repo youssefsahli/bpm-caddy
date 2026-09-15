@@ -1870,6 +1870,7 @@ caisses_no_expected = "Aucune recette attendue n'a été saisie sur ce mois : il
 caisses_worst = "Écarts les plus importants"
 caisses_strip = "Recette par soir compté"
 caisses_off = "Soirs avec écart"
+caisses_off_n = "Soirs avec écart ({})"
 caisses_all_square = "Aucun écart sur les soirs comptés."
 caisses_off_unknown = "Sans recette attendue, l'écart n'est pas calculable."
 labels_print = "Étiquettes"
