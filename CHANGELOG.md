@@ -8,118 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.200.0] - 2026-09-13
 
 ### Added
-- **Le comptage de caisse montre qu'il continue.** Quinze coupures, sept
-  visibles à 1024x700, et rien pour dire que la ligne des cinq centimes
-  existe — sur l'écran dont c'est toute la fonction. Barre pleine sur le
-  tiroir et sur son récapitulatif, où « Écart : -8,75 € » était tout ce
-  que le soir montrait du calcul.
-- **Le carnet de vaccination et les résultats de biologie prennent la
-  barre pleine.** Leurs lignes finissent par un geste — « Modifier », la
-  croix qui retire —, et toutes deux cèdent à leur formulaire, ce qui
-  est l'arbitrage de la maison : elles se réduisaient à une ligne et
-  demie, la seconde tranchée au milieu de ses boutons, derrière une
-  barre flottante invisible. La légende dit bien combien il y a de
-  doses ou de résultats ; elle ne dit pas qu'on peut aller les chercher.
-- **Et un garde pour la prochaine.** Le test lit le texte d'`app.rs`,
-  relève pour chacun des neuf appels à `title_band_height` les clés que
-  la rangée passe à `ui.heading`, `motif::button` et
-  `motif::button_enabled`, et exige que la mesure les nomme — un
-  contrôle dessiné sous condition compte comme les autres, c'est le
-  pire cas qui décide d'une disposition.
-- **Trois autres bandes de titre mesuraient autre chose que ce qu'elles
-  dessinent.** Les carnets oubliaient leur propre titre, mesuré sur le
-  seul bouton « Fermer » — et ne provisionnaient qu'une ligne sous le
-  sous-titre là où une officine ayant réécrit une phrase en voit deux.
-  Les classes mesuraient `classes_subtitle`, cinquante-quatre
-  caractères, et dessinaient `classes_subtitle_count`, qui en fait cent
-  dix-huit : deux écritures d'une même phrase, et celle qui ment est la
-  mesure ; la phrase courte est supprimée. L'historique de caisse
-  ignorait dix pixels d'`add_space` et mesurait le nom du mois dans une
-  autre fonte que celle qui l'écrit.
-- **La règle de l'écran de caisse se lit en entier.** « Modèle… » se
-  dessinait dans la bande de titre sans avoir été mesuré : elle
-  annonçait deux rangées là où elle en dessine trois, et la dernière
-  ligne du sous-titre tombait hors du rectangle, coupée au milieu d'un
-  mot. Ce qui disparaissait est la moitié de la phrase qui dit qu'un
-  écart se note et **ne se corrige pas en changeant le comptage**.
-  Tenu par un test qui dessine la vraie rangée à trois échelles et sept
-  largeurs : une liste mesurée et une rangée dessinée sont deux
-  écritures de la même chose, et rien dans le type ne les tient
-  ensemble.
-- **La liste des tables de conversion dit la taille de chacune.** Le
-  compte était composé après le nom, donc à la fin de la ligne, donc la
-  première chose que le volet étroit mangeait : « Statines 12 lignes »
-  tenait, « Benzodiaz… » avait perdu le sien. Il est réservé maintenant,
-  par le même widget que les classes et les stupéfiants — qui prend un
-  décalage, pour une liste rangée sous des intertitres.
-- **Le premier écran de la journée ne cache plus qui arrive.** Les trois
-  panneaux du tableau de bord — les rendez-vous du jour, les derniers
-  dossiers, les notes du jour — défilaient derrière la barre flottante
-  d'egui, invisible tant que le pointeur n'est pas dessus : à 1024x700
-  en texte 1,6, « Aujourd'hui » montrait deux lignes sur cinq, la
-  seconde tranchée, et rien ne disait qu'il y en avait d'autres. Chaque
-  ligne est pourtant un geste — elle ouvre le dossier. Barre pleine sur
-  les trois.
-- **Le nom du centre de la carte cherche sa place.** Il se posait sous
-  le moyeu quoi qu'il y ait, et l'anneau du milieu passe exactement à
-  cette hauteur : sur la carte d'Eliquis, « Eliquis » s'écrivait par-
-  dessus le carré d'un voisin de classe — le carré illisible, le nom
-  illisible, et le voisin privé du sien puisque la place était déjà
-  réservée. Quatre places essayées dans l'ordre (dessous, dessus,
-  droite, gauche), et une plaque de la couleur du puits sous le nom :
-  les rayons quittent le milieu dans toutes les directions, et un nom
-  écrit dessus se lit à travers trois traits.
-- **« Pièces au dossier » dit combien il y en a.** La bande est
-  plafonnée par la forme où l'on dépose une pièce — c'est la bonne
-  moitié à garder — mais à 1024x700 en texte 1,6 il ne restait que
-  l'en-tête de la table : un titre au-dessus de rien, quand le dossier
-  en porte trois.
-- **Le nom cherché est déjà dans le champ.** « Aucun patient trouvé —
-  création rapide » redemandait à blanc le nom qu'on venait de taper, et
-  qui est écrit juste au-dessus. C'est ce que fait déjà la carte Vitale
-  avec ce même formulaire. Tapé tel quel, sans majuscule ajoutée — « de
-  La Fontaine » ne survit à aucune règle de capitalisation — et **un
-  seul mot, jamais deux** : « jean dupont » et « dupont jean » se tapent
-  tous les deux au comptoir, et deviner écrirait un prénom dans la case
-  du nom une fois sur deux.
-- **Trois légendes qui gardent ce qu'elles ont à dire.** L'intitulé de
-  `motif::section` récupère les douze pixels que le filet gardait en
-  réserve — « Médicaments », le titre du dock du référentiel, sortait
-  « Médicame… » à `text_scale = 1,6` avec un filet impeccable à côté.
-  La courbe de biologie garde le nom de l'analyte (« ÉVOLUTION —
-  KALI… » devient « KALIÉMIE »), et « Retours et destructions » dit
-  combien de lignes il porte, comme « Au coffre » juste au-dessus :
-  cette bande défile, sa barre est flottante donc invisible, et une
-  ligne tranchée par le bas du volet était tout ce qui disait qu'il y en
-  avait d'autres.
-- **Une colonne d'argent est large de ce qu'elle porte.** L'historique
-  de caisse donnait aux cinq la mesure de « -1 234,56 € », le plus large
-  montant concevable : l'écart, qui vaut vingt euros quand il est gros,
-  payait donc la largeur d'une recette. Additionnées, ces générosités
-  débordaient le volet, et la table défilait latéralement — barre
-  flottante, donc invisible : « +20,00 € » sortait sans son euro, sur la
-  seule colonne pour laquelle cet écran existe. Chaque colonne se mesure
-  maintenant sur les montants du mois, et les libellés sont écrits une
-  fois, lus par la mesure comme par le tableau. La barre de défilement,
-  elle, se soustrait avant de choisir la forme (`App::scrolled_width`).
-- **Le chiffre d'une ligne de liste n'est plus ce qu'on perd.**
-  `motif::list_row_count` réservait le nombre à droite et élidait le
-  libellé dans ce qui restait — ce qui est la bonne moitié perdue, sauf
-  quand il ne reste rien : dans le volet des produits suivis à
-  `text_scale = 1,6`, « 14 gélules » prenait les deux tiers de la ligne
-  et la méthadone sortait « Mé / tha / don / e ». Sous la moitié de la
-  largeur, le widget superpose donc au lieu de partager : le libellé sur
-  toute la colonne, le solde dessous. Il enroulait aussi sans borne et
-  coupait au milieu des mots ; il suit maintenant la règle de
-  `label_rows`, deux lignes si la coupe est propre, l'ellipse sinon.
-  Et sa couleur n'est plus un booléen « en gris » mais l'encre de la
-  ligne : c'est ce qui manquait à la liste des stupéfiants, dont le
-  rouge dit « à aller compter ».
-- **Et la légende qui porte ce compte le garde aussi.** « Produits
-  suivis — 4 à compter » sortait « PRODUITS SUIVI… » : le compte ajouté
-  au bout du libellé est la fin de la ligne, donc la première chose que
-  l'élision mange. Il est maintenant la forme pauvre — « 4 à compter » —
-  par `motif::panel_forms`, qui existait pour cela.
 - **La carte vaccinale et les carnets du patient entrent au manuel.**
   Six feuilles à emporter — automesure, glycémie, poids, débit de
   pointe, INR, douleur — avec la règle qui les gouverne : ce qui manque
@@ -252,6 +140,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   paroxétine désarme — et la codéine.
 
 ### Changed
+- **Le nom cherché est déjà dans le champ.** « Aucun patient trouvé —
+  création rapide » redemandait à blanc le nom qu'on venait de taper, et
+  qui est écrit juste au-dessus. C'est ce que fait déjà la carte Vitale
+  avec ce même formulaire. Tapé tel quel, sans majuscule ajoutée — « de
+  La Fontaine » ne survit à aucune règle de capitalisation — et **un
+  seul mot, jamais deux** : « jean dupont » et « dupont jean » se tapent
+  tous les deux au comptoir, et deviner écrirait un prénom dans la case
+  du nom une fois sur deux.
 - **Le bandeau du dossier dit combien de traitements il porte.** La
   rangée des puces se plafonne avec la bande et défile ; la barre
   d'egui étant flottante, trois traitements sur six se lisaient comme
@@ -913,6 +809,122 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le forfait à compléter ne se coupait plus en deux.** « forfait à
+  compléter (Options › Locations) » finissait la rangée sur « forfait
+  à » et reprenait le reste dessous : `horizontal_wrapped` enveloppe le
+  texte *dans* l'étiquette, et une phrase coupée là se lit comme un
+  défaut de rendu.
+- **« À surveiller » dit qu'il y a une liste.** Le bandeau vaut
+  quatre-vingt-dix pixels à 1024x700 et « Imprimer » en prend la
+  moitié : il ne restait de la liste que le haut de sa première ligne,
+  tranché, sans rien pour dire qu'il y en avait trois.
+- **Superposé, le chiffre d'une ligne de liste enveloppe plutôt que de
+  déborder.** « 21 comprimés sublinguaux » sortait « 21 comprimés
+  sublir », coupé par le cadre du puits et sans rien pour le dire.
+- **Le comptage de caisse montre qu'il continue.** Quinze coupures, sept
+  visibles à 1024x700, et rien pour dire que la ligne des cinq centimes
+  existe — sur l'écran dont c'est toute la fonction. Barre pleine sur le
+  tiroir et sur son récapitulatif, où « Écart : -8,75 € » était tout ce
+  que le soir montrait du calcul.
+- **Le carnet de vaccination et les résultats de biologie prennent la
+  barre pleine.** Leurs lignes finissent par un geste — « Modifier », la
+  croix qui retire —, et toutes deux cèdent à leur formulaire, ce qui
+  est l'arbitrage de la maison : elles se réduisaient à une ligne et
+  demie, la seconde tranchée au milieu de ses boutons, derrière une
+  barre flottante invisible. La légende dit bien combien il y a de
+  doses ou de résultats ; elle ne dit pas qu'on peut aller les chercher.
+- **Trois autres bandes de titre mesuraient autre chose que ce qu'elles
+  dessinent.** Les carnets oubliaient leur propre titre, mesuré sur le
+  seul bouton « Fermer » — et ne provisionnaient qu'une ligne sous le
+  sous-titre là où une officine ayant réécrit une phrase en voit deux.
+  Les classes mesuraient `classes_subtitle`, cinquante-quatre
+  caractères, et dessinaient `classes_subtitle_count`, qui en fait cent
+  dix-huit : deux écritures d'une même phrase, et celle qui ment est la
+  mesure ; la phrase courte est supprimée. L'historique de caisse
+  ignorait dix pixels d'`add_space` et mesurait le nom du mois dans une
+  autre fonte que celle qui l'écrit.
+- **Et un garde pour la prochaine.** Le test lit le texte d'`app.rs`,
+  relève pour chacun des neuf appels à `title_band_height` les clés que
+  la rangée passe à `ui.heading`, `motif::button` et
+  `motif::button_enabled`, et exige que la mesure les nomme — un
+  contrôle dessiné sous condition compte comme les autres, c'est le
+  pire cas qui décide d'une disposition.
+- **La règle de l'écran de caisse se lit en entier.** « Modèle… » se
+  dessinait dans la bande de titre sans avoir été mesuré : elle
+  annonçait deux rangées là où elle en dessine trois, et la dernière
+  ligne du sous-titre tombait hors du rectangle, coupée au milieu d'un
+  mot. Ce qui disparaissait est la moitié de la phrase qui dit qu'un
+  écart se note et **ne se corrige pas en changeant le comptage**.
+  Tenu par un test qui dessine la vraie rangée à trois échelles et sept
+  largeurs : une liste mesurée et une rangée dessinée sont deux
+  écritures de la même chose, et rien dans le type ne les tient
+  ensemble.
+- **La liste des tables de conversion dit la taille de chacune.** Le
+  compte était composé après le nom, donc à la fin de la ligne, donc la
+  première chose que le volet étroit mangeait : « Statines 12 lignes »
+  tenait, « Benzodiaz… » avait perdu le sien. Il est réservé maintenant,
+  par le même widget que les classes et les stupéfiants — qui prend un
+  décalage, pour une liste rangée sous des intertitres.
+- **Le premier écran de la journée ne cache plus qui arrive.** Les trois
+  panneaux du tableau de bord — les rendez-vous du jour, les derniers
+  dossiers, les notes du jour — défilaient derrière la barre flottante
+  d'egui, invisible tant que le pointeur n'est pas dessus : à 1024x700
+  en texte 1,6, « Aujourd'hui » montrait deux lignes sur cinq, la
+  seconde tranchée, et rien ne disait qu'il y en avait d'autres. Chaque
+  ligne est pourtant un geste — elle ouvre le dossier. Barre pleine sur
+  les trois.
+- **Le nom du centre de la carte cherche sa place.** Il se posait sous
+  le moyeu quoi qu'il y ait, et l'anneau du milieu passe exactement à
+  cette hauteur : sur la carte d'Eliquis, « Eliquis » s'écrivait par-
+  dessus le carré d'un voisin de classe — le carré illisible, le nom
+  illisible, et le voisin privé du sien puisque la place était déjà
+  réservée. Quatre places essayées dans l'ordre (dessous, dessus,
+  droite, gauche), et une plaque de la couleur du puits sous le nom :
+  les rayons quittent le milieu dans toutes les directions, et un nom
+  écrit dessus se lit à travers trois traits.
+- **« Pièces au dossier » dit combien il y en a.** La bande est
+  plafonnée par la forme où l'on dépose une pièce — c'est la bonne
+  moitié à garder — mais à 1024x700 en texte 1,6 il ne restait que
+  l'en-tête de la table : un titre au-dessus de rien, quand le dossier
+  en porte trois.
+- **Trois légendes qui gardent ce qu'elles ont à dire.** L'intitulé de
+  `motif::section` récupère les douze pixels que le filet gardait en
+  réserve — « Médicaments », le titre du dock du référentiel, sortait
+  « Médicame… » à `text_scale = 1,6` avec un filet impeccable à côté.
+  La courbe de biologie garde le nom de l'analyte (« ÉVOLUTION —
+  KALI… » devient « KALIÉMIE »), et « Retours et destructions » dit
+  combien de lignes il porte, comme « Au coffre » juste au-dessus :
+  cette bande défile, sa barre est flottante donc invisible, et une
+  ligne tranchée par le bas du volet était tout ce qui disait qu'il y en
+  avait d'autres.
+- **Une colonne d'argent est large de ce qu'elle porte.** L'historique
+  de caisse donnait aux cinq la mesure de « -1 234,56 € », le plus large
+  montant concevable : l'écart, qui vaut vingt euros quand il est gros,
+  payait donc la largeur d'une recette. Additionnées, ces générosités
+  débordaient le volet, et la table défilait latéralement — barre
+  flottante, donc invisible : « +20,00 € » sortait sans son euro, sur la
+  seule colonne pour laquelle cet écran existe. Chaque colonne se mesure
+  maintenant sur les montants du mois, et les libellés sont écrits une
+  fois, lus par la mesure comme par le tableau. La barre de défilement,
+  elle, se soustrait avant de choisir la forme (`App::scrolled_width`).
+- **Le chiffre d'une ligne de liste n'est plus ce qu'on perd.**
+  `motif::list_row_count` réservait le nombre à droite et élidait le
+  libellé dans ce qui restait — ce qui est la bonne moitié perdue, sauf
+  quand il ne reste rien : dans le volet des produits suivis à
+  `text_scale = 1,6`, « 14 gélules » prenait les deux tiers de la ligne
+  et la méthadone sortait « Mé / tha / don / e ». Sous la moitié de la
+  largeur, le widget superpose donc au lieu de partager : le libellé sur
+  toute la colonne, le solde dessous. Il enroulait aussi sans borne et
+  coupait au milieu des mots ; il suit maintenant la règle de
+  `label_rows`, deux lignes si la coupe est propre, l'ellipse sinon.
+  Et sa couleur n'est plus un booléen « en gris » mais l'encre de la
+  ligne : c'est ce qui manquait à la liste des stupéfiants, dont le
+  rouge dit « à aller compter ».
+- **Et la légende qui porte ce compte le garde aussi.** « Produits
+  suivis — 4 à compter » sortait « PRODUITS SUIVI… » : le compte ajouté
+  au bout du libellé est la fin de la ligne, donc la première chose que
+  l'élision mange. Il est maintenant la forme pauvre — « 4 à compter » —
+  par `motif::panel_forms`, qui existait pour cela.
 - **Les commentaires du code comptaient encore 851 fiches.** Douze
   endroits portaient l'ancien chiffre ou son écriture en toutes
   lettres — dont l'en-tête de `classes.rs`, qui annonçait « 495 libellés
