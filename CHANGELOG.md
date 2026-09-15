@@ -809,6 +809,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Un libellé ne quitte plus le champ qu'il nomme.** Le même défaut que
+  la croix du traitement, dans six formulaires de plus : dans une rangée
+  qui enveloppe, egui passe à la ligne entre deux contrôles sans savoir
+  que deux d'entre eux n'ont de sens qu'ensemble. « jusqu'au » finissait
+  une rangée du planning et son champ commençait la suivante, sous une
+  case sans rapport ; « Sujet » du protocole, « posé le » d'une location,
+  « Ajouter » du croisement et les deux dates de la trame faisaient de
+  même. Un mot qui nomme un champ posé à la ligne au-dessus ne nomme
+  rien.
+
+  Et le pire des six : **le comptage d'un coffre**, qui est un calcul.
+  « boîtes × par boîte + vrac » se coupait entre deux de ses cinq
+  pièces — un « × » en bout de rangée, son facteur à la ligne suivante
+  sous une case sans rapport. Les cinq sont maintenant allouées d'un seul
+  tenant ; seul le bouton qui reporte le total passe à la ligne, parce
+  que lui se lit seul.
 - **L'onglet « Biologie » du dossier montre enfin quelque chose.** À
   1024x700 en `text_scale = 1,6` il ne montrait ni un résultat, ni la
   ligne qui dit combien il y en a, ni une seule des mesures à

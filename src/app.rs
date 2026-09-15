@@ -3020,6 +3020,14 @@ const TREAT_REMOVE: &str = "×";
 const STEP_PREV: &str = "‹";
 const STEP_NEXT: &str = "›";
 
+/// Les deux signes du comptage d'un coffre : « boîtes × par boîte + vrac ».
+///
+/// Nommés parce que la largeur du groupe se mesure sur eux, et qu'un
+/// signe recopié à la mesure et au dessin est la façon ordinaire de faire
+/// diverger les deux.
+const COUNT_TIMES: &str = "×";
+const COUNT_PLUS: &str = "+";
+
 /// Ce qu'un clic sur une ligne du registre a demandé.
 ///
 /// Les lignes sont dessinées dans un panneau qui n'emprunte la session
@@ -16464,15 +16472,29 @@ impl App {
                                 ui.selectable_value(&mut session.loc_pick, i, &f.label);
                             }
                         });
-                    ui.label(
-                        egui::RichText::new(tr("loc_started_on"))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
-                    );
-                    let day = ui.add_sized(
-                        [chars_wide(ui, 12.0), 22.0],
-                        egui::TextEdit::singleline(&mut session.loc_start)
-                            .hint_text(motif::hint(db::format_french_date(&today))),
+                    // **« posé le » ne quitte pas sa date.** La rangée
+                    // enveloppe, et un mot qui nomme un champ posé à la
+                    // ligne au-dessus ne nomme rien.
+                    let label_w = Self::widest(ui, 11.0, std::iter::once(tr("loc_started_on")));
+                    let field_w = chars_wide(ui, 12.0);
+                    let day = Self::keep_together(
+                        ui,
+                        egui::vec2(
+                            Self::group_width(ui, [label_w, field_w].into_iter()),
+                            Self::row_height(ui),
+                        ),
+                        |ui| {
+                            ui.label(
+                                egui::RichText::new(tr("loc_started_on"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            ui.add_sized(
+                                [field_w, 22.0],
+                                egui::TextEdit::singleline(&mut session.loc_start)
+                                    .hint_text(motif::hint(db::format_french_date(&today))),
+                            )
+                        },
                     );
                     // Entrée pose le matériel : le matériel se pose au
                     // comptoir, une main sur le clavier et l'autre sur
@@ -25795,21 +25817,44 @@ impl App {
                         // obligatoire, et c'est ainsi qu'un congé du 12
                         // au 26 s'écrit en une ligne.
                         if rhythm != planning::Cadence::Unique {
-                            ui.label(
-                                egui::RichText::new(tr("planning_until"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                            // **« jusqu'au » ne quitte pas sa date.** La
+                            // rangée enveloppe, et egui passe à la ligne
+                            // entre les deux : les deux volets tirés
+                            // larges, « jusqu'au » finissait une rangée
+                            // et le champ commençait la suivante, sous
+                            // une case sans rapport. Un mot qui nomme un
+                            // champ posé loin de lui ne nomme rien.
+                            let label_w =
+                                Self::widest(ui, 11.0, std::iter::once(tr("planning_until")));
+                            let field_w = Self::date_field_width(ui);
+                            Self::keep_together(
+                                ui,
+                                egui::vec2(
+                                    Self::group_width(ui, [label_w, field_w].into_iter()),
+                                    Self::row_height(ui),
+                                ),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("planning_until"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    ui.add(
+                                        egui::TextEdit::singleline(
+                                            &mut session.shift_form.until_text,
+                                        )
+                                        .hint_text(motif::hint(tr("vacc_date_hint")))
+                                        .desired_width(field_w),
+                                    )
+                                    .on_hover_text(
+                                        if rhythm.needs_an_end() {
+                                            tr("planning_until_required")
+                                        } else {
+                                            tr("planning_until_tooltip")
+                                        },
+                                    );
+                                },
                             );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut session.shift_form.until_text)
-                                    .hint_text(motif::hint(tr("vacc_date_hint")))
-                                    .desired_width(Self::date_field_width(ui)),
-                            )
-                            .on_hover_text(if rhythm.needs_an_end() {
-                                tr("planning_until_required")
-                            } else {
-                                tr("planning_until_tooltip")
-                            });
                         }
                         if motif::button(ui, tr("planning_add")).clicked() {
                             write = true;
@@ -26576,8 +26621,19 @@ impl App {
                 Self::field_width(ui, [tr("agenda_end_hint")].into_iter()),
                 chars_wide(ui, 5.0),
                 combo(planning::Cadence::UneSurQuatre.label()),
-                btn(tr("planning_until")),
-                Self::date_field_width(ui),
+                // **« jusqu'au » et sa date font un article.** Le dessin
+                // les alloue d'un seul tenant — un mot qui nomme un champ
+                // posé à la ligne au-dessus ne nomme rien —, donc la
+                // mesure les compte de même. Et le libellé se mesure dans
+                // sa fonte, onze points, et non comme un bouton.
+                Self::group_width(
+                    ui,
+                    [
+                        Self::widest(ui, 11.0, std::iter::once(tr("planning_until"))),
+                        Self::date_field_width(ui),
+                    ]
+                    .into_iter(),
+                ),
                 btn(tr("planning_add")),
                 btn(tr("frame_open")),
                 btn(tr("planning_month_toggle")),
@@ -27593,27 +27649,47 @@ impl App {
                         });
                         // — À partir de quand, jusqu'à quand.
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new(tr("frame_from"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                            // **« du » ne quitte pas sa date, ni « au »
+                            // la sienne.** Un mot qui nomme un champ posé
+                            // à la ligne au-dessus ne nomme rien, et la
+                            // rangée passe à la ligne entre les deux dès
+                            // que la fenêtre se resserre.
+                            let field_w = Self::date_field_width(ui);
+                            let pair = |ui: &mut egui::Ui,
+                                        key: &'static str,
+                                        text: &mut String,
+                                        tip: Option<&str>| {
+                                let label_w = Self::widest(ui, 11.0, std::iter::once(tr(key)));
+                                Self::keep_together(
+                                    ui,
+                                    egui::vec2(
+                                        Self::group_width(ui, [label_w, field_w].into_iter()),
+                                        Self::row_height(ui),
+                                    ),
+                                    |ui| {
+                                        ui.label(
+                                            egui::RichText::new(tr(key))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        );
+                                        let r = ui.add(
+                                            egui::TextEdit::singleline(text)
+                                                .hint_text(motif::hint(tr("vacc_date_hint")))
+                                                .desired_width(field_w),
+                                        );
+                                        if let Some(tip) = tip {
+                                            r.on_hover_text(tip);
+                                        }
+                                    },
+                                );
+                            };
+                            pair(ui, "frame_from", &mut session.frame.from_text, None);
+                            pair(
+                                ui,
+                                "frame_until",
+                                &mut session.frame.until_text,
+                                Some(tr("frame_until_tooltip")),
                             );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut session.frame.from_text)
-                                    .hint_text(motif::hint(tr("vacc_date_hint")))
-                                    .desired_width(Self::date_field_width(ui)),
-                            );
-                            ui.label(
-                                egui::RichText::new(tr("frame_until"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
-                            );
-                            ui.add(
-                                egui::TextEdit::singleline(&mut session.frame.until_text)
-                                    .hint_text(motif::hint(tr("vacc_date_hint")))
-                                    .desired_width(Self::date_field_width(ui)),
-                            )
-                            .on_hover_text(tr("frame_until_tooltip"));
                             if motif::toggle(ui, tr("frame_replace"), session.frame.replace)
                                 .on_hover_text(tr("frame_replace_tooltip"))
                                 .clicked()
@@ -30933,20 +31009,32 @@ impl App {
                             {
                                 session.ddi_list.clear();
                             }
-                            ui.label(
-                                egui::RichText::new(tr("ddi_add"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                            // **Le mot et le champ qu'il nomme font un
+                            // article.** La rangée enveloppe, et
+                            // « Ajouter » posé au bout d'une ligne de
+                            // boutons, son champ à la ligne suivante, ne
+                            // nomme plus rien.
+                            let label_w = Self::widest(ui, 11.0, std::iter::once(tr("ddi_add")));
+                            let field_w = Self::field_width(ui, [tr("ddi_add_hint")].into_iter());
+                            Self::keep_together(
+                                ui,
+                                egui::vec2(
+                                    Self::group_width(ui, [label_w, field_w].into_iter()),
+                                    Self::row_height(ui),
+                                ),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("ddi_add"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    ui.add_sized(
+                                        [field_w, 24.0],
+                                        egui::TextEdit::singleline(&mut session.ddi_query)
+                                            .hint_text(motif::hint(tr("ddi_add_hint"))),
+                                    );
+                                },
                             );
-                            let field = ui.add_sized(
-                                [
-                                    Self::field_width(ui, [tr("ddi_add_hint")].into_iter()),
-                                    24.0,
-                                ],
-                                egui::TextEdit::singleline(&mut session.ddi_query)
-                                    .hint_text(motif::hint(tr("ddi_add_hint"))),
-                            );
-                            let _ = field;
                         });
                         // Ce que la frappe trouve, en quelques lignes :
                         // la recherche de la maison, repliée, accents et
@@ -35487,32 +35575,44 @@ impl App {
                 .size(motif::pt(ui, 11.0))
                 .color(motif::text_dim())
         };
+        // **Un calcul ne se coupe pas en deux.** « boîtes × par boîte +
+        // vrac » est une seule phrase arithmétique, et dans une rangée
+        // qui enveloppe egui passe à la ligne entre deux de ses cinq
+        // pièces : un « × » en bout de rangée et son facteur à la ligne
+        // suivante, sous une case sans rapport, ne se lisent plus comme
+        // une multiplication. Les cinq sont donc allouées d'un seul
+        // tenant ; seul le bouton qui reporte le total peut passer à la
+        // ligne, parce que lui se lit seul.
+        let sign_w = Self::widest(ui, 11.0, [COUNT_TIMES, COUNT_PLUS].into_iter());
+        let calc_w = Self::group_width(ui, [cell, sign_w, cell, sign_w, cell].into_iter());
         let mut carry = None;
         ui.horizontal_wrapped(|ui| {
-            *focus |= ui
-                .add_sized(
-                    [cell, Self::button_height(ui)],
-                    egui::TextEdit::singleline(&mut session.stup_count_boxes)
-                        .hint_text(motif::hint(tr("stup_count_boxes"))),
-                )
-                .has_focus();
-            ui.label(dim(ui, "×"));
-            *focus |= ui
-                .add_sized(
-                    [cell, Self::button_height(ui)],
-                    egui::TextEdit::singleline(&mut session.stup_count_per_box)
-                        .hint_text(motif::hint(tr("stup_count_per_box"))),
-                )
-                .on_hover_text(tr("stup_per_box_tooltip"))
-                .has_focus();
-            ui.label(dim(ui, "+"));
-            *focus |= ui
-                .add_sized(
-                    [cell, Self::button_height(ui)],
-                    egui::TextEdit::singleline(&mut session.stup_count_loose)
-                        .hint_text(motif::hint(tr("stup_count_loose"))),
-                )
-                .has_focus();
+            Self::keep_together(ui, egui::vec2(calc_w, Self::button_height(ui)), |ui| {
+                *focus |= ui
+                    .add_sized(
+                        [cell, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut session.stup_count_boxes)
+                            .hint_text(motif::hint(tr("stup_count_boxes"))),
+                    )
+                    .has_focus();
+                ui.label(dim(ui, COUNT_TIMES));
+                *focus |= ui
+                    .add_sized(
+                        [cell, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut session.stup_count_per_box)
+                            .hint_text(motif::hint(tr("stup_count_per_box"))),
+                    )
+                    .on_hover_text(tr("stup_per_box_tooltip"))
+                    .has_focus();
+                ui.label(dim(ui, COUNT_PLUS));
+                *focus |= ui
+                    .add_sized(
+                        [cell, Self::button_height(ui)],
+                        egui::TextEdit::singleline(&mut session.stup_count_loose)
+                            .hint_text(motif::hint(tr("stup_count_loose"))),
+                    )
+                    .has_focus();
+            });
             // Le total ne s'annonce que s'il y a quelque chose à
             // annoncer : « = 0 » sur trois champs vides est du bruit
             // devant un coffre. Le `&&` court-circuite, donc le bouton
@@ -38843,14 +38943,30 @@ impl App {
                             let subject_w = (field * 0.42).clamp(180.0, 340.0);
                             let t = ui
                                 .add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
-                            ui.label(
-                                egui::RichText::new(tr("proto_subject"))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
-                            );
-                            let sj = ui.add_sized(
-                                [subject_w, 24.0],
-                                egui::TextEdit::singleline(&mut subject),
+                            // **« Sujet » ne quitte pas son champ.** Le
+                            // libellé et la case qu'il nomme sont alloués
+                            // d'un seul tenant : c'est le couple qui passe
+                            // à la ligne quand les deux ne tiennent pas
+                            // après le titre, et non le mot tout seul.
+                            let label_w =
+                                Self::widest(ui, 11.0, std::iter::once(tr("proto_subject")));
+                            let sj = Self::keep_together(
+                                ui,
+                                egui::vec2(
+                                    Self::group_width(ui, [label_w, subject_w].into_iter()),
+                                    Self::row_height(ui),
+                                ),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("proto_subject"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    ui.add_sized(
+                                        [subject_w, 24.0],
+                                        egui::TextEdit::singleline(&mut subject),
+                                    )
+                                },
                             );
                             if t.lost_focus() || sj.lost_focus() {
                                 rename = Some((title, subject));
