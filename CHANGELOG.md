@@ -809,6 +809,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La bande du croisement mesure ce qu'elle porte.** Elle réservait
+  « les puces plus deux rangées », deux écrit à la main : une de trop à
+  l'échelle 1, juste à 1,6, et fausse le jour où un bouton s'ajoute. La
+  rangée des commandes est mesurée comme elle est dessinée — et le cadre
+  du panneau, qui n'est pas une rangée, se paie en plus : sans lui les
+  deux rangées mesurées tenaient dans un rectangle qui en offrait une et
+  demie, et la rangée des puces sortait tranchée. Enfin la gouttière
+  était comptée deux fois, une fois dans la hauteur de rangée et une
+  fois comme gouttière : un pas de soixante-deux pixels pour des rangées
+  qui en font quarante-six.
 - **Une liste de comptes se range d'une seule façon.** La bascule entre
   « libellé · chiffre » et « chiffre dessous » se décidait ligne par
   ligne, une rangée ne voyant pas ses voisines : dans la liste des

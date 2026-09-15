@@ -30638,18 +30638,52 @@ impl App {
             .iter()
             .filter_map(|id| session.drugs.iter().find(|d| d.id == *id).cloned())
             .collect();
-        let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
         let chips = Self::wrapped_rows(
             ui,
             body.width() - 24.0,
             picked.iter().map(|d| d.name.as_str()),
         );
-        let head = whole_rows(
-            body.height() * 0.32,
-            row,
-            ui.spacing().item_spacing.y,
-            chips + 2.0,
+        // La rangée des commandes **mesurée**, et non « deux rangées »
+        // écrit à la main : à l'échelle 1 elle en prend une et la bande
+        // en gardait une pour rien, à 1,6 elle en prend deux, et le jour
+        // où un troisième bouton s'ajoute elle en prendra trois sans que
+        // personne ne revienne changer la constante. Mêmes largeurs que
+        // le dessin, dans le même ordre.
+        let ctrl = Self::wrapped_rows_of(
+            ui,
+            body.width() - 24.0,
+            [
+                Self::button_width(ui, tr("ddi_from_file")),
+                Self::button_width(ui, tr("ddi_clear")),
+                Self::widest(ui, 11.0, std::iter::once(tr("ddi_add"))),
+                Self::field_width(ui, [tr("ddi_add_hint")].into_iter()),
+            ]
+            .into_iter(),
         );
+        // **Et le cadre du panneau, qui n'est pas une rangée.** `head`
+        // est la hauteur du `motif::panel`, pas celle de son contenu :
+        // sa légende en capitale espacée, son filet et ses marges se
+        // paient en plus. Les deux rangées mesurées tenaient donc dans
+        // un rectangle qui en offrait une et demie, et la rangée des
+        // puces sortait tranchée par le bas — ce que la constante
+        // « deux rangées » couvrait par hasard, en réservant toujours
+        // une rangée de trop.
+        // La hauteur d'une rangée et la gouttière entre deux sont
+        // passées **séparément** : `row` porte déjà la gouttière, et la
+        // lui donner aussi comme `gap` la comptait deux fois — un pas de
+        // soixante-deux pixels à `text_scale = 1,6` pour des rangées qui
+        // en font quarante-six, si bien que le compte des rangées qui
+        // tiennent tombait d'une. C'est ce qui a fait disparaître le
+        // champ « nom ou DCI » du bandeau.
+        let chrome = motif::panel_chrome(ui, true);
+        let gap = ui.spacing().item_spacing.y;
+        let head = chrome
+            + whole_rows(
+                (body.height() * 0.32 - chrome).max(Self::row_height(ui)),
+                Self::row_height(ui),
+                gap,
+                chips + ctrl,
+            );
         let rows = motif::split_rows(body, &[head, 0.0], 6.0);
         let mut drop: Option<i64> = None;
         let mut add: Option<i64> = None;
