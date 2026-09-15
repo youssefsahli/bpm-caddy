@@ -35780,8 +35780,21 @@ impl App {
                 // barre flottante est invisible au repos : l'écran se
                 // lisait « choisir une nature, puis inscrire ».
                 ui.spacing_mut().scroll.floating = false;
+                // **Et elle s'arrête sur une rangée entière.** Le
+                // formulaire est fait de rangées d'une hauteur — les
+                // natures, puis les champs —, et la fenêtre les coupait
+                // où elle tombait : les deux volets tirés larges,
+                // « Destruction » sortait tranché par le milieu. Une
+                // rangée coupée en deux dans le sens de la hauteur se lit
+                // « cassé » et non « il y en a d'autres », et c'est ici
+                // le formulaire qui écrit au registre. Ce qu'on paie est
+                // au plus une gouttière de gris ; ce qu'on évite est un
+                // bouton à moitié peint.
+                let gap = ui.spacing().item_spacing.y;
+                let whole = whole_rows(split[0].height(), Self::row_height(ui), gap, f32::INFINITY);
                 egui::ScrollArea::vertical()
                     .id_salt("stup_form")
+                    .max_height(whole)
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {

@@ -809,6 +809,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le formulaire du registre s'arrête sur une rangée entière.** Il est
+  fait de rangées d'une hauteur — les natures, puis les champs — et sa
+  fenêtre les coupait où elle tombait : les deux volets tirés larges,
+  « Destruction » sortait tranché par le milieu. Ce qu'on paie est au
+  plus une gouttière de gris ; ce qu'on évite est un bouton à moitié
+  peint sur l'écran qui écrit au registre.
 - **La revue d'ordonnance ne laisse plus un trait de couleur derrière
   elle.** Le liseré était revenu par l'autre bout : les pastilles
   restaient entières — c'est ce que `Extend` avait corrigé — mais leur
