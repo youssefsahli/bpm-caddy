@@ -26531,6 +26531,12 @@ impl App {
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
+            // **Barre pleine**, comme le mois : sept jours de treize
+            // caractères ne tiennent pas dans un volet de comptoir, et
+            // ce qui sort par la droite est la fin de la semaine — le
+            // samedi de garde, le dimanche vide. Rien ne disait qu'il y
+            // en avait.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::both().id_salt("planning").show(ui, |ui| {
                 let body = egui::TextStyle::Body.resolve(ui.style());
                 // Les largeurs sont mesurées, jamais écrites en

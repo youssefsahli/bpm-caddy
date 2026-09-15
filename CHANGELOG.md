@@ -813,7 +813,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   de treize caractères ne tiennent pas dans un volet de comptoir, et ce
   qui sortait par la droite était le samedi — c'est-à-dire la colonne
   pour laquelle ce mois existe, « un samedi sur deux » ne se lisant sur
-  aucun autre écran. Barre pleine.
+  aucun autre écran. Barre pleine — et la semaine de l'équipe de même,
+  où ce qui sortait par la droite était la fin de la semaine : le samedi
+  de garde, le dimanche vide.
 - **Le compagnon ouvert par sa clé prend enfin sa taille.** C'était un
   drapeau et rien d'autre : la fenêtre gardait celle qu'on lui avait
   demandée, si bien que `smoke.sh` et `eyeball.sh` regardaient le
