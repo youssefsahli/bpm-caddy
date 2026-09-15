@@ -807,8 +807,11 @@ add clicking and typing; it is not the price of entry.
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A
   `ScrollArea::both` pays twice **only when it really overflows
-  sideways**: Options takes it happily (no ribbon appears), the trame
-  dialog does not — there it cost a column *and* a row, the totals came
+  sideways**: Options takes it happily up to `text_scale = 1,25` (no
+  ribbon appears) and does show one at 1,6 — where its label column
+  alone is six hundred pixels of prose and « Chemin de la base » adds a
+  field and a button; the bar is solid and says so, which is the point
+  of putting it there. The trame dialog does not — there it cost a column *and* a row, the totals came
   out « 8 h 3 » and the ribbon ate the very line it was meant to
   announce. Tried, looked at, taken back out. And do not reach for
   `ScrollBarVisibility::AlwaysVisible` on a floating bar instead: egui
