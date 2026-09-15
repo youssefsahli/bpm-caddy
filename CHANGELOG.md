@@ -819,14 +819,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   corrige une bande. Quatre formes qu'on ne pouvait corriger qu'à
   l'aveugle, ou en relançant la passe entière. La correspondance est
   écrite une fois, dans `demo-config.sh`, et lue par les deux scripts.
-- **La bande du dossier remontre ses traitements.** Le plafond de la
-  bande arrondissait tout ce qui suit l'en-tête en rangées de boutons,
-  rangées de puces comprises : chaque rangée de traitements était donc
-  payée au prix d'une rangée de boutons, et sur un dossier de six
-  traitements il en entrait deux là où il y en a place pour deux fois
-  plus. Les rangées de puces se comptent maintenant à leur propre
-  hauteur, et la coupe tombe toujours entre deux rangées — ce qui était
-  tout l'objet du plafond.
+- **La bande du dossier compte ses puces à leur hauteur.** Le plafond
+  arrondissait tout ce qui suit l'en-tête en rangées de boutons, rangées
+  de puces comprises : chaque rangée de traitements était payée au prix
+  d'une rangée de boutons, et la bande réservait ainsi vingt-cinq pixels
+  de gris par rangée qu'elle ne dessine pas. Les rangées de puces se
+  comptent maintenant à leur propre hauteur — `treat_row_height`, écrite
+  une fois et lue par le dessin comme par la mesure —, le plafond les
+  compte d'abord à ce prix-là puis ce qui reste au prix des autres, et la
+  coupe tombe toujours entre deux rangées, ce qui était tout son objet.
+  Sur un volet de comptoir la part de la bande reste ce qu'elle est : ce
+  qui change est qu'elle ne garde plus de gris pour des rangées absentes.
 - **Le libellé qu'on réécrit garde le bouton qui l'enregistre.** Les
   trois boutons — « Enregistrer », « Rétablir », « Annuler » — étaient
   dessinés dans le flux, sous un champ qui grandit et dans la même zone
