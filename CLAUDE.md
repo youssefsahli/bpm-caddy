@@ -945,7 +945,12 @@ add clicking and typing; it is not the price of entry.
   product to go and count, and only the third is red. A list that
   composes « label · figure » into one string cannot use any of that,
   which is how the balance was being elided in the one list that exists
-  to show it.
+  to show it. **And the reserve belongs to the column, not to the
+  row**: a row cannot see its neighbours, so deciding the arrangement
+  row by row made « IPP · 9 lignes » sit beside its name and « Statines
+  / 12 lignes » sit under it, in one list — one character of difference.
+  The caller passes the widest figure of the list; a list whose figures
+  are all the same width passes its own and nothing changes.
 - **A column measured on a template is a column that lies.** The caisse
   history gave its five money columns the width of « -1 234,56 € », the
   widest amount conceivable, so the écart — twenty euros on a big

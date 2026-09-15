@@ -11515,6 +11515,10 @@ impl App {
                         ui,
                         &p.full_name(),
                         &pending.to_string(),
+                        // Les compteurs de ce volet sont des entiers
+                        // d'un ou deux chiffres : la ligne est sa propre
+                        // référence.
+                        &pending.to_string(),
                         selected,
                         None,
                         0.0,
@@ -29935,14 +29939,28 @@ impl App {
                     .id_salt("classes_families")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        for (i, f) in crate::classes::FAMILIES.iter().enumerate() {
-                            let cards: usize = crate::classes::classes_of(f.key)
+                        // La réserve du chiffre est celle de la liste et
+                        // non de la ligne : sinon « 95 » et « 383 » se
+                        // rangeraient différemment dans la même colonne.
+                        let cards_of = |key: &str| -> usize {
+                            crate::classes::classes_of(key)
                                 .map(|c| session.class_counts.get(c.name).map_or(0, Vec::len))
-                                .sum();
+                                .sum()
+                        };
+                        let widest_family = crate::classes::FAMILIES
+                            .iter()
+                            .map(|f| cards_of(f.key))
+                            .chain(std::iter::once(session.class_orphans.len()))
+                            .max()
+                            .unwrap_or(0)
+                            .to_string();
+                        for (i, f) in crate::classes::FAMILIES.iter().enumerate() {
+                            let cards: usize = cards_of(f.key);
                             let row = motif::list_row_count(
                                 ui,
                                 f.label,
                                 &cards.to_string(),
+                                &widest_family,
                                 session.class_family == i,
                                 None,
                                 0.0,
@@ -29958,6 +29976,7 @@ impl App {
                                 ui,
                                 tr("classes_outside"),
                                 &session.class_orphans.len().to_string(),
+                                &widest_family,
                                 session.class_family == crate::classes::FAMILIES.len(),
                                 Some(motif::text_faint()),
                                 0.0,
@@ -30010,6 +30029,13 @@ impl App {
                             );
                             return;
                         }
+                        let widest_class = crate::classes::CLASSES
+                            .iter()
+                            .filter(|c| c.family == family_key)
+                            .map(|c| session.class_counts.get(c.name).map_or(0, Vec::len))
+                            .max()
+                            .unwrap_or(0)
+                            .to_string();
                         for (i, c) in crate::classes::CLASSES.iter().enumerate() {
                             if c.family != family_key {
                                 continue;
@@ -30023,6 +30049,7 @@ impl App {
                                 ui,
                                 c.name,
                                 &n.to_string(),
+                                &widest_class,
                                 session.class_open == Some(i),
                                 (n == 0).then(motif::text_faint),
                                 0.0,
@@ -33451,6 +33478,33 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                         }
+                        // Le solde est écrit **une fois**, ici, et lu
+                        // deux fois : par la réserve commune à la
+                        // colonne, puis par la ligne. Deux écritures
+                        // d'un même libellé finissent toujours par
+                        // diverger, et celle qui ment est alors la
+                        // mesure.
+                        let stock_text = |p: &db::Stupefiant, stock: f64| {
+                            format!(
+                                "{}{}",
+                                crate::codex::format_quantity(stock),
+                                if p.unit.is_empty() {
+                                    String::new()
+                                } else {
+                                    format!(" {}", crate::ordonnancier::agreed_unit(stock, &p.unit))
+                                }
+                            )
+                        };
+                        let widest_stock = session
+                            .stup_summary
+                            .iter()
+                            .map(
+                                |db::Standing {
+                                     product: p, stock, ..
+                                 }| stock_text(p, *stock),
+                            )
+                            .max_by_key(String::len)
+                            .unwrap_or_default();
                         for db::Standing {
                             product: p, stock, ..
                         } in &session.stup_summary
@@ -33472,18 +33526,7 @@ impl App {
                             // « 1… » qui vaut quatorze. Le nom tronqué
                             // reste reconnaissable, le chiffre absent
                             // ne s'invente pas.
-                            let count = format!(
-                                "{}{}",
-                                crate::codex::format_quantity(*stock),
-                                if p.unit.is_empty() {
-                                    String::new()
-                                } else {
-                                    format!(
-                                        " {}",
-                                        crate::ordonnancier::agreed_unit(*stock, &p.unit)
-                                    )
-                                }
-                            );
+                            let count = stock_text(p, *stock);
                             // La couleur dit ce qui cloche, et le
                             // libellé du motif est sous la souris : une
                             // liste de quarante lignes dont chacune
@@ -33499,6 +33542,7 @@ impl App {
                                 ui,
                                 &p.label,
                                 &count,
+                                &widest_stock,
                                 session.stup_open == Some(p.id),
                                 ink,
                                 0.0,
@@ -39189,6 +39233,18 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
+                        // La réserve du chiffre est celle de la colonne
+                        // entière : décidée ligne par ligne, « 9 lignes »
+                        // restait à droite du nom et « 12 lignes »
+                        // passait dessous, dans la même liste.
+                        let widest_rows = trf(
+                            "tables_row_count",
+                            crate::tables::TABLES
+                                .iter()
+                                .map(|t| t.rows.len())
+                                .max()
+                                .unwrap_or(0),
+                        );
                         for family in crate::tables::FAMILIES {
                             motif::section(ui, family);
                             for (i, t) in crate::tables::TABLES.iter().enumerate() {
@@ -39213,6 +39269,7 @@ impl App {
                                     ui,
                                     &format!("{}{mark}", t.short),
                                     &trf("tables_row_count", t.rows.len()),
+                                    &widest_rows,
                                     i == session.table_selected,
                                     None,
                                     10.0,
@@ -51057,6 +51114,7 @@ mod tests {
                             h = motif::list_row_count(
                                 ui,
                                 "Méthadone AP-HP gélule 40 mg",
+                                "14 gélules",
                                 "14 gélules",
                                 false,
                                 None,

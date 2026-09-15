@@ -1425,10 +1425,21 @@ pub fn list_row_pair(
 ///
 /// `indent` décale le libellé, pour une liste rangée sous des
 /// intertitres — même rôle que dans [`list_row_pair`].
+///
+/// `widest` est **le plus large des chiffres de la liste**, et non
+/// celui de cette ligne : une rangée ne voit pas ses voisines, si bien
+/// que la bascule se décidait ligne par ligne et qu'un caractère de
+/// plus suffisait à la faire tomber de l'autre côté. Dans la liste des
+/// tables, « IPP · 9 lignes » restait côte à côte et « Statines /
+/// 12 lignes » passait dessous : une liste à deux dispositions se lit
+/// comme un défaut de rendu. Une réserve commune, c'est une colonne —
+/// ce que cette rangée est en réalité. Une liste dont les chiffres ont
+/// tous la même largeur passe `count`, et rien ne change.
 pub fn list_row_count(
     ui: &mut egui::Ui,
     label: &str,
     count: &str,
+    widest: &str,
     selected: bool,
     ink: Option<Color32>,
     indent: f32,
@@ -1457,7 +1468,13 @@ pub fn list_row_count(
     let num = ui
         .painter()
         .layout_no_wrap(count.to_owned(), font.clone(), quiet);
-    let reserved = num.size().x + 16.0;
+    let reserved = ui
+        .painter()
+        .layout_no_wrap(widest.to_owned(), font.clone(), quiet)
+        .size()
+        .x
+        .max(num.size().x)
+        + 16.0;
     // **Et le chiffre cède la ligne quand il ne laisse plus de quoi
     // lire le libellé.** Réservé à droite, « 14 gélules » prend les
     // deux tiers d'une colonne étroite, et ce qui restait au nom était

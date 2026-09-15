@@ -809,6 +809,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Une liste de comptes se range d'une seule façon.** La bascule entre
+  « libellé · chiffre » et « chiffre dessous » se décidait ligne par
+  ligne, une rangée ne voyant pas ses voisines : dans la liste des
+  tables de conversion, « IPP · 9 lignes » restait côte à côte et
+  « Statines / 12 lignes » passait dessous — un caractère de plus, et la
+  liste se lisait comme un défaut de rendu. La réserve est celle de la
+  colonne, ce que cette rangée est en réalité.
 - **Le forfait à compléter ne se coupait plus en deux.** « forfait à
   compléter (Options › Locations) » finissait la rangée sur « forfait
   à » et reprenait le reste dessous : `horizontal_wrapped` enveloppe le
