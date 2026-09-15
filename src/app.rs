@@ -42238,6 +42238,19 @@ impl App {
             };
             let card_id = form.id;
             motif::inside(ui, main, |ui| {
+                // **La barre est pleine sur le formulaire, flottante sur
+                // la monographie.** Ce n'est pas la même chose qu'on
+                // cache : une monographie est de la prose, et une ligne
+                // coupée par le bas se lit « ça continue » — douze
+                // pixels pris sur sa mesure de lecture coûteraient plus
+                // qu'ils ne rapportent. Le formulaire, lui, est une
+                // grille de champs : à `[ui] text_scale = 1,6` il ne
+                // montrait que l'en-tête d'identité, et rien ne disait
+                // que les champs étaient dessous. Un formulaire dont on
+                // ne voit aucun champ n'est pas un formulaire court.
+                if !reading {
+                    ui.spacing_mut().scroll.floating = false;
+                }
                 egui::ScrollArea::vertical()
                     .id_salt("drug_card")
                     // The monograph keeps a reading measure, so its
