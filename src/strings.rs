@@ -1165,6 +1165,9 @@ livre = "Une phrase qui n'est plus livrée"
         // Le mode d'emploi imprimé vit dans le code, pas dans un
         // fichier de documentation : on le lit donc à la source.
         const PDF_SOURCE: &str = include_str!("pdf.rs");
+        // Et la vue, pour les comptes que seul son texte porte — les
+        // régions qui rendent leur barre de défilement pleine.
+        const APP: &str = include_str!("app.rs");
         let cards = crate::db::STARTER_DRUG_COUNT;
         let labels = {
             let mut v: Vec<&str> = crate::db::STARTER_DRUGS
@@ -1232,6 +1235,21 @@ livre = "Une phrase qui n'est plus livrée"
                              nombre en toutes lettres dans CLAUDE.md et ici"
                         ),
                     }
+                ),
+            ),
+            // **Le compte des barres pleines avait déjà glissé.** La
+            // phrase disait « vingt-huit régions » quand le code en
+            // portait trente-deux : c'est de la prose qui énonce un fait
+            // et qui vieillit sans que personne la relise, ce que ce
+            // fichier refuse partout ailleurs. Le compte se lit
+            // maintenant dans le texte d'`app.rs`, comme les autres.
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "{} regions now set",
+                    APP.matches("ui.spacing_mut().scroll.floating = false;")
+                        .count()
                 ),
             ),
             (

@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Twenty-eight regions now set
+  fold is the control you came to use. 32 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -939,6 +939,28 @@ add clicking and typing; it is not the price of entry.
   the label whole and lets the *row* wrap, which is what it knows how to
   do. The same remedy was already written a few hundred lines away, with
   the same reasoning.
+- **And two controls that only mean something together are one item.**
+  The chip keeps itself whole; nothing kept the chip and the cross that
+  removes it on the same row. egui wraps between two widgets without
+  knowing they are a pair, so at `text_scale = 1,6` a file's row ended on
+  « Glucophage » and the next began with *its* cross, sitting under
+  « Coversyl » — the cross that removes one treatment read as the cross
+  of the treatment above, and nothing said so. The same shape was in
+  seven other places: « ‹ 15/09/2026 › » split across two rows of the
+  caisse; « jusqu'au » in the planning, « Sujet » in a protocol, « posé
+  le » in a location and « Ajouter » in the crossing, each separated from
+  the field it names — a word that names a field placed on the line above
+  names nothing; and worst, the safe count, which is a *calculation*:
+  « boîtes × par boîte + vrac » broke between two of its five pieces, a
+  « × » at the end of one row and its factor at the start of the next.
+  `App::keep_together` allocates the group in one piece so it is the
+  group, whole, that wraps; `App::group_width` is the width it takes —
+  *n* items and *n−1* gutters, never *n* — and the band's measurement
+  counts that same one number, because two writings of one width diverge.
+  `a_group_kept_together_never_wraps_between_its_parts` draws the real
+  thing headless at three scales over seven widths and refuses the next
+  one — and it *bites*: the same loop without `keep_together` must break
+  at least once, or the test guards nothing.
 - **A list row takes two lines when it can break cleanly, one when it
   cannot.** `list_row` and `list_row_pair` were one line with an
   ellipsis, and on a narrow dock that cost the information the row was

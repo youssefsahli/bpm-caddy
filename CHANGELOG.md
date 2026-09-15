@@ -920,7 +920,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fenêtre les coupait où elle tombait : les deux volets tirés larges,
   « Destruction » sortait tranché par le milieu. Ce qu'on paie est au
   plus une gouttière de gris ; ce qu'on évite est un bouton à moitié
-  peint sur l'écran qui écrit au registre.
+  peint sur l'écran qui écrit au registre. Il reste trois pixels du bord
+  supérieur de la rangée suivante, et la cause n'est pas celle qu'on
+  croyait : mesurer là où l'on dessine plutôt que sur le rectangle taillé
+  n'a rien changé à l'image, donc la note le dit au lieu d'inventer une
+  explication.
 - **La revue d'ordonnance ne laisse plus un trait de couleur derrière
   elle.** Le liseré était revenu par l'autre bout : les pastilles
   restaient entières — c'est ce que `Extend` avait corrigé — mais leur

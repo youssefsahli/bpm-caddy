@@ -19117,6 +19117,17 @@ impl App {
         format!("  {}  ", Self::treat_chip(name, strength))
     }
 
+    /// Le texte d'une pastille de revue tel qu'il est peint, son air
+    /// compris.
+    ///
+    /// **Écrit une fois.** Il l'était trois : la mesure de la bande, la
+    /// largeur du groupe et l'étiquette le composaient chacune de leur
+    /// côté, et trois écritures d'un même gabarit divergent le jour où
+    /// l'une des trois gagne une espace.
+    fn review_chip_text(title: &str) -> String {
+        format!("  {title}  ")
+    }
+
     /// La hauteur d'une rangée de puces de traitement.
     ///
     /// **Écrite une fois, parce que le plafond de la bande tombe
@@ -19815,7 +19826,7 @@ impl App {
                 Self::widest(
                     ui,
                     11.0,
-                    std::iter::once(format!("  {}  ", p.title).as_str()),
+                    std::iter::once(Self::review_chip_text(&p.title).as_str()),
                 )
             });
             let rows = Self::wrapped_rows_of(ui, w, std::iter::once(label).chain(chips));
@@ -19946,6 +19957,14 @@ impl App {
         // d'abord les rangées de puces à leur prix, puis ce qui reste
         // au prix des autres — et la coupe tombe toujours entre deux
         // rangées, ce qui était tout l'objet.
+        //
+        // Une correction en cours coupe encore sa quatrième ligne de
+        // champs par le milieu, et ce n'est **pas** l'ordre des rangées :
+        // arrondir alors en rangées de boutons plutôt qu'en rangées de
+        // puces a été essayé et n'a rien changé à l'image. Le formulaire
+        // d'identité est une `Grid`, dont les rangées ne font ni l'une
+        // ni l'autre de ces hauteurs — c'est là qu'il faudra regarder,
+        // avec une mesure et non avec une histoire plausible.
         let room = (cap - head).max(0.0);
         let chips = (room / treat_row).floor().clamp(0.0, treat_lines);
         let after = ((room - chips * treat_row) / row).floor().max(0.0);
@@ -20894,14 +20913,14 @@ impl App {
                             Self::widest(
                                 ui,
                                 11.0,
-                                std::iter::once(format!("  {}  ", point.title).as_str()),
+                                std::iter::once(Self::review_chip_text(&point.title).as_str()),
                             ),
                             Self::row_height(ui),
                         ),
                         |ui| {
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(format!("  {}  ", point.title))
+                                    egui::RichText::new(Self::review_chip_text(&point.title))
                                         .size(motif::pt(ui, 11.0))
                                         .strong()
                                         .color(motif::on_fill(color))
@@ -35961,6 +35980,15 @@ impl App {
                 // le formulaire qui écrit au registre. Ce qu'on paie est
                 // au plus une gouttière de gris ; ce qu'on évite est un
                 // bouton à moitié peint.
+                //
+                // Il reste trois pixels du bord supérieur des boutons de
+                // la rangée suivante. Mesurer `ui.available_height()`
+                // plutôt que le rectangle taillé a été essayé — la
+                // théorie était que le `ui` consomme un peu avant la
+                // première rangée — et **n'a rien changé à l'image** :
+                // la cause est ailleurs, et une explication plausible
+                // sur des pixels n'est pas une preuve. Laissé tel quel
+                // jusqu'à ce qu'une mesure le dise.
                 let gap = ui.spacing().item_spacing.y;
                 let whole = whole_rows(split[0].height(), Self::row_height(ui), gap, f32::INFINITY);
                 egui::ScrollArea::vertical()
