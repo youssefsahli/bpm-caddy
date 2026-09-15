@@ -1011,7 +1011,15 @@ add clicking and typing; it is not the price of entry.
   `allocate_ui_with_layout` **and** `with_main_wrap(true)`, so it wraps
   instead of shoving its neighbour.
 - **A row of labels is at least `interact_size.y` tall, whatever the
-  font says.** egui never lays a row shorter than that, so a band that
+  font says** — `App::label_line` is that height, gutter included, and
+  it is what a band provisions for a sentence it draws under itself.
+  The carnets band counted `text_style_height(Body)` for « Aucun
+  dossier ouvert : la feuille portera une ligne pour écrire le nom. » —
+  seventeen pixels for twenty-seven — so the one line saying whose name
+  the sheet will carry came out cut in half. Three more bands were
+  reserving the same way for a message, and two of them reserve it
+  **only when there is one**: a line kept for nothing is blank, and
+  blank reads as an intention. egui never lays a row shorter than that, so a band that
   measures its reading lines with `text_style_height(&Body)` reserves 16
   px for something that occupies 22 — and the six missing are the
   descenders of the last line. The register's head did exactly that, and

@@ -809,6 +809,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Une ligne d'étiquette fait au moins `interact_size.y`.** Les bandes
+  qui provisionnent une phrase sous elles comptaient la hauteur de sa
+  fonte : dix-sept pixels pour vingt-sept, et c'est la phrase qui
+  sortait tranchée — celle des carnets dit à qui la feuille sera au
+  nom, celles du registre et de la console sont des messages d'erreur.
+  `App::label_line` est cette hauteur, gouttière comprise ; et deux de
+  ces bandes ne la réservent que lorsqu'il y a un message, une ligne
+  gardée pour rien étant du blanc.
 - **La liste des protocoles se lit sur deux lignes.** Peinte à la main
   pour loger sa croix, elle n'avait pas la règle de `motif::list_row` :
   dans une colonne de comptoir, les sept premiers protocoles sortaient

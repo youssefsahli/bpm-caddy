@@ -18766,6 +18766,24 @@ impl App {
         width - ui.spacing().scroll.bar_width - ui.spacing().scroll.bar_inner_margin
     }
 
+    /// La hauteur d'**une ligne d'étiquette**, qui n'est pas celle de
+    /// sa fonte : egui ne pose jamais de rangée plus courte que
+    /// `interact_size.y`, quelle que soit la taille du texte. Une bande
+    /// qui provisionne `text_style_height(Body)` pour une phrase de
+    /// onze points réserve donc dix-sept pixels pour vingt-sept, et
+    /// c'est la phrase qui sort tranchée — celle des carnets disait à
+    /// qui la feuille serait au nom, celles des registres et de la
+    /// console sont des messages d'erreur.
+    ///
+    /// La gouttière est comprise : le `ui` en insère une avant chaque
+    /// étiquette, et *n* choses empilées coûtent *n* gouttières quand
+    /// elles suivent autre chose.
+    fn label_line(ui: &egui::Ui) -> f32 {
+        ui.text_style_height(&egui::TextStyle::Body)
+            .max(ui.spacing().interact_size.y)
+            + ui.spacing().item_spacing.y
+    }
+
     /// Un titre de page qui **ne passe pas sous le bouton d'à côté**.
     ///
     /// `ui.heading` s'étale autant qu'il veut, et un bouton aligné à
@@ -37254,7 +37272,6 @@ impl App {
         operator: &str,
         body: egui::Rect,
     ) {
-        let line = ui.text_style_height(&egui::TextStyle::Body);
         let waiting = session.stup_awaiting();
         let band = Self::title_band_height(
             ui,
@@ -37262,7 +37279,12 @@ impl App {
             [Self::button_width(ui, tr("stup_destroy_print"))].into_iter(),
             tr("stup_destroy_subtitle"),
         );
-        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        // La ligne du message **seulement quand il y en a un**.
+        let note_h = session
+            .stup_note
+            .as_ref()
+            .map_or(0.0, |_| Self::label_line(ui));
+        let rows = motif::split_rows(body, &[band + note_h, 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
         // Ce qu'un clic a demandé : ouvrir ce produit au registre, prêt
         // à écrire sa destruction. Cela **remonte** hors du dessin,
@@ -37534,7 +37556,6 @@ impl App {
         operator: &str,
         body: egui::Rect,
     ) {
-        let line = ui.text_style_height(&egui::TextStyle::Body);
         let years: Vec<String> = session.stup_years.iter().map(|y| y.to_string()).collect();
         let band = Self::title_band_height(
             ui,
@@ -37545,7 +37566,7 @@ impl App {
                 .chain([Self::button_width(ui, tr("stup_ordo_print"))]),
             tr("stup_ordo_subtitle"),
         );
-        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        let rows = motif::split_rows(body, &[band + Self::label_line(ui), 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
         let mut pick_year: Option<i64> = None;
         motif::inside(ui, rows[0], |ui| {
@@ -40774,7 +40795,6 @@ impl App {
 
     fn carnets_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         let body = motif::visible_rect(ui);
-        let line = ui.text_style_height(&egui::TextStyle::Body);
         // Le titre est **dans** la rangée enveloppée, avec le bouton :
         // mesuré sans lui, la bande annonçait une rangée là où elle en
         // dessine deux dès qu'un volet se rapproche. Même défaut que la
@@ -40795,10 +40815,19 @@ impl App {
         // nom coupée dans toute officine qui a repris ne serait-ce
         // qu'une phrase : un cas qui n'arrive jamais sur une base de
         // démonstration, donc jamais sur une capture.
+        // **Une ligne d'étiquette fait au moins `interact_size.y`**,
+        // quelle que soit la police : egui ne pose jamais de rangée plus
+        // courte. Comptée à la hauteur de sa fonte, la ligne « Aucun
+        // dossier ouvert… » demandait dix-sept pixels et en occupait
+        // vingt-sept, et c'est elle qui sortait tranchée sous le
+        // sous-titre — celle qui dit à qui la feuille sera au nom. Et la
+        // gouttière avec, puisque le `ui` en insère une avant chaque
+        // étiquette.
+        let extra_line = Self::label_line(ui);
         let extra = if session.content.is_empty() {
-            line
+            extra_line
         } else {
-            2.0 * line
+            2.0 * extra_line
         };
         let rows = motif::split_rows(body, &[band + extra, 0.0], 6.0);
         let mut print: Option<&'static crate::selfcheck::Sheet> = None;
@@ -42579,7 +42608,6 @@ impl App {
     /// passe devant celui qu'on lit.
     fn script_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
-        let line = ui.text_style_height(&egui::TextStyle::Body);
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -42593,7 +42621,14 @@ impl App {
             .map(|l| Self::button_width(ui, l)),
             tr("script_subtitle"),
         );
-        let rows = motif::split_rows(body, &[band + line, 0.0], 6.0);
+        // La ligne du message **seulement quand il y en a un** : une
+        // ligne gardée pour rien est du blanc, et du blanc se lit comme
+        // une intention.
+        let note_h = session
+            .script_note
+            .as_ref()
+            .map_or(0.0, |_| Self::label_line(ui));
+        let rows = motif::split_rows(body, &[band + note_h, 0.0], 6.0);
         let mut run = false;
         let mut save = false;
         motif::inside(ui, rows[0], |ui| {
@@ -50241,7 +50276,15 @@ mod tests {
                 .find(&close)
                 .map_or(SOURCE.len(), |k| start + k);
             for line in SOURCE[start..end].lines() {
-                for after in ["ui.heading(", "motif::button(", "motif::button_enabled("] {
+                for after in [
+                    "ui.heading(",
+                    "motif::button(",
+                    "motif::button_enabled(",
+                    // Un interrupteur est un bouton qui reste enfoncé,
+                    // et il coûte la même largeur : le registre en
+                    // dessine un dans sa bande.
+                    "motif::toggle(",
+                ] {
                     let Some(key) = key_on(line, after) else {
                         continue;
                     };
