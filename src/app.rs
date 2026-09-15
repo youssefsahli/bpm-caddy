@@ -19704,11 +19704,17 @@ impl App {
                 )
             });
             let rows = Self::wrapped_rows_of(ui, w, std::iter::once(label).chain(chips));
-            // La hauteur d'une pastille vient de sa fonte, et les
-            // gouttières se comptent **entre** les rangées.
-            let chip_h =
-                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5))));
-            h += 4.0 + rows * chip_h + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y;
+            // **Une rangée de pastilles est une rangée.** Sa hauteur
+            // était celle de sa fonte — vingt pixels là où le modèle du
+            // plafond en compte cinquante-cinq —, et le plafond, qui
+            // arrondit en rangées, tombait donc au milieu du dessin : à
+            // 1280x800 avec les deux volets tirés larges, il ne restait
+            // de la revue qu'un trait rouge sombre sous « 2
+            // interaction(s) », que rien n'expliquait. C'est le défaut
+            // déjà nommé à côté du dessin, sous une autre couleur : une
+            // ligne de texte coupée se lit « ça continue », un fond
+            // coloré coupé se lit « c'est cassé ».
+            h += 4.0 + Self::rows_height(ui, rows);
         }
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
@@ -20743,21 +20749,45 @@ impl App {
                     // En `Extend`, l'étiquette reste entière et c'est la
                     // rangée qui passe à la ligne — ce qu'elle sait
                     // faire, et ce que la note du crayon disait déjà.
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!("  {}  ", point.title))
-                                .size(motif::pt(ui, 11.0))
-                                .strong()
-                                .color(motif::on_fill(color))
-                                .background_color(color),
-                        )
-                        .wrap_mode(egui::TextWrapMode::Extend),
-                    )
-                    .on_hover_text(format!(
-                        "{}\n\n{}",
-                        point.detail,
-                        point.drugs.join(" · ")
-                    ));
+                    //
+                    // **Et la rangée fait la hauteur d'une rangée.** Le
+                    // liseré est revenu par l'autre bout : la pastille
+                    // restait entière mais sa *rangée* n'avait que la
+                    // hauteur de sa fonte, quand le plafond de la bande
+                    // arrondit en `row_height`. La coupe tombait donc en
+                    // plein milieu, et à 1280x800 les deux volets tirés
+                    // larges il ne restait de la revue qu'un trait rouge
+                    // sombre de deux pixels sous « 2 interaction(s) ».
+                    // Une ligne de texte coupée se lit « ça continue » ;
+                    // un fond coloré coupé se lit « c'est cassé ».
+                    Self::keep_together(
+                        ui,
+                        egui::vec2(
+                            Self::widest(
+                                ui,
+                                11.0,
+                                std::iter::once(format!("  {}  ", point.title).as_str()),
+                            ),
+                            Self::row_height(ui),
+                        ),
+                        |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("  {}  ", point.title))
+                                        .size(motif::pt(ui, 11.0))
+                                        .strong()
+                                        .color(motif::on_fill(color))
+                                        .background_color(color),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend),
+                            )
+                            .on_hover_text(format!(
+                                "{}\n\n{}",
+                                point.detail,
+                                point.drugs.join(" · ")
+                            ));
+                        },
+                    );
                 }
             });
         }

@@ -809,6 +809,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La revue d'ordonnance ne laisse plus un trait de couleur derrière
+  elle.** Le liseré était revenu par l'autre bout : les pastilles
+  restaient entières — c'est ce que `Extend` avait corrigé — mais leur
+  *rangée* n'avait que la hauteur de sa fonte, quand le plafond de la
+  bande arrondit en rangées de `row_height`. La coupe tombait donc en
+  plein milieu du dessin, et à 1280x800 avec les deux volets tirés larges
+  il ne restait de la revue qu'un trait rouge sombre de deux pixels sous
+  « 2 interaction(s) entre ces traitements », que rien n'expliquait. Une
+  ligne de texte coupée se lit « ça continue » ; un fond coloré coupé se
+  lit « c'est cassé ».
 - **Un libellé ne quitte plus le champ qu'il nomme.** Le même défaut que
   la croix du traitement, dans six formulaires de plus : dans une rangée
   qui enveloppe, egui passe à la ligne entre deux contrôles sans savoir
