@@ -823,7 +823,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sans regarder la hauteur du rectangle : au-delà, elles se peignaient
   hors du cadre et le volet les coupait — « Par type » montrait sept
   actes sur dix, le septième tranché, et rien ne disait qu'il y en avait
-  d'autres. La dernière rangée qui tient dit combien manquent.
+  d'autres. La dernière rangée qui tient dit combien manquent — et
+  seulement s'il reste deux rangées de données : « Classes de la base »
+  tient dans *une* rangée à 1024x700, où le compte prenait la place de
+  la seule classe lisible. L'arithmétique est `chart::hbar_fit`, écrite
+  à part pour être mesurable.
 - **Le tableau de bord et les statistiques prennent la barre pleine.**
   Les deux pages sont plus hautes que le volet dès 1024x700, et ce qui
   est sous le pli — « Par type », « Entretiens par opérateur » — est le

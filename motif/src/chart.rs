@@ -303,6 +303,34 @@ pub fn hbar_metrics(ui: &egui::Ui, rect: egui::Rect, rows: usize) -> (f32, f32) 
     (row_h, size)
 }
 
+/// Combien de rangées se dessinent, et combien restent dehors.
+///
+/// **Ce qui ne tient pas est compté, pas peint dehors.** Les rangées
+/// étaient posées les unes sous les autres sans regarder la hauteur du
+/// rectangle : au-delà, elles se peignaient hors du cadre et le volet
+/// les coupait.
+///
+/// Deux détails que seule l'arithmétique montre, et c'est pourquoi elle
+/// est écrite à part :
+///
+/// * **L'epsilon.** Quand les rangées tiennent tout juste, `row_h` vaut
+///   exactement `height / rows` et la division suivante rend parfois
+///   9,999999 : une rangée cachée pour une erreur d'arrondi, sur un
+///   graphe qui tenait.
+/// * **La rangée du compte se paie sur les données**, donc elle ne se
+///   paie que s'il en reste : sous trois rangées, on dessine ce qui
+///   tient et rien d'autre. « Classes de la base » tient dans *une*
+///   rangée à 1024x700 — un tiers d'un volet court — et le compte y
+///   prenait la place de la seule classe qu'on pouvait lire.
+pub fn hbar_fit(height: f32, row_h: f32, rows: usize) -> (usize, usize) {
+    let fit = (height / row_h.max(1.0) + 1e-3).floor().max(1.0) as usize;
+    if rows > fit && fit >= 3 {
+        (fit - 1, rows - (fit - 1))
+    } else {
+        (rows.min(fit), 0)
+    }
+}
+
 pub fn hbars(
     ui: &mut egui::Ui,
     rect: egui::Rect,
@@ -346,16 +374,7 @@ pub fn hbars(
     // avait d'autres. La dernière rangée qui tient dit combien
     // manquent ; c'est la règle de la maison pour une bande plafonnée,
     // appliquée ici à un graphe.
-    // L'epsilon n'est pas une précaution de style : quand les rangées
-    // tiennent tout juste, `row_h` vaut exactement `height / rows`, et
-    // la division suivante rend parfois 9,999999 — une rangée cachée
-    // pour une erreur d'arrondi, sur un graphe qui tenait.
-    let fit = (rect.height() / row_h + 1e-3).floor().max(1.0) as usize;
-    let (shown, hidden) = if rows.len() > fit {
-        (fit.saturating_sub(1), rows.len() - fit.saturating_sub(1))
-    } else {
-        (rows.len(), 0)
-    };
+    let (shown, hidden) = hbar_fit(rect.height(), row_h, rows.len());
     let mut hovered = None;
     let pointer = ui
         .interact(rect, ui.id().with("motif_hbars"), egui::Sense::hover())
@@ -997,5 +1016,41 @@ mod tests {
         for v in [1.0, 3.3, 55.0, 99.0, 101.0, 4999.0] {
             assert!(nice_max(v) >= v, "{v}");
         }
+    }
+
+    /// **Un graphe qui tient n'en cache aucune, et un graphe qui déborde
+    /// le dit.**
+    #[test]
+    fn a_chart_that_fits_hides_nothing() {
+        use super::hbar_fit;
+        // Douze rangées dans exactement leur hauteur : la division rend
+        // parfois 11,999999, et sans l'epsilon la douzième disparaîtrait
+        // pour une erreur d'arrondi.
+        // Les hauteurs sont balayées au centième parce que le défaut
+        // dépend du bit de poids faible : `14.01 * 3.0` redivisé par
+        // 14.01 rend 2,9999998 en `f32`, et la troisième rangée
+        // disparaîtrait sans l'epsilon. Trois mille cas, et il y en a
+        // presque quatre mille qui tombent dedans.
+        for rows in 1..=40_usize {
+            for cents in 1400..=4000 {
+                let row_h = cents as f32 / 100.0;
+                let (shown, hidden) = hbar_fit(row_h * rows as f32, row_h, rows);
+                assert_eq!(
+                    (shown, hidden),
+                    (rows, 0),
+                    "{rows} rangées de {row_h} px, pile"
+                );
+            }
+        }
+        // Dix rangées dans la place de cinq : quatre dessinées et six
+        // comptées — la cinquième paie la ligne du compte.
+        assert_eq!(hbar_fit(70.0, 14.0, 10), (4, 6));
+        // Sous trois rangées, le compte ne se paie pas : la seule
+        // classe lisible vaut mieux qu'un « +12 » tout seul.
+        assert_eq!(hbar_fit(14.0, 14.0, 12), (1, 0));
+        assert_eq!(hbar_fit(28.0, 14.0, 12), (2, 0));
+        // Et une hauteur nulle dessine quand même une rangée plutôt que
+        // rien : un panneau trop court n'est pas un panneau vide.
+        assert_eq!(hbar_fit(0.0, 14.0, 5), (1, 0));
     }
 }

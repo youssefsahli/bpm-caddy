@@ -838,9 +838,14 @@ add clicking and typing; it is not the price of entry.
   1024x700, the seventh cut through, with nothing saying there were
   more. The last row that fits now says how many are missing (« … »
   and « +3 », two signs and a figure — this module writes no
-  sentences), and the fit is computed with an epsilon: when the rows
-  just fit, `row_h` is exactly `height / rows` and the division comes
-  back 9.999999, which would hide a row for a rounding error.
+  sentences) — and only when at least two rows are left for data: the
+  drugs home's « Classes de la base » fits **one** row at 1024x700, and
+  the count was taking the place of the only class one could read. The
+  arithmetic is `chart::hbar_fit`, written apart to be testable, and it
+  is computed with an epsilon: when the rows just fit, `row_h` is
+  exactly `height / rows` and the f32 division comes back 2.9999998 —
+  `a_chart_that_fits_hides_nothing` sweeps a hundred thousand
+  (height, rows) pairs and about four thousand of them land on it.
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the
