@@ -19117,6 +19117,20 @@ impl App {
         format!("  {}  ", Self::treat_chip(name, strength))
     }
 
+    /// La hauteur d'une rangée de puces de traitement.
+    ///
+    /// **Écrite une fois, parce que le plafond de la bande tombe
+    /// dessus.** Une puce est peinte à douze points ; la rangée où elle
+    /// vit porte aussi le champ « + médicament », qui ne descend jamais
+    /// sous `interact_size.y`. Donner à ces rangées la hauteur d'une
+    /// rangée de boutons ferait entrer un dossier de six traitements en
+    /// deux sur la bande — et la bande du dossier est l'écran qu'on a
+    /// sous les yeux le plus souvent.
+    fn treat_row_height(ui: &egui::Ui) -> f32 {
+        ui.fonts(|f| f.row_height(&Self::treat_chip_font(ui)))
+            .max(ui.spacing().interact_size.y)
+    }
+
     /// Ce que la puce et la croix qui la retire occupent **ensemble**.
     ///
     /// **Elles ne se séparent pas.** Ce sont deux étiquettes dans un
@@ -19719,7 +19733,13 @@ impl App {
         );
         // Header (name, birth, contact, address, comment) + treatments +
         // "nouvel entretien" + the wrapped act rows + the eligibility note.
-        let mut h = head + row * (1.0 + treat_lines + lines);
+        //
+        // **Les rangées de puces comptent à leur hauteur**, qui n'est
+        // pas celle d'une rangée de boutons : les compter comme telles
+        // réservait vingt-cinq pixels de gris par rangée et faisait
+        // entrer un dossier de six traitements en deux.
+        let treat_row = Self::treat_row_height(ui) + ui.spacing().item_spacing.y;
+        let mut h = head + treat_row * treat_lines + row * (1.0 + lines);
         // **Et les actions, quand elles sont passées sous le nom.**
         // Elles enveloppent comme le reste, donc elles se comptent comme
         // le reste : sans cela la bande gardait la hauteur d'une rangée
@@ -19916,8 +19936,20 @@ impl App {
                 // constante que le dessin emploie, et non un nombre
                 // recopié — deux mesures d'une même chose divergent.
                 + Self::BAND_TREAT_GAP;
-        let below = ((cap - head) / row).floor().max(0.0);
-        (head + below * row).max(Self::row_height(ui) + 2.0)
+        // **Ce qui suit l'en-tête n'est pas d'une seule hauteur, et le
+        // plafond le sait.** Les premières rangées sont celles des
+        // puces — plus courtes qu'une rangée de boutons —, et tout ce
+        // qui vient après en a la hauteur. Arrondir le tout en rangées
+        // de boutons revient à payer chaque rangée de puces au prix
+        // d'une rangée de boutons : sur un dossier de six traitements,
+        // deux entraient là où il y en a deux fois plus. On compte donc
+        // d'abord les rangées de puces à leur prix, puis ce qui reste
+        // au prix des autres — et la coupe tombe toujours entre deux
+        // rangées, ce qui était tout l'objet.
+        let room = (cap - head).max(0.0);
+        let chips = (room / treat_row).floor().clamp(0.0, treat_lines);
+        let after = ((room - chips * treat_row) / row).floor().max(0.0);
+        (head + chips * treat_row + after * row).max(Self::row_height(ui) + 2.0)
     }
 
     /// Who the patient is: identity, corrections, treatments, and the
@@ -20294,20 +20326,21 @@ impl App {
                     // la largeur que la bande mesure aussi — et c'est
                     // lui, entier, qui passe à la ligne.
                     //
-                    // **La hauteur est celle d'une rangée**, et non celle
-                    // de la puce. Le plafond de la bande compte des
-                    // rangées de `row_height` — c'est ce qui le fait
-                    // tomber *entre* deux d'entre elles —, et une rangée
-                    // de puces haute de trente pixels là où le modèle en
-                    // compte cinquante-cinq fait tomber la coupe au
-                    // milieu du dessin : la seconde rangée de
-                    // traitements sortait tranchée par la moitié, ce qui
-                    // se lit « cassé » et non « il y en a d'autres ».
+                    // **La hauteur est celle d'une rangée de puces**, et
+                    // c'est celle sur laquelle le plafond de la bande
+                    // tombe : sans cela la coupe tombait au milieu du
+                    // dessin et la seconde rangée de traitements sortait
+                    // tranchée par la moitié, ce qui se lit « cassé » et
+                    // non « il y en a d'autres ». Et ce n'est pas la
+                    // hauteur d'une rangée de boutons : la leur donner
+                    // ferait entrer un dossier de six traitements en
+                    // deux, sur la bande qu'on a sous les yeux le plus
+                    // souvent.
                     let (chip, x) = Self::keep_together(
                         ui,
                         egui::vec2(
                             Self::treat_pair_width(ui, &t.name, strength),
-                            Self::row_height(ui),
+                            Self::treat_row_height(ui),
                         ),
                         |ui| {
                             let chip = ui.add(
