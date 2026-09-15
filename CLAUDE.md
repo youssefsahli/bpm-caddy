@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Twenty-four regions now set
+  fold is the control you came to use. Twenty-seven regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,

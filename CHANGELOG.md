@@ -809,6 +809,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le registre, son journal et la feuille de saisie groupée aussi.**
+  Une ligne de registre finit par son opérateur, sa remarque et
+  « Annuler… » — la seule correction qui existe là —, et la feuille de
+  saisie finit par la case du produit. Dans un volet de comptoir, ces
+  colonnes sortent par la droite, et une barre flottante ne dit pas
+  qu'un geste est là.
 - **Le mois d'une personne dit qu'il continue à droite.** Huit colonnes
   de treize caractères ne tiennent pas dans un volet de comptoir, et ce
   qui sortait par la droite était le samedi — c'est-à-dire la colonne

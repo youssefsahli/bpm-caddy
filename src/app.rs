@@ -34307,6 +34307,14 @@ impl App {
                 motif::inside(ui, inner, |ui| {
                     // Le registre se lit du plus récent au plus ancien : ce
                     // qu'on vient d'écrire est ce qu'on vient vérifier.
+                    //
+                    // **Barre pleine.** Une ligne de registre finit par
+                    // son opérateur, sa remarque et « Annuler… » — la
+                    // seule correction qui existe ici —, et dans un
+                    // volet de comptoir ces colonnes sortent par la
+                    // droite. Une barre flottante ne dit pas qu'un
+                    // geste est là.
+                    ui.spacing_mut().scroll.floating = false;
                     egui::ScrollArea::both()
                         .id_salt("stup_register")
                         .auto_shrink([false, false])
@@ -34774,6 +34782,12 @@ impl App {
                 // à l'autre. Et `ScrollArea::both`, parce qu'une rangée
                 // qui finit par un champ doit pouvoir défiler jusqu'à
                 // lui.
+                // **Barre pleine.** C'est une feuille où l'on tape :
+                // chaque ligne finit par la case du produit, et
+                // quarante produits ne tiennent pas dans un volet de
+                // comptoir. Ce qui est sous le pli est exactement le
+                // champ qu'on vient remplir.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::both()
                     .id_salt("batch_sheet")
                     .auto_shrink([false, false])
@@ -37834,6 +37848,9 @@ impl App {
             }
             let inner = motif::well(ui, rect);
             motif::inside(ui, inner, |ui| {
+                // Barre pleine : comme le registre lui-même, la ligne
+                // finit par ce qui la corrige.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::both()
                     .id_salt("stup_journal")
                     .auto_shrink([false, false])
