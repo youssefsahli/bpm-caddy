@@ -809,6 +809,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Les volets de gauche écrivent leur vide en mots.** Sur une base
+  neuve — le premier écran d'une officine — « Patients » et « Journées »
+  montraient un creux gris et rien d'autre, quand le panneau du milieu
+  écrit « Aucun rendez-vous aujourd'hui, ni en retard. » à côté. Un creux
+  vide ne dit pas s'il n'y a rien à montrer ou si l'application n'a pas
+  fini de chercher. « 0 résultat(s) » au-dessus dit le compte ; il ne dit
+  pas quoi faire, ni que taper un nom ouvre de quoi créer le dossier. Et
+  la phrase diffère selon le cas : aucun dossier du tout, ou aucun qui
+  corresponde à ce qu'on tape.
 - **Les phrases imprimées se laissent atteindre.** « Textes imprimés »
   est l'écran où l'officine réécrit ce que l'application imprime en son
   nom : ce qui est sous le pli y est le sujet même de l'écran, pas de la

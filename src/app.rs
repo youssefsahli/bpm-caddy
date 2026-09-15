@@ -11534,7 +11534,29 @@ impl App {
                 .color(motif::text_faint()),
         );
         ui.add_space(3.0);
+        let searching = !session.query.trim().is_empty();
         Self::nav_list(ui, |ui| {
+            // **Un vide s'écrit en mots**, et il en dit deux différents.
+            // Sur une base neuve le volet montrait un creux gris et rien
+            // d'autre — c'est le premier écran d'une officine, et c'est
+            // la seule vue de la liste qu'aucune passe de captures ne
+            // regardait. « 0 résultat(s) » au-dessus dit le compte ; il
+            // ne dit pas quoi faire, ni que taper un nom ouvre de quoi
+            // le créer.
+            if results.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(if searching {
+                            tr("nav_patients_none")
+                        } else {
+                            tr("nav_patients_empty")
+                        })
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
             for (i, p) in results.iter().enumerate() {
                 let pending = session.pending.get(&p.id).copied().unwrap_or(0);
                 // The open file stays marked; the keyboard cursor marks
@@ -12028,6 +12050,21 @@ impl App {
         let current = session.trans_day.clone();
         let mut pick: Option<String> = None;
         Self::nav_list(ui, |ui| {
+            // **Un vide s'écrit en mots.** Sur une base neuve ce volet
+            // montrait un creux gris et rien d'autre, quand le panneau
+            // du milieu écrit « Aucune note. » à côté : un creux vide
+            // ne dit pas s'il n'y a rien à montrer ou si l'application
+            // n'a pas fini de chercher.
+            if days.is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("nav_days_empty"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
             // **Raccourcir, ne pas élider.** « 13/09/… » a perdu
             // l'année *et* se lit cassé ; « 13/09 » ne dit pas l'année
             // et se lit entier — et dans une liste de journées

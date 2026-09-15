@@ -105,6 +105,9 @@ home_today_empty = "Aucun rendez-vous aujourd'hui, ni en retard."
 nav_search_hint = "Rechercher un patient…"
 nav_search_short = "Rechercher…"
 nav_count = "{} résultat(s)"
+nav_days_empty = "Aucune journée écrite. La première note en ouvrira une."
+nav_patients_empty = "Aucun dossier. Tapez un nom au-dessus pour en créer un."
+nav_patients_none = "Aucun dossier ne correspond. Le formulaire de création est ouvert à côté."
 nav_letter_count = "{} fiches"
 
 # --- Carte Vitale ---
