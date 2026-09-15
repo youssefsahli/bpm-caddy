@@ -809,6 +809,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La posologie du dossier se lit en entier dans la conciliation.** Le
+  champ prenait ce qui restait après le nom, et sur le volet de droite
+  d'un onglet de dossier il ne restait pas de quoi lire ce qu'il porte :
+  « 1000 mg matin et soir » sortait « 1000 mg matin e », coupé par le
+  cadre. Une posologie tronquée dans l'écran qui compare les posologies
+  n'a rien comparé. Sous un seuil, le nom passe au-dessus du champ
+  plutôt que de se partager avec lui une largeur qu'ils n'ont pas —
+  c'est la règle déjà écrite pour les listes à chiffre.
 - **La console dit de nouveau ce qu'un script a le droit de faire.** Le
   champ qui porte le nom du script se dessine dans la bande de titre sans
   que la mesure le compte : à `[ui] text_scale = 1,25` la rangée passait

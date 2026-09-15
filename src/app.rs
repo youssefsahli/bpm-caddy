@@ -16034,7 +16034,19 @@ impl App {
                 );
                 return;
             }
-            let label_w = (ui.available_width() * 0.42).clamp(90.0, 200.0);
+            let full = ui.available_width();
+            let label_w = (full * 0.42).clamp(90.0, 200.0);
+            // **Et le nom passe au-dessus quand la posologie ne se lit
+            // plus à côté.** Le champ prenait ce qui restait après le
+            // nom, et sur le volet de droite d'un onglet de dossier il
+            // ne restait pas de quoi lire ce qu'il porte : « 1000 mg
+            // matin et soir » sortait « 1000 mg matin e », coupé par le
+            // cadre. Une posologie tronquée dans l'écran qui compare les
+            // posologies n'a rien comparé. C'est la règle déjà écrite
+            // pour les listes à chiffre — sous un seuil, les deux vont
+            // l'un au-dessus de l'autre plutôt que de se partager une
+            // largeur qu'ils n'ont pas.
+            let stacked = full - label_w - 4.0 < chars_wide(ui, 20.0);
             egui::ScrollArea::vertical()
                 .id_salt("concil_doses")
                 .auto_shrink([false, false])
@@ -16051,14 +16063,16 @@ impl App {
                         else {
                             continue;
                         };
-                        ui.horizontal(|ui| {
+                        let row = |ui: &mut egui::Ui| {
                             // A scope and not `add_sized`, which centres
                             // what it is given: a column of names that
                             // do not start on the same pixel is a column
                             // nobody can run their eye down.
                             ui.scope(|ui| {
-                                ui.set_min_width(label_w);
-                                ui.set_max_width(label_w);
+                                if !stacked {
+                                    ui.set_min_width(label_w);
+                                    ui.set_max_width(label_w);
+                                }
                                 ui.add(
                                     egui::Label::new(
                                         egui::RichText::new(name).size(motif::pt(ui, 11.5)),
@@ -16081,7 +16095,13 @@ impl App {
                             {
                                 write = Some((*id, buf.clone(), base));
                             }
-                        });
+                        };
+                        if stacked {
+                            ui.vertical(row);
+                            ui.add_space(4.0);
+                        } else {
+                            ui.horizontal(row);
+                        }
                     }
                 });
         });
