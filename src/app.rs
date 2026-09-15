@@ -39339,6 +39339,14 @@ impl App {
             // gastro-résistants » over five lines. The columns keep a
             // width they can be read at and the table scrolls sideways
             // instead.
+            // **Barre pleine.** Six colonnes de phrases ne tiennent pas
+            // dans un volet de comptoir : la table défile latéralement,
+            // c'est l'arbitrage écrit au-dessus, et la première colonne
+            // reste tenue pour que la ligne garde son nom. Mais garder
+            // le nom dit où l'on est, pas qu'il y a une suite — et ce
+            // qui sort par la droite est « Moment de prise », qui est
+            // la colonne qu'on vient lire.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::both()
                 .id_salt("tables_detail")
                 .auto_shrink([false, false])

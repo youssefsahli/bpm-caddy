@@ -809,6 +809,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Les tables de conversion disent qu'elles continuent à droite.** Six
+  colonnes de phrases ne tiennent pas dans un volet de comptoir : la
+  table défile latéralement, c'est l'arbitrage voulu, et sa première
+  colonne reste tenue pour que la ligne garde son nom. Mais garder le
+  nom dit où l'on est, pas qu'il y a une suite — et ce qui sort par la
+  droite est « Moment de prise ».
 - **Le registre, son journal et la feuille de saisie groupée aussi.**
   Une ligne de registre finit par son opérateur, sa remarque et
   « Annuler… » — la seule correction qui existe là —, et la feuille de
