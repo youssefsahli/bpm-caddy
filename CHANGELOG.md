@@ -809,6 +809,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le mois d'une personne dit qu'il continue à droite.** Huit colonnes
+  de treize caractères ne tiennent pas dans un volet de comptoir, et ce
+  qui sortait par la droite était le samedi — c'est-à-dire la colonne
+  pour laquelle ce mois existe, « un samedi sur deux » ne se lisant sur
+  aucun autre écran. Barre pleine.
 - **Le compagnon ouvert par sa clé prend enfin sa taille.** C'était un
   drapeau et rien d'autre : la fenêtre gardait celle qu'on lui avait
   demandée, si bien que `smoke.sh` et `eyeball.sh` regardaient le

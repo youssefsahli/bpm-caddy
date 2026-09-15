@@ -26089,6 +26089,13 @@ impl App {
         let chosen = session.shift_form.day.clone();
         let mut clicked: Option<String> = None;
         motif::inside(ui, rect, |ui| {
+            // **Barre pleine.** Huit colonnes de treize caractères ne
+            // tiennent pas dans un volet de comptoir, et ce qui sort par
+            // la droite est le samedi — c'est-à-dire la colonne pour
+            // laquelle ce mois existe : « un samedi sur deux » ne se lit
+            // sur aucun autre écran. La barre flottante ne disait pas
+            // qu'il y avait une suite.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::both()
                 .id_salt("planning_month")
                 .show(ui, |ui| {
