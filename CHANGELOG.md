@@ -809,6 +809,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **L'onglet « Biologie » du dossier montre enfin quelque chose.** À
+  1024x700 en `text_scale = 1,6` il ne montrait ni un résultat, ni la
+  ligne qui dit combien il y en a, ni une seule des mesures à
+  redemander — un formulaire, du gris, et un liseré rouge. Trois
+  mesures, chacune fausse d'un cheveu dans le même sens :
+
+  Le formulaire se réservait `n × (hauteur de rangée + gouttière)` là où
+  le modèle de la maison est `n × hauteur + (n−1) × gouttière`. La
+  gouttière de trop est celle qui suit la dernière rangée, et elle
+  n'appartient pas à la bande ; c'étaient précisément les pixels qui
+  manquaient à la ligne « huit résultats, le volet est trop court pour
+  les montrer ». Elle est écrite une fois maintenant (`rows_height`).
+
+  Cette ligne-là se gardait ensuite derrière la hauteur d'une ligne de
+  corps, alors qu'elle s'écrit à onze points : vingt-cinq pixels
+  disponibles pour vingt-six demandés, et le volet ne disait donc rien
+  là où il avait de quoi le dire. Une mesure se prend dans la fonte qui
+  dessine, ici comme ailleurs.
+
+  Et le plancher de la bande de lecture était « cinq lignes » de texte,
+  quand la bande dessine d'abord sa propre bande d'onglets, puis la
+  rangée de boutons de l'onglet ouvert. Il reste maintenant deux lignes
+  **sous** ce chrome-là, ce qui est le moins qu'on puisse appeler une
+  lecture : « Kaliémie élevée sous bloqueur du système
+  rénine-angiotensine » se lit en entier, et « À refaire :
+  LDL-cholestérol, une fois par an » existe.
 - **La croix qui retire un traitement ne quitte plus sa puce.** Elles
   sont deux étiquettes dans une rangée qui enveloppe, et egui passe à la
   ligne entre elles comme entre deux puces : à `text_scale = 1,6`, sur un

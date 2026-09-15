@@ -14862,10 +14862,24 @@ impl App {
             // before the band takes any, and the band's floor is five —
             // a table showing its column headings and a sliver of one
             // row is worse than a reading scrolled by a line.
+            //
+            // **Et le plancher compte ce que la bande porte au-dessus de
+            // sa lecture.** « Cinq lignes » était cinq lignes de *texte*,
+            // quand la bande dessine d'abord sa propre bande d'onglets,
+            // puis la rangée de boutons de l'onglet ouvert : à 1024x700
+            // en `text_scale = 1,6` il restait une ligne et demie sous
+            // « Imprimer », et l'onglet « À surveiller » montrait un
+            // liseré rouge — pas une seule des mesures à demander. Le
+            // plancher est donc ce chrome-là **plus** deux lignes, ce qui
+            // est le moins qu'on puisse appeler une lecture.
             let line = ui.text_style_height(&egui::TextStyle::Body);
+            let chrome = motif::tab_strip_height(ui)
+                + Self::row_height(ui)
+                + ui.spacing().item_spacing.y * 2.0;
+            let floor = chrome + line * 2.0;
             let band = (work.height() * 0.46)
-                .clamp(line * 7.0, line * 18.0)
-                .min((work.height() - line * 12.0).max(line * 5.0));
+                .clamp(floor, (chrome + line * 18.0).max(floor))
+                .min((work.height() - line * 12.0).max(floor));
             let rows = motif::split_rows(work, &[0.0, band], 8.0);
             (rows[0], rows[1])
         };
@@ -17053,7 +17067,7 @@ impl App {
             // réserve avec lui puis dessine des boutons est courte de
             // dix pixels par rangée — ici la seconde, celle qui porte
             // « Ajouter », et donc le geste qui enregistre le résultat.
-            let row_h = Self::row_height(ui) + ui.spacing().item_spacing.y;
+            // C'est ce que [`rows_height`] compte, plus bas.
             // **Le champ tient son invite, et il est mesuré une fois.**
             // « Trente pour cent du volet, plafonné à deux cent vingt
             // pixels » était écrit deux fois — ici pour mesurer la
@@ -17155,7 +17169,14 @@ impl App {
             // geste qui enregistre. Sous son plancher elle n'est donc
             // pas rétrécie, elle n'est pas dessinée — « quand le volet
             // est trop court, la garniture part la première ».
-            let foot = (row_h * form_rows + 6.0).min(body.height());
+            // **`n × row_height + (n−1) × gouttière`**, le modèle de la
+            // maison, et non `n × (row_height + gouttière)` : la
+            // gouttière de trop est celle qui suit la dernière rangée,
+            // et elle n'appartient pas à la bande. Ici elle coûtait la
+            // ligne qui dit « huit résultats, le volet est trop court » —
+            // le volet ne montrait plus ni les résultats ni leur nombre,
+            // seulement du gris sous « Ajouter ».
+            let foot = (Self::rows_height(ui, form_rows) + 6.0).min(body.height());
             let rest = body.height() - foot - 6.0;
             let table = (rest >= table_floor)
                 .then(|| egui::Rect::from_min_size(body.min, egui::vec2(body.width(), rest)));
@@ -17170,9 +17191,20 @@ impl App {
             // qui se passe. La ligne dit combien il y en a et ce qu'il
             // faut faire pour les voir — c'est la règle du plafond qui
             // s'annonce, appliquée à un plancher.
-            if table.is_none() && !results.is_empty() && rest >= line {
-                let notice =
-                    egui::Rect::from_min_size(body.min, egui::vec2(body.width(), rest.max(line)));
+            //
+            // **Et elle se mesure dans sa propre fonte.** Elle s'écrit à
+            // onze points, pas au corps du texte : gardée derrière la
+            // hauteur d'une ligne de corps, elle manquait la place d'un
+            // pixel à `text_scale = 1,6` — vingt-cinq disponibles pour
+            // vingt-six demandés — et le volet ne disait donc rien du
+            // tout là où il avait de quoi le dire.
+            let notice_h =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.0))));
+            if table.is_none() && !results.is_empty() && rest >= notice_h {
+                let notice = egui::Rect::from_min_size(
+                    body.min,
+                    egui::vec2(body.width(), rest.max(notice_h)),
+                );
                 motif::inside(ui, notice, |ui| {
                     ui.add(
                         egui::Label::new(
