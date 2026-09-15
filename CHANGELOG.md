@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **La règle d'un panneau clinique se lit maintenant avant ce qu'elle
+  qualifie.** Les panneaux du rein, de la grossesse et du foie
+  écrivaient la leur en pied, sous les conduites, dans une région qui
+  défile derrière une barre flottante — c'est-à-dire là où personne ne
+  va, puisqu'on s'arrête à la dernière ligne qui parle du dossier. À
+  1400x900, la plus large des quatre formes exigées, le rein sortait
+  « l'adaptation reste la décision » et perdait « du prescripteur » hors
+  du cadre ; la grossesse montrait le premier de ses cinq traitements et
+  rien de son pied, c'est-à-dire rien du « ce panneau ne remplace pas le
+  CRAT » que la documentation du module annonce comme sa règle ; et le
+  foie écrivait « le foie n'a pas de DFG, ce panneau attend un stade »
+  *après* les trois boutons que cette phrase explique.
+
+  La forme retenue est celle que le panneau des cytochromes avait déjà :
+  courte à l'écran, entière au survol, et en tête.
+  `a_clinical_pane_writes_its_caveat_before_what_it_qualifies` refuse la
+  prochaine — vérifié en remettant celle du rein en pied.
+- **La portée des cytochromes manquait à la vue « Croisement »**, qui
+  est pourtant la vue faite pour eux : « sept cytochromes, ni
+  glycoprotéine P, ni transporteurs, ni additions d'effets » n'était
+  écrit qu'au dossier. Une même table lue à deux endroits doit dire ses
+  limites aux deux, ou l'endroit qui se tait est celui qu'on croit.
+
 ## [0.200.0] - 2026-09-13
 
 ### Added

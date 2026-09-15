@@ -15274,6 +15274,26 @@ impl App {
                 .id_salt("bio_renal")
                 .show(ui, |ui| {
                     ui.add_space(4.0);
+                    // **La règle du panneau se lit en tête, pas en pied.**
+                    // Elle était en pied, sous les conduites, dans une
+                    // zone qui défile derrière une barre flottante : à
+                    // 1400x900 — la plus large des formes exigées — la
+                    // phrase sortait à « l'adaptation reste la décision »
+                    // et « du prescripteur » tombait hors du cadre.
+                    // C'est-à-dire que la moitié qui compte était la
+                    // moitié perdue, dans toutes les formes.
+                    //
+                    // Courte à l'écran, entière au survol : la forme que
+                    // `bio_cyp_pane` a adoptée cent lignes plus haut, et
+                    // pour la même raison — quatre lignes de réserves
+                    // au-dessus du sujet sont la garniture qui le mange.
+                    ui.label(
+                        egui::RichText::new(tr("renal_scope"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .on_hover_text(tr("renal_footer"));
+                    ui.add_space(4.0);
                     // Le chiffre qui décide, en tête : une liste de
                     // conduites sans la clairance qui les a produites
                     // demande d'aller la chercher ailleurs pour la
@@ -15339,15 +15359,6 @@ impl App {
                         );
                         ui.add_space(6.0);
                     }
-                    // **Le module propose, le prescripteur décide** —
-                    // écrit sur le panneau et pas seulement dans le
-                    // code, parce que c'est au comptoir qu'on lit.
-                    ui.separator();
-                    ui.label(
-                        egui::RichText::new(tr("renal_footer"))
-                            .size(motif::pt(ui, 10.0))
-                            .color(motif::text_dim()),
-                    );
                 });
         });
     }
@@ -15364,6 +15375,20 @@ impl App {
             egui::ScrollArea::vertical()
                 .id_salt("bio_gravidity")
                 .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    // **En tête, pour la même raison qu'au rein.** Le
+                    // pied de ce panneau portait « ce panneau ne
+                    // remplace pas le CRAT » — ce que la documentation
+                    // du module annonce comme sa règle — et il fallait
+                    // dérouler cinq lignes pour l'atteindre : sur la
+                    // capture la plus large, le panneau montrait le
+                    // premier traitement des cinq et rien du pied.
+                    ui.label(
+                        egui::RichText::new(tr("gravid_scope"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .on_hover_text(tr("gravid_footer"));
                     ui.add_space(4.0);
                     if session.gravidity.is_empty() {
                         ui.label(
@@ -15431,12 +15456,6 @@ impl App {
                         );
                         ui.add_space(6.0);
                     }
-                    ui.separator();
-                    ui.label(
-                        egui::RichText::new(tr("gravid_footer"))
-                            .size(motif::pt(ui, 10.0))
-                            .color(motif::text_dim()),
-                    );
                 });
         });
     }
@@ -31533,6 +31552,23 @@ impl App {
         use crate::cyp::{Role, Shift, Weight};
         motif::section(ui, tr("cyp_tab"));
         ui.add_space(4.0);
+        // **La portée, en tête, ici comme dans `bio_cyp_pane`.** Elle y
+        // était et manquait ici — c'est-à-dire qu'elle manquait dans la
+        // vue qui existe *pour* les croisements. Une même table lue à
+        // deux endroits doit dire ses limites aux deux, ou l'endroit qui
+        // se tait est celui qu'on croit.
+        let known = crate::cyp::Enzyme::ALL
+            .iter()
+            .map(|e| e.label())
+            .collect::<Vec<_>>()
+            .join(", ");
+        ui.label(
+            egui::RichText::new(tr("cyp_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(trf("cyp_scope_more", known));
+        ui.add_space(4.0);
         if reading.crossings.is_empty() {
             ui.label(
                 egui::RichText::new(tr("cyp_nothing"))
@@ -31748,6 +31784,14 @@ impl App {
             );
         });
         ui.add_space(4.0);
+        // La règle du rein avant ses conduites, comme au dossier.
+        ui.label(
+            egui::RichText::new(tr("renal_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(tr("renal_footer"));
+        ui.add_space(4.0);
         if findings.is_empty() {
             ui.label(
                 egui::RichText::new(tr("renal_nothing"))
@@ -31800,6 +31844,19 @@ impl App {
     ) {
         use crate::hepatic::{Level, Stage, Verdict};
         motif::section(ui, tr("hepatic_tab"));
+        ui.add_space(4.0);
+        // **Avant les trois boutons, puisqu'elle les explique.** Cette
+        // phrase — « le foie n'a pas de DFG : ce panneau attend un stade
+        // de Child-Pugh » — était écrite sous les conduites, c'est-à-
+        // dire après tout ce qu'elle qualifie et hors du cadre dans
+        // toutes les formes : la seule chose qui dise pourquoi on clique
+        // un stade au lieu de taper un chiffre était la seule qu'on ne
+        // pouvait pas lire.
+        ui.label(
+            egui::RichText::new(tr("hepatic_note"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        );
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
             ui.label(
@@ -31880,12 +31937,6 @@ impl App {
             );
             ui.add_space(6.0);
         }
-        ui.add_space(6.0);
-        ui.label(
-            egui::RichText::new(tr("hepatic_note"))
-                .size(motif::pt(ui, 10.5))
-                .color(motif::text_dim()),
-        );
         ui.add_space(8.0);
         ui.label(
             egui::RichText::new(tr("cyp_decision"))
@@ -51979,6 +52030,85 @@ mod tests {
             "une bascule de disposition se compte en caractères, pas en pixels :\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// **La règle d'un panneau se lit avant ce qu'elle qualifie.**
+    ///
+    /// Les panneaux cliniques écrivaient la leur en pied, sous les
+    /// conduites, dans une région qui défile derrière une barre
+    /// flottante — c'est-à-dire là où personne ne va, puisqu'on
+    /// s'arrête à la dernière ligne qui parle du dossier. À 1400x900,
+    /// **la plus large des quatre formes exigées**, le panneau du rein
+    /// sortait « l'adaptation reste la décision » et perdait « du
+    /// prescripteur » hors du cadre ; celui de la grossesse montrait le
+    /// premier de ses cinq traitements et rien de son pied, c'est-à-dire
+    /// rien du « ce panneau ne remplace pas le CRAT » que la
+    /// documentation du module annonce comme sa règle ; et le foie
+    /// écrivait « le foie n'a pas de DFG, ce panneau attend un stade »
+    /// **après** les trois boutons que cette phrase explique.
+    ///
+    /// La forme retenue est celle que `bio_cyp_pane` avait déjà : courte
+    /// à l'écran, entière au survol, et en tête. Quatre lignes de
+    /// réserves au-dessus du sujet seraient la garniture qui le mange —
+    /// une seule ne l'est pas.
+    ///
+    /// Le test lit le texte de `app.rs`, comme les quatre lints
+    /// au-dessus : c'est une règle d'écriture et non un résultat de
+    /// calcul. Il nomme les fonctions, de sorte qu'un renommage le
+    /// casse au lieu de le faire passer sur rien.
+    #[test]
+    fn a_clinical_pane_writes_its_caveat_before_what_it_qualifies() {
+        const SOURCE: &str = include_str!("app.rs");
+        // (fonction, clé de la mise en garde). Les deux lectures d'une
+        // même table — au dossier et au croisement — y sont chacune :
+        // celle qui se tait est celle qu'on croit.
+        const PANES: &[(&str, &str)] = &[
+            ("fn bio_cyp_pane", "cyp_scope"),
+            ("fn bio_renal_pane", "renal_scope"),
+            ("fn bio_gravidity_pane", "gravid_scope"),
+            ("fn ddi_cyp_section", "cyp_scope"),
+            ("fn ddi_renal_section", "renal_scope"),
+            ("fn ddi_hepatic_section", "hepatic_note"),
+        ];
+        let lines: Vec<&str> = SOURCE.lines().collect();
+        for (func, caveat) in PANES {
+            let start = lines
+                .iter()
+                .position(|l| l.trim_start().starts_with(func))
+                .unwrap_or_else(|| panic!("{func} : fonction introuvable"));
+            // Le corps s'arrête à la fonction suivante du même niveau.
+            let end = lines[start + 1..]
+                .iter()
+                .position(|l| l.starts_with("    fn ") || l.starts_with("    pub fn "))
+                .map_or(lines.len(), |k| start + 1 + k);
+            let body = &lines[start..end];
+            let quoted = format!("\"{caveat}\"");
+            let drawn: Vec<usize> = body
+                .iter()
+                .enumerate()
+                .filter(|(_, l)| !l.trim_start().starts_with("//") && l.contains(&quoted))
+                .map(|(i, _)| i)
+                .collect();
+            assert_eq!(
+                drawn.len(),
+                1,
+                "{func} : « {caveat} » doit être écrit une fois et une seule"
+            );
+            // La première boucle sur les lignes du dossier : c'est elle
+            // que la mise en garde qualifie.
+            let findings = body.iter().position(|l| {
+                let t = l.trim_start();
+                !t.starts_with("//") && (t.starts_with("for f in") || t.starts_with("for c in"))
+            });
+            if let Some(findings) = findings {
+                assert!(
+                    drawn[0] < findings,
+                    "{func} : « {caveat} » est écrit après les lignes qu'il \
+                     qualifie — en pied d'une région qui défile, c'est-à-dire \
+                     nulle part"
+                );
+            }
+        }
     }
 
     /// **Ce qu'une bande mesure est ce qu'elle dessine.**
