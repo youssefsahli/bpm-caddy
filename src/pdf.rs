@@ -845,6 +845,14 @@ pub struct BilanData<'a> {
     pub biology: Vec<(String, String, String, String)>,
     /// (niveau, ce que ça change).
     pub findings: Vec<(String, String)>,
+    /// (traitement et niveau, le risque, ce qu'on met à la place) — ce
+    /// que l'âge du dossier change, ligne par ligne.
+    ///
+    /// Le bilan partagé de médication est fait pour le patient
+    /// polymédiqué, c'est-à-dire presque toujours pour un sujet âgé :
+    /// c'est la feuille où cette lecture sert le plus, et la seule qui
+    /// parte avec lui chez le prescripteur.
+    pub elderly: Vec<(String, String, String)>,
     /// (où en est le dossier, l'analyte, le rythme, depuis quand, ce qui
     /// le demande) — ce que l'ordonnance réclame de faire vérifier.
     /// C'est la seule section du bilan qui parle de ce qui *manque*.
@@ -962,6 +970,20 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
                 typst_str(drugs)
             ));
         }
+    }
+
+    // --- What the age changes ---------------------------------------
+    if !data.elderly.is_empty() {
+        src.push_str("#sec[Ce que l'âge change]\n");
+        for (head, risk, instead) in &data.elderly {
+            src.push_str(&format!(
+                "#block(below: 2.4mm)[#text(10pt, weight: \"bold\")[#{}] \\\n#text(9pt)[#{}] \\\n#text(9pt, style: \"italic\")[À la place : #{}]]\n",
+                typst_str(head),
+                typst_str(risk),
+                typst_str(instead)
+            ));
+        }
+        src.push_str("#text(8.5pt, style: \"italic\")[Listes de Laroche, STOPP/START et Beers, rapprochées de la date de naissance du dossier. Elles ne savent ni la dose, ni la durée, ni l'indication, et rien ne s'arrête d'un coup : un remplacement se prépare avec le prescripteur.]\n");
     }
 
     // --- Biology ----------------------------------------------------
@@ -4173,9 +4195,19 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &pharmacy,
             "2026-08-29",
         ),
+        // **Un aperçu ne se contredit pas.** La section « Ce que l'âge
+        // change » écrit « dès 75 ans » ; au-dessus, l'en-tête donne la
+        // date de naissance. Avec celle de l'échantillon commun — 1958,
+        // soixante-huit ans — la page disait deux choses à la fois, et
+        // c'est la page que l'officine lit pour comprendre sa propre
+        // feuille. Le bilan prend donc un dossier de l'âge dont il
+        // parle ; les douze autres aperçus gardent le leur.
         "bilan" => bilan_values(
             &BilanData {
-                patient: &patient,
+                patient: &Patient {
+                    birth_date: "1946-12-05".to_owned(),
+                    ..sample_patient()
+                },
                 today: "24/08/2026",
                 // Les quatre traitements que les lectures ci-dessous
                 // citent : une feuille qui nomme un AINS, un IEC et une
@@ -4202,7 +4234,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                         "1 comprimé le soir".to_owned(),
                     ),
                 ],
-                // **Le bilan est fait de ses huit sections**, et le
+                // **Le bilan est fait de ses neuf sections**, et le
                 // modèle ne montre que celles qui portent quelque
                 // chose : un aperçu vide de sept d'entre elles ne dit
                 // rien de la mise en page qu'on vient y régler. Une
@@ -4226,6 +4258,16 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 findings: vec![(
                     "ALERTE".to_owned(),
                     "Kaliémie élevée sous IEC.".to_owned(),
+                )],
+                elderly: vec![(
+                    "Advil — À éviter à cet âge (dès 75 ans)".to_owned(),
+                    "Hémorragie digestive, insuffisance rénale aiguë, \
+                     décompensation d'une insuffisance cardiaque."
+                        .to_owned(),
+                    "Le paracétamol en première intention ; si un AINS reste \
+                     indispensable, la durée la plus courte avec un inhibiteur \
+                     de la pompe à protons."
+                        .to_owned(),
                 )],
                 watch: vec![(
                     "À REFAIRE".to_owned(),
@@ -7605,6 +7647,16 @@ mod tests {
                 "élevé".to_owned(),
             )],
             findings: vec![("ALERTE".to_owned(), "Kaliémie élevée sous IEC.".to_owned())],
+            // Du texte hostile ici aussi : cette section passe par
+            // `typst_str` comme les autres, et c'est ce test qui le
+            // prouve — une section ajoutée sans son échantillon
+            // hostile est une section dont l'échappement n'est vérifié
+            // par personne.
+            elderly: vec![(
+                "Advil #box[*6 jours*] — À éviter à cet âge (dès 75 ans)".to_owned(),
+                "Hémorragie digestive et insuffisance rénale aiguë.".to_owned(),
+                "Le paracétamol en première intention.".to_owned(),
+            )],
             vaccines: vec!["dTP — rappel décennal attendu".to_owned()],
             watch: vec![
                 (
@@ -7668,6 +7720,7 @@ mod tests {
             review: Vec::new(),
             biology: Vec::new(),
             findings: Vec::new(),
+            elderly: Vec::new(),
             vaccines: Vec::new(),
             watch: Vec::new(),
             acts: Vec::new(),

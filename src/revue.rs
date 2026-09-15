@@ -86,6 +86,21 @@ enum Kind {
     /// patient comes back. The point names the treatments that are
     /// there — naming an absence is impossible, and the sentence says
     /// what is not.
+    ///
+    /// **Ce que cette forme ne sait pas dire**, et qu'il vaut mieux
+    /// écrire que redécouvrir : une règle dont la ligne qui la
+    /// *déclenche* peut aussi être celle qui la *comble*. L'absence est
+    /// cherchée sur les lignes que le groupe n'a pas nommées — c'est
+    /// la correction du Rimifon ci-dessus — si bien qu'une ligne
+    /// nommée ne peut pas fournir ce qui manque. « Méthotrexate sans
+    /// acide folique » est le cas : la Lederfoline porte « antidote du
+    /// méthotrexate » dans sa classe, elle est donc *nommée* par le
+    /// groupe, et une ordonnance qui ne porterait qu'elle recevrait
+    /// « méthotrexate sans acide folique » — c'est-à-dire un reproche
+    /// adressé au sauvetage lui-même. La règle n'est pas écrite pour
+    /// cette raison, et non par oubli : la sortir demanderait un veto
+    /// par ligne, comme `renal` et `gravidity` en ont un, et c'est un
+    /// changement de type que rien d'autre ne réclame aujourd'hui.
     Without(&'static [&'static [&'static str]], &'static [&'static str]),
 }
 

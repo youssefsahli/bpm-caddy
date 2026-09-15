@@ -18844,6 +18844,26 @@ impl App {
                 )
             })
             .collect();
+        // **Ce que l'âge change, sur la feuille du bilan.** Le bilan
+        // partagé de médication est fait pour le patient polymédiqué,
+        // c'est-à-dire presque toujours pour un sujet âgé : c'est la
+        // feuille où cette lecture sert le plus, et la seule qui parte
+        // avec le patient chez le prescripteur. Recalculée ici plutôt
+        // que reprise de `session.elderly`, parce que l'impression peut
+        // porter sur un dossier qui n'est pas celui ouvert à l'écran.
+        let elderly: Vec<(String, String, String)> = crate::elderly::resolve(
+            crate::elderly::read(&words, db::age_on(&patient.birth_date, &session.today)),
+            &session.content,
+        )
+        .into_iter()
+        .map(|f| {
+            let head = match f.level {
+                Some(l) => format!("{} — {} (dès {} ans)", f.treatment, l.label(), f.from),
+                None => format!("{} — {}", f.treatment, tr("elderly_unknown")),
+            };
+            (head, f.risk, f.instead)
+        })
+        .collect();
         let signature = config.pharmacy.signature_for(operator);
         let data = crate::pdf::BilanData {
             patient,
@@ -18853,6 +18873,7 @@ impl App {
             review,
             biology,
             findings,
+            elderly,
             vaccines,
             watch,
             acts,
@@ -35629,7 +35650,19 @@ impl App {
                     reason: reason_w,
                     gap,
                     folded,
-                } = Self::batch_columns(ui, ui.available_width());
+                } = Self::batch_columns(
+                    ui,
+                    ui.available_width(),
+                    // L'unité **accordée**, celle que la cellule écrira :
+                    // « comprimé sublingual » mesuré au singulier laisse
+                    // deux lettres dehors, et deux lettres suffisent à
+                    // élider. Le solde est presque toujours au pluriel,
+                    // donc c'est le pluriel qu'on mesure.
+                    session
+                        .stup_summary
+                        .iter()
+                        .map(|s| crate::ordonnancier::agreed_unit(2.0, &s.product.unit)),
+                );
                 let reason_hint = match kind {
                     Kind::Perte => tr("stup_loss_hint"),
                     Kind::Destruction | Kind::DestructionPerimes => tr("stup_destroy_reason_hint"),
@@ -35914,22 +35947,42 @@ impl App {
     /// Quand même ces planchers ne tiennent pas, la table déborde et
     /// défile : une table de fiches se lit de côté, elle ne se replie
     /// pas en note de bas de page.
-    fn batch_columns(ui: &egui::Ui, avail: f32) -> BatchCols {
+    fn batch_columns<'a>(
+        ui: &egui::Ui,
+        avail: f32,
+        units: impl Iterator<Item = &'a str>,
+    ) -> BatchCols {
         let gap = 8.0;
         let qty = Self::field_width(ui, [tr("batch_col_qty")].into_iter()).max(chars_wide(ui, 9.0));
         // La colonne d'état porte le solde **ou** l'embarras, jamais les
         // deux : elle se mesure donc sur le plus large des deux.
+        //
+        // **Et le solde se mesure sur l'unité que la feuille porte**, pas
+        // sur la légende de la colonne. Mesurée sur « Au registre » et
+        // les trois embarras, elle donnait cent trente pixels, et
+        // « 21 comprimés sublinguaux » — le Subutex, sur la feuille
+        // livrée — sortait « 21 comprimés sublingu… ». C'est la faute
+        // que ce fichier nomme ailleurs : *une colonne mesurée sur un
+        // gabarit est une colonne qui ment*, et ici elle ment sur la
+        // seule chose qu'un registre existe pour dire. Le chiffre est
+        // provisionné en caractères plutôt que composé : composer les
+        // quarante soldes pour les mesurer serait quarante `format!`
+        // par image.
+        let widest_unit = Self::widest(ui, 11.0, units);
+        // **Les embarras sont lus sur le type**, jamais recopiés : la
+        // liste écrite à la main ici en oubliait un — « Zéro n'est pas
+        // un mouvement », qui est le plus long des quatre. Un cinquième
+        // ajouté au type entre dans la mesure tout seul.
         let state = Self::widest(
             ui,
             11.0,
-            [
-                tr("batch_col_stock"),
-                tr("batch_snag_gap"),
-                tr("batch_snag_record"),
-                tr("batch_snag_unreadable"),
-            ]
-            .into_iter(),
-        );
+            std::iter::once(tr("batch_col_stock")).chain(
+                crate::ordonnancier::Snag::ALL
+                    .iter()
+                    .map(|s| tr(s.label_key())),
+            ),
+        )
+        .max(widest_unit + chars_wide(ui, 6.0));
         let name_floor =
             Self::widest(ui, 11.5, [tr("stup_col_product")].into_iter()).max(chars_wide(ui, 16.0));
         // La forme large d'abord : les quatre colonnes, chacune à son
@@ -50607,15 +50660,68 @@ mod tests {
                 let _ = ctx.run(Default::default(), |ctx| {
                     egui::CentralPanel::default().show(ctx, |ui| {
                         let avail = super::chars_wide(ui, chars);
-                        let cols = App::batch_columns(ui, avail);
+                        // **Les unités du catalogue livré**, et non une
+                        // poignée choisie : c'est « comprimé sublingual »
+                        // qui décide, et il ne se voit qu'en les prenant
+                        // toutes.
+                        let units: Vec<&str> = crate::ordonnancier::CATALOGUE
+                            .iter()
+                            .flat_map(|f| f.items.iter().map(|(_, u)| *u))
+                            .collect();
+                        let cols = App::batch_columns(
+                            ui,
+                            avail,
+                            units
+                                .iter()
+                                .map(|u| crate::ordonnancier::agreed_unit(2.0, u)),
+                        );
+                        // Ce que la cellule la plus large écrira vraiment.
+                        let widest_stock = App::widest(
+                            ui,
+                            11.0,
+                            units
+                                .iter()
+                                .map(|u| crate::ordonnancier::agreed_unit(2.0, u)),
+                        ) + super::chars_wide(ui, 4.0);
+                        // L'autre moitié de ce que cette colonne écrit :
+                        // l'embarras. Lu sur le type, comme la mesure.
+                        let widest_snag = App::widest(
+                            ui,
+                            11.0,
+                            crate::ordonnancier::Snag::ALL
+                                .iter()
+                                .map(|s| super::tr(s.label_key())),
+                        );
                         let floor16 = super::chars_wide(ui, 16.0);
                         let floor8 = super::chars_wide(ui, 8.0);
-                        *seen.borrow_mut() = Some((cols, floor16, floor8, avail));
+                        *seen.borrow_mut() =
+                            Some((cols, floor16, floor8, avail, widest_stock, widest_snag));
                     });
                 });
-                let Some((cols, floor16, floor8, avail)) = seen.into_inner() else {
+                let Some((cols, floor16, floor8, avail, widest_stock, widest_snag)) =
+                    seen.into_inner()
+                else {
                     panic!("échelle {scale} : rien mesuré");
                 };
+                // **Le solde tient, unité comprise.** Mesurée sur la
+                // légende « Au registre », la colonne donnait cent trente
+                // pixels et le Subutex sortait « 21 comprimés
+                // sublingu… » : l'unité élidée sur la colonne qu'un
+                // registre existe pour porter. La forme repliée est
+                // exemptée — elle n'a pas de colonne d'état du tout.
+                assert!(
+                    cols.folded || cols.state >= widest_stock - 0.5,
+                    "échelle {scale}, {avail} px : le solde a {} pour {widest_stock}",
+                    cols.state
+                );
+                // **Et l'embarras, qui s'écrit dans la même colonne.**
+                // La liste des quatre était recopiée à la main dans la
+                // mesure et en oubliait le plus long.
+                assert!(
+                    cols.folded || cols.state >= widest_snag - 0.5,
+                    "échelle {scale}, {avail} px : l'embarras a {} pour {widest_snag}",
+                    cols.state
+                );
                 // Le nom garde de quoi désigner un produit.
                 assert!(
                     cols.name >= floor16 - 0.5,

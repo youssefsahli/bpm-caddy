@@ -191,6 +191,13 @@ Un acte porte sa thématique, son état, sa date, sa durée et les
 initiales de qui l'a fait. « Tout imprimer » rend la fiche d'entretien,
 le bilan et le plan de prise en un seul document.
 
+Le bilan porte une section **« Ce que l'âge change »** : le bilan
+partagé de médication est fait pour le patient polymédiqué,
+c'est-à-dire presque toujours pour un sujet âgé, et c'est la seule
+feuille de cette lecture qui parte avec lui chez le prescripteur.
+Chaque ligne y nomme le risque et ce qu'on met à la place ; aucune ne
+dit d'arrêter.
+
 ## L'ordonnance sous protocole
 
 Après un test rapide positif — angine à streptocoque, cystite simple —,

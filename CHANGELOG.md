@@ -8,9 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Ce que l'âge fait à une ordonnance** — `src/elderly.rs`, vingt
-  et une lignes, et le troisième terrain à côté du rein et du foie. C'est le
-  seul des quatre dont **le chiffre est déjà au dossier** : la date de
+- **Ce que l'âge fait à une ordonnance** — `src/elderly.rs`,
+  vingt-trois lignes, et le troisième terrain à côté du rein et du foie.
+  C'est le seul des quatre dont **le chiffre est déjà au dossier** : la date de
   naissance y est depuis la création de la fiche, personne n'a rien à
   taper, et c'est précisément pour cela que personne ne la regarde. Le
   rein demande d'aller chercher un compte rendu, le foie de cliquer un
@@ -46,7 +46,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   chez un sujet âgé expose davantage que de le poursuivre, et le pied du
   panneau l'écrit.
 
+  **Et la lecture part sur le papier**, dans une section « Ce que l'âge
+  change » du bilan partagé de médication : ce bilan est fait pour le
+  patient polymédiqué, c'est-à-dire presque toujours pour un sujet âgé,
+  et c'est la seule feuille de cette lecture qui parte avec lui chez le
+  prescripteur. Chaque ligne y nomme le risque et ce qu'on met à la
+  place.
+
 ### Fixed
+- **La feuille de saisie groupée élidait son solde.** La colonne « Au
+  registre » se mesurait sur sa propre légende et sur trois des quatre
+  embarras — celui qui manquait, « Zéro n'est pas un mouvement », étant
+  le plus long. Sur la feuille livrée, le Subutex sortait donc
+  « 21 comprimés sublingu… » : l'unité élidée sur la seule colonne qu'un
+  registre existe pour porter. Elle se mesure maintenant sur l'unité
+  **accordée** que la cellule écrira — « comprimé sublingual » mesuré au
+  singulier laisse deux lettres dehors, et deux lettres suffisent à
+  élider — et les embarras sont lus sur le type (`Snag::ALL`) plutôt que
+  recopiés, de sorte qu'un cinquième entre dans la mesure tout seul. Le
+  test de la feuille parcourt désormais **toutes** les unités du
+  catalogue livré : c'est « comprimé sublingual » qui décide, et il ne
+  se voit qu'en les prenant toutes.
 - **La dernière puce de « ce qu'on croise » pouvait disparaître.** La
   bande comptait ses rangées sur le *nom* du médicament et dessinait
   « Zeclar × » : deux écritures d'une même chose, dont celle qui ment

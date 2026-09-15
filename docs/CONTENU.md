@@ -787,23 +787,52 @@ Deux règles valent partout :
   `instead`, ce qu'on met à la place — et il est **obligatoire** : c'est
   la règle de `crush.rs`, un « non » sans alternative laisse le problème
   entier.
-- **Six règles, un test chacune** : *sans date de naissance, pas de
+- **Sept règles, un test chacune** : *sans date de naissance, pas de
   verdict* ; *un « non » nomme ce qu'il évite et ce qu'on met à la
   place* ; *on n'envoie jamais d'un médicament à éviter vers un autre* ;
   *l'alternative est un choix, jamais une posologie* ; *une forme locale
   ne porte pas le niveau systémique* ; *un seuil d'âge vient d'une liste
   publiée* — 75 ans pour la liste française, 65 pour STOPP et Beers, et
-  rien entre les deux.
+  rien entre les deux ; et *une ligne qui se tait ne fait pas taire la
+  suivante*, qui ne se voit que sur deux seuils différents et n'est donc
+  éprouvable que sur une table de test — d'où `read_in`, écrit à part.
 - **Les trois règles que le rein n'a pas, et ce qu'elles ont trouvé** :
   le renvoi en rond a mordu sur la ligne des tricycliques, dont la
   phrase nommait l'amitriptyline, que cette même ligne dit d'éviter — la
   phrase a été réécrite pour ne nommer que ce qu'elle propose vraiment.
   Le refus de la posologie garde `instead` sans milligrammes : la dose
   dépend de l'indication, du poids et du rein. Et *aucune ligne ne
-  réclame une fiche qui ne parle jamais de l'âge* en a trouvé quatre —
-  Physiotens, Arcoxia, Latuda, Praxilène : trois fiches ont été
-  complétées sur ce que l'âge y change, et la quatrième a fait retirer
-  sa ligne.
+  réclame une fiche qui ne parle jamais de l'âge* a parlé à chaque
+  ligne ajoutée — sept fiches en tout : Physiotens, Arcoxia, Latuda,
+  Mopral, Eupantol et Hydroquinidine ont été **complétées** sur ce que
+  l'âge y change, et Praxilène a fait **retirer** sa ligne. La règle de
+  la maison est que corriger la fiche est le plus souvent la bonne
+  réponse ; ce qui décide, c'est de savoir si la ligne parle bien
+  d'âge.
+- **Et un piège que les confrontations ne voient pas** : une classe
+  cliniquement hétérogène. « myorelaxant » attrape cinq fiches — les
+  deux adjuvants de la lombalgie que la ligne visait, mais aussi le
+  Liorésal, le Dantrium et le Botox, c'est-à-dire la spasticité d'une
+  sclérose en plaques. La conduite écrite — paracétamol, chaleur,
+  reprise du mouvement — y est absurde, et un baclofène arrêté d'un coup
+  donne convulsions et hyperthermie. Les fiches ne *contredisent* pas la
+  ligne : elles parlent d'autre chose. Deux molécules nommées ont
+  remplacé la classe. Avant de se fier à un mot de classe, lister les
+  fiches qu'il attrape **et les grouper par classe** : c'est le nombre
+  de classes distinctes, pas le nombre de fiches, qui alerte.
+- **Confronté à la table de référence livrée** : l'application porte
+  depuis toujours une table « Sujet âgé — médicaments à réévaluer et
+  alternatives », et ce module en est la lecture ordonnance par
+  ordonnance. Deux écritures d'une même question dérivent, et c'est
+  celle qu'on regarde le moins qui aura tort :
+  `the_table_of_reference_and_this_module_agree` les tient ensemble, et
+  a mordu du premier coup — la table nommait le bromazépam parmi les
+  benzodiazépines à demi-vie longue et le module le laissait passer, à
+  vingt heures pile. Trois lignes de la table sont exemptées **par
+  nom** : l'association de trois psychotropes (c'est `revue.rs` qui lit
+  l'ensemble), l'antihypertenseur inchangé après un amaigrissement (que
+  nul mot de fiche ne désigne) et les traitements *manquants* de START,
+  qui sont l'autre moitié du sujet.
 - **Deux niveaux et pas trois** : le second axe de la liste française —
   les médicaments « à efficacité discutable » — n'y est pas, et c'est
   une frontière et non un oubli. Une efficacité modeste est une question

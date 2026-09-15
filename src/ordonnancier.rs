@@ -1391,6 +1391,21 @@ pub enum Snag {
 }
 
 impl Snag {
+    /// Les quatre, dans l'ordre de lecture.
+    ///
+    /// **Lus plutôt que recopiés** : la colonne d'état de la feuille se
+    /// mesure sur ce qu'elle peut écrire, et la liste était écrite à la
+    /// main là-bas — « Zéro n'est pas un mouvement », le plus long des
+    /// quatre, y manquait. Un cinquième embarras ajouté au type entre
+    /// dans la mesure sans que personne ait à y penser, comme
+    /// `Enzyme::ALL` et `PatientTab::ALL`.
+    pub const ALL: &'static [Snag] = &[
+        Snag::Unreadable,
+        Snag::NotPositive,
+        Snag::GapWithoutReason,
+        Snag::RecordRequired,
+    ];
+
     pub fn label_key(self) -> &'static str {
         match self {
             Snag::Unreadable => "batch_snag_unreadable",

@@ -164,7 +164,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   conduct says « halve it »; an age conduct says « there is better » —
   which is why the row carries a field `renal` has not and cannot have,
   `instead`, and why it is **mandatory**: `crush.rs`'s rule, « a "no"
-  with no alternative leaves the problem whole ». Twenty-one rows, each
+  with no alternative leaves the problem whole ». Twenty-three rows, each
   from a published list (Laroche 2007, STOPP/START v2, Beers 2023, HAS,
   ANSM), each confronted with the shipped fiche it lands on. Six rules,
   one test each — three of them not in `renal`: **an alternative is
@@ -174,15 +174,28 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   alternative is a choice and never a posology** (no milligram in
   `instead`; the risk may cite the reference's threshold, which is
   `hepatic`'s refinement), and **no row claims a card that never speaks
-  of age** — which found four cards whose own prose was silent, and the
-  answer was to complete the fiche, not to delete the row. Two levels
+  of age** — which spoke at every row added, seven fiches in all: six
+  were completed on what age changes there, and one (Praxilène) had its
+  row withdrawn instead, because the row was not about age at all.
+  A fourth trap it could *not* see: a **clinically heterogeneous class**.
+  « myorelaxant » catches the two lombalgia adjuvants the row meant and
+  also Liorésal, Dantrium and Botox — the spasticity of multiple
+  sclerosis — where « paracetamol, heat, move early » is absurd and an
+  abrupt baclofen stop gives seizures. The cards do not *contradict* the
+  row; they answer another question. Before trusting a class word, list
+  the cards it catches **and group them by class**: it is the number of
+  distinct classes, not of cards, that warns. Two levels
   and not three: the French list's « efficacité discutable » axis is
   deliberately absent, because a modest evidence base is a revue
   question, not an age one — the naftidrofuryl row was written, then
   withdrawn for exactly that. And it never says « stop »: stopping a
   psychotropic abruptly in an elderly patient exposes more than
-  continuing it, which the panel writes in its own footer. Pure, tested,
-  no clock: the age is passed in),
+  continuing it, which the panel writes in its own footer. And the reading
+  goes out on paper, as a « Ce que l'âge change » section of the bilan
+  partagé de médication — the bilan is *for* the polymedicated patient,
+  i.e. almost always an elderly one, and it is the only sheet of this
+  reading that leaves with them for the prescriber. Pure, tested, no
+  clock: the age is passed in),
   `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline, and
   the same « two rules never make one reading » guard as `biology.rs`,
@@ -220,7 +233,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 994 printed phrases the officine may rewrite —
+  `src/content.rs` (the 998 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -784,6 +797,24 @@ add clicking and typing; it is not the price of entry.
   the scans form asked for its eight rows and got them, and « Pièces au
   dossier » became a caption over nothing. Cap at half, and let both
   halves scroll.
+- **A rule the panel exists to state is drawn before the content, never
+  after it.** Anything after the content sits behind a floating bar, and
+  nobody scrolls past the last line that speaks about the file. The rein,
+  grossesse and foie panels all wrote theirs in the foot: at 1400x900 —
+  *the widest of the four required shapes* — the kidney came out on
+  « l'adaptation reste la décision » and lost « du prescripteur » off the
+  frame; pregnancy showed the first of its five treatments and nothing of
+  its foot, i.e. nothing of the « ce panneau ne remplace pas le CRAT »
+  the module's own doc calls its rule; and the liver wrote « le foie n'a
+  pas de DFG, ce panneau attend un stade » *after* the three buttons that
+  sentence explains. The shape to use is the one `bio_cyp_pane` already
+  had: **short on screen, whole on hover, and at the head** — four lines
+  of reserves above the subject would be the garnish that eats it, one
+  line is not. `a_clinical_pane_writes_its_caveat_before_what_it_qualifies`
+  refuses the next, and the same sweep found that the *scope* line was
+  missing entirely from the « Croisement » view — the view that exists
+  for crossings. **One table read in two places must state its limits in
+  both, or the place that stays silent is the one people believe.**
 - **A capped band that scrolls hides its tail in silence, because
   egui's scroll bar floats.** `spacing.scroll.floating` is egui's
   default and nothing here changes it: the bar is invisible until the
@@ -861,6 +892,18 @@ add clicking and typing; it is not the price of entry.
   rendering fault. Three rules fall out: a vide is written in words, it
   says something **different** in each pane, and when the list it points
   at is empty it points somewhere else (« ouvrez « Catalogue… » »).
+- **And the converse: a view the demo leaves empty is a view nobody has
+  ever looked at.** A new panel needs its view key to land on a state
+  where it *speaks*, or every capture ever taken of it shows « rien à
+  signaler » — which is the honest answer and teaches nothing about the
+  panel. « Vigilance » lived that way with three rules waiting. The age
+  panel nearly repeated it twice in one evening: the default pick (the
+  first file with an email) is sixty-eight, and « the oldest file » is
+  seventy-nine **with no treatments at all**. The key picks the oldest
+  file that carries an ordonnance, and the « Croisement » demo list
+  gained a ninth drug so its age section has something to say — which
+  is also what exposed the vanishing chip above. When you seed a state,
+  seed its neighbours too.
 - **A chart counts what does not fit instead of painting it outside.**
   `motif::chart::hbars` laid its rows one under the next without looking
   at the rectangle's height: past it they painted outside the frame and
@@ -1039,7 +1082,32 @@ add clicking and typing; it is not the price of entry.
   and write the cell's text **once**, read by the measurement and by
   the drawing, or the two diverge and it is the measurement that lies.
   Same for « Par »: three letters of template, and an operator who
-  signs « Claire » read « Cla… ».
+  signs « Claire » read « Cla… ». And the *heading* is a template too:
+  the batch sheet's balance column was measured on « Au registre » and
+  its three snag labels, so « 21 comprimés sublinguaux » — the Subutex,
+  on the shipped sheet — came out « 21 comprimés sublingu… », the unit
+  elided on the one column a register exists to carry. Its hand-written
+  list of what the column can draw also **omitted one of the four snag
+  labels** — « Zéro n'est pas un mouvement », the longest — so the snags
+  are now read off the type (`Snag::ALL`, like `Enzyme::ALL` and
+  `PatientTab::ALL`) rather than recopied, and a fifth enters the
+  measurement on its own. It now measures the **agreed** unit the cell
+  will write (the plural: « comprimé sublingual » measured singular
+  leaves two letters out, and two letters are enough to elide) and
+  provisions the figure in characters —
+  composing forty balances to measure them would be forty `format!` a
+  frame. Held by `the_batch_sheet_keeps_its_name_and_its_reason_at_every_scale`,
+  which now walks the whole shipped catalogue's units rather than a
+  chosen few: it is « comprimé sublingual » that decides, and it only
+  shows up when you take them all.
+- **A chip is measured with the cross it carries.** The « ce qu'on
+  croise » band counted its rows on the drug's *name* and drew
+  « Zeclar × ». With eight chips that fitted anyway it cost nothing; the
+  ninth wrapped onto a row the band had not reserved and **the chip
+  vanished** — neither sliced nor announced: the drug was on the map and
+  in the crossings, and no longer in the list of what is being crossed.
+  `App::ddi_chip` writes the label once and both sides read it, and
+  `a_chip_is_measured_with_the_cross_it_carries` refuses the next.
 - **Measure with the width the drawing will use.** A band measured on
   `rect.width()` and drawn at `ui.available_width()` differ by the
   panel's own margin, and that was enough for the scans form to reserve
@@ -1626,7 +1694,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 994 phrases were not, and they were exactly the ones
+always editable; 998 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

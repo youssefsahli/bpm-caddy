@@ -30,7 +30,7 @@
 //! `crush.rs` a écrite avant celui-ci, « un "non" sans alternative
 //! laisse le problème entier ».
 //!
-//! Six règles, un test chacune :
+//! Sept règles, un test chacune :
 //!
 //! * **Sans date de naissance, pas de verdict.** La ligne existe — elle
 //!   dit que ce traitement est de ceux que l'âge décide — et elle ne
@@ -58,6 +58,19 @@
 //! * **Un seuil d'âge vient d'une liste publiée, jamais d'une
 //!   intuition.** 75 ans est celui de la liste française, 65 celui de
 //!   STOPP et de Beers ; il n'y en a pas d'autre, et un test le tient.
+//! * **Une ligne qui se tait ne fait pas taire la suivante.** Sous son
+//!   seuil, la ligne passe son tour au lieu de clore la lecture de
+//!   cette boîte — sans quoi, le jour où une ligne citera 65 ans, une
+//!   boîte que la ligne large attrape d'abord perdrait sa ligne précise
+//!   à soixante-dix ans, sans que rien le dise.
+//!
+//! Et une confrontation, qui n'est pas une règle du module mais la
+//! preuve qu'il ne dérive pas : l'application **livre déjà** une table
+//! de référence « Sujet âgé », et
+//! `the_table_of_reference_and_this_module_agree` les met face à face.
+//! Elle a mordu le jour où elle a été écrite — la table nommait le
+//! bromazépam parmi les benzodiazépines à demi-vie longue et le module
+//! le laissait passer, à vingt heures pile.
 //!
 //! **Deux niveaux, et pas trois.** La liste française a un second axe —
 //! les médicaments « à efficacité discutable » — qui n'est pas ici, et
@@ -177,6 +190,22 @@ fn claims(a: &Inappropriate, hay: &str) -> bool {
 /// de même niveau ne doivent pas échanger leur place d'une image à
 /// l'autre.
 pub fn read(treatments: &[crate::revue::Treatment], age: Option<u32>) -> Vec<Finding> {
+    read_in(TABLE, treatments, age)
+}
+
+/// La même lecture, sur une table donnée.
+///
+/// Écrite à part pour être **éprouvable** : la règle « une ligne qui se
+/// tait ne fait pas taire la suivante » ne se voit que sur deux lignes
+/// de seuils différents, et il n'y en a pas encore dans la table
+/// livrée. Un comportement qu'aucun test ne peut atteindre est un
+/// comportement qui dérivera sans bruit — c'est la raison pour laquelle
+/// `chart::hbar_fit` est écrit à part lui aussi.
+fn read_in(
+    table: &'static [Inappropriate],
+    treatments: &[crate::revue::Treatment],
+    age: Option<u32>,
+) -> Vec<Finding> {
     let mut out: Vec<Finding> = Vec::new();
     for t in treatments {
         // **Une forme locale ne relève pas d'une table de molécules.**
@@ -189,7 +218,7 @@ pub fn read(treatments: &[crate::revue::Treatment], age: Option<u32>) -> Vec<Fin
             continue;
         }
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
-        for a in TABLE {
+        for a in table {
             if !claims(a, &hay) {
                 continue;
             }
@@ -197,8 +226,17 @@ pub fn read(treatments: &[crate::revue::Treatment], age: Option<u32>) -> Vec<Fin
             // silence est la bonne réponse : la moitié de la base est
             // inappropriée à quelqu'un, et une liste qui parle de tout
             // le monde ne parle de personne.
+            //
+            // **`continue` et non `break`** : une ligne qui se tait ne
+            // fait pas taire la suivante. Aujourd'hui toutes les lignes
+            // parlent à 75 ans et cela ne change rien ; le jour où l'une
+            // d'elles citera STOPP à 65, une boîte que la ligne large
+            // attrape d'abord perdrait sa ligne précise, à soixante-dix
+            // ans, sans que rien le dise. C'est le choix de
+            // `renal::read` devant un palier non franchi, et pour la
+            // même raison.
             if age.is_some_and(|v| u32::from(a.from) > v) {
-                break;
+                continue;
             }
             out.push(Finding {
                 treatment: t.name.trim().to_owned(),
@@ -359,6 +397,18 @@ pub const TABLE: &[Inappropriate] = &[
         source: "Laroche 2007 ; HAS — prise en charge de la dépression de la personne âgée",
     },
     Inappropriate {
+        // « isrs » n'attrape que les six ISRS de la base : vérifié, comme
+        // tout mot de trois lettres doit l'être ici.
+        needs: &["isrs"],
+        never: &[],
+        label: "Inhibiteurs de la recapture de la sérotonine",
+        from: 75,
+        level: Level::Caution,
+        risk: "Hyponatrémie par sécrétion inappropriée d'hormone antidiurétique, d'autant plus fréquente que l'âge avance et que s'y ajoute un diurétique — elle se manifeste par une confusion, des chutes ou des nausées, et non par un signe qui la nomme. S'y ajoutent le risque hémorragique digestif en association à un AINS ou à un anticoagulant, l'allongement du QT et les chutes.",
+        instead: "Ils restent le premier choix à cet âge — c'est l'alternative aux tricycliques — et la précaution porte sur la conduite, non sur la classe : instauration à demi-dose, natrémie contrôlée dans le mois qui suit et à chaque changement de dose, et un protecteur gastrique si un anti-inflammatoire ou un anticoagulant est associé. La paroxétine est la plus atropinique de la famille et celle dont l'arrêt est le plus difficile ; la sertraline et le citalopram se manient mieux ici.",
+        source: "Critères STOPP/START v2 ; HAS — prise en charge de la dépression de la personne âgée",
+    },
+    Inappropriate {
         needs: &["antihistaminique h1 sedatif", "mequitazine", "doxylamine"],
         never: &[],
         label: "Antihistaminiques H1 de première génération",
@@ -438,13 +488,21 @@ pub const TABLE: &[Inappropriate] = &[
         source: "Laroche 2007 ; ESC/ESH — hypertension artérielle du sujet âgé",
     },
     Inappropriate {
-        needs: &["myorelaxant"],
+        // **Les molécules, et non la classe.** « myorelaxant » attrape
+        // cinq fiches, dont le Liorésal, le Dantrium et le Botox — la
+        // spasticité d'une sclérose en plaques ou d'un blessé
+        // médullaire, qui n'a rien à voir avec la contracture d'une
+        // lombalgie. La conduite écrite ici — paracétamol, chaleur,
+        // reprise du mouvement — y serait absurde, et l'arrêt brutal
+        // d'un baclofène donne convulsions et hyperthermie. Deux
+        // molécules nommées valent mieux qu'une classe qui ratisse.
+        needs: &["thiocolchicoside", "methocarbamol"],
         never: &[],
-        label: "Myorelaxants",
+        label: "Myorelaxants d'appoint",
         from: 75,
         level: Level::Avoid,
-        risk: "Sédation, sensation d'ébriété, troubles de la coordination et chute — effets plus marqués à cet âge — pour un bénéfice antalgique faible et bref.",
-        instead: "Le paracétamol, la chaleur locale et surtout la reprise précoce du mouvement, qui est ce qui traite une lombalgie commune ; l'immobilité, elle, l'aggrave.",
+        risk: "Sédation, sensation d'ébriété, troubles de la coordination et chute — effets plus marqués à cet âge — pour un bénéfice antalgique faible et bref. Le thiocolchicoside porte en outre une restriction d'emploi pour un risque génotoxique.",
+        instead: "Le paracétamol, la chaleur locale et surtout la reprise précoce du mouvement, qui est ce qui traite une lombalgie commune ; l'immobilité, elle, l'aggrave. Cette ligne ne vise pas les myorelaxants de la spasticité, qui relèvent d'une tout autre question.",
         source: "Critères de Beers 2023 ; HAS — prise en charge de la lombalgie commune",
     },
     Inappropriate {
@@ -494,7 +552,7 @@ pub const TABLE: &[Inappropriate] = &[
         from: 75,
         level: Level::Caution,
         risk: "Dans les troubles du comportement liés à une démence : surmortalité et accidents vasculaires cérébraux démontrés. À tout âge avancé : syndrome parkinsonien, chute, hypotension orthostatique, sédation, et allongement du QT pour plusieurs d'entre eux.",
-        instead: "Les mesures non médicamenteuses d'abord, et la recherche de ce qui a changé — une douleur, une infection urinaire, une rétention, un déménagement : ce sont les causes ordinaires d'une agitation nouvelle. Si un antipsychotique reste nécessaire, la dose la plus faible, la durée la plus courte, et une date de réévaluation écrite.",
+        instead: "Devant une agitation nouvelle liée à une démence : les mesures non médicamenteuses d'abord, et la recherche de ce qui a changé — une douleur, une infection urinaire, une rétention, un déménagement, qui en sont les causes ordinaires ; si un antipsychotique reste nécessaire, la dose la plus faible, la durée la plus courte et une date de réévaluation écrite. Devant une maladie psychiatrique ancienne, le traitement ne se rediscute pas au comptoir : la précaution porte alors sur la chute, l'hypotension orthostatique et le QT.",
         source: "HAS — maladie d'Alzheimer, troubles du comportement perturbateurs ; ANSM",
     },
     Inappropriate {
@@ -506,6 +564,16 @@ pub const TABLE: &[Inappropriate] = &[
         risk: "Vertiges, confusion et chute ; hyponatrémie ; abaissement du seuil épileptogène ; et syndrome sérotoninergique en association à un antidépresseur, qui est l'association la plus fréquente à cet âge.",
         instead: "Le paracétamol d'abord, à dose pleine et régulière. Si un opioïde faible reste nécessaire, la dose la plus faible et des prises espacées, avec un laxatif prescrit d'emblée et la natrémie contrôlée dans les premières semaines.",
         source: "Critères STOPP/START v2 ; ANSM — bon usage du tramadol",
+    },
+    Inappropriate {
+        needs: &["antiarythmique classe ia"],
+        never: &[],
+        label: "Antiarythmiques de classe Ia",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Effet proarythmique — torsades de pointes pour l'hydroquinidine, dès les premières prises et indépendamment de la dose ; élargissement du QRS et troubles de conduction pour la cibenzoline, qui donne en outre des hypoglycémies prolongées particulièrement chez le sujet âgé, l'insuffisant rénal et le patient de faible poids. Les deux ont des effets atropiniques et aggravent une insuffisance cardiaque.",
+        instead: "Dans la fibrillation atriale, le contrôle de la fréquence par un bêta-bloquant et l'anticoagulation selon le score, qui est ce qui protège ; le maintien du rythme se discute avec le cardiologue et n'est pas un objectif en soi à cet âge.",
+        source: "Laroche 2007 ; critères de Beers 2023 ; ESC — fibrillation atriale",
     },
     Inappropriate {
         needs: &["digoxine", "digitalique"],
@@ -609,6 +677,56 @@ mod tests {
         // Et le seuil s'applique **à partir de** l'âge écrit, pas au-delà.
         assert_eq!(read(&ordo, Some(75)).len(), 1);
         assert!(read(&ordo, Some(74)).is_empty());
+    }
+
+    /// **Une ligne qui se tait ne fait pas taire la suivante.**
+    ///
+    /// Toutes les lignes livrées parlent à 75 ans, si bien que le choix
+    /// entre `break` et `continue` ne change rien aujourd'hui — et
+    /// c'est exactement pourquoi il fallait l'éprouver maintenant. Le
+    /// jour où une ligne citera STOPP à 65 ans, une boîte que la ligne
+    /// large attrape d'abord perdrait sa ligne précise, à soixante-dix
+    /// ans, sans que rien le dise.
+    #[test]
+    fn a_row_that_says_nothing_at_this_age_does_not_silence_the_next() {
+        static TWO: &[Inappropriate] = &[
+            Inappropriate {
+                needs: &["benzodiazepine"],
+                never: &[],
+                label: "La large, à 75",
+                from: 75,
+                level: Level::Caution,
+                risk: "Ce que l'âge fait courir, en une phrase assez longue pour le test.",
+                instead: "Ce qu'on met à la place, en une phrase assez longue pour le test.",
+                source: "test",
+            },
+            Inappropriate {
+                needs: &["diazepam"],
+                never: &[],
+                label: "La précise, à 65",
+                from: 65,
+                level: Level::Avoid,
+                risk: "Ce que l'âge fait courir, en une phrase assez longue pour le test.",
+                instead: "Ce qu'on met à la place, en une phrase assez longue pour le test.",
+                source: "test",
+            },
+        ];
+        let valium = || crate::revue::Treatment {
+            name: "Valium",
+            dci: "diazépam",
+            class: "benzodiazépine",
+            tags: "",
+        };
+        // À 70 ans, la large se tait et la précise parle.
+        let found = read_in(TWO, &[valium()], Some(70));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].label, "La précise, à 65");
+        // À 80, c'est l'ordre qui décide, et la large est la première.
+        let found = read_in(TWO, &[valium()], Some(80));
+        assert_eq!(found.len(), 1);
+        assert_eq!(found[0].label, "La large, à 75");
+        // À 60, personne ne parle.
+        assert!(read_in(TWO, &[valium()], Some(60)).is_empty());
     }
 
     /// **Un « non » nomme ce qu'il évite et ce qu'on met à la place.**
@@ -1129,7 +1247,7 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 21;
+        const FLOOR: usize = 23;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",
