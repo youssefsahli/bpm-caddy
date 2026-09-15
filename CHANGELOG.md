@@ -809,6 +809,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La console dit de nouveau ce qu'un script a le droit de faire.** Le
+  champ qui porte le nom du script se dessine dans la bande de titre sans
+  que la mesure le compte : à `[ui] text_scale = 1,25` la rangée passait
+  à deux quand la bande en annonçait une, et le sous-titre sortait sous
+  le rectangle — il n'en restait que trois pixels de haut de lettres. Ce
+  qui disparaissait est la phrase qui dit qu'un script *lit* seulement :
+  aucune écriture, aucun accès fichier ni réseau, arrêt automatique en
+  cas de boucle. C'est-à-dire la seule raison pour laquelle on ose ouvrir
+  cet écran.
+
+  Et le filet qui devait le refuser avait un trou : il relisait les
+  boutons, les interrupteurs et les titres d'une bande, jamais les champs
+  de saisie. Il les relit maintenant — un champ se reconnaît à son
+  invite, qui passe toujours par `motif::hint`.
+- **Un segment de libellé se mesure, il ne se compte pas en
+  caractères.** Le gabarit de `label_rows` était « autant de « 0 » que de
+  lettres », choisi plus large que la moyenne pour pencher vers
+  l'ellipse. Mais un chiffre est large et une minuscule ne l'est pas : à
+  `text_scale = 1,6` « Cardiologie et vaisseaux » se lisait
+  « Cardiolo… » alors que la colonne avait la place de ses deux lignes.
+  Mesuré dans la fonte qui dessine, le gabarit n'a plus à pencher.
+- **Le rangement d'une pièce montre ses six genres.** Sur un onglet de
+  dossier à `text_scale = 1,6`, « Archiver une pièce » ne montrait que
+  « Ordonnance » et « Accident du travail » derrière une barre flottante,
+  donc invisible : quatre genres sur six se lisaient comme n'existant
+  pas, sur le volet qui range les pièces.
 - **Un journal plus court qu'une ligne ne se dessine plus tranché.** Sur
   la fiche d'un médicament, à 1024x700, « Notes datées » recevait quinze
   pixels : « Aucune note. » sortait coupée par le milieu de ses lettres,

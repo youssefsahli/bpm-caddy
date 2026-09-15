@@ -43110,6 +43110,15 @@ impl App {
         });
     }
 
+    /// La largeur du champ qui porte le nom du script — écrite **une
+    /// fois**, parce que la bande de titre la mesure et que la rangée la
+    /// dessine, et que deux écritures d'une même largeur divergent. Le
+    /// nom porte la clé de l'invite, ce qui est ce que
+    /// `every_control_a_title_band_draws_is_measured_with_it` relit.
+    fn script_name_hint_width(ui: &egui::Ui) -> f32 {
+        Self::field_width(ui, [tr("script_name_hint")].into_iter()).max(120.0)
+    }
+
     /// La console : le script à gauche, ce qu'il rend à droite.
     ///
     /// **Ce qui la rend possible** est écrit dans [`crate::script`] : le
@@ -43136,7 +43145,17 @@ impl App {
                 tr("script_reveal"),
             ]
             .into_iter()
-            .map(|l| Self::button_width(ui, l)),
+            .map(|l| Self::button_width(ui, l))
+            // **Et le champ du nom, qui se dessine avec eux.** Il
+            // manquait à cette liste : à `[ui] text_scale = 1,25` la
+            // rangée passait à deux quand la bande n'en annonçait
+            // qu'une, et le sous-titre sortait sous le rectangle — il
+            // n'en restait que trois pixels de haut de lettres. Ce qui
+            // disparaissait est la phrase qui dit qu'un script *lit*
+            // seulement : aucune écriture, aucun accès fichier ni
+            // réseau, arrêt automatique en cas de boucle. C'est-à-dire
+            // la seule raison pour laquelle on ose ouvrir cet écran.
+            .chain(std::iter::once(Self::script_name_hint_width(ui))),
             tr("script_subtitle"),
         );
         // La ligne du message **seulement quand il y en a un** : une
@@ -43182,9 +43201,8 @@ impl App {
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = open::that_detached(&dir);
                 }
-                let w = Self::field_width(ui, [tr("script_name_hint")].into_iter()).max(120.0);
                 ui.add_sized(
-                    [w, Self::button_height(ui)],
+                    [Self::script_name_hint_width(ui), Self::button_height(ui)],
                     egui::TextEdit::singleline(&mut session.script_name)
                         .hint_text(motif::hint(tr("script_name_hint"))),
                 );
@@ -50873,6 +50891,16 @@ mod tests {
                     // et il coûte la même largeur : le registre en
                     // dessine un dans sa bande.
                     "motif::toggle(",
+                    // **Et un champ de saisie occupe la rangée comme un
+                    // bouton.** Il manquait à cette liste, et c'est par
+                    // là que le défaut est passé : la console dessine le
+                    // nom du script dans sa bande de titre sans que la
+                    // mesure le compte, si bien qu'à
+                    // `[ui] text_scale = 1,25` la rangée passait à deux
+                    // quand la bande en annonçait une, et le sous-titre
+                    // sortait sous le rectangle. Un champ se reconnaît à
+                    // son invite, qui passe toujours par `motif::hint`.
+                    "motif::hint(",
                 ] {
                     let Some(key) = key_on(line, after) else {
                         continue;
@@ -51470,21 +51498,17 @@ mod tests {
                             ui.set_max_width(width);
                             ui.horizontal_wrapped(|ui| {
                                 for (a, b) in PARTS {
-                                    let w = App::group_width(
-                                        ui,
-                                        [one(ui, a), one(ui, b)].into_iter(),
-                                    );
+                                    let w =
+                                        App::group_width(ui, [one(ui, a), one(ui, b)].into_iter());
                                     let pair = App::keep_together(
                                         ui,
                                         egui::vec2(w, App::row_height(ui)),
                                         |ui| {
                                             let ra = ui.label(
-                                                egui::RichText::new(a)
-                                                    .size(motif::pt(ui, 12.0)),
+                                                egui::RichText::new(a).size(motif::pt(ui, 12.0)),
                                             );
                                             let rb = ui.label(
-                                                egui::RichText::new(b)
-                                                    .size(motif::pt(ui, 12.0)),
+                                                egui::RichText::new(b).size(motif::pt(ui, 12.0)),
                                             );
                                             (ra.rect.center().y, rb.rect.center().y)
                                         },
@@ -51499,12 +51523,10 @@ mod tests {
                             ui.set_max_width(width);
                             ui.horizontal_wrapped(|ui| {
                                 for (a, b) in PARTS {
-                                    let ra = ui.label(
-                                        egui::RichText::new(a).size(motif::pt(ui, 12.0)),
-                                    );
-                                    let rb = ui.label(
-                                        egui::RichText::new(b).size(motif::pt(ui, 12.0)),
-                                    );
+                                    let ra =
+                                        ui.label(egui::RichText::new(a).size(motif::pt(ui, 12.0)));
+                                    let rb =
+                                        ui.label(egui::RichText::new(b).size(motif::pt(ui, 12.0)));
                                     loose
                                         .borrow_mut()
                                         .push((ra.rect.center().y, rb.rect.center().y));
