@@ -338,11 +338,52 @@ pub fn hbars(
         text_w("0000").min(rect.width() * 0.5),
         (rect.width() * 0.5).max(1.0),
     );
+    // **Ce qui ne tient pas est compté, pas peint dehors.** Les rangées
+    // étaient posées les unes sous les autres sans regarder la hauteur
+    // du rectangle : au-delà, elles se peignaient hors du cadre et le
+    // volet les coupait — « Par type » montrait sept actes sur dix à
+    // 1024x700, la septième tranchée, et rien ne disait qu'il y en
+    // avait d'autres. La dernière rangée qui tient dit combien
+    // manquent ; c'est la règle de la maison pour une bande plafonnée,
+    // appliquée ici à un graphe.
+    // L'epsilon n'est pas une précaution de style : quand les rangées
+    // tiennent tout juste, `row_h` vaut exactement `height / rows`, et
+    // la division suivante rend parfois 9,999999 — une rangée cachée
+    // pour une erreur d'arrondi, sur un graphe qui tenait.
+    let fit = (rect.height() / row_h + 1e-3).floor().max(1.0) as usize;
+    let (shown, hidden) = if rows.len() > fit {
+        (fit.saturating_sub(1), rows.len() - fit.saturating_sub(1))
+    } else {
+        (rows.len(), 0)
+    };
     let mut hovered = None;
     let pointer = ui
         .interact(rect, ui.id().with("motif_hbars"), egui::Sense::hover())
         .hover_pos();
-    for (i, r) in rows.iter().enumerate() {
+    if hidden > 0 {
+        // Un libellé et un compte, dans les mêmes colonnes que les
+        // rangées : « … » à gauche, « +3 » à droite. Deux signes et un
+        // chiffre, qui se lisent dans toutes les langues — ce module
+        // n'écrit pas de phrases.
+        let top = rect.top() + shown as f32 * row_h;
+        let line =
+            egui::Rect::from_min_size(egui::pos2(rect.left(), top), Vec2::new(rect.width(), row_h));
+        ui.painter().text(
+            egui::pos2(rect.left() + 2.0, line.center().y),
+            egui::Align2::LEFT_CENTER,
+            "…",
+            font.clone(),
+            crate::text_dim(),
+        );
+        ui.painter().text(
+            egui::pos2(rect.right() - 4.0, line.center().y),
+            egui::Align2::RIGHT_CENTER,
+            format!("+{hidden}"),
+            font.clone(),
+            crate::text_dim(),
+        );
+    }
+    for (i, r) in rows.iter().take(shown).enumerate() {
         let top = rect.top() + i as f32 * row_h;
         let line =
             egui::Rect::from_min_size(egui::pos2(rect.left(), top), Vec2::new(rect.width(), row_h));

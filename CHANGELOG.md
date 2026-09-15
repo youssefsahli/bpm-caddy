@@ -809,6 +809,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Un graphe compte ce qui ne tient pas au lieu de le peindre
+  dehors.** `chart::hbars` posait ses rangées les unes sous les autres
+  sans regarder la hauteur du rectangle : au-delà, elles se peignaient
+  hors du cadre et le volet les coupait — « Par type » montrait sept
+  actes sur dix, le septième tranché, et rien ne disait qu'il y en avait
+  d'autres. La dernière rangée qui tient dit combien manquent.
+- **Le tableau de bord et les statistiques prennent la barre pleine.**
+  Les deux pages sont plus hautes que le volet dès 1024x700, et ce qui
+  est sous le pli — « Par type », « Entretiens par opérateur » — est le
+  sujet même : une page de chiffres qu'on lit, et dont la moitié ne se
+  voyait qu'en passant le pointeur au bon endroit.
 - **Une ligne d'étiquette fait au moins `interact_size.y`.** Les bandes
   qui provisionnent une phrase sous elles comptaient la hauteur de sa
   fonte : dix-sept pixels pour vingt-sept, et c'est la phrase qui

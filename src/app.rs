@@ -44211,6 +44211,11 @@ impl App {
         // qui ne change pas. La vue ne fait que lire — d'où le `&` sur
         // la session, qui est ce qui l'interdit désormais.
         let s = &session.stats;
+        // Barre pleine, comme au tableau de bord et pour la même
+        // raison : la page est plus haute que le volet, et ce qui est
+        // dessous — « Entretiens par opérateur », les classes — est
+        // le sujet.
+        ui.spacing_mut().scroll.floating = false;
         egui::ScrollArea::vertical()
             .id_salt("stats")
             .show(ui, |ui| {
@@ -44837,6 +44842,13 @@ impl App {
             .map(|s| s.duration_minutes)
             .sum();
 
+        // **Barre pleine.** La page est plus haute que le volet dès
+        // 1024x700 : « Par type » et « Entretiens par opérateur » sont
+        // sous le pli, et la barre flottante d'egui ne le dit pas. Ici
+        // ce qui est caché est le sujet même — une page de chiffres
+        // qu'on lit, et dont la moitié ne se voyait qu'en passant le
+        // pointeur au bon endroit.
+        ui.spacing_mut().scroll.floating = false;
         egui::ScrollArea::vertical()
             .id_salt("dashboard")
             .show(ui, |ui| {

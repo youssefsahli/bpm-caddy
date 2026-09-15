@@ -772,7 +772,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. Eighteen regions now set
+  fold is the control you came to use. Twenty regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -831,6 +831,16 @@ add clicking and typing; it is not the price of entry.
   rendering fault. Three rules fall out: a vide is written in words, it
   says something **different** in each pane, and when the list it points
   at is empty it points somewhere else (« ouvrez « Catalogue… » »).
+- **A chart counts what does not fit instead of painting it outside.**
+  `motif::chart::hbars` laid its rows one under the next without looking
+  at the rectangle's height: past it they painted outside the frame and
+  the panel clipped them — « Par type » showed seven acts of ten at
+  1024x700, the seventh cut through, with nothing saying there were
+  more. The last row that fits now says how many are missing (« … »
+  and « +3 », two signs and a figure — this module writes no
+  sentences), and the fit is computed with an epsilon: when the rows
+  just fit, `row_h` is exactly `height / rows` and the division comes
+  back 9.999999, which would hide a row for a rounding error.
 - **When a pane is too short for everything in it, the garnish goes
   first.** The register's stock curve is dropped below a floor expressed
   in lines so the register's own *lines* survive; a chart kept at the
