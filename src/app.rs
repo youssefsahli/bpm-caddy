@@ -37566,7 +37566,16 @@ impl App {
                 .chain([Self::button_width(ui, tr("stup_ordo_print"))]),
             tr("stup_ordo_subtitle"),
         );
-        let rows = motif::split_rows(body, &[band + Self::label_line(ui), 0.0], 6.0);
+        // La phrase qui dit la suite des numéros n'est écrite que
+        // lorsqu'il y a des numéros : sur un registre neuf, la provision
+        // ne couvrait rien et laissait une ligne blanche sous le
+        // sous-titre.
+        let seq_h = if session.stup_dispensings.iter().any(|m| m.ordo_no > 0) {
+            Self::label_line(ui)
+        } else {
+            0.0
+        };
+        let rows = motif::split_rows(body, &[band + seq_h, 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
         let mut pick_year: Option<i64> = None;
         motif::inside(ui, rows[0], |ui| {
