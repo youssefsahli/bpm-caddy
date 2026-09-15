@@ -38451,15 +38451,41 @@ impl App {
                     .show(ui, |ui| {
                         ui.spacing_mut().item_spacing.y = 1.0;
                         for (i, p) in rows.into_iter().enumerate() {
-                            let row_h = (ui.spacing().interact_size.y + 2.0).max(18.0);
-                            let (rect, resp) = ui.allocate_exact_size(
-                                egui::vec2(ui.available_width(), row_h),
-                                egui::Sense::click(),
-                            );
                             // The open tree stays marked; the keyboard
                             // cursor marks where Enter would go.
                             let on =
                                 keyed == Some(i) || (keyed.is_none() && selected == Some(p.id));
+                            // **Deux lignes quand le titre peut se
+                            // couper proprement**, la règle de
+                            // `motif::list_row`, qui manquait à cette
+                            // rangée-ci parce qu'elle est peinte à la
+                            // main pour loger sa croix. Dans une colonne
+                            // de comptoir, les sept protocoles sortaient
+                            // « Alerte de retrait o… », « Allergie à la
+                            // pénicil… », « Anticoagulant oral… » : sept
+                            // débuts de phrase qui se ressemblent, sur
+                            // la liste qui sert à les distinguer. La
+                            // galée est posée **avant** la rangée, dont
+                            // la hauteur en dépend.
+                            let w = ui.available_width();
+                            let room = (w - 34.0).max(24.0);
+                            let font = egui::FontId::proportional(motif::pt(ui, 12.5));
+                            let ink = if on { motif::bg() } else { motif::text() };
+                            let mut job = egui::text::LayoutJob::simple(
+                                p.title.clone(),
+                                font.clone(),
+                                ink,
+                                room,
+                            );
+                            job.wrap.max_rows = motif::label_rows(ui, &p.title, &font, room);
+                            job.wrap.break_anywhere = false;
+                            job.wrap.overflow_character = Some('…');
+                            let galley = ui.fonts(|f| f.layout_job(job));
+                            let row_h = (ui.spacing().interact_size.y + 2.0)
+                                .max(galley.size().y + 4.0)
+                                .max(18.0);
+                            let (rect, resp) =
+                                ui.allocate_exact_size(egui::vec2(w, row_h), egui::Sense::click());
                             if keyed == Some(i) {
                                 resp.clone().scroll_to_me(None);
                             }
@@ -38475,12 +38501,13 @@ impl App {
                             if !p.subject.trim().is_empty() {
                                 resp.clone().on_hover_text(p.subject.trim());
                             }
-                            ui.painter().text(
-                                egui::pos2(rect.left() + 8.0, rect.center().y),
-                                egui::Align2::LEFT_CENTER,
-                                elide(ui, &p.title, rect.width() - 34.0, 12.5),
-                                egui::FontId::proportional(motif::pt(ui, 12.5)),
-                                if on { motif::bg() } else { motif::text() },
+                            ui.painter().galley(
+                                egui::pos2(
+                                    rect.left() + 8.0,
+                                    rect.center().y - galley.size().y / 2.0,
+                                ),
+                                galley,
+                                ink,
                             );
                             // The delete target is the row's right edge.
                             let x = egui::Rect::from_center_size(

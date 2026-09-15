@@ -809,6 +809,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La liste des protocoles se lit sur deux lignes.** Peinte à la main
+  pour loger sa croix, elle n'avait pas la règle de `motif::list_row` :
+  dans une colonne de comptoir, les sept premiers protocoles sortaient
+  « Alerte de retrait o… », « Allergie à la pénicil… »,
+  « Anticoagulant oral… » — sept débuts de phrase qui se ressemblent,
+  sur la liste qui sert à les distinguer. Deux lignes quand le titre se
+  coupe proprement, une ellipse sinon.
 - **La bande du croisement mesure ce qu'elle porte.** Elle réservait
   « les puces plus deux rangées », deux écrit à la main : une de trop à
   l'échelle 1, juste à 1,6, et fausse le jour où un bouton s'ajoute. La

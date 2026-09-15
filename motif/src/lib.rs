@@ -1184,7 +1184,7 @@ pub fn button_enabled(ui: &mut egui::Ui, text: &str, enabled: bool) -> egui::Res
 /// Le mot le plus long est mesuré au gabarit du « 0 », qui est plus
 /// large que la moyenne des lettres : l'erreur penche donc vers une
 /// seule ligne, c'est-à-dire vers l'ellipse plutôt que vers la coupe.
-fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32) -> usize {
+pub fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32) -> usize {
     // **Un trait d'union est une occasion de couper**, et egui la prend :
     // mesuré, « lidocaine-bicarbonate-nystatine » se coupe en
     // « lidocaine-bicarbonate- » puis « nystatine », ce qui se lit. Compté
