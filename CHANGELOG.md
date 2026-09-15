@@ -809,6 +809,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le coffre ne prend que ce qu'il contient.** Empilé sous le journal
+  des retours, « Au coffre » avait la part flexible — cinquante-quatre
+  pour cent — pour *un* produit : à 1024x700 en `text_scale = 1,6` cela
+  fait cent trente-cinq pixels de gris sous une seule ligne, pendant que
+  le journal juste dessous coupait sa première ligne au milieu de
+  « dénaturés au plâtre devant ». La part reste son plafond, elle n'est
+  plus son dû.
 - **Le formulaire du registre s'arrête sur une rangée entière.** Il est
   fait de rangées d'une hauteur — les natures, puis les champs — et sa
   fenêtre les coupait où elle tombait : les deux volets tirés larges,

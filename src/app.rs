@@ -37705,7 +37705,23 @@ impl App {
                 ),
             )
         } else {
-            let stacked = motif::split_rows(work, &[0.0, work.height() * 0.46], gap);
+            // **Le coffre ne prend que ce qu'il contient.** Empilé, il
+            // avait la part flexible — cinquante-quatre pour cent — pour
+            // *un* produit : à 1024x700 en `text_scale = 1,6` cela fait
+            // cent trente-cinq pixels de gris sous une seule ligne,
+            // pendant que le journal juste dessous coupait sa première
+            // ligne au milieu de « dénaturés au plâtre devant ». La part
+            // reste son **plafond**, elle n'est plus son dû : ce qu'il
+            // ne demande pas revient au journal, qui en a l'emploi.
+            let ceiling = work.height() * 0.54;
+            let need = motif::panel_chrome(ui, true)
+                + Self::rows_height(ui, (waiting.len().max(1) as f32).min(12.0));
+            let floor = motif::panel_chrome(ui, true) + Self::row_height(ui);
+            // Le plafond est relevé au plancher plutôt que supposé
+            // au-dessus : `clamp` panique quand le minimum passe le
+            // maximum, et sur un volet court les deux se croisent.
+            let safe_h = need.clamp(floor, ceiling.max(floor));
+            let stacked = motif::split_rows(work, &[safe_h, 0.0], gap);
             (stacked[0], stacked[1])
         };
 
