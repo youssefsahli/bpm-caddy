@@ -1194,14 +1194,32 @@ pub fn label_rows(ui: &egui::Ui, text: &str, font: &egui::FontId, max_width: f32
     // — c'est-à-dire le nom de quatre préparations à la fois, dans une
     // liste faite pour les distinguer. Les segments se mesurent donc
     // entre les traits d'union, comme entre les espaces.
-    let longest = text
-        .split_whitespace()
-        .flat_map(|w| w.split('-'))
-        .map(|w| w.chars().count())
-        .max()
-        .unwrap_or(0) as f32;
-    let ch = ui.fonts(|f| f.glyph_width(font, '0'));
-    if longest * ch <= max_width {
+    //
+    // **Et un segment se mesure, il ne se compte pas en caractères.**
+    // Le gabarit était « autant de « 0 » que de lettres », choisi plus
+    // large que la moyenne pour pencher vers l'ellipse plutôt que vers
+    // une coupure au milieu d'un mot. Mais un chiffre est large et une
+    // minuscule ne l'est pas : à `[ui] text_scale = 1,6`, dans le volet
+    // des familles thérapeutiques, « Cardiologie et vaisseaux » se
+    // lisait « Cardiolo… » — onze lettres comptées pour cent
+    // trente-deux pixels là où le mot en occupe cent. La colonne avait
+    // la place des deux lignes, et le nom a été élidé pour un gabarit.
+    //
+    // Mesuré dans la fonte qui dessine, le gabarit n'a plus à pencher :
+    // la condition devient exactement celle qu'egui appliquera — un
+    // segment qui tient entre deux coupures possibles ne sera pas coupé.
+    let longest = ui.fonts(|f| {
+        text.split_whitespace()
+            .flat_map(|w| w.split('-'))
+            .fold(0.0_f32, |m, w| {
+                m.max(
+                    f.layout_no_wrap(w.to_owned(), font.clone(), crate::text())
+                        .size()
+                        .x,
+                )
+            })
+    });
+    if longest <= max_width {
         2
     } else {
         1
@@ -2391,6 +2409,47 @@ mod tests {
                     super::label_rows(ui, "Benzodiazepines et apparentes", &font, room),
                     1,
                     "sans union, une longue suite de lettres garde l'ellipse"
+                );
+            });
+        });
+    }
+
+    /// **Un segment se mesure, il ne se compte pas en caractères.**
+    ///
+    /// Le gabarit était « autant de « 0 » que de lettres ». Un chiffre
+    /// est large et une minuscule ne l'est pas : dans le volet des
+    /// familles thérapeutiques, à `[ui] text_scale = 1,6`,
+    /// « Cardiologie et vaisseaux » se lisait « Cardiolo… » alors que la
+    /// colonne avait la place de ses deux lignes. Un nom élidé pour un
+    /// gabarit.
+    #[test]
+    fn a_segment_is_measured_and_not_counted_in_characters() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                let font = egui::TextStyle::Body.resolve(ui.style());
+                let ch = ui.fonts(|f| f.glyph_width(&font, '0'));
+                let word = "Cardiologie";
+                let wide = ui.fonts(|f| {
+                    f.layout_no_wrap(word.to_owned(), font.clone(), super::text())
+                        .size()
+                        .x
+                });
+                // La colonne tient le mot tel qu'il se dessine, et pas
+                // onze « 0 » : c'est exactement l'écart entre les deux
+                // mesures, et c'est là que le nom se perdait.
+                let room = wide + 1.0;
+                assert!(
+                    room < ch * word.chars().count() as f32,
+                    "le gabarit en « 0 » sur-compte bien « {word} » : \
+                     {room} px mesurés contre {} comptés",
+                    ch * word.chars().count() as f32
+                );
+                assert_eq!(
+                    super::label_rows(ui, "Cardiologie et vaisseaux", &font, room),
+                    2,
+                    "une colonne qui tient le mot dessiné le garde entier"
                 );
             });
         });
