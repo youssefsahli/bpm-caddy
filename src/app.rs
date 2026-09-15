@@ -51306,6 +51306,127 @@ mod tests {
         }
     }
 
+    /// **Un groupe tenu ensemble ne se coupe jamais entre ses pièces.**
+    ///
+    /// C'est le défaut le plus répandu de cette application au moment où
+    /// ce test est écrit : dans une rangée qui enveloppe, egui passe à
+    /// la ligne entre deux contrôles sans savoir que deux d'entre eux
+    /// n'ont de sens qu'ensemble. La croix qui retire un traitement se
+    /// retrouvait sous le traitement d'au-dessus ; « jusqu'au »
+    /// finissait une rangée du planning et sa date commençait la
+    /// suivante ; un « × » de comptage était séparé de son facteur.
+    ///
+    /// Le test dessine la vraie chose, sans fenêtre, à trois échelles et
+    /// sur sept largeurs — dont celles où la rangée bascule, puisque
+    /// c'est là que le défaut vit — et vérifie que les deux moitiés d'un
+    /// couple sont toujours sur la même ligne.
+    ///
+    /// Et il **mord** : la même boucle, sans [`App::keep_together`],
+    /// doit produire au moins une coupure. Un test de mise en page qui
+    /// passerait aussi sur le code fautif ne garde rien.
+    #[test]
+    fn a_group_kept_together_never_wraps_between_its_parts() {
+        const PARTS: [(&str, &str); 6] = [
+            ("  Coversyl 5 mg  ", "×"),
+            ("  Eliquis  ", "×"),
+            ("  Glucophage 1000 mg  ", "×"),
+            ("  Lasilix  ", "×"),
+            ("  Tahor 40 mg  ", "×"),
+            ("  Zeclar LP  ", "×"),
+        ];
+        // Une largeur *mesurée* n'est pas un nombre rond : le couple ne
+        // bascule que lorsque le dernier contrôle tombe dans la marge
+        // qui manque au bord, et cette fenêtre-là fait quelques dizaines
+        // de pixels. On balaie donc finement.
+        let widths: Vec<f32> = (0..7).map(|i| 300.0 + i as f32 * 90.0).collect();
+        let mut bitten = false;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for &width in &widths {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let held: std::cell::RefCell<Vec<(f32, f32)>> = std::cell::RefCell::new(Vec::new());
+                let loose: std::cell::RefCell<Vec<(f32, f32)>> =
+                    std::cell::RefCell::new(Vec::new());
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let font = egui::FontId::proportional(motif::pt(ui, 12.0));
+                        let one = |ui: &egui::Ui, t: &str| {
+                            ui.fonts(|f| {
+                                f.layout_no_wrap(t.to_owned(), font.clone(), motif::text())
+                                    .size()
+                                    .x
+                            })
+                        };
+                        ui.scope(|ui| {
+                            ui.set_max_width(width);
+                            ui.horizontal_wrapped(|ui| {
+                                for (a, b) in PARTS {
+                                    let w = App::group_width(
+                                        ui,
+                                        [one(ui, a), one(ui, b)].into_iter(),
+                                    );
+                                    let pair = App::keep_together(
+                                        ui,
+                                        egui::vec2(w, App::row_height(ui)),
+                                        |ui| {
+                                            let ra = ui.label(
+                                                egui::RichText::new(a)
+                                                    .size(motif::pt(ui, 12.0)),
+                                            );
+                                            let rb = ui.label(
+                                                egui::RichText::new(b)
+                                                    .size(motif::pt(ui, 12.0)),
+                                            );
+                                            (ra.rect.center().y, rb.rect.center().y)
+                                        },
+                                    );
+                                    held.borrow_mut().push(pair);
+                                }
+                            });
+                        });
+                        // Le même dessin sans le groupe : c'est lui qui
+                        // doit casser, sinon le test ne prouve rien.
+                        ui.scope(|ui| {
+                            ui.set_max_width(width);
+                            ui.horizontal_wrapped(|ui| {
+                                for (a, b) in PARTS {
+                                    let ra = ui.label(
+                                        egui::RichText::new(a).size(motif::pt(ui, 12.0)),
+                                    );
+                                    let rb = ui.label(
+                                        egui::RichText::new(b).size(motif::pt(ui, 12.0)),
+                                    );
+                                    loose
+                                        .borrow_mut()
+                                        .push((ra.rect.center().y, rb.rect.center().y));
+                                }
+                            });
+                        });
+                    });
+                });
+                for (i, (ya, yb)) in held.into_inner().into_iter().enumerate() {
+                    assert!(
+                        (ya - yb).abs() < 1.0,
+                        "échelle {scale}, largeur {width} : le couple {i} \
+                         est coupé — {ya} contre {yb}"
+                    );
+                }
+                if loose
+                    .into_inner()
+                    .into_iter()
+                    .any(|(ya, yb)| (ya - yb).abs() >= 1.0)
+                {
+                    bitten = true;
+                }
+            }
+        }
+        assert!(
+            bitten,
+            "aucune des largeurs balayées ne coupe un couple laissé libre : \
+             le test ne garde rien"
+        );
+    }
+
     /// La gouttière verticale du style à une échelle donnée : celle
     /// que le curseur prend après la bande et qui n'est pas à elle.
     fn row_gap_probe(scale: f32) -> f32 {
