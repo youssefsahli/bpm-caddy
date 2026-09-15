@@ -809,6 +809,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Le registre d'un produit dit combien de lignes il porte.** Le volet
+  montre les derniers mouvements, et sur un écran de comptoir il en
+  montre *un* : sa légende ne disait pas combien il y en a, si bien
+  qu'un registre de quatre mouvements se lisait comme en portant un.
+  C'est la règle déjà appliquée au coffre, au catalogue et aux
+  documents — quand une bande est coupée, elle dit son total.
 - **`shot.sh` atteint les quatre vues qui ne sont pas des clés de vue.**
   Le formulaire d'une fiche et sa liste de voisins sont des drapeaux
   posés par-dessus `drug_card`, le lecteur Vitale demande une carte

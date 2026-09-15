@@ -34220,7 +34220,20 @@ impl App {
             }
         }
         let mut stup_edits = session.stup_edits.clone();
-        motif::panel(ui, mid_rect, Some(tr("stup_register")), |ui| {
+        // **Le compte sur la porte.** Le volet montre les dernières
+        // lignes du produit ouvert, et sur un écran de comptoir il en
+        // montre *une* — sa légende ne disait pas combien il y en a, si
+        // bien qu'un registre de douze mouvements se lisait comme en
+        // portant un. C'est la règle déjà appliquée au coffre, au
+        // catalogue et aux documents : quand une bande est coupée, elle
+        // dit son total. Composé ici, avant le panneau, parce que le
+        // dessin emprunte la session.
+        let register_title = if session.stup_moves.is_empty() {
+            tr("stup_register").to_owned()
+        } else {
+            trf("stup_register_count", session.stup_moves.len())
+        };
+        motif::panel(ui, mid_rect, Some(&register_title), |ui| {
             let Some(db::Standing {
                 product,
                 stock,
