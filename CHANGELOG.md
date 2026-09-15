@@ -809,6 +809,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **Les phrases imprimées se laissent atteindre.** « Textes imprimés »
+  est l'écran où l'officine réécrit ce que l'application imprime en son
+  nom : ce qui est sous le pli y est le sujet même de l'écran, pas de la
+  garniture. Les deux volets tirés larges, le volet en montrait trois
+  phrases sur vingt — la troisième coupée en plein milieu d'un mot — et
+  la barre flottante d'egui ne disait pas qu'on pouvait aller chercher
+  les dix-sept autres. Le compte en bas dit combien il y en a ; il ne
+  dit pas qu'on peut les atteindre. Barre pleine, donc. Et la liste des
+  documents à gauche porte son compte, comme les portes de
+  l'explorateur : elle en montrait douze sur seize, coupés au milieu du
+  treizième.
 - **Le coffre ne prend que ce qu'il contient.** Empilé sous le journal
   des retours, « Au coffre » avait la part flexible — cinquante-quatre
   pour cent — pour *un* produit : à 1024x700 en `text_scale = 1,6` cela

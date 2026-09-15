@@ -41039,7 +41039,15 @@ impl App {
         );
 
         let mut pick: Option<String> = None;
-        motif::panel(ui, list_rect, Some(tr("textes_docs")), |ui| {
+        // **Le compte sur la porte.** La liste défile derrière une barre
+        // flottante, donc invisible au repos : les deux volets tirés
+        // larges elle montrait douze documents sur dix-huit, coupés au
+        // milieu du treizième, et rien ne disait qu'il y en avait. Le
+        // compte est la réponse de la maison à une bande coupée, comme
+        // « 13 axes en tout » à l'explorateur et « 32 documents en
+        // tout » à l'éditeur de modèles.
+        let docs_title = trn("textes_docs_count", &[&docs.len()]);
+        motif::panel(ui, list_rect, Some(&docs_title), |ui| {
             let inner = ui.available_rect_before_wrap();
             let well = motif::well(ui, inner);
             motif::inside(ui, well, |ui| {
@@ -41129,10 +41137,21 @@ impl App {
             ) + 6.0;
             let split = motif::split_rows(rect, &[0.0, btn], 4.0);
             motif::inside(ui, split[0], |ui| {
+                // **Barre pleine.** Ce qui est sous le pli ici n'est pas
+                // de la garniture : ce sont les phrases que l'officine
+                // vient réécrire, c'est-à-dire le sujet de l'écran. Les
+                // deux volets tirés larges, le volet en montrait trois
+                // sur vingt, la troisième coupée en plein milieu d'un
+                // mot, et la barre flottante d'egui ne disait pas qu'on
+                // pouvait aller chercher les dix-sept autres. Le compte
+                // en bas dit combien il y en a ; il ne dit pas qu'on
+                // peut les atteindre.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("textes_sheet")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
+                        ui.set_max_width(Self::scrolled_width(ui, split[0].width()));
                         Self::text_edit_body(ui, session, phrases);
                     });
             });
