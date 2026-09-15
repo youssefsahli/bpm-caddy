@@ -809,6 +809,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tard quelque chose que personne n'a regardé.
 
 ### Fixed
+- **La croix qui retire un traitement ne quitte plus sa puce.** Elles
+  sont deux étiquettes dans une rangée qui enveloppe, et egui passe à la
+  ligne entre elles comme entre deux puces : à `text_scale = 1,6`, sur un
+  dossier de six traitements, la rangée finissait sur « Glucophage » et
+  la ligne suivante commençait par sa croix — posée sous « Coversyl ». La
+  croix qui retire un traitement se lisait comme celle du traitement
+  d'au-dessus, et rien ne le disait. Le couple est désormais alloué d'un
+  seul tenant, et c'est cette largeur-là que la bande mesure aussi : les
+  « seize pixels » qui tenaient lieu de croix dans la mesure ne suivaient
+  d'ailleurs pas `[ui] text_scale`, quand la croix, elle, le suit.
+
+  Et la rangée de puces prend la hauteur d'une rangée. Le plafond de la
+  bande compte des rangées de `row_height` — c'est ce qui le fait tomber
+  *entre* deux d'entre elles, et le commentaire au-dessus du calcul le
+  disait déjà —, mais les puces s'en tenaient à la hauteur de leur
+  fonte : la coupe tombait donc au milieu du dessin, et la seconde rangée
+  de traitements sortait tranchée par la moitié. Ce qui se lit « cassé »,
+  et non « il y en a d'autres ».
+- **Et le pas du jour de la caisse non plus.** Même défaut, même remède :
+  la rangée finissait sur « ‹ » et la suivante commençait par
+  « 15/09/2026 › ». La flèche qui recule d'un jour se trouvait au bout
+  d'une ligne de boutons sans rapport, et celle qui avance sur une autre
+  ligne que la date qu'elle avance. « ‹ », la date et « › » sont
+  maintenant un article — pour le dessin comme pour la mesure.
 - **Les tables de conversion disent qu'elles continuent à droite.** Six
   colonnes de phrases ne tiennent pas dans un volet de comptoir : la
   table défile latéralement, c'est l'arbitrage voulu, et sa première

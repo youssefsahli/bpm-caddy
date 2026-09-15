@@ -3002,6 +3002,24 @@ const STUP_COLUMNS: usize = 9;
 /// nombre : deux mesures d'une même chose divergent toujours.
 const TREAT_DOSE_ROWS: usize = 5;
 
+/// La croix qui retire un traitement de la bande du dossier.
+///
+/// Nommée parce que **la mesure et le dessin la lisent tous les deux** :
+/// la largeur du couple « puce + croix » est ce qui empêche la rangée de
+/// se couper entre les deux, et elle avait été écrite « seize pixels »
+/// d'un côté et « × » de l'autre.
+const TREAT_REMOVE: &str = "×";
+
+/// Les deux flèches qui reculent et avancent d'un pas — un jour, une
+/// semaine, un mois.
+///
+/// Nommées pour la même raison que [`TREAT_REMOVE`] : elles forment un
+/// groupe avec la date qu'elles déplacent, la mesure et le dessin lisent
+/// toutes les deux ce groupe, et « ‹ » recopié des deux côtés est la
+/// façon ordinaire de les faire diverger.
+const STEP_PREV: &str = "‹";
+const STEP_NEXT: &str = "›";
+
 /// Ce qu'un clic sur une ligne du registre a demandé.
 ///
 /// Les lignes sont dessinées dans un panneau qui n'emprunte la session
@@ -18939,6 +18957,46 @@ impl App {
         }
     }
 
+    /// La fonte de la puce de traitement — celle qui dessine, donc celle
+    /// qui mesure.
+    fn treat_chip_font(ui: &egui::Ui) -> egui::FontId {
+        egui::FontId::proportional(motif::pt(ui, 12.0))
+    }
+
+    /// Le texte de la puce tel qu'il est peint, son air compris.
+    fn treat_chip_text(name: &str, strength: &str) -> String {
+        format!("  {}  ", Self::treat_chip(name, strength))
+    }
+
+    /// Ce que la puce et la croix qui la retire occupent **ensemble**.
+    ///
+    /// **Elles ne se séparent pas.** Ce sont deux étiquettes dans un
+    /// `horizontal_wrapped`, et egui enveloppe entre elles comme entre
+    /// deux puces : à `[ui] text_scale = 1,6`, sur un dossier de six
+    /// traitements, la rangée finissait sur « Glucophage » et la ligne
+    /// suivante commençait par sa croix — posée sous « Coversyl ». La
+    /// croix qui retire un traitement se lisait comme celle du
+    /// traitement d'au-dessus, et rien ne le disait.
+    ///
+    /// Le couple est donc alloué d'un seul tenant, et c'est ce nombre
+    /// que la mesure de la bande emploie aussi : deux écritures d'une
+    /// même largeur divergent le jour où l'une des deux gagne un mot.
+    fn treat_pair_width(ui: &egui::Ui, name: &str, strength: &str) -> f32 {
+        let font = Self::treat_chip_font(ui);
+        ui.fonts(|f| {
+            f.layout_no_wrap(
+                Self::treat_chip_text(name, strength),
+                font.clone(),
+                motif::text(),
+            )
+            .size()
+            .x + f
+                .layout_no_wrap(TREAT_REMOVE.to_owned(), font, motif::text())
+                .size()
+                .x
+        }) + ui.spacing().item_spacing.x
+    }
+
     fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
         // La taille est en points, donc elle passe par `motif::pt` comme
         // celle qui dessinera : une colonne mesurée à onze pixels et
@@ -19322,7 +19380,57 @@ impl App {
     /// rangée ne coûte rien — et c'est pourquoi l'oubli ne se voit qu'à
     /// la taille où il fait mal.
     fn wrapped_band_height(ui: &egui::Ui, width: f32, widths: impl Iterator<Item = f32>) -> f32 {
-        let rows = Self::wrapped_rows_of(ui, width, widths);
+        Self::rows_height(ui, Self::wrapped_rows_of(ui, width, widths))
+    }
+
+    /// Ce qu'un groupe de contrôles occupe côte à côte : leurs largeurs
+    /// et les gouttières **entre** elles — *n* articles coûtent *n−1*
+    /// gouttières, jamais *n*.
+    fn group_width(ui: &egui::Ui, widths: impl Iterator<Item = f32>) -> f32 {
+        let (w, n) = widths.fold((0.0_f32, 0.0_f32), |(w, n), x| (w + x, n + 1.0));
+        w + (n - 1.0).max(0.0) * ui.spacing().item_spacing.x
+    }
+
+    /// Dessine un groupe de contrôles **d'un seul tenant** dans une
+    /// rangée qui enveloppe.
+    ///
+    /// `horizontal_wrapped` passe à la ligne entre deux contrôles, sans
+    /// savoir que deux d'entre eux n'ont de sens qu'ensemble. À
+    /// `[ui] text_scale = 1,6` la caisse finissait une rangée sur « ‹ »
+    /// et commençait la suivante par « 15/09/2026 › » : la flèche qui
+    /// recule d'un jour était posée au bout d'une ligne de boutons sans
+    /// rapport, et celle qui avance sur une autre ligne que la date
+    /// qu'elle avance. Même défaut que la croix qui retire un
+    /// traitement, séparée de sa puce.
+    ///
+    /// Le groupe est alloué à la largeur qu'il demande, donc c'est lui,
+    /// entier, qui passe à la ligne — et c'est la même largeur que la
+    /// mesure de la bande compte, en **un** article et non en trois.
+    fn keep_together<R>(
+        ui: &mut egui::Ui,
+        size: egui::Vec2,
+        add: impl FnOnce(&mut egui::Ui) -> R,
+    ) -> R {
+        ui.allocate_ui_with_layout(size, egui::Layout::left_to_right(egui::Align::Center), add)
+            .inner
+    }
+
+    /// Ce que *n* rangées occupent : **`n × row_height + (n−1) ×
+    /// gouttière`**, et non `n × (row_height + gouttière)`.
+    ///
+    /// La différence est d'une gouttière, et elle se paie là où le volet
+    /// est court. Le formulaire de la biologie se réservait de la
+    /// seconde façon : à 1024x700 en `text_scale = 1,6` il prenait
+    /// treize pixels de plus que ce qu'il dessine, et ces treize pixels
+    /// étaient précisément ce qui manquait à la ligne qui dit « il y a
+    /// huit résultats, le volet est trop court pour les montrer ». Le
+    /// volet montrait donc du gris vide sous « Ajouter » et rien
+    /// d'autre — ni les résultats, ni le fait qu'il y en a.
+    ///
+    /// Écrit une fois, parce que c'est le modèle sur lequel tous les
+    /// plafonds de l'application reposent et que
+    /// `a_wrapped_band_is_as_tall_as_its_model_says` le tient.
+    fn rows_height(ui: &egui::Ui, rows: f32) -> f32 {
         rows * Self::row_height(ui) + (rows - 1.0).max(0.0) * ui.spacing().item_spacing.y
     }
 
@@ -19440,15 +19548,21 @@ impl App {
                     // bande sortait par le bas. Deux façons de composer
                     // le même libellé divergent le jour où l'une des
                     // deux gagne un mot.
+                    //
+                    // **Un couple, une largeur.** La puce et sa croix
+                    // sont allouées d'un seul tenant par le dessin —
+                    // sans quoi la rangée se coupe entre les deux et la
+                    // croix se lit sous le traitement d'au-dessus —,
+                    // donc la mesure compte un article et non deux. Les
+                    // « seize pixels » qui tenaient lieu de croix ici ne
+                    // suivaient d'ailleurs pas `[ui] text_scale`, quand
+                    // la croix, elle, le suit.
                     let strength = n
                         .strengths
                         .iter()
                         .find(|(id, _)| *id == t.id)
                         .map_or("", |(_, d)| d.as_str());
-                    [
-                        Self::button_width(ui, &Self::treat_chip(&t.name, strength)),
-                        16.0,
-                    ]
+                    std::iter::once(Self::treat_pair_width(ui, &t.name, strength))
                 }))
                 // Le champ qui ajoute le suivant : c'est lui qu'on perd
                 // en premier quand la rangée déborde.
@@ -20015,31 +20129,61 @@ impl App {
                     // Même défaut que les pastilles de la revue, corrigé
                     // là-bas et pas ici : un fond coloré rend la coupure
                     // visible, c'est tout ce qui les distingue.
-                    let chip = ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(format!(
-                                "  {}  ",
-                                Self::treat_chip(&t.name, strength)
-                            ))
-                            .size(motif::pt(ui, 12.0))
-                            .color(motif::on_fill(motif::accent()))
-                            .background_color(motif::accent()),
-                        )
-                        .wrap_mode(egui::TextWrapMode::Extend)
-                        .sense(egui::Sense::click()),
+                    //
+                    // **Et la croix ne se sépare pas de sa puce.** Ce
+                    // sont deux étiquettes, et egui enveloppe entre
+                    // elles comme entre deux puces : la rangée finissait
+                    // sur « Glucophage » et la ligne suivante commençait
+                    // par sa croix, posée sous « Coversyl ». Le couple
+                    // est alloué d'un seul tenant — [`treat_pair_width`],
+                    // la largeur que la bande mesure aussi — et c'est
+                    // lui, entier, qui passe à la ligne.
+                    //
+                    // **La hauteur est celle d'une rangée**, et non celle
+                    // de la puce. Le plafond de la bande compte des
+                    // rangées de `row_height` — c'est ce qui le fait
+                    // tomber *entre* deux d'entre elles —, et une rangée
+                    // de puces haute de trente pixels là où le modèle en
+                    // compte cinquante-cinq fait tomber la coupe au
+                    // milieu du dessin : la seconde rangée de
+                    // traitements sortait tranchée par la moitié, ce qui
+                    // se lit « cassé » et non « il y en a d'autres ».
+                    let (chip, x) = Self::keep_together(
+                        ui,
+                        egui::vec2(
+                            Self::treat_pair_width(ui, &t.name, strength),
+                            Self::row_height(ui),
+                        ),
+                        |ui| {
+                            let chip = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(Self::treat_chip_text(&t.name, strength))
+                                        .size(motif::pt(ui, 12.0))
+                                        .color(motif::on_fill(motif::accent()))
+                                        .background_color(motif::accent()),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend)
+                                .sense(egui::Sense::click()),
+                            );
+                            // La posologie du dossier, à côté du nom :
+                            // c'est ce qu'on lit en premier d'un
+                            // traitement, et cela ne s'affichait que dans
+                            // l'onglet Conciliation. Un clic ouvre les
+                            // lignes livrées de la fiche.
+                            let x = ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(TREAT_REMOVE).size(motif::pt(ui, 12.0)),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend)
+                                .sense(egui::Sense::click()),
+                            );
+                            (chip, x)
+                        },
                     );
                     chip_at.push((t.name.trim().to_owned(), chip.rect));
                     if chip.on_hover_text(tr("treat_open_tooltip")).clicked() {
                         open_card = Some(t.clone());
                     }
-                    // La posologie du dossier, à côté du nom : c'est ce
-                    // qu'on lit en premier d'un traitement, et cela ne
-                    // s'affichait que dans l'onglet Conciliation. Un clic
-                    // ouvre les lignes livrées de la fiche.
-                    let x = ui.add(
-                        egui::Label::new(egui::RichText::new("×").size(motif::pt(ui, 12.0)))
-                            .sense(egui::Sense::click()),
-                    );
                     if x.on_hover_text(tr("treat_remove_tooltip")).clicked() {
                         remove_treat = Some(t.id);
                     }
@@ -43047,9 +43191,19 @@ impl App {
                 Self::button_width(ui, tr("caisse_template")),
                 Self::button_width(ui, tr("caisse_clear")),
                 Self::button_width(ui, tr("caisse_history_open")),
-                Self::button_width(ui, "‹"),
-                day_w,
-                Self::button_width(ui, "›"),
+                // **Le pas du jour est un article, pas trois.** « ‹ », la
+                // date et « › » sont dessinés d'un seul tenant — une
+                // flèche séparée de la date qu'elle avance ne veut rien
+                // dire —, donc ils se mesurent de même.
+                Self::group_width(
+                    ui,
+                    [
+                        Self::button_width(ui, STEP_PREV),
+                        day_w,
+                        Self::button_width(ui, STEP_NEXT),
+                    ]
+                    .into_iter(),
+                ),
             ]
             .into_iter(),
             caisse_subtitle,
@@ -43120,18 +43274,36 @@ impl App {
                 // celui de la veille, jamais une date lointaine, et un
                 // champ à parser pour deux valeurs possibles est un
                 // champ de trop.
-                if motif::button(ui, "‹").clicked() {
-                    if let Some(d) = db::add_days(&session.caisse_day, -1) {
-                        session.caisse_day = d;
+                //
+                // **Et les trois ne se séparent pas.** À
+                // `[ui] text_scale = 1,6` la rangée finissait sur « ‹ »
+                // et la suivante commençait par « 15/09/2026 › » : la
+                // flèche qui recule d'un jour était au bout d'une ligne
+                // de boutons sans rapport, et celle qui avance sur une
+                // autre ligne que la date qu'elle avance.
+                let day = db::format_french_date(&session.caisse_day);
+                let step = Self::group_width(
+                    ui,
+                    [
+                        Self::button_width(ui, STEP_PREV),
+                        day_w,
+                        Self::button_width(ui, STEP_NEXT),
+                    ]
+                    .into_iter(),
+                );
+                Self::keep_together(ui, egui::vec2(step, Self::row_height(ui)), |ui| {
+                    if motif::button(ui, STEP_PREV).clicked() {
+                        if let Some(d) = db::add_days(&session.caisse_day, -1) {
+                            session.caisse_day = d;
+                        }
                     }
-                }
-                ui.label(db::format_french_date(&session.caisse_day))
-                    .on_hover_text(tr("caisse_day"));
-                if motif::button(ui, "›").clicked() {
-                    if let Some(d) = db::add_days(&session.caisse_day, 1) {
-                        session.caisse_day = d;
+                    ui.label(day).on_hover_text(tr("caisse_day"));
+                    if motif::button(ui, STEP_NEXT).clicked() {
+                        if let Some(d) = db::add_days(&session.caisse_day, 1) {
+                            session.caisse_day = d;
+                        }
                     }
-                }
+                });
             });
             ui.label(
                 egui::RichText::new(caisse_subtitle)
