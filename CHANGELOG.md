@@ -7,7 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Ce que l'âge fait à une ordonnance** — `src/elderly.rs`, vingt
+  et une lignes, et le troisième terrain à côté du rein et du foie. C'est le
+  seul des quatre dont **le chiffre est déjà au dossier** : la date de
+  naissance y est depuis la création de la fiche, personne n'a rien à
+  taper, et c'est précisément pour cela que personne ne la regarde. Le
+  rein demande d'aller chercher un compte rendu, le foie de cliquer un
+  stade ; l'âge ne demande rien. Pendant ce temps les fiches livrées
+  écrivent « chez le sujet âgé » **889 fois** — le Valium dit que
+  l'accumulation fait préférer une demi-vie courte à cet âge, le
+  Ditropan que l'oxybutynine est l'un des antimuscariniques les plus
+  délétères sur le plan central, le Daonil que l'hypoglycémie prolongée
+  est le principal risque du traitement à cet âge — et il fallait les
+  ouvrir une par une pour rapprocher tout cela d'une date de naissance.
+
+  **Le rein change la dose, l'âge change le choix.** Une conduite rénale
+  dit « réduire de moitié » ; une conduite d'âge dit « il existe
+  mieux ». Chaque ligne porte donc deux choses : ce que l'âge fait
+  courir, et ce qu'on met à la place — obligatoire, parce qu'un « non »
+  sans alternative laisse le problème entier. Les lignes viennent de la
+  liste française de Laroche, des critères STOPP/START, des critères de
+  Beers, de recommandations de la HAS et de restrictions de l'ANSM,
+  chacune confrontée à la fiche livrée qu'elle attrape.
+
+  Trois règles que le rein n'a pas, et ce qu'elles ont trouvé en étant
+  écrites : **on n'envoie jamais d'un médicament à éviter vers un
+  autre** — la ligne des tricycliques proposait l'amitriptyline, qu'elle
+  dit d'éviter ; **l'alternative est un choix, jamais une posologie** ;
+  et **aucune ligne ne réclame une fiche qui ne parle jamais de l'âge**,
+  qui en a trouvé quatre — trois fiches ont été complétées sur ce que
+  l'âge y change, la quatrième a fait retirer sa ligne. Deux niveaux et
+  pas trois : l'axe « efficacité discutable » de la liste française
+  n'est pas ici, parce qu'une efficacité modeste est une question de
+  revue d'ordonnance et pas une question d'âge.
+
+  Et il ne dit jamais d'arrêter : arrêter brutalement un psychotrope
+  chez un sujet âgé expose davantage que de le poursuivre, et le pied du
+  panneau l'écrit.
+
 ### Fixed
+- **La dernière puce de « ce qu'on croise » pouvait disparaître.** La
+  bande comptait ses rangées sur le *nom* du médicament et dessinait
+  « Zeclar × » : deux écritures d'une même chose, dont celle qui ment
+  est toujours la mesure. Tant que la liste tenait sur une rangée cela
+  ne coûtait rien ; la puce qui s'enroulait sur une seconde rangée que
+  la bande n'avait pas réservée n'était ni tranchée ni annoncée — elle
+  n'était plus là, alors que le médicament restait sur la carte et dans
+  les croisements. Le libellé est écrit une fois et lu des deux côtés,
+  et `a_chip_is_measured_with_the_cross_it_carries` refuse le prochain.
 - **La règle d'un panneau clinique se lit maintenant avant ce qu'elle
   qualifie.** Les panneaux du rein, de la grossesse et du foie
   écrivaient la leur en pied, sous les conduites, dans une région qui

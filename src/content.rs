@@ -255,6 +255,11 @@ pub fn documents() -> Vec<Document> {
         phrases: crate::renal::phrases(),
     });
     out.push(Document {
+        subject: crate::elderly::DOC.to_owned(),
+        label: crate::strings::tr("textes_doc_age").to_owned(),
+        phrases: crate::elderly::phrases(),
+    });
+    out.push(Document {
         subject: crate::hepatic::DOC.to_owned(),
         label: crate::strings::tr("textes_doc_foie").to_owned(),
         phrases: crate::hepatic::phrases(),

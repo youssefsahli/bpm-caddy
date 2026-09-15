@@ -58,10 +58,22 @@ l'écran se recharge plutôt que d'écraser le travail de quelqu'un.
 
 ## Lecture d'ordonnance
 
-Sous la biologie, cinq lectures de la même ordonnance : l'interprétation
+Sous la biologie, six lectures de la même ordonnance : l'interprétation
 des résultats, ce qui n'a pas été demandé depuis trop longtemps, ce que
 la clairance du jour change, ce que la grossesse et l'allaitement
-changent, et les croisements sur les cytochromes.
+changent, ce que l'âge du dossier change, et les croisements sur les
+cytochromes.
+
+Celle de l'âge est la seule dont le chiffre soit **déjà au dossier** :
+la date de naissance y est depuis la création de la fiche, rien n'est à
+taper, et c'est pour cela que personne ne la regarde. Le rein change la
+dose, l'âge change le choix — les lignes viennent de la liste française
+de Laroche, des critères STOPP/START et de ceux de Beers, et chacune
+nomme deux choses : ce que l'âge fait courir, et ce qu'on met à la
+place. Un « non » sans alternative laisse le problème entier. Rien ne
+s'arrête d'un coup : arrêter brutalement un psychotrope chez un sujet
+âgé expose davantage que de le poursuivre, et le remplacement se prépare
+avec le prescripteur.
 
 **Une forme locale n'est pas lue comme la voie générale.** Un collyre,
 une pommade, un gel ou une pulvérisation nasale ne reçoivent ni palier

@@ -3407,6 +3407,14 @@ struct Session {
     /// connaît pas : « pas de donnée » n'est pas « pas de risque ».
     /// Ce que la grossesse et l'allaitement changent, **déjà résolu**.
     gravidity: Vec<crate::gravidity::Resolved>,
+    /// Ce que l'âge du dossier change, **déjà résolu**. Vide tant
+    /// qu'aucune ligne ne relève de l'âge ; sans verdict tant qu'aucune
+    /// date de naissance n'est au dossier.
+    elderly: Vec<crate::elderly::Resolved>,
+    /// L'âge du dossier ouvert, en années révolues. Retenu avec la
+    /// lecture plutôt que recalculé à chaque trame : c'est une ligne de
+    /// l'en-tête et le panneau la relit soixante fois par seconde.
+    patient_age: Option<u32>,
     /// What the file's ordonnance asks to have measured, and how long
     /// ago it was. Computed with the findings, from the same two lists.
     /// Le plan de surveillance du dossier ouvert, **déjà résolu** :
@@ -3448,6 +3456,11 @@ struct Session {
     /// ce qui en dépend et ne conclut pas — c'est `renal::read` qui le
     /// garantit.
     ddi_dfg: String,
+    /// L'âge tapé au croisement. Une liste de médicaments n'a pas de
+    /// date de naissance : ici l'âge se dit, comme le DFG et le stade
+    /// de Child-Pugh — et vide, le panneau nomme ce qui en dépend sans
+    /// conclure, exactement comme le rein sans clairance.
+    ddi_age: String,
     /// **Un stade, jamais un chiffre** : voir `ddi_hepatic_section`.
     ddi_stage: Option<crate::hepatic::Stage>,
     /// Ce qu'on cherche dans l'écran des textes de l'interface.
@@ -4301,6 +4314,8 @@ impl Session {
             renal_dfg: None,
             crush: Vec::new(),
             gravidity: Vec::new(),
+            elderly: Vec::new(),
+            patient_age: None,
             surveillance: Vec::new(),
             bio_side_tab: 0,
             cyp: crate::cyp::Reading::default(),
@@ -4309,6 +4324,7 @@ impl Session {
             ddi_hits: None,
             ddi_read: None,
             ddi_dfg: String::new(),
+            ddi_age: String::new(),
             ddi_stage: None,
             ui_text_query: String::new(),
             ui_texts: std::collections::HashMap::new(),
@@ -6944,6 +6960,19 @@ impl Session {
         // fait ouvrir treize paragraphes : ce que la grossesse et
         // l'allaitement font à cette ordonnance.
         self.gravidity = crate::gravidity::resolve(crate::gravidity::read(&terms), &self.content);
+        // Et celle que personne ne pose, parce que son chiffre est déjà
+        // là : **ce dossier a quatre-vingt-deux ans, que devient chaque
+        // ligne de son ordonnance ?** Le rein demande d'aller chercher
+        // un compte rendu, le foie de cliquer un stade ; l'âge ne
+        // demande rien, et c'est pour cela qu'il ne se regarde jamais.
+        // Voir `elderly.rs` — le rein change la dose, l'âge change le
+        // choix.
+        let age = self
+            .viewing
+            .as_ref()
+            .and_then(|p| db::age_on(&p.birth_date, &self.today));
+        self.elderly = crate::elderly::resolve(crate::elderly::read(&terms, age), &self.content);
+        self.patient_age = age;
         // Et la quatrième, qui ne dépend ni d'un chiffre ni d'un
         // terrain : **cette ordonnance porte-t-elle deux lignes qui se
         // rencontrent sur une enzyme ?** Les fiches le disent chacune de
@@ -7386,7 +7415,7 @@ fn link_segments(
 /// The treatments as the ordonnance rules read them: the words each
 /// card carries, and nothing else.
 /// Ce qui fait qu'une lecture du croisement est encore valable.
-type DdiKey = (Vec<i64>, String, Option<crate::hepatic::Stage>, u64);
+type DdiKey = (Vec<i64>, String, String, Option<crate::hepatic::Stage>, u64);
 
 /// Ce que les quatre modules répondent d'une même liste.
 struct DdiReading {
@@ -7399,6 +7428,7 @@ struct DdiReading {
     revue: Vec<crate::revue::Resolved>,
     renal: Vec<crate::renal::Resolved>,
     hepatic: Vec<crate::hepatic::Resolved>,
+    elderly: Vec<crate::elderly::Resolved>,
 }
 
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
@@ -9624,7 +9654,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 26] {
 /// les cytochromes. Le manuel en annonce le nombre en toutes lettres,
 /// et `the_documentation_counts_what_the_code_holds` le confronte à
 /// celui-ci.
-pub const BIO_SIDE_TABS: usize = 5;
+pub const BIO_SIDE_TABS: usize = 6;
 
 impl App {
     pub fn new() -> Self {
@@ -10227,6 +10257,17 @@ impl App {
                                 // hépatique du panneau ne montrerait que
                                 // des « rien à changer ».
                                 "Doliprane",
+                                // Et le seul dont **l'âge** change le
+                                // choix : sans lui, la section de l'âge
+                                // s'ouvre sur « aucun traitement de
+                                // cette liste » et aucune capture ne
+                                // montre jamais ce qu'elle fait. Il
+                                // gagne sa place deux fois : le
+                                // diazépam passe par le 3A4 et le 2C19,
+                                // que le Zeclar et le Mopral freinent,
+                                // si bien qu'il donne aussi un vrai
+                                // croisement à la carte.
+                                "Valium",
                             ]
                             .iter()
                             .filter_map(|n| {
@@ -10243,6 +10284,11 @@ impl App {
                             // lignes sans verdict — c'est-à-dire rien
                             // de ce qu'elle existe pour dire.
                             session.ddi_stage = Some(crate::hepatic::Stage::Moderate);
+                            // Et un âge, pour la même raison : vide, la
+                            // section de l'âge nomme ce qui en dépend
+                            // et ne conclut rien — ce qui est juste, et
+                            // ne montre pas ce qu'elle sait faire.
+                            session.ddi_age = "82".to_owned();
                         }
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
@@ -10538,13 +10584,49 @@ impl App {
                         // panel on the second reading: what the
                         // ordonnance asks to have measured, rather than
                         // what the values already there say.
-                        Ok(v @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse" | "cyp")) => {
-                            let pick = session
-                                .patients
-                                .iter()
-                                .find(|p| !p.email.is_empty())
-                                .or(session.patients.first())
-                                .cloned();
+                        Ok(
+                            v
+                            @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse" | "age" | "cyp"),
+                        ) => {
+                            // **Le panneau de l'âge s'ouvre sur le
+                            // dossier le plus âgé qui porte une
+                            // ordonnance**, et non sur le premier de la
+                            // liste ni sur le plus âgé tout court. Le
+                            // premier a soixante-huit ans, et le plus
+                            // âgé n'a aucun traitement : dans les deux
+                            // cas le panneau dit « rien à signaler » sur
+                            // toutes les captures, c'est-à-dire
+                            // qu'aucune image ne montre jamais ce qu'il
+                            // fait. C'est la leçon de « Vigilance », qui
+                            // s'ouvrait sur « rien à signaler » pendant
+                            // que trois règles attendaient — et c'est
+                            // « le plus âgé » tout seul qui l'a
+                            // reproduite, à la première capture.
+                            let pick = if v == "age" {
+                                let mut aged: Vec<&Patient> = session
+                                    .patients
+                                    .iter()
+                                    .filter(|p| !p.birth_date.trim().is_empty())
+                                    .collect();
+                                aged.sort_by(|a, b| a.birth_date.cmp(&b.birth_date));
+                                aged.iter()
+                                    .find(|p| {
+                                        session
+                                            .db
+                                            .drugs_for_patient(p.id)
+                                            .is_ok_and(|d| !d.is_empty())
+                                    })
+                                    .or(aged.first())
+                                    .map(|p| (*p).clone())
+                                    .or_else(|| session.patients.first().cloned())
+                            } else {
+                                session
+                                    .patients
+                                    .iter()
+                                    .find(|p| !p.email.is_empty())
+                                    .or(session.patients.first())
+                                    .cloned()
+                            };
                             if let Some(p) = pick {
                                 session.open_patient(p);
                             }
@@ -10557,7 +10639,8 @@ impl App {
                                 "watch" => 1,
                                 "rein" => 2,
                                 "grossesse" => 3,
-                                "cyp" => 4,
+                                "age" => 4,
+                                "cyp" => 5,
                                 _ => 0,
                             };
                         }
@@ -15038,11 +15121,24 @@ impl App {
             } else {
                 format!("{} ({major})", tr("cyp_tab"))
             };
+            // Le compte de l'onglet « Âge » est celui des lignes qui
+            // **concluent**, comme au rein : sans date de naissance, il
+            // ne promet pas des verdicts qu'il n'a pas. Et l'onglet
+            // existe même à zéro, parce que « rien à signaler pour cet
+            // âge » est une réponse — et la seule qu'un panneau absent
+            // ne sait pas donner.
+            let aged = session.elderly.iter().filter(|f| f.decided()).count();
+            let elderly = if aged == 0 {
+                tr("elderly_tab").to_owned()
+            } else {
+                format!("{} ({aged})", tr("elderly_tab"))
+            };
             let tabs: [motif::Tab; BIO_SIDE_TABS] = [
                 motif::Tab::new(tr("bio_reading")),
                 motif::Tab::new(tr("watch_section")),
                 motif::Tab::new(&renal),
                 motif::Tab::new(&gravid),
+                motif::Tab::new(&elderly),
                 motif::Tab::new(&cyp),
             ];
             // La borne se lit sur le tableau, jamais écrite à côté : un
@@ -15061,6 +15157,7 @@ impl App {
             1 => Self::bio_watch_pane(ui, session, patient, strip[1], config),
             2 => Self::bio_renal_pane(ui, session, strip[1]),
             3 => Self::bio_gravidity_pane(ui, session, strip[1]),
+            4 => Self::bio_elderly_pane(ui, session, strip[1]),
             _ => Self::bio_cyp_pane(ui, session, strip[1]),
         }
         Self::bio_trend_pane(ui, session, trend);
@@ -15351,6 +15448,105 @@ impl App {
                             egui::RichText::new(f.conduct.as_str())
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text()),
+                        );
+                        ui.label(
+                            egui::RichText::new(f.source)
+                                .size(motif::pt(ui, 10.0))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+    }
+
+    /// Ce que l'âge fait à l'ordonnance ouverte.
+    ///
+    /// Le seul des quatre terrains dont **le chiffre est déjà au
+    /// dossier** : la date de naissance y est depuis la création de la
+    /// fiche, rien n'est à taper, et c'est précisément pour cela que
+    /// personne ne la regarde. Le panneau l'écrit donc en tête, avant
+    /// toute conduite — un panneau qui dit « à éviter » sans dire à quel
+    /// âge il parle demande d'aller vérifier ailleurs pour le croire.
+    fn bio_elderly_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        use crate::elderly::Level;
+        motif::inside(ui, rect, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("bio_elderly")
+                .show(ui, |ui| {
+                    ui.add_space(4.0);
+                    // La règle en tête, courte à l'écran et entière au
+                    // survol : la forme des trois panneaux voisins.
+                    ui.label(
+                        egui::RichText::new(tr("elderly_scope"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .on_hover_text(tr("elderly_footer"));
+                    ui.add_space(4.0);
+                    // Le chiffre qui décide, comme la clairance au rein.
+                    // Sans date de naissance, la ligne dit **combien** de
+                    // traitements l'attendent : « aucune date » tout seul
+                    // est une remarque, « aucune date, et trois lignes en
+                    // dépendent » est une fiche à compléter.
+                    let pending = crate::elderly::undecided(&session.elderly);
+                    ui.label(
+                        egui::RichText::new(match session.patient_age {
+                            Some(v) => trf("elderly_age", v),
+                            None if pending > 0 => trf("elderly_no_age_n", pending),
+                            None => tr("elderly_no_age").to_owned(),
+                        })
+                        .size(motif::pt(ui, 11.5))
+                        .color(if session.patient_age.is_some() {
+                            motif::text()
+                        } else {
+                            motif::alert()
+                        }),
+                    );
+                    ui.add_space(4.0);
+                    if session.elderly.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("elderly_nothing"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    for f in &session.elderly {
+                        let ink = match f.level {
+                            Some(Level::Avoid) => motif::alert(),
+                            Some(Level::Caution) => motif::emphasize(motif::text()),
+                            // Sans verdict, l'encre éteinte : la ligne
+                            // dit qu'elle ne sait pas, et elle ne doit
+                            // pas se lire comme les autres.
+                            None => motif::text_dim(),
+                        };
+                        let head = match f.level {
+                            Some(l) => {
+                                format!("{} — {} (dès {} ans)", f.treatment, l.label(), f.from)
+                            }
+                            None => format!("{} — {}", f.treatment, tr("elderly_unknown")),
+                        };
+                        ui.label(
+                            egui::RichText::new(head)
+                                .size(motif::pt(ui, 12.0))
+                                .color(ink),
+                        );
+                        ui.label(
+                            egui::RichText::new(f.risk.as_str())
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text()),
+                        );
+                        // **Ce qu'on met à la place, distingué du
+                        // risque.** Lues d'affilée dans la même encre,
+                        // les deux phrases se confondent, et c'est
+                        // l'alternative qu'on saute — c'est-à-dire la
+                        // seule des deux avec laquelle on peut décrocher
+                        // le téléphone.
+                        ui.label(
+                            egui::RichText::new(format!("{} {}", tr("elderly_instead"), f.instead))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::accent()),
                         );
                         ui.label(
                             egui::RichText::new(f.source)
@@ -31116,6 +31312,17 @@ impl App {
     /// (`cyp`), la revue d'ordonnance (`revue`), ce que le rein change
     /// (`renal`). La vue ne calcule rien — elle compose la liste, la
     /// passe, et dessine.
+    /// Ce qu'une puce de la liste croisée écrit : le nom et la croix qui
+    /// le retire, **d'un seul tenant**.
+    ///
+    /// Écrit une fois, lu par la mesure de la bande comme par le
+    /// dessin : deux écritures d'une même chose finissent par diverger,
+    /// et c'est la mesure qui a tort — ici la bande comptait une rangée
+    /// pour deux, et la dernière puce disparaissait sans rien dire.
+    fn ddi_chip(name: &str) -> String {
+        format!("{name} ×")
+    }
+
     fn ddi_view(ui: &mut egui::Ui, session: &mut Session) {
         let body = motif::visible_rect(ui);
         // La bande de composition : ce qu'on croise, et d'où ça vient.
@@ -31128,11 +31335,19 @@ impl App {
             .iter()
             .filter_map(|id| session.drugs.iter().find(|d| d.id == *id).cloned())
             .collect();
-        let chips = Self::wrapped_rows(
-            ui,
-            body.width() - 24.0,
-            picked.iter().map(|d| d.name.as_str()),
-        );
+        // **Mesurée sur ce que la puce écrit, pas sur le nom.** La puce
+        // porte « Zeclar × » et se mesurait « Zeclar » : deux écritures
+        // d'une même chose, dont celle qui ment est toujours la mesure.
+        // Cela a tenu tant que la liste de démonstration en comptait
+        // huit, qui rentraient de toute façon ; la neuvième s'est
+        // enroulée sur une rangée que la bande n'avait pas réservée, et
+        // la puce a **disparu** — ni tranchée, ni annoncée : le
+        // médicament croisé n'était plus dans la liste de ce qu'on
+        // croise, alors qu'il était sur la carte et dans les
+        // croisements. Le libellé est écrit une fois, ici, et lu par la
+        // mesure comme par le dessin.
+        let labels: Vec<String> = picked.iter().map(|d| Self::ddi_chip(&d.name)).collect();
+        let chips = Self::wrapped_rows(ui, body.width() - 24.0, labels.iter().map(String::as_str));
         // La rangée des commandes **mesurée**, et non « deux rangées »
         // écrit à la main : à l'échelle 1 elle en prend une et la bande
         // en gardait une pour rien, à 1,6 elle en prend deux, et le jour
@@ -31290,8 +31505,8 @@ impl App {
                         // La liste composée : une puce par ligne, et la
                         // croix qui la retire.
                         ui.horizontal_wrapped(|ui| {
-                            for d in &picked {
-                                if motif::button(ui, &format!("{} ×", d.name))
+                            for (d, label) in picked.iter().zip(&labels) {
+                                if motif::button(ui, label)
                                     .on_hover_text(tr("ddi_remove"))
                                     .clicked()
                                 {
@@ -31345,9 +31560,16 @@ impl App {
             .parse::<f64>()
             .ok()
             .filter(|v| *v > 0.0);
+        let age: Option<u32> = session
+            .ddi_age
+            .trim()
+            .parse::<u32>()
+            .ok()
+            .filter(|v| *v > 0 && *v < 130);
         let key: DdiKey = (
             session.ddi_list.clone(),
             session.ddi_dfg.clone(),
+            session.ddi_age.clone(),
             session.ddi_stage,
             session.drugs_rev,
         );
@@ -31361,6 +31583,10 @@ impl App {
                     renal: crate::renal::resolve(crate::renal::read(&terms, dfg), &session.content),
                     hepatic: crate::hepatic::resolve(
                         crate::hepatic::read(&terms, session.ddi_stage),
+                        &session.content,
+                    ),
+                    elderly: crate::elderly::resolve(
+                        crate::elderly::read(&terms, age),
                         &session.content,
                     ),
                 },
@@ -31411,6 +31637,7 @@ impl App {
                         Self::ddi_revue_section(ui, &read.1.revue);
                         Self::ddi_renal_section(ui, session, &read.1.renal);
                         Self::ddi_hepatic_section(ui, session, &read.1.hepatic);
+                        Self::ddi_elderly_section(ui, session, &read.1.elderly);
                     });
             });
         });
@@ -31749,6 +31976,92 @@ impl App {
                 egui::RichText::new(p.detail.as_str())
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        ui.add_space(10.0);
+    }
+
+    /// Ce que l'âge change, à l'âge qu'on tape — ou sans lui.
+    ///
+    /// Au dossier, l'âge se lit sur la date de naissance et rien n'est à
+    /// taper. Ici la liste n'a pas de dossier : l'âge se dit, comme le
+    /// DFG et le stade de Child-Pugh. Et vide, le panneau nomme ce qui
+    /// en dépend sans conclure — c'est `elderly::read` qui le garantit,
+    /// et non cette vue.
+    fn ddi_elderly_section(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        findings: &[crate::elderly::Resolved],
+    ) {
+        use crate::elderly::Level;
+        motif::section(ui, tr("elderly_tab"));
+        ui.add_space(4.0);
+        let label_w = Self::widest(ui, 11.0, std::iter::once(tr("ddi_age")));
+        let field_w = Self::field_width(ui, [tr("ddi_age_hint")].into_iter());
+        ui.horizontal_wrapped(|ui| {
+            // Le mot et sa case ne se séparent pas : « Âge » posé sur la
+            // ligne du dessus ne nomme rien.
+            Self::keep_together(
+                ui,
+                egui::vec2(
+                    Self::group_width(ui, [label_w, field_w].into_iter()),
+                    Self::row_height(ui),
+                ),
+                |ui| {
+                    ui.label(
+                        egui::RichText::new(tr("ddi_age"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                    ui.add_sized(
+                        [field_w, 24.0],
+                        egui::TextEdit::singleline(&mut session.ddi_age)
+                            .hint_text(motif::hint(tr("ddi_age_hint"))),
+                    );
+                },
+            );
+        });
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("elderly_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(tr("elderly_footer"));
+        ui.add_space(4.0);
+        if findings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("elderly_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for f in findings {
+            let ink = match f.level {
+                Some(Level::Avoid) => motif::alert(),
+                Some(Level::Caution) => motif::emphasize(motif::text()),
+                None => motif::text_dim(),
+            };
+            let head = match f.level {
+                Some(l) => format!("{} — {} (dès {} ans)", f.treatment, l.label(), f.from),
+                None => format!("{} — {}", f.treatment, tr("elderly_unknown")),
+            };
+            ui.label(
+                egui::RichText::new(head)
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink),
+            )
+            .on_hover_text(f.source);
+            ui.label(
+                egui::RichText::new(f.risk.as_str())
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.label(
+                egui::RichText::new(format!("{} {}", tr("elderly_instead"), f.instead))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::accent()),
             );
             ui.add_space(6.0);
         }
@@ -52044,6 +52357,52 @@ mod tests {
             "une bascule de disposition se compte en caractères, pas en pixels :\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// **Une puce se mesure avec la croix qu'elle porte.**
+    ///
+    /// La bande « ce qu'on croise » comptait ses rangées sur le *nom* du
+    /// médicament et dessinait « Zeclar × » : deux écritures d'une même
+    /// chose, dont celle qui ment est toujours la mesure. Avec huit
+    /// puces qui rentraient de toute façon, cela n'a rien coûté ; la
+    /// neuvième s'est enroulée sur une rangée que la bande n'avait pas
+    /// réservée et **la puce a disparu** — ni tranchée, ni annoncée : le
+    /// médicament était sur la carte et dans les croisements, et plus
+    /// dans la liste de ce qu'on croise.
+    ///
+    /// Le test mord : il prend une liste dont le libellé nu tient sur
+    /// une rangée et dont le libellé entier n'y tient pas, et refuse que
+    /// les deux comptes soient égaux. Sans `App::ddi_chip` lu des deux
+    /// côtés, c'est exactement l'écart qu'on ne voit pas.
+    #[test]
+    fn a_chip_is_measured_with_the_cross_it_carries() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let names = ["Zeclar", "Tahor", "Eliquis", "Plavix", "Valium"];
+                    let labels: Vec<String> = names.iter().map(|n| App::ddi_chip(n)).collect();
+                    // Une largeur choisie pour que la différence morde :
+                    // juste assez pour les noms nus, pas pour les puces.
+                    let bare: f32 = names.iter().map(|n| App::button_width(ui, n)).sum::<f32>()
+                        + 4.0 * ui.spacing().item_spacing.x;
+                    let width = bare + 1.0;
+                    let with_cross =
+                        App::wrapped_rows(ui, width, labels.iter().map(String::as_str));
+                    let without = App::wrapped_rows(ui, width, names.into_iter());
+                    seen.replace((without, with_cross));
+                });
+            });
+            let (without, with_cross) = *seen.borrow();
+            assert_eq!(without, 1.0, "échelle {scale} : les noms nus tiennent");
+            assert!(
+                with_cross > without,
+                "échelle {scale} : la puce se mesure comme son nom, sans la \
+                 croix — la dernière disparaîtra sans rien dire"
+            );
+        }
     }
 
     /// **La règle d'un panneau se lit avant ce qu'elle qualifie.**

@@ -153,6 +153,36 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   treatment continued. A test in each of the three clinical tables
   refuses markup in what they write: `RichText` interprets none, so an
   asterisk typed for emphasis reaches the screen as an asterisk),
+  `src/elderly.rs` (the third terrain, and the only one whose **figure
+  is already in the file**: the birth date has been there since the
+  fiche was created, nothing has to be typed — and that is exactly why
+  nobody looks at it. The kidney asks you to fetch a lab slip, the liver
+  to click a stage; age asks nothing. Meanwhile the shipped cards write
+  « chez le sujet âgé » **889 times**, and reading it meant opening them
+  one by one. The one sentence that separates it from its renal
+  neighbour: **le rein change la dose, l'âge change le choix.** A renal
+  conduct says « halve it »; an age conduct says « there is better » —
+  which is why the row carries a field `renal` has not and cannot have,
+  `instead`, and why it is **mandatory**: `crush.rs`'s rule, « a "no"
+  with no alternative leaves the problem whole ». Twenty-one rows, each
+  from a published list (Laroche 2007, STOPP/START v2, Beers 2023, HAS,
+  ANSM), each confronted with the shipped fiche it lands on. Six rules,
+  one test each — three of them not in `renal`: **an alternative is
+  never itself a row to avoid** (the fault no re-reading catches, since
+  each row is right alone and the pair sends you round in circles — it
+  fired on the tricyclic row, which named amitriptyline), **an
+  alternative is a choice and never a posology** (no milligram in
+  `instead`; the risk may cite the reference's threshold, which is
+  `hepatic`'s refinement), and **no row claims a card that never speaks
+  of age** — which found four cards whose own prose was silent, and the
+  answer was to complete the fiche, not to delete the row. Two levels
+  and not three: the French list's « efficacité discutable » axis is
+  deliberately absent, because a modest evidence base is a revue
+  question, not an age one — the naftidrofuryl row was written, then
+  withdrawn for exactly that. And it never says « stop »: stopping a
+  psychotropic abruptly in an elderly patient exposes more than
+  continuing it, which the panel writes in its own footer. Pure, tested,
+  no clock: the age is passed in),
   `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline, and
   the same « two rules never make one reading » guard as `biology.rs`,
@@ -190,7 +220,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 952 printed phrases the officine may rewrite —
+  `src/content.rs` (the 994 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -1428,7 +1458,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|rein|grossesse|cyp|ddi|libelles|listes|base|codex|
+  vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   trame|
@@ -1596,7 +1626,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 952 phrases were not, and they were exactly the ones
+always editable; 994 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

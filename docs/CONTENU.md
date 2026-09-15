@@ -36,7 +36,7 @@ Deux règles valent partout :
    corrigera jamais.
 3. **Chaque catalogue a son cliquet.** Il s'appelle
    `the_table_only_ever_grows` dans les tables cliniques — rein, foie,
-   écrasement, grossesse, cytochromes — et le nombre y est écrit **une
+   âge, écrasement, grossesse, cytochromes — et le nombre y est écrit **une
    fois**, dans une constante que le message relit : écrit deux fois, en
    chiffres dans l'assertion et en lettres dans le message, il finit par
    se contredire, ce qui est arrivé trois fois. Un plancher sur le nombre de
@@ -765,6 +765,69 @@ Deux règles valent partout :
   stade tapé une fois, contrairement à un chiffre de laboratoire daté,
   se relit comme actuel un an plus tard. S'il est un jour rangé, il
   portera sa date et le volet dira son âge.
+
+## Ce que l'âge fait à une ordonnance
+
+- **Où** : `src/elderly.rs`, `TABLE` : les mots qui désignent la
+  molécule ou la classe, un veto, un libellé, un seuil d'âge, un niveau,
+  le risque, l'alternative et la source. Lu depuis l'onglet « Âge » du
+  volet de biologie et depuis l'écran « Croisement ».
+- **La question qu'il pose** : celle que personne ne pose, parce que son
+  chiffre est déjà là. C'est le seul des quatre terrains dont **la
+  valeur est au dossier** : la date de naissance y est depuis la
+  création de la fiche, rien n'est à taper — et c'est exactement pour
+  cela qu'on ne la regarde jamais. Le rein demande d'aller chercher un
+  compte rendu, le foie de cliquer un stade ; l'âge ne demande rien.
+  Pendant ce temps les fiches livrées écrivent « chez le sujet âgé »
+  **889 fois**, et les lire demandait de les ouvrir une par une.
+- **Ce qui le sépare de son voisin rénal, et qui décide de tout** :
+  *le rein change la dose, l'âge change le choix*. Une conduite rénale
+  dit « réduire de moitié » ; une conduite d'âge dit « il existe
+  mieux ». D'où un champ que `renal` n'a pas et ne peut pas avoir —
+  `instead`, ce qu'on met à la place — et il est **obligatoire** : c'est
+  la règle de `crush.rs`, un « non » sans alternative laisse le problème
+  entier.
+- **Six règles, un test chacune** : *sans date de naissance, pas de
+  verdict* ; *un « non » nomme ce qu'il évite et ce qu'on met à la
+  place* ; *on n'envoie jamais d'un médicament à éviter vers un autre* ;
+  *l'alternative est un choix, jamais une posologie* ; *une forme locale
+  ne porte pas le niveau systémique* ; *un seuil d'âge vient d'une liste
+  publiée* — 75 ans pour la liste française, 65 pour STOPP et Beers, et
+  rien entre les deux.
+- **Les trois règles que le rein n'a pas, et ce qu'elles ont trouvé** :
+  le renvoi en rond a mordu sur la ligne des tricycliques, dont la
+  phrase nommait l'amitriptyline, que cette même ligne dit d'éviter — la
+  phrase a été réécrite pour ne nommer que ce qu'elle propose vraiment.
+  Le refus de la posologie garde `instead` sans milligrammes : la dose
+  dépend de l'indication, du poids et du rein. Et *aucune ligne ne
+  réclame une fiche qui ne parle jamais de l'âge* en a trouvé quatre —
+  Physiotens, Arcoxia, Latuda, Praxilène : trois fiches ont été
+  complétées sur ce que l'âge y change, et la quatrième a fait retirer
+  sa ligne.
+- **Deux niveaux et pas trois** : le second axe de la liste française —
+  les médicaments « à efficacité discutable » — n'y est pas, et c'est
+  une frontière et non un oubli. Une efficacité modeste est une question
+  de revue d'ordonnance, pas une question d'âge. La ligne du
+  naftidrofuryl a été écrite puis retirée pour cette raison exacte : sa
+  fiche dit « niveau de preuve modeste » et ne dit rien de l'âge. Un
+  niveau sans membre est un niveau qui attire la mauvaise ligne
+  suivante.
+- **Ce qu'il ne dit jamais** : « arrêtez ». Arrêter brutalement un
+  psychotrope chez un sujet âgé expose davantage que de le poursuivre,
+  et le pied du panneau l'écrit.
+- **Ajouter une ligne** : une entrée `Inappropriate`, sa source, son
+  risque, son alternative. Vérifier le mot cherché avec la base livrée
+  avant de s'y fier — « fer » attrape le cholécalciférol et l'interféron
+  — et `no_needle_of_the_table_is_dead` refuse un mot que rien
+  n'atteint. L'ordre compte : la ligne précise passe avant la ligne
+  large, et `the_first_row_that_claims_a_box_is_the_one_that_speaks` le
+  tient sur quatre boîtes.
+- **Réécrivable** : `phrases()` / `resolve()`, document « Sujet âgé ».
+  L'adresse est le libellé de la ligne **et le rôle de la phrase** — le
+  risque ou l'alternative.
+- **Le cliquet** : `the_table_only_ever_grows`, un plancher sur le
+  nombre de lignes, écrit une fois dans une constante que le message
+  relit.
 
 ## Ce qu'on peut écraser
 

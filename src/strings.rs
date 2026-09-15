@@ -666,6 +666,7 @@ livre = "Une phrase qui n'est plus livrée"
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
             ("crush.rs", include_str!("crush.rs")),
+            ("elderly.rs", include_str!("elderly.rs")),
             ("entretien.rs", include_str!("entretien.rs")),
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
@@ -1300,18 +1301,20 @@ livre = "Une phrase qui n'est plus livrée"
                     }
                 ),
             ),
-            // Le manuel annonce **cinq** lectures sous la biologie, et
-            // la sixième attend — le foie n'a pas de panneau côté
-            // patient. Le jour où il en aura un, c'est cette phrase-là
-            // qui mentira, sur l'écran que l'officine lit pour
-            // apprendre ce que l'application sait faire.
+            // Le manuel annonce **six** lectures sous la biologie, et la
+            // septième attend — le foie n'a pas de panneau côté patient.
+            // Le jour où il en aura un, c'est cette phrase-là qui
+            // mentira, sur l'écran que l'officine lit pour apprendre ce
+            // que l'application sait faire. C'est arrivé à la
+            // cinquième : l'onglet de l'âge est entré, et le manuel
+            // disait toujours « cinq ».
             (
                 "assets/aide.md",
                 AIDE,
                 format!(
                     "{} lectures de la même ordonnance",
                     match crate::app::BIO_SIDE_TABS {
-                        5 => "cinq",
+                        6 => "six",
                         n => panic!(
                             "la biologie porte {n} lectures : l'écrire en toutes \
                              lettres dans le manuel et ici"
@@ -1452,6 +1455,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("biology.rs", include_str!("biology.rs")),
             ("classes.rs", include_str!("classes.rs")),
             ("crush.rs", include_str!("crush.rs")),
+            ("elderly.rs", include_str!("elderly.rs")),
             ("cyp.rs", include_str!("cyp.rs")),
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
@@ -1519,6 +1523,7 @@ livre = "Une phrase qui n'est plus livrée"
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
             ("crush.rs", include_str!("crush.rs")),
+            ("elderly.rs", include_str!("elderly.rs")),
             ("cyp.rs", include_str!("cyp.rs")),
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
@@ -1585,6 +1590,7 @@ livre = "Une phrase qui n'est plus livrée"
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
             ("crush.rs", include_str!("crush.rs")),
+            ("elderly.rs", include_str!("elderly.rs")),
             ("entretien.rs", include_str!("entretien.rs")),
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
