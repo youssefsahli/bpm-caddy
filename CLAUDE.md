@@ -864,7 +864,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 33 regions now set
+  fold is the control you came to use. 34 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -899,7 +899,14 @@ add clicking and typing; it is not the price of entry.
   takes two rows of a band capped at a third of the pane, leaving
   nothing for the chips — the screen showed « Depuis le dossier », a
   field, and **not one line of what is being crossed**, on the view that
-  exists for exactly that.
+  exists for exactly that. The thirty-fourth is the companion's own band
+  of gestures, and it came with the cap that made it scrollable at all:
+  the five buttons are measured, and they were measured *and uncapped*,
+  so on a window dragged down to its floor they took the whole body —
+  `split_rows` returned an answer one pixel tall and laid the last row
+  of buttons under the bottom of the window. Capped, what passes over
+  the cap is a gesture, and a gesture behind a floating bar is a gesture
+  that does not exist.
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A

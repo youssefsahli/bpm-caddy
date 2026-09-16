@@ -47664,6 +47664,65 @@ impl App {
     /// portable.
     const COMPANION_SIZE: [f32; 2] = [560.0, 420.0];
 
+    /// Les cinq gestes de la barre, **dans l'ordre où elle les dessine**.
+    ///
+    /// Écrits une fois : la rangée est mesurée avant d'être carvée, le
+    /// plancher de la fenêtre se prend sur le plus large d'entre eux, et
+    /// le dessin les pose. Trois lectures d'une même liste, et ce
+    /// fichier sait ce que deviennent deux écritures d'une même chose —
+    /// `every_control_a_title_band_draws_is_measured_with_it` existe
+    /// parce que trois bandes annonçaient deux rangées et en
+    /// dessinaient trois.
+    const COMPANION_ACTS: [(&'static str, &'static str, CompanionAct); 5] = [
+        (
+            "companion_card",
+            "companion_card_tooltip",
+            CompanionAct::Card,
+        ),
+        (
+            "companion_cross",
+            "companion_cross_tooltip",
+            CompanionAct::Cross,
+        ),
+        (
+            "companion_trod",
+            "companion_trod_tooltip",
+            CompanionAct::Trod,
+        ),
+        (
+            "companion_scan",
+            "companion_scan_tooltip",
+            CompanionAct::Scan,
+        ),
+        (
+            "companion_stup",
+            "companion_stup_tooltip",
+            CompanionAct::Stup,
+        ),
+    ];
+
+    /// Ce que la réponse garde quoi qu'il arrive, **en lignes**.
+    ///
+    /// Une : le nom de la fiche lue. Le plafond posé sur la rangée des
+    /// gestes existe pour que la réponse ne **disparaisse** pas, non
+    /// pour lui réserver une part confortable — et entre une phrase sous
+    /// le pli et un bouton sous le pli, c'est la phrase qui passe
+    /// dessous. La réponse est un pavé de texte à barre pleine, qu'on
+    /// lit et qu'on fait défiler ; une rangée de boutons ne se lit pas
+    /// comme quelque chose qui défile, et un geste qu'on ne voit pas est
+    /// un geste qui n'existe pas.
+    ///
+    /// Deux et trois ont été essayées et mesurées : à 560 × 420 et
+    /// `text_scale = 1,6`, où le corps vaut deux cent soixante-dix-neuf
+    /// pixels, elles font retomber les cinq gestes sur **une** rangée et
+    /// cachent « Délivrance ». `label_line` porte déjà sa gouttière, ce
+    /// qui les rend plus chères qu'elles n'en ont l'air.
+    ///
+    /// **En lignes, jamais en pixels** : un plancher écrit en pixels ne
+    /// suit pas `[ui] text_scale`, et c'est la personne qui agrandit le
+    /// texte qui perdrait la ligne.
+    const COMPANION_ANSWER_LINES: f32 = 1.0;
+
     /// Réduire la fenêtre à la barre, ou la rendre.
     ///
     /// Le plancher de taille est déplacé avec elle : la fenêtre est
@@ -47675,12 +47734,11 @@ impl App {
         if self.companion {
             self.companion_was = Some(ctx.screen_rect().size());
             self.companion_query.clear();
-            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
-                320.0, 200.0,
-            )));
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::from(
-                Self::COMPANION_SIZE,
-            )));
+            // La taille et le plancher sont posés à la première image
+            // dessinée, où un `Ui` existe : le plancher est **mesuré**
+            // (voir `companion_floor`), et il n'y a pas d'autre endroit
+            // d'où le mesurer. C'est le même chemin que la clé de vue.
+            self.companion_sized = false;
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::AlwaysOnTop,
             ));
@@ -47885,6 +47943,106 @@ impl App {
                 })
             };
         }
+    }
+
+    /// Le plancher de la fenêtre du compagnon : ce que ses cinq bandes
+    /// demandent pour se dessiner, **mesuré** dans le style en cours.
+    ///
+    /// « 320 × 200 » était un chiffre et non une mesure — c'est le
+    /// défaut que ce fichier nomme partout ailleurs. La fenêtre naît
+    /// avec un plancher de 960 × 640, qu'un gestionnaire qui l'applique
+    /// rendrait large de neuf cent soixante pixels — c'est-à-dire pas un
+    /// compagnon —, et le déplacer demandait un nombre. Celui qui y
+    /// était laissait descendre la barre sous ce qu'elle sait dessiner :
+    /// à `text_scale = 1,6`, deux cents pixels de haut ne portent ni la
+    /// réponse ni les gestes, et `motif::split_rows` posait les seconds
+    /// sous le bas de la fenêtre.
+    ///
+    /// Le corps au-dessous duquel la barre ne sait plus se dessiner : la
+    /// rangée des autres réponses, le plancher de la réponse, une rangée
+    /// de gestes, et les deux gouttières entre les trois.
+    ///
+    /// Écrit **une fois** : `companion_floor` le remonte en hauteur de
+    /// fenêtre, et le test le redescend pour balayer `companion_bands`
+    /// à partir de là. Deux écritures de cette hauteur laisseraient la
+    /// fenêtre descendre là où le partage n'a plus rien à donner.
+    fn companion_body_floor(row_h: f32, line: f32, gap: f32) -> f32 {
+        2.0 * row_h + Self::COMPANION_ANSWER_LINES * line + 2.0 * gap
+    }
+
+    /// Cinq bandes : la tête, le champ, et le corps — voir
+    /// [`Self::companion_body_floor`]. En largeur, le plus large des
+    /// cinq gestes : au-dessous, la rangée ne pose plus un seul bouton
+    /// entier, et un bouton tranché dans sa largeur est un bouton dont
+    /// on ne lit plus le nom.
+    ///
+    /// **Et ce que le panneau prend autour de son contenu est mesuré**,
+    /// jamais estimé : `companion_floor` est appelée dans le `Ui` du
+    /// panneau, et l'écart entre l'écran et son rectangle *est* la
+    /// marge. Estimée, elle valait seize pixels de moins que la réalité
+    /// — ce qui est exactement assez pour qu'un plancher promette une
+    /// rangée de gestes que la fenêtre ne porte pas.
+    fn companion_floor(ui: &egui::Ui) -> egui::Vec2 {
+        let gap = ui.spacing().item_spacing.y;
+        let row = Self::row_height(ui);
+        let line = Self::label_line(ui);
+        let widest = Self::COMPANION_ACTS
+            .into_iter()
+            .map(|(l, _, _)| Self::button_width(ui, tr(l)))
+            .fold(0.0_f32, f32::max);
+        let chrome = ui.ctx().screen_rect().size() - ui.max_rect().size();
+        egui::vec2(
+            widest + (ui.available_width() - Self::scrolled_width(ui, ui.available_width())),
+            // La tête, le champ, les deux gouttières qui les séparent du
+            // corps, et le corps.
+            2.0 * row + 2.0 * gap + Self::companion_body_floor(row, line, gap),
+        ) + chrome
+    }
+
+    /// Comment le corps de la barre se partage : les autres réponses, la
+    /// réponse, les gestes.
+    ///
+    /// **Hors de la boucle de dessin pour être mesurable**, et écrit une
+    /// fois pour les trois rectangles — `motif::split_rows` lit un zéro
+    /// comme « le reste », ce qui donnait au corps deux écritures de sa
+    /// hauteur.
+    ///
+    /// La règle est celle que ce fichier écrit pour toute bande dont la
+    /// hauteur dépend de son contenu : **mesurée *et* plafonnée**. Les
+    /// gestes sont cinq, ils prennent deux rangées à `text_scale = 1,6`
+    /// et trois sur une fenêtre étroite ; non plafonnés, ils prenaient
+    /// le corps entier, la réponse était rendue haute d'un pixel et la
+    /// dernière rangée de boutons était posée sous le bas de la fenêtre.
+    ///
+    /// **Et le plafond est un plancher sous la réponse, exprimé en
+    /// lignes** — jamais une part de la bande. La moitié du corps a été
+    /// essayée : à 560 × 420 et `text_scale = 1,6`, où les deux rangées
+    /// de gestes tiennent largement, elle en cachait une pour rien.
+    /// [`Self::COMPANION_ANSWER_LINES`] est ce que la réponse garde, et
+    /// les gestes prennent le reste en **rangées entières** — une rangée
+    /// de boutons tranchée par le bas se lit « cassé » et non « il y en a
+    /// d'autres ». Ce qui passe par-dessus défile, il n'est pas perdu.
+    fn companion_bands(
+        body: f32,
+        row_h: f32,
+        line: f32,
+        gap: f32,
+        acts: f32,
+        others: bool,
+    ) -> [f32; 3] {
+        let matches = if others { row_h } else { 0.0 };
+        // Deux gouttières quand la rangée des autres réponses est là,
+        // une sinon : *n* bandes en comptent *n − 1*.
+        let gutters = if others { 2.0 * gap } else { gap };
+        let rest = (body - matches - gutters).max(0.0);
+        // Ce que les gestes peuvent prendre : tout sauf le plancher de
+        // la réponse — et jamais un nombre négatif. `whole_rows` garde
+        // toujours une rangée, alors sur une fenêtre plus courte que son
+        // propre plancher c'est `rest` qui borne : rien n'est dessiné
+        // hors du corps.
+        let cap = (rest - Self::COMPANION_ANSWER_LINES * line).max(0.0);
+        let acts_h = whole_rows(cap, row_h, gap, acts).min(rest);
+        [matches, (rest - acts_h).max(0.0), acts_h]
     }
 
     /// Quels rangs la rangée des autres réponses garde, autour de celui
@@ -48205,6 +48363,21 @@ impl App {
             }
         }
         egui::CentralPanel::default().show(ctx, |ui| {
+            // **La taille et le plancher sont posés ici, à la première
+            // image dessinée**, et non au basculement : le plancher est
+            // mesuré (`companion_floor`), et un `Ui` est le seul endroit
+            // d'où mesurer une fonte et un espacement. La fenêtre garde
+            // sa taille une image de plus, ce qui ne se voit pas ; un
+            // plancher deviné, lui, laissait descendre la barre sous ce
+            // qu'elle sait dessiner.
+            if !self.companion_sized {
+                self.companion_sized = true;
+                let floor = Self::companion_floor(ui);
+                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(floor));
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
+                    egui::Vec2::from(Self::COMPANION_SIZE).max(floor),
+                ));
+            }
             // **La tête dit le dossier, et non le nom de la fenêtre.**
             // « Compagnon — F9 » répétait ce que F9 venait de faire, sur
             // une rangée entière d'une fenêtre qui en compte cinq ;
@@ -48266,44 +48439,43 @@ impl App {
             }
             let body = ui.available_rect_before_wrap();
             let gap = ui.spacing().item_spacing.y;
-            // **La rangée des gestes est mesurée, pas écrite « une
-            // rangée ».** Ils sont cinq depuis que « Croiser » existe :
-            // à `text_scale = 1,6` ils en prennent deux, et une bande
-            // qui en réserve une dessine la seconde sous le bord de la
-            // fenêtre — c'est-à-dire nulle part. Mêmes largeurs que le
-            // dessin, dans le même ordre.
-            let acts = Self::wrapped_rows_of(
-                ui,
-                ui.available_width(),
-                [
-                    tr("companion_card"),
-                    tr("companion_cross"),
-                    tr("companion_trod"),
-                    tr("companion_scan"),
-                    tr("companion_stup"),
-                ]
-                .into_iter()
-                .map(|l| Self::button_width(ui, l)),
-            );
-            let btn_h = acts * Self::row_height(ui) + (acts - 1.0) * gap + 8.0;
             // La rangée des autres réponses ne se dessine que s'il y en
             // a : une fiche trouvée seule n'a pas d'autres, et une
             // rangée vide au-dessus d'une réponse se lit comme une
             // intention.
-            //
-            // **Et elle est retirée de la liste, pas mise à zéro.**
-            // `motif::split_rows` lit un zéro comme « ce que veut cette
-            // rangée est le reste », et non comme « rien » : demandée à
-            // zéro, la rangée des autres fiches prenait la moitié de la
-            // place du corps, et la réponse se dessinait sous un vide de
-            // cent pixels qu'aucun réglage n'expliquait.
             let others = read.1.hits.len() > 1;
-            let heights: Vec<f32> = if others {
-                vec![Self::row_height(ui), 0.0, btn_h]
-            } else {
-                vec![0.0, btn_h]
-            };
-            let split = motif::split_rows(body, &heights, gap);
+            // **La rangée des gestes est mesurée, pas écrite « une
+            // rangée ».** Ils sont cinq depuis que « Croiser » existe :
+            // à `text_scale = 1,6` ils en prennent deux, et une bande
+            // qui en réserve une dessine la seconde sous le bord de la
+            // fenêtre — c'est-à-dire nulle part. Mêmes libellés que le
+            // dessin, dans le même ordre, et sur la largeur qui reste
+            // **dedans** une fois que la bande a pris sa barre.
+            let acts = Self::wrapped_rows_of(
+                ui,
+                Self::scrolled_width(ui, body.width()),
+                Self::COMPANION_ACTS
+                    .into_iter()
+                    .map(|(l, _, _)| Self::button_width(ui, tr(l))),
+            );
+            // Le partage du corps, écrit une fois et à part : voir
+            // `companion_bands`.
+            let heights = Self::companion_bands(
+                body.height(),
+                Self::row_height(ui),
+                Self::label_line(ui),
+                gap,
+                acts,
+                others,
+            );
+            // **Et la rangée des autres réponses est retirée de la
+            // liste, jamais demandée à zéro.** `motif::split_rows` lit un
+            // zéro comme « ce que veut cette rangée est le reste », et
+            // non comme « rien » : demandée à zéro, elle prenait la
+            // moitié de la place du corps, et la réponse se dessinait
+            // sous un vide de cent pixels qu'aucun réglage n'expliquait.
+            let split =
+                motif::split_rows(body, if others { &heights[..] } else { &heights[1..] }, gap);
             let (answer, acts_rect) = if others {
                 Self::companion_matches(ui, split[0], &read.1, &mut self.companion_pick);
                 (split[1], split[2])
@@ -48412,48 +48584,35 @@ impl App {
                         }
                     });
             });
-            // Les quatre gestes. Ils rendent la fenêtre **et** ouvrent
+            // Les cinq gestes. Ils rendent la fenêtre **et** ouvrent
             // l'écran : un bouton qui préparerait quelque chose derrière
             // une barre de quatre cents pixels laisserait chercher où il
             // s'est passé.
             motif::inside(ui, acts_rect, |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    let card = read.1.hits.get(read.1.pick).map(|d| d.id);
-                    if motif::button_enabled(ui, tr("companion_card"), card.is_some())
-                        .on_hover_text(tr("companion_card_tooltip"))
-                        .clicked()
-                    {
-                        if let Some(id) = card {
-                            go = Some(CompanionGo::Card(id));
-                        }
-                    }
-                    if motif::button_enabled(ui, tr("companion_cross"), card.is_some())
-                        .on_hover_text(tr("companion_cross_tooltip"))
-                        .clicked()
-                    {
-                        if let Some(id) = card {
-                            go = Some(CompanionGo::Cross(id));
-                        }
-                    }
-                    if motif::button(ui, tr("companion_trod"))
-                        .on_hover_text(tr("companion_trod_tooltip"))
-                        .clicked()
-                    {
-                        go = Some(CompanionGo::Trod);
-                    }
-                    if motif::button(ui, tr("companion_scan"))
-                        .on_hover_text(tr("companion_scan_tooltip"))
-                        .clicked()
-                    {
-                        go = Some(CompanionGo::Scan);
-                    }
-                    if motif::button(ui, tr("companion_stup"))
-                        .on_hover_text(tr("companion_stup_tooltip"))
-                        .clicked()
-                    {
-                        go = Some(CompanionGo::Stup);
-                    }
-                });
+                // **Barre pleine**, comme la réponse au-dessus : la
+                // bande est plafonnée à la moitié du corps, et ce qui
+                // passe par-dessus est un geste. La barre d'egui flotte
+                // — invisible tant que le pointeur n'en approche pas —,
+                // et une rangée de boutons qu'on ne voit pas est une
+                // rangée de boutons qui n'existe pas.
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("companion_acts")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            let card = read.1.hits.get(read.1.pick).map(|d| d.id);
+                            for (label, note, act) in Self::COMPANION_ACTS {
+                                let on = !act.needs_card() || card.is_some();
+                                if motif::button_enabled(ui, tr(label), on)
+                                    .on_hover_text(tr(note))
+                                    .clicked()
+                                {
+                                    go = act.go(card);
+                                }
+                            }
+                        });
+                    });
             });
         });
         // La lecture est rendue au champ : c'est elle que l'image
@@ -48526,6 +48685,43 @@ impl App {
         let cut: String = first.chars().take(MAX).collect();
         let cut = cut.rsplit_once(' ').map_or(cut.as_str(), |(head, _)| head);
         Some(format!("{cut}…"))
+    }
+}
+
+/// Un des cinq gestes de la barre, et ce qu'il ouvre.
+///
+/// Il existe pour que la liste des gestes soit écrite **une fois** : la
+/// rangée est mesurée avant d'être carvée, le plancher de la fenêtre se
+/// prend sur le plus large d'entre eux, et le dessin les pose. Trois
+/// lectures d'une même liste, et une liste recopiée vieillit là où
+/// personne ne la relit.
+#[derive(Clone, Copy)]
+enum CompanionAct {
+    Card,
+    Cross,
+    Trod,
+    Scan,
+    Stup,
+}
+
+impl CompanionAct {
+    /// Là où il mène, avec la fiche lue quand il en demande une.
+    fn go(self, card: Option<i64>) -> Option<CompanionGo> {
+        match self {
+            CompanionAct::Card => card.map(CompanionGo::Card),
+            CompanionAct::Cross => card.map(CompanionGo::Cross),
+            CompanionAct::Trod => Some(CompanionGo::Trod),
+            CompanionAct::Scan => Some(CompanionGo::Scan),
+            CompanionAct::Stup => Some(CompanionGo::Stup),
+        }
+    }
+
+    /// Ceux qui portent sur la fiche lue. Sans fiche ils gardent leur
+    /// place et cessent de répondre : une rangée qui se recompose parce
+    /// qu'une recherche n'a rien rendu est une rangée dont les gestes
+    /// changent de place sous le doigt.
+    fn needs_card(self) -> bool {
+        matches!(self, CompanionAct::Card | CompanionAct::Cross)
     }
 }
 
@@ -48900,15 +49096,8 @@ impl eframe::App for App {
         // pixels — la seule forme qu'il n'a jamais à l'usage. La taille
         // d'avant est retenue comme au basculement, pour que F9 la
         // rende.
-        if self.companion && !self.companion_sized {
-            self.companion_sized = true;
+        if self.companion && self.companion_was.is_none() {
             self.companion_was = Some(ctx.screen_rect().size());
-            ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
-                320.0, 200.0,
-            )));
-            ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(egui::Vec2::from(
-                Self::COMPANION_SIZE,
-            )));
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::AlwaysOnTop,
             ));
@@ -54864,6 +55053,119 @@ mod tests {
                 .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
             "sans TextWrapMode::Extend, une puce doit se couper"
         );
+    }
+
+    /// **Le corps de la barre garde une réponse à toute taille, et le
+    /// plancher de sa fenêtre est mesuré.**
+    ///
+    /// La rangée des gestes était mesurée et **non plafonnée** : cinq
+    /// boutons prennent deux rangées à `text_scale = 1,6` et trois sur
+    /// une fenêtre étroite, et le plancher de la fenêtre était écrit
+    /// « 320 × 200 » — un chiffre, pas une mesure. Descendue là,
+    /// `motif::split_rows` rendait une réponse haute d'un pixel *et*
+    /// posait la dernière rangée de boutons sous le bas de la fenêtre :
+    /// la barre ne montrait plus ni ce qu'elle a trouvé, ni par où en
+    /// sortir.
+    ///
+    /// Le test tient les deux bouts. `companion_bands` est balayée de la
+    /// hauteur du plancher à celle de la fenêtre ouverte, aux trois
+    /// échelles, avec et sans la rangée des autres réponses : rien ne
+    /// sort du corps, la réponse garde une ligne, les gestes gardent des
+    /// rangées **entières**. Et le plancher, mesuré par
+    /// `companion_floor` dans le style en cours, est une hauteur à
+    /// laquelle tout cela tient — c'est ce qu'il promet.
+    #[test]
+    fn the_companion_keeps_an_answer_at_every_size_it_allows() {
+        use super::App;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, egui::Vec2::ZERO));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    *seen.borrow_mut() = (
+                        App::row_height(ui),
+                        App::label_line(ui),
+                        ui.spacing().item_spacing.y,
+                        App::companion_floor(ui),
+                    );
+                });
+            });
+            let (row, line, gap, floor) = seen.take();
+            // Le corps que le plancher promet, et celui de la fenêtre
+            // ouverte — mesuré à 560 × 420 dans la vraie barre, aux trois
+            // échelles : 279 px à 1,6, 305 à 1,25, 331 à 1. Le chiffre
+            // n'est pas recalculé ici, il est **relevé**, parce que la
+            // relation entre la fenêtre et son corps passe par la marge
+            // du panneau et par deux rangées, et qu'une seconde écriture
+            // de cette relation dirait autre chose que le dessin.
+            let smallest = App::companion_body_floor(row, line, gap);
+            let largest = match scale {
+                s if s < 1.1 => 331.0,
+                s if s < 1.4 => 305.0,
+                _ => 279.0,
+            };
+            assert!(
+                floor.y > smallest && floor.x > 0.0,
+                "échelle {scale} : le plancher {floor:?} ne porte pas son corps"
+            );
+            assert!(
+                smallest <= largest,
+                "échelle {scale} : le corps promis ({smallest}) dépasse celui de la \
+                 fenêtre ouverte ({largest})"
+            );
+            for acts in [1.0_f32, 2.0, 3.0] {
+                for others in [false, true] {
+                    // Du corps du plancher à celui de la fenêtre ouverte,
+                    // pixel par pixel.
+                    let mut body = smallest;
+                    while body <= largest {
+                        let [m, answer, a] =
+                            App::companion_bands(body, row, line, gap, acts, others);
+                        let gutters = if others { 2.0 * gap } else { gap };
+                        assert!(
+                            m + answer + a + gutters <= body + 0.5,
+                            "échelle {scale}, corps {body}, {acts} rangée(s) de gestes : \
+                             {m} + {answer} + {a} n'y tiennent pas"
+                        );
+                        let keeps = App::COMPANION_ANSWER_LINES * line;
+                        assert!(
+                            answer >= keeps - 0.5,
+                            "échelle {scale}, corps {body}, {acts} rangée(s) de gestes : \
+                             la réponse ne garde que {answer} pour un plancher de {keeps}"
+                        );
+                        // Les gestes gardent des rangées entières : une
+                        // rangée de boutons tranchée par le bas se lit
+                        // « cassé » et non « il y en a d'autres ».
+                        let rows = ((a + gap) / (row + gap)).round();
+                        assert!(
+                            rows >= 1.0 && (a - (rows * row + (rows - 1.0) * gap)).abs() < 0.5,
+                            "échelle {scale}, corps {body} : la bande des gestes fait {a}, \
+                             ce qui n'est pas un nombre entier de rangées de {row}"
+                        );
+                        body += 1.0;
+                    }
+                }
+            }
+            // **Et le plafond ne cache rien qui tient.** Une part de la
+            // bande — la moitié, essayée d'abord — cachait « Délivrance »
+            // à 560 × 420 et `text_scale = 1,6`, où les deux rangées
+            // tiennent.
+            let [_, _, roomy] = App::companion_bands(largest, row, line, gap, 2.0, true);
+            assert!(
+                roomy >= 2.0 * row + gap - 0.5,
+                "échelle {scale} : dans la fenêtre ouverte, les deux rangées de gestes \
+                 tiennent et ne doivent pas être plafonnées ({roomy})"
+            );
+            // **Et la boucle mord** : la bande mesurée et non plafonnée —
+            // ce qu'elle était — ne laisse rien à la réponse au plancher.
+            let unplafonnee = 3.0 * row + 2.0 * gap + 8.0;
+            assert!(
+                smallest - row - 2.0 * gap - unplafonnee < line,
+                "échelle {scale} : non plafonnée, la rangée des gestes doit affamer \
+                 la réponse au plancher"
+            );
+        }
     }
 
     /// **La rangée des autres réponses est mesurée sur les noms qu'elle
