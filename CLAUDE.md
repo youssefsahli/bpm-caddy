@@ -201,7 +201,16 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `src/revue.rs` (what a set of treatments says about itself:
   doublons, associations, cascades — same shape, same discipline, and
   the same « two rules never make one reading » guard as `biology.rs`,
-  since `review` likewise runs the whole table. Here the key is the
+  since `review` likewise runs the whole table. Its `Without` shape
+  carries a **veto** as well, and for the reason `renal` and `gravidity`
+  carry theirs: a line the veto catches is not *named* by the trigger
+  group, which is what lets it supply what is missing instead. « A
+  methotrexate with no folic acid » could not be written without it —
+  the Lederfoline card says « antidote du méthotrexate » in its class,
+  so it was named by the group, and an ordonnance carrying only the
+  rescue was told it lacked one.
+  `a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice`
+  holds the four cases, and bites on the third. Here the key is the
   rule's **shape** — the variant, the group count, the `min` of a
   `Duplicate` — which is what keeps « Deux benzodiazépines » apart from
   « Trois sédatifs »: same words, different `min`, and that difference
@@ -235,7 +244,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1004 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1006 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -1718,7 +1727,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 1004 phrases were not, and they were exactly the ones
+always editable; 1006 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

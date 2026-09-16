@@ -562,6 +562,20 @@ Deux règles valent partout :
   absence n'a pas de nom, et la phrase dit ce qui n'y est pas. La règle
   se tait dès que la ligne manquante apparaît, et c'est ce que le test
   vérifie.
+- **Et son troisième membre, le veto** — celui que `renal` et
+  `gravidity` portent, pour la même raison. L'absence se cherche sur les
+  lignes que le groupe n'a **pas** nommées (c'est la correction du
+  Rimifon : un pharmacien qui écrit « pyridoxine à associer » sur la
+  fiche déclenchante faisait taire la règle). Une ligne nommée ne peut
+  donc pas fournir ce qui manque — et il existe des règles où la ligne
+  déclenchante est précisément celle qui comble. « Méthotrexate sans
+  acide folique » est le cas : la Lederfoline porte « antidote du
+  méthotrexate » dans sa classe, elle était donc *nommée* par le groupe,
+  et une ordonnance qui ne portait qu'elle recevait le reproche adressé
+  au sauvetage lui-même. Le veto l'écarte du groupe et lui rend sa voix.
+  Il est vide pour cinq des six règles et le restera :
+  `a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice`
+  tient les quatre cas, et mord sur le troisième.
 - **Test** : chaque règle doit pouvoir se déclencher sur la base livrée
   — pour un `Without`, la chose dont l'absence est le constat doit
   exister aussi, sans quoi la règle parle de la base et non du patient.

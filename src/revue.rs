@@ -97,11 +97,24 @@ enum Kind {
     /// méthotrexate » dans sa classe, elle est donc *nommée* par le
     /// groupe, et une ordonnance qui ne porterait qu'elle recevrait
     /// « méthotrexate sans acide folique » — c'est-à-dire un reproche
-    /// adressé au sauvetage lui-même. La règle n'est pas écrite pour
-    /// cette raison, et non par oubli : la sortir demanderait un veto
-    /// par ligne, comme `renal` et `gravidity` en ont un, et c'est un
-    /// changement de type que rien d'autre ne réclame aujourd'hui.
-    Without(&'static [&'static [&'static str]], &'static [&'static str]),
+    /// adressé au sauvetage lui-même.
+    ///
+    /// D'où le **troisième membre : le veto**, celui que `renal` et
+    /// `gravidity` portent déjà et pour la même raison. Une ligne qu'il
+    /// attrape n'est pas nommée par le groupe — donc elle n'est pas
+    /// *déclenchante* — et redevient par là même une ligne comme les
+    /// autres, capable de fournir ce qui manque. La Lederfoline sort du
+    /// groupe « méthotrexate » par le mot « antidote », et c'est alors
+    /// son acide folinique qui répond.
+    ///
+    /// Le veto est vide pour quatre des cinq règles, et il le restera :
+    /// il ne sert qu'aux règles dont la ligne déclenchante peut aussi
+    /// être celle qui comble.
+    Without(
+        &'static [&'static [&'static str]],
+        &'static [&'static str],
+        &'static [&'static str],
+    ),
 }
 
 struct Rule {
@@ -158,11 +171,22 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
                     Vec::new()
                 }
             }
-            Kind::Without(groups, absent) => {
+            Kind::Without(groups, absent, never) => {
                 let mut named: Vec<String> = Vec::new();
                 let mut complete = true;
                 for group in groups.iter() {
-                    let hit = matches(group);
+                    // **Le veto écarte la ligne du groupe**, il ne la
+                    // retire pas de l'ordonnance : elle cesse d'être
+                    // déclenchante et redevient capable de fournir.
+                    let hit: Vec<String> = matches(group)
+                        .into_iter()
+                        .filter(|name| {
+                            folded.iter().any(|(n, hay)| {
+                                n == name
+                                    && !never.iter().any(|w| crate::fuzzy::contains_folded(hay, w))
+                            })
+                        })
+                        .collect();
                     if hit.is_empty() {
                         complete = false;
                         break;
@@ -675,6 +699,7 @@ const RULES: &[Rule] = &[
                 "buprénorphine",
             ]],
             &["laxatif", "macrogol", "lactulose", "bisacodyl", "sterculia", "docusate"],
+            &[],
         ),
         severity: Severity::Warn,
         title: "Opioïde sans laxatif",
@@ -701,6 +726,7 @@ const RULES: &[Rule] = &[
                 "acide zolédronique",
                 "dénosumab",
             ],
+            &[],
         ),
         severity: Severity::Warn,
         title: "Corticoïde sans protection osseuse",
@@ -780,6 +806,7 @@ const RULES: &[Rule] = &[
                 "ciclésonide",
             ]],
             &["bêta-2", "salbutamol", "terbutaline", "bronchodilatateur"],
+            &[],
         ),
         severity: Severity::Warn,
         title: "Corticoïde inhalé sans traitement de crise",
@@ -1069,6 +1096,7 @@ const RULES: &[Rule] = &[
         kind: Kind::Without(
             &[&["anti-aromatase", "anastrozole", "létrozole", "exémestane"]],
             &["calcium", "vitamine D", "cholécalciférol", "bisphosphonate", "biphosphonate", "alendronate", "risédronate", "acide zolédronique", "dénosumab"],
+            &[],
         ),
         severity: Severity::Warn,
         title: "Anti-aromatase sans protection osseuse",
@@ -1130,8 +1158,26 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Without(
+            &[&["méthotrexate"]],
+            &["acide folique", "spéciafoldine", "folinique", "lederfoline"],
+            // **Le veto, et la raison d'être du troisième membre.** La
+            // Lederfoline porte « antidote du méthotrexate » dans sa
+            // classe : sans lui, elle serait *nommée* par le groupe, et
+            // une ordonnance qui ne porterait qu'elle recevrait
+            // « méthotrexate sans acide folique » — un reproche adressé
+            // au sauvetage lui-même. Écartée du groupe, elle redevient
+            // la ligne qui comble.
+            &["antidote"],
+        ),
+        severity: Severity::Warn,
+        title: "Méthotrexate sans acide folique",
+        detail: "L'acide folique se prescrit avec le méthotrexate hebdomadaire et rien sur cette ordonnance n'en porte : il divise par deux les effets qui font arrêter le traitement — les aphtes, les nausées, la cytolyse — sans rien lui retirer de son efficacité dans le rhumatisme ou le psoriasis. Il se prend à distance de la prise, jamais le même jour. Et rappeler la règle qui tue quand elle est oubliée : le méthotrexate est hebdomadaire, un jour fixe de la semaine, jamais quotidien.",
+    },
+    Rule {
+        kind: Kind::Without(
             &[&["isoniazide"]],
             &["vitamine b6", "pyridoxine"],
+            &[],
         ),
         severity: Severity::Warn,
         title: "Isoniazide sans vitamine B6",
@@ -1382,7 +1428,7 @@ mod tests {
                     rule.title,
                     words
                 ),
-                Kind::Without(groups, absent) => {
+                Kind::Without(groups, absent, _) => {
                     for group in groups.iter() {
                         assert!(
                             matches(group),
@@ -1491,6 +1537,37 @@ mod tests {
 
     /// What is *missing* only counts as a finding when the thing that
     /// should be there is not: the same ordonnance with a laxative on
+    /// **Le veto : une ligne qui déclenche ne doit pas pouvoir combler,
+    /// et une ligne qui comble ne doit pas déclencher.**
+    ///
+    /// La Lederfoline porte « antidote du méthotrexate » dans sa
+    /// classe. Sans veto, elle était *nommée* par le groupe de la règle
+    /// — donc déclenchante — et l'absence se cherchant sur les lignes
+    /// **non nommées**, elle ne pouvait plus fournir l'acide folinique
+    /// qu'elle est. Une ordonnance qui ne portait qu'elle recevait donc
+    /// « méthotrexate sans acide folique » : un reproche adressé au
+    /// sauvetage lui-même.
+    ///
+    /// Les quatre cas qui définissent la règle, et le troisième est
+    /// celui pour lequel le membre existe.
+    #[test]
+    fn a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice() {
+        let has = |ordo: &[Treatment], title: &str| review(ordo).iter().any(|p| p.title == title);
+        const TITLE: &str = "Méthotrexate sans acide folique";
+        let mtx = || t("Méthotrexate", "méthotrexate", "immunosuppresseur");
+        let folinique = || t("Lederfoline", "acide folinique", "antidote du méthotrexate");
+        let folique = || t("Spéciafoldine", "acide folique", "vitamine B9");
+
+        // Seul, le méthotrexate appelle l'acide folique.
+        assert!(has(&[mtx()], TITLE));
+        // Avec lui, la règle se tait.
+        assert!(!has(&[mtx(), folique()], TITLE));
+        // **Le cas du veto** : l'acide folinique comble aussi, et il ne
+        // déclenche pas — seul, il ne dit rien du tout.
+        assert!(!has(&[mtx(), folinique()], TITLE));
+        assert!(!has(&[folinique()], TITLE));
+    }
+
     /// it must say nothing.
     #[test]
     fn an_omission_is_a_finding_until_it_is_filled() {
@@ -1590,7 +1667,9 @@ mod tests {
         let twins = |a: &Kind, b: &Kind| match (a, b) {
             (Kind::Combination(x), Kind::Combination(y)) => paired(x, y),
             (Kind::Duplicate(x, m), Kind::Duplicate(y, n)) => m == n && same_group(x, y),
-            (Kind::Without(x, xa), Kind::Without(y, ya)) => paired(x, y) && same_group(xa, ya),
+            (Kind::Without(x, xa, xn), Kind::Without(y, ya, yn)) => {
+                paired(x, y) && same_group(xa, ya) && same_group(xn, yn)
+            }
             _ => false,
         };
         let mut doubled: Vec<String> = Vec::new();
