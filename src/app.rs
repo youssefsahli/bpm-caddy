@@ -3463,6 +3463,14 @@ struct Session {
     ddi_age: String,
     /// **Un stade, jamais un chiffre** : voir `ddi_hepatic_section`.
     ddi_stage: Option<crate::hepatic::Stage>,
+    /// Le chapitre du croisement sur lequel se poser en l'ouvrant.
+    ///
+    /// Posé par une puce du compagnon, lu une fois et effacé. Sans lui,
+    /// cliquer « Écraser · Ne pas écraser » ouvre un écran de huit
+    /// chapitres dont celui-là est le dernier, à plusieurs milliers de
+    /// pixels du haut — c'est-à-dire qu'on clique sur une réponse et
+    /// qu'on tombe sur une autre.
+    ddi_focus: Option<DdiSection>,
     /// Ce qu'on cherche dans l'écran des textes de l'interface.
     ui_text_query: String,
     /// Les surcharges telles qu'elles sont écrites dans `strings.toml`,
@@ -4326,6 +4334,7 @@ impl Session {
             ddi_dfg: String::new(),
             ddi_age: String::new(),
             ddi_stage: None,
+            ddi_focus: None,
             ui_text_query: String::new(),
             ui_texts: std::collections::HashMap::new(),
             ui_text_edit: None,
@@ -7417,7 +7426,56 @@ fn link_segments(
 /// Ce qui fait qu'une lecture du croisement est encore valable.
 type DdiKey = (Vec<i64>, String, String, Option<crate::hepatic::Stage>, u64);
 
-/// Ce que les quatre modules répondent d'une même liste.
+/// Un chapitre du croisement, **nommé pour qu'on puisse s'y poser**.
+///
+/// La vue en écrit huit, l'un sous l'autre dans une zone qui défile, et
+/// le compagnon renvoie ici en citant une table. Sans nom, il ne pouvait
+/// renvoyer qu'au haut de l'écran : on cliquait « Écraser · Ne pas
+/// écraser » et on tombait sur les cytochromes, avec plusieurs milliers
+/// de pixels à parcourir derrière une barre de défilement qui flotte.
+///
+/// `ALL` est lu par le test qui confronte cette liste au dessin : un
+/// chapitre nommé ici et qu'aucune section ne dessine est une puce qui
+/// renvoie dans le vide, et c'est ce que ce type existe pour empêcher.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum DdiSection {
+    /// Ce que les monographies du dossier disent les unes des autres,
+    /// cité. C'est la lecture que la puce « Ordonnance » rapporte.
+    Interactions,
+    Cyp,
+    HalfLife,
+    Revue,
+    Renal,
+    Hepatic,
+    Elderly,
+    Gravidity,
+    Crush,
+}
+
+impl DdiSection {
+    /// Les neuf chapitres, dans l'ordre où la vue les écrit.
+    ///
+    /// **Lu par le test et par lui seul**, et `#[cfg(test)]` dit
+    /// exactement cela : le dessin appelle une fonction par chapitre,
+    /// chacune avec ses arguments, et une boucle ne les remplacerait
+    /// pas. C'est un registre de vérification, pas un registre de
+    /// dessin — le compiler en production ferait du code que rien
+    /// n'appelle.
+    #[cfg(test)]
+    const ALL: [DdiSection; 9] = [
+        DdiSection::Interactions,
+        DdiSection::Cyp,
+        DdiSection::HalfLife,
+        DdiSection::Revue,
+        DdiSection::Renal,
+        DdiSection::Hepatic,
+        DdiSection::Elderly,
+        DdiSection::Gravidity,
+        DdiSection::Crush,
+    ];
+}
+
+/// Ce que les modules répondent d'une même liste.
 struct DdiReading {
     cyp: crate::cyp::Reading,
     /// **Résolues**, c'est-à-dire avec les réécritures de l'officine
@@ -7441,6 +7499,16 @@ struct DdiReading {
     /// l'écran nulle part : une feuille à imprimer, et rien d'autre.
     gravidity: Vec<crate::gravidity::Resolved>,
     crush: Vec<crate::crush::Resolved>,
+    /// Ce que les monographies de la liste disent les unes des autres,
+    /// cité.
+    ///
+    /// Le panneau s'intitule « ce que cette liste dit d'elle-même », et
+    /// c'était la seule chose qu'il ne montrait pas : les phrases que
+    /// les fiches écrivent en nommant leurs voisines vivaient dans le
+    /// bandeau du dossier, derrière un survol, et nulle part ici. La
+    /// puce « Ordonnance · N croisement(s) » du compagnon les rapporte
+    /// et ouvrait donc un écran qui ne les portait pas.
+    interactions: Vec<(String, String)>,
 }
 
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
@@ -10342,7 +10410,7 @@ impl App {
                                 .unwrap_or_default();
                             session.ui_text_edit = Some((key.to_owned(), value));
                         }
-                        Ok("ddi") => {
+                        Ok(v @ ("ddi" | "ddi_crush")) => {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
                             }
@@ -10393,6 +10461,17 @@ impl App {
                             // et ne conclut rien — ce qui est juste, et
                             // ne montre pas ce qu'elle sait faire.
                             session.ddi_age = "82".to_owned();
+                            // **Et l'écran tel qu'une puce du compagnon
+                            // l'ouvre**, posé sur le chapitre qu'elle
+                            // nomme. Sans cette clé, aucune capture ne
+                            // montre jamais le bas de ce panneau : il
+                            // écrit neuf chapitres, et les huit premiers
+                            // tiennent bien au-delà d'un écran de
+                            // comptoir. C'est aussi la seule façon de
+                            // voir que l'atterrissage se fait.
+                            if v == "ddi_crush" {
+                                session.ddi_focus = Some(DdiSection::Crush);
+                            }
                         }
                         Ok("explorer") => {
                             session.view = MainView::Explorer;
@@ -31799,6 +31878,10 @@ impl App {
             session.ddi_stage,
             session.drugs_rev,
         );
+        // **Lu une fois et effacé.** Un atterrissage qui resterait posé
+        // ramènerait l'écran à ce chapitre à chaque image, et il n'y
+        // aurait plus moyen d'en lire un autre.
+        let focus = session.ddi_focus.take();
         let mut read = session.ddi_read.take().filter(|(k, _)| *k == key);
         let read = read.take().unwrap_or_else(|| {
             (
@@ -31820,6 +31903,7 @@ impl App {
                         &session.content,
                     ),
                     crush: crate::crush::resolve(crate::crush::read(&terms), &session.content),
+                    interactions: interactions_between(picked),
                 },
             )
         });
@@ -31837,6 +31921,13 @@ impl App {
         motif::panel(ui, cols[0], Some(tr("ddi_title")), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
+                // **Barre pleine.** Huit chapitres l'un sous l'autre, et
+                // la barre d'egui flotte : invisible tant que le
+                // pointeur n'en approche pas, elle laissait croire que
+                // l'écran s'arrêtait aux cytochromes. Ce qui est sous le
+                // pli ici n'est pas de la garniture, c'est le sujet — et
+                // c'est aussi là qu'une puce du compagnon renvoie.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("ddi_readings")
                     .show(ui, |ui| {
@@ -31863,13 +31954,26 @@ impl App {
                                 ui.add_space(6.0);
                             }
                         }
+                        // Les huit chapitres, chacun précédé de son
+                        // atterrissage : la puce du compagnon a nommé
+                        // une table, et c'est sur elle qu'on se pose.
+                        Self::ddi_land(ui, focus, DdiSection::Interactions);
+                        Self::ddi_interactions_section(ui, &read.1.interactions);
+                        Self::ddi_land(ui, focus, DdiSection::Cyp);
                         Self::ddi_cyp_section(ui, reading);
+                        Self::ddi_land(ui, focus, DdiSection::HalfLife);
                         Self::ddi_half_life_section(ui, picked, reading);
+                        Self::ddi_land(ui, focus, DdiSection::Revue);
                         Self::ddi_revue_section(ui, &read.1.revue);
+                        Self::ddi_land(ui, focus, DdiSection::Renal);
                         Self::ddi_renal_section(ui, session, &read.1.renal);
+                        Self::ddi_land(ui, focus, DdiSection::Hepatic);
                         Self::ddi_hepatic_section(ui, session, &read.1.hepatic);
+                        Self::ddi_land(ui, focus, DdiSection::Elderly);
                         Self::ddi_elderly_section(ui, session, &read.1.elderly);
+                        Self::ddi_land(ui, focus, DdiSection::Gravidity);
                         Self::ddi_gravidity_section(ui, &read.1.gravidity);
+                        Self::ddi_land(ui, focus, DdiSection::Crush);
                         Self::ddi_crush_section(ui, &read.1.crush);
                     });
             });
@@ -32307,6 +32411,59 @@ impl App {
     /// du rein et dit que la clairance manque. C'est `renal::read` qui
     /// le garantit, et non cette vue : il n'y a pas de place, dans le
     /// type qu'il rend, pour écrire une conduite sans clairance.
+    /// Se poser sur le chapitre qu'une puce du compagnon nommait.
+    ///
+    /// Appelé **avant** le titre de chaque chapitre : `scroll_to_cursor`
+    /// place le curseur d'écriture en haut de la zone, et le curseur est
+    /// alors exactement là où le titre va s'écrire.
+    fn ddi_land(ui: &mut egui::Ui, focus: Option<DdiSection>, here: DdiSection) {
+        if focus == Some(here) {
+            ui.scroll_to_cursor(Some(egui::Align::TOP));
+        }
+    }
+
+    /// Ce que les fiches de cette liste disent les unes des autres.
+    ///
+    /// **Rien n'est déduit** : ce sont les phrases des monographies,
+    /// citées, avec la paire qu'elles concernent. C'est la plus ancienne
+    /// lecture de l'application et la seule que ce panneau ne portait
+    /// pas, alors qu'il s'intitule « ce que cette liste dit d'elle-même »
+    /// — elle vivait dans le bandeau du dossier, derrière un survol, et
+    /// la puce « Ordonnance » du compagnon renvoyait donc ici sans l'y
+    /// trouver.
+    fn ddi_interactions_section(ui: &mut egui::Ui, pairs: &[(String, String)]) {
+        motif::section(ui, tr("ddi_inter_tab"));
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("ddi_inter_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(tr("ddi_inter_footer"));
+        ui.add_space(4.0);
+        if pairs.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("ddi_inter_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for (pair, sentence) in pairs {
+            ui.label(
+                egui::RichText::new(pair.as_str())
+                    .size(motif::pt(ui, 12.0))
+                    .color(motif::alert()),
+            );
+            ui.label(
+                egui::RichText::new(sentence.as_str())
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+            ui.add_space(6.0);
+        }
+        ui.add_space(6.0);
+    }
+
     /// Ce que la grossesse et l'allaitement font à cette liste.
     ///
     /// **La même table qu'au dossier, et la même retenue.** Une table
@@ -48362,16 +48519,18 @@ impl App {
     /// La bande des signaux : ce que les tables disent de cette fiche,
     /// en puces.
     ///
-    /// Rend `true` quand on en a cliqué une — le croisement répond en
-    /// entier à ce que la puce annonce en trois mots.
+    /// Rend le chapitre de celle qu'on a cliquée — le croisement répond
+    /// en entier à ce que la puce annonce en trois mots, et il s'ouvre
+    /// **sur ce chapitre-là** : il en écrit huit, et se poser en haut
+    /// après avoir cliqué « Écraser » serait répondre à côté.
     ///
     /// **Une puce ne se coupe pas en deux.** `horizontal_wrapped`
     /// enveloppe le texte *dans* une étiquette autant qu'entre deux, et
     /// une puce coupée laisse deux fonds colorés là où il y en a un —
     /// `TextWrapMode::Extend` garde l'étiquette entière et laisse la
     /// rangée envelopper, ce qu'elle sait faire.
-    fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> bool {
-        let mut clicked = false;
+    fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> Option<DdiSection> {
+        let mut clicked = None;
         if read.silent {
             // **Le silence n'est pas une autorisation** : la première
             // règle de `crush.rs`. Une bande vide se lirait comme « rien
@@ -48386,10 +48545,10 @@ impl App {
                 )
                 .wrap(),
             );
-            return false;
+            return None;
         }
         if read.signals.is_empty() {
-            return false;
+            return None;
         }
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
@@ -48410,7 +48569,7 @@ impl App {
                     .on_hover_text(format!("{}\n\n{}", s.hover, tr("companion_signal_open")))
                     .clicked()
                 {
-                    clicked = true;
+                    clicked = Some(s.section);
                 }
             }
         });
@@ -48689,8 +48848,8 @@ impl App {
                         // d'identification y prenait celle de la bande —
                         // la capture s'ouvrait sur un nom, une molécule,
                         // et rien de ce que les tables ont à dire.
-                        if Self::companion_band(ui, &read.1) {
-                            go = Some(CompanionGo::Cross(d.id));
+                        if let Some(section) = Self::companion_band(ui, &read.1) {
+                            go = Some(CompanionGo::Cross(d.id, Some(section)));
                         }
                         // Ce qui doit se dire au comptoir avant tout le
                         // reste, quand la fiche le porte — **au-dessus**
@@ -48787,7 +48946,7 @@ impl App {
                         session.open_drug_card(d);
                     }
                 }
-                CompanionGo::Cross(id) => {
+                CompanionGo::Cross(id, section) => {
                     // La liste du dossier ouvert **et** la fiche
                     // cherchée : on ouvre l'écran sur la question qu'on
                     // vient de poser, et non sur un écran vide où il
@@ -48798,6 +48957,7 @@ impl App {
                     if !session.ddi_list.contains(&id) {
                         session.ddi_list.push(id);
                     }
+                    session.ddi_focus = section;
                     session.view = MainView::Ddi;
                 }
                 CompanionGo::Trod => {
@@ -48870,7 +49030,10 @@ impl CompanionAct {
     fn go(self, card: Option<i64>) -> Option<CompanionGo> {
         match self {
             CompanionAct::Card => card.map(CompanionGo::Card),
-            CompanionAct::Cross => card.map(CompanionGo::Cross),
+            // Depuis un bouton, aucun chapitre n'est nommé : on ouvre
+            // le croisement en haut. Ce sont les puces qui savent de
+            // quelle table elles viennent.
+            CompanionAct::Cross => card.map(|id| CompanionGo::Cross(id, None)),
             CompanionAct::Trod => Some(CompanionGo::Trod),
             CompanionAct::Scan => Some(CompanionGo::Scan),
             CompanionAct::Stup => Some(CompanionGo::Stup),
@@ -48902,7 +49065,7 @@ enum CompanionGo {
     /// compagnon la passe donc entière plutôt que d'ouvrir un écran vide
     /// où il faudrait recomposer à la main ce qu'on avait déjà sous les
     /// yeux.
-    Cross(i64),
+    Cross(i64, Option<DdiSection>),
     Trod,
     Scan,
     Stup,
@@ -48967,6 +49130,14 @@ struct CompanionSignal {
     tone: CompanionTone,
     /// La portée de la table, puis la conduite.
     hover: String,
+    /// Le chapitre du croisement qui porte cette table.
+    ///
+    /// **Une puce renvoie là où sa table se lit**, et non « en haut de
+    /// l'écran ». Le croisement en écrit huit : cliquer « Écraser · Ne
+    /// pas écraser » et tomber sur les cytochromes, c'est cliquer sur
+    /// une réponse et en obtenir une autre. Le type l'impose plutôt que
+    /// de l'espérer — il n'y a pas de puce sans chapitre.
+    section: DdiSection,
 }
 
 /// Ce que le compagnon a à dire d'une question.
@@ -49111,6 +49282,7 @@ fn companion_signals(
                 chip: trf("companion_sig_cross", pairs.len()),
                 tone: CompanionTone::Stop,
                 hover,
+                section: DdiSection::Interactions,
             });
         }
         // Et ce que les cytochromes en disent, qui n'est pas la même
@@ -49138,6 +49310,7 @@ fn companion_signals(
                 chip: trf("companion_sig_cyp", mine.len()),
                 tone: CompanionTone::Watch,
                 hover,
+                section: DdiSection::Cyp,
             });
         }
     }
@@ -49165,6 +49338,7 @@ fn companion_signals(
                 _ => CompanionTone::Ok,
             },
             hover,
+            section: DdiSection::Crush,
         });
     }
     // La grossesse et l'allaitement : **deux questions**, et la puce
@@ -49204,6 +49378,7 @@ fn companion_signals(
                 _ => CompanionTone::Watch,
             },
             hover,
+            section: DdiSection::Gravidity,
         });
     }
     // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
@@ -49221,6 +49396,7 @@ fn companion_signals(
                 None => CompanionTone::Pending,
             },
             hover: format!("{}\n\n{}", tr("renal_scope"), f.conduct),
+            section: DdiSection::Renal,
         });
     }
     // Et l'âge, dont le chiffre est déjà au dossier : le rein demande
@@ -49243,6 +49419,7 @@ fn companion_signals(
                 None => CompanionTone::Pending,
             },
             hover,
+            section: DdiSection::Elderly,
         });
     }
     out
@@ -55216,6 +55393,89 @@ mod tests {
                 .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
             "sans TextWrapMode::Extend, une puce doit se couper"
         );
+    }
+
+    /// **Une puce du compagnon renvoie à un chapitre que le croisement
+    /// dessine vraiment.**
+    ///
+    /// La barre cite une table en trois mots et son survol dit « cliquer
+    /// pour ouvrir le croisement en grand ». Cela suppose deux choses
+    /// qu'aucun type ne tenait : que le croisement **porte** cette
+    /// table, et qu'il s'ouvre **là où elle se lit**. Ni l'une ni
+    /// l'autre n'était vraie — l'écran ne lisait ni l'écrasement, ni la
+    /// grossesse, ni les phrases que les fiches écrivent les unes des
+    /// autres, et il s'ouvrait toujours en haut, à huit chapitres de ce
+    /// qu'on venait de cliquer.
+    ///
+    /// Le test tient les deux bouts sur le texte du fichier, comme
+    /// `every_control_a_title_band_draws_is_measured_with_it` : chaque
+    /// chapitre de `DdiSection::ALL` est posé et dessiné dans
+    /// `ddi_body`, dans cet ordre, et chaque puce que `companion_signals`
+    /// compose en nomme un. Une puce sans chapitre ne compile pas — le
+    /// champ est obligatoire —, mais un chapitre nommé que plus rien ne
+    /// dessine compilerait très bien, et c'est une puce qui renvoie dans
+    /// le vide.
+    #[test]
+    fn every_chapter_a_companion_chip_names_is_drawn_by_the_crossing() {
+        const SOURCE: &str = include_str!("app.rs");
+        let lines: Vec<&str> = SOURCE.lines().collect();
+        let body_of = |func: &str| -> Vec<&str> {
+            let start = lines
+                .iter()
+                .position(|l| l.trim_start().starts_with(func))
+                .unwrap_or_else(|| panic!("{func} : fonction introuvable"));
+            let end = lines[start + 1..]
+                .iter()
+                .position(|l| l.starts_with("    fn ") || l.starts_with("    pub fn "))
+                .map_or(lines.len(), |k| start + 1 + k);
+            lines[start..end].to_vec()
+        };
+        let view = body_of("fn ddi_body");
+        // Chaque chapitre est posé puis dessiné, et dans cet ordre : un
+        // atterrissage écrit **après** la section qu'il vise pose le
+        // curseur au chapitre suivant.
+        let mut last = 0usize;
+        for section in super::DdiSection::ALL {
+            let land = format!("Self::ddi_land(ui, focus, DdiSection::{section:?});");
+            let at = view
+                .iter()
+                .position(|l| l.trim() == land)
+                .unwrap_or_else(|| panic!("{section:?} : aucun atterrissage dans `ddi_body`"));
+            assert!(
+                at > last || last == 0,
+                "{section:?} : les chapitres ne sont pas posés dans l'ordre de `ALL`"
+            );
+            last = at;
+            // La section elle-même, juste après : le chapitre existe.
+            assert!(
+                view[at + 1].trim().starts_with("Self::ddi_"),
+                "{section:?} : l'atterrissage n'est suivi d'aucune section — \
+                 une puce qui renvoie dans le vide"
+            );
+        }
+        // Et chaque puce nomme un chapitre. Le champ est obligatoire, ce
+        // que le test ne peut donc pas manquer ; ce qu'il vérifie, c'est
+        // qu'aucune n'est passée à un chapitre que `ALL` ignore — ce que
+        // le balayage ci-dessus ne regarde pas.
+        let signals = body_of("fn companion_signals");
+        let named: Vec<&str> = signals
+            .iter()
+            .filter_map(|l| l.trim().strip_prefix("section: DdiSection::"))
+            .map(|l| l.trim_end_matches(','))
+            .collect();
+        assert!(
+            named.len() >= 6,
+            "le compagnon composait six puces ; il n'en nomme plus que {}",
+            named.len()
+        );
+        for name in named {
+            assert!(
+                super::DdiSection::ALL
+                    .into_iter()
+                    .any(|s| format!("{s:?}") == name),
+                "« {name} » n'est pas un chapitre de `DdiSection::ALL`"
+            );
+        }
     }
 
     /// **Le corps de la barre garde une réponse à toute taille, et le

@@ -864,7 +864,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 34 regions now set
+  fold is the control you came to use. 35 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -906,7 +906,13 @@ add clicking and typing; it is not the price of entry.
   `split_rows` returned an answer one pixel tall and laid the last row
   of buttons under the bottom of the window. Capped, what passes over
   the cap is a gesture, and a gesture behind a floating bar is a gesture
-  that does not exist.
+  that does not exist. The thirty-fifth is the crossing's own readings,
+  which is not a tail at all but the whole screen: nine chapters one
+  under the next, and a floating bar let it read as though it stopped at
+  the cytochromes. It is also where a companion chip lands — see
+  `DdiSection` — and a chip that opens a screen whose answer is four
+  thousand pixels down, behind a bar nobody can see, has answered
+  nothing.
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A
@@ -1574,7 +1580,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|libelles|listes|base|codex|
+  vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   trame|
