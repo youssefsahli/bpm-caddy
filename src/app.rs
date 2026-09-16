@@ -7429,6 +7429,18 @@ struct DdiReading {
     renal: Vec<crate::renal::Resolved>,
     hepatic: Vec<crate::hepatic::Resolved>,
     elderly: Vec<crate::elderly::Resolved>,
+    /// Les deux tables que le compagnon citait et que cet écran ne
+    /// portait pas.
+    ///
+    /// Une puce de la barre annonce « Grossesse · Contre-indiqué » ou
+    /// « Écraser · Ne pas écraser », et son survol dit « cliquer pour
+    /// ouvrir le croisement en grand » — or le croisement lisait les
+    /// cytochromes, la revue, le rein, le foie et l'âge, et **pas** ces
+    /// deux-là. On cliquait sur la seule chose que la barre avait à dire
+    /// et elle disparaissait. « Écraser » n'avait même aucune lecture à
+    /// l'écran nulle part : une feuille à imprimer, et rien d'autre.
+    gravidity: Vec<crate::gravidity::Resolved>,
+    crush: Vec<crate::crush::Resolved>,
 }
 
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
@@ -31803,6 +31815,11 @@ impl App {
                         crate::elderly::read(&terms, age),
                         &session.content,
                     ),
+                    gravidity: crate::gravidity::resolve(
+                        crate::gravidity::read(&terms),
+                        &session.content,
+                    ),
+                    crush: crate::crush::resolve(crate::crush::read(&terms), &session.content),
                 },
             )
         });
@@ -31852,6 +31869,8 @@ impl App {
                         Self::ddi_renal_section(ui, session, &read.1.renal);
                         Self::ddi_hepatic_section(ui, session, &read.1.hepatic);
                         Self::ddi_elderly_section(ui, session, &read.1.elderly);
+                        Self::ddi_gravidity_section(ui, &read.1.gravidity);
+                        Self::ddi_crush_section(ui, &read.1.crush);
                     });
             });
         });
@@ -32288,6 +32307,148 @@ impl App {
     /// du rein et dit que la clairance manque. C'est `renal::read` qui
     /// le garantit, et non cette vue : il n'y a pas de place, dans le
     /// type qu'il rend, pour écrire une conduite sans clairance.
+    /// Ce que la grossesse et l'allaitement font à cette liste.
+    ///
+    /// **La même table qu'au dossier, et la même retenue.** Une table
+    /// lue à deux endroits doit dire ses limites aux deux, sans quoi
+    /// c'est l'endroit qui se tait qu'on croit : la portée en tête, le
+    /// renvoi au CRAT au survol, et les **deux** questions l'une sous
+    /// l'autre — la codéine est utilisable enceinte et contre-indiquée
+    /// en allaitant, les AVK l'exact inverse.
+    fn ddi_gravidity_section(ui: &mut egui::Ui, findings: &[crate::gravidity::Resolved]) {
+        use crate::gravidity::Level;
+        motif::section(ui, tr("gravid_tab"));
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("gravid_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(tr("gravid_footer"));
+        ui.add_space(4.0);
+        if findings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("gravid_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        let ink = |l: Level| match l {
+            Level::Interdit => motif::alert(),
+            Level::Eviter | Level::SansDonnee => motif::emphasize(motif::text()),
+            _ => motif::text(),
+        };
+        for f in findings {
+            ui.label(
+                egui::RichText::new(&f.treatment)
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink(f.worst())),
+            )
+            .on_hover_text(f.source);
+            for (stage, level, note) in [
+                (
+                    crate::gravidity::Stage::Grossesse,
+                    f.pregnancy,
+                    f.pregnancy_note.as_str(),
+                ),
+                (
+                    crate::gravidity::Stage::Allaitement,
+                    f.breastfeeding,
+                    f.breastfeeding_note.as_str(),
+                ),
+            ] {
+                ui.label(
+                    egui::RichText::new(format!("{} — {}", stage.label(), level.label()))
+                        .size(motif::pt(ui, 11.0))
+                        .color(ink(level)),
+                );
+                if !note.trim().is_empty() {
+                    ui.label(
+                        egui::RichText::new(note)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                }
+            }
+            if !f.term.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new(f.term.as_str())
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::alert()),
+                );
+            }
+            ui.add_space(6.0);
+        }
+        ui.add_space(6.0);
+    }
+
+    /// « Peut-on écraser ? », ligne par ligne.
+    ///
+    /// **Toute ligne reçoit une réponse, « à vérifier » comprise** —
+    /// c'est la première règle de `crush`, et la raison pour laquelle
+    /// cette section ne filtre pas sur les refus : une liste qui ne
+    /// montrerait que les interdits se lirait comme une autorisation
+    /// pour tout le reste, et c'est ainsi qu'un comprimé à libération
+    /// prolongée finit écrasé.
+    ///
+    /// Elle est ici parce que le compagnon la citait déjà et que le
+    /// croisement ne la portait pas : la puce « Écraser · Ne pas
+    /// écraser » ouvrait un écran qui n'en disait rien. C'était la seule
+    /// table de l'application dont aucune lecture n'était visible à
+    /// l'écran — il n'y avait qu'une feuille à imprimer.
+    fn ddi_crush_section(ui: &mut egui::Ui, answers: &[crate::crush::Resolved]) {
+        use crate::crush::Verdict;
+        motif::section(ui, tr("crush_tab"));
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("crush_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        )
+        .on_hover_text(tr("crush_footer"));
+        ui.add_space(4.0);
+        if answers.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("crush_nothing"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for a in answers {
+            let ink = match a.verdict {
+                Verdict::No => motif::alert(),
+                Verdict::Conditional => motif::emphasize(motif::text()),
+                Verdict::Yes => motif::text(),
+                Verdict::Unknown => motif::text_dim(),
+            };
+            ui.label(
+                egui::RichText::new(format!("{} — {}", a.treatment, a.verdict.label()))
+                    .size(motif::pt(ui, 12.0))
+                    .color(ink),
+            )
+            .on_hover_text(a.source);
+            if !a.why.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new(a.why.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+            }
+            // **Un « non » sans alternative laisse le problème entier.**
+            // C'est la règle du module, et elle ne vaut que si
+            // l'alternative est écrite à côté du refus.
+            if !a.instead.trim().is_empty() {
+                ui.label(
+                    egui::RichText::new(a.instead.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::accent()),
+                );
+            }
+            ui.add_space(6.0);
+        }
+        ui.add_space(6.0);
+    }
+
     fn ddi_renal_section(
         ui: &mut egui::Ui,
         session: &mut Session,
@@ -53791,6 +53952,8 @@ mod tests {
             ("fn ddi_cyp_section", "cyp_scope"),
             ("fn ddi_renal_section", "renal_scope"),
             ("fn ddi_hepatic_section", "hepatic_note"),
+            ("fn ddi_gravidity_section", "gravid_scope"),
+            ("fn ddi_crush_section", "crush_scope"),
         ];
         let lines: Vec<&str> = SOURCE.lines().collect();
         for (func, caveat) in PANES {
