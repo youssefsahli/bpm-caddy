@@ -845,7 +845,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 32 regions now set
+  fold is the control you came to use. 33 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -875,7 +875,12 @@ add clicking and typing; it is not the price of entry.
   saying the five-cent line exists — on the screen whose whole function
   that is), and its summary, where the gap is written first because it
   is the answer, but a calculation nothing says is there is a
-  calculation nobody checks.
+  calculation nobody checks. The thirty-third is the crossing's own
+  composed list: at 1024x700 with `text_scale = 1,6` the control row
+  takes two rows of a band capped at a third of the pane, leaving
+  nothing for the chips — the screen showed « Depuis le dossier », a
+  field, and **not one line of what is being crossed**, on the view that
+  exists for exactly that.
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A

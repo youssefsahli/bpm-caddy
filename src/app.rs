@@ -31472,6 +31472,17 @@ impl App {
         motif::panel(ui, rows[0], Some(tr("ddi_compose")), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
+                // **Barre pleine : ce qui est sous le pli est le sujet.**
+                // La bande est plafonnée à une part du volet, et à
+                // `text_scale = 1,6` sur un écran de comptoir la rangée
+                // des commandes en prend deux : il ne reste rien pour les
+                // puces, et l'écran montrait « Depuis le dossier », un
+                // champ, et pas une seule ligne de ce qu'on croise.
+                // C'est-à-dire la liste elle-même, sur la vue faite pour
+                // elle. Dire le total ne suffirait pas ici — ce n'est pas
+                // une bande de portes mais ce qu'on vient composer, et
+                // chaque puce porte la croix qui la retire.
+                ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("ddi_compose")
                     .show(ui, |ui| {

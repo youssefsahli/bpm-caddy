@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **La liste de « ce qu'on croise » disparaissait à l'écran du
+  comptoir.** La bande est plafonnée à une part du volet, et à
+  `text_scale = 1,6` sur 1024x700 la rangée des commandes en prend deux :
+  il ne restait rien pour les puces, et l'écran montrait « Depuis le
+  dossier », un champ, et pas une seule ligne de ce qu'on croise — sur
+  la vue faite pour cela. Barre pleine, comme les trente-deux autres
+  régions où ce qui est sous le pli est le sujet et non une garniture.
+
 ## [0.201.0] - 2026-09-16
 
 ### Added
