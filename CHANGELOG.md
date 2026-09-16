@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.203.1] - 2026-09-16
+
+### Changed
+- **Une règle qu'aucune capture ne montre n'est connue que par son
+  test.** « Bisphosphonate sans vitamine D », écrite la veille, ne
+  tombait sur aucun dossier de la démonstration : elle était tenue par
+  un test, elle s'imprimait, et personne ne l'avait jamais vue. Claire
+  Martin porte désormais un Fosamax — l'ostéoporose post-ménopausique
+  d'une femme de soixante-dix-sept ans est l'indication même du
+  produit, et son ordonnance portait déjà un diurétique de l'anse et un
+  AINS au long cours, c'est-à-dire la chute et la fracture. L'AINS y
+  reparaît sous un autre jour : il majore l'irritation digestive haute
+  du bisphosphonate.
+- **Et la clé de vue « revue » ouvre le dossier le plus fourni, non le
+  premier qui parle** — ce que le commentaire au-dessus d'elle annonce
+  depuis toujours, alors que la branche prenait le premier dossier non
+  vide. La nuance ne s'est vue que le jour où une règle neuve est tombée
+  sur le deuxième.
+
 ## [0.203.0] - 2026-09-16
 
 ### Added

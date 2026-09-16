@@ -41638,6 +41638,25 @@ mod tests {
                     ("Advil", "400 mg"),
                     ("Aricept", "½ de 10 mg"),
                     ("Ditropan", "5 mg"),
+                    // Et un bisphosphonate sans vitamine D, qui est la
+                    // règle de revue écrite en 0.203.0 : elle était
+                    // tenue par un test et par rien d'autre, car aucune
+                    // fiche de la démonstration ne portait de
+                    // bisphosphonate — donc aucune capture ne l'avait
+                    // jamais montrée. Une règle qu'on ne voit nulle
+                    // part est une règle dont on ne sait que ce que le
+                    // test en dit.
+                    //
+                    // Clinique, et sur ce dossier-là précisément :
+                    // l'ostéoporose post-ménopausique d'une femme de
+                    // soixante-dix-sept ans est l'indication même du
+                    // produit, et elle porte déjà un diurétique de
+                    // l'anse et un AINS au long cours — la chute et la
+                    // fracture sont le risque de cette ordonnance.
+                    // L'AINS reparaît d'ailleurs ici sous un autre
+                    // jour : il majore l'irritation digestive haute du
+                    // bisphosphonate.
+                    ("Fosamax", "70 mg une fois par semaine"),
                 ] {
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();

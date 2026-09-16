@@ -9841,11 +9841,27 @@ impl App {
                             // Prefer the fullest record for screenshots;
                             // « revue » opens the one whose ordonnance
                             // has something to say about itself.
+                            // Le dossier le plus *fourni*, et non le
+                            // premier qui dise quelque chose : « la
+                            // fiche la plus complète » est ce que le
+                            // commentaire ci-dessus annonce depuis
+                            // toujours, et la branche prenait le
+                            // premier non vide. La nuance ne s'est vue
+                            // que le jour où une règle neuve est
+                            // tombée sur le deuxième dossier : elle
+                            // était tenue par un test, imprimable, et
+                            // invisible à toute capture.
                             let pick = if v == "revue" {
                                 session
                                     .patients
                                     .iter()
-                                    .find(|p| {
+                                    .max_by_key(|p| {
+                                        crate::revue::review(&ordonnance_terms(
+                                            &session.db.drugs_for_patient(p.id).unwrap_or_default(),
+                                        ))
+                                        .len()
+                                    })
+                                    .filter(|p| {
                                         !crate::revue::review(&ordonnance_terms(
                                             &session.db.drugs_for_patient(p.id).unwrap_or_default(),
                                         ))
