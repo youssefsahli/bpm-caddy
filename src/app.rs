@@ -49108,11 +49108,26 @@ enum CompanionTone {
 
 impl CompanionTone {
     /// Le fond de la puce, pris au thème.
+    ///
+    /// **La puce la plus calme est la plus près du fond.** C'est la
+    /// règle que ce dépôt écrit pour toute emphase : une distance, et
+    /// jamais une direction. `Ok` portait `text_dim`, c'est-à-dire une
+    /// couleur d'**encre** posée en aplat — mesurée sur les huit peaux,
+    /// c'était le bloc le plus contrasté de la rangée, devant l'alerte
+    /// rouge et l'ambre. « Écraser · Peut être écrasé », qui est la
+    /// réponse rassurante, tirait donc l'œil avant « Ordonnance · 1
+    /// croisement(s) ». Une bande qui appelle le regard sur ce qui va
+    /// bien apprend à ne plus le suivre.
+    ///
+    /// Le creux est le vocabulaire de la maison pour « présent et
+    /// calme » : c'est la surface sur laquelle on écrit, et une puce
+    /// posée dessus se lit comme une pastille enfoncée parmi des
+    /// pastilles qui saillent.
     fn fill(self) -> egui::Color32 {
         match self {
             CompanionTone::Stop => motif::alert(),
             CompanionTone::Watch => motif::warn(),
-            CompanionTone::Ok => motif::text_dim(),
+            CompanionTone::Ok => motif::trough(),
             CompanionTone::Pending => motif::text_faint(),
         }
     }
@@ -55478,6 +55493,58 @@ mod tests {
                 .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
             "sans TextWrapMode::Extend, une puce doit se couper"
         );
+    }
+
+    /// **La puce la plus calme est la plus près du fond, sur les huit
+    /// peaux.**
+    ///
+    /// C'est la règle que ce dépôt écrit pour toute emphase : une
+    /// **distance**, jamais une direction — deux des huit peaux sont des
+    /// peaux de nuit, et « plus sombre » y veut dire « plus près ».
+    /// `CompanionTone::Ok` portait `text_dim`, c'est-à-dire une couleur
+    /// d'encre posée en aplat : mesurée, c'était le bloc le plus
+    /// contrasté de la rangée, devant l'alerte rouge et l'ambre de la
+    /// mise en garde. « Écraser · Peut être écrasé » — la réponse
+    /// rassurante — tirait donc l'œil avant « Ordonnance · 1
+    /// croisement(s) », et une bande qui appelle le regard sur ce qui va
+    /// bien apprend à ne plus le suivre.
+    ///
+    /// Le test ne classe pas les quatre tons entre eux : l'alerte et la
+    /// mise en garde sont deux cris, et lequel crie le plus fort est une
+    /// affaire de peau. Il tient la seule chose qui compte, et il la
+    /// tient partout : **ce qui rassure ne crie pas**.
+    #[test]
+    fn the_calmest_companion_chip_is_the_closest_to_the_ground() {
+        use super::CompanionTone;
+        for (i, theme) in motif::THEMES.iter().enumerate() {
+            motif::set_theme(theme.key);
+            let ground = motif::luminance(motif::bg());
+            let away = |t: CompanionTone| (motif::luminance(t.fill()) - ground).abs();
+            let calm = away(CompanionTone::Ok);
+            for loud in [
+                CompanionTone::Stop,
+                CompanionTone::Watch,
+                CompanionTone::Pending,
+            ] {
+                assert!(
+                    away(loud) > calm,
+                    "peau « {} » ({i}) : {loud:?} est à {} du fond et {:?} à {calm} — \
+                     ce qui rassure crie plus fort que ce qui arrête",
+                    theme.key,
+                    away(loud),
+                    CompanionTone::Ok
+                );
+            }
+            // Et elle reste une puce : un aplat qu'on ne distingue pas
+            // du panneau n'est plus une pastille, c'est du texte — or
+            // celle-ci se clique.
+            assert!(
+                calm > 0.01,
+                "peau « {} » : la puce calme se confond avec le fond",
+                theme.key
+            );
+        }
+        motif::set_theme(motif::THEMES[0].key);
     }
 
     /// **Une puce du compagnon renvoie à un chapitre que le croisement
