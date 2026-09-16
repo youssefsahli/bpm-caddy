@@ -803,9 +803,13 @@ Deux règles valent partout :
   Le refus de la posologie garde `instead` sans milligrammes : la dose
   dépend de l'indication, du poids et du rein. Et *aucune ligne ne
   réclame une fiche qui ne parle jamais de l'âge* a parlé à chaque
-  ligne ajoutée — sept fiches en tout : Physiotens, Arcoxia, Latuda,
-  Mopral, Eupantol et Hydroquinidine ont été **complétées** sur ce que
-  l'âge y change, et Praxilène a fait **retirer** sa ligne. La règle de
+  ligne ajoutée — neuf fiches en tout : Physiotens, Arcoxia, Latuda,
+  Mopral, Eupantol, Hydroquinidine, Izilox et Noroxine ont été
+  **complétées** sur ce que l'âge y change, et Praxilène a fait
+  **retirer** sa ligne. Et la confrontation lit les **champs
+  cliniques** — indications, contre-indications, effets, surveillance,
+  posologie — et non la fiche entière : la Noroxine nommait le sujet âgé
+  ailleurs et décrivait tout sauf lui là où on le cherche. La règle de
   la maison est que corriger la fiche est le plus souvent la bonne
   réponse ; ce qui décide, c'est de savoir si la ligne parle bien
   d'âge.

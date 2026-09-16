@@ -174,9 +174,11 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   alternative is a choice and never a posology** (no milligram in
   `instead`; the risk may cite the reference's threshold, which is
   `hepatic`'s refinement), and **no row claims a card that never speaks
-  of age** — which spoke at every row added, seven fiches in all: six
+  of age** — which spoke at every row added, nine fiches in all: eight
   were completed on what age changes there, and one (Praxilène) had its
-  row withdrawn instead, because the row was not about age at all.
+  row withdrawn instead, because the row was not about age at all. It
+  reads the **clinical** fields, not the whole card: Noroxine named the
+  elderly elsewhere and described everything but them where one looks.
   A fourth trap it could *not* see: a **clinically heterogeneous class**.
   « myorelaxant » catches the two lombalgia adjuvants the row meant and
   also Liorésal, Dantrium and Botox — the spasticity of multiple
