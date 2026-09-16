@@ -1635,19 +1635,45 @@ add clicking and typing; it is not the price of entry.
   has to open it by key: nothing else would.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
 - `companion` (F9) is the window **shrunk to a bar and put on top**, not
-  a second window: one field, one sentence, four buttons. Opened by its
+  a second window. Opened by its
   view key it now takes that size too — it used to be a flag and
   nothing else, so `smoke.sh` and `eyeball.sh` looked at the companion
   inside a 1024-pixel window, which is the one shape it never has in
   use: the window whose whole point is being small was the only one
-  never looked at small. At 460×300 the card never fits, so its pane
+  never looked at small. The card never fits, so its pane
   carries a solid bar. `MinInnerSize`
   is sent with it, because `main.rs` gives the window a 960x640 floor and
   a window manager that honours it would make the companion 960 px wide.
   The size is deliberately *not* scaled by `[ui] text_scale`: a window is
   placed in a screen corner in pixels; what follows the scale is what it
   holds, which scrolls. And the layout record skips the companion's size,
-  or the next session would open on a 460 px workspace
+  or the next session would open on a 560 px workspace.
+
+  **What it answers, and what it refuses to.** It used to answer « à
+  quoi ça sert » — the one question the person at the counter can
+  already answer — and nothing else: one fuzzy guess with no way to see
+  or correct the alternatives, one sentence, four destinations. It now
+  reports **what the tables say**, in chips: what the open file's own
+  ordonnance says about this card (`interactions_paired`, written once
+  and read by the file and by the bar), what they cross on the
+  cytochromes, `crush`, `gravidity`, `renal` at the file's own DFG, and
+  `elderly` at the file's own age. **A chip cites its table's word and
+  concludes nothing** — « Écraser · Ne pas écraser » is `crush.rs`'s own
+  label, the reserve of each table travels with its chip at hover, and
+  clicking any of them opens `MainView::Ddi` loaded with the file's list
+  *plus* this card, which is the question of the telephone passed whole
+  rather than an empty screen to recompose. A table that is silent draws
+  no chip — a row of « à vérifier » signals nothing and teaches people
+  to stop looking at the band — and when they are all silent a sentence
+  says so, because **silence is not permission**. Everything above the
+  drawing is `companion_look` / `companion_signals`, pure, memoised
+  against the question (`CompanionKey`): the fuzzy pass over the 862
+  cards used to run sixty times a second, and six clinical tables on top
+  of it would have cost far more. The demo's view key opens **on a
+  file** — the one carrying the most treatments *and* a biology — or the
+  two signals only this software can give would appear in no capture
+  ever taken, and the kidney chip would read « dépend du DFG » in all of
+  them
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
 - `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that

@@ -5,6 +5,88 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.204.0] - 2026-09-16
+
+### Added
+- **Le compagnon (F9) répond enfin la question qu'on lui pose.** La
+  barre posée au-dessus du logiciel de comptoir répondait « à quoi ça
+  sert » — c'est-à-dire la seule question à laquelle la personne au
+  comptoir sait déjà répondre — et rien d'autre. Elle rapporte
+  maintenant ce que les tables disent de la fiche cherchée, en puces :
+  ce que **l'ordonnance du dossier ouvert** dit d'elle, citée telle que
+  les monographies l'écrivent ; ce qu'elles se font sur les cytochromes ;
+  l'écrasement ; la grossesse et l'allaitement, celle des deux qui
+  inquiète le plus, nommée ; le rein, **au DFG de ce dossier-là** ; et
+  l'âge, à l'âge de ce dossier-là. Les deux premières sont les seules
+  que personne d'autre ne peut rendre à la place du logiciel, et ce
+  sont celles qui passent devant.
+- **Une puce cite le mot de sa table et ne conclut rien.** « Écraser ·
+  Ne pas écraser » est le libellé de `crush.rs`, pas une reformulation,
+  et la réserve de chaque table voyage avec sa puce au survol — une
+  table lue à deux endroits doit dire ses limites aux deux, sans quoi
+  c'est l'endroit qui se tait qu'on croit. Cliquer une puce ouvre le
+  **croisement** chargé de l'ordonnance du dossier *et* de la fiche
+  cherchée : c'est la question du téléphone, passée entière, au lieu
+  d'un écran vide où il faudrait recomposer ce qu'on avait sous les
+  yeux. Un bouton « Croiser » fait le même chemin.
+- **Une table muette ne rend pas de puce, et leur silence à toutes se
+  dit en toutes lettres.** Une rangée de « à vérifier » ne signale rien
+  et apprend à ne plus regarder la bande ; une bande vide se lirait
+  « rien à signaler », alors qu'elle dit « ces tables ne connaissent pas
+  toutes les présentations ». Le silence n'est pas une autorisation —
+  c'est la première règle de `crush.rs`, et elle vaut ici aussi.
+
+### Changed
+- **La réponse n'est plus une devinette unique.** Le compagnon prenait
+  le meilleur score flou et ne montrait rien des autres : « lévo »
+  attrape le Levothyrox, la lévofloxacine et le lévétiracétam, et
+  l'écran en affichait un sans dire qu'il y en avait trois, ni moyen de
+  corriger. Une rangée porte désormais les fiches qui répondent, la
+  meilleure d'abord, et dit combien elle en laisse quand elle est
+  coupée.
+- **Et le clavier fait ce qu'on attend d'une fenêtre à un seul champ.**
+  Les flèches haut et bas parcourent ces fiches, Entrée ouvre celle
+  qu'on lit, Échap efface la question puis rend la fenêtre. Aucune
+  touche ne faisait rien : il fallait reprendre la souris à chaque
+  geste, dans une barre dont tout l'objet est de ne pas quitter le
+  clavier. Les trois sont prises avant le champ, comme dans la boîte de
+  saut — sans quoi le curseur de texte les mange.
+- **La tête dit quel dossier est ouvert, et non le nom de la fenêtre.**
+  « Compagnon — F9 » répétait ce que F9 venait de faire, sur une rangée
+  entière ; pendant ce temps deux des gestes du bas portent sur le
+  dossier ouvert et rien ne disait s'il y en avait un — « Acte »
+  basculait en silence sur la recherche.
+- **Les signaux passent avant l'identité, et l'alerte avant ce à quoi
+  le médicament sert.** À `text_scale = 1,6` la fenêtre ne porte que
+  quatre lignes au-dessus du pli, et « apixaban · AOD » y prenait la
+  place de la bande : la capture s'ouvrait sur un nom, une molécule, et
+  rien de ce que les tables ont à dire.
+- **Rien de coûteux à l'image.** La passe floue sur les 862 fiches
+  tournait soixante fois par seconde, et six tables cliniques par-dessus
+  auraient coûté bien davantage. La lecture est mémorisée contre la
+  question — ce qu'on tape, la fiche choisie, le dossier, la révision
+  des fiches —, comme l'est celle du croisement.
+- **La rangée des gestes est mesurée, et la fenêtre a grandi avec ce
+  qu'elle porte.** Ils sont cinq : à 1,6 ils prennent deux rangées, et
+  une bande qui en réservait une dessinait la seconde sous le bord de
+  la fenêtre. Le compagnon passe de 460 × 300 à 560 × 420 — mesuré à
+  1,25, le reste de la fenêtre en prenait cent soixante, si bien que la
+  phrase d'alerte et celle de l'indication tombaient toutes les deux
+  sous le pli. Ce n'est toujours pas une seconde fenêtre.
+- **Et la démonstration ouvre le compagnon sur un dossier**, celui qui
+  porte le plus de traitements *et* une biologie : sans dossier, les
+  deux signaux que ce logiciel seul peut rendre n'apparaissaient dans
+  aucune capture, et sans clairance la puce du rein disait « dépend du
+  DFG » dans toutes.
+
+### Fixed
+- **Une rangée demandée à zéro ne fait pas zéro pixel.**
+  `motif::split_rows` lit un zéro comme « ce que veut cette rangée est
+  le reste » : la rangée des autres fiches, demandée à zéro quand il n'y
+  en a qu'une, prenait la moitié du corps du compagnon, et la réponse se
+  dessinait sous un vide de cent pixels qu'aucun réglage n'expliquait.
+  Elle est retirée de la liste, pas mise à zéro.
+
 ## [0.203.1] - 2026-09-16
 
 ### Changed

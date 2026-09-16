@@ -7452,6 +7452,20 @@ fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
 /// a macrolide gets the sentence from the Eliquis card that names that
 /// macrolide, and nothing else.
 fn interactions_between(drugs: &[Drug]) -> Vec<(String, String)> {
+    interactions_paired(drugs)
+        .into_iter()
+        .map(|(_, _, head, sentence)| (head, sentence))
+        .collect()
+}
+
+/// La même lecture, avec la **paire** qu'elle concerne.
+///
+/// Écrite une fois et lue deux : le dossier veut toutes les rencontres
+/// de son ordonnance, le compagnon veut celles d'une fiche précise, et
+/// une seconde écriture qui retrouverait la paire en relisant le libellé
+/// serait la deuxième version de la même question — c'est-à-dire celle
+/// qui finit par répondre autrement.
+fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
     let index = drug_link_index(drugs);
     let mut seen: std::collections::HashSet<(i64, i64)> = std::collections::HashSet::new();
     let mut out = Vec::new();
@@ -7477,6 +7491,8 @@ fn interactions_between(drugs: &[Drug]) -> Vec<(String, String)> {
                     }
                     let sentence = sentence_around(&d.ddi, here, t.len());
                     out.push((
+                        d.id,
+                        other.id,
                         format!("{} ↔ {}", d.name.trim(), other.name.trim()),
                         sentence,
                     ));
@@ -9491,6 +9507,22 @@ pub struct App {
     companion_sized: bool,
     /// Ce qu'on tape dans le compagnon.
     companion_query: String,
+    /// Laquelle des fiches qui répondent est celle dont on parle.
+    ///
+    /// **Une réponse unique n'en est pas une.** Le compagnon prenait le
+    /// meilleur score et ne montrait rien des autres : « lévo » rend
+    /// Levothyrox, lévofloxacine et lévétiracétam, et l'écran en
+    /// affichait un sans dire qu'il y en avait trois — ni moyen de
+    /// corriger. Les flèches marchent dans cette liste.
+    companion_pick: usize,
+    /// Ce que le compagnon a lu, et la question qui l'a produit.
+    ///
+    /// **Rien de coûteux à l'image.** La passe floue sur les 862 fiches
+    /// tournait soixante fois par seconde pour une réponse qui ne bouge
+    /// qu'à la frappe — et les tables cliniques qui s'y ajoutent
+    /// coûteraient bien davantage. Mémorisé contre la question, comme
+    /// `ddi_read` l'est contre la liste composée.
+    companion_read: Option<(CompanionKey, CompanionRead)>,
 }
 
 /// In-app editor for `config.toml`.
@@ -10200,7 +10232,47 @@ impl App {
                         // clé, sinon rien ne le regarderait jamais aux
                         // trois formes — c'est une fenêtre qu'on ne
                         // rencontre qu'en pressant F9.
-                        Ok("companion") => {}
+                        //
+                        // **Et sur un dossier ouvert**, sans quoi les
+                        // deux signaux que lui seul peut rendre — ce que
+                        // l'ordonnance du dossier dit de la fiche
+                        // cherchée, et ce qu'elles se font sur les
+                        // cytochromes — ne se dessinent dans aucune
+                        // capture. C'est la règle que ce dépôt s'est
+                        // donnée après « Vigilance » : une vue que la
+                        // démonstration laisse muette est une vue que
+                        // personne n'a jamais regardée.
+                        //
+                        // Le dossier choisi porte le plus de traitements
+                        // **et une biologie** : deux des dossiers semés
+                        // en portent six, et celui qui n'a pas de
+                        // clairance fait dire « rein : dépend du DFG » à
+                        // toutes les captures — c'est-à-dire qu'aucune
+                        // ne montre jamais la puce du rein qui conclut.
+                        Ok("companion") => {
+                            let pick = session
+                                .patients
+                                .iter()
+                                .max_by_key(|p| {
+                                    let treats = session
+                                        .db
+                                        .drugs_for_patient(p.id)
+                                        .map(|l| l.len())
+                                        .unwrap_or_default();
+                                    let bio = usize::from(
+                                        session
+                                            .db
+                                            .bio_results(p.id)
+                                            .map(|l| !l.is_empty())
+                                            .unwrap_or(false),
+                                    );
+                                    (treats, bio)
+                                })
+                                .cloned();
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                        }
                         // Le croisement **avec une liste déjà
                         // composée** : vide, l'écran ne montre ni carte,
                         // ni corde, ni croisement — c'est-à-dire rien de
@@ -10828,11 +10900,18 @@ impl App {
             // une barre vide n'exerce ni la recherche, ni la phrase, ni
             // le bouton qui ouvre la fiche. `BPM_CADDY_DRUG` la choisit,
             // comme pour la carte du médicament.
+            //
+            // Et une question **courte**, qui rend plusieurs fiches :
+            // tapée entière elle n'en rend qu'une, et la rangée des
+            // autres réponses — celle que les flèches parcourent — ne se
+            // dessine alors dans aucune capture.
             companion_query: if start_view == "companion" {
-                std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "Eliquis".to_owned())
+                std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "eliq".to_owned())
             } else {
                 String::new()
             },
+            companion_pick: 0,
+            companion_read: None,
         }
     }
 
@@ -47562,14 +47641,28 @@ impl App {
 }
 
 impl App {
-    /// La taille du compagnon : assez pour une phrase et quatre boutons,
-    /// et pas un pixel de plus.
+    /// La taille du compagnon : assez pour une réponse et ses gestes, et
+    /// pas un pixel de plus.
     ///
     /// Elle ne suit pas `[ui] text_scale` : c'est une **fenêtre**, et
     /// une fenêtre se pose dans un coin d'écran par des pixels. Ce qui
     /// suit l'échelle est ce qu'elle contient, qui défile si le texte
     /// est réglé très grand.
-    const COMPANION_SIZE: [f32; 2] = [460.0, 300.0];
+    ///
+    /// Elle a grandi de 460 × 300 le jour où la barre s'est mise à
+    /// répondre. Mesuré à `text_scale = 1,25` : la tête, le champ, la
+    /// rangée des autres fiches et celle des gestes prennent cent
+    /// soixante pixels, si bien qu'il en restait cent quarante — le nom,
+    /// la molécule et la bande de signaux, et rien d'autre. La phrase
+    /// qui dit à quoi le médicament sert et celle qui dit quand
+    /// consulter tombaient toutes les deux sous le pli, sur les deux
+    /// lignes pour lesquelles on ouvre cette barre. La largeur suit les
+    /// cinq gestes : mesurés à 1,25 ils demandent cinq cent quarante
+    /// pixels, et la bande en réserve deux rangées dès qu'ils ne
+    /// tiennent pas. Ce n'est toujours pas une seconde fenêtre : cinq
+    /// cent soixante sur quatre cent vingt est le quart d'un écran de
+    /// portable.
+    const COMPANION_SIZE: [f32; 2] = [560.0, 420.0];
 
     /// Réduire la fenêtre à la barre, ou la rendre.
     ///
@@ -47794,7 +47887,159 @@ impl App {
         }
     }
 
-    /// Le compagnon : un champ, ce qu'il trouve, et quatre gestes.
+    /// Les autres fiches qui répondent à la même question.
+    ///
+    /// **Une rangée coupée dit combien elle laisse.** La barre de
+    /// défilement d'egui flotte : une rangée qui s'arrêterait au bord
+    /// montrerait trois noms sur huit et rien du tout pour le dire.
+    /// C'est la règle des barres de `motif::chart` — la dernière place
+    /// qui tient porte le compte de ce qui manque.
+    fn companion_matches(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        read: &CompanionRead,
+        pick: &mut usize,
+    ) {
+        motif::inside(ui, rect, |ui| {
+            let gap = ui.spacing().item_spacing.x;
+            let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+            // Le libellé de chaque nom est écrit **une fois** : la
+            // mesure et le dessin lisent la même chaîne.
+            let labels: Vec<String> = read
+                .hits
+                .iter()
+                .map(|d| format!("  {}  ", d.name.trim()))
+                .collect();
+            let width = |ui: &egui::Ui, text: &str| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(text.to_owned(), font.clone(), motif::text())
+                        .size()
+                        .x
+                })
+            };
+            // Ce que « +3 » coûte, réservé avant de placer les noms :
+            // compté après, il prendrait la place du dernier nom lisible
+            // — ou sortirait du cadre, ce qui est le défaut qu'il existe
+            // pour empêcher.
+            let room = ui.available_width();
+            let mut x = 0.0_f32;
+            let mut shown = 0usize;
+            for (i, label) in labels.iter().enumerate() {
+                let w = width(ui, label);
+                let rest = labels.len() - i - 1;
+                let tail = if rest > 0 {
+                    gap + width(ui, &trf("companion_more", rest))
+                } else {
+                    0.0
+                };
+                if x + w + tail > room && shown > 0 {
+                    break;
+                }
+                x += w + gap;
+                shown += 1;
+            }
+            // Le rang lu est toujours montré, même s'il ne tient pas
+            // dans ce que la rangée garde : une liste où le nom choisi
+            // n'apparaît pas est une liste qui ment sur ce qu'on lit.
+            let first = read.pick.saturating_sub(shown.saturating_sub(1));
+            ui.horizontal(|ui| {
+                for (i, label) in labels.iter().enumerate().skip(first).take(shown) {
+                    let on = i == read.pick;
+                    let ink = if on {
+                        motif::on_fill(motif::accent())
+                    } else {
+                        motif::text_dim()
+                    };
+                    let mut text = egui::RichText::new(label.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(ink);
+                    if on {
+                        text = text.background_color(motif::accent()).strong();
+                    }
+                    if ui
+                        .add(
+                            egui::Label::new(text)
+                                .wrap_mode(egui::TextWrapMode::Extend)
+                                .sense(egui::Sense::click()),
+                        )
+                        .on_hover_text(tr("companion_matches_tooltip"))
+                        .clicked()
+                    {
+                        *pick = i;
+                    }
+                }
+                let hidden = labels.len() - shown;
+                if hidden > 0 {
+                    ui.label(
+                        egui::RichText::new(trf("companion_more", hidden))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_faint()),
+                    );
+                }
+            });
+        });
+    }
+
+    /// La bande des signaux : ce que les tables disent de cette fiche,
+    /// en puces.
+    ///
+    /// Rend `true` quand on en a cliqué une — le croisement répond en
+    /// entier à ce que la puce annonce en trois mots.
+    ///
+    /// **Une puce ne se coupe pas en deux.** `horizontal_wrapped`
+    /// enveloppe le texte *dans* une étiquette autant qu'entre deux, et
+    /// une puce coupée laisse deux fonds colorés là où il y en a un —
+    /// `TextWrapMode::Extend` garde l'étiquette entière et laisse la
+    /// rangée envelopper, ce qu'elle sait faire.
+    fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> bool {
+        let mut clicked = false;
+        if read.silent {
+            // **Le silence n'est pas une autorisation** : la première
+            // règle de `crush.rs`. Une bande vide se lirait comme « rien
+            // à signaler », alors qu'elle dit « ces tables ne
+            // connaissent pas toutes les présentations ».
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("companion_silent"))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+            return false;
+        }
+        if read.signals.is_empty() {
+            return false;
+        }
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            for s in &read.signals {
+                let fill = s.tone.fill();
+                if ui
+                    .add(
+                        egui::Label::new(
+                            egui::RichText::new(format!("  {}  ", s.chip))
+                                .size(motif::pt(ui, 10.5))
+                                .strong()
+                                .color(motif::on_fill(fill))
+                                .background_color(fill),
+                        )
+                        .wrap_mode(egui::TextWrapMode::Extend)
+                        .sense(egui::Sense::click()),
+                    )
+                    .on_hover_text(format!("{}\n\n{}", s.hover, tr("companion_signal_open")))
+                    .clicked()
+                {
+                    clicked = true;
+                }
+            }
+        });
+        clicked
+    }
+
+    /// Le compagnon : un champ, ce qu'il trouve, ce que les tables en
+    /// disent, et les gestes qui rendent la fenêtre.
     ///
     /// **Le champ garde le foyer.** C'est ce qui remplace le crochet
     /// clavier que le compagnon n'a pas : la fenêtre est au-dessus, on
@@ -47802,18 +48047,126 @@ impl App {
     /// compris ce qu'une douchette tape, puisqu'un lecteur USB est un
     /// clavier.
     fn companion_view(&mut self, ctx: &egui::Context) {
+        // **Les flèches et Entrée se prennent avant le champ**, ou le
+        // curseur de texte les mange et la liste ne bouge jamais.
+        // C'est ce que fait déjà la boîte de saut, pour la même raison,
+        // et c'est ce qui manquait ici : une fenêtre à un seul champ,
+        // qui reprend le foyer à chaque image, et dont aucune touche ne
+        // faisait rien — il fallait reprendre la souris pour tout.
+        let (down, up, enter, escape) = ctx.input_mut(|i| {
+            (
+                i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+            )
+        });
+        // Les flèches marchent dans la liste **de l'image d'avant** :
+        // c'est celle qui est à l'écran, et c'est donc elle qui décide
+        // du tour. Rien à recalculer pour cela.
+        let shown = self
+            .companion_read
+            .as_ref()
+            .map_or(0, |(_, r)| r.hits.len());
+        if shown > 1 {
+            if down {
+                self.companion_pick = (self.companion_pick + 1) % shown;
+            }
+            if up {
+                self.companion_pick = (self.companion_pick + shown - 1) % shown;
+            }
+        }
+        // Échap en deux temps : il efface la question, et sur une
+        // question déjà vide il rend la fenêtre. La barre est posée
+        // au-dessus des autres applications, et la première chose qu'on
+        // veut d'elle après une réponse est de recommencer, pas de la
+        // fermer.
+        if escape {
+            if self.companion_query.trim().is_empty() {
+                self.toggle_companion(ctx);
+                return;
+            }
+            self.companion_query.clear();
+            self.companion_pick = 0;
+        }
         let State::Unlocked(session) = &mut self.state else {
             return;
         };
+        // **Une question qui change rend la main à la meilleure
+        // réponse**, et elle le fait *avant* la lecture. Remis à zéro au
+        // retour du champ — `field.changed()` —, le rang d'avant servait
+        // encore à composer la lecture de cette image-là : on voyait
+        // passer la troisième fiche d'une liste qu'on venait de
+        // remplacer.
+        let asked = self.companion_query.trim().to_owned();
+        if self
+            .companion_read
+            .as_ref()
+            .is_some_and(|(k, _)| k.0 != asked)
+        {
+            self.companion_pick = 0;
+        }
+        // **La question, puis la réponse.** La passe floue sur les 862
+        // fiches tournait soixante fois par seconde, et les six tables
+        // cliniques qui s'y ajoutent coûteraient bien davantage ; tant
+        // que la question, la fiche choisie, le dossier et la révision
+        // des fiches ne bougent pas, la lecture est celle de l'image
+        // d'avant. C'est la mémoïsation de `ddi_read`, à la question
+        // près.
+        let key: CompanionKey = (
+            asked,
+            self.companion_pick,
+            session.viewing.as_ref().map(|p| p.id),
+            session.drugs_rev,
+        );
+        let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
+        let read = held.take().unwrap_or_else(|| {
+            let age = session
+                .viewing
+                .as_ref()
+                .and_then(|p| db::age_on(&p.birth_date, &session.today));
+            let look = companion_look(
+                &session.drugs,
+                &session.patient_treats,
+                session.renal_dfg,
+                age,
+                self.companion_query.trim(),
+                self.companion_pick,
+            );
+            (key, look)
+        });
         let mut leave = false;
         let mut go: Option<CompanionGo> = None;
+        // Entrée ouvre la fiche choisie : le geste le plus fréquent de
+        // la barre, sur la touche qu'on presse déjà après avoir tapé.
+        if enter {
+            if let Some(d) = read.1.hits.get(read.1.pick) {
+                go = Some(CompanionGo::Card(d.id));
+            }
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
+            // **La tête dit le dossier, et non le nom de la fenêtre.**
+            // « Compagnon — F9 » répétait ce que F9 venait de faire, sur
+            // une rangée entière d'une fenêtre qui en compte cinq ;
+            // pendant ce temps deux des quatre gestes du bas agissent
+            // sur le dossier ouvert et rien ne disait s'il y en avait
+            // un — « Acte » basculait en silence sur la recherche.
             ui.horizontal(|ui| {
-                ui.label(
-                    egui::RichText::new(tr("companion_title"))
-                        .size(motif::pt(ui, 11.0))
-                        .color(motif::text_dim()),
-                );
+                let (file, note) = match &session.viewing {
+                    Some(p) => (
+                        trf(
+                            "companion_file",
+                            format!("{} {}", p.last_name.trim(), p.first_name.trim())
+                                .trim()
+                                .to_owned(),
+                        ),
+                        trf("companion_file_tooltip", session.patient_treats.len()),
+                    ),
+                    None => (
+                        tr("companion_no_file").to_owned(),
+                        tr("companion_no_file_tooltip").to_owned(),
+                    ),
+                };
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if motif::button(ui, tr("companion_restore"))
                         .on_hover_text(tr("companion_restore_tooltip"))
@@ -47821,6 +48174,22 @@ impl App {
                     {
                         leave = true;
                     }
+                    // Le dossier prend ce qui reste de la rangée, et
+                    // s'élide plutôt que de passer sous le bouton : un
+                    // `Painter` peint où on lui dit.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(file).size(motif::pt(ui, 11.0)).color(
+                                if session.viewing.is_some() {
+                                    motif::text()
+                                } else {
+                                    motif::text_dim()
+                                },
+                            ),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(note);
                 });
             });
             let field = ui.add_sized(
@@ -47835,49 +48204,74 @@ impl App {
             if !field.has_focus() && !ctx.wants_keyboard_input() {
                 field.request_focus();
             }
-            ui.add_space(4.0);
-            let q = self.companion_query.trim();
-            let hit = if q.is_empty() {
-                None
-            } else {
-                session
-                    .drugs
-                    .iter()
-                    .filter_map(|d| {
-                        let a = fuzzy::score(q, &d.name);
-                        let b = if d.dci.is_empty() {
-                            None
-                        } else {
-                            fuzzy::score(q, &d.dci)
-                        };
-                        a.max(b).map(|s| (s, d))
-                    })
-                    .max_by_key(|(s, _)| *s)
-                    .map(|(_, d)| d)
-            };
             let body = ui.available_rect_before_wrap();
-            let btn_h = Self::button_height(ui) + 8.0;
-            let split = motif::split_rows(body, &[0.0, btn_h], 6.0);
-            motif::inside(ui, split[0], |ui| {
-                // **Barre pleine.** La fenêtre fait quatre cent soixante
-                // pixels sur trois cents : la fiche n'y tient jamais
-                // entière, et la dernière ligne sortait tranchée par la
-                // rangée de boutons sans que rien ne dise qu'il y avait
-                // une suite — la phrase d'alerte, notamment, qui est la
-                // raison d'ouvrir cette barre au comptoir.
+            let gap = ui.spacing().item_spacing.y;
+            // **La rangée des gestes est mesurée, pas écrite « une
+            // rangée ».** Ils sont cinq depuis que « Croiser » existe :
+            // à `text_scale = 1,6` ils en prennent deux, et une bande
+            // qui en réserve une dessine la seconde sous le bord de la
+            // fenêtre — c'est-à-dire nulle part. Mêmes largeurs que le
+            // dessin, dans le même ordre.
+            let acts = Self::wrapped_rows_of(
+                ui,
+                ui.available_width(),
+                [
+                    tr("companion_card"),
+                    tr("companion_cross"),
+                    tr("companion_trod"),
+                    tr("companion_scan"),
+                    tr("companion_stup"),
+                ]
+                .into_iter()
+                .map(|l| Self::button_width(ui, l)),
+            );
+            let btn_h = acts * Self::row_height(ui) + (acts - 1.0) * gap + 8.0;
+            // La rangée des autres réponses ne se dessine que s'il y en
+            // a : une fiche trouvée seule n'a pas d'autres, et une
+            // rangée vide au-dessus d'une réponse se lit comme une
+            // intention.
+            //
+            // **Et elle est retirée de la liste, pas mise à zéro.**
+            // `motif::split_rows` lit un zéro comme « ce que veut cette
+            // rangée est le reste », et non comme « rien » : demandée à
+            // zéro, la rangée des autres fiches prenait la moitié de la
+            // place du corps, et la réponse se dessinait sous un vide de
+            // cent pixels qu'aucun réglage n'expliquait.
+            let others = read.1.hits.len() > 1;
+            let heights: Vec<f32> = if others {
+                vec![Self::row_height(ui), 0.0, btn_h]
+            } else {
+                vec![0.0, btn_h]
+            };
+            let split = motif::split_rows(body, &heights, gap);
+            let (answer, acts_rect) = if others {
+                Self::companion_matches(ui, split[0], &read.1, &mut self.companion_pick);
+                (split[1], split[2])
+            } else {
+                (split[0], split[1])
+            };
+            motif::inside(ui, answer, |ui| {
+                // **Barre pleine.** La fenêtre est petite : la fiche n'y
+                // tient jamais entière, et la dernière ligne sortait
+                // tranchée par la rangée de boutons sans que rien ne
+                // dise qu'il y avait une suite — la phrase d'alerte,
+                // notamment, qui est la raison d'ouvrir cette barre au
+                // comptoir.
                 ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("companion_answer")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let Some(d) = hit else {
+                        let Some(d) = read.1.hits.get(read.1.pick) else {
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(if q.is_empty() {
-                                        tr("companion_idle")
-                                    } else {
-                                        tr("companion_none")
-                                    })
+                                    egui::RichText::new(
+                                        if self.companion_query.trim().is_empty() {
+                                            tr("companion_idle")
+                                        } else {
+                                            tr("companion_none")
+                                        },
+                                    )
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                                 )
@@ -47893,6 +48287,34 @@ impl App {
                             )
                             .wrap(),
                         );
+                        // **Les signaux d'abord, l'identité ensuite.**
+                        // Ce qu'on vient chercher dans cette barre est ce
+                        // qui arrête une délivrance ; « apixaban · AOD »
+                        // identifie une fiche que le nom identifie déjà.
+                        // À `text_scale = 1,6` la fenêtre ne porte que
+                        // quatre lignes au-dessus du pli, et une ligne
+                        // d'identification y prenait celle de la bande —
+                        // la capture s'ouvrait sur un nom, une molécule,
+                        // et rien de ce que les tables ont à dire.
+                        if Self::companion_band(ui, &read.1) {
+                            go = Some(CompanionGo::Cross(d.id));
+                        }
+                        // Ce qui doit se dire au comptoir avant tout le
+                        // reste, quand la fiche le porte — **au-dessus**
+                        // de l'identité et de ce à quoi le médicament
+                        // sert : l'alerte était sous une phrase de trois
+                        // lignes, c'est-à-dire sous le pli.
+                        if !read.1.flag.is_empty() {
+                            ui.add_space(2.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(read.1.flag.as_str())
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                        }
                         // Ce qui identifie la fiche en une ligne : la
                         // molécule et la classe. Les deux manquent
                         // parfois, et une ligne de séparateurs sans
@@ -47903,6 +48325,7 @@ impl App {
                             .collect::<Vec<_>>()
                             .join(" · ");
                         if !about.is_empty() {
+                            ui.add_space(2.0);
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(about)
@@ -47917,28 +48340,12 @@ impl App {
                         // entière est à un bouton, et l'afficher ici
                         // ferait défiler une fenêtre de trois cents
                         // pixels.
-                        let what = Self::first_sentence(&d.indications)
-                            .or_else(|| Self::first_sentence(&d.mechanism))
-                            .unwrap_or_default();
-                        if !what.is_empty() {
+                        if !read.1.what.is_empty() {
                             ui.add_space(2.0);
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(what).size(motif::pt(ui, 11.5)),
-                                )
-                                .wrap(),
-                            );
-                        }
-                        // Et ce qui doit se dire au comptoir avant tout
-                        // le reste, quand la fiche le porte.
-                        let flag = Self::first_sentence(&d.red_flags).unwrap_or_default();
-                        if !flag.is_empty() {
-                            ui.add_space(2.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(flag)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::alert()),
+                                    egui::RichText::new(read.1.what.as_str())
+                                        .size(motif::pt(ui, 11.5)),
                                 )
                                 .wrap(),
                             );
@@ -47949,15 +48356,23 @@ impl App {
             // l'écran : un bouton qui préparerait quelque chose derrière
             // une barre de quatre cents pixels laisserait chercher où il
             // s'est passé.
-            motif::inside(ui, split[1], |ui| {
+            motif::inside(ui, acts_rect, |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    let card = hit.map(|d| d.id);
+                    let card = read.1.hits.get(read.1.pick).map(|d| d.id);
                     if motif::button_enabled(ui, tr("companion_card"), card.is_some())
                         .on_hover_text(tr("companion_card_tooltip"))
                         .clicked()
                     {
                         if let Some(id) = card {
                             go = Some(CompanionGo::Card(id));
+                        }
+                    }
+                    if motif::button_enabled(ui, tr("companion_cross"), card.is_some())
+                        .on_hover_text(tr("companion_cross_tooltip"))
+                        .clicked()
+                    {
+                        if let Some(id) = card {
+                            go = Some(CompanionGo::Cross(id));
                         }
                     }
                     if motif::button(ui, tr("companion_trod"))
@@ -47981,6 +48396,9 @@ impl App {
                 });
             });
         });
+        // La lecture est rendue au champ : c'est elle que l'image
+        // suivante relira si la question n'a pas bougé.
+        self.companion_read = Some(read);
         if let Some(dest) = go {
             match dest {
                 CompanionGo::Card(id) => {
@@ -47988,6 +48406,19 @@ impl App {
                         session.view = MainView::Drugs;
                         session.open_drug_card(d);
                     }
+                }
+                CompanionGo::Cross(id) => {
+                    // La liste du dossier ouvert **et** la fiche
+                    // cherchée : on ouvre l'écran sur la question qu'on
+                    // vient de poser, et non sur un écran vide où il
+                    // faudrait la recomposer. Sans dossier, la fiche
+                    // seule — le croisement sait vivre sans dossier,
+                    // c'est même sa raison d'être.
+                    session.ddi_list = session.patient_treats.iter().map(|d| d.id).collect();
+                    if !session.ddi_list.contains(&id) {
+                        session.ddi_list.push(id);
+                    }
+                    session.view = MainView::Ddi;
                 }
                 CompanionGo::Trod => {
                     // Le choix rapide des actes, sur le dossier ouvert ;
@@ -48046,9 +48477,358 @@ impl App {
 /// fenêtre en cours de dessin.
 enum CompanionGo {
     Card(i64),
+    /// Le croisement, chargé du dossier ouvert **et** de la fiche
+    /// cherchée.
+    ///
+    /// C'est la question du téléphone — « le médecin veut ajouter ça, ça
+    /// passe ? » — et [`MainView::Ddi`] existe pour elle. Une puce du
+    /// compagnon la passe donc entière plutôt que d'ouvrir un écran vide
+    /// où il faudrait recomposer à la main ce qu'on avait déjà sous les
+    /// yeux.
+    Cross(i64),
     Trod,
     Scan,
     Stup,
+}
+
+/// La question qui a produit une lecture du compagnon : ce qu'on tape,
+/// la fiche choisie parmi celles qui répondent, le dossier ouvert, et la
+/// révision des fiches.
+type CompanionKey = (String, usize, Option<i64>, u64);
+
+/// La distance au calme d'un signal — jamais une couleur écrite ici.
+///
+/// Voir `motif` : la teinte vient du thème, et deux des huit peaux sont
+/// des peaux de nuit. Une puce qui porterait son rouge en dur serait
+/// fausse sur celles-là.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CompanionTone {
+    /// Ce qu'on ne fait pas.
+    Stop,
+    /// Ce sur quoi on s'arrête.
+    Watch,
+    /// Ce que la table autorise. **C'est une réponse**, pas une absence
+    /// d'information — la distinction que `gravidity` et `crush` font
+    /// toutes les deux dans leur type.
+    Ok,
+    /// La table nomme la ligne et ne conclut pas : il manque un chiffre
+    /// ou une date. Voir `renal::Finding::level`, qui est un `Option`
+    /// pour cette raison précise.
+    Pending,
+}
+
+impl CompanionTone {
+    /// Le fond de la puce, pris au thème.
+    fn fill(self) -> egui::Color32 {
+        match self {
+            CompanionTone::Stop => motif::alert(),
+            CompanionTone::Watch => motif::warn(),
+            CompanionTone::Ok => motif::text_dim(),
+            CompanionTone::Pending => motif::text_faint(),
+        }
+    }
+}
+
+/// Ce qu'une table dit de la fiche cherchée, en trois mots.
+///
+/// **La puce nomme sa table et cite son mot.** « Écraser · Ne pas
+/// écraser » est le mot de `crush.rs` et non une reformulation : le
+/// compagnon ne conclut rien de son côté, il rapporte — et c'est ce qui
+/// lui permet de tenir dans une barre de quelques centaines de pixels
+/// sans devenir un panneau clinique au rabais.
+///
+/// **Et la réserve de la table voyage avec la puce.** C'est la règle que
+/// ce dépôt écrit pour les panneaux cliniques : une table lue à deux
+/// endroits doit dire ses limites aux deux, sans quoi c'est l'endroit
+/// qui se tait qu'on croit. Le survol donne la phrase de portée du
+/// module — la même chaîne que le grand écran affiche en tête de son
+/// panneau — puis ce que la ligne dit au long.
+struct CompanionSignal {
+    /// Ce que la puce écrit. **Écrit une fois** : la mesure et le dessin
+    /// lisent cette chaîne-là, jamais deux compositions du même libellé.
+    chip: String,
+    tone: CompanionTone,
+    /// La portée de la table, puis la conduite.
+    hover: String,
+}
+
+/// Ce que le compagnon a à dire d'une question.
+struct CompanionRead {
+    /// Les fiches qui répondent, la meilleure d'abord.
+    ///
+    /// **Plusieurs, et pas une.** Le compagnon prenait le meilleur score
+    /// et n'en montrait qu'une : « lévo » attrape le Levothyrox, la
+    /// lévofloxacine et le lévétiracétam, et l'écran en affichait un
+    /// sans dire qu'il y en avait trois.
+    hits: Vec<Drug>,
+    /// Le rang effectivement lu, borné à ce que `hits` porte.
+    pick: usize,
+    /// Ce que les tables disent de la fiche choisie.
+    signals: Vec<CompanionSignal>,
+    /// Aucune table ne nomme cette présentation.
+    ///
+    /// **Le silence n'est pas une autorisation** — la première règle de
+    /// `crush.rs`, et la raison pour laquelle une bande de puces vide se
+    /// dit en toutes lettres plutôt que de ne rien montrer.
+    silent: bool,
+    /// Ce que la fiche fait, en une phrase.
+    what: String,
+    /// Ce qui doit se dire avant tout le reste, quand la fiche le porte.
+    flag: String,
+}
+
+/// Combien de fiches le compagnon garde parmi celles qui répondent.
+///
+/// Assez pour que la correction soit possible, assez peu pour que la
+/// rangée ne devienne pas la vue : au-delà, c'est la recherche qu'on
+/// ouvre, et elle est à un bouton.
+const COMPANION_HITS: usize = 8;
+
+/// Ce que le compagnon lit d'une question.
+///
+/// **Hors de la boucle de dessin et sans egui**, comme `toolbar_shape`
+/// ou `agenda::lay` : c'est une lecture, elle se teste sans ouvrir de
+/// fenêtre. Et elle est chère — une passe floue sur les 862 fiches, puis
+/// six tables cliniques —, donc elle est mémorisée contre la question.
+fn companion_look(
+    drugs: &[Drug],
+    file: &[Drug],
+    dfg: Option<f64>,
+    age: Option<u32>,
+    query: &str,
+    pick: usize,
+) -> CompanionRead {
+    let mut scored: Vec<(i32, &Drug)> = Vec::new();
+    if !query.is_empty() {
+        for d in drugs {
+            let a = fuzzy::score(query, &d.name);
+            let b = if d.dci.is_empty() {
+                None
+            } else {
+                fuzzy::score(query, &d.dci)
+            };
+            if let Some(s) = a.max(b) {
+                scored.push((s, d));
+            }
+        }
+        // Le nom départage, pour qu'une même question rende deux fois la
+        // même liste : deux fiches de même score ne doivent pas échanger
+        // leur place d'une image à l'autre.
+        scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
+        scored.truncate(COMPANION_HITS);
+    }
+    let hits: Vec<Drug> = scored.into_iter().map(|(_, d)| d.clone()).collect();
+    let pick = pick.min(hits.len().saturating_sub(1));
+    let Some(card) = hits.get(pick).cloned() else {
+        return CompanionRead {
+            hits,
+            pick: 0,
+            signals: Vec::new(),
+            silent: false,
+            what: String::new(),
+            flag: String::new(),
+        };
+    };
+    let signals = companion_signals(&card, file, dfg, age);
+    CompanionRead {
+        what: App::first_sentence(&card.indications)
+            .or_else(|| App::first_sentence(&card.mechanism))
+            .unwrap_or_default(),
+        flag: App::first_sentence(&card.red_flags).unwrap_or_default(),
+        silent: signals.is_empty(),
+        signals,
+        hits,
+        pick,
+    }
+}
+
+/// Ce que les tables disent de cette fiche-là, dans l'ordre où on les
+/// lit au comptoir.
+///
+/// Les deux premières demandent le dossier ouvert : ce sont les seules
+/// que personne d'autre ne peut répondre à la place du logiciel, et ce
+/// sont donc celles qui passent devant. Les quatre suivantes ne
+/// regardent que la fiche.
+///
+/// **Une table muette ne rend pas de puce.** Une rangée de « à vérifier »
+/// ne signale rien et apprend à ne plus regarder la bande ; quand elles
+/// se taisent toutes, c'est une phrase qui le dit — voir
+/// [`CompanionRead::silent`].
+fn companion_signals(
+    card: &Drug,
+    file: &[Drug],
+    dfg: Option<f64>,
+    age: Option<u32>,
+) -> Vec<CompanionSignal> {
+    let mut out: Vec<CompanionSignal> = Vec::new();
+    // Le dossier, plus la fiche cherchée si elle n'y est pas déjà : la
+    // liste sur laquelle les deux premières lectures portent.
+    let mut list: Vec<Drug> = file.to_vec();
+    if !list.iter().any(|d| d.id == card.id) {
+        list.push(card.clone());
+    }
+    let me = card.name.trim();
+    if file.iter().any(|d| d.id != card.id) {
+        // Ce que les fiches du dossier disent **de celle-ci**, cité.
+        // L'autre ligne est retrouvée par son identifiant et non en
+        // relisant le libellé : le libellé est une écriture, et deux
+        // écritures d'une même chose finissent toujours par diverger.
+        let pairs: Vec<(String, String)> = interactions_paired(&list)
+            .into_iter()
+            .filter(|(a, b, _, _)| *a == card.id || *b == card.id)
+            .map(|(a, b, _, sentence)| {
+                let other = if a == card.id { b } else { a };
+                let name = list
+                    .iter()
+                    .find(|d| d.id == other)
+                    .map_or("", |d| d.name.trim());
+                (name.to_owned(), sentence)
+            })
+            .collect();
+        if !pairs.is_empty() {
+            let mut hover = trf("companion_cross_head", pairs.len());
+            for (other, sentence) in &pairs {
+                hover.push_str(&format!("\n\n{other} — {sentence}"));
+            }
+            out.push(CompanionSignal {
+                chip: trf("companion_sig_cross", pairs.len()),
+                tone: CompanionTone::Stop,
+                hover,
+            });
+        }
+        // Et ce que les cytochromes en disent, qui n'est pas la même
+        // lecture : la prose d'une fiche cite ce que son rédacteur a
+        // écrit, la table des enzymes croise ce que personne n'a écrit
+        // nulle part.
+        let terms = ordonnance_terms(&list);
+        let crossings = crate::cyp::cross(&terms);
+        let mine: Vec<&crate::cyp::Crossing> = crossings
+            .crossings
+            .iter()
+            .filter(|c| c.actor == me || c.affected == me)
+            .collect();
+        if !mine.is_empty() {
+            let mut hover = tr("cyp_scope").to_owned();
+            for c in &mine {
+                hover.push_str(&format!(
+                    "\n\n{} — {} sur {}",
+                    c.actor,
+                    c.affected,
+                    c.enzyme.label()
+                ));
+            }
+            out.push(CompanionSignal {
+                chip: trf("companion_sig_cyp", mine.len()),
+                tone: CompanionTone::Watch,
+                hover,
+            });
+        }
+    }
+    let one = [crate::revue::Treatment {
+        name: &card.name,
+        dci: &card.dci,
+        class: &card.class,
+        tags: &card.tags,
+    }];
+    // « Peut-on l'écraser ? » — la question du téléphone de l'EHPAD.
+    if let Some(a) = crate::crush::read(&one)
+        .into_iter()
+        .find(|a| a.verdict != crate::crush::Verdict::Unknown)
+    {
+        let mut hover = a.why.to_owned();
+        if !a.instead.is_empty() {
+            hover.push_str("\n\n");
+            hover.push_str(a.instead);
+        }
+        out.push(CompanionSignal {
+            chip: format!("{} · {}", tr("companion_sig_crush"), a.verdict.label()),
+            tone: match a.verdict {
+                crate::crush::Verdict::No => CompanionTone::Stop,
+                crate::crush::Verdict::Conditional => CompanionTone::Watch,
+                _ => CompanionTone::Ok,
+            },
+            hover,
+        });
+    }
+    // La grossesse et l'allaitement : **deux questions**, et la puce
+    // porte celle des deux qui inquiète le plus, nommée. La codéine est
+    // utilisable enceinte et contre-indiquée en allaitant, les AVK
+    // l'exact inverse — une puce qui dirait « grossesse » sans dire
+    // laquelle se tromperait une fois sur deux.
+    if let Some(f) = crate::gravidity::read(&one)
+        .into_iter()
+        .find(|f| f.worst() != crate::gravidity::Level::SansDonnee)
+    {
+        let (stage, level, note) = if f.pregnancy <= f.breastfeeding {
+            (
+                crate::gravidity::Stage::Grossesse,
+                f.pregnancy,
+                f.pregnancy_note,
+            )
+        } else {
+            (
+                crate::gravidity::Stage::Allaitement,
+                f.breastfeeding,
+                f.breastfeeding_note,
+            )
+        };
+        let mut hover = tr("gravid_scope").to_owned();
+        if !f.term.is_empty() {
+            hover.push_str(&format!("\n\n{}", f.term));
+        }
+        if !note.is_empty() {
+            hover.push_str(&format!("\n\n{note}"));
+        }
+        out.push(CompanionSignal {
+            chip: format!("{} · {}", stage.label(), level.label()),
+            tone: match level {
+                crate::gravidity::Level::Interdit => CompanionTone::Stop,
+                crate::gravidity::Level::Compatible => CompanionTone::Ok,
+                _ => CompanionTone::Watch,
+            },
+            hover,
+        });
+    }
+    // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
+    // puce dit qu'il manque, et ne conclut pas.
+    if let Some(f) = crate::renal::read(&one, dfg).into_iter().next() {
+        let said = match (f.level, f.below) {
+            (Some(l), Some(b)) => format!("{} sous {b} mL/min", l.label()),
+            _ => tr("companion_renal_pending").to_owned(),
+        };
+        out.push(CompanionSignal {
+            chip: format!("{} · {said}", tr("companion_sig_renal")),
+            tone: match f.level {
+                Some(crate::renal::Level::Contraindicated) => CompanionTone::Stop,
+                Some(_) => CompanionTone::Watch,
+                None => CompanionTone::Pending,
+            },
+            hover: format!("{}\n\n{}", tr("renal_scope"), f.conduct),
+        });
+    }
+    // Et l'âge, dont le chiffre est déjà au dossier : le rein demande
+    // d'aller chercher un compte rendu, l'âge ne demande rien, et c'est
+    // pour cela qu'il ne se regarde jamais.
+    if let Some(f) = crate::elderly::read(&one, age).into_iter().next() {
+        let said = match f.level {
+            Some(l) => l.label().to_owned(),
+            None => trf("companion_age_pending", f.from),
+        };
+        let mut hover = format!("{}\n\n{}", tr("elderly_scope"), f.risk);
+        if !f.instead.is_empty() {
+            hover.push_str(&format!("\n\n{}", f.instead));
+        }
+        out.push(CompanionSignal {
+            chip: format!("{} · {said}", tr("companion_sig_age")),
+            tone: match f.level {
+                Some(crate::elderly::Level::Avoid) => CompanionTone::Stop,
+                Some(_) => CompanionTone::Watch,
+                None => CompanionTone::Pending,
+            },
+            hover,
+        });
+    }
+    out
 }
 
 impl eframe::App for App {
@@ -53846,6 +54626,184 @@ mod tests {
                 model * 3.0
             );
         }
+    }
+
+    /// **Le compagnon rapporte les tables, il ne conclut pas à leur
+    /// place — et quand elles se taisent toutes, il le dit.**
+    ///
+    /// La barre est une fenêtre de quelques centaines de pixels posée
+    /// au-dessus des autres applications : tout ce qu'elle peut faire
+    /// d'honnête est citer le mot de chaque table et renvoyer à l'écran
+    /// qui répond en entier. Ce test tient les quatre décisions qui font
+    /// que c'est vrai : le mot vient de la table, une table muette ne
+    /// rend pas de puce, le silence de toutes se dit en toutes lettres
+    /// — c'est la première règle de `crush.rs` —, et les deux lectures
+    /// qui demandent une ordonnance ne se rendent que s'il y en a une.
+    #[test]
+    fn the_companion_reports_the_tables_and_says_when_they_are_silent() {
+        use crate::db::Drug;
+        let skenan = Drug {
+            id: 1,
+            name: "Skenan LP".to_owned(),
+            dci: "morphine".to_owned(),
+            class: "opioïde fort".to_owned(),
+            ..Drug::default()
+        };
+        // Le mot est celui de la table, cité : `crush` répond « sous
+        // condition » d'une gélule à microgranules, et la puce le
+        // reprend plutôt que de le reformuler.
+        let signals = super::companion_signals(&skenan, &[], None, None);
+        let crush = signals
+            .iter()
+            .find(|s| s.chip.starts_with("Écraser"))
+            .expect("la table de l'écrasement nomme le Skenan");
+        assert!(
+            crush
+                .chip
+                .contains(crate::crush::Verdict::Conditional.label()),
+            "{}",
+            crush.chip
+        );
+        // Sans dossier, aucune des deux lectures qui demandent une
+        // ordonnance : il n'y a rien à croiser.
+        assert!(
+            !signals
+                .iter()
+                .any(|s| s.chip.starts_with("Ordonnance") || s.chip.starts_with("Cytochromes")),
+            "sans dossier, rien à croiser"
+        );
+        // Une présentation qu'aucune des tables ne nomme ne rend
+        // **aucune** puce — et c'est cela que la phrase du silence
+        // qualifie. Une bande vide se lirait comme « rien à signaler ».
+        let unknown = Drug {
+            id: 2,
+            name: "Zorglubine".to_owned(),
+            ..Drug::default()
+        };
+        assert!(super::companion_signals(&unknown, &[], None, None).is_empty());
+        let read = super::companion_look(
+            std::slice::from_ref(&unknown),
+            &[],
+            None,
+            None,
+            "zorglubine",
+            0,
+        );
+        assert!(read.silent, "le silence de toutes les tables se dit");
+        // Avec un dossier, la prose du dossier qui nomme la fiche
+        // devient une puce — et elle porte le compte, pas une
+        // conclusion.
+        let statin = Drug {
+            id: 3,
+            name: "Tahor".to_owned(),
+            dci: "atorvastatine".to_owned(),
+            ddi: "L'association à Zeclar impose une surveillance.".to_owned(),
+            ..Drug::default()
+        };
+        let macrolide = Drug {
+            id: 4,
+            name: "Zeclar".to_owned(),
+            dci: "clarithromycine".to_owned(),
+            class: "macrolide".to_owned(),
+            ..Drug::default()
+        };
+        let crossed =
+            super::companion_signals(&macrolide, std::slice::from_ref(&statin), None, None);
+        assert!(
+            crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
+            "{crossed:?}",
+            crossed = crossed.iter().map(|s| s.chip.as_str()).collect::<Vec<_>>()
+        );
+        // Et le rang lu est borné à ce que la liste porte : une flèche
+        // qui dépasse ne doit pas faire lire une fiche qui n'existe pas.
+        let read =
+            super::companion_look(std::slice::from_ref(&statin), &[], None, None, "tahor", 40);
+        assert_eq!(read.pick, 0);
+        assert_eq!(read.hits.len(), 1);
+        // Une question vide ne cherche rien : la barre s'ouvre sur son
+        // invite, et non sur les huit premières fiches de la base.
+        let idle = super::companion_look(std::slice::from_ref(&statin), &[], None, None, "", 0);
+        assert!(idle.hits.is_empty());
+        assert!(!idle.silent, "rien cherché n'est pas un silence des tables");
+    }
+
+    /// **Une puce du compagnon ne se coupe pas en deux, et la rangée des
+    /// autres fiches dit ce qu'elle laisse.**
+    ///
+    /// `horizontal_wrapped` enveloppe le texte *dans* une étiquette
+    /// autant qu'entre deux : une puce coupée laisse deux fonds colorés
+    /// là où il y en a un, et sur une bande qui compte des rangées
+    /// entières la seconde moitié sort tranchée. Le test dessine la vraie
+    /// bande, sans fenêtre, à trois échelles et sur les largeurs que la
+    /// barre a vraiment — et il mord : la même boucle sans
+    /// `TextWrapMode::Extend` doit casser au moins une fois, sinon elle
+    /// ne garde rien.
+    #[test]
+    fn a_companion_chip_is_drawn_whole_or_not_at_all() {
+        const SIGNALS: [&str; 5] = [
+            "Ordonnance · 2 croisement(s)",
+            "Cytochromes · 1 rencontre(s)",
+            "Écraser · Ne pas écraser",
+            "Grossesse · Contre-indiqué",
+            "Rein · Dose à réduire sous 60 mL/min",
+        ];
+        // La bande, dessinée pour de vrai. On rend, pour chaque puce, ce
+        // qu'elle occupe et ce qu'elle occuperait d'une seule venue : une
+        // puce entière fait exactement la taille de sa phrase non
+        // enveloppée, une puce coupée est plus haute et moins large.
+        let band = |scale: f32, width: f32, whole: bool| -> Vec<(egui::Vec2, egui::Vec2)> {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new(Vec::new());
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.set_max_width(width);
+                    let font = egui::TextStyle::Body.resolve(ui.style());
+                    ui.horizontal_wrapped(|ui| {
+                        for s in SIGNALS {
+                            let text = format!("  {s}  ");
+                            let flat = ui.fonts(|f| {
+                                f.layout_no_wrap(text.clone(), font.clone(), motif::text())
+                                    .size()
+                            });
+                            let mut label = egui::Label::new(egui::RichText::new(text));
+                            if whole {
+                                label = label.wrap_mode(egui::TextWrapMode::Extend);
+                            }
+                            let drawn = ui.add(label).rect.size();
+                            seen.borrow_mut().push((drawn, flat));
+                        }
+                    });
+                });
+            });
+            seen.take()
+        };
+        for scale in [1.0_f32, 1.25, 1.6] {
+            // Les largeurs que la barre a vraiment : son corps aux trois
+            // formes, la plus étroite étant celle d'une fenêtre qu'un
+            // gestionnaire a laissé descendre jusqu'à son plancher.
+            for width in [300.0_f32, 460.0, 552.0] {
+                for (i, (drawn, flat)) in band(scale, width, true).into_iter().enumerate() {
+                    assert!(
+                        (drawn.y - flat.y).abs() < 1.0,
+                        "échelle {scale}, largeur {width} : « {} » est dessinée sur \
+                         {} là où sa phrase en fait {}",
+                        SIGNALS[i],
+                        drawn.y,
+                        flat.y
+                    );
+                }
+            }
+        }
+        // **Et la boucle mord** : laissée libre, à la plus étroite des
+        // largeurs et au plus grand des textes, au moins une puce se
+        // coupe vraiment. Sans cela le test ne garderait rien.
+        assert!(
+            band(1.6, 300.0, false)
+                .into_iter()
+                .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
+            "sans TextWrapMode::Extend, une puce doit se couper"
+        );
     }
 
     /// **Une phrase, et pas la monographie.**
