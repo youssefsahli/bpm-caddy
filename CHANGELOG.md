@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Deux points de plus à la revue d'ordonnance, et la forme qui les
+  rendait impossibles.** `Kind::Without` porte maintenant un veto,
+  celui que `renal` et `gravidity` ont depuis toujours : l'absence se
+  cherche sur les lignes que le groupe n'a pas nommées, si bien qu'une
+  ligne nommée ne peut pas fournir ce qui manque — et il existe des
+  règles où la ligne déclenchante est précisément celle qui comble.
+
+  **Méthotrexate sans acide folique** était ce cas : la Lederfoline
+  porte « antidote du méthotrexate » dans sa classe, elle était donc
+  nommée par le groupe, et une ordonnance qui ne portait qu'elle
+  recevait un reproche adressé au sauvetage lui-même. L'acide folique
+  divise par deux les effets qui font arrêter un méthotrexate
+  hebdomadaire sans rien lui retirer, et le rappel qui tue quand il
+  manque — hebdomadaire, un jour fixe, jamais quotidien — part avec la
+  règle.
+
+  **Bisphosphonate sans vitamine D** est écrit contre une seconde
+  limite, que le veto ne lève pas : un mot de l'absence se cherche sur
+  toute la ligne, donc il peut nommer des produits qui ne font pas la
+  même chose. « calcium » nomme ici un supplément, un antiacide et une
+  résine échangeuse de cations, et une absence qu'un antiacide comble
+  est une règle qui se tait quand il faudrait qu'elle parle. La règle ne
+  cherche donc que la vitamine D, qui ne nomme que ses cinq formes, et
+  laisse le calcium dans la phrase. Les fiches livrées demandent toutes
+  que le statut en vitamine D soit corrigé avant l'instauration : sur
+  une carence préexistante, l'hypocalcémie devient symptomatique, et
+  c'est la perfusion annuelle qui la donne le plus volontiers.
+
 ## [0.202.0] - 2026-09-16
 
 ### Fixed

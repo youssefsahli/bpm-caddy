@@ -573,9 +573,19 @@ Deux règles valent partout :
   méthotrexate » dans sa classe, elle était donc *nommée* par le groupe,
   et une ordonnance qui ne portait qu'elle recevait le reproche adressé
   au sauvetage lui-même. Le veto l'écarte du groupe et lui rend sa voix.
-  Il est vide pour cinq des six règles et le restera :
+  Il est vide pour six des sept règles et le restera :
   `a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice`
   tient les quatre cas, et mord sur le troisième.
+- **Ce que le veto ne règle pas** : un mot de l'absence se cherche sur
+  toute la ligne, donc il peut nommer des produits qui ne font pas la
+  même chose. « calcium » nomme ici un supplément (Orocal, Cacit), un
+  antiacide (Rennie) et une résine échangeuse de cations (Resikali) —
+  et une absence qu'un antiacide comble est une règle qui se tait
+  précisément quand il faudrait qu'elle parle. « Bisphosphonate sans
+  vitamine D » est écrit à cette forme-là : il ne cherche que la
+  vitamine D, qui ne nomme que ses cinq formes, et laisse le calcium
+  dans la phrase, où il ne décide de rien.
+  `an_absence_is_not_filled_by_a_namesake` le tient.
 - **Test** : chaque règle doit pouvoir se déclencher sur la base livrée
   — pour un `Without`, la chose dont l'absence est le constat doit
   exister aussi, sans quoi la règle parle de la base et non du patient.

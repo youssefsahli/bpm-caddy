@@ -210,7 +210,15 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   so it was named by the group, and an ordonnance carrying only the
   rescue was told it lacked one.
   `a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice`
-  holds the four cases, and bites on the third. Here the key is the
+  holds the four cases, and bites on the third. **And a second limit the
+  veto does not lift**: an `absent` word matches the whole haystack, so
+  it can name products that do different things — « calcium » in this
+  base names a supplement, an antacid and a potassium-binding resin, and
+  an absence an antacid can fill is a rule that falls silent exactly
+  when it should speak. « Bisphosphonate sans vitamine D » is written to
+  that shape: it matches only vitamin D, which names nothing but its
+  five forms, and leaves the calcium to the sentence, where it decides
+  nothing. `an_absence_is_not_filled_by_a_namesake` holds it. Here the key is the
   rule's **shape** — the variant, the group count, the `min` of a
   `Duplicate` — which is what keeps « Deux benzodiazépines » apart from
   « Trois sédatifs »: same words, different `min`, and that difference
@@ -244,7 +252,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1006 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1008 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -1727,7 +1735,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 1006 phrases were not, and they were exactly the ones
+always editable; 1008 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

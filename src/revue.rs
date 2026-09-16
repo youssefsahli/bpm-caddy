@@ -1158,6 +1158,27 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Without(
+            // Les deux graphies : la base en porte une pour le Fosamax
+            // et l'autre pour les quatre suivants, et `classes.rs` les
+            // replie — mais cette table-ci compare les mots bruts.
+            &[&["bisphosphonate", "biphosphonate"]],
+            // **La vitamine D seule, et c'est délibéré.** « calcium »
+            // nomme dans cette base trois produits qui ne font pas la
+            // même chose : un supplément (Orocal, Cacit), un antiacide
+            // (Rennie) et une résine échangeuse de cations (Resikali).
+            // Une absence qui se laisse combler par un antiacide est une
+            // règle qui se tait quand il faudrait qu'elle parle. La
+            // vitamine D, elle, ne nomme que ses cinq formes. Le calcium
+            // reste dans la phrase, où il ne décide de rien.
+            &["vitamine d"],
+            &[],
+        ),
+        severity: Severity::Warn,
+        title: "Bisphosphonate sans vitamine D",
+        detail: "Les fiches de ces produits demandent toutes que le statut en vitamine D soit corrigé avant l'instauration, et rien sur cette ordonnance n'y pourvoit. Sur une carence préexistante, l'hypocalcémie devient symptomatique — c'est l'effet que la perfusion annuelle donne le plus volontiers. Demander où en est le dosage, et si le calcium alimentaire suffit : l'un et l'autre se règlent avant la première prise, pas après.",
+    },
+    Rule {
+        kind: Kind::Without(
             &[&["méthotrexate"]],
             &["acide folique", "spéciafoldine", "folinique", "lederfoline"],
             // **Le veto, et la raison d'être du troisième membre.** La
@@ -1537,6 +1558,65 @@ mod tests {
 
     /// What is *missing* only counts as a finding when the thing that
     /// should be there is not: the same ordonnance with a laxative on
+    /// **Une absence ne se laisse pas combler par un homonyme.**
+    ///
+    /// « calcium » nomme dans la base livrée trois produits qui ne font
+    /// pas la même chose : un supplément, un antiacide et une résine
+    /// échangeuse de cations. Une règle qui accepterait l'un pour
+    /// l'autre se tairait précisément quand il faudrait qu'elle parle,
+    /// et c'est pourquoi « Bisphosphonate sans vitamine D » ne cherche
+    /// que la vitamine D — qui, elle, ne nomme que ses cinq formes.
+    ///
+    /// Le test tient les deux moitiés : la vitamine D comble, sous
+    /// toutes ses formes, et le carbonate de calcium d'un antiacide ne
+    /// comble rien.
+    #[test]
+    fn an_absence_is_not_filled_by_a_namesake() {
+        let has = |ordo: &[Treatment], title: &str| review(ordo).iter().any(|p| p.title == title);
+        const TITLE: &str = "Bisphosphonate sans vitamine D";
+        let fosamax = || t("Fosamax", "alendronate", "bisphosphonate");
+        let aclasta = || {
+            t(
+                "Aclasta",
+                "acide zolédronique",
+                "biphosphonate — perfusion annuelle",
+            )
+        };
+        // Les deux graphies déclenchent.
+        assert!(has(&[fosamax()], TITLE));
+        assert!(has(&[aclasta()], TITLE));
+        // La vitamine D comble, native comme hydroxylée.
+        assert!(!has(
+            &[fosamax(), t("Uvedose", "cholécalciférol", "vitamine D")],
+            TITLE
+        ));
+        assert!(!has(
+            &[
+                fosamax(),
+                t(
+                    "Dédrogyl",
+                    "calcifédiol",
+                    "dérivé hydroxylé de la vitamine D"
+                ),
+            ],
+            TITLE
+        ));
+        // **L'homonyme ne comble pas** : un antiacide au carbonate de
+        // calcium n'est pas une supplémentation, et la règle continue de
+        // parler.
+        assert!(has(
+            &[
+                fosamax(),
+                t(
+                    "Rennie",
+                    "carbonate de calcium + carbonate de magnésium",
+                    "antiacide",
+                ),
+            ],
+            TITLE
+        ));
+    }
+
     /// **Le veto : une ligne qui déclenche ne doit pas pouvoir combler,
     /// et une ligne qui comble ne doit pas déclencher.**
     ///
