@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Trois lignes de plus à ce que l'âge change** — le néfopam,
+  l'amiodarone et les fluoroquinolones. Le néfopam porte un profil
+  atropinique complet et sa propre fiche écrit « confusion chez le sujet
+  âgé » ; l'amiodarone installe ses atteintes avec la dose cumulée, donc
+  avec la durée, et elles se lisent d'abord comme un vieillissement —
+  une fatigue, un essoufflement, une marche instable — tandis que sa
+  demi-vie en semaines fait durer une interaction un mois après l'arrêt ;
+  les fluoroquinolones réunissent la tendinopathie dont le risque est le
+  plus élevé après 60 ans, la confusion, la neuropathie durable, le QT
+  et l'aorte — c'est ce faisceau qui a fait restreindre la famille, et
+  non un effet isolé.
+
+  Deux fiches ont été complétées au passage, sur ce que l'âge y change :
+  l'Izilox, dont le signal de QT est le plus net de sa famille, et la
+  Noroxine, dont les champs cliniques décrivaient tout sauf l'âge — ce
+  que la confrontation a vu parce qu'elle lit les champs cliniques et
+  non la fiche entière.
+
 ## [0.201.1] - 2026-09-16
 
 ### Fixed

@@ -164,7 +164,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   conduct says « halve it »; an age conduct says « there is better » —
   which is why the row carries a field `renal` has not and cannot have,
   `instead`, and why it is **mandatory**: `crush.rs`'s rule, « a "no"
-  with no alternative leaves the problem whole ». Twenty-three rows, each
+  with no alternative leaves the problem whole ». Twenty-six rows, each
   from a published list (Laroche 2007, STOPP/START v2, Beers 2023, HAS,
   ANSM), each confronted with the shipped fiche it lands on. Six rules,
   one test each — three of them not in `renal`: **an alternative is
@@ -233,7 +233,7 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 998 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1004 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -1711,7 +1711,7 @@ will ever find by its words.
 
 **Every printed phrase can be rewritten by the officine.** The cards,
 preparations, dispositifs, protocols and reference-table *cells* were
-always editable; 998 phrases were not, and they were exactly the ones
+always editable; 1004 phrases were not, and they were exactly the ones
 that **go out on paper** in the officine's name — the patient's carnets,
 the entretien checklist, the « peut-on écraser ? » sheet, the
 surveillance plan, the biology readings, the revue, grossesse, rein, the

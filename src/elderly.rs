@@ -516,6 +516,16 @@ pub const TABLE: &[Inappropriate] = &[
         source: "ANSM — nitrofurantoïne, restriction d'indication ; critères STOPP/START v2",
     },
     Inappropriate {
+        needs: &["fluoroquinolone"],
+        never: &[],
+        label: "Fluoroquinolones",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Tendinopathie et rupture du tendon d'Achille, dont le risque est le plus élevé après 60 ans et davantage encore sous corticoïde ; confusion, hallucinations et convulsions ; neuropathie périphérique parfois durable ; allongement du QT ; anévrisme et dissection de l'aorte. C'est ce faisceau qui a fait restreindre la famille, et non un effet isolé.",
+        instead: "Réservées aux infections où aucune autre famille ne convient, et jamais pour une infection bénigne : une cystite simple se traite par la fosfomycine ou le pivmécillinam, une infection respiratoire courante par l'amoxicilline. Toute douleur tendineuse fait arrêter et cesser l'appui, y compris après la fin du traitement.",
+        source: "ANSM et EMA 2019 — restriction d'emploi des fluoroquinolones ; critères STOPP/START v2",
+    },
+    Inappropriate {
         needs: &["colchimax"],
         never: &[],
         label: "Colchicine associée à un atropinique et à l'opium",
@@ -556,6 +566,16 @@ pub const TABLE: &[Inappropriate] = &[
         source: "HAS — maladie d'Alzheimer, troubles du comportement perturbateurs ; ANSM",
     },
     Inappropriate {
+        needs: &["nefopam", "acupan"],
+        never: &[],
+        label: "Néfopam",
+        from: 75,
+        level: Level::Caution,
+        risk: "Profil atropinique complet — bouche sèche, tachycardie, rétention urinaire, glaucome — auquel s'ajoutent, à cet âge, l'excitation, les hallucinations et la confusion que sa propre fiche nomme, et un seuil épileptogène abaissé. Les sueurs et les vertiges d'une injection trop rapide font tomber.",
+        instead: "Le paracétamol à dose pleine et régulière d'abord, puis, si cela ne suffit pas, un opioïde faible à dose réduite avec un laxatif prescrit d'emblée. Si le néfopam est retenu, la perfusion lente et jamais chez un patient au glaucome à angle fermé ou à l'adénome prostatique.",
+        source: "RCP néfopam ; critères de Beers 2023 — charge anticholinergique",
+    },
+    Inappropriate {
         needs: &["tramadol"],
         never: &[],
         label: "Tramadol",
@@ -574,6 +594,19 @@ pub const TABLE: &[Inappropriate] = &[
         risk: "Effet proarythmique — torsades de pointes pour l'hydroquinidine, dès les premières prises et indépendamment de la dose ; élargissement du QRS et troubles de conduction pour la cibenzoline, qui donne en outre des hypoglycémies prolongées particulièrement chez le sujet âgé, l'insuffisant rénal et le patient de faible poids. Les deux ont des effets atropiniques et aggravent une insuffisance cardiaque.",
         instead: "Dans la fibrillation atriale, le contrôle de la fréquence par un bêta-bloquant et l'anticoagulation selon le score, qui est ce qui protège ; le maintien du rythme se discute avec le cardiologue et n'est pas un objectif en soi à cet âge.",
         source: "Laroche 2007 ; critères de Beers 2023 ; ESC — fibrillation atriale",
+    },
+    Inappropriate {
+        // « antiarythmique » tout court : la ligne des classes Ia
+        // cherche « antiarythmique classe ia », que cette fiche-ci ne
+        // porte pas. Les deux mots ne se croisent donc pas.
+        needs: &["amiodarone", "cordarone"],
+        never: &[],
+        label: "Amiodarone",
+        from: 75,
+        level: Level::Caution,
+        risk: "Dysthyroïdies à l'iode dans les deux sens, pneumopathie interstitielle, hépatite, neuropathie périphérique et dépôts cornéens — des atteintes qui s'installent avec la dose cumulée, donc avec la durée, et qui se lisent d'abord comme un vieillissement : une fatigue, un essoufflement, une marche instable. Sa demi-vie se compte en semaines : une interaction dure encore un mois après l'arrêt.",
+        instead: "Dans la fibrillation atriale, le contrôle de la fréquence par un bêta-bloquant est ce qu'on cherche d'abord à cet âge, avec l'anticoagulation selon le score. Si l'amiodarone est maintenue, la TSH et les transaminases sont contrôlées régulièrement, et tout essoufflement nouveau fait penser au poumon avant de penser au cœur.",
+        source: "Critères de Beers 2023 ; ESC — fibrillation atriale ; ANSM",
     },
     Inappropriate {
         needs: &["digoxine", "digitalique"],
@@ -1247,7 +1280,7 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 23;
+        const FLOOR: usize = 26;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",
