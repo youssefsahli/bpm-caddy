@@ -49233,7 +49233,7 @@ fn companion_look(
 /// Ce que les tables disent de cette fiche-là, dans l'ordre où on les
 /// lit au comptoir.
 ///
-/// Les deux premières demandent le dossier ouvert : ce sont les seules
+/// Les trois premières demandent le dossier ouvert : ce sont les seules
 /// que personne d'autre ne peut répondre à la place du logiciel, et ce
 /// sont donc celles qui passent devant. Les quatre suivantes ne
 /// regardent que la fiche.
@@ -49285,11 +49285,47 @@ fn companion_signals(
                 section: DdiSection::Interactions,
             });
         }
+        let terms = ordonnance_terms(&list);
+        // Et ce que l'ordonnance dit d'elle-même une fois cette fiche
+        // dedans : doublons, associations, cascades.
+        //
+        // **C'est la lecture que la prose des fiches ne peut pas
+        // rendre.** Deux benzodiazépines ne se citent pas l'une
+        // l'autre, et aucune monographie n'écrit « celle-ci fait la
+        // troisième ». C'est pourtant la question posée au comptoir
+        // quand le médecin veut ajouter une ligne, et le croisement
+        // portait le chapitre sans qu'aucune puce y renvoie.
+        //
+        // Filtrée sur les points qui **nomment** cette fiche : la revue
+        // lit l'ordonnance entière, et rapporter ici ce que deux autres
+        // lignes font ensemble serait répondre à côté de la question.
+        let points: Vec<crate::revue::Point> = crate::revue::review(&terms)
+            .into_iter()
+            .filter(|p| p.drugs.iter().any(|n| n == me))
+            .collect();
+        if !points.is_empty() {
+            let mut hover = trf("companion_revue_head", points.len());
+            for p in &points {
+                hover.push_str(&format!("\n\n{} — {}", p.title, p.detail));
+            }
+            out.push(CompanionSignal {
+                chip: trf("companion_sig_revue", points.len()),
+                tone: if points
+                    .iter()
+                    .any(|p| p.severity == crate::biology::Severity::Alert)
+                {
+                    CompanionTone::Stop
+                } else {
+                    CompanionTone::Watch
+                },
+                hover,
+                section: DdiSection::Revue,
+            });
+        }
         // Et ce que les cytochromes en disent, qui n'est pas la même
         // lecture : la prose d'une fiche cite ce que son rédacteur a
         // écrit, la table des enzymes croise ce que personne n'a écrit
         // nulle part.
-        let terms = ordonnance_terms(&list);
         let crossings = crate::cyp::cross(&terms);
         let mine: Vec<&crate::cyp::Crossing> = crossings
             .crossings
@@ -55256,9 +55292,11 @@ mod tests {
         // Sans dossier, aucune des deux lectures qui demandent une
         // ordonnance : il n'y a rien à croiser.
         assert!(
-            !signals
-                .iter()
-                .any(|s| s.chip.starts_with("Ordonnance") || s.chip.starts_with("Cytochromes")),
+            !signals.iter().any(|s| {
+                s.chip.starts_with("Ordonnance")
+                    || s.chip.starts_with("Cytochromes")
+                    || s.chip.starts_with("Revue")
+            }),
             "sans dossier, rien à croiser"
         );
         // Une présentation qu'aucune des tables ne nomme ne rend
@@ -55302,6 +55340,33 @@ mod tests {
             crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
             "{crossed:?}",
             crossed = crossed.iter().map(|s| s.chip.as_str()).collect::<Vec<_>>()
+        );
+        // **Et la revue d'ordonnance, que la prose des fiches ne peut
+        // pas rendre.** « Statine + inhibiteur enzymatique » est un
+        // point de revue, pas une phrase de monographie : c'est une
+        // règle qui regarde deux lignes ensemble, et c'est la question
+        // qu'on pose quand le médecin veut ajouter celle-ci.
+        assert!(
+            crossed.iter().any(|s| s.chip.starts_with("Revue")),
+            "{crossed:?}",
+            crossed = crossed.iter().map(|s| s.chip.as_str()).collect::<Vec<_>>()
+        );
+        // Et elle ne rapporte que ce qui **nomme** cette fiche : la
+        // revue lit l'ordonnance entière, et ce que deux autres lignes
+        // font ensemble n'est pas une réponse à la question posée.
+        let bystander = Drug {
+            id: 5,
+            name: "Doliprane".to_owned(),
+            dci: "paracétamol".to_owned(),
+            class: "antalgique".to_owned(),
+            ..Drug::default()
+        };
+        let aside =
+            super::companion_signals(&bystander, &[statin.clone(), macrolide.clone()], None, None);
+        assert!(
+            !aside.iter().any(|s| s.chip.starts_with("Revue")),
+            "{aside:?}",
+            aside = aside.iter().map(|s| s.chip.as_str()).collect::<Vec<_>>()
         );
         // Et le rang lu est borné à ce que la liste porte : une flèche
         // qui dépasse ne doit pas faire lire une fiche qui n'existe pas.
