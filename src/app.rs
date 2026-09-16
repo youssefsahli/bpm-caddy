@@ -48655,6 +48655,7 @@ impl App {
             asked,
             self.companion_pick,
             session.viewing.as_ref().map(|p| p.id),
+            session.renal_dfg,
             session.drugs_rev,
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
@@ -49072,9 +49073,17 @@ enum CompanionGo {
 }
 
 /// La question qui a produit une lecture du compagnon : ce qu'on tape,
-/// la fiche choisie parmi celles qui répondent, le dossier ouvert, et la
-/// révision des fiches.
-type CompanionKey = (String, usize, Option<i64>, u64);
+/// la fiche choisie parmi celles qui répondent, le dossier ouvert, sa
+/// clairance, et la révision des fiches.
+///
+/// **La clairance en fait partie bien qu'elle vienne du dossier.** Le
+/// numéro de dossier ne bouge pas quand un autre poste inscrit un DFG
+/// et que `Session::sync_if_others_wrote` le rapporte : la puce du rein
+/// resterait alors celle d'avant, sans que rien ne le dise. C'est la
+/// règle que ce fichier écrit pour toute mémoïsation — on se souvient
+/// contre **la question**, et le DFG est dans la question que
+/// `renal::read` reçoit.
+type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
@@ -49242,6 +49251,17 @@ fn companion_look(
 /// ne signale rien et apprend à ne plus regarder la bande ; quand elles
 /// se taisent toutes, c'est une phrase qui le dit — voir
 /// [`CompanionRead::silent`].
+///
+/// **Le foie n'a pas de puce, et c'est voulu.** Le croisement porte son
+/// chapitre, et rien n'empêcherait d'en composer une : ce qui l'empêche
+/// est qu'elle dirait toujours la même chose. Le rein lit un chiffre qui
+/// est au dossier, l'âge en lit un autre qui y est depuis la création de
+/// la fiche ; le foie demande un **stade** de Child-Pugh, qu'aucun
+/// dossier ne porte et qu'un clinicien attribue — voir `hepatic.rs`. La
+/// puce serait donc « Foie · dépend du stade » sur une carte de deux,
+/// pour toujours, c'est-à-dire la rangée de « à vérifier » que le
+/// paragraphe ci-dessus refuse. Le stade se désigne au croisement, où
+/// trois boutons l'attendent.
 fn companion_signals(
     card: &Drug,
     file: &[Drug],
