@@ -910,7 +910,12 @@ add clicking and typing; it is not the price of entry.
   the *same* long sentence under both of its captions, which reads as a
   rendering fault. Three rules fall out: a vide is written in words, it
   says something **different** in each pane, and when the list it points
-  at is empty it points somewhere else (« ouvrez « Catalogue… » »).
+  at is empty it points somewhere else (« ouvrez « Catalogue… » »). The
+  second of those three is the one that comes back: the register's two
+  right-hand panes were *both* fixed to point at the catalogue, and then
+  said it in the same words, one under the other — which reads as a
+  rendering fault again. « Registre » speaks of reading, « Écrire au
+  registre » of writing, and each now says its own half.
 - **And the converse: a view the demo leaves empty is a view nobody has
   ever looked at.** A new panel needs its view key to land on a state
   where it *speaks*, or every capture ever taken of it shows « rien à

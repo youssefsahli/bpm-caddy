@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **Le registre répétait la même phrase dans deux volets.** Sur une base
+  neuve, « Registre » et « Écrire au registre » portaient mot pour mot
+  « Aucun produit suivi : ouvrez « Catalogue… » pour en suivre un
+  premier » — deux panneaux l'un sous l'autre disant la même chose, ce
+  qui se lit comme un défaut d'affichage plutôt que comme une réponse.
+  C'est la faute que le mois de caisse a eue avant lui, et la règle est
+  la même : *un vide dit autre chose dans chaque volet*. Celui-ci parle
+  d'écrire, l'autre de lire.
+
 ### Added
 - **Trois lignes de plus à ce que l'âge change** — le néfopam,
   l'amiodarone et les fluoroquinolones. Le néfopam porte un profil

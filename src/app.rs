@@ -36471,11 +36471,19 @@ impl App {
                 ..
             }) = open
             else {
+                // **Un vide dit autre chose dans chaque volet.** Celui-ci
+                // et celui du registre portaient la même phrase, mot pour
+                // mot : sur une base neuve, deux panneaux l'un sous
+                // l'autre répétaient « Aucun produit suivi : ouvrez
+                // Catalogue… », ce qui se lit comme un défaut d'affichage
+                // plutôt que comme une réponse. C'est la faute que le mois
+                // de caisse a eue avant lui, et la règle est la même : ce
+                // volet-ci parle d'**écrire**, l'autre de **lire**.
                 ui.label(
                     egui::RichText::new(if session.stup_summary.is_empty() {
-                        tr("stup_pick_none")
+                        tr("stup_write_none")
                     } else {
-                        tr("stup_pick")
+                        tr("stup_write_pick")
                     })
                     .size(motif::pt(ui, 11.5))
                     .color(motif::text_dim()),
