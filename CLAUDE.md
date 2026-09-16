@@ -1668,21 +1668,40 @@ add clicking and typing; it is not the price of entry.
   or correct the alternatives, one sentence, four destinations. It now
   reports **what the tables say**, in chips: what the open file's own
   ordonnance says about this card (`interactions_paired`, written once
-  and read by the file and by the bar), what they cross on the
-  cytochromes, `crush`, `gravidity`, `renal` at the file's own DFG, and
-  `elderly` at the file's own age. **A chip cites its table's word and
-  concludes nothing** — « Écraser · Ne pas écraser » is `crush.rs`'s own
-  label, the reserve of each table travels with its chip at hover, and
-  clicking any of them opens `MainView::Ddi` loaded with the file's list
-  *plus* this card, which is the question of the telephone passed whole
-  rather than an empty screen to recompose. A table that is silent draws
+  and read by the file and by the bar), what `revue` says of the
+  ordonnance once this card is in it — the reading no monograph can
+  give, since two benzodiazepines do not cite one another —, what they
+  cross on the cytochromes, `crush`, `gravidity`, `renal` at the file's
+  own DFG, and `elderly` at the file's own age. **A chip cites its
+  table's word and concludes nothing** — « Écraser · Ne pas écraser » is
+  `crush.rs`'s own label, the reserve of each table travels with its
+  chip at hover, and clicking one opens `MainView::Ddi` loaded with the
+  file's list *plus* this card, which is the question of the telephone
+  passed whole rather than an empty screen to recompose. **And it opens
+  on the chapter the chip named** (`DdiSection`, carried by the chip
+  because the field is not optional): the crossing writes nine chapters,
+  and landing at the top after clicking « Écraser » is answering a
+  different question. That cost the crossing three readings it did not
+  have — `crush`, `gravidity`, and the monographs' own sentences, which
+  lived only in the file's band although the panel is titled « ce que
+  cette liste dit d'elle-même ». A table that is silent draws
   no chip — a row of « à vérifier » signals nothing and teaches people
   to stop looking at the band — and when they are all silent a sentence
-  says so, because **silence is not permission**. Everything above the
+  says so, because **silence is not permission**. The liver has no chip
+  for exactly that reason and it is written where one would look: a file
+  carries no Child-Pugh stage and never will, so the chip would read
+  « dépend du stade » on one card in two, for ever. What the bar reads
+  is not always a name, either: a scanner is a keyboard, the field keeps
+  the focus so that what it types lands there, and a GTIN searched as a
+  name used to come back « aucun résultat dans la base » — which reads
+  as « that drug is not here » when the base was never asked. It now
+  says what it read and where a code means something, which is the
+  register alone. Everything above the
   drawing is `companion_look` / `companion_signals`, pure, memoised
-  against the question (`CompanionKey`): the fuzzy pass over the 862
-  cards used to run sixty times a second, and six clinical tables on top
-  of it would have cost far more. The demo's view key opens **on a
+  against the question (`CompanionKey`, the file's DFG included — a
+  clairance written by another post moves nothing else in the key): the
+  fuzzy pass over the 862 cards used to run sixty times a second, and
+  seven clinical tables on top of it would have cost far more. The demo's view key opens **on a
   file** — the one carrying the most treatments *and* a biology — or the
   two signals only this software can give would appear in no capture
   ever taken, and the kidney chip would read « dépend du DFG » in all of
