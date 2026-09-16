@@ -890,7 +890,8 @@ Deux règles valent partout :
 
 - **Où** : `src/crush.rs`, `TABLE` : les mots qui désignent la
   **présentation**, un libellé, un verdict, la raison, le remplaçant et
-  la source.
+  la source. Lu depuis l'écran « Croisement », depuis la barre du
+  compagnon, et imprimé pour l'EHPAD ou l'infirmière.
 - **La question qu'il pose** : celle du téléphone de l'EHPAD. Elle est
   dans la prose de dizaines de fiches et se cherche fiche par fiche.
 - **La règle qui décide de tout** : *le silence n'est pas une

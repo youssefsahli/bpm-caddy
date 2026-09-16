@@ -5,6 +5,85 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Une puce du compagnon renvoie là où sa table se lit.** Son survol
+  promet « cliquer pour ouvrir le croisement en grand », ce qui suppose
+  deux choses qu'aucun type ne tenait. La première : que le croisement
+  **porte** cette table. Il lisait les cytochromes, les demi-vies, la
+  revue, le rein, le foie et l'âge — ni l'écrasement, ni la grossesse,
+  ni les phrases que les fiches écrivent les unes des autres, bien que
+  le panneau s'intitule « ce que cette liste dit d'elle-même ». Cliquer
+  « Écraser · Ne pas écraser » ouvrait donc un écran qui n'en disait
+  rien, et « Écraser » n'avait aucune lecture à l'écran nulle part : une
+  feuille à imprimer pour l'EHPAD, et rien d'autre. La seconde : qu'il
+  s'ouvre **là où elle se lit**. Il s'ouvrait tout en haut, quand ce
+  qu'on venait de cliquer pouvait être le dernier de ses neuf chapitres,
+  derrière une barre de défilement qui flotte. `DdiSection` nomme les chapitres et la puce porte le sien —
+  le champ est obligatoire, il n'y a pas de puce sans chapitre.
+- **Et la barre dit aussi ce que la prose des fiches ne peut pas
+  dire.** La revue d'ordonnance n'était pas de ses lectures, alors que
+  le croisement porte son chapitre depuis toujours. Deux
+  benzodiazépines ne se citent pas l'une l'autre, et aucune fiche
+  n'écrit « celle-ci fait la troisième » : il faut une règle qui
+  regarde deux lignes ensemble, et c'est exactement la question du
+  comptoir quand le médecin veut ajouter une ligne. Filtrée sur les
+  points qui **nomment** la fiche cherchée.
+- **Un code-barres n'est pas un nom qu'on n'aurait pas trouvé.** Le
+  champ garde le foyer pour qu'une douchette puisse taper dedans — un
+  lecteur USB est un clavier. Ce qu'elle tape est un GTIN ; cherché
+  comme un nom il ne rend rien, et la barre répondait « Aucun résultat
+  dans la base », ce qui se lit « ce médicament n'y est pas » alors
+  qu'on ne l'a pas demandé. Elle dit maintenant ce qu'elle a lu, et où
+  un code veut dire quelque chose : le registre des stupéfiants, seul
+  endroit où un humain a attaché un code à une boîte.
+- **Le mode d'emploi parle enfin de la barre.** Le volet d'aide décrit
+  le registre, la caisse, la console et les carnets, et pas la fenêtre
+  qui se pose au-dessus des autres applications. Son chapitre sur le
+  croisement annonçait par ailleurs « cinq lectures » d'un écran qui en
+  porte neuf — une prose qui vieillit là où personne ne la relit.
+
+### Fixed
+- **Une rangée se mesure sur les noms qu'elle dessine.** La rangée des
+  autres réponses comptait ce qui tient sur les premiers noms de la
+  liste, puis faisait glisser sa fenêtre vers le rang lu : à la
+  huitième fiche d'« eliq », cinq noms plus larges se dessinaient dans
+  la place mesurée pour cinq autres, et le compte de ce qui manque
+  sortait du cadre, tranché à « + ». Il sortait aussi du mauvais côté —
+  les noms cachés étaient *avant* le dernier, et « +3 » posé à droite
+  annonçait une suite là où la liste est finie.
+- **La barre garde une réponse à toute taille.** La rangée des cinq
+  gestes était mesurée et **non plafonnée**, et le plancher de la
+  fenêtre était écrit « 320 × 200 » — un chiffre, pas une mesure.
+  Descendue là, la réponse était rendue haute d'un pixel et la dernière
+  rangée de boutons posée sous le bas de la fenêtre : la barre ne
+  montrait plus ni ce qu'elle a trouvé, ni par où en sortir. Le
+  plancher est mesuré dans le style en cours, marge du panneau
+  comprise ; les gestes ne prennent jamais plus que ce qui laisse sa
+  ligne à la réponse, en rangées entières, et ce qui passe par-dessus
+  défile derrière une barre pleine.
+- **Une autre réponse se lit par son début.** La zone qui porte la
+  réponse gardait son décalage d'une image à l'autre, comme toute zone
+  d'egui : descendu dans la phrase d'une fiche, on pressait la flèche et
+  on arrivait au milieu de la suivante — à `text_scale = 1,6` la barre
+  n'en montre que quatre lignes, si bien qu'on ne voyait ni le nom, ni
+  les puces.
+- **Ce qui rassure ne crie pas.** La puce « Écraser · Peut être
+  écrasé » portait une couleur d'encre posée en aplat : mesurée sur les
+  huit peaux, c'était le bloc le plus contrasté de la rangée, devant
+  l'alerte rouge. Une bande qui appelle le regard sur ce qui va bien
+  apprend à ne plus le suivre.
+- **La lecture de la barre se souvient aussi contre la clairance.** Le
+  numéro de dossier ne bouge pas quand un autre poste inscrit un DFG :
+  la puce du rein restait celle d'avant, sans que rien ne le dise.
+- **Une clé de chaîne écrite deux fois cassait *toutes* les chaînes.**
+  Le fichier livré est du TOML : une clé en double y est une erreur
+  d'analyse, la table entière est refusée et l'application écrit ses
+  clés à la place de ses phrases — partout, d'un coup. Onze cents clés
+  rangées par sujet, et rien ne refusait la seconde.
+  `no_string_key_is_written_twice` la nomme, avec ses deux lignes.
+
 ## [0.204.0] - 2026-09-16
 
 ### Added

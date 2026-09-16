@@ -1369,6 +1369,66 @@ livre = "Une phrase qui n'est plus livrée"
                     }
                 ),
             ),
+            // Le croisement a grandi de cinq chapitres à neuf — la
+            // grossesse, l'écrasement et les phrases que les fiches
+            // écrivent les unes des autres y sont entrées le jour où
+            // une puce du compagnon s'est mise à y renvoyer — et le
+            // manuel disait toujours « cinq lectures ». C'est la page
+            // que l'officine ouvre pour apprendre ce que l'écran sait
+            // faire.
+            (
+                "assets/aide.md",
+                AIDE,
+                format!(
+                    "{} chapitres sur la même liste",
+                    match crate::app::DdiSection::ALL.len() {
+                        9 => "Neuf",
+                        n => panic!(
+                            "le croisement porte {n} chapitres : l'écrire en toutes \
+                             lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
+            ),
+            // Et ce que la barre du compagnon rapporte, compté sur le
+            // texte de la vue : une table de plus y entre en une ligne,
+            // et la phrase du manuel ne bouge pas toute seule.
+            (
+                "README.md",
+                README,
+                format!(
+                    "in chips: {} readings of that one card",
+                    match APP
+                        .lines()
+                        .filter(|l| l.trim().starts_with("section: DdiSection::"))
+                        .count()
+                    {
+                        7 => "seven",
+                        n => panic!(
+                            "le compagnon rapporte {n} tables : l'écrire en toutes \
+                             lettres dans le README et ici"
+                        ),
+                    }
+                ),
+            ),
+            (
+                "assets/aide.md",
+                AIDE,
+                format!(
+                    "{} lectures : ce",
+                    match APP
+                        .lines()
+                        .filter(|l| l.trim().starts_with("section: DdiSection::"))
+                        .count()
+                    {
+                        7 => "Sept",
+                        n => panic!(
+                            "le compagnon rapporte {n} tables : l'écrire en toutes \
+                             lettres dans le manuel et ici"
+                        ),
+                    }
+                ),
+            ),
             (
                 "assets/aide.md",
                 AIDE,

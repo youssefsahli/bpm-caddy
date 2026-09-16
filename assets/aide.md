@@ -151,10 +151,13 @@ L'écran « Croisement » pose les mêmes questions à une liste qu'on
 compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
 des noms.
 
-Cinq lectures de la même liste : les croisements sur les cytochromes,
-le temps que met une exposition déplacée à revenir, la revue
-d'ordonnance — doublons, associations, cascades — ce que la clairance
-change, si on la tape, et ce que le foie change, au stade qu'on désigne.
+Neuf chapitres sur la même liste : ce que les fiches en disent les unes
+des autres — cité, rien n'est déduit —, les croisements sur les
+cytochromes, le temps que met une exposition déplacée à revenir, la
+revue d'ordonnance — doublons, associations, cascades —, ce que la
+clairance change si on la tape, ce que le foie change au stade qu'on
+désigne, ce que l'âge change, la grossesse et l'allaitement, et
+« peut-on écraser ? ».
 
 **Le foie n'a pas de DFG.** Le rein donne un chiffre qui se lit sur un
 compte rendu ; le foie donne un stade — Child-Pugh A, B ou C — qu'un
@@ -184,6 +187,46 @@ pas la même chose d'un produit dont la demi-vie est de deux heures et
 d'un autre dont elle est de cinquante jours, et un effet peut durer bien
 après le produit — l'effet antiplaquettaire du clopidogrel tient sept à
 dix jours quand sa demi-vie est de six heures.
+
+# La barre au-dessus des autres fenêtres
+
+`F9` réduit la fenêtre à une barre de quelques centaines de pixels,
+posée au-dessus des autres applications — c'est la forme qu'on garde
+dans un coin d'écran pendant qu'on travaille ailleurs. On tape un nom
+ou une molécule ; les flèches parcourent les fiches qui répondent,
+Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
+question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
+qu'une douchette — qui est un clavier — tape dedans sans rien installer.
+
+Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
+rien à leur place : chaque pastille cite le mot de sa table, et son
+survol donne la portée du module avant la conduite. Sept lectures : ce
+que les fiches du dossier disent de celle-ci, ce que la revue
+d'ordonnance en dit une fois qu'on l'ajoute aux autres, les
+cytochromes, « peut-on écraser ? », la grossesse et l'allaitement, ce
+que la clairance du dossier change, et ce que l'âge change — l'âge est
+au dossier depuis le jour où la fiche a été créée, et c'est bien pour
+cela que personne ne le regarde.
+
+Une table qui n'a rien à dire ne dessine pas de pastille : une rangée de
+« à vérifier » ne signale rien et apprend à ne plus regarder la bande.
+Quand elles se taisent toutes, une phrase le dit — **le silence n'est
+pas une autorisation**.
+
+Le foie n'y est pas, et c'est voulu. Il demande un stade de Child-Pugh,
+qu'aucun dossier ne porte et ne portera : la pastille dirait « dépend du
+stade » sur une carte de deux, pour toujours. Le stade se désigne au
+croisement, où trois boutons l'attendent.
+
+Cliquer une pastille ouvre le croisement chargé de l'ordonnance du
+dossier **et** de la fiche cherchée, **sur le chapitre que la pastille
+nomme** : c'est la question du téléphone passée entière, et non un écran
+vide à recomposer ni un écran de neuf chapitres ouvert au mauvais.
+
+Un code-barres n'est pas un nom qu'on n'aurait pas trouvé, et la barre
+le dit plutôt que de répondre « aucun résultat ». Aucune fiche ne porte
+de code : le seul lien entre un code et une boîte est celui qu'un humain
+a posé au registre des stupéfiants, en présentant la boîte.
 
 # Les entretiens
 

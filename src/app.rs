@@ -7438,7 +7438,7 @@ type DdiKey = (Vec<i64>, String, String, Option<crate::hepatic::Stage>, u64);
 /// chapitre nommé ici et qu'aucune section ne dessine est une puce qui
 /// renvoie dans le vide, et c'est ce que ce type existe pour empêcher.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum DdiSection {
+pub(crate) enum DdiSection {
     /// Ce que les monographies du dossier disent les unes des autres,
     /// cité. C'est la lecture que la puce « Ordonnance » rapporte.
     Interactions,
@@ -7462,7 +7462,7 @@ impl DdiSection {
     /// dessin — le compiler en production ferait du code que rien
     /// n'appelle.
     #[cfg(test)]
-    const ALL: [DdiSection; 9] = [
+    pub(crate) const ALL: [DdiSection; 9] = [
         DdiSection::Interactions,
         DdiSection::Cyp,
         DdiSection::HalfLife,
@@ -48659,6 +48659,14 @@ impl App {
             session.drugs_rev,
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
+        // **Une autre réponse se lit par son début.** La zone qui porte
+        // la réponse garde son décalage d'une image à l'autre, comme
+        // toute zone d'egui : descendu dans la phrase d'une fiche, on
+        // pressait la flèche et on arrivait au milieu de la suivante —
+        // à `text_scale = 1,6` la barre n'en montre que quatre lignes,
+        // si bien qu'on ne voyait ni le nom, ni les puces. La question a
+        // changé, donc la lecture repart de son haut.
+        let turned = held.is_none();
         let read = held.take().unwrap_or_else(|| {
             let age = session
                 .viewing
@@ -48812,106 +48820,108 @@ impl App {
                 // notamment, qui est la raison d'ouvrir cette barre au
                 // comptoir.
                 ui.spacing_mut().scroll.floating = false;
-                egui::ScrollArea::vertical()
+                let mut area = egui::ScrollArea::vertical()
                     .id_salt("companion_answer")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        let Some(d) = read.1.hits.get(read.1.pick) else {
-                            // **Un code-barres n'est pas un nom qu'on
-                            // n'aurait pas trouvé.** Cherché comme un
-                            // nom, il ne rend rien, et « Aucun résultat
-                            // dans la base » se lit alors « ce
-                            // médicament n'y est pas » — une réponse
-                            // fausse à une question qu'on n'a pas posée.
-                            let said = match &read.1.scanned {
-                                Some(code) => trf("companion_barcode", code.clone()),
-                                None if self.companion_query.trim().is_empty() => {
-                                    tr("companion_idle").to_owned()
-                                }
-                                None => tr("companion_none").to_owned(),
-                            };
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(said)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                )
-                                .wrap(),
-                            );
-                            return;
+                    .auto_shrink([false, false]);
+                if turned {
+                    area = area.vertical_scroll_offset(0.0);
+                }
+                area.show(ui, |ui| {
+                    let Some(d) = read.1.hits.get(read.1.pick) else {
+                        // **Un code-barres n'est pas un nom qu'on
+                        // n'aurait pas trouvé.** Cherché comme un
+                        // nom, il ne rend rien, et « Aucun résultat
+                        // dans la base » se lit alors « ce
+                        // médicament n'y est pas » — une réponse
+                        // fausse à une question qu'on n'a pas posée.
+                        let said = match &read.1.scanned {
+                            Some(code) => trf("companion_barcode", code.clone()),
+                            None if self.companion_query.trim().is_empty() => {
+                                tr("companion_idle").to_owned()
+                            }
+                            None => tr("companion_none").to_owned(),
                         };
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(d.name.trim())
-                                    .size(motif::pt(ui, 14.0))
-                                    .strong(),
+                                egui::RichText::new(said)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
                             )
                             .wrap(),
                         );
-                        // **Les signaux d'abord, l'identité ensuite.**
-                        // Ce qu'on vient chercher dans cette barre est ce
-                        // qui arrête une délivrance ; « apixaban · AOD »
-                        // identifie une fiche que le nom identifie déjà.
-                        // À `text_scale = 1,6` la fenêtre ne porte que
-                        // quatre lignes au-dessus du pli, et une ligne
-                        // d'identification y prenait celle de la bande —
-                        // la capture s'ouvrait sur un nom, une molécule,
-                        // et rien de ce que les tables ont à dire.
-                        if let Some(section) = Self::companion_band(ui, &read.1) {
-                            go = Some(CompanionGo::Cross(d.id, Some(section)));
-                        }
-                        // Ce qui doit se dire au comptoir avant tout le
-                        // reste, quand la fiche le porte — **au-dessus**
-                        // de l'identité et de ce à quoi le médicament
-                        // sert : l'alerte était sous une phrase de trois
-                        // lignes, c'est-à-dire sous le pli.
-                        if !read.1.flag.is_empty() {
-                            ui.add_space(2.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(read.1.flag.as_str())
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::alert()),
-                                )
-                                .wrap(),
-                            );
-                        }
-                        // Ce qui identifie la fiche en une ligne : la
-                        // molécule et la classe. Les deux manquent
-                        // parfois, et une ligne de séparateurs sans
-                        // rien entre eux se lit comme un défaut.
-                        let about = [d.dci.trim(), d.class.trim()]
-                            .into_iter()
-                            .filter(|t| !t.is_empty())
-                            .collect::<Vec<_>>()
-                            .join(" · ");
-                        if !about.is_empty() {
-                            ui.add_space(2.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(about)
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                )
-                                .wrap(),
-                            );
-                        }
-                        // **Une phrase, pas la monographie.** Le
-                        // compagnon répond « à quoi ça sert » ; la fiche
-                        // entière est à un bouton, et l'afficher ici
-                        // ferait défiler une fenêtre de trois cents
-                        // pixels.
-                        if !read.1.what.is_empty() {
-                            ui.add_space(2.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(read.1.what.as_str())
-                                        .size(motif::pt(ui, 11.5)),
-                                )
-                                .wrap(),
-                            );
-                        }
-                    });
+                        return;
+                    };
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(d.name.trim())
+                                .size(motif::pt(ui, 14.0))
+                                .strong(),
+                        )
+                        .wrap(),
+                    );
+                    // **Les signaux d'abord, l'identité ensuite.**
+                    // Ce qu'on vient chercher dans cette barre est ce
+                    // qui arrête une délivrance ; « apixaban · AOD »
+                    // identifie une fiche que le nom identifie déjà.
+                    // À `text_scale = 1,6` la fenêtre ne porte que
+                    // quatre lignes au-dessus du pli, et une ligne
+                    // d'identification y prenait celle de la bande —
+                    // la capture s'ouvrait sur un nom, une molécule,
+                    // et rien de ce que les tables ont à dire.
+                    if let Some(section) = Self::companion_band(ui, &read.1) {
+                        go = Some(CompanionGo::Cross(d.id, Some(section)));
+                    }
+                    // Ce qui doit se dire au comptoir avant tout le
+                    // reste, quand la fiche le porte — **au-dessus**
+                    // de l'identité et de ce à quoi le médicament
+                    // sert : l'alerte était sous une phrase de trois
+                    // lignes, c'est-à-dire sous le pli.
+                    if !read.1.flag.is_empty() {
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(read.1.flag.as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::alert()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    // Ce qui identifie la fiche en une ligne : la
+                    // molécule et la classe. Les deux manquent
+                    // parfois, et une ligne de séparateurs sans
+                    // rien entre eux se lit comme un défaut.
+                    let about = [d.dci.trim(), d.class.trim()]
+                        .into_iter()
+                        .filter(|t| !t.is_empty())
+                        .collect::<Vec<_>>()
+                        .join(" · ");
+                    if !about.is_empty() {
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(about)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    // **Une phrase, pas la monographie.** Le
+                    // compagnon répond « à quoi ça sert » ; la fiche
+                    // entière est à un bouton, et l'afficher ici
+                    // ferait défiler une fenêtre de trois cents
+                    // pixels.
+                    if !read.1.what.is_empty() {
+                        ui.add_space(2.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(read.1.what.as_str()).size(motif::pt(ui, 11.5)),
+                            )
+                            .wrap(),
+                        );
+                    }
+                });
             });
             // Les cinq gestes. Ils rendent la fenêtre **et** ouvrent
             // l'écran : un bouton qui préparerait quelque chose derrière
