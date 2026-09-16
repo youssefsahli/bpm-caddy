@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Quatre listes déroulantes se mesuraient en pixels.** Un nombre ne
+  passe pas par `[ui] text_scale` : la liste gardait sa largeur pendant
+  que le texte qu'elle porte grandissait de moitié. Celle du thème d'un
+  entretien est la plus visible — à 1,6 le nom du thème sort du cadre
+  qui le montre. C'est la faute que
+  `no_text_field_is_measured_in_pixels` refuse pour un champ de texte ;
+  `no_dropdown_is_measured_in_pixels` la refuse maintenant pour une
+  liste, et il mord — vérifié en remettant l'une des quatre.
+- **Le libellé d'un calcul d'insuline et son chiffre ne se séparent
+  plus.** Trois couples dans une rangée qui enveloppe, et egui coupe
+  entre deux widgets sans savoir qu'ils vont ensemble : « Glycémie
+  mesurée » se serait retrouvée seule en bout de ligne, et trois nombres
+  sans nom sous elle — sur un écran de calcul, où le seul risque est de
+  lire un chiffre pour un autre.
 - **La liste de « ce qu'on croise » disparaissait à l'écran du
   comptoir.** La bande est plafonnée à une part du volet, et à
   `text_scale = 1,6` sur 1024x700 la rangée des commandes en prend deux :

@@ -9362,7 +9362,11 @@ fn theme_combo(ui: &mut egui::Ui, id_salt: &str, theme: &mut String) -> bool {
     };
     egui::ComboBox::from_id_salt(id_salt)
         .selected_text(egui::RichText::new(shown).size(motif::pt(ui, 12.0)))
-        .width(190.0)
+        // **Une largeur de liste déroulante non plus.** Le « 0 » du
+        // corps fait huit pixels à l'échelle 1 : ces cent quatre-vingt-dix
+        // en font vingt-quatre, et ils suivent maintenant `text_scale`
+        // comme le texte qu'ils portent.
+        .width(chars_wide(ui, 24.0))
         .show_ui(ui, |ui| {
             if ui
                 .selectable_label(theme.is_empty(), tr("itv_theme_none"))
@@ -12374,7 +12378,9 @@ impl App {
                     .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
                     if !self.config.pharmacy.operators.is_empty() {
                         egui::ComboBox::from_id_salt("operator_pick")
-                            .width(26.0)
+                            // Le seul chevron, sans texte : trois
+                            // caractères, qui grandissent avec lui.
+                            .width(chars_wide(ui, 3.0))
                             .selected_text("")
                             .show_ui(ui, |ui| {
                                 for op in &self.config.pharmacy.operators {
@@ -29467,7 +29473,7 @@ impl App {
                 // curve directly.
                 egui::ComboBox::from_id_salt("calc_drug")
                     .selected_text(tr("calc_from_drug"))
-                    .width(200.0)
+                    .width(chars_wide(ui, 25.0))
                     .show_ui(ui, |ui| {
                         for d in session
                             .drugs
@@ -29739,13 +29745,35 @@ impl App {
 
         // --- The three rules ---
         ui.add_space(8.0);
-        ui.horizontal_wrapped(|ui| {
-            ui.label(tr("insulin_daily"));
-            ui.add(
-                egui::DragValue::new(&mut session.insulin_daily)
-                    .range(1.0..=200.0)
-                    .suffix(" UI"),
+        // **Un libellé et son chiffre sont un seul article.** Trois
+        // couples dans une rangée qui enveloppe, et egui coupe entre
+        // deux widgets sans savoir qu'ils vont ensemble : « Glycémie
+        // mesurée » se retrouverait seule en bout de ligne, et trois
+        // nombres sans nom sous elle — sur un écran de calcul, où le
+        // seul risque est de lire un chiffre pour un autre.
+        let pair = |ui: &mut egui::Ui, label: &str, add: &mut dyn FnMut(&mut egui::Ui)| {
+            let w = Self::widest(ui, 12.0, std::iter::once(label));
+            let field = ui.spacing().interact_size.x;
+            Self::keep_together(
+                ui,
+                egui::vec2(
+                    Self::group_width(ui, [w, field].into_iter()),
+                    Self::row_height(ui),
+                ),
+                |ui| {
+                    ui.label(label);
+                    add(ui);
+                },
             );
+        };
+        ui.horizontal_wrapped(|ui| {
+            pair(ui, tr("insulin_daily"), &mut |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut session.insulin_daily)
+                        .range(1.0..=200.0)
+                        .suffix(" UI"),
+                );
+            });
             ui.checkbox(&mut session.insulin_human, tr("insulin_human"));
         });
         let Some(rules) = crate::insulin::rules(session.insulin_daily, session.insulin_human)
@@ -29768,26 +29796,29 @@ impl App {
         );
         ui.add_space(4.0);
         ui.horizontal_wrapped(|ui| {
-            ui.label(tr("insulin_carbs"));
-            ui.add(
-                egui::DragValue::new(&mut session.insulin_carbs)
-                    .range(0.0..=400.0)
-                    .suffix(" g"),
-            );
-            ui.label(tr("insulin_measured"));
-            ui.add(
-                egui::DragValue::new(&mut session.insulin_measured)
-                    .range(0.3..=6.0)
-                    .speed(0.05)
-                    .suffix(" g/L"),
-            );
-            ui.label(tr("insulin_target"));
-            ui.add(
-                egui::DragValue::new(&mut session.insulin_target)
-                    .range(0.7..=2.5)
-                    .speed(0.05)
-                    .suffix(" g/L"),
-            );
+            pair(ui, tr("insulin_carbs"), &mut |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut session.insulin_carbs)
+                        .range(0.0..=400.0)
+                        .suffix(" g"),
+                );
+            });
+            pair(ui, tr("insulin_measured"), &mut |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut session.insulin_measured)
+                        .range(0.3..=6.0)
+                        .speed(0.05)
+                        .suffix(" g/L"),
+                );
+            });
+            pair(ui, tr("insulin_target"), &mut |ui| {
+                ui.add(
+                    egui::DragValue::new(&mut session.insulin_target)
+                        .range(0.7..=2.5)
+                        .speed(0.05)
+                        .suffix(" g/L"),
+                );
+            });
         });
         let meal = crate::insulin::meal_units(session.insulin_carbs, rules.carb_ratio);
         let correction = crate::insulin::correction_units(
@@ -49307,7 +49338,7 @@ impl eframe::App for App {
                                             );
                                             egui::ComboBox::from_id_salt(("loc_period", i))
                                                 .selected_text(f.period.label())
-                                                .width(88.0)
+                                                .width(chars_wide(ui, 11.0))
                                                 .show_ui(ui, |ui| {
                                                     for p in crate::config::Period::ALL {
                                                         ui.selectable_value(
@@ -52543,6 +52574,45 @@ mod tests {
         assert!(
             offenders.is_empty(),
             "une bascule de disposition se compte en caractères, pas en pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
+    /// **Une largeur de liste déroulante non plus.**
+    ///
+    /// `no_text_field_is_measured_in_pixels` refuse un `TextEdit` mesuré
+    /// en pixels, et c'est la même faute : un nombre ne passe pas par
+    /// `[ui] text_scale`, donc la liste garde sa largeur pendant que le
+    /// texte qu'elle porte grandit de moitié. Quatre en portaient une —
+    /// le thème d'un entretien (190), le chevron du choix d'opérateur
+    /// (26), le médicament d'où vient la demi-vie (200) et la période
+    /// d'un forfait (88) —, et la première est celle qu'on voit : à 1,6
+    /// le nom du thème sort du cadre qui le montre.
+    ///
+    /// Se lit comme les quatre autres lints : dans le texte du fichier,
+    /// parce que c'est une règle d'écriture.
+    #[test]
+    fn no_dropdown_is_measured_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblé, sinon le test se trouve lui-même.
+        let call = concat!(".wid", "th(");
+        let mut offenders: Vec<String> = Vec::new();
+        for (i, l) in SOURCE.lines().enumerate() {
+            let t = l.trim_start();
+            if t.starts_with("//") {
+                continue;
+            }
+            let Some((_, rest)) = t.split_once(call) else {
+                continue;
+            };
+            if rest.starts_with(|c: char| c.is_ascii_digit()) {
+                offenders.push(format!("app.rs:{} — {t}", i + 1));
+            }
+        }
+        assert!(
+            offenders.is_empty(),
+            "une largeur de liste déroulante se compte en caractères, pas \
+             en pixels — `chars_wide(ui, n)` :\n{}",
             offenders.join("\n")
         );
     }
