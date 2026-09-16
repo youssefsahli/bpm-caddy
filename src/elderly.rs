@@ -405,7 +405,7 @@ pub const TABLE: &[Inappropriate] = &[
         from: 75,
         level: Level::Caution,
         risk: "Hyponatrémie par sécrétion inappropriée d'hormone antidiurétique, d'autant plus fréquente que l'âge avance et que s'y ajoute un diurétique — elle se manifeste par une confusion, des chutes ou des nausées, et non par un signe qui la nomme. S'y ajoutent le risque hémorragique digestif en association à un AINS ou à un anticoagulant, l'allongement du QT et les chutes.",
-        instead: "Ils restent le premier choix à cet âge — c'est l'alternative aux tricycliques — et la précaution porte sur la conduite, non sur la classe : instauration à demi-dose, natrémie contrôlée dans le mois qui suit et à chaque changement de dose, et un protecteur gastrique si un anti-inflammatoire ou un anticoagulant est associé. La paroxétine est la plus atropinique de la famille et celle dont l'arrêt est le plus difficile ; la sertraline et le citalopram se manient mieux ici.",
+        instead: "La classe reste le premier choix à cet âge — c'est elle qu'on met à la place des tricycliques — et ce qui change n'est pas le choix mais la façon de l'instaurer : demi-dose, natrémie contrôlée dans le mois qui suit et à chaque changement de dose, et un protecteur gastrique si un anti-inflammatoire ou un anticoagulant est associé. La paroxétine est la plus atropinique de la famille et celle dont l'arrêt est le plus difficile ; la sertraline et le citalopram se manient mieux ici.",
         source: "Critères STOPP/START v2 ; HAS — prise en charge de la dépression de la personne âgée",
     },
     Inappropriate {

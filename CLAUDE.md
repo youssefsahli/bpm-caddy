@@ -327,6 +327,18 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   application**. Naming who is at the counter and counting them is **one** question:
   `who_is_in` returns the initials and `coverage` counts what it returns —
   two calculations would end up drawing three squares above two names.
+  **And a day's total is one calculation too** — `App::planning_day_sum`.
+  The planning's footer had its own, and it disagreed about the same
+  Thursday with **both** views that read `planning_digests` — the
+  agenda's month grid and its week header — which leave the figure blank
+  when a worked shift has no end. Two said nothing, one said « 10 h 30 »,
+  and the lying one was the planning, the view where hours are counted;
+  its figure also went to the printed sheet — where a partial total is
+  worst, since the paper goes on a wall and says nothing of the missing
+  end. The rule is *un total partiel n'est pas le total du jour*, and
+  `a_partial_day_has_no_total` holds its three cases: two closed shifts
+  sum, a third with no end erases the total, and an empty day or one
+  carrying only a leave is not an uncertainty.
   Six rules, one test each: **hours are counted in whole
   minutes** (7 h 35 is 455 — the centimes of the caisse, for the same
   reason), **a shift with no end is not a shift of zero hours** (`None`,

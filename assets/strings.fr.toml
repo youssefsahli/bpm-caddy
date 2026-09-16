@@ -372,6 +372,7 @@ elderly_no_age_n = "Aucune date de naissance au dossier, et {} traitement(s) en 
 elderly_nothing = "Aucun traitement de cette ordonnance ne relève des listes du sujet âgé."
 elderly_unknown = "dépend de l'âge, date de naissance manquante"
 elderly_instead = "À la place :"
+elderly_conduct = "Conduite :"
 elderly_scope = "Listes du sujet âgé — le prescripteur décide, et rien ne s'arrête d'un coup."
 elderly_footer = "Les lignes viennent de la liste française de Laroche, des critères STOPP/START, des critères de Beers et des recommandations citées ; l'application les rapproche de la date de naissance du dossier. Elles ne savent ni la dose, ni la durée, ni l'indication : « à éviter » sur une ordonnance de trois jours n'est pas « à éviter » sur une ordonnance de trois ans. Et un remplacement se prépare avec le prescripteur : arrêter brutalement un psychotrope chez un sujet âgé expose davantage que de le poursuivre."
 hepatic_tab = "Foie"

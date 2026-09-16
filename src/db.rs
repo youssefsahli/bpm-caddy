@@ -42604,14 +42604,31 @@ mod tests {
         // Des PDF minimaux — un PDF de démonstration n'a pas à être
         // lisible, il a à être un PDF, et le format se lit dans les
         // octets.
-        let tiny = |title: &str| {
-            format!("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n% {title}\ntrailer<<>>\n%%EOF\n")
-                .into_bytes()
+        // `pad` est le poids que la pièce doit peser, en octets de
+        // remplissage. **L'une des trois est d'une taille réaliste**, et
+        // c'est voulu : la colonne « Taille » sait écrire des octets,
+        // des kilo-octets et des méga-octets, et sur trois pièces de
+        // quatre-vingts octets elle n'écrivait jamais que « 80 o ». La
+        // taille des pièces est pourtant tout le sujet de « Compacter »
+        // — deux cents ordonnances numérisées font passer une base de
+        // six à cinquante-six méga-octets — et la démonstration ne le
+        // montrait nulle part. Le remplissage est un commentaire PDF :
+        // le format se lit toujours dans les premiers octets.
+        let tiny = |title: &str, pad: usize| {
+            let mut out =
+                format!("%PDF-1.4\n1 0 obj<</Type/Catalog>>endobj\n% {title}\n").into_bytes();
+            if pad > 0 {
+                out.push(b'%');
+                out.resize(out.len() + pad, b' ');
+                out.push(b'\n');
+            }
+            out.extend_from_slice(b"trailer<<>>\n%%EOF\n");
+            out
         };
-        for (kind, label, when) in [
-            ("ORDONNANCE", "Ordonnance Dr Morel", day(8, 12)),
-            ("AT_MP", "Déclaration AT — chute au travail", day(6, 3)),
-            ("BIOLOGIE", "Bilan du laboratoire", day(7, 28)),
+        for (kind, label, when, pad) in [
+            ("ORDONNANCE", "Ordonnance Dr Morel", day(8, 12), 0),
+            ("AT_MP", "Déclaration AT — chute au travail", day(6, 3), 0),
+            ("BIOLOGIE", "Bilan du laboratoire", day(7, 28), 184_000),
         ] {
             db.add_scan(
                 &Scan {
@@ -42628,7 +42645,7 @@ mod tests {
                     created_at: String::new(),
                     stup_move: 0,
                 },
-                &tiny(label),
+                &tiny(label, pad),
             )
             .unwrap();
         }
@@ -42647,7 +42664,7 @@ mod tests {
                 created_at: String::new(),
                 stup_move: 0,
             },
-            &tiny("facture"),
+            &tiny("facture", 0),
         )
         .unwrap();
     }

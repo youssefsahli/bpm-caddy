@@ -845,8 +845,10 @@ pub struct BilanData<'a> {
     pub biology: Vec<(String, String, String, String)>,
     /// (niveau, ce que ça change).
     pub findings: Vec<(String, String)>,
-    /// (traitement et niveau, le risque, ce qu'on met à la place) — ce
-    /// que l'âge du dossier change, ligne par ligne.
+    /// (traitement et niveau, le risque, ce qu'on met à la place —
+    /// **préfixé par l'appelant**, « À la place : » ou « Conduite : »
+    /// selon le niveau, comme à l'écran) — ce que l'âge du dossier
+    /// change, ligne par ligne.
     ///
     /// Le bilan partagé de médication est fait pour le patient
     /// polymédiqué, c'est-à-dire presque toujours pour un sujet âgé :
@@ -977,7 +979,7 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
         src.push_str("#sec[Ce que l'âge change]\n");
         for (head, risk, instead) in &data.elderly {
             src.push_str(&format!(
-                "#block(below: 2.4mm)[#text(10pt, weight: \"bold\")[#{}] \\\n#text(9pt)[#{}] \\\n#text(9pt, style: \"italic\")[À la place : #{}]]\n",
+                "#block(below: 2.4mm)[#text(10pt, weight: \"bold\")[#{}] \\\n#text(9pt)[#{}] \\\n#text(9pt, style: \"italic\")[#{}]]\n",
                 typst_str(head),
                 typst_str(risk),
                 typst_str(instead)
@@ -1214,11 +1216,11 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le bilan et le plan de prise",
-        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication à partir du dossier : traitements, interactions, revue d'ordonnance, biologie, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
+        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication à partir du dossier : traitements, interactions, revue d'ordonnance, ce que l'âge change, biologie, examens à faire vérifier, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
     ),
     (
         "La biologie",
-        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Interprétation » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. Cliquez le nom d'un analyte pour voir sa courbe.",
+        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Interprétation » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. À côté, cinq autres lectures de la même ordonnance : ce qui n'a pas été demandé depuis trop longtemps, ce que la clairance change, ce que la grossesse et l'allaitement changent, ce que l'âge change, et les croisements sur les cytochromes. Cliquez le nom d'un analyte pour voir sa courbe.",
     ),
     (
         "Le carnet de vaccination",
@@ -4058,42 +4060,129 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &PlanData {
                 patient: &patient,
                 today: "24/08/2026",
-                lines: vec![(
-                    "Amlodipine 5 mg".to_owned(),
-                    "Tension artérielle".to_owned(),
-                    "1 comprimé le matin".to_owned(),
-                    "Ne pas arrêter sans avis.".to_owned(),
-                )],
+                // **Un plan de prise porte une ordonnance entière**, six
+                // ou huit lignes, et c'est là-dessus qu'on règle le
+                // partage des quatre colonnes. Sur une seule, ni une
+                // posologie longue — celle qui décide de la largeur —,
+                // ni une remarque qui enveloppe, ni l'alternance des
+                // rangées ne se voient.
+                lines: vec![
+                    (
+                        "Amlodipine 5 mg".to_owned(),
+                        "Tension artérielle".to_owned(),
+                        "1 comprimé le matin".to_owned(),
+                        "Ne pas arrêter sans avis.".to_owned(),
+                    ),
+                    (
+                        "Lévothyrox 75 µg".to_owned(),
+                        "Thyroïde".to_owned(),
+                        "1 comprimé le matin à jeun, 30 minutes avant le petit-déjeuner"
+                            .to_owned(),
+                        "À distance du calcium, du fer et du magnésium : quatre heures."
+                            .to_owned(),
+                    ),
+                    (
+                        "Eliquis 5 mg".to_owned(),
+                        "Anticoagulant".to_owned(),
+                        "1 comprimé matin et soir, à heure fixe".to_owned(),
+                        "Ne jamais doubler la dose pour rattraper un oubli. Signaler tout \
+                         saignement qui ne s'arrête pas."
+                            .to_owned(),
+                    ),
+                    (
+                        "Doliprane 1 g".to_owned(),
+                        "Douleur ou fièvre".to_owned(),
+                        "1 comprimé si besoin, 6 heures entre deux prises".to_owned(),
+                        "Jamais plus de 3 g par jour, et une seule boîte de paracétamol à \
+                         la fois."
+                            .to_owned(),
+                    ),
+                ],
                 mention: "Document remis à titre informatif.",
                 signature: &pharmacy.pharmacist,
             },
             &pharmacy,
         ),
+        // **Une liste d'appels montre une liste.** Sur une seule ligne,
+        // rien ne dit comment les colonnes se partagent, ni ce que
+        // devient un dossier sans téléphone — qui est précisément le
+        // cas qu'on cherche en imprimant cette feuille.
         "appels" => call_list_values(
-            &[CallRow {
-                name: "Jean Dupont",
-                phone: "04 67 00 00 00",
-                tag: "2 alerte(s)",
-                reason: "Kaliémie à 5,4 sous IEC.",
-            }],
+            &[
+                CallRow {
+                    name: "Jean Dupont",
+                    phone: "04 67 00 00 00",
+                    tag: "2 alerte(s)",
+                    reason: "Kaliémie à 5,4 sous IEC.",
+                },
+                CallRow {
+                    name: "Claire Martin",
+                    phone: "06 12 34 56 78",
+                    tag: "Ordonnance",
+                    reason: "AINS au long cours à revoir avec le prescripteur.",
+                },
+                CallRow {
+                    name: "Hélène Lefèvre",
+                    phone: "",
+                    tag: "RDV en retard",
+                    reason: "Entretien AOD non replanifié depuis le 12/07.",
+                },
+            ],
             "24/08/2026",
             &pharmacy,
         ),
-        "rdv" => appointment_list_values(
-            &[Appointment {
-                id: 1,
-                patient_id: 1,
-                patient_name: patient.full_name(),
-                phone: "04 67 00 00 00".to_owned(),
-                kind: InterviewKind::Bpm,
-                date: "2026-09-14".to_owned(),
-                time: "09:30".to_owned(),
-                remote: false,
-                duration_minutes: 30,
-                operator: "CL".to_owned(),
-            }],
-            "24/08/2026",
-        ),
+        // **Une liste de rendez-vous montre une liste.** Sur un seul,
+        // ni le groupement par jour, ni la marque du « à distance », ni
+        // ce que devient un dossier sans téléphone ne se voient — et
+        // c'est tout ce que ce modèle-là met en page.
+        "rdv" => {
+            let rdv = |id, name: &str, phone: &str, kind, date: &str, time: &str, remote| {
+                Appointment {
+                    id,
+                    patient_id: id,
+                    patient_name: name.to_owned(),
+                    phone: phone.to_owned(),
+                    kind,
+                    date: date.to_owned(),
+                    time: time.to_owned(),
+                    remote,
+                    duration_minutes: 30,
+                    operator: "CL".to_owned(),
+                }
+            };
+            appointment_list_values(
+                &[
+                    rdv(
+                        1,
+                        &patient.full_name(),
+                        "04 67 00 00 00",
+                        InterviewKind::Bpm,
+                        "2026-09-14",
+                        "09:30",
+                        false,
+                    ),
+                    rdv(
+                        2,
+                        "Claire Martin",
+                        "06 12 34 56 78",
+                        InterviewKind::Aod,
+                        "2026-09-14",
+                        "11:00",
+                        true,
+                    ),
+                    rdv(
+                        3,
+                        "Hélène Lefèvre",
+                        "",
+                        InterviewKind::Asthme,
+                        "2026-09-15",
+                        "14:15",
+                        false,
+                    ),
+                ],
+                "24/08/2026",
+            )
+        }
         "guide" => guide_values(&pharmacy),
         // **Une monographie d'aperçu montre des *sections*.** Elle n'en
         // portait qu'une — la posologie —, or c'est justement le style
@@ -4154,6 +4243,77 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                     family: "Diabète".to_owned(),
                     indication: "Autosurveillance glycémique : une lancette par prélèvement, \
                                  jamais réutilisée."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                // **Ce modèle est en deux colonnes**, et trois fiches
+                // courtes tiennent dans la première : l'officine réglait
+                // donc une mise en page dont la chose la plus visible —
+                // le passage d'une colonne à l'autre — ne s'y voyait
+                // jamais. Ce qui suit remplit la page.
+                crate::db::Dispositif {
+                    id: 4,
+                    name: "Lecteur de glycémie et bandelettes".to_owned(),
+                    family: "Diabète".to_owned(),
+                    indication: "Le lecteur et ses bandelettes vont ensemble : une \
+                                 bandelette d'une autre marque ne se lit pas. Vérifier la \
+                                 date d'ouverture du flacon."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 5,
+                    name: "Alginate de calcium".to_owned(),
+                    family: "Pansements".to_owned(),
+                    indication: "Plaie très exsudative ou hémorragique ; se retire à \
+                                 l'eau, jamais à sec."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 6,
+                    name: "Hydrogel".to_owned(),
+                    family: "Pansements".to_owned(),
+                    indication: "Plaie sèche ou nécrotique à déterger ; protéger la peau \
+                                 péri-lésionnelle, qu'il macère."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 7,
+                    name: "Bande de contention à allongement court".to_owned(),
+                    family: "Compression".to_owned(),
+                    indication: "Ulcère veineux, lymphœdème : forte pression de travail, \
+                                 faible pression de repos. Posée le matin, jambe non \
+                                 œdématiée."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 8,
+                    name: "Poche de colostomie une pièce".to_owned(),
+                    family: "Stomie".to_owned(),
+                    indication: "Découpe au diamètre de la stomie, ni plus ni moins : \
+                                 un jour de peau à nu suffit à faire une dermite."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 9,
+                    name: "Chambre d'inhalation".to_owned(),
+                    family: "Respiratoire".to_owned(),
+                    indication: "Aérosol-doseur chez l'enfant, le sujet âgé ou devant \
+                                 toute coordination incertaine. Lavage hebdomadaire à \
+                                 l'eau savonneuse, séchage à l'air libre."
+                        .to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Dispositif {
+                    id: 10,
+                    name: "Collecteur d'aiguilles".to_owned(),
+                    family: "Sécurité".to_owned(),
+                    indication: "Remis avec toute délivrance d'aiguilles ou de lancettes ; \
+                                 rapporté plein à l'officine."
                         .to_owned(),
                     ..Default::default()
                 },
@@ -4264,8 +4424,8 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                     "Hémorragie digestive, insuffisance rénale aiguë, \
                      décompensation d'une insuffisance cardiaque."
                         .to_owned(),
-                    "Le paracétamol en première intention ; si un AINS reste \
-                     indispensable, la durée la plus courte avec un inhibiteur \
+                    "À la place : Le paracétamol en première intention ; si un AINS \
+                     reste indispensable, la durée la plus courte avec un inhibiteur \
                      de la pompe à protons."
                         .to_owned(),
                 )],
@@ -4299,14 +4459,61 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &pharmacy,
             "24/08/2026",
         ),
-        "codex" => codex_values(&[crate::db::Preparation {
-            id: 1,
-            name: "Pommade à l'oxyde de zinc".to_owned(),
-            form: "pommade".to_owned(),
-            formula: "Oxyde de zinc | 15 g\nVaseline | qsp 100 g".to_owned(),
-            yield_amount: "100 g".to_owned(),
-            ..Default::default()
-        }]),
+        // **Deux préparations, et toutes leurs sections.** Le modèle
+        // pose six choses — le titre et sa forme, la formule, le
+        // rendement, l'indication, le mode opératoire, la conservation
+        // et la mise en garde — et l'aperçu n'en montrait que deux :
+        // une fiche dont les quatre paragraphes étaient vides. On
+        // réglait donc la mise en page d'un document sans en voir le
+        // corps. La seconde préparation est là pour ce qu'une seule ne
+        // peut pas montrer : comment deux fiches se séparent sur la
+        // page.
+        "codex" => codex_values(&[
+            crate::db::Preparation {
+                id: 1,
+                name: "Pommade à l'oxyde de zinc".to_owned(),
+                form: "pommade".to_owned(),
+                formula: "Oxyde de zinc | 15 g\nVaseline | qsp 100 g".to_owned(),
+                yield_amount: "100 g".to_owned(),
+                indication: "Érythème fessier du nourrisson, irritation cutanée \
+                             suintante, protection des berges d'un ulcère."
+                    .to_owned(),
+                method: "Tamiser l'oxyde de zinc. Incorporer par fractions à la \
+                         vaseline préalablement ramollie au bain-marie tiède, en \
+                         triturant au mortier jusqu'à homogénéité complète, sans \
+                         grumeau visible à la spatule."
+                    .to_owned(),
+                conservation: "Pot en verre ou en polypropylène, à l'abri de la \
+                               lumière, température ambiante. Un mois."
+                    .to_owned(),
+                caution: "Ne pas appliquer sur une plaie infectée ni sur une \
+                          brûlure du deuxième degré sans avis."
+                    .to_owned(),
+                ..Default::default()
+            },
+            crate::db::Preparation {
+                id: 2,
+                name: "Solution de chlorhexidine aqueuse à 0,05 %".to_owned(),
+                form: "solution pour application cutanée".to_owned(),
+                formula: "Digluconate de chlorhexidine à 20 % | 0,25 g\n\
+                          Eau purifiée | qsp 100 mL"
+                    .to_owned(),
+                yield_amount: "100 mL".to_owned(),
+                indication: "Antisepsie des plaies superficielles et des \
+                             écorchures."
+                    .to_owned(),
+                method: "Diluer la solution mère dans l'eau purifiée sous \
+                         agitation douce. Répartir en flacon opaque."
+                    .to_owned(),
+                conservation: "Quinze jours à température ambiante, à l'abri de \
+                               la lumière ; la solution diluée ne se conserve pas."
+                    .to_owned(),
+                caution: "Jamais en contact avec l'œil ni le conduit auditif \
+                          externe si le tympan est perforé."
+                    .to_owned(),
+                ..Default::default()
+            },
+        ]),
         // **Un aperçu vide n'apprend rien du cadre.** Cette fiche
         // n'avait qu'un nom : l'officine ouvrait l'éditeur et voyait une
         // page blanche sous un titre, sans savoir ce que le modèle fait
@@ -4337,21 +4544,112 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // **Un carnet montre des lignes qui se suivent.** Sur une dose,
+        // ni l'ordre chronologique, ni la colonne du lot vide — celle
+        // d'une injection faite ailleurs — ne se voient.
         "vaccination" => vaccination_carnet_values(
             &patient,
-            &[crate::db::Vaccination {
-                id: 1,
-                label: "dTPolio".to_owned(),
-                dose: "rappel".to_owned(),
-                given_on: "2026-03-14".to_owned(),
-                lot: "K2341".to_owned(),
-                site: "deltoïde gauche".to_owned(),
-                operator: "CL".to_owned(),
-                ..Default::default()
-            }],
+            &[
+                crate::db::Vaccination {
+                    id: 1,
+                    label: "dTPolio".to_owned(),
+                    dose: "rappel".to_owned(),
+                    given_on: "2026-03-14".to_owned(),
+                    lot: "K2341".to_owned(),
+                    site: "deltoïde gauche".to_owned(),
+                    operator: "CL".to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Vaccination {
+                    id: 2,
+                    label: "Grippe saisonnière".to_owned(),
+                    dose: "annuelle".to_owned(),
+                    given_on: "2025-10-14".to_owned(),
+                    lot: "G7812".to_owned(),
+                    site: "deltoïde droit".to_owned(),
+                    operator: "YS".to_owned(),
+                    ..Default::default()
+                },
+                crate::db::Vaccination {
+                    id: 3,
+                    label: "Pneumocoque (VPC13)".to_owned(),
+                    dose: "1re dose".to_owned(),
+                    given_on: "2024-11-05".to_owned(),
+                    lot: String::new(),
+                    site: "deltoïde gauche".to_owned(),
+                    operator: String::new(),
+                    ..Default::default()
+                },
+            ],
             "Document remis à titre informatif.",
         ),
-        "facturation" => billing_recap_values(&[], &[], "Août 2026", "24/08/2026"),
+        // **Un récapitulatif vide n'est pas un récapitulatif.** Celui-ci
+        // n'avait aucune ligne : l'officine ouvrait l'éditeur de son
+        // modèle de facturation et voyait une page avec un titre, un
+        // total à zéro et rien entre les deux — c'est-à-dire rien de ce
+        // que ce modèle met en page. Quatre actes et une location, parce
+        // que ce sont les deux tableaux qu'il porte, et parce que la
+        // colonne « Code » ne montre ce qu'elle sait faire qu'avec un
+        // acte à distance, qui s'y écrit « code + majoration ».
+        "facturation" => billing_recap_values(
+            &[
+                BillingLine {
+                    date: "2026-08-04".to_owned(),
+                    patient: "Jean Dupont".to_owned(),
+                    kind: "BPM".to_owned(),
+                    code: "BPM1".to_owned(),
+                    step: "Entretien initial".to_owned(),
+                    situation: String::new(),
+                    remote: false,
+                    coverage: 70,
+                    fee: 60.0,
+                },
+                BillingLine {
+                    date: "2026-08-11".to_owned(),
+                    patient: "Claire Martin".to_owned(),
+                    kind: "AOD".to_owned(),
+                    code: "AOD1".to_owned(),
+                    step: "Entretien annuel".to_owned(),
+                    situation: "ALD".to_owned(),
+                    remote: true,
+                    coverage: 100,
+                    fee: 30.0,
+                },
+                BillingLine {
+                    date: "2026-08-18".to_owned(),
+                    patient: "Hélène Lefèvre".to_owned(),
+                    kind: "Asthme".to_owned(),
+                    code: "AST1".to_owned(),
+                    step: "Entretien de suivi".to_owned(),
+                    situation: String::new(),
+                    remote: false,
+                    coverage: 70,
+                    fee: 20.0,
+                },
+                BillingLine {
+                    date: "2026-08-25".to_owned(),
+                    patient: "Lucie Moreau".to_owned(),
+                    kind: "Vaccination".to_owned(),
+                    code: "VAC".to_owned(),
+                    step: "Injection".to_owned(),
+                    situation: String::new(),
+                    remote: false,
+                    coverage: 100,
+                    fee: 7.5,
+                },
+            ],
+            &[BillingRental {
+                patient: "Jean Dupont".to_owned(),
+                label: "Nébuliseur".to_owned(),
+                started: "2026-06-15".to_owned(),
+                ended: String::new(),
+                periods: 11,
+                period_word: "semaines".to_owned(),
+                amount: 132.0,
+            }],
+            "Août 2026",
+            "24/08/2026",
+        ),
         // **Deux lignes, dont une annulée.** Sur une seule délivrance
         // ordinaire, la colonne « État » reste vide et le barré ne se
         // voit nulle part : or c'est exactement ce que cet
@@ -4492,19 +4790,60 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 "2026-08-29".to_owned(),
                 "2026-08-30".to_owned(),
             ],
-            &[Appointment {
+            // **Une semaine montre une semaine.** Sur un seul
+            // rendez-vous, six cases sur sept sont vides et rien ne dit
+            // ce que le modèle fait de deux entrées le même jour, ni
+            // d'une entrée d'agenda à côté d'un rendez-vous — les deux
+            // colonnes que cette feuille porte.
+            &[
+                Appointment {
+                    id: 1,
+                    patient_id: 1,
+                    patient_name: patient.full_name(),
+                    phone: "04 67 00 00 00".to_owned(),
+                    kind: InterviewKind::Bpm,
+                    date: "2026-08-25".to_owned(),
+                    time: "09:30".to_owned(),
+                    remote: false,
+                    duration_minutes: 30,
+                    operator: "CL".to_owned(),
+                },
+                Appointment {
+                    id: 2,
+                    patient_id: 2,
+                    patient_name: "Claire Martin".to_owned(),
+                    phone: "06 12 34 56 78".to_owned(),
+                    kind: InterviewKind::Aod,
+                    date: "2026-08-25".to_owned(),
+                    time: "14:00".to_owned(),
+                    remote: true,
+                    duration_minutes: 30,
+                    operator: "YS".to_owned(),
+                },
+                Appointment {
+                    id: 3,
+                    patient_id: 3,
+                    patient_name: "Hélène Lefèvre".to_owned(),
+                    phone: String::new(),
+                    kind: InterviewKind::Asthme,
+                    date: "2026-08-27".to_owned(),
+                    time: "10:15".to_owned(),
+                    remote: false,
+                    duration_minutes: 45,
+                    operator: "CL".to_owned(),
+                },
+            ],
+            &[crate::db::Event {
                 id: 1,
-                patient_id: 1,
-                patient_name: patient.full_name(),
-                phone: "04 67 00 00 00".to_owned(),
-                kind: InterviewKind::Bpm,
-                date: "2026-08-25".to_owned(),
-                time: "09:30".to_owned(),
-                remote: false,
-                duration_minutes: 30,
-                operator: "CL".to_owned(),
+                day: "2026-08-28".to_owned(),
+                time: "08:00".to_owned(),
+                end_time: "09:00".to_owned(),
+                title: "Livraison grossiste".to_owned(),
+                category: crate::db::EventCategory::Livraison,
+                repeat_days: 0,
+                cadence: String::new(),
+                source_id: 1,
             }],
-            &[],
             "2026-08-24",
         ),
         "conciliation" => conciliation_values(
@@ -4548,27 +4887,64 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // **Une liste de comptage montre une liste.** Le comptage sûr
+        // est quarante produits ; sur un seul, ni l'empilement, ni les
+        // trois motifs — dont le solde négatif, le seul qui soit une
+        // erreur et non un rappel —, ni la colonne « Dernier comptage »
+        // vide d'un produit jamais compté ne se voient. Et c'est cette
+        // page-là que l'officine règle dans l'éditeur de modèles.
         "controle" => stock_check_values(
-            &[crate::ordonnancier::ToCheck {
-                id: 1,
-                label: "Skenan LP 30 mg".to_owned(),
-                unit: "gélule".to_owned(),
-                stock: 24.0,
-                days: Some(63),
-                why: crate::ordonnancier::Why::Uncounted,
-            }],
+            &[
+                crate::ordonnancier::ToCheck {
+                    id: 1,
+                    label: "Méthadone AP-HP gélule 40 mg".to_owned(),
+                    unit: "gélule".to_owned(),
+                    stock: -2.0,
+                    days: Some(12),
+                    why: crate::ordonnancier::Why::Negative,
+                },
+                crate::ordonnancier::ToCheck {
+                    id: 2,
+                    label: "Subutex 8 mg".to_owned(),
+                    unit: "comprimé sublingual".to_owned(),
+                    stock: 3.0,
+                    days: None,
+                    why: crate::ordonnancier::Why::Low,
+                },
+                crate::ordonnancier::ToCheck {
+                    id: 3,
+                    label: "Skenan LP 30 mg".to_owned(),
+                    unit: "gélule".to_owned(),
+                    stock: 24.0,
+                    days: Some(63),
+                    why: crate::ordonnancier::Why::Uncounted,
+                },
+            ],
             &pharmacy,
             "2026-08-29",
         ),
+        // Deux lignes plutôt qu'une, pour la même raison : un bordereau
+        // de destruction en porte plusieurs, et l'unité la plus longue
+        // du catalogue est ce qui décide de la largeur des colonnes.
         "destruction" => destruction_list_values(
-            &[crate::ordonnancier::Awaiting {
-                id: 1,
-                label: "Skenan LP 30 mg".to_owned(),
-                unit: "gélule".to_owned(),
-                quantity: 14.0,
-                since: "2026-07-02".to_owned(),
-                days: Some(68),
-            }],
+            &[
+                crate::ordonnancier::Awaiting {
+                    id: 1,
+                    label: "Skenan LP 30 mg".to_owned(),
+                    unit: "gélule".to_owned(),
+                    quantity: 14.0,
+                    since: "2026-07-02".to_owned(),
+                    days: Some(68),
+                },
+                crate::ordonnancier::Awaiting {
+                    id: 2,
+                    label: "Subutex 8 mg".to_owned(),
+                    unit: "comprimé sublingual".to_owned(),
+                    quantity: 21.0,
+                    since: "2026-08-19".to_owned(),
+                    days: Some(20),
+                },
+            ],
             &pharmacy,
             "2026-09-08",
         ),
@@ -4794,14 +5170,27 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 s("Angine à streptocoque du groupe A — TROD positif"),
             ),
             ("{{DATE}}", s("26/08/2026")),
+            // **Une ordonnance sous protocole porte plus d'une ligne.**
+            // L'aperçu n'en montrait qu'une et un seul conseil : ni la
+            // numérotation, ni l'adjuvant que le protocole propose, ni
+            // la façon dont une posologie longue enveloppe sous son
+            // produit ne s'y voyaient — et c'est précisément la mise en
+            // page qu'on vient régler ici.
             (
                 "{{LINES}}",
-                "+ #\"Amoxicilline 1 g\" \\\n  #\"1 g deux fois par jour pendant 6 jours\""
+                "+ #\"Amoxicilline 1 g\" \\\n  #\"1 g deux fois par jour pendant 6 jours\"\n\
+                 + #\"Ultra-levure 200 mg\" \\\n  #\"1 gélule par jour pendant la durée de \
+                 l'antibiotique, à distance d'au moins deux heures de la prise\""
                     .to_owned(),
             ),
             (
                 "{{ADVICE}}",
-                "- #\"Boire fréquemment, par petites quantités.\"".to_owned(),
+                "- #\"Boire fréquemment, par petites quantités.\"\n\
+                 - #\"La fièvre tombe en deux à trois jours ; l'antibiotique se termine \
+                 quand même.\"\n\
+                 - #\"Consulter sans attendre devant une difficulté à avaler la salive, \
+                 une voix étouffée ou un gonflement du cou.\""
+                    .to_owned(),
             ),
             (
                 "{{MENTION_HEADER}}",
@@ -7655,7 +8044,7 @@ mod tests {
             elderly: vec![(
                 "Advil #box[*6 jours*] — À éviter à cet âge (dès 75 ans)".to_owned(),
                 "Hémorragie digestive et insuffisance rénale aiguë.".to_owned(),
-                "Le paracétamol en première intention.".to_owned(),
+                "À la place : Le paracétamol en première intention.".to_owned(),
             )],
             vaccines: vec!["dTP — rappel décennal attendu".to_owned()],
             watch: vec![

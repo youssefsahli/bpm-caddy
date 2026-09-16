@@ -15460,6 +15460,21 @@ impl App {
         });
     }
 
+    /// Comment s'annonce ce qu'on met à la place, selon le niveau.
+    ///
+    /// « À éviter » appelle un **remplacement** ; « sous conditions »
+    /// appelle une **conduite**, et « À la place : ils restent le
+    /// premier choix à cet âge » — ce qu'écrivait la ligne des ISRS —
+    /// se contredit à voix haute. Écrit une fois : les trois endroits
+    /// qui affichent cette phrase — le dossier, le croisement et le
+    /// bilan imprimé — n'en donnent pas trois lectures.
+    fn elderly_lead(level: Option<crate::elderly::Level>) -> &'static str {
+        match level {
+            Some(crate::elderly::Level::Caution) => tr("elderly_conduct"),
+            _ => tr("elderly_instead"),
+        }
+    }
+
     /// Ce que l'âge fait à l'ordonnance ouverte.
     ///
     /// Le seul des quatre terrains dont **le chiffre est déjà au
@@ -15544,9 +15559,13 @@ impl App {
                         // seule des deux avec laquelle on peut décrocher
                         // le téléphone.
                         ui.label(
-                            egui::RichText::new(format!("{} {}", tr("elderly_instead"), f.instead))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::accent()),
+                            egui::RichText::new(format!(
+                                "{} {}",
+                                Self::elderly_lead(f.level),
+                                f.instead
+                            ))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::accent()),
                         );
                         ui.label(
                             egui::RichText::new(f.source)
@@ -18861,7 +18880,11 @@ impl App {
                 Some(l) => format!("{} — {} (dès {} ans)", f.treatment, l.label(), f.from),
                 None => format!("{} — {}", f.treatment, tr("elderly_unknown")),
             };
-            (head, f.risk, f.instead)
+            (
+                head,
+                f.risk,
+                format!("{} {}", Self::elderly_lead(f.level), f.instead),
+            )
         })
         .collect();
         let signature = config.pharmacy.signature_for(operator);
@@ -23509,22 +23532,7 @@ impl App {
                 .collect();
             here.sort_by_key(|w| (order.iter().position(|o| o == w).unwrap_or(usize::MAX), *w));
             here.dedup();
-            let mut minutes = 0_u16;
-            let mut known = false;
-            let mut partial = false;
-            for who in shifts
-                .iter()
-                .map(|s| s.operator.clone())
-                .collect::<std::collections::BTreeSet<_>>()
-            {
-                match planning::day_total(shifts, &who) {
-                    Some(m) => {
-                        minutes = minutes.saturating_add(m);
-                        known = true;
-                    }
-                    None => partial |= shifts.iter().any(|s| s.operator == who && s.kind.worked()),
-                }
-            }
+            let (day_minutes, _) = Self::planning_day_sum(shifts);
             let opening = planning::opening_slots(
                 config
                     .pharmacy
@@ -23537,13 +23545,50 @@ impl App {
                 day.clone(),
                 PlanningDigest {
                     who: here.join(" "),
-                    // Un total partiel n'est pas le total du jour.
-                    minutes: (known && !partial).then_some(minutes),
+                    // Un total partiel n'est pas le total du jour —
+                    // et c'est `App::planning_day_sum` qui le dit, pour
+                    // cette vue comme pour le pied de la semaine.
+                    minutes: day_minutes,
                     uncovered: !planning::gaps(shifts, &opening).is_empty(),
                 },
             );
         }
         out
+    }
+
+    /// Ce qu'un jour de planning totalise, toutes personnes
+    /// confondues — et **s'il manque une fin**.
+    ///
+    /// Écrit une fois. Le mois et le pied de la semaine le calculaient
+    /// chacun de leur côté, et ils avaient fini par ne plus dire la
+    /// même chose du même jeudi : blanc sur l'un, « 10 h 30 » sur
+    /// l'autre. La règle est celle que le mois portait déjà — *un total
+    /// partiel n'est pas le total du jour* —, et elle ne vaut que si
+    /// les deux vues la lisent au même endroit.
+    ///
+    /// Rend `(le total quand il est connu, un poste travaillé sans
+    /// fin)`. Un jour vide rend `(None, false)` : il n'y a rien à
+    /// totaliser, et ce n'est pas une incertitude. Un jour qui ne porte
+    /// que des absences aussi — un congé ne compte pas d'heures et n'en
+    /// cache pas non plus.
+    fn planning_day_sum(shifts: &[planning::Shift]) -> (Option<u16>, bool) {
+        let mut minutes = 0_u16;
+        let mut known = false;
+        let mut partial = false;
+        for who in shifts
+            .iter()
+            .map(|s| s.operator.clone())
+            .collect::<std::collections::BTreeSet<_>>()
+        {
+            match planning::day_total(shifts, &who) {
+                Some(m) => {
+                    minutes = minutes.saturating_add(m);
+                    known = true;
+                }
+                None => partial |= shifts.iter().any(|s| s.operator == who && s.kind.worked()),
+            }
+        }
+        ((known && !partial).then_some(minutes), partial)
     }
 
     /// Does this rendez-vous pass the agenda's filters — the place it
@@ -27173,6 +27218,11 @@ impl App {
         // même chose.
         let mut printable: Vec<(String, Vec<String>, String)> = Vec::new();
         let mut grand_total = 0_u16;
+        // **Et le papier hérite de la même règle.** Un total partiel
+        // imprimé est pire qu'un total partiel à l'écran : la feuille
+        // part sur un mur, et rien n'y dit qu'un poste n'avait pas de
+        // fin quand elle a été tirée.
+        let mut grand_total_partial = false;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -27509,6 +27559,10 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                         let mut grand = 0_u16;
+                        // La semaine hérite de la règle du jour : si un
+                        // seul poste de la semaine n'a pas de fin, le
+                        // total de la semaine n'est pas connu non plus.
+                        let mut grand_partial = false;
                         for (c, _) in week.iter().enumerate() {
                             let day: Vec<planning::Shift> = parsed
                                 .iter()
@@ -27519,19 +27573,25 @@ impl App {
                             // personne : le pied additionne ce que les
                             // lignes affichent, jamais un second calcul
                             // sur les mêmes postes.
-                            let mut sum = 0_u16;
-                            let mut any = false;
-                            for who in day
-                                .iter()
-                                .map(|sh| sh.operator.clone())
-                                .collect::<std::collections::BTreeSet<_>>()
-                            {
-                                any |= day.iter().any(|sh| sh.operator == who && sh.kind.worked());
-                                if let Some(m) = planning::day_total(&day, &who) {
-                                    sum = sum.saturating_add(m);
-                                }
+                            // **Le même calcul que le mois**, lu au
+                            // même endroit. Ce pied-ci avait le sien : un
+                            // poste sans fin ne comptait pour rien et la
+                            // case affichait quand même un nombre, qui se
+                            // lit comme le total du jour. Sur la semaine
+                            // livrée, le jeudi sortait « 10 h 30 » ici et
+                            // **blanc** partout ailleurs — la grille du
+                            // mois et l'en-tête de la semaine d'agenda
+                            // lisent toutes deux `planning_digests`.
+                            // Deux vues se taisaient, une parlait, et
+                            // c'était celle où l'on compte les heures.
+                            // Le rouge d'à côté ne dit pas cela :
+                            // il dit qu'un creux reste pendant les heures
+                            // d'ouverture, ce qui est une autre question.
+                            let (day_sum, partial) = Self::planning_day_sum(&day);
+                            if let Some(m) = day_sum {
+                                grand = grand.saturating_add(m);
                             }
-                            grand = grand.saturating_add(sum);
+                            grand_partial |= partial;
                             // **Le creux se lit dans le pied**, comme il
                             // se lit déjà sur le mois : le total du jour
                             // passe à l'encre d'alerte quand l'officine
@@ -27545,39 +27605,35 @@ impl App {
                             // passé en argument : il n'y a pas deux
                             // calculs de creux dans cette application.
                             let uncovered = digests.get(&week[c]).is_some_and(|d| d.uncovered);
-                            let cell =
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(day_w, ui.text_style_height(&body_style(ui))),
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        ui.set_width(day_w);
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(if any {
-                                                    planning::hhmm(sum)
-                                                } else {
-                                                    "—".to_owned()
-                                                })
+                            let cell = ui.allocate_ui_with_layout(
+                                egui::vec2(day_w, ui.text_style_height(&body_style(ui))),
+                                egui::Layout::left_to_right(egui::Align::Center),
+                                |ui| {
+                                    ui.set_width(day_w);
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(planning::hhmm_or_dash(day_sum))
                                                 .size(motif::pt(ui, 11.0))
                                                 .color(if uncovered {
                                                     motif::alert()
                                                 } else {
                                                     motif::text_dim()
                                                 }),
-                                            )
-                                            .truncate(),
                                         )
-                                    },
-                                );
+                                        .truncate(),
+                                    )
+                                },
+                            );
                             if uncovered {
                                 cell.inner.on_hover_text(tr("planning_day_uncovered"));
                             }
                         }
                         grand_total = grand;
+                        grand_total_partial = grand_partial;
                         Self::grid_cell(
                             ui,
                             total_w,
-                            egui::RichText::new(if parsed.is_empty() {
+                            egui::RichText::new(if parsed.is_empty() || grand_partial {
                                 "—".to_owned()
                             } else {
                                 planning::hhmm(grand)
@@ -27604,7 +27660,7 @@ impl App {
                 &week,
                 &heads,
                 &printable,
-                &planning::hhmm(grand_total),
+                &planning::hhmm_or_dash((!grand_total_partial).then_some(grand_total)),
                 &config.pharmacy,
                 &config.doc_template_path("planning"),
             ) {
@@ -32080,7 +32136,7 @@ impl App {
                     .color(motif::text_dim()),
             );
             ui.label(
-                egui::RichText::new(format!("{} {}", tr("elderly_instead"), f.instead))
+                egui::RichText::new(format!("{} {}", Self::elderly_lead(f.level), f.instead))
                     .size(motif::pt(ui, 11.0))
                     .color(motif::accent()),
             );
@@ -43668,7 +43724,22 @@ impl App {
     /// nom porte la clé de l'invite, ce qui est ce que
     /// `every_control_a_title_band_draws_is_measured_with_it` relit.
     fn script_name_hint_width(ui: &egui::Ui) -> f32 {
-        Self::field_width(ui, [tr("script_name_hint")].into_iter()).max(120.0)
+        // **Mesuré sur ce que le champ portera, pas seulement sur son
+        // invite.** Ce champ nomme le script ouvert, et c'est la seule
+        // chose à l'écran qui dise lequel l'est : mesuré sur l'invite
+        // seule, il sortait « Dossiers éligibles a » — le nom d'un
+        // exemple livré, coupé en plein mot et sans même une élision
+        // pour le dire. Un champ de texte tronque par la gauche sans
+        // rien annoncer, ce qui en fait le pire endroit où mettre un
+        // nom trop long. Les exemples livrés sont le plancher : un nom
+        // que l'officine écrira plus long défilera, et c'est son nom à
+        // elle.
+        Self::field_width(
+            ui,
+            std::iter::once(tr("script_name_hint"))
+                .chain(crate::script::EXAMPLES.iter().map(|(name, _)| *name)),
+        )
+        .max(120.0)
     }
 
     /// La console : le script à gauche, ce qu'il rend à droite.
@@ -52463,6 +52534,44 @@ mod tests {
             "une bascule de disposition se compte en caractères, pas en pixels :\n{}",
             offenders.join("\n")
         );
+    }
+
+    /// **Un total partiel n'est pas le total du jour.**
+    ///
+    /// Un poste travaillé sans heure de fin ne peut pas être compté :
+    /// la journée n'a donc pas de total, et la case écrit « — » plutôt
+    /// qu'un nombre qui se lit comme les heures du jour. La règle était
+    /// écrite dans le mois et **pas** dans le pied de la semaine, qui
+    /// additionnait ce qu'il pouvait : sur la semaine livrée le jeudi
+    /// sortait « 10 h 30 » d'un côté et blanc de l'autre, pour la même
+    /// journée. Les deux lisent maintenant `App::planning_day_sum`, et
+    /// ce test tient les trois cas qui la définissent.
+    #[test]
+    fn a_partial_day_has_no_total() {
+        let shift = |who: &str, start, end, kind| crate::planning::Shift {
+            id: 0,
+            operator: who.to_owned(),
+            start,
+            end,
+            pause: 0,
+            kind,
+        };
+        use crate::planning::ShiftKind;
+        // Deux postes fermés : le total est la somme.
+        let closed = [
+            shift("CL", 540, Some(780), ShiftKind::Journee),
+            shift("YS", 840, Some(1170), ShiftKind::Journee),
+        ];
+        assert_eq!(App::planning_day_sum(&closed), (Some(240 + 330), false));
+        // Un troisième sans fin : plus de total, et la journée le dit.
+        let mut open = closed.to_vec();
+        open.push(shift("MB", 540, None, ShiftKind::Journee));
+        assert_eq!(App::planning_day_sum(&open), (None, true));
+        // Un jour vide n'est pas une incertitude, et un congé non plus :
+        // il ne compte pas d'heures et n'en cache pas.
+        assert_eq!(App::planning_day_sum(&[]), (None, false));
+        let leave = [shift("CL", 0, None, ShiftKind::Conge)];
+        assert_eq!(App::planning_day_sum(&leave), (None, false));
     }
 
     /// **Une puce se mesure avec la croix qu'elle porte.**

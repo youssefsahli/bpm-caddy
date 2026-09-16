@@ -5,7 +5,7 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.201.0] - 2026-09-16
 
 ### Added
 - **Ce que l'âge fait à une ordonnance** — `src/elderly.rs`,
@@ -36,8 +36,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   autre** — la ligne des tricycliques proposait l'amitriptyline, qu'elle
   dit d'éviter ; **l'alternative est un choix, jamais une posologie** ;
   et **aucune ligne ne réclame une fiche qui ne parle jamais de l'âge**,
-  qui en a trouvé quatre — trois fiches ont été complétées sur ce que
-  l'âge y change, la quatrième a fait retirer sa ligne. Deux niveaux et
+  qui a parlé à chaque ligne ajoutée — sept fiches en tout : six ont été
+  complétées sur ce que l'âge y change, et la septième a fait retirer sa
+  ligne, parce que cette ligne-là ne parlait pas d'âge. Une quatrième
+  faute qu'aucune des trois ne pouvait voir s'est trouvée en lisant ce
+  que les mots attrapent vraiment : « myorelaxant » ramassait le
+  Liorésal, le Dantrium et le Botox — la spasticité d'une sclérose en
+  plaques —, à qui « paracétamol, chaleur, reprise du mouvement » ne dit
+  rien et dont l'arrêt brutal donne des convulsions ; deux molécules
+  nommées ont remplacé la classe. Deux niveaux et
   pas trois : l'axe « efficacité discutable » de la liste française
   n'est pas ici, parce qu'une efficacité modeste est une question de
   revue d'ordonnance et pas une question d'âge.
@@ -54,6 +61,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   place.
 
 ### Fixed
+- **Onze aperçus de modèle ne montraient pas leur document.** L'aperçu
+  est ce que l'officine lit pour comprendre la feuille qu'elle va
+  régler : celui du récapitulatif de facturation n'avait **aucune
+  ligne** — un titre, un total à zéro, et rien entre les deux ; ceux des
+  rendez-vous, de la liste d'appels, du carnet de vaccination, du plan
+  de semaine, du plan de prise, de la feuille de contrôle des
+  stupéfiants, du bordereau de destruction, de l'ordonnance sous
+  protocole et du codex en avaient une seule,
+  c'est-à-dire ni le groupement par jour, ni la marque du « à
+  distance », ni la colonne vide d'un dossier sans téléphone ou d'une
+  injection faite ailleurs, ni ce que devient une journée qui porte deux
+  entrées, ni une posologie longue — celle qui décide de la largeur des
+  colonnes —, ni les trois motifs d'un comptage, dont le solde négatif,
+  le seul qui soit une erreur et non un rappel. Ils portent maintenant
+  de quoi juger la mise en page qu'ils existent pour régler. C'est la
+  même règle que les quatre aperçus corrigés en 0.199.0, sur onze
+  documents de plus : *un aperçu vide n'apprend rien du cadre*.
+
+  Le plus net est celui du codex : le modèle pose six choses — le titre
+  et sa forme, la formule, le rendement, l'indication, le mode
+  opératoire, la conservation et la mise en garde — et l'aperçu n'en
+  montrait que deux, sur une fiche dont les quatre paragraphes étaient
+  vides. On réglait la mise en page d'un document sans en voir le
+  corps.
+
+  Le plus net après le codex est celui de la liste des dispositifs : ce
+  modèle-là est **en deux colonnes**, et trois fiches courtes tenaient
+  dans la première — on réglait donc une mise en page dont la chose la
+  plus visible, le passage d'une colonne à l'autre, ne s'y voyait
+  jamais.
+
+  Et la façon de les trouver tient en une commande : rendre les
+  trente-deux aperçus, compter les lignes de texte de chacun, trier. Le
+  bas de ce classement, c'est exactement cette faute-là.
 - **La feuille de saisie groupée élidait son solde.** La colonne « Au
   registre » se mesurait sur sa propre légende et sur trois des quatre
   embarras — celui qui manquait, « Zéro n'est pas un mouvement », étant
@@ -67,6 +108,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   test de la feuille parcourt désormais **toutes** les unités du
   catalogue livré : c'est « comprimé sublingual » qui décide, et il ne
   se voit qu'en les prenant toutes.
+- **La colonne « Taille » des pièces n'écrivait jamais que des
+  octets.** Les trois pièces de la démonstration pesaient quatre-vingts
+  octets chacune, si bien que le kilo-octet et le méga-octet — les deux
+  unités que cette colonne existe pour écrire — n'apparaissaient sur
+  aucune capture. La taille des pièces est pourtant tout le sujet de
+  « Compacter » : deux cents ordonnances numérisées font passer une base
+  de six à cinquante-six méga-octets. L'une des trois pèse maintenant ce
+  qu'un scan pèse.
+- **Le nom du script ouvert sortait coupé en plein mot.** Le champ qui
+  le porte se mesurait sur sa seule invite, si bien qu'un exemple livré
+  s'affichait « Dossiers éligibles a » — et un champ de texte tronque
+  sans rien annoncer, ce qui en fait le pire endroit où mettre un nom
+  trop long. C'est pourtant la seule chose à l'écran qui dise quel
+  script est ouvert. Il se mesure maintenant sur les noms des exemples
+  livrés autant que sur son invite.
 - **La dernière puce de « ce qu'on croise » pouvait disparaître.** La
   bande comptait ses rangées sur le *nom* du médicament et dessinait
   « Zeclar × » : deux écritures d'une même chose, dont celle qui ment
@@ -93,6 +149,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   courte à l'écran, entière au survol, et en tête.
   `a_clinical_pane_writes_its_caveat_before_what_it_qualifies` refuse la
   prochaine — vérifié en remettant celle du rein en pied.
+- **Le pied du planning affichait un total partiel comme un total.**
+  Un poste sans heure de fin ne compte pour rien dans la somme, et la
+  case écrivait quand même un nombre — qui se lit comme les heures du
+  jour. Sur la semaine livrée, le jeudi sortait « 10 h 30 » dans le pied
+  du planning et **blanc** partout ailleurs — sur la grille du mois
+  comme dans l'en-tête de la semaine d'agenda, qui lisent toutes deux le
+  même calcul. Deux écritures d'une même chose, et celle qui mentait est
+  celle qu'on regarde, le planning étant la vue où l'on compte les
+  heures. Le rouge d'à côté ne
+  disait pas cela — il dit qu'un creux reste pendant les heures
+  d'ouverture, ce qui est une autre question. La règle était déjà
+  écrite dans le code du mois : *un total partiel n'est pas le total du
+  jour*. Elle vaut maintenant pour le jour, pour la semaine et pour la
+  feuille imprimée, où un total partiel est le pire des trois : elle
+  part sur un mur, et rien n'y dit qu'un poste n'avait pas de fin.
+- **Le mois de caisse dit combien de soirs sont en écart.** La liste
+  est dans une région qui défile derrière une barre flottante : à
+  1400x900 elle en montrait onze sur treize, et rien ne disait qu'il en
+  manquait deux — les deux plus petits écarts, ceux qu'on ne cherche pas
+  et qu'on croit donc absents. Le compte va dans la légende, qui ne
+  coûte pas de ligne.
 - **La portée des cytochromes manquait à la vue « Croisement »**, qui
   est pourtant la vue faite pour eux : « sept cytochromes, ni
   glycoprotéine P, ni transporteurs, ni additions d'effets » n'était
