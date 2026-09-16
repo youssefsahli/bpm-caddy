@@ -48669,6 +48669,7 @@ impl App {
                 &session.patient_treats,
                 session.renal_dfg,
                 age,
+                &session.today,
                 self.companion_query.trim(),
                 self.companion_pick,
             );
@@ -48816,17 +48817,24 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         let Some(d) = read.1.hits.get(read.1.pick) else {
+                            // **Un code-barres n'est pas un nom qu'on
+                            // n'aurait pas trouvé.** Cherché comme un
+                            // nom, il ne rend rien, et « Aucun résultat
+                            // dans la base » se lit alors « ce
+                            // médicament n'y est pas » — une réponse
+                            // fausse à une question qu'on n'a pas posée.
+                            let said = match &read.1.scanned {
+                                Some(code) => trf("companion_barcode", code.clone()),
+                                None if self.companion_query.trim().is_empty() => {
+                                    tr("companion_idle").to_owned()
+                                }
+                                None => tr("companion_none").to_owned(),
+                            };
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(
-                                        if self.companion_query.trim().is_empty() {
-                                            tr("companion_idle")
-                                        } else {
-                                            tr("companion_none")
-                                        },
-                                    )
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
+                                    egui::RichText::new(said)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
                                 )
                                 .wrap(),
                             );
@@ -49187,6 +49195,17 @@ struct CompanionRead {
     what: String,
     /// Ce qui doit se dire avant tout le reste, quand la fiche le porte.
     flag: String,
+    /// Le code-barres lu, quand ce qu'on a tapé en est un.
+    ///
+    /// **Une douchette est un clavier**, et le champ garde le foyer
+    /// précisément pour cela : ce qu'elle tape arrive ici. Cherché comme
+    /// un nom, un GTIN ne rend rien, et la barre répondait « Aucun
+    /// résultat dans la base » — ce qui se lit « ce médicament n'y est
+    /// pas » alors que la base n'a pas été interrogée sur la bonne
+    /// question. Aucune fiche ne porte de code : le seul lien code-boîte
+    /// de cette application est celui qu'un humain a posé au registre
+    /// des stupéfiants, en présentant une boîte.
+    scanned: Option<String>,
 }
 
 /// Combien de fiches le compagnon garde parmi celles qui répondent.
@@ -49207,9 +49226,14 @@ fn companion_look(
     file: &[Drug],
     dfg: Option<f64>,
     age: Option<u32>,
+    today: &str,
     query: &str,
     pick: usize,
 ) -> CompanionRead {
+    // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
+    // jamais la longueur — c'est la règle de `codebar`, et elle fait
+    // qu'un code abîmé n'est pas pris pour un bon.
+    let scanned = crate::codebar::read(query, today).map(|s| s.code);
     let mut scored: Vec<(i32, &Drug)> = Vec::new();
     if !query.is_empty() {
         for d in drugs {
@@ -49239,6 +49263,7 @@ fn companion_look(
             silent: false,
             what: String::new(),
             flag: String::new(),
+            scanned,
         };
     };
     let signals = companion_signals(&card, file, dfg, age);
@@ -49251,6 +49276,7 @@ fn companion_look(
         signals,
         hits,
         pick,
+        scanned,
     }
 }
 
@@ -55348,6 +55374,7 @@ mod tests {
             &[],
             None,
             None,
+            "2026-09-16",
             "zorglubine",
             0,
         );
@@ -55405,13 +55432,60 @@ mod tests {
         );
         // Et le rang lu est borné à ce que la liste porte : une flèche
         // qui dépasse ne doit pas faire lire une fiche qui n'existe pas.
-        let read =
-            super::companion_look(std::slice::from_ref(&statin), &[], None, None, "tahor", 40);
+        let read = super::companion_look(
+            std::slice::from_ref(&statin),
+            &[],
+            None,
+            None,
+            "2026-09-16",
+            "tahor",
+            40,
+        );
         assert_eq!(read.pick, 0);
         assert_eq!(read.hits.len(), 1);
+        // **Un code-barres n'est pas un nom qu'on n'aurait pas
+        // trouvé.** Une douchette est un clavier, et le champ garde le
+        // foyer pour cela ; cherché comme un nom, un GTIN ne rend rien,
+        // et « Aucun résultat dans la base » se lit alors « ce
+        // médicament n'y est pas » — une réponse fausse à une question
+        // qu'on n'a pas posée. Le CIP13 est celui de `codebar` : sa clé
+        // de contrôle est calculée à la main dans ce module.
+        let boxed = super::companion_look(
+            std::slice::from_ref(&statin),
+            &[],
+            None,
+            None,
+            "2026-09-16",
+            "3400930000007",
+            0,
+        );
+        assert!(boxed.hits.is_empty());
+        assert_eq!(boxed.scanned.as_deref(), Some("3400930000007"));
+        // Et un code dont la clé est fausse n'en est pas un : c'est la
+        // clé qui décide, jamais la longueur. La barre répond alors ce
+        // qu'elle répond à n'importe quoi d'introuvable, ce qui est
+        // exact.
+        let damaged = super::companion_look(
+            std::slice::from_ref(&statin),
+            &[],
+            None,
+            None,
+            "2026-09-16",
+            "3400930000008",
+            0,
+        );
+        assert_eq!(damaged.scanned, None);
         // Une question vide ne cherche rien : la barre s'ouvre sur son
         // invite, et non sur les huit premières fiches de la base.
-        let idle = super::companion_look(std::slice::from_ref(&statin), &[], None, None, "", 0);
+        let idle = super::companion_look(
+            std::slice::from_ref(&statin),
+            &[],
+            None,
+            None,
+            "2026-09-16",
+            "",
+            0,
+        );
         assert!(idle.hits.is_empty());
         assert!(!idle.silent, "rien cherché n'est pas un silence des tables");
     }

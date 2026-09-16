@@ -1908,6 +1908,7 @@ keys_companion = "Compagnon : la fenêtre réduite en barre, au-dessus des autre
 companion_hint = "Nom ou molécule…"
 companion_idle = "Tapez un nom. Flèches haut et bas pour changer de fiche, Entrée pour ouvrir, Échap pour effacer."
 companion_none = "Aucun résultat dans la base."
+companion_barcode = "Code-barres lu : {}. Aucune fiche ne porte de code — le seul lien entre un code et une boîte est celui qu'un humain a posé au registre des stupéfiants. « Délivrance » l'ouvre ; sinon, tapez le nom."
 companion_file = "Dossier : {}"
 companion_file_tooltip = "Les gestes « Acte » et « Pièce » portent sur ce dossier. {} traitement(s) au dossier : c'est sur eux que les croisements sont lus."
 companion_no_file = "Aucun dossier ouvert"

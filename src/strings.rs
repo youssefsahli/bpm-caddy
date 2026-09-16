@@ -290,6 +290,53 @@ mod tests {
         );
     }
 
+    /// **Une clé écrite deux fois casse *toutes* les chaînes, pas la
+    /// sienne.**
+    ///
+    /// Le fichier livré est du TOML et une clé en double est une erreur
+    /// d'analyse : la table entière est refusée, `tr` retombe sur le nom
+    /// de la clé, et l'application s'affiche avec `form_last_name` là où
+    /// elle écrivait « Nom » — partout, d'un coup. Onze cents clés
+    /// rangées par sujet et non par ordre alphabétique : deux d'entre
+    /// elles peuvent porter le même nom à six cents lignes d'écart sans
+    /// que personne le voie, et c'est arrivé à `companion_scan`, qui
+    /// était déjà le libellé d'un bouton.
+    ///
+    /// Ce que cela coûtait sans ce test : `embedded_strings_parse_and_
+    /// resolve` finit par tomber, mais sur « attendu "Nom", obtenu
+    /// "form_last_name" » — un message qui envoie chercher la panne dans
+    /// le formulaire patient. Ici elle est nommée.
+    #[test]
+    fn no_string_key_is_written_twice() {
+        let mut seen: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+        let mut doubles: Vec<String> = Vec::new();
+        for (n, line) in EMBEDDED.lines().enumerate() {
+            let Some((key, _)) = line.split_once('=') else {
+                continue;
+            };
+            let key = key.trim();
+            // Les clés, et rien d'autre : une ligne de prose qui porte
+            // un « = » au milieu d'une phrase n'en est pas une.
+            if key.is_empty()
+                || !key
+                    .chars()
+                    .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+            {
+                continue;
+            }
+            if let Some(first) = seen.insert(key, n + 1) {
+                doubles.push(format!("« {key} » : lignes {first} et {}", n + 1));
+            }
+        }
+        assert!(
+            doubles.is_empty(),
+            "assets/strings.fr.toml porte des clés en double — le TOML entier \
+             est alors refusé et l'application écrit ses clés à la place de ses \
+             phrases :\n{}",
+            doubles.join("\n")
+        );
+    }
+
     /// Every character of every string must have a glyph in the font
     /// the application actually draws with.
     ///
