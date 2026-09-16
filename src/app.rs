@@ -47887,13 +47887,81 @@ impl App {
         }
     }
 
+    /// Quels rangs la rangée des autres réponses garde, autour de celui
+    /// qu'on lit.
+    ///
+    /// **Hors de la boucle de dessin pour être mesurable**, comme
+    /// `toolbar_shape` ou `wrapped_rows_of` : une arithmétique qui décide
+    /// d'une mise en page se teste sans ouvrir de fenêtre.
+    ///
+    /// Elle existe parce que la rangée se mesurait sur des noms qu'elle
+    /// ne dessinait pas. Le compte de ce qui tenait était pris sur les
+    /// premiers de la liste, puis la fenêtre glissait vers le rang lu :
+    /// à la huitième fiche d'« eliq », « Delursan Spécialfoldine Ursolvan
+    /// Aclasta Augmentin » était dessiné dans la place mesurée pour
+    /// « Eliquis Botox Celluvisc Delursan Spécialfoldine », et le compte
+    /// de ce qui manque sortait du cadre — tranché à « + ». C'est la
+    /// règle que ce dépôt écrit ailleurs pour les colonnes : **on mesure
+    /// ce que la rangée porte**, jamais un gabarit ni un voisin.
+    ///
+    /// Le rang lu est toujours dedans, même seul : une liste où le nom
+    /// qu'on lit n'apparaît pas est une liste qui ment sur ce qu'on lit.
+    /// La rangée s'étend d'abord à droite — c'est le sens de la lecture
+    /// —, et le compte de chaque côté est réservé **avant** d'y placer un
+    /// nom de plus.
+    fn companion_window(
+        widths: &[f32],
+        marker: impl Fn(usize) -> f32,
+        pick: usize,
+        room: f32,
+        gap: f32,
+    ) -> std::ops::Range<usize> {
+        let n = widths.len();
+        if n == 0 {
+            return 0..0;
+        }
+        let pick = pick.min(n - 1);
+        // Ce qu'une fenêtre coûte : les noms qu'elle garde, un compte de
+        // chaque côté qui en cache, et les gouttières **entre** les
+        // choses posées — *n* choses valent *n − 1* espacements.
+        let cost = |lo: usize, hi: usize| -> f32 {
+            let mut w: f32 = widths[lo..hi].iter().sum();
+            let mut items = hi - lo;
+            if lo > 0 {
+                w += marker(lo);
+                items += 1;
+            }
+            if hi < n {
+                w += marker(n - hi);
+                items += 1;
+            }
+            w + gap * items.saturating_sub(1) as f32
+        };
+        let (mut lo, mut hi) = (pick, pick + 1);
+        loop {
+            if hi < n && cost(lo, hi + 1) <= room {
+                hi += 1;
+                continue;
+            }
+            if lo > 0 && cost(lo - 1, hi) <= room {
+                lo -= 1;
+                continue;
+            }
+            break;
+        }
+        lo..hi
+    }
+
     /// Les autres fiches qui répondent à la même question.
     ///
-    /// **Une rangée coupée dit combien elle laisse.** La barre de
-    /// défilement d'egui flotte : une rangée qui s'arrêterait au bord
-    /// montrerait trois noms sur huit et rien du tout pour le dire.
-    /// C'est la règle des barres de `motif::chart` — la dernière place
-    /// qui tient porte le compte de ce qui manque.
+    /// **Une rangée coupée dit combien elle laisse, et de quel côté.**
+    /// La barre de défilement d'egui flotte : une rangée qui s'arrêterait
+    /// au bord montrerait trois noms sur huit et rien du tout pour le
+    /// dire. C'est la règle des barres de `motif::chart` — la dernière
+    /// place qui tient porte le compte de ce qui manque. Le côté compte
+    /// autant que le nombre : à la huitième fiche, les trois noms cachés
+    /// sont *avant*, et un « +3 » posé à droite annonçait une suite là où
+    /// la liste est finie.
     fn companion_matches(
         ui: &mut egui::Ui,
         rect: egui::Rect,
@@ -47917,40 +47985,37 @@ impl App {
                         .x
                 })
             };
-            // Ce que « +3 » coûte, réservé avant de placer les noms :
-            // compté après, il prendrait la place du dernier nom lisible
-            // — ou sortirait du cadre, ce qui est le défaut qu'il existe
-            // pour empêcher.
+            let widths: Vec<f32> = labels.iter().map(|l| width(ui, l)).collect();
             let room = ui.available_width();
-            let mut x = 0.0_f32;
-            let mut shown = 0usize;
-            for (i, label) in labels.iter().enumerate() {
-                let w = width(ui, label);
-                let rest = labels.len() - i - 1;
-                let tail = if rest > 0 {
-                    gap + width(ui, &trf("companion_more", rest))
-                } else {
-                    0.0
-                };
-                if x + w + tail > room && shown > 0 {
-                    break;
-                }
-                x += w + gap;
-                shown += 1;
-            }
-            // Le rang lu est toujours montré, même s'il ne tient pas
-            // dans ce que la rangée garde : une liste où le nom choisi
-            // n'apparaît pas est une liste qui ment sur ce qu'on lit.
-            let first = read.pick.saturating_sub(shown.saturating_sub(1));
+            let shown = {
+                let measure: &egui::Ui = ui;
+                Self::companion_window(
+                    &widths,
+                    |n| width(measure, &trf("companion_more", n)),
+                    read.pick,
+                    room,
+                    gap,
+                )
+            };
+            let count = |ui: &mut egui::Ui, n: usize| {
+                ui.label(
+                    egui::RichText::new(trf("companion_more", n))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_faint()),
+                );
+            };
             ui.horizontal(|ui| {
-                for (i, label) in labels.iter().enumerate().skip(first).take(shown) {
+                if shown.start > 0 {
+                    count(ui, shown.start);
+                }
+                for i in shown.clone() {
                     let on = i == read.pick;
                     let ink = if on {
                         motif::on_fill(motif::accent())
                     } else {
                         motif::text_dim()
                     };
-                    let mut text = egui::RichText::new(label.as_str())
+                    let mut text = egui::RichText::new(labels[i].as_str())
                         .size(motif::pt(ui, 11.0))
                         .color(ink);
                     if on {
@@ -47968,13 +48033,8 @@ impl App {
                         *pick = i;
                     }
                 }
-                let hidden = labels.len() - shown;
-                if hidden > 0 {
-                    ui.label(
-                        egui::RichText::new(trf("companion_more", hidden))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_faint()),
-                    );
+                if shown.end < labels.len() {
+                    count(ui, labels.len() - shown.end);
                 }
             });
         });
@@ -54803,6 +54863,125 @@ mod tests {
                 .into_iter()
                 .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
             "sans TextWrapMode::Extend, une puce doit se couper"
+        );
+    }
+
+    /// **La rangée des autres réponses est mesurée sur les noms qu'elle
+    /// dessine, et son compte est du côté de ce qui manque.**
+    ///
+    /// Elle se mesurait sur les premiers de la liste, puis glissait vers
+    /// le rang lu : à la huitième fiche d'« eliq », « Delursan
+    /// Spécialfoldine Ursolvan Aclasta Augmentin » se dessinait dans la
+    /// place mesurée pour « Eliquis Botox Celluvisc Delursan
+    /// Spécialfoldine », plus large qu'elle, et le compte de ce qui
+    /// manque sortait du cadre — tranché à « + » sur la capture. Et il
+    /// sortait du mauvais côté : les trois noms cachés étaient *avant*
+    /// Augmentin, qui est le dernier.
+    ///
+    /// Les noms sont mesurés dans la face qui les peindra, aux trois
+    /// échelles et sur les largeurs que la barre a vraiment. **Et la
+    /// boucle mord** : l'ancien calcul, remis ici, doit déborder au moins
+    /// une fois, sinon le test ne garde rien.
+    #[test]
+    fn a_row_of_other_answers_is_measured_on_the_names_it_draws() {
+        use super::App;
+        use crate::strings::trf;
+        // Les huit fiches que « eliq » rend dans la base livrée, dans
+        // l'ordre où la barre les propose.
+        const NAMES: [&str; 8] = [
+            "Eliquis",
+            "Botox",
+            "Celluvisc",
+            "Delursan",
+            "Spécialfoldine",
+            "Ursolvan",
+            "Aclasta",
+            "Augmentin",
+        ];
+        // Ce que chaque nom et chaque compte occupent, dans la face qui
+        // les dessinera, plus la gouttière du style.
+        let measured = |scale: f32| -> (Vec<f32>, Vec<f32>, f32) {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((Vec::new(), Vec::new(), 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+                    let w = |ui: &egui::Ui, text: String| {
+                        ui.fonts(|f| f.layout_no_wrap(text, font.clone(), motif::text()).size().x)
+                    };
+                    *seen.borrow_mut() = (
+                        NAMES.iter().map(|n| w(ui, format!("  {n}  "))).collect(),
+                        (0..=NAMES.len())
+                            .map(|n| w(ui, trf("companion_more", n)))
+                            .collect(),
+                        ui.spacing().item_spacing.x,
+                    );
+                });
+            });
+            seen.take()
+        };
+        // Ce qu'une rangée occupe vraiment : ce qu'elle pose, et les
+        // gouttières **entre** les choses posées.
+        let occupied = |names: &[f32], marks: &[f32], gap: f32, shown: &std::ops::Range<usize>| {
+            let mut w: f32 = names[shown.clone()].iter().sum();
+            let mut items = shown.len();
+            if shown.start > 0 {
+                w += marks[shown.start];
+                items += 1;
+            }
+            if shown.end < names.len() {
+                w += marks[names.len() - shown.end];
+                items += 1;
+            }
+            w + gap * items.saturating_sub(1) as f32
+        };
+        // Les largeurs que le corps de la barre a vraiment, la plus
+        // étroite étant celle d'une fenêtre qu'un gestionnaire a laissé
+        // descendre jusqu'à son plancher.
+        const ROOMS: [f32; 3] = [300.0, 460.0, 552.0];
+        let mut bit = false;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let (names, marks, gap) = measured(scale);
+            for room in ROOMS {
+                for pick in 0..NAMES.len() {
+                    let shown = App::companion_window(&names, |n| marks[n], pick, room, gap);
+                    assert!(
+                        shown.contains(&pick),
+                        "échelle {scale}, largeur {room} : le rang lu ({pick}) \
+                         n'est pas dans ce que la rangée garde ({shown:?})"
+                    );
+                    let used = occupied(&names, &marks, gap, &shown);
+                    assert!(
+                        used <= room + 0.5 || shown.len() == 1,
+                        "échelle {scale}, largeur {room}, rang {pick} : la rangée \
+                         occupe {used} dans {room}"
+                    );
+                    // L'ancien calcul, remis tel quel : le compte de ce
+                    // qui tient est pris sur les premiers de la liste,
+                    // puis la fenêtre glisse vers le rang lu.
+                    let mut x = 0.0_f32;
+                    let mut kept = 0usize;
+                    for (i, w) in names.iter().enumerate() {
+                        let rest = names.len() - i - 1;
+                        let tail = if rest > 0 { gap + marks[rest] } else { 0.0 };
+                        if x + w + tail > room && kept > 0 {
+                            break;
+                        }
+                        x += w + gap;
+                        kept += 1;
+                    }
+                    let first = pick.saturating_sub(kept.saturating_sub(1));
+                    let was = first..(first + kept).min(names.len());
+                    if !was.is_empty() && occupied(&names, &marks, gap, &was) > room + 0.5 {
+                        bit = true;
+                    }
+                }
+            }
+        }
+        assert!(
+            bit,
+            "mesurée sur les premiers noms, la rangée doit déborder au moins une fois"
         );
     }
 
