@@ -48937,6 +48937,30 @@ impl App {
                 .wrap(),
             );
         }
+        // **La phrase qui a fait répondre cette fiche**, quand c'est sa
+        // prose qui a répondu et non son nom. Une fiche qui arrive sans
+        // son mot est une fiche dont on ne sait pas pourquoi elle est
+        // là : « pamplemousse » en rend huit, et sans la phrase on ne
+        // sait ni laquelle le dit ni ce qu'elle en dit.
+        if let Some(why) = read.found.get(read.pick) {
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("companion_found"))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(why.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::accent()),
+                )
+                .wrap(),
+            );
+        }
         // Ce qui identifie la fiche en une ligne : la molécule et la
         // classe. Les deux manquent parfois, et une ligne de séparateurs
         // sans rien entre eux se lit comme un défaut.
@@ -49223,7 +49247,22 @@ impl App {
             // question a bougé, et elle coûte bien moins que la passe
             // floue qui la précède.
             let q = self.companion_query.trim();
-            let hits = companion_hits(&session.drugs, q);
+            let mut hits = companion_hits(&session.drugs, q);
+            // **À défaut de nom, la prose.** « Aucun résultat dans la
+            // base » était faux : le champ cherche un nom et une
+            // molécule, et cent seize passages nomment le pamplemousse.
+            // Lancée seulement quand aucun nom ne répond — tant qu'un
+            // nom répond c'est lui la réponse, et un mot tapé à moitié
+            // ne doit pas ouvrir les monographies sous les doigts.
+            let mut found: Vec<String> = Vec::new();
+            if hits.is_empty() {
+                let (cards, why): (Vec<Drug>, Vec<String>) =
+                    companion_text(&session.drugs, &session.mono_posologies, q)
+                        .into_iter()
+                        .unzip();
+                hits = cards;
+                found = why;
+            }
             let poso = hits
                 .get(self.companion_pick.min(hits.len().saturating_sub(1)))
                 .map(|d| session.db.posologies(d.id).unwrap_or_default())
@@ -49238,6 +49277,7 @@ impl App {
                 self.companion_pick,
                 poso,
                 &session.surveillance,
+                found,
             );
             (key, look)
         });
@@ -49324,6 +49364,15 @@ impl App {
                     ctx.request_repaint();
                 } else {
                     self.companion_sized = true;
+                    // **La prose complète, une fois.** La recherche de
+                    // secours lit les treize champs *et* les lignes de
+                    // posologie — c'est là que vivent « à jeun », « à
+                    // distance du fer » et le pamplemousse —, et les
+                    // chercher à chaque frappe serait une requête par
+                    // lettre. Une par ouverture de la barre.
+                    if session.mono_posologies.is_empty() {
+                        session.mono_posologies = session.db.all_posologies().unwrap_or_default();
+                    }
                     let floor = Self::companion_floor(ui);
                     // La taille de la dernière fois si l'officine en a
                     // choisi une, sinon celle d'origine — et jamais
@@ -50048,6 +50097,14 @@ struct CompanionRead {
     what: String,
     /// Ce qui doit se dire avant tout le reste, quand la fiche le porte.
     flag: String,
+    /// La phrase qui a fait répondre chaque fiche, quand c'est sa prose
+    /// qui a répondu et non son nom. Vide sinon.
+    ///
+    /// **Une fiche qui arrive sans son mot est une fiche dont on ne sait
+    /// pas pourquoi elle est là** : « pamplemousse » rend huit fiches, et
+    /// sans la phrase on ne sait ni laquelle le dit ni ce qu'elle en dit.
+    /// Alignée sur `hits`, rang par rang.
+    found: Vec<String>,
     /// Le code-barres lu, quand ce qu'on a tapé en est un.
     ///
     /// **Une douchette est un clavier**, et le champ garde le foyer
@@ -50112,6 +50169,48 @@ fn companion_hits(drugs: &[Drug], query: &str) -> Vec<Drug> {
     scored.into_iter().map(|(_, d)| d.clone()).collect()
 }
 
+/// Les fiches dont la **prose** répond, quand aucun nom ne répond.
+///
+/// **« Aucun résultat dans la base » était faux.** Le champ cherche un
+/// nom et une molécule ; tapez « pamplemousse » et la barre répondait
+/// que la base n'en parle pas, alors que cent seize passages le
+/// nomment. C'est le même défaut que le code-barres cherché comme un
+/// nom : une réponse fausse à une question qu'on n'a pas posée.
+///
+/// La recherche est celle de l'application — `mono_search`, qui lit les
+/// treize champs de prose **et les lignes de posologie**, où se trouvent
+/// « à jeun », « à distance du fer » et le pamplemousse justement. Elle
+/// n'est lancée **qu'à défaut** : tant qu'un nom répond, c'est le nom
+/// qui répond, et un mot tapé à moitié ne doit pas ouvrir les
+/// monographies sous les doigts.
+///
+/// Rend, pour chaque fiche, la phrase qui l'a fait répondre : une fiche
+/// qui arrive sans son mot est une fiche dont on ne sait pas pourquoi
+/// elle est là.
+fn companion_text(
+    drugs: &[Drug],
+    posologies: &[(i64, db::Posologie)],
+    query: &str,
+) -> Vec<(Drug, String)> {
+    let mut out: Vec<(Drug, String)> = Vec::new();
+    // Large devant, parce qu'une même fiche peut répondre par plusieurs
+    // de ses champs et qu'on n'en garde qu'un : chercher juste huit
+    // passages pourrait ne nommer que deux fiches.
+    for hit in mono_search(drugs, posologies, query, COMPANION_HITS * 8) {
+        if out.iter().any(|(d, _)| d.id == hit.drug) {
+            continue;
+        }
+        let Some(found) = drugs.iter().find(|d| d.id == hit.drug) else {
+            continue;
+        };
+        out.push((found.clone(), hit.sentence));
+        if out.len() >= COMPANION_HITS {
+            break;
+        }
+    }
+    out
+}
+
 /// Ce que le compagnon lit, une fois les fiches trouvées.
 ///
 /// **Séparée de la passe floue parce que la base s'intercale entre les
@@ -50132,6 +50231,7 @@ fn companion_look(
     pick: usize,
     poso: Vec<db::Posologie>,
     watch: &[crate::surveillance::ResolvedDue],
+    found: Vec<String>,
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -50149,6 +50249,7 @@ fn companion_look(
             scanned,
             poso: Vec::new(),
             pages: Vec::new(),
+            found,
         };
     };
     let signals = companion_signals(&card, file, dfg, age, watch);
@@ -50195,6 +50296,7 @@ fn companion_look(
         scanned,
         poso,
         pages,
+        found,
     }
 }
 
@@ -56325,6 +56427,7 @@ mod tests {
             pick,
             Vec::new(),
             &[],
+            Vec::new(),
         )
     }
 
@@ -56534,6 +56637,70 @@ mod tests {
         }
     }
 
+    /// **« Aucun résultat dans la base » était faux**, et la barre
+    /// répond maintenant par la prose des fiches.
+    ///
+    /// Le champ cherche un nom et une molécule. Tapez « pamplemousse » et
+    /// la barre répondait que la base n'en parle pas, alors que cent
+    /// seize passages le nomment : c'est le même défaut que le
+    /// code-barres cherché comme un nom — une réponse fausse à une
+    /// question qu'on n'a pas posée.
+    ///
+    /// Trois choses tenues ici. La prose répond **à défaut** : tant
+    /// qu'un nom répond, c'est le nom, et un mot tapé à moitié ne doit
+    /// pas ouvrir les monographies sous les doigts. Les **lignes de
+    /// posologie** sont de la prose aussi — « à jeun », « à distance du
+    /// fer », le pamplemousse justement s'y écrivent, et les taire
+    /// perdrait un tiers de ce que les fiches disent. Et chaque fiche
+    /// arrive **avec la phrase qui l'a fait répondre** : sans elle on ne
+    /// sait ni laquelle porte le mot ni ce qu'elle en dit.
+    #[test]
+    fn the_companion_answers_a_word_that_is_in_no_name() {
+        use crate::db::{Drug, Posologie};
+        let card = Drug {
+            id: 1,
+            name: "Zorglubine".to_owned(),
+            dci: "zorglubidine".to_owned(),
+            ddi: "Le jus de pamplemousse augmente l'exposition.".to_owned(),
+            ..Drug::default()
+        };
+        let base = std::slice::from_ref(&card);
+        // Aucun nom, aucune molécule : la recherche ordinaire se tait.
+        assert!(super::companion_hits(base, "pamplemousse").is_empty());
+        // La prose, elle, répond — et elle dit pourquoi.
+        let by_text = super::companion_text(base, &[], "pamplemousse");
+        assert_eq!(by_text.len(), 1);
+        assert_eq!(by_text[0].0.id, 1);
+        assert!(
+            by_text[0].1.contains("pamplemousse"),
+            "la fiche arrive sans le mot qui l'a fait répondre : « {} »",
+            by_text[0].1
+        );
+        // **Et les lignes de posologie sont de la prose.** Une fiche
+        // dont le mot n'est que là répond aussi : les taire perdrait un
+        // tiers de ce que les fiches disent, en silence.
+        let bare = Drug {
+            id: 2,
+            name: "Machinol".to_owned(),
+            ..Drug::default()
+        };
+        let lines = vec![(
+            2_i64,
+            Posologie {
+                id: 1,
+                indication: "Entretien".to_owned(),
+                posologie: "1 comprimé".to_owned(),
+                remarque: "à distance du fer".to_owned(),
+            },
+        )];
+        let found = super::companion_text(std::slice::from_ref(&bare), &lines, "distance du fer");
+        assert_eq!(found.len(), 1, "une ligne de posologie répond aussi");
+        assert!(found[0].1.contains("distance du fer"));
+        // Et un nom qui répond garde la main : la prose est un recours,
+        // pas une seconde recherche qui doublerait la première.
+        assert!(!super::companion_hits(base, "zorglubine").is_empty());
+    }
+
     /// **Ce que la barre copie est ce qu'elle lit**, page comprise.
     ///
     /// La barre lisait et rien n'en sortait : une posologie indication
@@ -56586,6 +56753,7 @@ mod tests {
                 remarque: "à heure fixe".to_owned(),
             }],
             &[],
+            Vec::new(),
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -56710,6 +56878,7 @@ mod tests {
             0,
             lines,
             &[],
+            Vec::new(),
         );
         assert_eq!(
             read.pages,

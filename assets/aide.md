@@ -268,6 +268,15 @@ que le médecin propose — et taper le second effaçait le premier : Échap
 efface la question, donc il ramène à cette rangée, et il devient un
 retour en arrière.
 
+**Et quand aucun nom ne répond, la prose répond.** Le champ cherche un
+nom et une molécule ; tapez « pamplemousse » et il n'en trouve aucun,
+alors que cent seize passages le nomment. La barre ouvre alors le texte
+des fiches — les treize champs **et les lignes de posologie**, où
+s'écrivent « à jeun », « à distance du fer » et le pamplemousse
+justement —, et chaque fiche arrive avec la phrase qui l'a fait
+répondre : sans elle on ne saurait ni laquelle porte le mot, ni ce
+qu'elle en dit. Tant qu'un nom répond, c'est le nom qui répond.
+
 Un code-barres n'est pas un nom qu'on n'aurait pas trouvé, et la barre
 le dit plutôt que de répondre « aucun résultat ». Aucune fiche ne porte
 de code : le seul lien entre un code et une boîte est celui qu'un humain

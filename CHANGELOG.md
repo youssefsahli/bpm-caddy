@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Quand aucun nom ne répond, la barre répond par la prose des
+  fiches.** Le champ cherche un nom et une molécule : tapez
+  « pamplemousse » et il répondait « aucun résultat dans la base »,
+  alors que cent seize passages le nomment. C'est le même défaut que le
+  code-barres cherché comme un nom — une réponse fausse à une question
+  qu'on n'a pas posée.
+
+  La recherche est celle de l'application, qui lit les treize champs de
+  prose **et les lignes de posologie** : « à jeun », « à distance du
+  fer » et le pamplemousse justement s'y écrivent, et les taire perdrait
+  un tiers de ce que les fiches disent. Elle n'est lancée **qu'à
+  défaut** — tant qu'un nom répond c'est le nom, et un mot tapé à moitié
+  ne doit pas ouvrir les monographies sous les doigts.
+
+  Chaque fiche arrive **avec la phrase qui l'a fait répondre** : sans
+  elle on ne saurait ni laquelle porte le mot, ni ce qu'elle en dit.
+
 ## [0.207.1] - 2026-09-17
 
 ### Fixed
