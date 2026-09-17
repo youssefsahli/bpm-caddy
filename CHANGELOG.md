@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La page « Dossier » trie l'ordonnance d'un coup d'œil.** Elle
+  listait les lignes sans rien en dire : il fallait les ouvrir une par
+  une pour apprendre que six n'avaient rien à signaler. Un liseré marque
+  celles sur lesquelles une table demande qu'on s'arrête — c'est le tri
+  du comptoir, avant la lecture.
+
+  **Rien n'est recalculé** : les six lectures sont faites une fois à
+  l'ouverture du dossier, sur l'ordonnance entière ; en refaire une par
+  ligne serait six tables fois huit lignes à chaque image, pour la
+  réponse qu'on a déjà.
+
+  **Et une marque sur chaque ligne ne trierait rien.** Marquer dès qu'une
+  table porte une ligne les marquait toutes — l'écrasement répond « à
+  vérifier » pour presque toute présentation qu'il ne connaît pas, la
+  grossesse « sans donnée » pour presque toute molécule : six lignes sur
+  six, une colonne de rouge. Seuls les deux tons qui demandent un regard
+  marquent, et c'est le pire qui marque, pas le premier trouvé.
+
 ## [0.208.0] - 2026-09-17
 
 ### Added

@@ -49075,7 +49075,12 @@ impl App {
     /// La ligne lue est marquée, et elle ne se clique pas : cliquer ce
     /// qu'on lit déjà ne fait rien, et un rang qui répond au clic sans
     /// rien changer apprend à ne pas cliquer les autres.
-    fn companion_file_page(ui: &mut egui::Ui, d: &Drug, file: &[Drug]) -> Option<String> {
+    fn companion_file_page(
+        ui: &mut egui::Ui,
+        d: &Drug,
+        file: &[Drug],
+        read: &FileReadings,
+    ) -> Option<String> {
         let mut picked = None;
         ui.add_space(2.0);
         ui.add(
@@ -49087,6 +49092,12 @@ impl App {
             .wrap(),
         );
         ui.add_space(2.0);
+        // La marge où les marques se posent, réservée **une fois pour
+        // toute la liste** : mesurée ligne par ligne, une ordonnance
+        // dont une seule ligne parle aurait les autres décalées, et une
+        // colonne qui bouge d'une ligne à l'autre n'est plus une
+        // colonne.
+        let mark = motif::pt(ui, 8.0);
         for line in file {
             let here = line.id == d.id;
             let label = if line.dci.trim().is_empty() || line.dci.trim() == line.name.trim() {
@@ -49094,15 +49105,40 @@ impl App {
             } else {
                 format!("{}  ·  {}", line.name.trim(), line.dci.trim())
             };
-            if motif::list_row(
-                ui,
-                egui::RichText::new(label).size(motif::pt(ui, 11.5)),
-                here,
-            )
-            .on_hover_text(tr("companion_file_row_tooltip"))
-            .clicked()
-                && !here
-            {
+            let tone = read.tone(&line.name);
+            let row = ui
+                .horizontal(|ui| {
+                    let (spot, _) =
+                        ui.allocate_exact_size(egui::vec2(mark, 1.0), egui::Sense::hover());
+                    let row = motif::list_row(
+                        ui,
+                        egui::RichText::new(label).size(motif::pt(ui, 11.5)),
+                        here,
+                    );
+                    // **Un liseré, et non un point.** Le même signe que
+                    // le bord de la réponse, pour la même raison : à
+                    // huit pixels de côté, un carré biseauté n'est plus
+                    // qu'un éclat — les deux traits du biseau mangent ce
+                    // qu'ils encadrent. Un bâton prend la hauteur de sa
+                    // ligne et se lit à toutes les échelles.
+                    if let Some(tone) = tone {
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(spot.left(), row.rect.top()),
+                                egui::pos2(spot.left() + mark * 0.4, row.rect.bottom()),
+                            ),
+                            0.0,
+                            tone.fill(),
+                        );
+                    }
+                    row
+                })
+                .inner;
+            let note = match tone {
+                Some(_) => tr("companion_file_row_said"),
+                None => tr("companion_file_row_quiet"),
+            };
+            if row.on_hover_text(note).clicked() && !here {
                 picked = Some(line.name.trim().to_owned());
             }
         }
@@ -49678,7 +49714,19 @@ impl App {
                             Self::companion_care_page(ui, d);
                         }
                         Some(CompanionPage::File) => {
-                            walk = Self::companion_file_page(ui, d, &session.patient_treats);
+                            walk = Self::companion_file_page(
+                                ui,
+                                d,
+                                &session.patient_treats,
+                                &FileReadings {
+                                    review: &session.patient_review,
+                                    renal: &session.renal,
+                                    gravidity: &session.gravidity,
+                                    crush: &session.crush,
+                                    elderly: &session.elderly,
+                                    watch: &session.surveillance,
+                                },
+                            );
                         }
                         _ => {
                             if let Some(dest) = Self::companion_signals_page(ui, d, &read.1) {
@@ -49863,6 +49911,108 @@ impl CompanionAct {
     /// changent de place sous le doigt.
     fn needs_card(self) -> bool {
         matches!(self, CompanionAct::Card | CompanionAct::Cross)
+    }
+}
+
+/// Ce que le dossier a déjà lu de son ordonnance, emprunté à la session.
+///
+/// **Rien n'est recalculé pour la page du dossier.** Les six lectures
+/// sont faites une fois, à l'ouverture du dossier, sur l'ordonnance
+/// entière ; en refaire une par ligne serait six tables fois huit
+/// lignes, à chaque image, pour la réponse qu'on a déjà. On lit celle-là
+/// et on garde ce qui **nomme** la ligne.
+struct FileReadings<'a> {
+    review: &'a [crate::revue::Resolved],
+    renal: &'a [crate::renal::Resolved],
+    gravidity: &'a [crate::gravidity::Resolved],
+    crush: &'a [crate::crush::Resolved],
+    elderly: &'a [crate::elderly::Resolved],
+    watch: &'a [crate::surveillance::ResolvedDue],
+}
+
+impl FileReadings<'_> {
+    /// Ce que les tables disent de **cette ligne-là**, en un ton.
+    ///
+    /// C'est le tri du comptoir : sur une ordonnance de huit lignes, on
+    /// veut savoir laquelle regarder avant de les regarder toutes. La
+    /// page les listait sans rien en dire, si bien qu'il fallait les
+    /// ouvrir une par une pour apprendre que six n'avaient rien à dire.
+    ///
+    /// `None` quand rien ne presse : **une marque sur chaque ligne ne
+    /// trie rien**, et une marque qui ne distingue pas cesse d'être vue.
+    ///
+    /// Ce qui ne marque pas n'est pas ce qui se tait, c'est ce qui ne
+    /// demande pas qu'on s'arrête. Mesuré sur l'ordonnance de la
+    /// démonstration : en marquant dès qu'une table porte une ligne, les
+    /// six lignes sur six étaient marquées — l'écrasement répond « à
+    /// vérifier » pour presque toute présentation qu'il ne connaît pas,
+    /// la grossesse « sans donnée » pour presque toute molécule, et le
+    /// tri devenait une colonne de rouge. Le reste se lit en ouvrant la
+    /// ligne, ce qu'un clic fait.
+    fn tone(&self, name: &str) -> Option<CompanionTone> {
+        let me = name.trim();
+        let named = |n: &str| n.trim() == me;
+        let mut worst: Option<CompanionTone> = None;
+        let mut note = |t: CompanionTone| {
+            if worst.is_none_or(|w| t.urgency() > w.urgency()) {
+                worst = Some(t);
+            }
+        };
+        for p in self
+            .review
+            .iter()
+            .filter(|p| p.drugs.iter().any(|n| named(n)))
+        {
+            note(match p.severity {
+                crate::biology::Severity::Alert => CompanionTone::Stop,
+                _ => CompanionTone::Watch,
+            });
+        }
+        for f in self.renal.iter().filter(|f| named(&f.treatment)) {
+            note(match f.level {
+                Some(crate::renal::Level::Contraindicated) => CompanionTone::Stop,
+                Some(_) => CompanionTone::Watch,
+                None => CompanionTone::Pending,
+            });
+        }
+        for f in self.gravidity.iter().filter(|f| named(&f.treatment)) {
+            note(match f.worst() {
+                crate::gravidity::Level::Interdit => CompanionTone::Stop,
+                crate::gravidity::Level::Compatible => CompanionTone::Ok,
+                crate::gravidity::Level::SansDonnee => CompanionTone::Pending,
+                _ => CompanionTone::Watch,
+            });
+        }
+        for a in self.crush.iter().filter(|a| named(&a.treatment)) {
+            note(match a.verdict {
+                crate::crush::Verdict::No => CompanionTone::Stop,
+                crate::crush::Verdict::Conditional => CompanionTone::Watch,
+                crate::crush::Verdict::Unknown => CompanionTone::Pending,
+                crate::crush::Verdict::Yes => CompanionTone::Ok,
+            });
+        }
+        for f in self.elderly.iter().filter(|f| named(&f.treatment)) {
+            note(match f.level {
+                Some(crate::elderly::Level::Avoid) => CompanionTone::Stop,
+                Some(_) => CompanionTone::Watch,
+                None => CompanionTone::Pending,
+            });
+        }
+        for d in self
+            .watch
+            .iter()
+            .filter(|d| d.drugs.iter().any(|n| named(n)))
+        {
+            note(match d.level {
+                crate::surveillance::Level::Overdue => CompanionTone::Stop,
+                crate::surveillance::Level::Ok => CompanionTone::Ok,
+                _ => CompanionTone::Watch,
+            });
+        }
+        // **Seuls les deux tons qui demandent un regard marquent.** Voir
+        // le paragraphe de la doc : marquer dès qu'une table porte une
+        // ligne marquait les six lignes sur six.
+        worst.filter(|t| t.urgency() >= CompanionTone::Watch.urgency())
     }
 }
 
@@ -56635,6 +56785,80 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **Une marque sur chaque ligne ne trie rien.**
+    ///
+    /// La page du dossier liste l'ordonnance ; la marque dit laquelle
+    /// regarder avant de les regarder toutes. Elle ne peut le dire qu'en
+    /// se **taisant** sur les autres — et marquer dès qu'une table porte
+    /// une ligne les marquait toutes : l'écrasement répond « à
+    /// vérifier » pour presque toute présentation qu'il ne connaît pas,
+    /// la grossesse « sans donnée » pour presque toute molécule. Mesuré
+    /// sur l'ordonnance de la démonstration : six lignes sur six.
+    ///
+    /// Seuls les deux tons qui demandent un regard marquent. Et c'est le
+    /// **pire** qui marque, pas le premier trouvé : une ligne que le rein
+    /// contre-indique et que l'âge surveille est une ligne qu'on
+    /// contre-indique.
+    #[test]
+    fn a_mark_on_every_line_of_the_file_would_sort_nothing() {
+        use super::{CompanionTone, FileReadings};
+        let quiet = FileReadings {
+            review: &[],
+            renal: &[],
+            gravidity: &[],
+            crush: &[crate::crush::Resolved {
+                treatment: "Machinol".to_owned(),
+                label: "machinol",
+                // « À vérifier » est une réponse, et ce n'est pas un
+                // arrêt : la table ne connaît pas la présentation.
+                verdict: crate::crush::Verdict::Unknown,
+                why: String::new(),
+                instead: String::new(),
+                source: "",
+            }],
+            elderly: &[],
+            watch: &[],
+        };
+        assert_eq!(
+            quiet.tone("Machinol"),
+            None,
+            "« à vérifier » ne demande pas qu'on s'arrête, et marquerait toute la liste"
+        );
+        // Une conduite à tenir marque, et le pire l'emporte sur le
+        // premier rencontré.
+        let loud = FileReadings {
+            review: &[],
+            renal: &[crate::renal::Resolved {
+                treatment: "Machinol".to_owned(),
+                label: "machinol",
+                level: Some(crate::renal::Level::Contraindicated),
+                below: Some(30),
+                conduct: String::new(),
+                source: "",
+            }],
+            gravidity: &[],
+            crush: quiet.crush,
+            elderly: &[crate::elderly::Resolved {
+                treatment: "Machinol".to_owned(),
+                label: "machinol",
+                level: Some(crate::elderly::Level::Caution),
+                from: 75,
+                risk: String::new(),
+                instead: String::new(),
+                source: "",
+            }],
+            watch: &[],
+        };
+        assert_eq!(quiet.tone("Machinol"), None);
+        assert_eq!(
+            loud.tone("Machinol"),
+            Some(CompanionTone::Stop),
+            "contre-indiqué au rein et surveillé à l'âge : c'est la contre-indication"
+        );
+        // Et une ligne que rien ne nomme ne porte rien.
+        assert_eq!(loud.tone("Autre chose"), None);
     }
 
     /// **« Aucun résultat dans la base » était faux**, et la barre

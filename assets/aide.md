@@ -212,7 +212,11 @@ bande d'onglets.
 
 La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
 cherchée : c'est l'ordonnance ouverte, ligne par ligne, et **une ligne
-cliquée devient la question**. C'est le geste de la révision au
+cliquée devient la question**. Un liseré marque les lignes sur
+lesquelles une table demande qu'on s'arrête — le tri du comptoir, avant
+de les ouvrir une par une. Il ne marque que cela : « à vérifier » et
+« sans donnée » sont des réponses, pas des arrêts, et les marquer
+marquerait toute l'ordonnance. C'est le geste de la révision au
 comptoir — descendre une ordonnance en posant la même question à chaque
 ligne —, qui demandait jusqu'ici de retaper huit noms dont on ne se
 rappelle ni l'orthographe ni le dosage. Sans dossier ouvert, la page
