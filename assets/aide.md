@@ -221,8 +221,9 @@ dit à la personne, ce qu'on fait d'une prise oubliée, **les signes
 d'alerte en entier** — la page des signaux n'en montre que la première
 phrase, et « ce qui doit vous faire consulter » se dit en entier — et ce
 que l'équipe a écrit elle-même sur la fiche ; « Précautions » ce qui contre-indique,
-ce qui arrive, ce qu'on surveille, et pour finir la marge thérapeutique
-et l'antidote — les deux choses qu'on cherche quand la question cesse
+ce qui arrive, ce qu'on surveille, la marge thérapeutique,
+l'antidote, et pour finir **les sources de la fiche** — cette page porte
+ses affirmations les plus fortes, et on les répète au comptoir — les deux choses qu'on cherche quand la question cesse
 d'être « est-ce que je délivre » pour devenir « qu'est-ce qui se passe
 si ». Une page qui n'a
 rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de

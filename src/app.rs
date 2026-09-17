@@ -48928,6 +48928,10 @@ impl App {
                 part(tr("drug_sec_monitoring"), &d.monitoring);
                 part(tr("drug_sec_toxicity"), &d.toxicity);
                 part(tr("drug_antidote"), &d.antidote);
+                // D'où vient ce qu'on colle : cette page porte les
+                // affirmations les plus fortes de la fiche, et on les
+                // répète.
+                part(tr("tables_sources"), &d.sources);
             }
             // La page du dossier ne copie pas l'ordonnance de quelqu'un :
             // une liste de traitements nominative sortie d'ici finirait
@@ -49399,6 +49403,13 @@ impl App {
         // passe si ».
         Self::companion_part(ui, tr("drug_sec_toxicity"), &d.toxicity);
         Self::companion_part(ui, tr("drug_antidote"), &d.antidote);
+        // **D'où vient ce qu'on vient de lire.** Cette page porte les
+        // affirmations les plus fortes de la fiche — ce qui
+        // contre-indique, ce qui tue —, et on les répète au comptoir.
+        // Ce dépôt cite ses sources partout ailleurs, ligne de table par
+        // ligne de table ; la prose des fiches a les siennes, et la
+        // barre était le seul endroit qui les taisait.
+        Self::companion_part(ui, tr("tables_sources"), &d.sources);
     }
 
     /// Le compagnon : un champ, ce qu'il trouve, ce que les tables en
@@ -50807,6 +50818,8 @@ fn companion_look(
                     || has(&card.monitoring)
                     || has(&card.toxicity)
                     || has(&card.antidote)
+                // Les sources seules n'ouvrent pas la page : une
+                // référence sans ce qu'elle appuie ne dit rien.
             }
             // Sans dossier ouvert, il n'y a pas d'ordonnance à
             // descendre — et un onglet « Dossier » vide dirait qu'il y

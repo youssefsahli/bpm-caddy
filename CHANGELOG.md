@@ -5,6 +5,20 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Les sources de la fiche, au pied de « Précautions ».** Cette page
+  porte les affirmations les plus fortes d'une monographie — ce qui
+  contre-indique, ce qui tue — et on les répète au comptoir. Ce dépôt
+  cite ses sources partout ailleurs, ligne de table par ligne de table ;
+  la barre était le seul endroit qui taisait celles de la prose. Elles
+  seules n'ouvrent pas la page : une référence sans ce qu'elle appuie ne
+  dit rien.
+
+  La garde écrite une heure plus tôt a réclamé son dû au premier champ
+  suivant : ajouté à la page, absent du presse-papier, elle l'a nommé.
+
 ## [0.217.1] - 2026-09-17
 
 ### Fixed
