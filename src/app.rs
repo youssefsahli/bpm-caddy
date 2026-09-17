@@ -49064,6 +49064,17 @@ impl App {
         if !filed.is_empty() {
             Self::companion_part(ui, tr("companion_poso_filed"), &filed);
         }
+        // **Pour une insuline, la courbe passe devant la prose.** Elle
+        // *est* la réponse de cette page — « il se pique quand », « ça
+        // agit encore à quelle heure » —, là où la décroissance des
+        // autres répond à une question voisine, « combien de temps ça
+        // reste », qui vient après « combien ». Et la prose d'une
+        // insuline fait dix lignes : rangée devant, elle mettait la
+        // courbe sous le pli à `text_scale = 1,6`.
+        let profile = crate::insulin::for_card(&d.name, &d.dci);
+        if let Some(p) = profile {
+            Self::companion_insulin(ui, p);
+        }
         Self::companion_part(ui, tr("mono_f_dosage"), &d.dosage);
         // Les formes et dosages disponibles : « en quel dosage ça
         // existe » est posé au comptoir aussi souvent que « combien »,
@@ -49071,7 +49082,9 @@ impl App {
         // réponse sur un autre écran pendant qu'on tient la boîte est
         // exactement ce que cette barre existe pour éviter.
         Self::companion_part(ui, tr("mono_f_forms"), &d.forms);
-        Self::companion_insulin(ui, d);
+        if profile.is_none() {
+            Self::companion_decay(ui, d);
+        }
         if read.poso.is_empty() {
             if d.dosage.trim().is_empty() {
                 ui.add_space(4.0);
@@ -49125,27 +49138,17 @@ impl App {
     /// qu'on pose en tenant le stylo.
     ///
     /// Dessinée **seulement pour une insuline**, ce que `insulin` décide
-    /// sur le nom puis sur la molécule : une courbe sous une fiche de
-    /// paracétamol serait un ornement, et un ornement dans une barre de
-    /// six cents pixels prend la place d'une ligne qui parle.
+    /// sur le nom puis sur la molécule — l'appelant fait ce choix, et
+    /// donne à toute autre fiche sa décroissance. Une courbe d'action
+    /// sous une fiche de paracétamol serait un ornement, et un ornement
+    /// dans une barre de six cents pixels prend la place d'une ligne qui
+    /// parle.
     ///
     /// La hauteur est normalisée au pic et non à l'aire : la question
     /// est *quand* elle agit, pas combien d'insuline circule — c'est ce
     /// qui rend le pic de l'après-midi d'une NPH comparable à la ligne
     /// plate d'une glargine.
-    fn companion_insulin(ui: &mut egui::Ui, d: &Drug) {
-        let Some(p) = crate::insulin::for_card(&d.name, &d.dci) else {
-            // **Pas d'insuline : la décroissance, si la fiche donne une
-            // demi-vie.** C'est la règle que la carte du médicament suit
-            // déjà, et pour la même raison — la demi-vie d'une insuline
-            // ne dit rien d'utile, puisque ce qu'on injecte est un dépôt
-            // sous-cutané et que la question est quand elle agit, pas ce
-            // qui reste dans le plasma. Là, c'est l'inverse : « combien
-            // de temps ça reste » est la question, et « ≈ 12 heures »
-            // demande une arithmétique que le comptoir n'a pas à faire.
-            Self::companion_decay(ui, d);
-            return;
-        };
+    fn companion_insulin(ui: &mut egui::Ui, p: &crate::insulin::Profile) {
         ui.add_space(4.0);
         ui.add(
             egui::Label::new(

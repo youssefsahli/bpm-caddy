@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.216.1] - 2026-09-17
+
+### Fixed
+- **Pour une insuline, la courbe passe devant la prose.** Elle *est* la
+  réponse de cette page — « il se pique quand », « ça agit encore à
+  quelle heure » —, là où la décroissance des autres répond à une
+  question voisine, « combien de temps ça reste », qui vient après
+  « combien ». Et la prose d'une insuline fait dix lignes : rangée
+  devant, elle mettait la courbe sous le pli à `text_scale = 1,6`, où
+  la page ne montrait plus que du texte.
+
 ## [0.216.0] - 2026-09-17
 
 ### Added
