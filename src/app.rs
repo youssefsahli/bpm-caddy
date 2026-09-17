@@ -10407,7 +10407,8 @@ impl App {
                         // ne montre jamais la puce du rein qui conclut.
                         Ok(
                             "companion" | "companion_poso" | "companion_conseils"
-                            | "companion_soins" | "companion_dossier" | "companion_vide",
+                            | "companion_soins" | "companion_dossier" | "companion_vide"
+                            | "companion_doublon",
                         ) => {
                             let pick = session
                                 .patients
@@ -11090,7 +11091,19 @@ impl App {
             companion_query: if start_view.starts_with("companion")
                 && start_view != "companion_vide"
             {
-                std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "eliq".to_owned())
+                // **Le doublon ne se montre que sur une vraie paire.**
+                // La base livrée porte cinquante et une molécules sous
+                // plusieurs noms, et le Stagid est la metformine du
+                // Glucophage — qui est au dossier de la démonstration.
+                // Sans cette clé, la puce la plus forte de la barre
+                // n'apparaîtrait dans aucune capture : « eliq » ne double
+                // rien.
+                let fallback = if start_view == "companion_doublon" {
+                    "stagid"
+                } else {
+                    "eliq"
+                };
+                std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| fallback.to_owned())
             } else {
                 String::new()
             },
