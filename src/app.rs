@@ -10408,7 +10408,7 @@ impl App {
                         Ok(
                             "companion" | "companion_poso" | "companion_conseils"
                             | "companion_soins" | "companion_dossier" | "companion_vide"
-                            | "companion_doublon",
+                            | "companion_doublon" | "companion_boite",
                         ) => {
                             let pick = session
                                 .patients
@@ -11098,10 +11098,22 @@ impl App {
                 // Sans cette clé, la puce la plus forte de la barre
                 // n'apparaîtrait dans aucune capture : « eliq » ne double
                 // rien.
-                let fallback = if start_view == "companion_doublon" {
-                    "stagid"
-                } else {
-                    "eliq"
+                //
+                // **Et la boîte scannée est une forme de plus.** Ce que
+                // le comptoir tape alors n'est pas un nom : c'est ce
+                // qu'une douchette émet, et aucune capture prise en
+                // tapant des lettres ne montrera jamais ce que la boîte
+                // dit d'elle-même. La péremption est **passée et le
+                // reste** — mai 2024 — parce qu'une date proche devient
+                // bonne puis mauvaise selon le jour de la capture, et
+                // que l'état qu'il faut regarder est celui qui arrête.
+                // Le lot court jusqu'au bout sans rien qui le ferme :
+                // les deux tons de la lecture sont ainsi dans la même
+                // image.
+                let fallback = match start_view.as_str() {
+                    "companion_doublon" => "stagid",
+                    "companion_boite" => "01034009300000071724053110L2439X",
+                    _ => "eliq",
                 };
                 std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| fallback.to_owned())
             } else {
@@ -48981,6 +48993,64 @@ impl App {
     /// À `text_scale = 1,6` la fenêtre ne porte que quatre lignes
     /// au-dessus du pli, et une ligne d'identification y prenait celle de
     /// la bande.
+    /// Ce que la boîte scannée dit d'elle-même, dessiné.
+    ///
+    /// Une paire par ligne — l'étiquette pâle, la valeur dans l'encre de
+    /// la lecture —, et le ton décide de l'encre : voir [`BoxTone`]. Le
+    /// calcul est fait ailleurs et une fois ([`companion_box`]) ; il n'y
+    /// a ici que du dessin.
+    fn companion_box_said(ui: &mut egui::Ui, said: &[(String, String, BoxTone)]) {
+        if said.is_empty() {
+            return;
+        }
+        ui.add_space(4.0);
+        for (label, value, tone) in said {
+            // **L'étiquette et sa valeur ne se séparent pas.** « Lot »
+            // posé au bout d'une rangée et son numéro au début de la
+            // suivante ne nomment plus rien — c'est la règle que
+            // `keep_together` porte, et une fenêtre de six cents pixels
+            // est précisément où elle se vérifie.
+            let ink = match tone {
+                BoxTone::Plain => motif::text(),
+                BoxTone::Doubt => motif::warn(),
+                BoxTone::Stop => motif::alert(),
+            };
+            let (small, big) = (motif::pt(ui, 10.5), motif::pt(ui, 11.5));
+            // Mesuré dans la fonte qui dessinera, et les deux largeurs
+            // comptées en **un** article et une gouttière.
+            let wide = |ui: &egui::Ui, text: &str, size: f32| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        text.to_owned(),
+                        egui::FontId::proportional(size),
+                        motif::text(),
+                    )
+                    .size()
+                    .x
+                })
+            };
+            let w = Self::group_width(
+                ui,
+                [wide(ui, label, small), wide(ui, value, big)].into_iter(),
+            );
+            let size = egui::vec2(w, Self::label_line(ui));
+            Self::keep_together(ui, size, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(label)
+                            .size(small)
+                            .color(motif::text_dim()),
+                    )
+                    .wrap_mode(egui::TextWrapMode::Extend),
+                );
+                ui.add(
+                    egui::Label::new(egui::RichText::new(value).size(big).color(ink))
+                        .wrap_mode(egui::TextWrapMode::Extend),
+                );
+            });
+        }
+    }
+
     fn companion_signals_page(
         ui: &mut egui::Ui,
         d: &Drug,
@@ -49972,7 +50042,7 @@ impl App {
                         // médicament n'y est pas » — une réponse
                         // fausse à une question qu'on n'a pas posée.
                         let said = match &read.1.scanned {
-                            Some(code) => trf("companion_barcode", code.clone()),
+                            Some(_) => tr("companion_barcode").to_owned(),
                             None if self.companion_query.trim().is_empty() => {
                                 tr("companion_idle").to_owned()
                             }
@@ -49986,6 +50056,11 @@ impl App {
                             )
                             .wrap(),
                         );
+                        // **Ce que la boîte dit d'elle-même.** Aucune
+                        // table n'est consultée pour l'écrire — c'est la
+                        // boîte qui parle — et c'est pour cela qu'elle
+                        // peut répondre là où le répertoire manque.
+                        Self::companion_box_said(ui, &read.1.box_says);
                         // **Et ce qu'on vient de lire**, là où il n'y
                         // avait qu'une invite. Échap efface la question ;
                         // il ramène donc ici, et cette rangée fait de lui
@@ -50632,7 +50707,18 @@ struct CompanionRead {
     /// question. Aucune fiche ne porte de code : le seul lien code-boîte
     /// de cette application est celui qu'un humain a posé au registre
     /// des stupéfiants, en présentant une boîte.
-    scanned: Option<String>,
+    ///
+    /// **Le scan entier, et non ses chiffres seuls.** Un DataMatrix
+    /// porte le lot et la péremption ; la barre n'en gardait que le
+    /// code, et jetait donc la seule chose qu'une boîte sache dire
+    /// d'elle-même sans qu'aucune table ne soit consultée.
+    scanned: Option<crate::codebar::Scanned>,
+    /// Ce que la boîte scannée dit d'elle-même, ligne par ligne.
+    ///
+    /// Composé par [`companion_box`] et gardé avec la lecture : c'est de
+    /// l'arithmétique sur une date, et elle n'a pas à se refaire
+    /// soixante fois par seconde.
+    box_says: Vec<(String, String, BoxTone)>,
     /// Ce que **le dossier** retient pour ce traitement : le dosage et
     /// la posologie, tels qu'ils y sont écrits.
     ///
@@ -50661,6 +50747,108 @@ struct CompanionRead {
     /// rien est un onglet qu'on apprend à ne plus ouvrir, et il coûte la
     /// place d'un onglet qui parle.
     pages: Vec<CompanionPage>,
+}
+
+/// Ce qu'une ligne lue sur la boîte pèse.
+///
+/// **Trois tons et non deux** : une boîte périmée ne se délivre pas, une
+/// lecture incertaine se vérifie sur la boîte, et le reste est un
+/// renseignement. Les confondre ferait d'un lot lu au plus large une
+/// alerte, et d'une péremption passée un renseignement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum BoxTone {
+    /// Ce que la boîte porte, sans plus.
+    Plain,
+    /// La lecture n'est pas sûre d'elle : à confronter à la boîte.
+    Doubt,
+    /// La boîte ne part pas.
+    Stop,
+}
+
+/// Ce qu'une boîte scannée dit d'elle-même.
+///
+/// **Aucune table n'est consultée, et c'est tout l'intérêt.** Cette
+/// application ne livre pas de répertoire CIP — un code ne nomme donc
+/// aucun produit ici — mais un DataMatrix porte, lui, son lot et sa
+/// péremption, et ceux-là ne demandent la permission de personne. La
+/// barre gardait les treize chiffres et jetait les deux autres, c'est-à-
+/// dire la seule chose qu'une boîte sache dire sans qu'on l'ait apprise.
+///
+/// Quatre règles, et chacune a son test :
+///
+/// - **Périmé se calcule, ne se devine pas.** `codebar` a déjà résolu un
+///   jour `00` en fin de mois — une péremption est un mois, et une boîte
+///   marquée 09/2026 est bonne jusqu'au trente. Comparer au premier
+///   serait refuser vingt-neuf jours de boîtes bonnes.
+/// - **Et c'est le seul verdict rendu.** Aucun seuil : « il reste onze
+///   jours » est un fait, « c'est trop peu » est une décision qui dépend
+///   de la durée du traitement, et le logiciel ne la connaît pas. On
+///   écrit la date et ce qui reste ; le comptoir décide.
+/// - **Une lecture incertaine se dit incertaine.** Un lot que rien n'a
+///   fermé est lu au plus large, un AI inconnu arrête la lecture : les
+///   deux sont portés par `codebar` et se perdaient ici. Un lot faux
+///   affiché comme sûr est pire que pas de lot du tout — c'est lui qu'on
+///   recopie sur un rappel de lot.
+/// - **Le code reste écrit même périmé.** C'est par lui qu'on retrouve
+///   la boîte au registre ou chez le grossiste, et une alerte qui
+///   remplace le renseignement oblige à rescanner.
+fn companion_box(s: &crate::codebar::Scanned, today: &str) -> Vec<(String, String, BoxTone)> {
+    let mut out = vec![(
+        tr("companion_box_code").to_owned(),
+        s.code.clone(),
+        BoxTone::Plain,
+    )];
+    if !s.expiry.is_empty() {
+        // Deux dates ISO se comparent comme deux chaînes, et le jour
+        // porté ici est **le dernier du mois** quand la boîte n'en
+        // nommait pas : c'est `codebar` qui l'a résolu, et le refaire
+        // ici serait la deuxième écriture d'un même calcul.
+        let past = s.expiry.as_str() < today;
+        let left = crate::date::days_between(today, &s.expiry);
+        let said = match (past, left) {
+            (true, _) => trf("companion_box_expired", db::format_french_date(&s.expiry)),
+            (false, Some(d)) => trn(
+                "companion_box_expiry_left",
+                &[&db::format_french_date(&s.expiry), &d.to_string()],
+            ),
+            (false, None) => db::format_french_date(&s.expiry),
+        };
+        out.push((
+            tr("companion_box_expiry").to_owned(),
+            said,
+            if past { BoxTone::Stop } else { BoxTone::Plain },
+        ));
+    }
+    if !s.lot.is_empty() {
+        out.push((
+            tr("companion_box_lot").to_owned(),
+            if s.lot_certain {
+                s.lot.clone()
+            } else {
+                trf("companion_box_lot_wide", s.lot.clone())
+            },
+            if s.lot_certain {
+                BoxTone::Plain
+            } else {
+                BoxTone::Doubt
+            },
+        ));
+    }
+    if !s.serial.is_empty() {
+        out.push((
+            tr("companion_box_serial").to_owned(),
+            s.serial.clone(),
+            BoxTone::Plain,
+        ));
+    }
+    if !s.read_to_end {
+        out.push((
+            tr("companion_box_cut").to_owned(),
+            tr("companion_box_cut_said").to_owned(),
+            BoxTone::Doubt,
+        ));
+    }
+    out
 }
 
 /// Combien de fiches le compagnon garde parmi celles qui répondent.
@@ -50768,7 +50956,13 @@ fn companion_look(
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
     // qu'un code abîmé n'est pas pris pour un bon.
-    let scanned = crate::codebar::read(query, today).map(|s| s.code);
+    let scanned = crate::codebar::read(query, today);
+    // Ce que la boîte dit d'elle-même, composé une fois : voir
+    // [`companion_box`].
+    let box_says = scanned
+        .as_ref()
+        .map(|s| companion_box(s, today))
+        .unwrap_or_default();
     let pick = pick.min(hits.len().saturating_sub(1));
     let Some(card) = hits.get(pick).cloned() else {
         return CompanionRead {
@@ -50779,6 +50973,7 @@ fn companion_look(
             what: String::new(),
             flag: String::new(),
             scanned,
+            box_says,
             poso: Vec::new(),
             pages: Vec::new(),
             found,
@@ -50837,6 +51032,7 @@ fn companion_look(
         hits,
         pick,
         scanned,
+        box_says,
         poso,
         pages,
         found,
@@ -57213,7 +57409,10 @@ mod tests {
             0,
         );
         assert!(boxed.hits.is_empty());
-        assert_eq!(boxed.scanned.as_deref(), Some("3400930000007"));
+        assert_eq!(
+            boxed.scanned.as_ref().map(|s| s.code.as_str()),
+            Some("3400930000007")
+        );
         // Et un code dont la clé est fausse n'en est pas un : c'est la
         // clé qui décide, jamais la longueur. La barre répond alors ce
         // qu'elle répond à n'importe quoi d'introuvable, ce qui est
@@ -57226,7 +57425,7 @@ mod tests {
             "3400930000008",
             0,
         );
-        assert_eq!(damaged.scanned, None);
+        assert!(damaged.scanned.is_none());
         // Une question vide ne cherche rien : la barre s'ouvre sur son
         // invite, et non sur les huit premières fiches de la base.
         let idle = companion_read(std::slice::from_ref(&statin), &[], None, None, "", 0);
@@ -57709,6 +57908,86 @@ mod tests {
     /// perdrait un tiers de ce que les fiches disent. Et chaque fiche
     /// arrive **avec la phrase qui l'a fait répondre** : sans elle on ne
     /// sait ni laquelle porte le mot ni ce qu'elle en dit.
+    /// Une boîte scannée dit sa péremption, et périmé se **calcule**.
+    ///
+    /// C'est la seule chose qu'une boîte sache dire d'elle-même sans
+    /// qu'aucune table ne soit consultée — cette application ne livre
+    /// pas de répertoire CIP, un code n'y nomme donc aucun produit —, et
+    /// la barre gardait les treize chiffres en jetant le reste.
+    ///
+    /// Quatre choses tenues ici, une par règle de [`companion_box`].
+    ///
+    /// **Le dernier jour du mois est encore dedans.** Un DataMatrix
+    /// écrit souvent `00` pour le jour, ce qui veut dire « fin de
+    /// mois » : `codebar` l'a déjà résolu, et comparer au premier
+    /// refuserait vingt-neuf jours de boîtes bonnes. La même boîte est
+    /// donc lue trois fois ici — l'avant-veille de sa fin de mois, son
+    /// dernier jour, et le lendemain — et seule la troisième arrête.
+    ///
+    /// **Et c'est le seul verdict rendu** : aucun seuil ne décide qu'il
+    /// reste « trop peu » de jours. La durée du traitement décide, et le
+    /// logiciel ne la connaît pas ; il écrit la date et ce qui reste.
+    #[test]
+    fn a_scanned_box_says_when_it_has_expired() {
+        use super::{companion_box, BoxTone};
+        // Le GTIN14 de `codebar`, dont la clé est calculée à la main
+        // dans ce module, une péremption (AI 17) **sans jour** —
+        // `260900`, c'est-à-dire 09/2026, bonne jusqu'au trente inclus —
+        // et un lot (AI 10) que rien ne ferme.
+        let typed = "010340093000000717260900101234ABC";
+        let said = |today: &str| {
+            let s = crate::codebar::read(typed, today).expect("un DataMatrix valide se lit");
+            assert_eq!(s.expiry, "2026-09-30", "le jour 00 est la fin du mois");
+            companion_box(&s, today)
+        };
+        let tone = |v: &[(String, String, BoxTone)], label: &str| {
+            v.iter()
+                .find(|(l, ..)| l == label)
+                .map(|(_, value, t)| (value.clone(), *t))
+                .unwrap_or_else(|| panic!("ligne « {label} » absente de {v:?}"))
+        };
+        let expiry = tr("companion_box_expiry");
+
+        // L'avant-veille : la boîte part, et ce qui reste est écrit.
+        let early = said("2026-09-28");
+        assert_eq!(tone(&early, expiry).1, BoxTone::Plain);
+        assert!(tone(&early, expiry).0.contains('2'), "{early:?}");
+
+        // **Le dernier jour du mois est encore dedans.**
+        let last = said("2026-09-30");
+        assert_eq!(
+            tone(&last, expiry).1,
+            BoxTone::Plain,
+            "une boîte marquée 09/2026 est bonne jusqu'au trente : {last:?}"
+        );
+
+        // Le lendemain, et seulement lui.
+        let over = said("2026-10-01");
+        assert_eq!(tone(&over, expiry).1, BoxTone::Stop, "{over:?}");
+
+        // **Le code reste écrit même périmé** : c'est par lui qu'on
+        // retrouve la boîte au registre ou chez le grossiste, et une
+        // alerte qui remplace le renseignement oblige à rescanner.
+        assert_eq!(tone(&over, tr("companion_box_code")).0, "03400930000007");
+
+        // **Une lecture incertaine se dit incertaine.** Ce lot-là court
+        // jusqu'au bout de la chaîne sans que rien ne le ferme : il est
+        // lu au plus large, et un lot faux affiché comme sûr est pire
+        // que pas de lot du tout — c'est lui qu'on recopie sur un rappel.
+        let (lot, t) = tone(&over, tr("companion_box_lot"));
+        assert_eq!(t, BoxTone::Doubt, "lot non fermé : {over:?}");
+        assert!(lot.contains("1234ABC"), "{lot}");
+
+        // Et une boîte sans péremption n'en invente pas une.
+        let bare = crate::codebar::read("3400930000007", "2026-09-28").unwrap();
+        let plain = companion_box(&bare, "2026-09-28");
+        assert!(
+            !plain.iter().any(|(l, ..)| l == expiry),
+            "aucune péremption n'a été scannée : {plain:?}"
+        );
+        assert_eq!(plain.len(), 1, "le code seul : {plain:?}");
+    }
+
     #[test]
     fn the_companion_answers_a_word_that_is_in_no_name() {
         use crate::db::{Drug, Posologie};

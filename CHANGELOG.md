@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La boîte scannée dit son lot et sa péremption.** Une douchette est un
+  clavier, et le champ de la barre garde le foyer pour cela ; un GTIN
+  cherché comme un nom ne rend rien, et la barre le disait — en gardant
+  les treize chiffres et en jetant tout le reste. Or cette application ne
+  livre aucun répertoire CIP, un code n'y nomme donc aucun produit ; mais
+  le lot et la péremption que porte le même DataMatrix, eux, ne demandent
+  la permission d'aucune table. C'était la seule chose qu'une boîte sache
+  dire d'elle-même, et elle était jetée.
+
+  **Périmé se calcule.** `codebar` avait déjà résolu un jour `00` en fin
+  de mois — une péremption est un mois, et une boîte marquée 09/2026 est
+  bonne jusqu'au trente inclus ; comparer au premier refuserait
+  vingt-neuf jours de boîtes bonnes. Et c'est le seul verdict rendu :
+  aucun seuil ne décide qu'il reste « trop peu » de jours, parce que
+  c'est la durée du traitement qui en décide et que le logiciel ne la
+  connaît pas. Une lecture incertaine se dit incertaine — un lot que rien
+  n'a fermé est lu au plus large, un champ inconnu arrête la lecture —,
+  car un lot faux affiché comme sûr est pire que pas de lot du tout :
+  c'est celui-là qu'on recopie sur un rappel de lot.
+
+  La clé de vue `companion_boite` porte une péremption **passée et qui le
+  reste** : une date proche serait bonne puis mauvaise selon le jour de
+  la capture, et l'état qu'il faut regarder est celui qui arrête.
+
 ## [0.218.0] - 2026-09-17
 
 ### Added

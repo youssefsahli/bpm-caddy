@@ -1604,7 +1604,7 @@ add clicking and typing; it is not the price of entry.
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|companion_vide|companion_doublon|script|carnets|caisse|caisses|peaux|aide`
+  finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|companion_vide|companion_doublon|companion_boite|script|carnets|caisse|caisses|peaux|aide`
   — land on a specific view (screenshots, e2e). `aide` is not a view at
   all: it opens the right-hand dock on its « Aide » tab, which is in no
   tab strip and therefore reachable no other way.
@@ -1802,7 +1802,25 @@ add clicking and typing; it is not the price of entry.
   file** — the one carrying the most treatments *and* a biology — or the
   two signals only this software can give would appear in no capture
   ever taken, and the kidney chip would read « dépend du DFG » in all of
-  them
+  them.
+
+  **And the box speaks for itself.** A scanner is a keyboard, so what it
+  types lands in that field; a GTIN searched as a name finds nothing, and
+  the bar used to say so and stop there — keeping the thirteen digits and
+  throwing away what the DataMatrix also carries. No CIP table ships
+  here, so a code names no product; but a box's own **lot and expiry**
+  ask no table's permission, and they are what someone holding it needs.
+  `companion_box` writes them, and **périmé is arithmetic, never a
+  guess**: `codebar` has already resolved a `00` day to the end of its
+  month — an expiry is a month, and a box marked 09/2026 is good through
+  the thirtieth, so comparing against the first would refuse twenty-nine
+  days of good boxes. That is the *only* verdict it renders: no threshold
+  decides that eleven days left is « too few », because the treatment's
+  length decides it and the software does not know it. What it does say
+  is when a reading is **unsure of itself** — a lot nothing closed is
+  read at its widest, an unknown AI stops the read — since a wrong lot
+  shown as certain is worse than no lot at all: it is the one copied onto
+  a recall notice
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
 - `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that

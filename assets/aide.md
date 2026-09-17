@@ -313,6 +313,18 @@ le dit plutôt que de répondre « aucun résultat ». Aucune fiche ne porte
 de code : le seul lien entre un code et une boîte est celui qu'un humain
 a posé au registre des stupéfiants, en présentant la boîte.
 
+**Mais la boîte, elle, parle.** Son DataMatrix porte son code, son lot
+et sa péremption, et ceux-là ne demandent la permission d'aucune table :
+la barre les écrit sous le code lu. Une péremption passée est dite en
+rouge — le jour est calculé, et une boîte marquée 09/2026 est bonne
+jusqu'au trente inclus, parce qu'une péremption est un mois. Aucun seuil
+ne décide au-delà : « il reste onze jours » est un fait, « c'est trop
+peu » dépend de la durée du traitement, et c'est le comptoir qui
+tranche. Un lot que rien n'a fermé, ou une lecture arrêtée sur un champ
+inconnu, sont signalés comme tels : un lot faux affiché comme sûr est
+pire que pas de lot du tout, car c'est celui-là qu'on recopie sur un
+rappel de lot.
+
 # Les entretiens
 
 Un acte porte sa thématique, son état, sa date, sa durée et les
