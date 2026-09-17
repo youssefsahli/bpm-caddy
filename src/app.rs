@@ -48967,6 +48967,16 @@ impl App {
                 part(tr("mono_f_notes"), &d.notes);
             }
             Some(CompanionPage::Care) => {
+                // **La rangée des organes se colle comme le reste.** Le
+                // garde qui tient cette liste lit les appels à
+                // `companion_part`, et celle-ci n'en est pas une : c'est
+                // une rangée de puces. Elle est donc écrite ici à la
+                // main, dans l'ordre de la page, et non pas oubliée
+                // parce qu'aucun test n'aurait crié.
+                part(
+                    tr("companion_harms"),
+                    &Self::companion_harms_said(d).join(" · "),
+                );
                 part(tr("drug_sec_ci"), &d.contraindications);
                 part(tr("drug_sec_adverse"), &d.adverse);
                 part(tr("drug_sec_monitoring"), &d.monitoring);
@@ -49493,9 +49503,118 @@ impl App {
         picked
     }
 
+    /// Ce que cette fiche **abîme**, organe par organe, du plus grave au
+    /// moins.
+    ///
+    /// Le référentiel de `facets` répond à « quels médicaments ont telle
+    /// propriété », ce qu'aucun paragraphe ne sait faire ; lu à l'envers
+    /// — de la fiche vers ses axes — il donne en une rangée ce que trois
+    /// paragraphes de prose disent en désordre. C'est la question qu'on
+    /// se pose en tenant la boîte pour quelqu'un qui a déjà un rein ou
+    /// un foie fatigué.
+    ///
+    /// Trois décisions, et la première est celle qui compte :
+    ///
+    /// - **`Altère` seulement.** `Traite` est l'autre moitié du même
+    ///   référentiel et elle a sa page — « à quoi ça sert » est déjà la
+    ///   phrase des Signaux. Mêlées, « Rein » paraîtrait deux fois avec
+    ///   deux sens opposés, ce qui est exactement l'erreur que la doc de
+    ///   `facets` nomme : c'est le champ d'où vient la phrase qui décide
+    ///   si c'est un dégât.
+    /// - **Le plus grave d'abord**, jamais l'ordre de l'énumération : ce
+    ///   qui arrête doit être lu en premier, et une rangée dans l'ordre
+    ///   du type enterre le majeur derrière deux mineurs.
+    /// - **La clause voyage avec la puce**, au survol, comme toute puce
+    ///   de cette barre : la rangée classe, elle ne conclut pas.
+    ///
+    /// Rien n'est dessiné quand le référentiel ne range pas la fiche — et
+    /// ce silence-là ne dit pas « inoffensif » : la prose entière est
+    /// juste dessous, et un axe manquant est un trou de l'index, pas une
+    /// innocuité. C'est ce qui sépare cette rangée de la feuille
+    /// « écraser », où la ligne absente *était* toute la réponse.
+    ///
+    /// La lecture est **écrite une fois** et lue par le dessin, par la
+    /// copie et par le test : trois écritures d'un même tri finiraient
+    /// par ne plus donner le même ordre, et c'est l'ordre qui est toute
+    /// l'idée.
+    fn companion_harms_of(d: &Drug) -> Vec<&'static crate::facets::Impact> {
+        let Some(f) = crate::facets::facets(&d.name) else {
+            return Vec::new();
+        };
+        let mut harms: Vec<&crate::facets::Impact> = f
+            .impacts
+            .iter()
+            .filter(|i| matches!(i.effect, crate::facets::Effect::Altere))
+            .collect();
+        harms.sort_by_key(|i| std::cmp::Reverse(i.grade));
+        harms
+    }
+
+    /// Ce que cette rangée **écrit**, mot pour mot : ce que la puce
+    /// porte et son degré, dans l'ordre dessiné.
+    fn companion_harms_said(d: &Drug) -> Vec<String> {
+        Self::companion_harms_of(d)
+            .into_iter()
+            .map(|im| {
+                // **Le degré est écrit ici et coloré à l'écran.** Un
+                // presse-papier n'a pas de couleur : la même information
+                // y passe donc en toutes lettres, et c'est la seule
+                // raison pour laquelle ces deux écritures diffèrent.
+                format!("{} ({})", im.organ.label(), im.grade.label())
+            })
+            .collect()
+    }
+
+    fn companion_harms(ui: &mut egui::Ui, d: &Drug) {
+        let harms = Self::companion_harms_of(d);
+        if harms.is_empty() {
+            return;
+        }
+        ui.add_space(4.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("companion_harms"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        ui.add_space(2.0);
+        ui.horizontal_wrapped(|ui| {
+            for im in harms {
+                // Le même vocabulaire que les puces des tables : ce qui
+                // arrête est rouge, ce qui se surveille est ambre, et le
+                // plus calme prend le creux du thème — une distance au
+                // fond, jamais une direction, puisque deux des huit
+                // peaux sont des peaux de nuit.
+                let (fill, raised) = match im.grade {
+                    crate::facets::Grade::Majeur => (motif::alert(), true),
+                    crate::facets::Grade::Notable => (motif::warn(), true),
+                    crate::facets::Grade::Mineur => (motif::trough(), false),
+                };
+                // **Le sens n'est pas répété sur chaque puce.** Le
+                // référentiel écrit « altère — Thyroïde » là où les deux
+                // sens se côtoient, ce qui est la monographie ; ici la
+                // rangée est d'un seul sens et son titre le dit, si bien
+                // que sept « altère — » ne font que manger la largeur
+                // d'une fenêtre de six cents pixels. Le sens reste au
+                // survol, avec le degré et la clause.
+                Self::companion_chip(ui, im.organ.label(), fill, raised).on_hover_text(trn(
+                    "companion_harm_tooltip",
+                    &[&tr("facet_harms"), &im.grade.label(), &im.why],
+                ));
+            }
+        });
+    }
+
     /// La page des précautions : ce qui contre-indique, ce qui arrive, ce
     /// qu'on surveille.
     fn companion_care_page(ui: &mut egui::Ui, d: &Drug) {
+        // **La carte avant le texte.** C'est ce que les trois
+        // paragraphes qui suivent disent, trié : posée après eux, elle
+        // résumerait ce qu'on vient de lire — et dans une fenêtre de six
+        // cents pixels, personne ne descend jusque-là.
+        Self::companion_harms(ui, d);
         Self::companion_part(ui, tr("drug_sec_ci"), &d.contraindications);
         Self::companion_part(ui, tr("drug_sec_adverse"), &d.adverse);
         Self::companion_part(ui, tr("drug_sec_monitoring"), &d.monitoring);
@@ -58086,6 +58205,97 @@ mod tests {
     /// **Et c'est le seul verdict rendu** : aucun seuil ne décide qu'il
     /// reste « trop peu » de jours. La durée du traitement décide, et le
     /// logiciel ne la connaît pas ; il écrit la date et ce qui reste.
+    /// La rangée des organes classe ce que trois paragraphes disent en
+    /// désordre — et elle ne dit que ce que le produit **abîme**.
+    ///
+    /// La Cordarone est la fiche qui prouve la règle : l'amiodarone
+    /// *traite* le cœur et l'*altère*, et les deux sont dans le
+    /// référentiel. Mêlés, « Cœur » paraîtrait deux fois avec deux sens
+    /// opposés, et le « traite · majeur » passerait **devant** la
+    /// thyroïde et le poumon — c'est-à-dire devant les deux atteintes
+    /// qui font arrêter ce traitement-là. C'est l'erreur que la doc de
+    /// `facets` nomme : le champ d'où vient la phrase décide si c'est un
+    /// dégât.
+    ///
+    /// Et le plus grave passe devant, jamais l'ordre de l'énumération :
+    /// une rangée qui suit le type enterre le majeur derrière deux
+    /// mineurs, alors que le tri *est* toute l'idée de cette rangée.
+    #[test]
+    fn the_companion_row_of_organs_names_only_what_the_drug_harms() {
+        use crate::db::Drug;
+        use crate::facets::{Effect, Grade};
+        let card = Drug {
+            id: 1,
+            name: "Cordarone".to_owned(),
+            ..Drug::default()
+        };
+        let row = super::App::companion_harms_of(&card);
+        assert!(row.len() >= 5, "{row:?}");
+
+        // **Rien que des dégâts.** La Cordarone traite le cœur, et ce
+        // « traite » n'a rien à faire sur la page des précautions.
+        assert!(
+            row.iter().all(|i| matches!(i.effect, Effect::Altere)),
+            "{row:?}"
+        );
+        // Le cœur y est **une** fois, et c'est celui qui paie.
+        let hearts: Vec<_> = row
+            .iter()
+            .filter(|i| i.organ == crate::facets::Organ::Coeur)
+            .collect();
+        assert_eq!(hearts.len(), 1, "{hearts:?}");
+        assert_eq!(hearts[0].grade, Grade::Notable);
+
+        // **Le plus grave d'abord.** Les deux atteintes qui font
+        // arrêter une amiodarone — la thyroïde et le poumon — ouvrent
+        // la rangée, et rien de mineur ne passe devant quoi que ce soit.
+        assert_eq!(row[0].grade, Grade::Majeur);
+        assert!(
+            row.windows(2).all(|w| w[0].grade >= w[1].grade),
+            "{:?}",
+            row.iter().map(|i| (i.organ, i.grade)).collect::<Vec<_>>()
+        );
+
+        // **Et ce qui est dessiné est ce qui se copie.** La rangée est
+        // faite de puces et non de `companion_part` : le garde qui tient
+        // cette liste ne la voit pas, donc c'est ce test qui la tient.
+        let said = super::App::companion_harms_said(&card);
+        assert_eq!(said.len(), row.len());
+        let clip = super::App::companion_clip(
+            &card,
+            &super::CompanionRead {
+                hits: vec![card.clone()],
+                pick: 0,
+                signals: Vec::new(),
+                silent: true,
+                what: String::new(),
+                flag: String::new(),
+                scanned: None,
+                box_says: Vec::new(),
+                box_stup: None,
+                poso: Vec::new(),
+                pages: Vec::new(),
+                found: Vec::new(),
+                filed: <(String, String)>::default(),
+            },
+            Some(super::CompanionPage::Care),
+        );
+        for line in &said {
+            assert!(clip.contains(line.as_str()), "{line} manque : {clip}");
+        }
+
+        // Une fiche que le référentiel ne range pas ne dessine rien — et
+        // ce silence ne dit pas « inoffensif » : la prose entière est
+        // juste dessous. C'est ce qui sépare cette rangée de la feuille
+        // « écraser », où la ligne absente *était* toute la réponse.
+        let unknown = Drug {
+            id: 2,
+            name: "Machinol".to_owned(),
+            ..Drug::default()
+        };
+        assert!(super::App::companion_harms_of(&unknown).is_empty());
+    }
+
     #[test]
     fn a_scanned_box_says_when_it_has_expired() {
         use super::{companion_box, BoxTone};

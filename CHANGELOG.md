@@ -5,6 +5,39 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Ce que le produit abîme, organe par organe, en tête de
+  « Précautions ».** Le référentiel de `facets` répond à « quels
+  médicaments ont telle propriété », ce qu'aucun paragraphe ne sait
+  faire ; lu à l'envers — de la fiche vers ses axes — il donne en une
+  rangée ce que trois paragraphes disent en désordre. Sur la Cordarone :
+  thyroïde et poumon en rouge, puis cœur, œil, foie, peau, puis le
+  neurologique enfoncé dans le creux du thème. C'est le profil de
+  l'amiodarone en un coup d'œil, et c'est la question qu'on se pose en
+  tenant la boîte pour quelqu'un qui a déjà un rein ou un foie fatigué.
+
+  **`Altère` seulement**, et la Cordarone est précisément la fiche qui
+  le prouve : l'amiodarone *traite* le cœur et l'*altère*. Mêlés, « Cœur »
+  paraîtrait deux fois avec deux sens opposés, et le « traite · majeur »
+  passerait devant la thyroïde et le poumon — devant les deux atteintes
+  qui font arrêter ce traitement-là. C'est l'erreur que la doc de
+  `facets` nomme : le champ d'où vient la phrase décide si c'est un
+  dégât. **Le plus grave d'abord**, jamais l'ordre de l'énumération, car
+  le tri est toute l'idée de cette rangée. Et **la clause voyage avec la
+  puce**, au survol : la rangée classe, elle ne conclut pas.
+
+  Un axe absent ne dit pas « inoffensif » — la prose entière est juste
+  dessous, et un trou de l'index n'est pas une innocuité. C'est ce qui
+  sépare cette rangée de la feuille « écraser », où la ligne absente
+  *était* toute la réponse.
+
+  La rangée est faite de puces et non de paragraphes, si bien que le
+  garde qui tient « tout ce qu'une page dessine, le presse-papier le
+  copie » ne la voit pas : c'est son propre test qui la tient, dans les
+  deux sens.
+
 ## [0.219.0] - 2026-09-17
 
 ### Added

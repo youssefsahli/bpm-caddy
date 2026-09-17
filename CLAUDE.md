@@ -1714,6 +1714,19 @@ add clicking and typing; it is not the price of entry.
   which splits the read into three steps — search, query, read — and
   keeps the last one **pure**: it receives the lines rather than fetching
   them, like every clinical module here receives its treatments.
+  « Précautions » opens on a **row of organs** — what the drug harms,
+  worst first, from `facets`: that referential answers « which drugs have
+  this property », and read backwards — card to axes — it gives in one
+  row what three paragraphs say out of order. **`Altère` only**, and
+  Cordarone is the card that proves it: amiodarone *treats* the heart and
+  *harms* it, so mixing the two senses would print « Cœur » twice with
+  opposite meanings and float a « traite · majeur » above the thyroid and
+  the lung — above the two harms that stop that drug. A missing axis is
+  not innocence: the whole prose sits below it, which is what separates
+  this row from the crush sheet, where the absent line *was* the answer.
+  Being chips and not paragraphs, it escapes the guard that holds
+  « everything a page draws is what it copies » — so its own test holds
+  both directions.
   « Dossier » is the only page not about the searched card: it is the
   open prescription, a clicked line becomes the question, and a bar marks
   the lines a table wants you to stop at — computed from the six readings
