@@ -243,6 +243,15 @@ dossier **et** de la fiche cherchée, **sur le chapitre que la pastille
 nomme** : c'est la question du téléphone passée entière, et non un écran
 vide à recomposer ni un écran de neuf chapitres ouvert au mauvais.
 
+« Copier » met la page lue dans le presse-papier, pour la coller dans le
+logiciel de comptoir : une posologie ou une conduite en cas d'oubli
+finit souvent dans le commentaire d'une ligne, et la retaper depuis
+l'écran d'à côté est l'occasion de se tromper sur le chiffre qu'on vient
+de vérifier. Ce qui est copié est ce qui est lu, page comprise, le nom du
+produit en tête. La page « Dossier » fait exception et copie la fiche :
+une liste de traitements nominative sortie d'ici finirait collée dans un
+champ dont personne ne sait où il va.
+
 La tête porte le nom du dossier ouvert **et les deux chiffres que les
 pastilles lisent** : l'âge et la clairance. Sans eux on lisait « Rein ·
 dépend du DFG » sans savoir si le dossier en portait un ; le chiffre

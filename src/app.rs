@@ -48778,6 +48778,64 @@ impl App {
         clicked
     }
 
+    /// Ce que la page lue met dans le presse-papier.
+    ///
+    /// **La barre lisait et rien n'en sortait.** Ce qu'on y trouve — une
+    /// posologie indication par indication, une conduite en cas
+    /// d'oubli — finit souvent dans le commentaire d'une ligne du
+    /// logiciel de comptoir, et il fallait le retaper depuis l'écran
+    /// d'à côté. Le retaper est l'occasion de se tromper sur le chiffre
+    /// qu'on vient de vérifier.
+    ///
+    /// **Ce qui est copié est ce qui est lu**, page comprise : la même
+    /// fonction ne peut pas rendre une page et en copier une autre.
+    /// Le nom d'abord, toujours — une posologie collée sans son produit
+    /// est un chiffre sans sujet.
+    ///
+    /// Pure, et testée comme telle : c'est du texte, pas du dessin.
+    fn companion_clip(d: &Drug, read: &CompanionRead, page: Option<CompanionPage>) -> String {
+        let mut out = d.name.trim().to_owned();
+        let mut part = |label: &str, text: &str| {
+            if !text.trim().is_empty() {
+                out.push_str(&format!("\n\n{label} : {}", text.trim()));
+            }
+        };
+        match page {
+            Some(CompanionPage::Posology) => {
+                part(tr("mono_f_dosage"), &d.dosage);
+                for line in &read.poso {
+                    let mut said =
+                        format!("{} : {}", line.indication.trim(), line.posologie.trim());
+                    if !line.remarque.trim().is_empty() {
+                        said.push_str(&format!(" ({})", line.remarque.trim()));
+                    }
+                    part("", &said);
+                }
+            }
+            Some(CompanionPage::Advice) => {
+                part(tr("mono_f_iup"), &d.iup);
+                part(tr("mono_f_missed"), &d.missed_dose);
+            }
+            Some(CompanionPage::Care) => {
+                part(tr("drug_sec_ci"), &d.contraindications);
+                part(tr("drug_sec_adverse"), &d.adverse);
+                part(tr("drug_sec_monitoring"), &d.monitoring);
+            }
+            // La page du dossier ne copie pas l'ordonnance de quelqu'un :
+            // une liste de traitements nominative sortie d'ici finirait
+            // collée dans un champ dont personne ne sait où il va. Ce
+            // qu'on copie reste la fiche lue.
+            _ => {
+                for s in &read.signals {
+                    part("", &s.chip);
+                }
+                part(tr("mono_f_flags"), &read.flag);
+                part(tr("drug_sec_indications"), &read.what);
+            }
+        }
+        out
+    }
+
     /// Un paragraphe d'une page, sous son intitulé.
     ///
     /// L'intitulé est celui de la monographie, pris au fichier de
@@ -49261,6 +49319,23 @@ impl App {
                         .clicked()
                     {
                         leave = true;
+                    }
+                    // **Ce qui sort de la barre.** Dans la tête et non
+                    // dans la rangée des gestes : les cinq qui y sont
+                    // rendent la fenêtre et ouvrent un écran, celui-ci
+                    // ne quitte rien — et la rangée en prend déjà deux
+                    // à `text_scale = 1,6`.
+                    if let Some(d) = read.1.hits.get(read.1.pick) {
+                        if motif::button(ui, tr("companion_copy"))
+                            .on_hover_text(tr("companion_copy_tooltip"))
+                            .clicked()
+                        {
+                            ctx.copy_text(Self::companion_clip(
+                                d,
+                                &read.1,
+                                read.1.pages.get(page).copied(),
+                            ));
+                        }
                     }
                     // Le dossier prend ce qui reste de la rangée, et
                     // s'élide plutôt que de passer sous le bouton : un
@@ -56281,6 +56356,96 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **Ce que la barre copie est ce qu'elle lit**, page comprise.
+    ///
+    /// La barre lisait et rien n'en sortait : une posologie indication
+    /// par indication, une conduite en cas d'oubli, finissent souvent
+    /// dans le commentaire d'une ligne du logiciel de comptoir, et il
+    /// fallait les retaper depuis l'écran d'à côté — c'est-à-dire avoir
+    /// l'occasion de se tromper sur le chiffre qu'on vient de vérifier.
+    ///
+    /// Une même fonction ne peut pas rendre une page et en copier une
+    /// autre, et le nom passe toujours devant : une posologie collée
+    /// sans son produit est un chiffre sans sujet. **Et la page du
+    /// dossier ne copie pas l'ordonnance de quelqu'un** — une liste de
+    /// traitements nominative sortie d'ici finirait collée dans un champ
+    /// dont personne ne sait où il va.
+    #[test]
+    fn the_companion_copies_the_page_it_is_reading() {
+        use super::{App, CompanionPage};
+        use crate::db::Drug;
+        let d = Drug {
+            id: 1,
+            name: "Eliquis".to_owned(),
+            dci: "apixaban".to_owned(),
+            dosage: "5 mg deux fois par jour".to_owned(),
+            iup: "Ne pas arrêter de soi-même.".to_owned(),
+            missed_dose: "Dans les six heures.".to_owned(),
+            contraindications: "Saignement évolutif.".to_owned(),
+            adverse: "Hématomes.".to_owned(),
+            monitoring: "Créatininémie une fois par an.".to_owned(),
+            indications: "Fibrillation atriale non valvulaire.".to_owned(),
+            red_flags: "Sang dans les urines.".to_owned(),
+            ..Drug::default()
+        };
+        let other = Drug {
+            id: 2,
+            name: "Coversyl".to_owned(),
+            ..Drug::default()
+        };
+        let read = super::companion_look(
+            super::companion_hits(std::slice::from_ref(&d), "eliquis"),
+            std::slice::from_ref(&other),
+            None,
+            None,
+            "2026-09-17",
+            "eliquis",
+            0,
+            vec![crate::db::Posologie {
+                id: 1,
+                indication: "Fibrillation atriale".to_owned(),
+                posologie: "5 mg × 2".to_owned(),
+                remarque: "à heure fixe".to_owned(),
+            }],
+        );
+        // Le nom d'abord, sur toutes les pages.
+        for page in CompanionPage::ALL {
+            let said = App::companion_clip(&d, &read, Some(page));
+            assert!(
+                said.starts_with("Eliquis"),
+                "{page:?} : « {said} » ne commence pas par le produit"
+            );
+        }
+        // Chaque page copie **la sienne**, et pas celle d'à côté.
+        let poso = App::companion_clip(&d, &read, Some(CompanionPage::Posology));
+        assert!(poso.contains("5 mg deux fois par jour"));
+        assert!(poso.contains("Fibrillation atriale : 5 mg × 2 (à heure fixe)"));
+        assert!(
+            !poso.contains("Hématomes") && !poso.contains("Ne pas arrêter"),
+            "la posologie ne copie pas les précautions ni les conseils : {poso}"
+        );
+        let advice = App::companion_clip(&d, &read, Some(CompanionPage::Advice));
+        assert!(advice.contains("Ne pas arrêter de soi-même."));
+        assert!(advice.contains("Dans les six heures."));
+        assert!(!advice.contains("5 mg deux fois par jour"), "{advice}");
+        let care = App::companion_clip(&d, &read, Some(CompanionPage::Care));
+        assert!(care.contains("Saignement évolutif."));
+        assert!(care.contains("Créatininémie une fois par an."));
+        assert!(!care.contains("Dans les six heures."), "{care}");
+        // Les signaux copient ce qui arrête et ce à quoi ça sert.
+        let signals = App::companion_clip(&d, &read, Some(CompanionPage::Signals));
+        assert!(signals.contains("Sang dans les urines."));
+        assert!(signals.contains("Fibrillation atriale non valvulaire."));
+        // **Et la page du dossier ne sort pas l'ordonnance.** Elle copie
+        // la fiche lue, comme les signaux : le nom d'un autre traitement
+        // du dossier n'a rien à faire dans un presse-papier.
+        let file = App::companion_clip(&d, &read, Some(CompanionPage::File));
+        assert!(
+            !file.contains("Coversyl"),
+            "la page du dossier ne copie pas l'ordonnance : {file}"
+        );
     }
 
     /// **Une page vide n'est pas une page, et la première parle

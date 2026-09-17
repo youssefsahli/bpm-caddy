@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **« Copier » : ce que la barre lit peut enfin en sortir.** Elle lisait,
+  et rien n'en sortait. Une posologie indication par indication, une
+  conduite en cas d'oubli, finissent souvent dans le commentaire d'une
+  ligne du logiciel de comptoir — et il fallait les retaper depuis
+  l'écran d'à côté, c'est-à-dire avoir l'occasion de se tromper sur le
+  chiffre qu'on vient de vérifier. Ce qui est copié est **ce qui est
+  lu**, page comprise : une même fonction ne peut pas rendre une page et
+  en copier une autre. Le nom du produit passe toujours devant — une
+  posologie collée sans son produit est un chiffre sans sujet.
+
+  **La page « Dossier » fait exception et copie la fiche** : une liste
+  de traitements nominative sortie d'ici finirait collée dans un champ
+  dont personne ne sait où il va.
+
+  Le bouton est dans la tête et non dans la rangée des gestes : les cinq
+  qui y sont rendent la fenêtre et ouvrent un écran, celui-ci ne quitte
+  rien — et la rangée en prend déjà deux à `text_scale = 1,6`.
+
 ## [0.206.0] - 2026-09-17
 
 ### Added
