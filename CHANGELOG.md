@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.211.1] - 2026-09-17
+
+### Changed
+- **La pastille du doublon se montre enfin quelque part.** La clé de vue
+  du compagnon s'ouvre sur « eliq », et l'Eliquis ne double rien : la
+  pastille la plus forte de la barre n'apparaissait dans aucune capture
+  et n'était ouverte par aucune passe. `companion_doublon` ouvre sur une
+  vraie paire, et elle vient de la base livrée — celle-ci porte
+  **cinquante et une molécules sous plusieurs noms** (le paracétamol en
+  trois, la morphine en cinq, le fentanyl en six), et le Stagid est la
+  metformine du Glucophage, qui est au dossier de la démonstration. Rien
+  n'est fabriqué pour la capture.
+
 ## [0.211.0] - 2026-09-17
 
 ### Added
