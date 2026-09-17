@@ -32,6 +32,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'un onglet qui parle. Et quand une seule page parle, il n'y a pas de
   bande d'onglets — une bande d'un onglet n'est pas une bande.
 
+- **La barre se souvient de ce qu'on vient de lire, et dit contre quoi
+  elle lit.** Elle oubliait tout à chaque frappe : au comptoir on compare
+  deux produits — celui de l'ordonnance et celui que le médecin propose —
+  et taper le second effaçait le premier, qu'il fallait retaper de
+  mémoire. Les six dernières fiches lues se montrent sur une question
+  vide, c'est-à-dire là où il n'y avait qu'une invite ; Échap efface la
+  question, donc il ramène à cette rangée et devient un retour en
+  arrière. Six, parce qu'au-delà ce n'est plus « la précédente » mais un
+  journal, et un journal se cherche plutôt qu'il ne se montre.
+
+  Et la tête porte enfin les **deux chiffres que les pastilles lisent** :
+  l'âge et la clairance du dossier. On lisait « Rein · dépend du DFG »
+  sans savoir si le dossier en portait un ; le chiffre absent se voit
+  maintenant à sa place vide, ce qui est la réponse.
 - **Une page « Dossier » : l'ordonnance ouverte, et une ligne cliquée
   devient la question.** C'est le geste de la révision au comptoir —
   descendre une ordonnance en posant la même question à chaque ligne —

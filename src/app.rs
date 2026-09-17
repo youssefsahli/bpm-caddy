@@ -9619,6 +9619,28 @@ pub struct App {
     /// affichait un sans dire qu'il y en avait trois — ni moyen de
     /// corriger. Les flèches marchent dans cette liste.
     companion_pick: usize,
+    /// Les dernières fiches lues, la plus récente d'abord.
+    ///
+    /// **La barre oubliait tout à chaque frappe.** Au comptoir on
+    /// compare deux produits — celui de l'ordonnance et celui que le
+    /// médecin propose — et taper le second effaçait le premier : il
+    /// fallait le retaper pour y revenir, en se souvenant de son
+    /// orthographe. Elle se montre sur une question vide, c'est-à-dire
+    /// là où il n'y avait qu'une invite, et Échap devient donc « revenir
+    /// en arrière ».
+    ///
+    /// Bornée à [`Self::COMPANION_SEEN`] : au-delà ce n'est plus ce
+    /// qu'on vient de lire, c'est un historique, et un historique se
+    /// cherche plutôt qu'il ne se montre.
+    companion_seen: Vec<(i64, String)>,
+    /// La démonstration doit-elle garnir cette liste à l'ouverture ?
+    ///
+    /// L'historique se construit **en lisant**, et une capture ne lit
+    /// rien : sans cela, la barre vide ne se montrerait jamais que sous
+    /// sa forme d'avant, celle qui ne porte qu'une invite. Les fiches
+    /// sont prises dans la base — ce sont de vraies lignes, pas des
+    /// noms inventés — et le drapeau se consomme à la première image.
+    companion_seen_seed: bool,
     /// La page de la réponse : voir [`CompanionPage`].
     ///
     /// Gardée d'une fiche à l'autre, et bornée à ce que la fiche lue
@@ -10362,7 +10384,7 @@ impl App {
                         // ne montre jamais la puce du rein qui conclut.
                         Ok(
                             "companion" | "companion_poso" | "companion_conseils"
-                            | "companion_soins" | "companion_dossier",
+                            | "companion_soins" | "companion_dossier" | "companion_vide",
                         ) => {
                             let pick = session
                                 .patients
@@ -11037,12 +11059,21 @@ impl App {
             // tapée entière elle n'en rend qu'une, et la rangée des
             // autres réponses — celle que les flèches parcourent — ne se
             // dessine alors dans aucune capture.
-            companion_query: if start_view.starts_with("companion") {
+            // **La barre vide est une forme, et elle en a deux.** Sans
+            // rien de lu elle n'a que son invite ; après deux fiches
+            // elle montre ce qu'on vient de lire, et c'est la seconde
+            // qu'aucune capture ne produirait — l'historique se
+            // construit en lisant, et une capture ne lit rien.
+            companion_query: if start_view.starts_with("companion")
+                && start_view != "companion_vide"
+            {
                 std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "eliq".to_owned())
             } else {
                 String::new()
             },
             companion_pick: 0,
+            companion_seen: Vec::new(),
+            companion_seen_seed: start_view == "companion_vide",
             companion_page: match start_view.as_str() {
                 "companion_poso" => 1,
                 "companion_conseils" => 2,
@@ -48075,6 +48106,14 @@ impl App {
         ),
     ];
 
+    /// Combien de fiches lues la barre garde sous la main.
+    ///
+    /// Six : ce qu'on vient de regarder pendant un appel téléphonique,
+    /// pas un journal. Au-delà, ce n'est plus « la précédente », c'est
+    /// une liste qu'il faut lire — et lire une liste pour retrouver une
+    /// fiche, c'est ce que le champ fait déjà, mieux.
+    const COMPANION_SEEN: usize = 6;
+
     /// Ce que la réponse garde quoi qu'il arrive, **en lignes**.
     ///
     /// Une : le nom de la fiche lue. Le plafond posé sur la rangée des
@@ -49103,6 +49142,23 @@ impl App {
                 go = Some(CompanionGo::Card(d.id));
             }
         }
+        // La liste garnie une fois, pour la démonstration : voir
+        // `companion_seen_seed`. Les noms viennent de la base, et si la
+        // base ne les porte pas la liste reste vide plutôt que de
+        // montrer des fiches qui n'existent pas.
+        if self.companion_seen_seed {
+            self.companion_seen_seed = false;
+            self.companion_seen = ["Eliquis", "Zeclar", "Tahor"]
+                .into_iter()
+                .filter_map(|n| {
+                    session
+                        .drugs
+                        .iter()
+                        .find(|d| d.name.eq_ignore_ascii_case(n))
+                        .map(|d| (d.id, d.name.trim().to_owned()))
+                })
+                .collect();
+        }
         egui::CentralPanel::default().show(ctx, |ui| {
             // **La taille et le plancher sont posés ici, à la première
             // image dessinée**, et non au basculement : le plancher est
@@ -49166,11 +49222,31 @@ impl App {
             ui.horizontal(|ui| {
                 let (file, note) = match &session.viewing {
                     Some(p) => (
+                        // **Le nom, puis les deux chiffres que les puces
+                        // lisent.** L'âge et la clairance décident de ce
+                        // que « Rein » et « Âge » disent, et la barre les
+                        // taisait : on lisait « Rein · dépend du DFG »
+                        // sans savoir si le dossier en portait un. Le
+                        // chiffre absent se voit maintenant à sa place
+                        // vide, ce qui est la réponse.
                         trf(
                             "companion_file",
-                            format!("{} {}", p.last_name.trim(), p.first_name.trim())
-                                .trim()
-                                .to_owned(),
+                            [
+                                Some(
+                                    format!("{} {}", p.last_name.trim(), p.first_name.trim())
+                                        .trim()
+                                        .to_owned(),
+                                ),
+                                db::age_on(&p.birth_date, &session.today)
+                                    .map(|a| trf("companion_file_age", a)),
+                                session
+                                    .renal_dfg
+                                    .map(|v| trf("companion_file_dfg", format!("{v:.0}"))),
+                            ]
+                            .into_iter()
+                            .flatten()
+                            .collect::<Vec<_>>()
+                            .join(" · "),
                         ),
                         trf("companion_file_tooltip", session.patient_treats.len()),
                     ),
@@ -49352,6 +49428,32 @@ impl App {
                             )
                             .wrap(),
                         );
+                        // **Et ce qu'on vient de lire**, là où il n'y
+                        // avait qu'une invite. Échap efface la question ;
+                        // il ramène donc ici, et cette rangée fait de lui
+                        // un retour en arrière.
+                        if !self.companion_seen.is_empty() {
+                            ui.add_space(6.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("companion_seen"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(2.0);
+                            ui.horizontal_wrapped(|ui| {
+                                for (_, name) in &self.companion_seen {
+                                    if Self::companion_chip(ui, name, motif::trough(), false)
+                                        .on_hover_text(tr("companion_seen_tooltip"))
+                                        .clicked()
+                                    {
+                                        walk = Some(name.clone());
+                                    }
+                                }
+                            });
+                        }
                         return;
                     };
                     // Le nom, sur toutes les pages : c'est ce qui dit de
@@ -49417,6 +49519,19 @@ impl App {
                     });
             });
         });
+        // **Ce qu'on vient de lire est retenu**, la plus récente
+        // d'abord et sans doublon : relire une fiche la remonte au lieu
+        // de l'écrire deux fois. Comparé à la tête de liste et non à
+        // tout : c'est le rang lu qui change, pas la question, et une
+        // liste réécrite à chaque image coûterait pour rien.
+        if let Some(d) = read.1.hits.get(read.1.pick) {
+            if self.companion_seen.first().map(|(id, _)| *id) != Some(d.id) {
+                self.companion_seen.retain(|(id, _)| *id != d.id);
+                self.companion_seen
+                    .insert(0, (d.id, d.name.trim().to_owned()));
+                self.companion_seen.truncate(Self::COMPANION_SEEN);
+            }
+        }
         // La lecture est rendue au champ : c'est elle que l'image
         // suivante relira si la question n'a pas bougé.
         self.companion_read = Some(read);

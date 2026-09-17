@@ -243,6 +243,17 @@ dossier **et** de la fiche cherchée, **sur le chapitre que la pastille
 nomme** : c'est la question du téléphone passée entière, et non un écran
 vide à recomposer ni un écran de neuf chapitres ouvert au mauvais.
 
+La tête porte le nom du dossier ouvert **et les deux chiffres que les
+pastilles lisent** : l'âge et la clairance. Sans eux on lisait « Rein ·
+dépend du DFG » sans savoir si le dossier en portait un ; le chiffre
+absent se voit maintenant à sa place vide, ce qui est la réponse.
+
+Et sur une question vide, la barre montre **les dernières fiches lues**.
+Au comptoir on compare deux produits — celui de l'ordonnance et celui
+que le médecin propose — et taper le second effaçait le premier : Échap
+efface la question, donc il ramène à cette rangée, et il devient un
+retour en arrière.
+
 Un code-barres n'est pas un nom qu'on n'aurait pas trouvé, et la barre
 le dit plutôt que de répondre « aucun résultat ». Aucune fiche ne porte
 de code : le seul lien entre un code et une boîte est celui qu'un humain
