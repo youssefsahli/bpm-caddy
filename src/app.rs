@@ -9585,6 +9585,30 @@ pub struct App {
     /// l'usage : la fenêtre dont tout l'objet est d'être petite était
     /// la seule qu'on ne regardait jamais petite.
     companion_sized: bool,
+    /// La fenêtre était-elle maximisée, ou plein écran, avant la barre ?
+    ///
+    /// **Une fenêtre maximisée ne se redimensionne pas** : c'est le
+    /// gestionnaire qui tient sa taille, et `InnerSize` y est jetée sans
+    /// un mot. Sur un poste où l'application est maximisée — c'est-à-dire
+    /// un poste de comptoir — F9 laissait donc la fenêtre pleine, posée
+    /// au-dessus des autres applications : tout sauf un compagnon.
+    ///
+    /// Retenu pour le retour, parce qu'on rend un **état** et non des
+    /// pixels : une fenêtre remise à la taille de l'écran n'est pas une
+    /// fenêtre maximisée — elle a des bords, elle se déplace, elle
+    /// recouvre la barre des tâches.
+    companion_full: Option<(bool, bool)>,
+    /// Faut-il dire, sur la sortie d'erreur, ce que devient la fenêtre ?
+    ///
+    /// **Une fenêtre maximisée est une forme qu'aucune capture ne
+    /// montre** : c'est le compositeur qui en décide, et les deux passes
+    /// de balayage tournent sans compositeur. `scripts/maximized.sh` en
+    /// monte un — et un harnais qui ne rapporte rien ne prouve rien.
+    ///
+    /// Lu **une fois**, à la construction, avec le crochet qui ouvre
+    /// cette forme : une variable d'environnement relue à chaque image
+    /// serait un appel système soixante fois par seconde.
+    shape_trace: bool,
     /// Ce qu'on tape dans le compagnon.
     companion_query: String,
     /// Laquelle des fiches qui répondent est celle dont on parle.
@@ -10987,6 +11011,8 @@ impl App {
             companion: start_view == "companion",
             companion_was: None,
             companion_sized: false,
+            companion_full: None,
+            shape_trace: std::env::var("BPM_CADDY_MAXIMIZED").is_ok(),
             // Ouvert par sa clé, le compagnon porte déjà une question :
             // une barre vide n'exerce ni la recherche, ni la phrase, ni
             // le bouton qui ouvre la fiche. `BPM_CADDY_DRUG` la choisit,
@@ -48041,6 +48067,24 @@ impl App {
     /// texte qui perdrait la ligne.
     const COMPANION_ANSWER_LINES: f32 = 1.0;
 
+    /// Ce que devient la fenêtre, pour le harnais qui la regarde.
+    ///
+    /// Muet sauf sous `BPM_CADDY_MAXIMIZED` — voir [`Self::shape_trace`]
+    /// et `scripts/maximized.sh`. Ce que la ligne porte est exactement
+    /// ce qu'on ne peut lire nulle part ailleurs : l'**état** de la
+    /// fenêtre, que le compositeur tient et que l'application subit.
+    fn trace_shape(&self, ctx: &egui::Context) {
+        if !self.shape_trace {
+            return;
+        }
+        eprintln!(
+            "companion={} rect={:?} max={:?}",
+            self.companion,
+            ctx.screen_rect().size(),
+            ctx.input(|i| i.viewport().maximized)
+        );
+    }
+
     /// Réduire la fenêtre à la barre, ou la rendre.
     ///
     /// Le plancher de taille est déplacé avec elle : la fenêtre est
@@ -48067,8 +48111,26 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
                 960.0, 640.0,
             )));
-            if let Some(size) = self.companion_was.take() {
-                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            // **On rend l'état, pas les pixels.** Une fenêtre qu'on
+            // remet à la taille de l'écran n'est pas une fenêtre
+            // maximisée : elle a des bords, elle se déplace, elle
+            // recouvre la barre des tâches. Quand F9 a dû démaximiser
+            // pour se faire petit, c'est « maximisée » qu'il rend.
+            match self.companion_full.take() {
+                Some((maximized, fullscreen)) => {
+                    if maximized {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+                    }
+                    if fullscreen {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(true));
+                    }
+                    self.companion_was = None;
+                }
+                None => {
+                    if let Some(size) = self.companion_was.take() {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+                    }
+                }
             }
         }
     }
@@ -48701,12 +48763,50 @@ impl App {
             // plancher deviné, lui, laissait descendre la barre sous ce
             // qu'elle sait dessiner.
             if !self.companion_sized {
-                self.companion_sized = true;
-                let floor = Self::companion_floor(ui);
-                ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(floor));
-                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
-                    egui::Vec2::from(Self::COMPANION_SIZE).max(floor),
-                ));
+                // **Une fenêtre maximisée ne se redimensionne pas.**
+                // C'est le gestionnaire de fenêtres qui tient sa taille,
+                // pas l'application : sous X11 comme sous Wayland,
+                // `InnerSize` sur une fenêtre maximisée est jetée sans
+                // un mot. Sur un poste où l'application est maximisée —
+                // c'est-à-dire sur un poste de comptoir — F9 laissait
+                // donc la fenêtre pleine, posée au-dessus des autres :
+                // tout sauf un compagnon.
+                //
+                // **Et démaximiser demande son image.** Les deux ordres
+                // envoyés dans la même image se marchent dessus : le
+                // gestionnaire reçoit la taille pendant qu'il est encore
+                // maximisé, et la jette comme avant. On démaximise, on
+                // laisse passer l'image, et la taille se pose à la
+                // suivante — la condition s'éteint d'elle-même dès que
+                // la fenêtre est rendue, il n'y a donc pas de boucle.
+                let full = ctx.input(|i| {
+                    (
+                        i.viewport().maximized.unwrap_or(false),
+                        i.viewport().fullscreen.unwrap_or(false),
+                    )
+                });
+                if full.0 || full.1 {
+                    // Ce qu'il faudra rendre : la fenêtre était dans un
+                    // état, pas seulement d'une taille. La remettre à
+                    // ses pixels d'avant donnerait une fenêtre grande
+                    // comme l'écran et **pas** une fenêtre maximisée —
+                    // ce qui se voit au premier déplacement.
+                    self.companion_full = Some(full);
+                    if full.1 {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Fullscreen(false));
+                    }
+                    if full.0 {
+                        ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(false));
+                    }
+                    ctx.request_repaint();
+                } else {
+                    self.companion_sized = true;
+                    let floor = Self::companion_floor(ui);
+                    ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(floor));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
+                        egui::Vec2::from(Self::COMPANION_SIZE).max(floor),
+                    ));
+                }
             }
             // **La tête dit le dossier, et non le nom de la fenêtre.**
             // « Compagnon — F9 » répétait ce que F9 venait de faire, sur
@@ -49541,6 +49641,7 @@ impl eframe::App for App {
         // pixels — la seule forme qu'il n'a jamais à l'usage. La taille
         // d'avant est retenue comme au basculement, pour que F9 la
         // rende.
+        self.trace_shape(ctx);
         if self.companion && self.companion_was.is_none() {
             self.companion_was = Some(ctx.screen_rect().size());
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(

@@ -1647,6 +1647,16 @@ add clicking and typing; it is not the price of entry.
   fifth line of a menu is not one), and it is also why the smoke test
   has to open it by key: nothing else would.
 - `BPM_CADDY_WINDOW=1280x1100` — open the window at that size
+- `BPM_CADDY_MAXIMIZED=1` — open the window **maximized**, which is a
+  shape and not a size. `smoke.sh` and `eyeball.sh` run under an Xvfb
+  with **no window manager**: nothing is ever maximized there, and a
+  size request is therefore always honoured. On a real post it is the
+  opposite — the window manager owns the size of a maximized window and
+  throws the request away — and that is how F9 left the window full
+  instead of making it a bar, on the one kind of post where the
+  application is always maximized: a counter. `scripts/maximized.sh`
+  is the harness (it needs a compositor, so it is deliberately outside
+  the two sweep scripts, which must stay dependency-free)
 - `companion` (F9) is the window **shrunk to a bar and put on top**, not
   a second window. Opened by its
   view key it now takes that size too — it used to be a flag and

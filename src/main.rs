@@ -91,6 +91,17 @@ fn main() -> eframe::Result {
         viewport: egui::ViewportBuilder::default()
             .with_inner_size(window_size())
             .with_min_inner_size([960.0, 640.0])
+            // **La fenêtre maximisée est une forme, et aucune passe ne
+            // la produisait.** `smoke.sh` et `eyeball.sh` tournent sous
+            // un Xvfb sans gestionnaire de fenêtres : rien n'y est
+            // jamais maximisé, et une demande de taille y est toujours
+            // honorée. Sur un poste réel, c'est l'inverse — le
+            // gestionnaire tient la taille d'une fenêtre maximisée et
+            // jette la demande —, et c'est ainsi que F9 laissait la
+            // fenêtre pleine au lieu d'en faire une barre. Le crochet
+            // rend cette forme atteignable, comme `BPM_CADDY_WINDOW`
+            // rend les autres.
+            .with_maximized(std::env::var("BPM_CADDY_MAXIMIZED").is_ok())
             .with_icon(motif::icon())
             .with_title("BPM-Caddy"),
         ..Default::default()
