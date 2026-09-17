@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Ce qui arrête passe devant.** Les pastilles étaient rangées dans
+  l'ordre où l'on lit les tables au comptoir, et cet ordre supposait
+  qu'on les voie toutes. À `text_scale = 1,6` le pli de la réponse tombe
+  après la troisième : une pastille rouge pouvait se trouver dessous
+  pendant que deux pastilles calmes tenaient le haut — et une alerte
+  sous le pli est une alerte manquée. Elles descendent maintenant du
+  plus pressant au plus calme.
+
+  Le tri est **stable**, ce qui garde l'autre règle intacte : à ton égal,
+  ce que le dossier seul peut répondre passe toujours devant ce qui ne
+  regarde que la fiche.
+
 ## [0.211.1] - 2026-09-17
 
 ### Changed

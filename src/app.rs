@@ -50880,6 +50880,17 @@ fn companion_signals(
             goes: CompanionWhere::Cross(DdiSection::Elderly),
         });
     }
+    // **Ce qui arrête passe devant.** Les puces étaient rangées dans
+    // l'ordre où on lit les tables au comptoir, et cet ordre supposait
+    // qu'on les voie toutes. À `text_scale = 1,6` le pli tombe après la
+    // troisième : une puce rouge pouvait se trouver dessous pendant que
+    // deux puces calmes tenaient le haut, et une alerte sous le pli est
+    // une alerte manquée.
+    //
+    // Le tri est **stable** : à ton égal, l'ordre des tables est celui
+    // d'avant — ce que le dossier seul peut répondre passe toujours
+    // devant ce qui ne regarde que la fiche.
+    out.sort_by_key(|s| std::cmp::Reverse(s.tone.urgency()));
     out
 }
 
@@ -57003,6 +57014,60 @@ mod tests {
         );
         // Et une ligne que rien ne nomme ne porte rien.
         assert_eq!(loud.tone("Autre chose"), None);
+    }
+
+    /// **Ce qui arrête passe devant, et à ton égal l'ordre des tables
+    /// ne bouge pas.**
+    ///
+    /// Les pastilles étaient rangées dans l'ordre où l'on lit les tables
+    /// au comptoir, et cet ordre supposait qu'on les voie toutes. À
+    /// `text_scale = 1,6` le pli de la réponse tombe après la
+    /// troisième : une pastille rouge pouvait se trouver dessous pendant
+    /// que deux pastilles calmes tenaient le haut, et une alerte sous le
+    /// pli est une alerte manquée.
+    ///
+    /// Le tri est **stable**, ce qui garde l'autre règle intacte : à ton
+    /// égal, ce que le dossier seul peut répondre passe toujours devant
+    /// ce qui ne regarde que la fiche.
+    #[test]
+    fn the_loudest_companion_chips_come_first() {
+        use crate::db::Drug;
+        // Une fiche qui fait parler des tables de plusieurs tons : le
+        // Stagid du dossier de démonstration en est un — doublon (arrêt)
+        // et écrasement (calme) —, et on le compose ici à la main pour
+        // que le test ne dépende pas du semis.
+        let glucophage = Drug {
+            id: 1,
+            name: "Glucophage".to_owned(),
+            dci: "metformine".to_owned(),
+            class: "biguanide".to_owned(),
+            ..Drug::default()
+        };
+        let stagid = Drug {
+            id: 2,
+            name: "Stagid".to_owned(),
+            dci: "metformine".to_owned(),
+            class: "biguanide".to_owned(),
+            ..Drug::default()
+        };
+        let signals =
+            super::companion_signals(&stagid, std::slice::from_ref(&glucophage), None, None, &[]);
+        assert!(
+            signals.len() >= 2,
+            "il faut plusieurs tons pour que l'ordre veuille dire quelque chose"
+        );
+        let urgencies: Vec<u8> = signals.iter().map(|s| s.tone.urgency()).collect();
+        assert!(
+            urgencies.windows(2).all(|w| w[0] >= w[1]),
+            "les pastilles ne descendent pas du plus pressant au plus calme : {urgencies:?}"
+        );
+        // Et la première est bien celle qui arrête : c'est elle qu'on
+        // doit voir sans dérouler.
+        assert!(
+            signals[0].chip.starts_with("Doublon"),
+            "{}",
+            signals[0].chip
+        );
     }
 
     /// **Le dossier porte-t-il déjà cette molécule, sous un autre nom ?**

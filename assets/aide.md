@@ -236,6 +236,11 @@ les cytochromes, « peut-on écraser ? », la grossesse et l'allaitement,
 ce que la clairance du dossier change, et ce que l'âge change — l'âge est au dossier depuis le jour où la fiche a été créée, et
 c'est bien pour cela que personne ne le regarde.
 
+**Ce qui arrête passe devant.** Les pastilles descendent du plus
+pressant au plus calme, et à ton égal l'ordre des tables ne bouge pas :
+sur une barre où le pli tombe après la troisième, une alerte rangée
+quatrième est une alerte manquée.
+
 Une table qui n'a rien à dire ne dessine pas de pastille : une rangée de
 « à vérifier » ne signale rien et apprend à ne plus regarder la bande.
 Quand elles se taisent toutes, une phrase le dit — **le silence n'est
