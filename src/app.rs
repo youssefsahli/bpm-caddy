@@ -48898,7 +48898,15 @@ impl App {
                         .collect::<Vec<_>>()
                         .join("  ·  "),
                 );
+                // Pour une insuline, ses heures passent devant la prose
+                // comme sur la page — une courbe ne se colle pas, ses
+                // heures si.
+                if let Some(p) = crate::insulin::for_card(&d.name, &d.dci) {
+                    part(tr("companion_insulin"), &Self::insulin_hours(p));
+                    part(tr("companion_insulin_note"), p.note);
+                }
                 part(tr("mono_f_dosage"), &d.dosage);
+                part(tr("mono_f_forms"), &d.forms);
                 for line in &read.poso {
                     let mut said =
                         format!("{} : {}", line.indication.trim(), line.posologie.trim());
@@ -48918,6 +48926,8 @@ impl App {
                 part(tr("drug_sec_ci"), &d.contraindications);
                 part(tr("drug_sec_adverse"), &d.adverse);
                 part(tr("drug_sec_monitoring"), &d.monitoring);
+                part(tr("drug_sec_toxicity"), &d.toxicity);
+                part(tr("drug_antidote"), &d.antidote);
             }
             // La page du dossier ne copie pas l'ordonnance de quelqu'un :
             // une liste de traitements nominative sortie d'ici finirait
@@ -49150,6 +49160,31 @@ impl App {
     /// est *quand* elle agit, pas combien d'insuline circule — c'est ce
     /// qui rend le pic de l'après-midi d'une NPH comparable à la ligne
     /// plate d'une glargine.
+    /// Les heures d'une insuline, en une phrase.
+    ///
+    /// **Écrite une fois** : la page la dessine et le presse-papier la
+    /// copie. Une courbe ne se colle pas dans le logiciel de comptoir ;
+    /// ses heures, si — et deux écritures de la même phrase finiraient
+    /// par ne plus dire la même.
+    fn insulin_hours(p: &crate::insulin::Profile) -> String {
+        let hours = |m: u32| format!("{} h {:02}", m / 60, m % 60);
+        match p.peak_min {
+            Some((a, b)) => trn(
+                "companion_insulin_peak",
+                &[
+                    &hours(p.onset_min),
+                    &hours(a),
+                    &hours(b),
+                    &hours(p.duration_min),
+                ],
+            ),
+            None => trn(
+                "companion_insulin_flat",
+                &[&hours(p.onset_min), &hours(p.duration_min)],
+            ),
+        }
+    }
+
     fn companion_insulin(ui: &mut egui::Ui, p: &crate::insulin::Profile) {
         ui.add_space(4.0);
         ui.add(
@@ -49178,23 +49213,10 @@ impl App {
         // Ce que la courbe ne dit pas en chiffres : le début, le pic et
         // la fin, écrits sous elle. Une forme sans ses heures se lit
         // « ça monte puis ça descend », ce que tout le monde sait.
-        let hours = |m: u32| format!("{} h {:02}", m / 60, m % 60);
-        let said = match p.peak_min {
-            Some((a, b)) => trn(
-                "companion_insulin_peak",
-                &[
-                    &hours(p.onset_min),
-                    &hours(a),
-                    &hours(b),
-                    &hours(p.duration_min),
-                ],
-            ),
-            None => trn(
-                "companion_insulin_flat",
-                &[&hours(p.onset_min), &hours(p.duration_min)],
-            ),
-        };
-        ui.add(egui::Label::new(egui::RichText::new(said).size(motif::pt(ui, 11.0))).wrap());
+        ui.add(
+            egui::Label::new(egui::RichText::new(Self::insulin_hours(p)).size(motif::pt(ui, 11.0)))
+                .wrap(),
+        );
         Self::companion_part(ui, tr("companion_insulin_note"), p.note);
     }
 
@@ -57719,6 +57741,61 @@ mod tests {
         // Et un nom qui répond garde la main : la prose est un recours,
         // pas une seconde recherche qui doublerait la première.
         assert!(!super::companion_hits(base, "zorglubine").is_empty());
+    }
+
+    /// **Tout ce que les pages dessinent, le presse-papier le copie.**
+    ///
+    /// C'est la règle que `companion_clip` porte dans son nom, et elle
+    /// s'est détendue trois fois en une journée : un champ ajouté à une
+    /// page n'a aucune raison de tomber s'il manque à la copie — les
+    /// deux sont deux écritures de la même liste. Quatre manquaient
+    /// quand ce test a été écrit : les formes, la marge thérapeutique,
+    /// l'antidote, et les heures d'une insuline.
+    ///
+    /// Le test lit le texte du fichier plutôt que le résultat, parce que
+    /// c'est la **liste** qui diverge et non une phrase : les pages
+    /// intitulent leurs paragraphes avec `companion_part(ui, tr(…))` et
+    /// la copie avec `part(tr(…))`, et ces deux ensembles doivent être
+    /// le même.
+    #[test]
+    fn everything_the_companion_pages_draw_is_what_it_copies() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Les intitulés que les pages dessinent.
+        let mut drawn: Vec<&str> = SOURCE
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix("Self::companion_part(ui, tr(\""))
+            .filter_map(|rest| rest.split('"').next())
+            .collect();
+        drawn.sort_unstable();
+        drawn.dedup();
+        assert!(
+            drawn.len() >= 8,
+            "les pages en dessinent {} : le test ne lit plus la bonne forme d'appel",
+            drawn.len()
+        );
+        // **Et le corps de la copie, lu d'un bloc.** Une clé peut y être
+        // écrite sur sa propre ligne — `rustfmt` coupe où il veut —, si
+        // bien qu'une lecture ligne à ligne en manquerait une qui est
+        // bien là. C'est le même piège que celui qu'on chasse ici, une
+        // fois de plus dans le filet.
+        let lines: Vec<&str> = SOURCE.lines().collect();
+        let start = lines
+            .iter()
+            .position(|l| l.trim_start().starts_with("fn companion_clip("))
+            .expect("la fonction qui copie");
+        let end = lines[start + 1..]
+            .iter()
+            .position(|l| l.starts_with("    fn ") || l.starts_with("    pub fn "))
+            .map_or(lines.len(), |k| start + 1 + k);
+        let copied = lines[start..end].join("\n");
+        let missing: Vec<&&str> = drawn
+            .iter()
+            .filter(|k| !copied.contains(&format!("tr(\"{k}\"")))
+            .collect();
+        assert!(
+            missing.is_empty(),
+            "dessinés par une page et absents du presse-papier : {missing:?}"
+        );
     }
 
     /// **Ce que la barre copie est ce qu'elle lit**, page comprise.

@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Quatre champs de plus que le presse-papier ne copiait pas** : les
+  formes et dosages disponibles, la marge thérapeutique, l'antidote, et
+  les heures d'une insuline. La règle que `companion_clip` porte dans
+  son nom — ce qui est copié est ce qui est lu — s'était détendue une
+  fois par ajout de contenu, sans qu'aucun test tombe : une page et sa
+  copie sont deux écritures de la même liste.
+
+  `everything_the_companion_pages_draw_is_what_it_copies` les tient
+  désormais ensemble, en lisant le texte du fichier. Il mord : retirer
+  une ligne de la copie le fait tomber, en nommant le champ. Et les
+  heures d'une insuline sont écrites une fois pour les deux — une courbe
+  ne se colle pas dans le logiciel de comptoir, ses heures si.
+
 ## [0.217.0] - 2026-09-17
 
 ### Added
