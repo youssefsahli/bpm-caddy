@@ -32,6 +32,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   reste** : une date proche serait bonne puis mauvaise selon le jour de
   la capture, et l'état qu'il faut regarder est celui qui arrête.
 
+- **Et la boîte que le registre connaît ouvre sur elle.** Il existe un
+  lien code-produit dans cette application, un seul : celui qu'un humain
+  a posé au registre des stupéfiants en présentant la boîte. C'est le
+  plus sûr qui soit — un répertoire recopié est faux le jour où un
+  titulaire d'AMM reconditionne — et c'est exactement celui dont on a
+  besoin la boîte à la main. La barre le lit (les codes appris sont déjà
+  en session, aucune requête n'est ajoutée), **nomme le produit** — « ce
+  code a été appris » obligerait à ouvrir le registre pour savoir de quoi
+  il s'agit, alors que ce nom est la seule chose que ce lien apporte — et
+  « Délivrance » ouvre le registre **sur lui**.
+
+  La mémoïsation de la barre porte désormais la révision du registre :
+  un code appris sur un autre poste ne bouge ni la révision des fiches ni
+  celle du dossier, et la barre aurait continué de répondre « personne ne
+  porte ce code » pour un code que le registre porte. C'est la panne de
+  la clairance oubliée, sur une troisième donnée — et la raison pour
+  laquelle on se souvient toujours contre **la question**.
+
+  Deux produits portant un même code sont lus comme inconnus plutôt que
+  comme l'un des deux : c'est la règle de `codebar::resolve`, et la barre
+  n'a aucune raison de la desserrer. Un code que personne n'a appris
+  ouvre quand même le registre — le scan est une *proposition
+  d'apprendre*, et c'est là qu'on l'accepte, en présentant la boîte, ce
+  que la barre ne peut pas faire à la place de quelqu'un.
+
+### Fixed
+- **L'écran qui affiche un numéro de lot n'avait pas de « Copier ».** Le
+  bouton était accroché à la fiche lue ; un scan n'en rend aucune, si
+  bien que le seul écran de la barre d'où l'on recopie quelque chose —
+  sur un rappel de lot, dans le logiciel de comptoir — était le seul à ne
+  pas le proposer. La copie est écrite depuis les **mêmes lignes que le
+  dessin**, jamais recomposée : deux écritures d'une lecture finissent
+  par diverger, et c'est la copie qui ment, puisque personne ne la relit
+  à l'écran.
+
 ## [0.218.0] - 2026-09-17
 
 ### Added

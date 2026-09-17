@@ -1820,7 +1820,15 @@ add clicking and typing; it is not the price of entry.
   is when a reading is **unsure of itself** — a lot nothing closed is
   read at its widest, an unknown AI stops the read — since a wrong lot
   shown as certain is worse than no lot at all: it is the one copied onto
-  a recall notice
+  a recall notice. **And the one code-to-product link that does exist
+  here is used**: the officine taught the register a few, box in hand,
+  and those codes are already in the session — so the bar names the
+  followed product and « Délivrance » opens the register *on it*, with
+  no query added. Two products on one code read as unknown rather than
+  as either (`codebar::resolve`'s rule, not loosened here), and an
+  unlearnt code still opens the register — the scan is a *proposal to
+  learn*, accepted there with the box in hand, which is not a gesture
+  software performs for anyone
 - `BPM_CADDY_DRUG_EDIT=1` — with `START_VIEW=drug_card`, land on the
   editable form rather than the monograph
 - `BPM_CADDY_CARNET=<clé>` — with `START_VIEW=carnets`, open that

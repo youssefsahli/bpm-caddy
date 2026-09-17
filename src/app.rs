@@ -3261,6 +3261,18 @@ struct Session {
     /// Bumped whenever one of the catalogues the jump box searches — the
     /// codex, the dispositifs, the protocoles — is re-read.
     catalog_rev: u64,
+    /// Bumped whenever the register is re-read, **for the memo that
+    /// reads the codes it has been taught**.
+    ///
+    /// La barre résout une boîte scannée contre `stup_codes`, et sa
+    /// lecture est mémorisée contre la question. Un code appris sur un
+    /// autre poste et rapporté par `resync` ne bouge ni `drugs_rev` ni
+    /// `file_rev` : sans celui-ci la barre continuerait de répondre
+    /// « personne ne porte ce code » pour un code que le registre porte
+    /// désormais. C'est la panne de la clairance oubliée, sur une
+    /// troisième donnée — et c'est pourquoi on se souvient toujours
+    /// contre **la question**, jamais contre une horloge.
+    stup_rev: u64,
     /// The last ranking of the jump box, and the question it answered.
     goto_hits: Vec<GotoHit>,
     goto_hits_key: Option<(String, usize, u64, u64, u64, u64)>,
@@ -4279,6 +4291,7 @@ impl Session {
             patients_rev: 0,
             watch_stale: true,
             catalog_rev: 0,
+            stup_rev: 0,
             goto_hits: Vec::new(),
             goto_hits_key: None,
             patient_hits: Vec::new(),
@@ -5500,6 +5513,7 @@ impl Session {
         // là qu'on demande une correction. Quarante lignes, parce que
         // c'est ce qu'on relit — le registre entier se lit par produit.
         self.stup_codes = self.db.stup_codes().unwrap_or_default();
+        self.stup_rev = self.stup_rev.wrapping_add(1);
         // Combien de pièces justifient chaque ligne : une passe sur les
         // pièces de l'officine, ici et pas au dessin. Une requête par
         // ligne dessinée serait quarante requêtes par image.
@@ -48888,6 +48902,24 @@ impl App {
     /// est un chiffre sans sujet.
     ///
     /// Pure, et testée comme telle : c'est du texte, pas du dessin.
+    /// Ce que la boîte scannée dit, collable.
+    ///
+    /// **L'écran qui affiche un numéro de lot est celui d'où on le
+    /// recopie** — sur un rappel de lot, dans le logiciel de comptoir —
+    /// et c'était le seul de la barre sans bouton « Copier » : il n'y a
+    /// pas de fiche lue, et le bouton était accroché à la fiche.
+    ///
+    /// Écrit depuis les **mêmes lignes que le dessin**, jamais recomposé
+    /// : deux écritures d'une lecture finissent par ne plus dire la même
+    /// chose, et c'est la copie qui ment, puisque personne ne la relit à
+    /// l'écran.
+    fn companion_box_clip(said: &[(String, String, BoxTone)]) -> String {
+        said.iter()
+            .map(|(label, value, _)| format!("{label} : {value}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     fn companion_clip(d: &Drug, read: &CompanionRead, page: Option<CompanionPage>) -> String {
         let mut out = d.name.trim().to_owned();
         let mut part = |label: &str, text: &str| {
@@ -49613,6 +49645,10 @@ impl App {
             // a changé. C'est la même panne que la clairance oubliée,
             // sur une donnée plus grosse.
             session.file_rev,
+            // **Et la révision du registre.** Voir `Session::stup_rev` :
+            // un code appris sur un autre poste ne bouge aucune des deux
+            // autres, et la boîte scannée resterait inconnue.
+            session.stup_rev,
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
         // **Une autre réponse se lit par son début.** La zone qui porte
@@ -49693,6 +49729,25 @@ impl App {
                     .collect::<Vec<_>>(),
                 found,
                 filed,
+                // Déjà en main : la session garde les codes appris et
+                // le résumé du registre, et `resync` relit les deux.
+                // Aucune requête n'est ajoutée ici — seulement le
+                // rapprochement des deux listes, qui font quelques
+                // dizaines de lignes et ne se refait qu'au changement de
+                // question.
+                &session
+                    .stup_codes
+                    .iter()
+                    .map(|(id, code)| {
+                        let label = session
+                            .stup_summary
+                            .iter()
+                            .find(|s| s.product.id == *id)
+                            .map(|s| s.product.label.clone())
+                            .unwrap_or_default();
+                        (*id, code.clone(), label)
+                    })
+                    .collect::<Vec<_>>(),
             );
             (key, look)
         });
@@ -49725,7 +49780,7 @@ impl App {
         // leur place et cessent de répondre.
         if let Some(i) = keyed {
             if let Some((_, _, act)) = Self::COMPANION_ACTS.get(i) {
-                go = act.go(read.1.hits.get(read.1.pick).map(|d| d.id));
+                go = act.go(read.1.hits.get(read.1.pick).map(|d| d.id), read.1.box_stup);
             }
         }
         // La liste garnie une fois, pour la démonstration : voir
@@ -49870,16 +49925,26 @@ impl App {
                     // rendent la fenêtre et ouvrent un écran, celui-ci
                     // ne quitte rien — et la rangée en prend déjà deux
                     // à `text_scale = 1,6`.
-                    if let Some(d) = read.1.hits.get(read.1.pick) {
+                    // **Et la boîte se copie comme une fiche.** Le
+                    // bouton était accroché à la fiche lue ; un scan
+                    // n'en rend aucune, si bien que l'écran qui affiche
+                    // un numéro de lot était le seul sans « Copier » —
+                    // alors que c'est précisément celui d'où on recopie.
+                    let copy = if read.1.hits.get(read.1.pick).is_some() {
+                        read.1.hits.get(read.1.pick).map(|d| {
+                            Self::companion_clip(d, &read.1, read.1.pages.get(page).copied())
+                        })
+                    } else if read.1.box_says.is_empty() {
+                        None
+                    } else {
+                        Some(Self::companion_box_clip(&read.1.box_says))
+                    };
+                    if let Some(text) = copy {
                         if motif::button(ui, tr("companion_copy"))
                             .on_hover_text(tr("companion_copy_tooltip"))
                             .clicked()
                         {
-                            ctx.copy_text(Self::companion_clip(
-                                d,
-                                &read.1,
-                                read.1.pages.get(page).copied(),
-                            ));
+                            ctx.copy_text(text);
                         }
                     }
                     // Le dossier prend ce qui reste de la rangée, et
@@ -50179,11 +50244,24 @@ impl App {
                             let card = read.1.hits.get(read.1.pick).map(|d| d.id);
                             for (label, note, act) in Self::COMPANION_ACTS {
                                 let on = !act.needs_card() || card.is_some();
+                                // **Le geste dit où il mène quand il le
+                                // sait.** « Délivrance » ouvre le
+                                // registre ; sur une boîte dont le
+                                // registre a appris le code, il l'ouvre
+                                // *sur ce produit*, et l'infobulle le
+                                // dit plutôt que de laisser la surprise
+                                // au clic.
+                                let note = match (act, read.1.box_stup) {
+                                    (CompanionAct::Stup, Some(_)) => {
+                                        tr("companion_stup_on_tooltip")
+                                    }
+                                    _ => tr(note),
+                                };
                                 if motif::button_enabled(ui, tr(label), on)
-                                    .on_hover_text(tr(note))
+                                    .on_hover_text(note)
                                     .clicked()
                                 {
-                                    go = act.go(card);
+                                    go = act.go(card, read.1.box_stup);
                                 }
                             }
                         });
@@ -50253,7 +50331,14 @@ impl App {
                         session.open_registres(RegistreTab::Pieces);
                     }
                 }
-                CompanionGo::Stup => {
+                CompanionGo::Stup(on) => {
+                    // Posé **avant** l'ouverture : `open_registres` ne
+                    // choisit un produit que lorsque rien n'est ouvert,
+                    // et c'est ce qui fait qu'un produit nommé ici passe
+                    // devant celui qu'il aurait pris par défaut.
+                    if on.is_some() {
+                        session.stup_open = on;
+                    }
                     session.open_registres(RegistreTab::Stupefiants);
                     session.stup_new_kind = crate::ordonnancier::Kind::Sortie;
                 }
@@ -50312,8 +50397,9 @@ enum CompanionAct {
 }
 
 impl CompanionAct {
-    /// Là où il mène, avec la fiche lue quand il en demande une.
-    fn go(self, card: Option<i64>) -> Option<CompanionGo> {
+    /// Là où il mène, avec la fiche lue quand il en demande une et le
+    /// produit suivi quand la boîte scannée en nomme un.
+    fn go(self, card: Option<i64>, stup: Option<i64>) -> Option<CompanionGo> {
         match self {
             CompanionAct::Card => card.map(CompanionGo::Card),
             // Depuis un bouton, aucun chapitre n'est nommé : on ouvre
@@ -50322,7 +50408,11 @@ impl CompanionAct {
             CompanionAct::Cross => card.map(|id| CompanionGo::Cross(id, None)),
             CompanionAct::Trod => Some(CompanionGo::Trod),
             CompanionAct::Scan => Some(CompanionGo::Scan),
-            CompanionAct::Stup => Some(CompanionGo::Stup),
+            // **Le registre sait ce que la boîte est, quand on le lui a
+            // appris.** Sinon il s'ouvre où il s'ouvrait, et c'est là
+            // qu'on le lui apprend — en présentant la boîte, ce que la
+            // barre ne peut pas faire à la place de quelqu'un.
+            CompanionAct::Stup => Some(CompanionGo::Stup(stup)),
         }
     }
 
@@ -50479,6 +50569,7 @@ enum CompanionWhere {
 /// dessin. Changer la vue au milieu d'une boucle d'affichage rend
 /// l'écran faux à l'image suivante, et ici cela redimensionnerait la
 /// fenêtre en cours de dessin.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CompanionGo {
     Card(i64),
     /// Le volet de biologie du dossier ouvert, sur l'onglet nommé :
@@ -50500,12 +50591,22 @@ enum CompanionGo {
     Cross(i64, Option<DdiSection>),
     Trod,
     Scan,
-    Stup,
+    /// Le registre des stupéfiants, **sur le produit suivi quand le scan
+    /// en nomme un**.
+    ///
+    /// Un code ne nomme aucun médicament ici — cette application ne
+    /// livre pas de répertoire CIP —, mais l'officine en a appris
+    /// quelques-uns au registre, en présentant la boîte. Ce lien-là
+    /// existe, il est le seul, et c'est exactement celui dont on a
+    /// besoin en tenant la boîte : `None` ouvre le registre, `Some`
+    /// l'ouvre sur le produit.
+    Stup(Option<i64>),
 }
 
 /// La question qui a produit une lecture du compagnon : ce qu'on tape,
 /// la fiche choisie parmi celles qui répondent, le dossier ouvert, sa
-/// clairance, la révision des fiches et celle du dossier.
+/// clairance, la révision des fiches, celle du dossier et celle du
+/// registre.
 ///
 /// **La clairance en fait partie bien qu'elle vienne du dossier.** Le
 /// numéro de dossier ne bouge pas quand un autre poste inscrit un DFG
@@ -50514,7 +50615,7 @@ enum CompanionGo {
 /// règle que ce fichier écrit pour toute mémoïsation — on se souvient
 /// contre **la question**, et le DFG est dans la question que
 /// `renal::read` reçoit.
-type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64);
+type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
@@ -50719,6 +50820,16 @@ struct CompanionRead {
     /// l'arithmétique sur une date, et elle n'a pas à se refaire
     /// soixante fois par seconde.
     box_says: Vec<(String, String, BoxTone)>,
+    /// Le produit suivi que ce scan désigne, quand l'officine lui a
+    /// appris ce code.
+    ///
+    /// **Le seul lien code-produit de cette application**, et il a été
+    /// posé par un humain tenant la boîte, au registre. Il vaut donc ce
+    /// que vaut ce geste-là, ce qui est beaucoup plus qu'un répertoire
+    /// recopié. `None` quand personne ne le porte : le scan est alors
+    /// une *proposition d'apprendre*, et c'est au registre qu'on
+    /// l'accepte — pas ici.
+    box_stup: Option<i64>,
     /// Ce que **le dossier** retient pour ce traitement : le dosage et
     /// la posologie, tels qu'ils y sont écrits.
     ///
@@ -50792,7 +50903,11 @@ enum BoxTone {
 /// - **Le code reste écrit même périmé.** C'est par lui qu'on retrouve
 ///   la boîte au registre ou chez le grossiste, et une alerte qui
 ///   remplace le renseignement oblige à rescanner.
-fn companion_box(s: &crate::codebar::Scanned, today: &str) -> Vec<(String, String, BoxTone)> {
+fn companion_box(
+    s: &crate::codebar::Scanned,
+    today: &str,
+    known: Option<&str>,
+) -> Vec<(String, String, BoxTone)> {
     let mut out = vec![(
         tr("companion_box_code").to_owned(),
         s.code.clone(),
@@ -50846,6 +50961,23 @@ fn companion_box(s: &crate::codebar::Scanned, today: &str) -> Vec<(String, Strin
             tr("companion_box_cut").to_owned(),
             tr("companion_box_cut_said").to_owned(),
             BoxTone::Doubt,
+        ));
+    }
+    if let Some(label) = known {
+        // **Écrit en dernier parce que c'est une piste, non un fait de
+        // la boîte.** Les lignes au-dessus se lisent *sur* la boîte ;
+        // celle-ci dit ce que le registre en sait, ce qui est d'un autre
+        // ordre — et ce que quelqu'un lui a appris en tenant cette
+        // boîte-là.
+        //
+        // **Et elle le nomme.** « Ce code a été appris » oblige à ouvrir
+        // le registre pour savoir de quoi il s'agit, alors que c'est la
+        // seule chose que ce lien apporte : le nom du produit qu'on
+        // tient.
+        out.push((
+            tr("companion_box_known").to_owned(),
+            trf("companion_box_known_said", label),
+            BoxTone::Plain,
         ));
     }
     out
@@ -50952,6 +51084,7 @@ fn companion_look(
     bio: &[crate::biology::Reading],
     found: Vec<String>,
     filed: (String, String),
+    taught: &[(i64, String, String)],
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -50959,9 +51092,31 @@ fn companion_look(
     let scanned = crate::codebar::read(query, today);
     // Ce que la boîte dit d'elle-même, composé une fois : voir
     // [`companion_box`].
+    // **Ce que le registre, lui, sait de cette boîte.** Deux produits
+    // portant un même code sont lus comme inconnus plutôt que comme
+    // l'un des deux : c'est la règle de `codebar::resolve`, et la barre
+    // n'a aucune raison de la desserrer.
+    let box_stup = scanned.as_ref().and_then(|s| {
+        let codes: Vec<(i64, &str)> = taught.iter().map(|(id, c, _)| (*id, c.as_str())).collect();
+        match crate::codebar::resolve(s, &codes) {
+            crate::codebar::Resolved::Known { stup_id } => Some(stup_id),
+            _ => None,
+        }
+    });
     let box_says = scanned
         .as_ref()
-        .map(|s| companion_box(s, today))
+        .map(|s| {
+            companion_box(
+                s,
+                today,
+                box_stup.and_then(|id| {
+                    taught
+                        .iter()
+                        .find(|(i, ..)| *i == id)
+                        .map(|(_, _, label)| label.as_str())
+                }),
+            )
+        })
         .unwrap_or_default();
     let pick = pick.min(hits.len().saturating_sub(1));
     let Some(card) = hits.get(pick).cloned() else {
@@ -50974,6 +51129,7 @@ fn companion_look(
             flag: String::new(),
             scanned,
             box_says,
+            box_stup,
             poso: Vec::new(),
             pages: Vec::new(),
             found,
@@ -51033,6 +51189,7 @@ fn companion_look(
         pick,
         scanned,
         box_says,
+        box_stup,
         poso,
         pages,
         found,
@@ -57269,6 +57426,7 @@ mod tests {
             &[],
             Vec::new(),
             <(String, String)>::default(),
+            &[],
         )
     }
 
@@ -57658,6 +57816,7 @@ mod tests {
             &[],
             Vec::new(),
             ("50 mg".to_owned(), "1 le matin".to_owned()),
+            &[],
         );
         assert!(
             filed.pages.contains(&CompanionPage::Posology),
@@ -57938,7 +58097,7 @@ mod tests {
         let said = |today: &str| {
             let s = crate::codebar::read(typed, today).expect("un DataMatrix valide se lit");
             assert_eq!(s.expiry, "2026-09-30", "le jour 00 est la fin du mois");
-            companion_box(&s, today)
+            companion_box(&s, today, None)
         };
         let tone = |v: &[(String, String, BoxTone)], label: &str| {
             v.iter()
@@ -57978,14 +58137,117 @@ mod tests {
         assert_eq!(t, BoxTone::Doubt, "lot non fermé : {over:?}");
         assert!(lot.contains("1234ABC"), "{lot}");
 
+        // **Et ce qui est affiché est ce qui se copie.** L'écran qui
+        // montre un numéro de lot est celui d'où on le recopie — sur un
+        // rappel de lot —, et la copie est écrite depuis les mêmes
+        // lignes que le dessin plutôt que recomposée : deux écritures
+        // d'une lecture finissent par diverger, et c'est la copie qui
+        // ment, puisque personne ne la relit à l'écran.
+        let copied = super::App::companion_box_clip(&over);
+        for (label, value, _) in &over {
+            assert!(copied.contains(label.as_str()), "{label} manque : {copied}");
+            assert!(copied.contains(value.as_str()), "{value} manque : {copied}");
+        }
+
         // Et une boîte sans péremption n'en invente pas une.
         let bare = crate::codebar::read("3400930000007", "2026-09-28").unwrap();
-        let plain = companion_box(&bare, "2026-09-28");
+        let plain = companion_box(&bare, "2026-09-28", None);
         assert!(
             !plain.iter().any(|(l, ..)| l == expiry),
             "aucune péremption n'a été scannée : {plain:?}"
         );
         assert_eq!(plain.len(), 1, "le code seul : {plain:?}");
+    }
+
+    /// Une boîte que le registre connaît ouvre **sur elle**.
+    ///
+    /// Un code ne nomme aucun médicament dans cette application : aucun
+    /// répertoire CIP n'y est livré, et c'est un choix — un répertoire
+    /// recopié est faux le jour où un titulaire d'AMM reconditionne. Il
+    /// existe pourtant un lien code-produit ici, un seul : celui qu'un
+    /// humain a posé au registre des stupéfiants en présentant la boîte.
+    /// C'est le plus sûr qui soit, et c'est exactement celui dont on a
+    /// besoin la boîte à la main.
+    ///
+    /// Trois choses tenues. Le produit appris est **nommé** et le geste
+    /// mène sur lui. Deux produits portant un même code sont lus comme
+    /// inconnus plutôt que comme l'un des deux — la règle de
+    /// `codebar::resolve`, que la barre n'a aucune raison de desserrer.
+    /// Et un code que personne n'a appris **ouvre quand même le
+    /// registre** : le scan est une proposition d'apprendre, et c'est là
+    /// qu'on l'accepte, en présentant la boîte — ce que la barre ne peut
+    /// pas faire à la place de quelqu'un.
+    #[test]
+    fn a_scanned_box_the_register_knows_opens_on_it() {
+        use super::{CompanionAct, CompanionGo};
+        let typed = "010340093000000717300500";
+        let code = "03400930000007";
+        // Aucune fiche : un GTIN cherché comme un nom ne rend rien, et
+        // c'est justement l'état où cette lecture-ci a lieu.
+        let look = |taught: &[(i64, String, String)]| {
+            super::companion_look(
+                Vec::new(),
+                &[],
+                None,
+                None,
+                "2026-09-16",
+                typed,
+                0,
+                Vec::new(),
+                &[],
+                &[],
+                Vec::new(),
+                <(String, String)>::default(),
+                taught,
+            )
+        };
+
+        // Appris : le produit est nommé, et le geste mène sur lui.
+        let known = look(&[(7, code.to_owned(), "Skenan LP 30 mg".to_owned())]);
+        assert_eq!(known.box_stup, Some(7));
+        // **Et le produit est nommé.** « Ce code a été appris »
+        // obligerait à ouvrir le registre pour savoir de quoi il
+        // s'agit, alors que le nom du produit qu'on tient est la seule
+        // chose que ce lien apporte.
+        assert!(
+            known
+                .box_says
+                .iter()
+                .any(|(l, v, _)| l == tr("companion_box_known") && v.contains("Skenan LP 30 mg")),
+            "{:?}",
+            known.box_says
+        );
+        assert_eq!(
+            CompanionAct::Stup.go(None, known.box_stup),
+            Some(CompanionGo::Stup(Some(7)))
+        );
+
+        // **Deux produits pour un code sont lus comme inconnus.** Le
+        // registre ne peut pas s'ouvrir sur l'un des deux au hasard, et
+        // la ligne qui l'annoncerait serait fausse une fois sur deux.
+        let two = look(&[
+            (7, code.to_owned(), "Skenan LP 30 mg".to_owned()),
+            (9, code.to_owned(), "Moscontin 10 mg".to_owned()),
+        ]);
+        assert_eq!(two.box_stup, None);
+        assert!(
+            !two.box_says
+                .iter()
+                .any(|(l, ..)| l == tr("companion_box_known")),
+            "{:?}",
+            two.box_says
+        );
+
+        // Et un code que personne n'a appris ouvre quand même le
+        // registre : c'est là qu'on le lui apprend.
+        let fresh = look(&[]);
+        assert_eq!(fresh.box_stup, None);
+        assert_eq!(
+            CompanionAct::Stup.go(None, fresh.box_stup),
+            Some(CompanionGo::Stup(None))
+        );
+        // Mais la boîte parle toujours d'elle-même, apprise ou non.
+        assert!(!fresh.box_says.is_empty());
     }
 
     #[test]
@@ -58145,6 +58407,7 @@ mod tests {
             &[],
             Vec::new(),
             <(String, String)>::default(),
+            &[],
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -58176,6 +58439,7 @@ mod tests {
                 &[],
                 Vec::new(),
                 ("5 mg".to_owned(), "matin et soir".to_owned()),
+                &[],
             ),
             Some(CompanionPage::Posology),
         );
@@ -58318,6 +58582,7 @@ mod tests {
             &[],
             Vec::new(),
             <(String, String)>::default(),
+            &[],
         );
         assert_eq!(
             read.pages,

@@ -325,6 +325,12 @@ inconnu, sont signalés comme tels : un lot faux affiché comme sûr est
 pire que pas de lot du tout, car c'est celui-là qu'on recopie sur un
 rappel de lot.
 
+Et si le registre a appris ce code — en présentant la boîte, ce qui est
+le seul lien code-produit de ce logiciel —, la barre nomme le produit
+suivi et « Délivrance » ouvre le registre **sur lui**. Sinon elle ouvre
+le registre où il s'ouvre : c'est là qu'on lui apprend le code, et ce
+n'est pas un geste qu'un logiciel fait à votre place.
+
 # Les entretiens
 
 Un acte porte sa thématique, son état, sa date, sa durée et les

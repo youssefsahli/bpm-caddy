@@ -42380,6 +42380,15 @@ mod tests {
                 let _ = db.update_stupefiant(&now, &was, "CL");
             }
         }
+        // **Le code de la boîte, appris au registre.** C'est le seul
+        // lien code-produit de cette application — aucun répertoire CIP
+        // n'est livré —, et il est posé par quelqu'un qui tient la
+        // boîte. La démonstration le porte parce que sans lui la barre
+        // scannée s'arrête à « personne ne porte ce code », qui est la
+        // moitié de ce qu'elle sait faire. Le GTIN est celui de
+        // `codebar`, dont la clé de contrôle est calculée à la main dans
+        // ce module-là.
+        let _ = db.teach_stup_code("03400930000007", skenan, &day(1, 12), "CL");
         write(skenan, "ENTREE", 28.0, day(1, 12), 0, 0.0);
         write(skenan, "SORTIE", 14.0, day(2, 3), pid, 0.0);
         write(skenan, "SORTIE", 14.0, day(3, 9), pid, 0.0);
