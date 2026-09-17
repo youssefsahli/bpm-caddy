@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La barre dit si le dossier porte déjà cette molécule, sous un autre
+  nom.** C'est l'erreur de délivrance la plus ordinaire : le médecin
+  propose un nom, l'ordonnance en porte un autre, et c'est la même
+  molécule — Doliprane et Dafalgan, Lasilix et furosémide. **Aucune des
+  huit tables ne le dit** : elles lisent des classes et des mots, pas
+  l'identité d'une molécule avec elle-même. C'est la seule lecture que
+  la barre fait pour son propre compte, et elle ne le peut que parce
+  qu'elle a l'ordonnance et la fiche cherchée sous la main en même
+  temps.
+
+  Sur la DCI et jamais sur le nom — deux présentations d'une même
+  molécule ont deux noms, c'est tout le problème —, repliée comme
+  partout ici, et une fiche sans DCI ne double personne : comparée sur
+  un vide, toutes les fiches muettes seraient doublons les unes des
+  autres.
+
+  La fiche **qui est** une ligne du dossier le dit aussi, mais
+  calmement : c'est un fait, pas une alerte, et c'est ce qui explique
+  les croisements d'à côté. Et la pastille mène à la page « Dossier » de
+  la barre, où la ligne en cause est listée — la lecture n'a de chapitre
+  nulle part ailleurs, puisque aucun écran ne la fait.
+
 ## [0.210.2] - 2026-09-17
 
 ### Fixed

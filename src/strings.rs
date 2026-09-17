@@ -1403,7 +1403,7 @@ livre = "Une phrase qui n'est plus livrée"
                         .filter(|l| l.trim().starts_with("goes: CompanionWhere::"))
                         .count()
                     {
-                        8 => "eight",
+                        9 => "nine",
                         n => panic!(
                             "le compagnon rapporte {n} tables : l'écrire en toutes \
                              lettres dans le README et ici"
@@ -1421,7 +1421,7 @@ livre = "Une phrase qui n'est plus livrée"
                         .filter(|l| l.trim().starts_with("goes: CompanionWhere::"))
                         .count()
                     {
-                        8 => "Huit",
+                        9 => "Neuf",
                         n => panic!(
                             "le compagnon rapporte {n} tables : l'écrire en toutes \
                              lettres dans le manuel et ici"

@@ -49382,6 +49382,10 @@ impl App {
         // changer la question au milieu d'une image rendrait la réponse
         // fausse pour le reste de celle-ci.
         let mut walk: Option<String> = None;
+        // La page demandée par une puce, posée après le dessin comme
+        // tout ce qui sort d'ici : tourner au milieu d'une image
+        // dessinerait la fin de la page qu'on quitte.
+        let mut turn: Option<usize> = None;
         // Entrée ouvre la fiche choisie : le geste le plus fréquent de
         // la barre, sur la touche qu'on presse déjà après avoir tapé.
         if enter {
@@ -49792,12 +49796,24 @@ impl App {
                         }
                         _ => {
                             if let Some(dest) = Self::companion_signals_page(ui, d, &read.1) {
-                                go = Some(match dest {
+                                match dest {
                                     CompanionWhere::Cross(section) => {
-                                        CompanionGo::Cross(d.id, Some(section))
+                                        go = Some(CompanionGo::Cross(d.id, Some(section)));
                                     }
-                                    CompanionWhere::Watch => CompanionGo::Watch,
-                                });
+                                    CompanionWhere::Watch => go = Some(CompanionGo::Watch),
+                                    // Une page de la barre elle-même :
+                                    // rien ne remonte, on tourne. La
+                                    // page est retrouvée par son rang
+                                    // dans **cette** fiche, qui n'a pas
+                                    // les mêmes que la précédente.
+                                    CompanionWhere::Page(want) => {
+                                        if let Some(i) =
+                                            read.1.pages.iter().position(|p| *p == want)
+                                        {
+                                            turn = Some(i);
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -49850,6 +49866,9 @@ impl App {
         // La lecture est rendue au champ : c'est elle que l'image
         // suivante relira si la question n'a pas bougé.
         self.companion_read = Some(read);
+        if let Some(i) = turn {
+            self.companion_page = i;
+        }
         if let Some(name) = walk {
             // La page reste celle du dossier : on descend l'ordonnance,
             // et retomber sur les signaux à chaque ligne obligerait à
@@ -50096,6 +50115,15 @@ enum CompanionWhere {
     Cross(DdiSection),
     /// L'onglet « À surveiller » du dossier ouvert.
     Watch,
+    /// Une autre page de la barre elle-même.
+    ///
+    /// Le doublon est la seule lecture que la barre fait pour son propre
+    /// compte : aucune table ne la porte, et aucun écran ne la montre —
+    /// elle regarde l'ordonnance du dossier et la fiche cherchée, ce que
+    /// seule cette fenêtre a sous la main en même temps. Elle mène donc
+    /// à la page qui liste cette ordonnance, où la ligne en cause est
+    /// marquée.
+    Page(CompanionPage),
 }
 
 /// Ce qu'un bouton du compagnon a demandé.
@@ -50615,6 +50643,47 @@ fn companion_signals(
                 hover,
                 goes: CompanionWhere::Cross(DdiSection::Revue),
             });
+        }
+        // **Le dossier porte-t-il déjà cette molécule ?** C'est l'erreur
+        // de délivrance la plus ordinaire : le médecin propose un nom,
+        // l'ordonnance en porte un autre, et c'est la même molécule —
+        // Doliprane et Dafalgan, Lasilix et furosémide. Aucune table ne
+        // le dit : elles lisent des classes et des mots, pas l'identité
+        // d'une molécule avec elle-même.
+        //
+        // **Sur la DCI et jamais sur le nom** : deux présentations d'une
+        // même molécule ont deux noms, c'est tout le problème. Et elle
+        // est comparée repliée — accents et casse —, comme partout ici.
+        let mine = crate::fuzzy::sort_key(card.dci.trim());
+        if !mine.is_empty() {
+            let twin = file
+                .iter()
+                .find(|d| d.id != card.id && crate::fuzzy::sort_key(d.dci.trim()) == mine);
+            let here = file.iter().any(|d| d.id == card.id);
+            if here || twin.is_some() {
+                let (chip, hover) = match twin {
+                    Some(t) => (
+                        trf("companion_sig_twin", t.name.trim().to_owned()),
+                        trn("companion_twin_head", &[&t.name.trim(), &card.dci.trim()]),
+                    ),
+                    None => (
+                        tr("companion_sig_already").to_owned(),
+                        tr("companion_already_head").to_owned(),
+                    ),
+                };
+                out.push(CompanionSignal {
+                    chip,
+                    // Un doublon de molécule arrête une délivrance ; la
+                    // fiche déjà au dossier est un fait, pas une alerte.
+                    tone: if twin.is_some() {
+                        CompanionTone::Stop
+                    } else {
+                        CompanionTone::Ok
+                    },
+                    hover,
+                    goes: CompanionWhere::Page(CompanionPage::File),
+                });
+            }
         }
         // Et ce que ce traitement demande qu'on mesure, **contre les
         // dates de ce dossier-là**.
@@ -56923,6 +56992,95 @@ mod tests {
         assert_eq!(loud.tone("Autre chose"), None);
     }
 
+    /// **Le dossier porte-t-il déjà cette molécule, sous un autre nom ?**
+    ///
+    /// C'est l'erreur de délivrance la plus ordinaire : le médecin
+    /// propose un nom, l'ordonnance en porte un autre, et c'est la même
+    /// molécule — Doliprane et Dafalgan, Lasilix et furosémide. Aucune
+    /// des huit tables ne le dit : elles lisent des classes et des mots,
+    /// pas l'identité d'une molécule avec elle-même. C'est la seule
+    /// lecture que la barre fait pour son propre compte, et elle ne le
+    /// peut que parce qu'elle a l'ordonnance et la fiche cherchée sous
+    /// la main en même temps.
+    ///
+    /// **Sur la DCI et jamais sur le nom** : deux présentations d'une
+    /// même molécule ont deux noms, c'est tout le problème. Et une fiche
+    /// sans DCI ne double personne — la comparer sur un vide ferait de
+    /// toutes les fiches muettes des doublons les unes des autres.
+    #[test]
+    fn the_companion_says_when_the_file_already_carries_that_molecule() {
+        use crate::db::Drug;
+        let dafalgan = Drug {
+            id: 1,
+            name: "Dafalgan".to_owned(),
+            dci: "paracétamol".to_owned(),
+            ..Drug::default()
+        };
+        let doliprane = Drug {
+            id: 2,
+            name: "Doliprane".to_owned(),
+            // Accentuée ici, non accentuée là : c'est la même molécule,
+            // et le repli est ce qui le sait.
+            dci: "Paracetamol".to_owned(),
+            ..Drug::default()
+        };
+        let other = Drug {
+            id: 3,
+            name: "Coversyl".to_owned(),
+            dci: "périndopril".to_owned(),
+            ..Drug::default()
+        };
+        let chips = |card: &Drug, file: &[Drug]| -> Vec<String> {
+            super::companion_signals(card, file, None, None, &[])
+                .into_iter()
+                .map(|s| s.chip)
+                .collect()
+        };
+        // Le doublon, nommé — et il nomme la ligne du dossier, sans quoi
+        // il faudrait la chercher.
+        let said = chips(&dafalgan, &[doliprane.clone(), other.clone()]);
+        assert!(
+            said.iter()
+                .any(|c| c.starts_with("Doublon") && c.contains("Doliprane")),
+            "{said:?}"
+        );
+        // Une molécule que le dossier ne porte pas ne double rien.
+        assert!(
+            !chips(&other, std::slice::from_ref(&dafalgan))
+                .iter()
+                .any(|c| c.starts_with("Doublon")),
+            "le périndopril ne double pas le paracétamol"
+        );
+        // Et la fiche **qui est** la ligne du dossier n'est pas son
+        // propre doublon : elle dit qu'elle y est, ce qui est un fait et
+        // non une alerte.
+        let itself = chips(&doliprane, &[doliprane.clone(), other.clone()]);
+        assert!(
+            !itself.iter().any(|c| c.starts_with("Doublon")),
+            "{itself:?}"
+        );
+        assert!(itself.iter().any(|c| c.starts_with("Déjà au dossier")));
+        // **Une fiche sans DCI ne double personne.** Comparée sur un
+        // vide, toutes les fiches muettes seraient doublons les unes des
+        // autres — et la base en porte que l'officine a écrites.
+        let mute = Drug {
+            id: 4,
+            name: "Machinol".to_owned(),
+            ..Drug::default()
+        };
+        let other_mute = Drug {
+            id: 5,
+            name: "Bidulex".to_owned(),
+            ..Drug::default()
+        };
+        assert!(
+            !chips(&mute, std::slice::from_ref(&other_mute))
+                .iter()
+                .any(|c| c.starts_with("Doublon")),
+            "deux fiches sans molécule ne sont pas la même molécule"
+        );
+    }
+
     /// **« Aucun résultat dans la base » était faux**, et la barre
     /// répond maintenant par la prose des fiches.
     ///
@@ -57355,7 +57513,15 @@ mod tests {
             // main. Elle mène à l'onglet du dossier où cette lecture
             // vit — un chapitre du croisement qui ne la porterait pas
             // serait le défaut que ce fichier a déjà corrigé une fois.
-            if name == "Watch" {
+            // Deux exceptions, chacune pour sa raison. **La
+            // surveillance** lit les *dates* du dossier, et « depuis
+            // combien de temps personne n'a demandé cet examen » n'a pas
+            // de sens sur une liste composée à la main : elle mène à
+            // l'onglet du dossier. **Le doublon** est la seule lecture
+            // que la barre fait pour son propre compte — aucune table ne
+            // la porte, aucun écran ne la montre — et il mène à la page
+            // de la barre qui liste l'ordonnance.
+            if name == "Watch" || name.starts_with("Page(") {
                 continue;
             }
             let chapter = name
