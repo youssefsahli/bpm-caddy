@@ -1635,6 +1635,19 @@ pub struct Layout {
     /// quoi montrer une ligne de sa table. Qui travaille dans ces
     /// onglets-là replie une fois et ne le refait plus.
     pub patient_band_folded: bool,
+    /// La taille de la **barre**, qui n'est pas celle du plan de
+    /// travail. Zéro veut dire « jamais relevée ».
+    ///
+    /// Les deux vivent à part parce que la fenêtre a deux vies : six
+    /// cents pixels sur cinq cents quand elle est une barre posée sur le
+    /// logiciel de comptoir, et tout l'écran quand elle est
+    /// l'application. Enregistrer la première comme la seconde
+    /// rouvrirait la session suivante sur un plan de travail de six
+    /// cents pixels — ce que ce fichier évitait jusqu'ici en ne
+    /// retenant *rien* de la barre, au prix d'une barre qu'on
+    /// redimensionne à chaque fois.
+    pub companion_width: f32,
+    pub companion_height: f32,
     /// The version of BPM-Caddy that wrote this file. Recorded so
     /// Options › À propos can say when the workspace was last laid out
     /// by another version, and so a future change of shape can tell a
@@ -1654,6 +1667,8 @@ impl Default for Layout {
             side_pane: String::new(),
             view: String::new(),
             patient_band_folded: false,
+            companion_width: 0.0,
+            companion_height: 0.0,
             version: String::new(),
         }
     }
@@ -1678,6 +1693,20 @@ impl Layout {
     pub fn window(&self) -> Option<[f32; 2]> {
         (self.window_width >= 640.0 && self.window_height >= 480.0)
             .then_some([self.window_width, self.window_height])
+    }
+
+    /// La taille de la barre, si elle a été relevée et qu'elle est
+    /// plausible.
+    ///
+    /// Le plancher n'est pas celui du plan de travail : une barre fait
+    /// justement moins que 640 × 480, et lui appliquer le seuil de la
+    /// fenêtre reviendrait à ne jamais la retenir. Ce qu'on écarte ici
+    /// est une fenêtre réduite ou en cours de restauration, qui se
+    /// signale par quelques pixels — le vrai plancher est mesuré au
+    /// dessin (`App::companion_floor`) et s'applique par-dessus.
+    pub fn companion(&self) -> Option<[f32; 2]> {
+        (self.companion_width >= 200.0 && self.companion_height >= 150.0)
+            .then_some([self.companion_width, self.companion_height])
     }
 
     /// Was this record written by a different version of the

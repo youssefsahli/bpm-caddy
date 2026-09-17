@@ -48597,7 +48597,29 @@ impl App {
                         .x
                 })
             };
-            let widths: Vec<f32> = labels.iter().map(|l| width(ui, l)).collect();
+            // **Le rang lu est une pastille, les autres du texte.** Il
+            // se distinguait par un aplat sans relief, c'est-à-dire par
+            // la seule chose que cette interface n'utilise nulle part
+            // ailleurs pour dire « celui-ci » ; et une rangée de huit
+            // pastilles serait une rangée de huit boutons pour huit noms,
+            // ce qui est le contraire de ce qu'une liste de noms doit
+            // être. Un seul relief, celui qu'on lit.
+            //
+            // Sa largeur est donc celle d'une pastille et non celle de
+            // son texte : mesurer les huit de la même façon ferait
+            // déborder la rangée d'un rembourrage à chaque fois que le
+            // rang lu se déplace.
+            let widths: Vec<f32> = labels
+                .iter()
+                .enumerate()
+                .map(|(i, l)| {
+                    if i == read.pick {
+                        Self::companion_chip_size(ui, l.trim()).x
+                    } else {
+                        width(ui, l)
+                    }
+                })
+                .collect();
             let room = ui.available_width();
             let shown = {
                 let measure: &egui::Ui = ui;
@@ -48621,27 +48643,20 @@ impl App {
                     count(ui, shown.start);
                 }
                 for i in shown.clone() {
-                    let on = i == read.pick;
-                    let ink = if on {
-                        motif::on_fill(motif::accent())
+                    let hit = if i == read.pick {
+                        Self::companion_chip(ui, labels[i].trim(), motif::accent(), true)
                     } else {
-                        motif::text_dim()
-                    };
-                    let mut text = egui::RichText::new(labels[i].as_str())
-                        .size(motif::pt(ui, 11.0))
-                        .color(ink);
-                    if on {
-                        text = text.background_color(motif::accent()).strong();
-                    }
-                    if ui
-                        .add(
-                            egui::Label::new(text)
-                                .wrap_mode(egui::TextWrapMode::Extend)
-                                .sense(egui::Sense::click()),
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(labels[i].as_str())
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap_mode(egui::TextWrapMode::Extend)
+                            .sense(egui::Sense::click()),
                         )
-                        .on_hover_text(tr("companion_matches_tooltip"))
-                        .clicked()
-                    {
+                    };
+                    if hit.on_hover_text(tr("companion_matches_tooltip")).clicked() {
                         *pick = i;
                     }
                 }
@@ -48652,19 +48667,6 @@ impl App {
         });
     }
 
-    /// La bande des signaux : ce que les tables disent de cette fiche,
-    /// en puces.
-    ///
-    /// Rend le chapitre de celle qu'on a cliquée — le croisement répond
-    /// en entier à ce que la puce annonce en trois mots, et il s'ouvre
-    /// **sur ce chapitre-là** : il en écrit huit, et se poser en haut
-    /// après avoir cliqué « Écraser » serait répondre à côté.
-    ///
-    /// **Une puce ne se coupe pas en deux.** `horizontal_wrapped`
-    /// enveloppe le texte *dans* une étiquette autant qu'entre deux, et
-    /// une puce coupée laisse deux fonds colorés là où il y en a un —
-    /// `TextWrapMode::Extend` garde l'étiquette entière et laisse la
-    /// rangée envelopper, ce qu'elle sait faire.
     /// Ce qu'une pastille occupe, libellé compris.
     ///
     /// Le rembourrage est celui des boutons — l'unité de la maison, qui
@@ -48741,6 +48743,14 @@ impl App {
             .map(|s| s.tone.fill())
     }
 
+    /// La bande des signaux : ce que les huit tables disent de cette
+    /// fiche, en pastilles.
+    ///
+    /// Rend la destination de celle qu'on a cliquée — voir
+    /// [`CompanionWhere`] : sept mènent au croisement, sur **leur**
+    /// chapitre, et la surveillance à l'onglet du dossier où elle se
+    /// lit. Se poser en haut d'un écran de neuf chapitres après avoir
+    /// cliqué « Écraser » serait répondre à côté.
     fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> Option<CompanionWhere> {
         let mut clicked = None;
         if read.silent {
@@ -49278,10 +49288,18 @@ impl App {
                 } else {
                     self.companion_sized = true;
                     let floor = Self::companion_floor(ui);
+                    // La taille de la dernière fois si l'officine en a
+                    // choisi une, sinon celle d'origine — et jamais
+                    // sous le plancher mesuré, quoi qu'en dise le
+                    // fichier : un enregistrement d'une version d'avant
+                    // porte une taille que celle-ci ne sait plus
+                    // dessiner.
+                    let want = self
+                        .layout
+                        .companion()
+                        .map_or_else(|| egui::Vec2::from(Self::COMPANION_SIZE), egui::Vec2::from);
                     ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(floor));
-                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(
-                        egui::Vec2::from(Self::COMPANION_SIZE).max(floor),
-                    ));
+                    ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want.max(floor)));
                 }
             }
             // **La tête dit le dossier, et non le nom de la fenêtre.**
@@ -50470,10 +50488,22 @@ impl eframe::App for App {
         // of it a setting anyone has to find.
         {
             let size = ctx.screen_rect().size();
-            // **Sauf en compagnon.** La barre fait quatre cents pixels
-            // sur trois cents ; enregistrée comme la forme du plan de
-            // travail, la session suivante s'ouvrirait dessus.
-            if !self.companion {
+            // **La barre a sa propre taille.** Enregistrée comme celle
+            // du plan de travail, la session suivante s'ouvrirait sur
+            // une fenêtre de six cents pixels ; oubliée — ce qui était
+            // le cas — il fallait la retailler à chaque fois. Deux
+            // clés, deux vies de la même fenêtre.
+            //
+            // Relevée seulement une fois la taille posée : entre le
+            // basculement et l'image où le compositeur rend la fenêtre,
+            // `screen_rect` est encore celle du plan de travail, et on
+            // l'écrirait comme étant celle de la barre.
+            if self.companion {
+                if self.companion_sized {
+                    self.layout.companion_width = size.x;
+                    self.layout.companion_height = size.y;
+                }
+            } else {
                 self.layout.window_width = size.x;
                 self.layout.window_height = size.y;
             }

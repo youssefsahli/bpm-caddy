@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **La barre retient sa propre taille.** Le fichier de plan de travail
+  ne la retenait pas du tout, et pour une bonne raison : enregistrée
+  comme la taille de la fenêtre, la session suivante se serait ouverte
+  sur un plan de travail de six cents pixels. Le prix en était une barre
+  qu'il fallait retailler à chaque F9. Deux clés séparées, deux vies de
+  la même fenêtre — et jamais sous le plancher mesuré, quoi qu'en dise
+  un enregistrement écrit par une version d'avant. Relevée seulement une
+  fois la taille posée : entre le basculement et l'image où le
+  compositeur rend la fenêtre, on écrirait celle du plan de travail.
+- **Le rang lu de la rangée des réponses est une pastille.** Il se
+  distinguait par un aplat sans relief, c'est-à-dire par la seule chose
+  que cette interface n'utilise nulle part ailleurs pour dire
+  « celui-ci ». Un seul relief dans la rangée, celui qu'on lit : huit
+  pastilles pour huit noms feraient une rangée de boutons, ce qui est le
+  contraire de ce qu'une liste de noms doit être.
 - **La huitième table : ce que ce traitement demande qu'on mesure.** La
   barre rapportait sept lectures ; `surveillance` n'en était pas, et
   c'est la seule des huit qui parle d'une **absence** — les autres
