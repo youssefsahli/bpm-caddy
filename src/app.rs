@@ -49071,6 +49071,7 @@ impl App {
         // réponse sur un autre écran pendant qu'on tient la boîte est
         // exactement ce que cette barre existe pour éviter.
         Self::companion_part(ui, tr("mono_f_forms"), &d.forms);
+        Self::companion_insulin(ui, d);
         if read.poso.is_empty() {
             if d.dosage.trim().is_empty() {
                 ui.add_space(4.0);
@@ -49113,6 +49114,74 @@ impl App {
                 );
             }
         }
+    }
+
+    /// La courbe d'action d'une insuline, quand la fiche en est une.
+    ///
+    /// **Une insuline ne se lit pas en phrases.** « Début 15 min, pic 1
+    /// à 3 h, durée 5 h » demande de se représenter une forme ; la forme
+    /// elle-même se voit. Et c'est la question du comptoir — « il se
+    /// pique quand ? », « ça agit encore à quelle heure ? » —, celle
+    /// qu'on pose en tenant le stylo.
+    ///
+    /// Dessinée **seulement pour une insuline**, ce que `insulin` décide
+    /// sur le nom puis sur la molécule : une courbe sous une fiche de
+    /// paracétamol serait un ornement, et un ornement dans une barre de
+    /// six cents pixels prend la place d'une ligne qui parle.
+    ///
+    /// La hauteur est normalisée au pic et non à l'aire : la question
+    /// est *quand* elle agit, pas combien d'insuline circule — c'est ce
+    /// qui rend le pic de l'après-midi d'une NPH comparable à la ligne
+    /// plate d'une glargine.
+    fn companion_insulin(ui: &mut egui::Ui, d: &Drug) {
+        let Some(p) = crate::insulin::for_card(&d.name, &d.dci) else {
+            return;
+        };
+        ui.add_space(4.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(trf("companion_insulin", p.family))
+                    .size(motif::pt(ui, 10.5))
+                    .strong()
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        // Une courbe sur la durée que la fiche annonce, un point par
+        // quart d'heure : assez pour que le pic se voie, assez peu pour
+        // que le tracé ne coûte rien.
+        let span = f64::from(p.duration_min).max(60.0);
+        let values: Vec<f64> = (0..=48)
+            .map(|i| crate::insulin::activity(p, span * f64::from(i) / 48.0))
+            .collect();
+        let height = motif::pt(ui, 34.0);
+        let (rect, _) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), height),
+            egui::Sense::hover(),
+        );
+        let inner = motif::well(ui, rect);
+        motif::chart::sparkline(ui, inner, &values, motif::accent());
+        // Ce que la courbe ne dit pas en chiffres : le début, le pic et
+        // la fin, écrits sous elle. Une forme sans ses heures se lit
+        // « ça monte puis ça descend », ce que tout le monde sait.
+        let hours = |m: u32| format!("{} h {:02}", m / 60, m % 60);
+        let said = match p.peak_min {
+            Some((a, b)) => trn(
+                "companion_insulin_peak",
+                &[
+                    &hours(p.onset_min),
+                    &hours(a),
+                    &hours(b),
+                    &hours(p.duration_min),
+                ],
+            ),
+            None => trn(
+                "companion_insulin_flat",
+                &[&hours(p.onset_min), &hours(p.duration_min)],
+            ),
+        };
+        ui.add(egui::Label::new(egui::RichText::new(said).size(motif::pt(ui, 11.0))).wrap());
+        Self::companion_part(ui, tr("companion_insulin_note"), p.note);
     }
 
     /// La page des conseils : ce qu'on dit à la personne, et ce qu'on
@@ -57186,6 +57255,63 @@ mod tests {
     /// sien. La barre montrait le premier et taisait le second, qu'elle
     /// avait pourtant sous la main — et la page s'ouvre maintenant pour
     /// une fiche dont *seul* le dossier dit quelque chose.
+    /// **Une courbe seulement là où elle veut dire quelque chose.**
+    ///
+    /// Une insuline ne se lit pas en phrases : « début 15 min, pic 1 à
+    /// 3 h, durée 5 h » demande de se représenter une forme, et la forme
+    /// se voit. Mais une courbe sous une fiche de paracétamol serait un
+    /// ornement, et un ornement dans une barre de six cents pixels prend
+    /// la place d'une ligne qui parle.
+    ///
+    /// Le test tient les deux bords : la fiche que `insulin` reconnaît —
+    /// par son nom **ou** par sa molécule, un générique ne portant pas le
+    /// nom de la marque — et celle qu'il ne reconnaît pas.
+    ///
+    /// **Et la concentration fait partie de la molécule.** « Insuline
+    /// glargine » ne suffit pas à désigner une courbe : le Lantus est du
+    /// U100 et dure vingt-quatre heures, le Toujeo du U300 et en dure
+    /// trente-six. Le rapprochement par la DCI est donc une égalité
+    /// exacte, et une fiche écrite « insuline glargine » tout court ne
+    /// reçoit **aucune** courbe plutôt qu'une sur deux — la règle de ce
+    /// dépôt : une table qui ne sait pas se tait.
+    #[test]
+    fn the_action_curve_is_drawn_only_for_an_insulin() {
+        use crate::insulin::for_card;
+        // Par le nom de la boîte.
+        let lantus = for_card("Lantus", "").expect("une glargine U100");
+        // Et par la molécule, pour la fiche que l'officine a écrite sous
+        // un autre nom : c'est la même insuline, concentration comprise.
+        assert_eq!(
+            for_card("Glargine Biosimilaire", "insuline glargine U100").map(|p| p.name),
+            Some(lantus.name),
+            "un générique se reconnaît à sa molécule"
+        );
+        // **Mais la molécule sans sa concentration ne désigne rien.** Le
+        // Toujeo est de la glargine aussi, et sa courbe dure douze heures
+        // de plus : rapprocher sur « insuline glargine » mettrait une
+        // courbe sur deux au hasard.
+        let toujeo = for_card("Toujeo", "").expect("une glargine U300");
+        assert_ne!(lantus.duration_min, toujeo.duration_min);
+        assert!(
+            for_card("Glargine Biosimilaire", "insuline glargine").is_none(),
+            "sans la concentration, aucune courbe plutôt qu'une sur deux"
+        );
+        // Une glargine est plate, une NPH a son pic — c'est ce que la
+        // courbe existe pour montrer, et ce que les deux phrases
+        // distinguent.
+        assert_eq!(lantus.peak_min, None);
+        assert!(
+            for_card("Insulatard", "")
+                .expect("une NPH")
+                .peak_min
+                .is_some(),
+            "une NPH a un pic"
+        );
+        // Et rien pour ce qui n'est pas une insuline : la page de la
+        // posologie ne dessine pas d'ornement.
+        assert!(for_card("Doliprane", "paracétamol").is_none());
+    }
+
     #[test]
     fn the_posology_page_opens_for_what_the_file_alone_records() {
         use super::CompanionPage;

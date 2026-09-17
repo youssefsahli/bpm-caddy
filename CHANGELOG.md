@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La courbe d'action d'une insuline, sur la page de sa posologie.**
+  Une insuline ne se lit pas en phrases : « début 15 min, pic 1 à 3 h,
+  durée 5 h » demande de se représenter une forme, et la forme se voit.
+  C'est la question qu'on pose en tenant le stylo — « il se pique
+  quand ? », « ça agit encore à quelle heure ? » —, et le pic de
+  l'après-midi d'une NPH se lit alors d'un coup d'œil à côté de la ligne
+  plate d'une glargine. Les heures sont écrites sous la courbe : une
+  forme sans elles se lit « ça monte puis ça descend », ce que tout le
+  monde sait.
+
+  **Seulement pour une insuline** : une courbe sous une fiche de
+  paracétamol serait un ornement, et un ornement dans une barre de six
+  cents pixels prend la place d'une ligne qui parle. Le rapprochement se
+  fait sur le nom puis sur la molécule — **concentration comprise** : le
+  Lantus est de la glargine U100 et dure vingt-quatre heures, le Toujeo
+  de la U300 et en dure trente-six, et une fiche écrite « insuline
+  glargine » tout court ne reçoit aucune courbe plutôt qu'une sur deux.
+
 ## [0.214.0] - 2026-09-17
 
 ### Added
