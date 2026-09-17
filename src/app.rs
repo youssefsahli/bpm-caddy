@@ -49130,6 +49130,7 @@ impl App {
         d: &Drug,
         file: &[Drug],
         read: &FileReadings,
+        dose: &dyn Fn(i64) -> String,
     ) -> Option<String> {
         let mut picked = None;
         ui.add_space(2.0);
@@ -49150,7 +49151,16 @@ impl App {
         let mark = motif::pt(ui, 8.0);
         for line in file {
             let here = line.id == d.id;
-            let label = if line.dci.trim().is_empty() || line.dci.trim() == line.name.trim() {
+            // **Le nom, puis ce que le dossier en retient.** Une
+            // ordonnance qu'on descend sans ses doses est une liste de
+            // noms : « il prend du Glucophage » n'est pas une réponse,
+            // « 850 mg matin et soir » en est une. La molécule cède la
+            // place quand il y a une dose — c'est le nom qui identifie
+            // la boîte, et la dose qui répond à la question.
+            let said = dose(line.id);
+            let label = if !said.trim().is_empty() {
+                format!("{}  ·  {}", line.name.trim(), said.trim())
+            } else if line.dci.trim().is_empty() || line.dci.trim() == line.name.trim() {
                 line.name.trim().to_owned()
             } else {
                 format!("{}  ·  {}", line.name.trim(), line.dci.trim())
@@ -49844,6 +49854,14 @@ impl App {
                                     crush: &session.crush,
                                     elderly: &session.elderly,
                                     watch: &session.surveillance,
+                                },
+                                &|id| {
+                                    [session.strength_of(id), session.dose_of(id)]
+                                        .into_iter()
+                                        .map(str::trim)
+                                        .filter(|t| !t.is_empty())
+                                        .collect::<Vec<_>>()
+                                        .join(" ")
                                 },
                             );
                         }

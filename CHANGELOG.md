@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **L'ordonnance de la page « Dossier » porte ses doses.** Une
+  ordonnance qu'on descend sans elles est une liste de noms : « il prend
+  du Glucophage » n'est pas une réponse, « 850 mg matin et soir » en est
+  une. La molécule cède la place quand le dossier retient une dose —
+  c'est le nom qui identifie la boîte, et la dose qui répond à la
+  question.
+
 ## [0.213.0] - 2026-09-17
 
 ### Added

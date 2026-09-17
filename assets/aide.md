@@ -216,8 +216,10 @@ rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de
 bande d'onglets.
 
 La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
-cherchée : c'est l'ordonnance ouverte, ligne par ligne, et **une ligne
-cliquée devient la question**. Un liseré marque les lignes sur
+cherchée : c'est l'ordonnance ouverte, ligne par ligne **avec ce que le
+dossier retient de chacune** — « Zeclar · 500 mg matin et soir, 7
+jours », et non « Zeclar » —, et **une ligne cliquée devient la
+question**. Un liseré marque les lignes sur
 lesquelles une table demande qu'on s'arrête — le tri du comptoir, avant
 de les ouvrir une par une. Il ne marque que cela : « à vérifier » et
 « sans donnée » sont des réponses, pas des arrêts, et les marquer
