@@ -5,6 +5,41 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.205.1] - 2026-09-17
+
+### Fixed
+- **Une fenêtre maximisée ne se redimensionne pas, et F9 la laissait
+  pleine.** C'est le gestionnaire de fenêtres qui tient la taille d'une
+  fenêtre maximisée : sous X11 comme sous Wayland, la demande de
+  l'application est jetée sans un mot. Sur le seul genre de poste où
+  l'application est toujours maximisée — un comptoir — la barre du
+  compagnon restait donc plein écran, posée au-dessus des autres
+  applications : tout sauf un compagnon. Elle démaximise d'abord, laisse
+  passer l'image que le compositeur demande pour rendre la fenêtre, et
+  pose sa taille ensuite.
+
+  **Mesuré, et non supposé** : il faut **deux** images pour que le
+  compositeur rende la fenêtre. Les deux ordres envoyés dans la même
+  image se marchent dessus, et la taille repart à la poubelle comme
+  avant — la condition se rallume d'elle-même tant que la fenêtre n'est
+  pas rendue, il n'y a donc ni compte d'images ni boucle.
+
+  Au retour, c'est l'**état** qui est rendu et non des pixels : une
+  fenêtre remise à la taille de l'écran n'est pas une fenêtre maximisée
+  — elle a des bords, elle se déplace, elle recouvre la barre des
+  tâches. Le plein écran suit le même chemin.
+
+### Added
+- **La forme « maximisée » devient atteignable.** `smoke.sh` et
+  `eyeball.sh` tournent sous un Xvfb **sans gestionnaire de fenêtres** :
+  rien n'y est jamais maximisé, et une demande de taille y est donc
+  toujours honorée — soixante-seize vues ouvertes quatre fois chacune ne
+  pouvaient pas voir ce défaut, parce qu'il n'existe pas là où elles
+  regardent. `BPM_CADDY_MAXIMIZED=1` ouvre la fenêtre maximisée et
+  `scripts/maximized.sh` monte un vrai compositeur pour l'y regarder.
+  Le harnais mord : la correction retirée, il n'imprime plus qu'une
+  ligne — la fenêtre pleine, qui le reste.
+
 ## [0.205.0] - 2026-09-17
 
 ### Added
