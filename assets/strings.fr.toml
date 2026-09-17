@@ -1906,8 +1906,12 @@ watch_print_tooltip = "Le plan de surveillance : dosages à demander et périodi
 # --- Le compagnon (F9) ---
 keys_companion = "Compagnon : la fenêtre réduite en barre, au-dessus des autres"
 companion_hint = "Nom ou molécule…"
-companion_idle = "Tapez un nom. Flèches haut et bas pour changer de fiche, Entrée pour ouvrir, Échap pour effacer."
+companion_idle = "Tapez un nom. Flèches haut et bas pour changer de fiche, gauche et droite pour changer de page, Entrée pour ouvrir, Échap pour effacer."
 companion_none = "Aucun résultat dans la base."
+companion_page_signals = "Signaux"
+companion_page_advice = "Conseils"
+companion_page_care = "Précautions"
+companion_poso_none = "Aucune ligne de posologie sur cette fiche."
 companion_barcode = "Code-barres lu : {}. Aucune fiche ne porte de code — le seul lien entre un code et une boîte est celui qu'un humain a posé au registre des stupéfiants. « Délivrance » l'ouvre ; sinon, tapez le nom."
 companion_file = "Dossier : {}"
 companion_file_tooltip = "Les gestes « Acte » et « Pièce » portent sur ce dossier. {} traitement(s) au dossier : c'est sur eux que les croisements sont lus."

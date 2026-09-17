@@ -198,6 +198,18 @@ Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
 question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
 qu'une douchette — qui est un clavier — tape dedans sans rien installer.
 
+**Quatre pages, et les flèches gauche et droite pour tourner.** Haut et
+bas parcourent les fiches qui répondent, gauche et droite ce que la
+fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
+« Signaux » porte ce que les tables disent ; « Posologie » la prose de
+la fiche **et ses lignes indication par indication**, parce que
+« combien » n'a pas de réponse sans « pour quoi » ; « Conseils » ce
+qu'on dit à la personne et ce qu'on fait d'une prise oubliée, qui
+sortent par la même bouche au même moment ; « Précautions » ce qui
+contre-indique, ce qui arrive et ce qu'on surveille. Une page qui n'a
+rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de
+bande d'onglets.
+
 Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
 rien à leur place : chaque pastille cite le mot de sa table, et son
 survol donne la portée du module avant la conduite. Sept lectures : ce

@@ -9619,6 +9619,13 @@ pub struct App {
     /// affichait un sans dire qu'il y en avait trois — ni moyen de
     /// corriger. Les flèches marchent dans cette liste.
     companion_pick: usize,
+    /// La page de la réponse : voir [`CompanionPage`].
+    ///
+    /// Gardée d'une fiche à l'autre, et bornée à ce que la fiche lue
+    /// porte. C'est ce qu'on veut en comparant deux produits : on ouvre
+    /// « Posologie », on descend la liste des réponses, et la page ne
+    /// retombe pas sur les signaux à chaque flèche.
+    companion_page: usize,
     /// Ce que le compagnon a lu, et la question qui l'a produit.
     ///
     /// **Rien de coûteux à l'image.** La passe floue sur les 862 fiches
@@ -10353,7 +10360,10 @@ impl App {
                         // clairance fait dire « rein : dépend du DFG » à
                         // toutes les captures — c'est-à-dire qu'aucune
                         // ne montre jamais la puce du rein qui conclut.
-                        Ok("companion") => {
+                        Ok(
+                            "companion" | "companion_poso" | "companion_conseils"
+                            | "companion_soins",
+                        ) => {
                             let pick = session
                                 .patients
                                 .iter()
@@ -11008,7 +11018,12 @@ impl App {
             // Le compagnon s'ouvre par sa clé, comme toute autre vue :
             // c'est la seule façon pour `smoke.sh` de le regarder aux
             // trois formes, puisqu'on ne le rencontre qu'en pressant F9.
-            companion: start_view == "companion",
+            // Les quatre clés ouvrent la même barre : ce qui les sépare
+            // est la page sur laquelle elle s'ouvre. Sans elles, trois
+            // pages sur quatre n'apparaîtraient dans aucune capture et
+            // ne seraient ouvertes par aucune passe — c'est-à-dire que
+            // personne ne les aurait jamais regardées.
+            companion: start_view.starts_with("companion"),
             companion_was: None,
             companion_sized: false,
             companion_full: None,
@@ -11022,12 +11037,18 @@ impl App {
             // tapée entière elle n'en rend qu'une, et la rangée des
             // autres réponses — celle que les flèches parcourent — ne se
             // dessine alors dans aucune capture.
-            companion_query: if start_view == "companion" {
+            companion_query: if start_view.starts_with("companion") {
                 std::env::var("BPM_CADDY_DRUG").unwrap_or_else(|_| "eliq".to_owned())
             } else {
                 String::new()
             },
             companion_pick: 0,
+            companion_page: match start_view.as_str() {
+                "companion_poso" => 1,
+                "companion_conseils" => 2,
+                "companion_soins" => 3,
+                _ => 0,
+            },
             companion_read: None,
         }
     }
@@ -48003,10 +48024,18 @@ impl App {
     /// lignes pour lesquelles on ouvre cette barre. La largeur suit les
     /// cinq gestes : mesurés à 1,25 ils demandent cinq cent quarante
     /// pixels, et la bande en réserve deux rangées dès qu'ils ne
-    /// tiennent pas. Ce n'est toujours pas une seconde fenêtre : cinq
-    /// cent soixante sur quatre cent vingt est le quart d'un écran de
-    /// portable.
-    const COMPANION_SIZE: [f32; 2] = [560.0, 420.0];
+    /// tiennent pas.
+    ///
+    /// Elle a grandi une seconde fois — de 560 × 420 — le jour où la
+    /// réponse s'est mise à tourner des pages. La bande d'onglets coûte
+    /// une rangée, et à `text_scale = 1,6` cette rangée était prise sur
+    /// les gestes : « Délivrance » repassait sous le pli. Mesuré : à
+    /// cette échelle, la rangée des autres réponses, les onglets, deux
+    /// lignes de réponse et les deux rangées de gestes demandent trois
+    /// cent soixante pixels de corps, plus cent quarante de tête, de
+    /// champ et de marges. Ce n'est toujours pas une seconde fenêtre :
+    /// six cents sur cinq cents reste le quart d'un écran de portable.
+    const COMPANION_SIZE: [f32; 2] = [600.0, 500.0];
 
     /// Les cinq gestes de la barre, **dans l'ordre où elle les dessine**.
     ///
@@ -48339,15 +48368,16 @@ impl App {
     /// sous le bas de la fenêtre.
     ///
     /// Le corps au-dessous duquel la barre ne sait plus se dessiner : la
-    /// rangée des autres réponses, le plancher de la réponse, une rangée
-    /// de gestes, et les deux gouttières entre les trois.
+    /// rangée des autres réponses, la bande d'onglets, le plancher de la
+    /// réponse, une rangée de gestes, et les trois gouttières entre les
+    /// quatre.
     ///
     /// Écrit **une fois** : `companion_floor` le remonte en hauteur de
     /// fenêtre, et le test le redescend pour balayer `companion_bands`
     /// à partir de là. Deux écritures de cette hauteur laisseraient la
     /// fenêtre descendre là où le partage n'a plus rien à donner.
-    fn companion_body_floor(row_h: f32, line: f32, gap: f32) -> f32 {
-        2.0 * row_h + Self::COMPANION_ANSWER_LINES * line + 2.0 * gap
+    fn companion_body_floor(row_h: f32, line: f32, gap: f32, tabs: f32) -> f32 {
+        2.0 * row_h + tabs + Self::COMPANION_ANSWER_LINES * line + 3.0 * gap
     }
 
     /// Cinq bandes : la tête, le champ, et le corps — voir
@@ -48375,7 +48405,9 @@ impl App {
             widest + (ui.available_width() - Self::scrolled_width(ui, ui.available_width())),
             // La tête, le champ, les deux gouttières qui les séparent du
             // corps, et le corps.
-            2.0 * row + 2.0 * gap + Self::companion_body_floor(row, line, gap),
+            2.0 * row
+                + 2.0 * gap
+                + Self::companion_body_floor(row, line, gap, motif::tab_strip_height(ui)),
         ) + chrome
     }
 
@@ -48409,12 +48441,14 @@ impl App {
         gap: f32,
         acts: f32,
         others: bool,
-    ) -> [f32; 3] {
+        tabs: f32,
+    ) -> [f32; 4] {
         let matches = if others { row_h } else { 0.0 };
-        // Deux gouttières quand la rangée des autres réponses est là,
-        // une sinon : *n* bandes en comptent *n − 1*.
-        let gutters = if others { 2.0 * gap } else { gap };
-        let rest = (body - matches - gutters).max(0.0);
+        // *n* bandes en comptent *n − 1* : la réponse et les gestes
+        // toujours, les autres réponses et les onglets quand ils sont là.
+        let n = 2.0 + if others { 1.0 } else { 0.0 } + if tabs > 0.0 { 1.0 } else { 0.0 };
+        let gutters = (n - 1.0) * gap;
+        let rest = (body - matches - tabs - gutters).max(0.0);
         // Ce que les gestes peuvent prendre : tout sauf le plancher de
         // la réponse — et jamais un nombre négatif. `whole_rows` garde
         // toujours une rangée, alors sur une fenêtre plus courte que son
@@ -48422,7 +48456,7 @@ impl App {
         // hors du corps.
         let cap = (rest - Self::COMPANION_ANSWER_LINES * line).max(0.0);
         let acts_h = whole_rows(cap, row_h, gap, acts).min(rest);
-        [matches, (rest - acts_h).max(0.0), acts_h]
+        [matches, tabs, (rest - acts_h).max(0.0), acts_h]
     }
 
     /// Quels rangs la rangée des autres réponses garde, autour de celui
@@ -48638,6 +48672,164 @@ impl App {
         clicked
     }
 
+    /// Un paragraphe d'une page, sous son intitulé.
+    ///
+    /// L'intitulé est celui de la monographie, pris au fichier de
+    /// chaînes : la barre et la fiche nomment la même chose du même mot,
+    /// faute de quoi on apprend deux vocabulaires pour une base.
+    fn companion_part(ui: &mut egui::Ui, label: &str, text: &str) {
+        if text.trim().is_empty() {
+            return;
+        }
+        ui.add_space(4.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(label)
+                    .size(motif::pt(ui, 10.5))
+                    .strong()
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        ui.add(egui::Label::new(egui::RichText::new(text.trim()).size(motif::pt(ui, 11.5))).wrap());
+    }
+
+    /// La page des signaux : ce que les tables disent, ce qui arrête, et
+    /// à quoi le produit sert.
+    ///
+    /// Rend le chapitre d'une puce cliquée.
+    ///
+    /// **Les signaux d'abord, l'identité ensuite.** Ce qu'on vient
+    /// chercher dans cette barre est ce qui arrête une délivrance ;
+    /// « apixaban · AOD » identifie une fiche que le nom identifie déjà.
+    /// À `text_scale = 1,6` la fenêtre ne porte que quatre lignes
+    /// au-dessus du pli, et une ligne d'identification y prenait celle de
+    /// la bande.
+    fn companion_signals_page(
+        ui: &mut egui::Ui,
+        d: &Drug,
+        read: &CompanionRead,
+    ) -> Option<DdiSection> {
+        let clicked = Self::companion_band(ui, read);
+        // Ce qui doit se dire au comptoir avant tout le reste, quand la
+        // fiche le porte — **au-dessus** de l'identité et de ce à quoi le
+        // médicament sert : l'alerte était sous une phrase de trois
+        // lignes, c'est-à-dire sous le pli.
+        if !read.flag.is_empty() {
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(read.flag.as_str())
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::alert()),
+                )
+                .wrap(),
+            );
+        }
+        // Ce qui identifie la fiche en une ligne : la molécule et la
+        // classe. Les deux manquent parfois, et une ligne de séparateurs
+        // sans rien entre eux se lit comme un défaut.
+        let about = [d.dci.trim(), d.class.trim()]
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join(" · ");
+        if !about.is_empty() {
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(about)
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        }
+        // **Une phrase, et non la monographie** : cette page-ci répond
+        // « à quoi ça sert », et les autres pages répondent le reste.
+        if !read.what.is_empty() {
+            ui.add_space(2.0);
+            ui.add(
+                egui::Label::new(egui::RichText::new(read.what.as_str()).size(motif::pt(ui, 11.5)))
+                    .wrap(),
+            );
+        }
+        clicked
+    }
+
+    /// La page de la posologie : la prose de la fiche, puis ses lignes.
+    ///
+    /// **Indication par indication.** « Combien » n'a pas de réponse sans
+    /// « pour quoi » : la même molécule se donne à 75 mg en prévention et
+    /// à un gramme en traitement, et une posologie servie sans son
+    /// indication est un chiffre que personne ne peut vérifier. Les
+    /// lignes de la base portent les trois colonnes, et la barre les
+    /// rend dans cet ordre-là.
+    fn companion_poso_page(ui: &mut egui::Ui, d: &Drug, read: &CompanionRead) {
+        Self::companion_part(ui, tr("mono_f_dosage"), &d.dosage);
+        if read.poso.is_empty() {
+            if d.dosage.trim().is_empty() {
+                ui.add_space(4.0);
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("companion_poso_none"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
+            return;
+        }
+        for line in &read.poso {
+            ui.add_space(4.0);
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(line.indication.trim())
+                        .size(motif::pt(ui, 11.0))
+                        .strong()
+                        .color(motif::accent()),
+                )
+                .wrap(),
+            );
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(line.posologie.trim()).size(motif::pt(ui, 11.5)),
+                )
+                .wrap(),
+            );
+            if !line.remarque.trim().is_empty() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(line.remarque.trim())
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            }
+        }
+    }
+
+    /// La page des conseils : ce qu'on dit à la personne, et ce qu'on
+    /// fait d'une prise oubliée.
+    ///
+    /// Les deux vont ensemble parce qu'elles sortent par la même bouche,
+    /// au même moment, au comptoir — et « en cas d'oubli » est la
+    /// question que la personne pose en repartant.
+    fn companion_advice_page(ui: &mut egui::Ui, d: &Drug) {
+        Self::companion_part(ui, tr("mono_f_iup"), &d.iup);
+        Self::companion_part(ui, tr("mono_f_missed"), &d.missed_dose);
+    }
+
+    /// La page des précautions : ce qui contre-indique, ce qui arrive, ce
+    /// qu'on surveille.
+    fn companion_care_page(ui: &mut egui::Ui, d: &Drug) {
+        Self::companion_part(ui, tr("drug_sec_ci"), &d.contraindications);
+        Self::companion_part(ui, tr("drug_sec_adverse"), &d.adverse);
+        Self::companion_part(ui, tr("drug_sec_monitoring"), &d.monitoring);
+    }
+
     /// Le compagnon : un champ, ce qu'il trouve, ce que les tables en
     /// disent, et les gestes qui rendent la fenêtre.
     ///
@@ -48653,12 +48845,19 @@ impl App {
         // et c'est ce qui manquait ici : une fenêtre à un seul champ,
         // qui reprend le foyer à chaque image, et dont aucune touche ne
         // faisait rien — il fallait reprendre la souris pour tout.
-        let (down, up, enter, escape) = ctx.input_mut(|i| {
+        let (down, up, enter, escape, left, right) = ctx.input_mut(|i| {
             (
                 i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
                 i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                // **Les pages sur l'autre axe.** Haut et bas parcourent
+                // les fiches qui répondent, gauche et droite ce que la
+                // fiche lue dit : deux questions perpendiculaires, deux
+                // paires de flèches. Prises avant le champ, comme les
+                // deux autres, ou le curseur de texte les mange.
+                i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowLeft),
+                i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight),
             )
         });
         // Les flèches marchent dans la liste **de l'image d'avant** :
@@ -48674,6 +48873,19 @@ impl App {
             }
             if up {
                 self.companion_pick = (self.companion_pick + shown - 1) % shown;
+            }
+        }
+        let paged = self
+            .companion_read
+            .as_ref()
+            .map_or(0, |(_, r)| r.pages.len());
+        if paged > 1 {
+            let here = self.companion_page.min(paged - 1);
+            if right {
+                self.companion_page = (here + 1) % paged;
+            }
+            if left {
+                self.companion_page = (here + paged - 1) % paged;
             }
         }
         // Échap en deux temps : il efface la question, et sur une
@@ -48734,17 +48946,36 @@ impl App {
                 .viewing
                 .as_ref()
                 .and_then(|p| db::age_on(&p.birth_date, &session.today));
+            // **Trois pas, parce que la base s'intercale.** On cherche,
+            // on interroge la fiche trouvée sur ses lignes de posologie,
+            // puis on lit — et ce dernier pas est pur. Une requête par
+            // changement de question, jamais par image : elle est ici,
+            // dans la branche que la mémoïsation ne prend que lorsque la
+            // question a bougé, et elle coûte bien moins que la passe
+            // floue qui la précède.
+            let q = self.companion_query.trim();
+            let hits = companion_hits(&session.drugs, q);
+            let poso = hits
+                .get(self.companion_pick.min(hits.len().saturating_sub(1)))
+                .map(|d| session.db.posologies(d.id).unwrap_or_default())
+                .unwrap_or_default();
             let look = companion_look(
-                &session.drugs,
+                hits,
                 &session.patient_treats,
                 session.renal_dfg,
                 age,
                 &session.today,
-                self.companion_query.trim(),
+                q,
                 self.companion_pick,
+                poso,
             );
             (key, look)
         });
+        // La page lue, bornée à ce que **cette** fiche porte : on garde
+        // la page d'une fiche à l'autre, et toutes n'ont pas les mêmes.
+        let page = self
+            .companion_page
+            .min(read.1.pages.len().saturating_sub(1));
         let mut leave = false;
         let mut go: Option<CompanionGo> = None;
         // Entrée ouvre la fiche choisie : le geste le plus fréquent de
@@ -48888,6 +49119,15 @@ impl App {
                     .into_iter()
                     .map(|(l, _, _)| Self::button_width(ui, tr(l))),
             );
+            // La bande d'onglets ne se dessine que s'il y a plus d'une
+            // page : **une bande d'un onglet n'est pas une bande**, elle
+            // prend une rangée pour dire ce que la page dit déjà.
+            let paged = read.1.pages.len() > 1;
+            let tabs = if paged {
+                motif::tab_strip_height(ui)
+            } else {
+                0.0
+            };
             // Le partage du corps, écrit une fois et à part : voir
             // `companion_bands`.
             let heights = Self::companion_bands(
@@ -48897,21 +49137,43 @@ impl App {
                 gap,
                 acts,
                 others,
+                tabs,
             );
-            // **Et la rangée des autres réponses est retirée de la
-            // liste, jamais demandée à zéro.** `motif::split_rows` lit un
-            // zéro comme « ce que veut cette rangée est le reste », et
-            // non comme « rien » : demandée à zéro, elle prenait la
-            // moitié de la place du corps, et la réponse se dessinait
-            // sous un vide de cent pixels qu'aucun réglage n'expliquait.
-            let split =
-                motif::split_rows(body, if others { &heights[..] } else { &heights[1..] }, gap);
-            let (answer, acts_rect) = if others {
-                Self::companion_matches(ui, split[0], &read.1, &mut self.companion_pick);
-                (split[1], split[2])
-            } else {
-                (split[0], split[1])
-            };
+            // **Et une bande absente est retirée de la liste, jamais
+            // demandée à zéro.** `motif::split_rows` lit un zéro comme
+            // « ce que veut cette rangée est le reste », et non comme
+            // « rien » : demandée à zéro, la rangée des autres fiches
+            // prenait la moitié de la place du corps, et la réponse se
+            // dessinait sous un vide de cent pixels qu'aucun réglage
+            // n'expliquait.
+            let mut kept: Vec<f32> = Vec::new();
+            let mut at = [usize::MAX; 4];
+            for (i, h) in heights.iter().enumerate() {
+                if *h > 0.0 {
+                    at[i] = kept.len();
+                    kept.push(*h);
+                }
+            }
+            let split = motif::split_rows(body, &kept, gap);
+            if others {
+                Self::companion_matches(ui, split[at[0]], &read.1, &mut self.companion_pick);
+            }
+            if paged {
+                motif::inside(ui, split[at[1]], |ui| {
+                    let labels: Vec<motif::Tab> = read
+                        .1
+                        .pages
+                        .iter()
+                        .map(|p| motif::Tab::new(p.label()))
+                        .collect();
+                    if let Some(motif::TabAction::Select(i)) =
+                        motif::tab_strip(ui, "companion_pages", &labels, page)
+                    {
+                        self.companion_page = i;
+                    }
+                });
+            }
+            let (answer, acts_rect) = (split[at[2]], split[at[3]]);
             motif::inside(ui, answer, |ui| {
                 // **Barre pleine.** La fenêtre est petite : la fiche n'y
                 // tient jamais entière, et la dernière ligne sortait
@@ -48951,6 +49213,9 @@ impl App {
                         );
                         return;
                     };
+                    // Le nom, sur toutes les pages : c'est ce qui dit de
+                    // quoi on parle, et une page tournée sans lui
+                    // laisserait une posologie sans produit.
                     ui.add(
                         egui::Label::new(
                             egui::RichText::new(d.name.trim())
@@ -48959,67 +49224,21 @@ impl App {
                         )
                         .wrap(),
                     );
-                    // **Les signaux d'abord, l'identité ensuite.**
-                    // Ce qu'on vient chercher dans cette barre est ce
-                    // qui arrête une délivrance ; « apixaban · AOD »
-                    // identifie une fiche que le nom identifie déjà.
-                    // À `text_scale = 1,6` la fenêtre ne porte que
-                    // quatre lignes au-dessus du pli, et une ligne
-                    // d'identification y prenait celle de la bande —
-                    // la capture s'ouvrait sur un nom, une molécule,
-                    // et rien de ce que les tables ont à dire.
-                    if let Some(section) = Self::companion_band(ui, &read.1) {
-                        go = Some(CompanionGo::Cross(d.id, Some(section)));
-                    }
-                    // Ce qui doit se dire au comptoir avant tout le
-                    // reste, quand la fiche le porte — **au-dessus**
-                    // de l'identité et de ce à quoi le médicament
-                    // sert : l'alerte était sous une phrase de trois
-                    // lignes, c'est-à-dire sous le pli.
-                    if !read.1.flag.is_empty() {
-                        ui.add_space(2.0);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(read.1.flag.as_str())
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::alert()),
-                            )
-                            .wrap(),
-                        );
-                    }
-                    // Ce qui identifie la fiche en une ligne : la
-                    // molécule et la classe. Les deux manquent
-                    // parfois, et une ligne de séparateurs sans
-                    // rien entre eux se lit comme un défaut.
-                    let about = [d.dci.trim(), d.class.trim()]
-                        .into_iter()
-                        .filter(|t| !t.is_empty())
-                        .collect::<Vec<_>>()
-                        .join(" · ");
-                    if !about.is_empty() {
-                        ui.add_space(2.0);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(about)
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text_dim()),
-                            )
-                            .wrap(),
-                        );
-                    }
-                    // **Une phrase, pas la monographie.** Le
-                    // compagnon répond « à quoi ça sert » ; la fiche
-                    // entière est à un bouton, et l'afficher ici
-                    // ferait défiler une fenêtre de trois cents
-                    // pixels.
-                    if !read.1.what.is_empty() {
-                        ui.add_space(2.0);
-                        ui.add(
-                            egui::Label::new(
-                                egui::RichText::new(read.1.what.as_str()).size(motif::pt(ui, 11.5)),
-                            )
-                            .wrap(),
-                        );
+                    match read.1.pages.get(page) {
+                        Some(CompanionPage::Posology) => {
+                            Self::companion_poso_page(ui, d, &read.1);
+                        }
+                        Some(CompanionPage::Advice) => {
+                            Self::companion_advice_page(ui, d);
+                        }
+                        Some(CompanionPage::Care) => {
+                            Self::companion_care_page(ui, d);
+                        }
+                        _ => {
+                            if let Some(section) = Self::companion_signals_page(ui, d, &read.1) {
+                                go = Some(CompanionGo::Cross(d.id, Some(section)));
+                            }
+                        }
                     }
                 });
             });
@@ -49282,6 +49501,57 @@ struct CompanionSignal {
     section: DdiSection,
 }
 
+/// Une page de la barre : ce que la réponse montre.
+///
+/// **La barre répondait une phrase.** « À quoi ça sert », qui est la
+/// seule question à laquelle la personne au comptoir sait déjà répondre
+/// — puis, depuis les puces, ce que les tables disent. Tout le reste de
+/// la fiche était derrière « Fiche », c'est-à-dire derrière un
+/// agrandissement de fenêtre : la posologie, ce qu'on dit au patient, ce
+/// qu'on fait d'une prise oubliée, ce qui contre-indique. Ce sont les
+/// questions du comptoir, et la barre est ce qui est au comptoir.
+///
+/// **Des pages nommées, et non la monographie déroulée.** La règle
+/// d'avant — « une phrase, pas la monographie » — tenait à ce qu'une
+/// fenêtre de trois cents pixels ne porte pas une fiche entière. Elle
+/// en fait quatre cent vingt maintenant, et surtout la fiche entière
+/// n'est pas ce qu'on veut y lire : on veut *une* de ses questions, et
+/// savoir laquelle on lit. Une page qui n'a rien à dire n'est pas
+/// offerte, et quand une seule parle il n'y a pas de bande d'onglets —
+/// une bande d'un onglet n'est pas une bande.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CompanionPage {
+    /// Ce que les tables disent, et ce qui arrête une délivrance.
+    Signals,
+    /// Combien, et pour quelle indication.
+    Posology,
+    /// Ce qu'on dit à la personne, et ce qu'on fait d'un oubli.
+    Advice,
+    /// Ce qui contre-indique, ce qui arrive, ce qu'on surveille.
+    Care,
+}
+
+impl CompanionPage {
+    /// Dans l'ordre où on les lit au comptoir : d'abord ce qui arrête,
+    /// puis combien, puis ce qu'on dit, puis ce qu'on surveille.
+    const ALL: [CompanionPage; 4] = [
+        CompanionPage::Signals,
+        CompanionPage::Posology,
+        CompanionPage::Advice,
+        CompanionPage::Care,
+    ];
+
+    /// Le libellé de l'onglet.
+    fn label(self) -> &'static str {
+        match self {
+            CompanionPage::Signals => tr("companion_page_signals"),
+            CompanionPage::Posology => tr("mono_f_dosage"),
+            CompanionPage::Advice => tr("companion_page_advice"),
+            CompanionPage::Care => tr("companion_page_care"),
+        }
+    }
+}
+
 /// Ce que le compagnon a à dire d'une question.
 struct CompanionRead {
     /// Les fiches qui répondent, la meilleure d'abord.
@@ -49316,6 +49586,21 @@ struct CompanionRead {
     /// de cette application est celui qu'un humain a posé au registre
     /// des stupéfiants, en présentant une boîte.
     scanned: Option<String>,
+    /// Les lignes de posologie de la fiche lue, indication par
+    /// indication.
+    ///
+    /// **Remplies par l'appelant**, et non par `companion_look` : la
+    /// lecture est pure et ne connaît pas la base, mais on ne sait quelle
+    /// fiche interroger qu'une fois le rang résolu — ce que la lecture
+    /// fait. Une requête par changement de question, jamais par image,
+    /// et elle coûte moins que la passe floue qui la précède.
+    poso: Vec<db::Posologie>,
+    /// Les pages qui ont quelque chose à dire de cette fiche-là.
+    ///
+    /// **Une page vide n'est pas une page.** Un onglet qui ouvre sur
+    /// rien est un onglet qu'on apprend à ne plus ouvrir, et il coûte la
+    /// place d'un onglet qui parle.
+    pages: Vec<CompanionPage>,
 }
 
 /// Combien de fiches le compagnon garde parmi celles qui répondent.
@@ -49325,25 +49610,13 @@ struct CompanionRead {
 /// ouvre, et elle est à un bouton.
 const COMPANION_HITS: usize = 8;
 
-/// Ce que le compagnon lit d'une question.
+/// Les fiches qui répondent à ce qu'on a tapé, la meilleure d'abord.
 ///
 /// **Hors de la boucle de dessin et sans egui**, comme `toolbar_shape`
 /// ou `agenda::lay` : c'est une lecture, elle se teste sans ouvrir de
-/// fenêtre. Et elle est chère — une passe floue sur les 862 fiches, puis
-/// six tables cliniques —, donc elle est mémorisée contre la question.
-fn companion_look(
-    drugs: &[Drug],
-    file: &[Drug],
-    dfg: Option<f64>,
-    age: Option<u32>,
-    today: &str,
-    query: &str,
-    pick: usize,
-) -> CompanionRead {
-    // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
-    // jamais la longueur — c'est la règle de `codebar`, et elle fait
-    // qu'un code abîmé n'est pas pris pour un bon.
-    let scanned = crate::codebar::read(query, today).map(|s| s.code);
+/// fenêtre. Et elle est chère — une passe floue sur les 862 fiches —,
+/// donc tout ce qui la suit est mémorisé avec elle contre la question.
+fn companion_hits(drugs: &[Drug], query: &str) -> Vec<Drug> {
     let mut scored: Vec<(i32, &Drug)> = Vec::new();
     if !query.is_empty() {
         for d in drugs {
@@ -49363,7 +49636,33 @@ fn companion_look(
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
         scored.truncate(COMPANION_HITS);
     }
-    let hits: Vec<Drug> = scored.into_iter().map(|(_, d)| d.clone()).collect();
+    scored.into_iter().map(|(_, d)| d.clone()).collect()
+}
+
+/// Ce que le compagnon lit, une fois les fiches trouvées.
+///
+/// **Séparée de la passe floue parce que la base s'intercale entre les
+/// deux.** Les lignes de posologie sont dans la base, on ne sait quelle
+/// fiche interroger qu'une fois le rang résolu, et le rang se résout sur
+/// les fiches trouvées. L'appelant fait donc trois pas — chercher,
+/// interroger, lire — et celui-ci reste **pur** : il reçoit les lignes
+/// plutôt que d'aller les prendre, comme tous les modules cliniques de
+/// ce dépôt reçoivent leurs traitements.
+#[allow(clippy::too_many_arguments)]
+fn companion_look(
+    hits: Vec<Drug>,
+    file: &[Drug],
+    dfg: Option<f64>,
+    age: Option<u32>,
+    today: &str,
+    query: &str,
+    pick: usize,
+    poso: Vec<db::Posologie>,
+) -> CompanionRead {
+    // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
+    // jamais la longueur — c'est la règle de `codebar`, et elle fait
+    // qu'un code abîmé n'est pas pris pour un bon.
+    let scanned = crate::codebar::read(query, today).map(|s| s.code);
     let pick = pick.min(hits.len().saturating_sub(1));
     let Some(card) = hits.get(pick).cloned() else {
         return CompanionRead {
@@ -49374,9 +49673,34 @@ fn companion_look(
             what: String::new(),
             flag: String::new(),
             scanned,
+            poso: Vec::new(),
+            pages: Vec::new(),
         };
     };
     let signals = companion_signals(&card, file, dfg, age);
+    // Les pages qui parlent. La première est toujours là : les puces,
+    // le signe d'alerte et ce à quoi le produit sert sont ce que la
+    // barre est venue dire, et quand toutes les tables se taisent c'est
+    // une phrase qui le dit — donc elle n'est jamais vide. Les trois
+    // autres se retirent quand la fiche ne porte pas leurs champs, ce
+    // qui arrive : la base est complète sur les huit cent soixante-deux
+    // fiches livrées, pas sur celles que l'officine écrit.
+    //
+    // La posologie est décidée ici sur la **prose** de la fiche seule :
+    // ses lignes indication par indication sont chargées par l'appelant,
+    // qui les ajoute ensuite — voir [`CompanionRead::poso`].
+    let has = |t: &str| !t.trim().is_empty();
+    let pages: Vec<CompanionPage> = CompanionPage::ALL
+        .into_iter()
+        .filter(|p| match p {
+            CompanionPage::Signals => true,
+            CompanionPage::Posology => has(&card.dosage) || !poso.is_empty(),
+            CompanionPage::Advice => has(&card.iup) || has(&card.missed_dose),
+            CompanionPage::Care => {
+                has(&card.contraindications) || has(&card.adverse) || has(&card.monitoring)
+            }
+        })
+        .collect();
     CompanionRead {
         what: App::first_sentence(&card.indications)
             .or_else(|| App::first_sentence(&card.mechanism))
@@ -49387,6 +49711,8 @@ fn companion_look(
         hits,
         pick,
         scanned,
+        poso,
+        pages,
     }
 }
 
@@ -55436,6 +55762,30 @@ mod tests {
     /// rend pas de puce, le silence de toutes se dit en toutes lettres
     /// — c'est la première règle de `crush.rs` —, et les deux lectures
     /// qui demandent une ordonnance ne se rendent que s'il y en a une.
+    /// La barre en deux gestes, comme la vue les fait : chercher, puis
+    /// lire. La base s'intercale entre les deux à l'usage — les lignes
+    /// de posologie —, et ici il n'y en a pas : ce que ces tests
+    /// regardent est ce que les tables disent, pas ce que la base porte.
+    fn companion_read(
+        drugs: &[crate::db::Drug],
+        file: &[crate::db::Drug],
+        dfg: Option<f64>,
+        age: Option<u32>,
+        query: &str,
+        pick: usize,
+    ) -> super::CompanionRead {
+        super::companion_look(
+            super::companion_hits(drugs, query),
+            file,
+            dfg,
+            age,
+            "2026-09-16",
+            query,
+            pick,
+            Vec::new(),
+        )
+    }
+
     #[test]
     fn the_companion_reports_the_tables_and_says_when_they_are_silent() {
         use crate::db::Drug;
@@ -55480,12 +55830,11 @@ mod tests {
             ..Drug::default()
         };
         assert!(super::companion_signals(&unknown, &[], None, None).is_empty());
-        let read = super::companion_look(
+        let read = companion_read(
             std::slice::from_ref(&unknown),
             &[],
             None,
             None,
-            "2026-09-16",
             "zorglubine",
             0,
         );
@@ -55543,15 +55892,7 @@ mod tests {
         );
         // Et le rang lu est borné à ce que la liste porte : une flèche
         // qui dépasse ne doit pas faire lire une fiche qui n'existe pas.
-        let read = super::companion_look(
-            std::slice::from_ref(&statin),
-            &[],
-            None,
-            None,
-            "2026-09-16",
-            "tahor",
-            40,
-        );
+        let read = companion_read(std::slice::from_ref(&statin), &[], None, None, "tahor", 40);
         assert_eq!(read.pick, 0);
         assert_eq!(read.hits.len(), 1);
         // **Un code-barres n'est pas un nom qu'on n'aurait pas
@@ -55561,12 +55902,11 @@ mod tests {
         // médicament n'y est pas » — une réponse fausse à une question
         // qu'on n'a pas posée. Le CIP13 est celui de `codebar` : sa clé
         // de contrôle est calculée à la main dans ce module.
-        let boxed = super::companion_look(
+        let boxed = companion_read(
             std::slice::from_ref(&statin),
             &[],
             None,
             None,
-            "2026-09-16",
             "3400930000007",
             0,
         );
@@ -55576,27 +55916,18 @@ mod tests {
         // clé qui décide, jamais la longueur. La barre répond alors ce
         // qu'elle répond à n'importe quoi d'introuvable, ce qui est
         // exact.
-        let damaged = super::companion_look(
+        let damaged = companion_read(
             std::slice::from_ref(&statin),
             &[],
             None,
             None,
-            "2026-09-16",
             "3400930000008",
             0,
         );
         assert_eq!(damaged.scanned, None);
         // Une question vide ne cherche rien : la barre s'ouvre sur son
         // invite, et non sur les huit premières fiches de la base.
-        let idle = super::companion_look(
-            std::slice::from_ref(&statin),
-            &[],
-            None,
-            None,
-            "2026-09-16",
-            "",
-            0,
-        );
+        let idle = companion_read(std::slice::from_ref(&statin), &[], None, None, "", 0);
         assert!(idle.hits.is_empty());
         assert!(!idle.silent, "rien cherché n'est pas un silence des tables");
     }
@@ -55677,6 +56008,121 @@ mod tests {
                 .into_iter()
                 .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
             "sans TextWrapMode::Extend, une puce doit se couper"
+        );
+    }
+
+    /// **Une page vide n'est pas une page, et la première parle
+    /// toujours.**
+    ///
+    /// La barre répondait une phrase. Elle tourne maintenant des pages —
+    /// ce que les tables disent, combien, ce qu'on dit à la personne, ce
+    /// qu'on surveille —, et un onglet qui ouvre sur rien est un onglet
+    /// qu'on apprend à ne plus ouvrir : il coûte la place d'un onglet qui
+    /// parle, et il fait douter des autres.
+    ///
+    /// Les huit cent soixante-deux fiches livrées portent tous ces
+    /// champs ; celles que l'officine écrit, non — c'est sur les siennes
+    /// que la règle se voit. La première page ne se retire jamais :
+    /// quand toutes les tables se taisent, c'est une phrase qui le dit,
+    /// et cette phrase est sur elle.
+    #[test]
+    fn a_companion_page_that_says_nothing_is_not_offered() {
+        use super::CompanionPage;
+        use crate::db::Drug;
+        // Une fiche que quelqu'un vient d'ouvrir : un nom, rien d'autre.
+        let bare = Drug {
+            id: 1,
+            name: "Zorglubine".to_owned(),
+            ..Drug::default()
+        };
+        let read = companion_read(
+            std::slice::from_ref(&bare),
+            &[],
+            None,
+            None,
+            "zorglubine",
+            0,
+        );
+        assert_eq!(
+            read.pages,
+            vec![CompanionPage::Signals],
+            "une fiche nue n'offre que la page qui dit que les tables se taisent"
+        );
+        // Et chaque champ ouvre **sa** page, et elle seule.
+        for (field, page) in [
+            ("dosage", CompanionPage::Posology),
+            ("iup", CompanionPage::Advice),
+            ("missed_dose", CompanionPage::Advice),
+            ("contraindications", CompanionPage::Care),
+            ("adverse", CompanionPage::Care),
+            ("monitoring", CompanionPage::Care),
+        ] {
+            let mut d = bare.clone();
+            let said = "Quelque chose de dit.".to_owned();
+            match field {
+                "dosage" => d.dosage = said,
+                "iup" => d.iup = said,
+                "missed_dose" => d.missed_dose = said,
+                "contraindications" => d.contraindications = said,
+                "adverse" => d.adverse = said,
+                _ => d.monitoring = said,
+            }
+            let read = companion_read(std::slice::from_ref(&d), &[], None, None, "zorglubine", 0);
+            assert_eq!(
+                read.pages,
+                vec![CompanionPage::Signals, page],
+                "« {field} » doit ouvrir {page:?} et rien d'autre"
+            );
+        }
+        // **Et une ligne de posologie ouvre la page même sans prose.**
+        // Les lignes vivent dans la base et non sur la fiche : une
+        // molécule dont la posologie est écrite indication par
+        // indication, et dont le champ de prose est vide, a bien une
+        // posologie à montrer. C'est la raison pour laquelle la lecture
+        // les reçoit plutôt que de les deviner.
+        let lines = vec![crate::db::Posologie {
+            id: 1,
+            indication: "Fibrillation atriale".to_owned(),
+            posologie: "5 mg deux fois par jour".to_owned(),
+            remarque: String::new(),
+        }];
+        let read = super::companion_look(
+            super::companion_hits(std::slice::from_ref(&bare), "zorglubine"),
+            &[],
+            None,
+            None,
+            "2026-09-17",
+            "zorglubine",
+            0,
+            lines,
+        );
+        assert_eq!(
+            read.pages,
+            vec![CompanionPage::Signals, CompanionPage::Posology]
+        );
+        // L'ordre est celui de la lecture au comptoir, et non celui du
+        // hasard : ce qui arrête, puis combien, puis ce qu'on dit, puis
+        // ce qu'on surveille.
+        let mut full = bare.clone();
+        full.monitoring = "Surveiller.".to_owned();
+        full.iup = "Dire.".to_owned();
+        full.dosage = "Doser.".to_owned();
+        let read = companion_read(
+            std::slice::from_ref(&full),
+            &[],
+            None,
+            None,
+            "zorglubine",
+            0,
+        );
+        assert_eq!(
+            read.pages,
+            vec![
+                CompanionPage::Signals,
+                CompanionPage::Posology,
+                CompanionPage::Advice,
+                CompanionPage::Care
+            ]
         );
     }
 
@@ -55794,7 +56240,10 @@ mod tests {
         // que le test ne peut donc pas manquer ; ce qu'il vérifie, c'est
         // qu'aucune n'est passée à un chapitre que `ALL` ignore — ce que
         // le balayage ci-dessus ne regarde pas.
-        let signals = body_of("fn companion_signals");
+        // Avec sa parenthèse : `companion_signals_page` commence par le
+        // même nom, et sans elle c'est elle qu'on lisait — un corps sans
+        // une seule puce, donc un test qui passe en ne gardant rien.
+        let signals = body_of("fn companion_signals(");
         let named: Vec<&str> = signals
             .iter()
             .filter_map(|l| l.trim().strip_prefix("section: DdiSection::"))
@@ -55840,7 +56289,8 @@ mod tests {
         for scale in [1.0_f32, 1.25, 1.6] {
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, egui::Vec2::ZERO));
+            let seen =
+                std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, egui::Vec2::ZERO, 0.0_f32));
             let _ = ctx.run(Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     *seen.borrow_mut() = (
@@ -55848,10 +56298,11 @@ mod tests {
                         App::label_line(ui),
                         ui.spacing().item_spacing.y,
                         App::companion_floor(ui),
+                        motif::tab_strip_height(ui),
                     );
                 });
             });
-            let (row, line, gap, floor) = seen.take();
+            let (row, line, gap, floor, strip) = seen.take();
             // Le corps que le plancher promet, et celui de la fenêtre
             // ouverte — mesuré à 560 × 420 dans la vraie barre, aux trois
             // échelles : 279 px à 1,6, 305 à 1,25, 331 à 1. Le chiffre
@@ -55859,12 +56310,14 @@ mod tests {
             // relation entre la fenêtre et son corps passe par la marge
             // du panneau et par deux rangées, et qu'une seconde écriture
             // de cette relation dirait autre chose que le dessin.
-            let smallest = App::companion_body_floor(row, line, gap);
-            let largest = match scale {
-                s if s < 1.1 => 331.0,
-                s if s < 1.4 => 305.0,
-                _ => 279.0,
-            };
+            let smallest = App::companion_body_floor(row, line, gap, strip);
+            // Le corps de la fenêtre ouverte, **sous-estimé** : la
+            // marge du panneau se mesure au dessin et n'est pas
+            // atteignable ici, alors on l'enlève à la louche. Le balayage
+            // et l'affirmation « les deux rangées de gestes tiennent »
+            // portent donc sur un corps plus petit que le vrai, ce qui
+            // est du bon côté dans les deux cas.
+            let largest = App::COMPANION_SIZE[1] - 2.0 * row - 2.0 * gap - 16.0;
             assert!(
                 floor.y > smallest && floor.x > 0.0,
                 "échelle {scale} : le plancher {floor:?} ne porte pas son corps"
@@ -55876,34 +56329,46 @@ mod tests {
             );
             for acts in [1.0_f32, 2.0, 3.0] {
                 for others in [false, true] {
-                    // Du corps du plancher à celui de la fenêtre ouverte,
-                    // pixel par pixel.
-                    let mut body = smallest;
-                    while body <= largest {
-                        let [m, answer, a] =
-                            App::companion_bands(body, row, line, gap, acts, others);
-                        let gutters = if others { 2.0 * gap } else { gap };
-                        assert!(
-                            m + answer + a + gutters <= body + 0.5,
-                            "échelle {scale}, corps {body}, {acts} rangée(s) de gestes : \
-                             {m} + {answer} + {a} n'y tiennent pas"
-                        );
-                        let keeps = App::COMPANION_ANSWER_LINES * line;
-                        assert!(
-                            answer >= keeps - 0.5,
-                            "échelle {scale}, corps {body}, {acts} rangée(s) de gestes : \
+                    // Avec et sans la bande d'onglets : une fiche qui ne
+                    // porte qu'une page n'en a pas, et le corps se
+                    // partage alors autrement.
+                    for tabs in [0.0_f32, strip] {
+                        // Du corps du plancher à celui de la fenêtre
+                        // ouverte, pixel par pixel.
+                        let mut body = smallest;
+                        while body <= largest {
+                            let [m, t, answer, a] =
+                                App::companion_bands(body, row, line, gap, acts, others, tabs);
+                            assert!(
+                                (t - tabs).abs() < 0.01,
+                                "la bande d'onglets est rendue telle quelle"
+                            );
+                            let bands = 2.0
+                                + if others { 1.0 } else { 0.0 }
+                                + if tabs > 0.0 { 1.0 } else { 0.0 };
+                            let gutters = (bands - 1.0) * gap;
+                            assert!(
+                                m + t + answer + a + gutters <= body + 0.5,
+                                "échelle {scale}, corps {body}, {acts} rangée(s) de gestes, \
+                             onglets {tabs} : {m} + {t} + {answer} + {a} n'y tiennent pas"
+                            );
+                            let keeps = App::COMPANION_ANSWER_LINES * line;
+                            assert!(
+                                answer >= keeps - 0.5,
+                                "échelle {scale}, corps {body}, {acts} rangée(s) de gestes : \
                              la réponse ne garde que {answer} pour un plancher de {keeps}"
-                        );
-                        // Les gestes gardent des rangées entières : une
-                        // rangée de boutons tranchée par le bas se lit
-                        // « cassé » et non « il y en a d'autres ».
-                        let rows = ((a + gap) / (row + gap)).round();
-                        assert!(
-                            rows >= 1.0 && (a - (rows * row + (rows - 1.0) * gap)).abs() < 0.5,
-                            "échelle {scale}, corps {body} : la bande des gestes fait {a}, \
+                            );
+                            // Les gestes gardent des rangées entières : une
+                            // rangée de boutons tranchée par le bas se lit
+                            // « cassé » et non « il y en a d'autres ».
+                            let rows = ((a + gap) / (row + gap)).round();
+                            assert!(
+                                rows >= 1.0 && (a - (rows * row + (rows - 1.0) * gap)).abs() < 0.5,
+                                "échelle {scale}, corps {body} : la bande des gestes fait {a}, \
                              ce qui n'est pas un nombre entier de rangées de {row}"
-                        );
-                        body += 1.0;
+                            );
+                            body += 1.0;
+                        }
                     }
                 }
             }
@@ -55911,7 +56376,7 @@ mod tests {
             // bande — la moitié, essayée d'abord — cachait « Délivrance »
             // à 560 × 420 et `text_scale = 1,6`, où les deux rangées
             // tiennent.
-            let [_, _, roomy] = App::companion_bands(largest, row, line, gap, 2.0, true);
+            let [_, _, _, roomy] = App::companion_bands(largest, row, line, gap, 2.0, true, strip);
             assert!(
                 roomy >= 2.0 * row + gap - 0.5,
                 "échelle {scale} : dans la fenêtre ouverte, les deux rangées de gestes \
@@ -55921,7 +56386,7 @@ mod tests {
             // ce qu'elle était — ne laisse rien à la réponse au plancher.
             let unplafonnee = 3.0 * row + 2.0 * gap + 8.0;
             assert!(
-                smallest - row - 2.0 * gap - unplafonnee < line,
+                smallest - row - strip - 3.0 * gap - unplafonnee < line,
                 "échelle {scale} : non plafonnée, la rangée des gestes doit affamer \
                  la réponse au plancher"
             );

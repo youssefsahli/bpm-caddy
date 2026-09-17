@@ -84,7 +84,7 @@ views=(
     verrou search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance
-    protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion script carnets carnets_edit textes caisse caisses aide
+    protocols protocol_open codex codex_open dispositifs dispositif_open graph stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans fil registres explorer explorer_organ classes classes_outside export finances stats companion companion_poso companion_conseils companion_soins script carnets carnets_edit textes caisse caisses aide
     template options about base peaux keys act_picker vitale
     goto goto_jump mono_search mono_patient
 )

@@ -5,6 +5,44 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La barre tourne des pages.** Elle répondait une phrase — « à quoi ça
+  sert », la seule question à laquelle la personne au comptoir sait déjà
+  répondre — puis, depuis les puces, ce que les tables disent. Tout le
+  reste de la fiche était derrière un agrandissement de fenêtre : la
+  posologie, ce qu'on dit au patient, ce qu'on fait d'une prise oubliée,
+  ce qui contre-indique. Ce sont les questions du comptoir, et la barre
+  est ce qui est au comptoir.
+
+  Quatre pages, et **les flèches gauche et droite pour tourner** : haut
+  et bas parcourent les fiches qui répondent, gauche et droite ce que la
+  fiche lue dit — deux questions perpendiculaires, deux paires de
+  flèches. « Signaux » porte ce que les tables disent ; « Posologie » la
+  prose de la fiche **et ses lignes indication par indication**, parce
+  que « combien » n'a pas de réponse sans « pour quoi » — la même
+  molécule se donne à 75 mg en prévention et à un gramme en traitement ;
+  « Conseils » ce qu'on dit à la personne et ce qu'on fait d'un oubli ;
+  « Précautions » ce qui contre-indique, ce qui arrive, ce qu'on
+  surveille.
+
+  **Une page vide n'est pas une page** : un onglet qui ouvre sur rien
+  est un onglet qu'on apprend à ne plus ouvrir, et il coûte la place
+  d'un onglet qui parle. Et quand une seule page parle, il n'y a pas de
+  bande d'onglets — une bande d'un onglet n'est pas une bande.
+
+### Changed
+- **La barre passe de 560 × 420 à 600 × 500.** La bande d'onglets coûte
+  une rangée, et à `text_scale = 1,6` cette rangée était prise sur les
+  gestes : « Délivrance » repassait sous le pli. Mesuré à cette échelle,
+  ce que la barre porte demande trois cent soixante pixels de corps.
+  Six cents sur cinq cents reste le quart d'un écran de portable.
+- **Trois clés de vue de plus** — `companion_poso`, `companion_conseils`,
+  `companion_soins` — parce que trois pages sur quatre n'apparaîtraient
+  sinon dans aucune capture et ne seraient ouvertes par aucune passe,
+  c'est-à-dire que personne ne les aurait jamais regardées.
+
 ## [0.205.1] - 2026-09-17
 
 ### Fixed
