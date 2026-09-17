@@ -32,6 +32,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'un onglet qui parle. Et quand une seule page parle, il n'y a pas de
   bande d'onglets — une bande d'un onglet n'est pas une bande.
 
+- **Les pastilles prennent le relief de la maison, et la réponse porte
+  un liseré.** Une pastille était une étiquette à fond coloré,
+  c'est-à-dire le seul objet de cette interface sans biseau : dans un
+  décor où tout est gravé — les boutons saillent, les champs se
+  creusent, les onglets se détachent —, un rectangle plat ne se lit pas
+  comme un objet mais comme une surbrillance. Or on le clique. Le relief
+  dit maintenant ce que la couleur dit : ce qui arrête **saille**, ce
+  qui rassure est **enfoncé**, du même mouvement que le ton le plus
+  calme prend le creux du thème.
+
+  Et le bord gauche de la réponse porte la couleur de ce qui presse le
+  plus. Les pastilles disent chacune leur table ; il manquait ce que la
+  fiche dit *en gros*, et sur « Posologie » ou « Conseils » — où il n'y
+  a aucune pastille — le liseré est la seule chose qui rappelle que
+  cette fiche arrête quelque chose. **Rien quand il n'y a rien à
+  dire** : un liseré gris permanent est une décoration, il ne distingue
+  plus rien et on cesse de le voir.
+
 ### Changed
 - **La barre passe de 560 × 420 à 600 × 500.** La bande d'onglets coûte
   une rangée, et à `text_scale = 1,6` cette rangée était prise sur les

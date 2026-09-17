@@ -48625,6 +48625,82 @@ impl App {
     /// une puce coupée laisse deux fonds colorés là où il y en a un —
     /// `TextWrapMode::Extend` garde l'étiquette entière et laisse la
     /// rangée envelopper, ce qu'elle sait faire.
+    /// Ce qu'une pastille occupe, libellé compris.
+    ///
+    /// Le rembourrage est celui des boutons — l'unité de la maison, qui
+    /// suit la densité —, plus les deux pixels de biseau de chaque côté.
+    /// Écrit une fois : la mesure et le dessin lisent cette taille-là.
+    fn companion_chip_size(ui: &egui::Ui, text: &str) -> egui::Vec2 {
+        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
+        let w = ui.fonts(|f| {
+            f.layout_no_wrap(text.to_owned(), font, motif::text())
+                .size()
+        });
+        w + ui.spacing().button_padding * 2.0 + egui::vec2(4.0, 4.0)
+    }
+
+    /// Une pastille : un aplat, **son relief**, et son mot.
+    ///
+    /// Elle était une étiquette à fond coloré, c'est-à-dire le seul objet
+    /// de cette interface sans biseau : dans un décor où tout est gravé —
+    /// les boutons saillent, les champs se creusent, les onglets se
+    /// détachent —, un rectangle plat ne se lit pas comme un objet, il se
+    /// lit comme une surbrillance. Or on la clique.
+    ///
+    /// Le relief dit aussi ce que la couleur dit : ce qui arrête
+    /// **saille**, ce qui rassure est **enfoncé**, du même mouvement que
+    /// le ton le plus calme prend le creux du thème. La règle tient
+    /// même sur les deux peaux de nuit, parce qu'un objet Motif est
+    /// éclairé d'en haut à gauche quelle que soit l'heure.
+    ///
+    /// Et **elle est allouée**, non écrite : une étiquette peut se couper
+    /// en deux au milieu d'une rangée qui enveloppe, et laisser deux
+    /// fonds colorés là où il y en a un. Un rectangle alloué ne le peut
+    /// pas — la rangée passe à la ligne entre deux pastilles, ce qu'elle
+    /// sait faire.
+    fn companion_chip(
+        ui: &mut egui::Ui,
+        text: &str,
+        fill: egui::Color32,
+        raised: bool,
+    ) -> egui::Response {
+        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
+        let ink = motif::on_fill(fill);
+        let galley = ui.fonts(|f| f.layout_no_wrap(text.to_owned(), font, ink));
+        let pad = ui.spacing().button_padding + egui::vec2(2.0, 2.0);
+        // **La taille vient de la fonction qui l'annonce**, et non d'un
+        // second calcul : deux écritures d'une même taille finissent par
+        // se contredire, et c'est alors la promesse qui ment.
+        let (rect, resp) =
+            ui.allocate_exact_size(Self::companion_chip_size(ui, text), egui::Sense::click());
+        let painter = ui.painter();
+        painter.rect_filled(rect, 0.0, fill);
+        motif::bevel(painter, rect, raised);
+        painter.galley(rect.min + pad, galley, ink);
+        resp
+    }
+
+    /// Le liseré du bord gauche de la réponse : **ce qui presse le
+    /// plus, d'un seul coup d'œil**.
+    ///
+    /// Les puces disent chacune leur table ; il manquait ce que la fiche
+    /// dit *en gros*. Sur une barre posée au-dessus du logiciel de
+    /// comptoir, la question est d'abord « est-ce que je m'arrête ? », et
+    /// y répondre demandait de lire quatre pastilles — ou de tourner la
+    /// page, où il n'y en a aucune.
+    ///
+    /// **Rien quand il n'y a rien à dire.** Un liseré gris permanent est
+    /// une décoration : il ne distingue plus rien et on cesse de le
+    /// voir. Sans signal — et le silence des tables en est un, dit en
+    /// mots sur la page — le bord reste nu.
+    fn companion_edge(read: &CompanionRead) -> Option<egui::Color32> {
+        read.signals
+            .iter()
+            .max_by_key(|s| s.tone.urgency())
+            .filter(|s| s.tone.urgency() > 0)
+            .map(|s| s.tone.fill())
+    }
+
     fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> Option<DdiSection> {
         let mut clicked = None;
         if read.silent {
@@ -48649,19 +48725,9 @@ impl App {
         ui.add_space(2.0);
         ui.horizontal_wrapped(|ui| {
             for s in &read.signals {
-                let fill = s.tone.fill();
-                if ui
-                    .add(
-                        egui::Label::new(
-                            egui::RichText::new(format!("  {}  ", s.chip))
-                                .size(motif::pt(ui, 10.5))
-                                .strong()
-                                .color(motif::on_fill(fill))
-                                .background_color(fill),
-                        )
-                        .wrap_mode(egui::TextWrapMode::Extend)
-                        .sense(egui::Sense::click()),
-                    )
+                // Ce qui arrête saille, ce qui rassure est enfoncé.
+                let raised = s.tone != CompanionTone::Ok;
+                if Self::companion_chip(ui, &s.chip, s.tone.fill(), raised)
                     .on_hover_text(format!("{}\n\n{}", s.hover, tr("companion_signal_open")))
                     .clicked()
                 {
@@ -49174,6 +49240,29 @@ impl App {
                 });
             }
             let (answer, acts_rect) = (split[at[2]], split[at[3]]);
+            // **Le liseré, avant la réponse et sur toutes ses pages.**
+            // Il dit ce qui presse le plus, là où les puces disent chacune
+            // leur table — et sur « Posologie » ou « Conseils », où il n'y
+            // a pas de puce du tout, il est la seule chose qui rappelle
+            // que cette fiche arrête quelque chose.
+            let answer = match Self::companion_edge(&read.1) {
+                Some(ink) => {
+                    let w = motif::pt(ui, 3.0);
+                    ui.painter().rect_filled(
+                        egui::Rect::from_min_max(
+                            answer.min,
+                            egui::pos2(answer.left() + w, answer.bottom()),
+                        ),
+                        0.0,
+                        ink,
+                    );
+                    egui::Rect::from_min_max(
+                        egui::pos2(answer.left() + w + gap, answer.top()),
+                        answer.max,
+                    )
+                }
+                None => answer,
+            };
             motif::inside(ui, answer, |ui| {
                 // **Barre pleine.** La fenêtre est petite : la fiche n'y
                 // tient jamais entière, et la dernière ligne sortait
@@ -49444,6 +49533,20 @@ enum CompanionTone {
 }
 
 impl CompanionTone {
+    /// Ce qui presse le plus, pour que « le pire » ait un sens.
+    ///
+    /// Un ordre écrit, et non celui des variantes : `Ord` dérivé suivrait
+    /// la déclaration, et déplacer une variante changerait alors la
+    /// couleur du liseré sans que personne l'ait voulu.
+    fn urgency(self) -> u8 {
+        match self {
+            CompanionTone::Stop => 3,
+            CompanionTone::Watch => 2,
+            CompanionTone::Pending => 1,
+            CompanionTone::Ok => 0,
+        }
+    }
+
     /// Le fond de la puce, pris au thème.
     ///
     /// **La puce la plus calme est la plus près du fond.** C'est la
@@ -55932,83 +56035,59 @@ mod tests {
         assert!(!idle.silent, "rien cherché n'est pas un silence des tables");
     }
 
-    /// **Une puce du compagnon ne se coupe pas en deux, et la rangée des
-    /// autres fiches dit ce qu'elle laisse.**
+    /// **Une puce est dessinée exactement à la taille qu'elle
+    /// annonce, et jamais coupée en deux.**
     ///
-    /// `horizontal_wrapped` enveloppe le texte *dans* une étiquette
-    /// autant qu'entre deux : une puce coupée laisse deux fonds colorés
-    /// là où il y en a un, et sur une bande qui compte des rangées
-    /// entières la seconde moitié sort tranchée. Le test dessine la vraie
-    /// bande, sans fenêtre, à trois échelles et sur les largeurs que la
-    /// barre a vraiment — et il mord : la même boucle sans
-    /// `TextWrapMode::Extend` doit casser au moins une fois, sinon elle
-    /// ne garde rien.
+    /// Elle était une étiquette à fond coloré, et `horizontal_wrapped`
+    /// enveloppe le texte *dans* une étiquette autant qu'entre deux : une
+    /// puce coupée laissait deux fonds colorés là où il y en a un, et sur
+    /// une bande qui compte des rangées entières la seconde moitié
+    /// sortait tranchée. C'est un rectangle **alloué** maintenant, ce qui
+    /// rend la coupure impossible plutôt qu'interdite — mais une taille
+    /// allouée est une promesse, et ce test la confronte au dessin.
+    ///
+    /// Aux trois échelles et sur les largeurs que la barre a vraiment, y
+    /// compris la plus étroite qu'un gestionnaire de fenêtres puisse
+    /// laisser.
     #[test]
-    fn a_companion_chip_is_drawn_whole_or_not_at_all() {
-        const SIGNALS: [&str; 5] = [
+    fn a_companion_chip_is_drawn_at_the_size_it_announces() {
+        use super::App;
+        const SIGNALS: [&str; 6] = [
             "Ordonnance · 2 croisement(s)",
+            "Revue · 1 point(s)",
             "Cytochromes · 1 rencontre(s)",
             "Écraser · Ne pas écraser",
             "Grossesse · Contre-indiqué",
             "Rein · Dose à réduire sous 60 mL/min",
         ];
-        // La bande, dessinée pour de vrai. On rend, pour chaque puce, ce
-        // qu'elle occupe et ce qu'elle occuperait d'une seule venue : une
-        // puce entière fait exactement la taille de sa phrase non
-        // enveloppée, une puce coupée est plus haute et moins large.
-        let band = |scale: f32, width: f32, whole: bool| -> Vec<(egui::Vec2, egui::Vec2)> {
-            let ctx = egui::Context::default();
-            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-            let seen = std::cell::RefCell::new(Vec::new());
-            let _ = ctx.run(Default::default(), |ctx| {
-                egui::CentralPanel::default().show(ctx, |ui| {
-                    ui.set_max_width(width);
-                    let font = egui::TextStyle::Body.resolve(ui.style());
-                    ui.horizontal_wrapped(|ui| {
-                        for s in SIGNALS {
-                            let text = format!("  {s}  ");
-                            let flat = ui.fonts(|f| {
-                                f.layout_no_wrap(text.clone(), font.clone(), motif::text())
-                                    .size()
-                            });
-                            let mut label = egui::Label::new(egui::RichText::new(text));
-                            if whole {
-                                label = label.wrap_mode(egui::TextWrapMode::Extend);
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [300.0_f32, 460.0, 592.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new(Vec::new());
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        ui.set_max_width(width);
+                        ui.horizontal_wrapped(|ui| {
+                            for s in SIGNALS {
+                                let said = App::companion_chip_size(ui, s);
+                                let drawn =
+                                    App::companion_chip(ui, s, motif::alert(), true).rect.size();
+                                seen.borrow_mut().push((said, drawn));
                             }
-                            let drawn = ui.add(label).rect.size();
-                            seen.borrow_mut().push((drawn, flat));
-                        }
+                        });
                     });
                 });
-            });
-            seen.take()
-        };
-        for scale in [1.0_f32, 1.25, 1.6] {
-            // Les largeurs que la barre a vraiment : son corps aux trois
-            // formes, la plus étroite étant celle d'une fenêtre qu'un
-            // gestionnaire a laissé descendre jusqu'à son plancher.
-            for width in [300.0_f32, 460.0, 552.0] {
-                for (i, (drawn, flat)) in band(scale, width, true).into_iter().enumerate() {
+                for (i, (said, drawn)) in seen.take().into_iter().enumerate() {
                     assert!(
-                        (drawn.y - flat.y).abs() < 1.0,
-                        "échelle {scale}, largeur {width} : « {} » est dessinée sur \
-                         {} là où sa phrase en fait {}",
-                        SIGNALS[i],
-                        drawn.y,
-                        flat.y
+                        (said - drawn).length() < 1.0,
+                        "échelle {scale}, largeur {width} : « {} » s'annonce {said:?} \
+                         et se dessine {drawn:?}",
+                        SIGNALS[i]
                     );
                 }
             }
         }
-        // **Et la boucle mord** : laissée libre, à la plus étroite des
-        // largeurs et au plus grand des textes, au moins une puce se
-        // coupe vraiment. Sans cela le test ne garderait rien.
-        assert!(
-            band(1.6, 300.0, false)
-                .into_iter()
-                .any(|(drawn, flat)| drawn.y > flat.y + 1.0),
-            "sans TextWrapMode::Extend, une puce doit se couper"
-        );
     }
 
     /// **Une page vide n'est pas une page, et la première parle
