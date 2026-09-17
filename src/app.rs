@@ -9787,7 +9787,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 26] {
+pub fn key_rows() -> [(&'static str, &'static str); 27] {
     [
         ("", tr("keys_group_workspace")),
         ("F1", tr("toolbar_docs_tooltip")),
@@ -9813,6 +9813,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 26] {
         ("1 … 9, 0", tr("keys_act_digit")),
         ("← →", tr("keys_arrows")),
         ("Alt + ← →", tr("keys_patient_tabs")),
+        ("Alt + 1 … 5", tr("keys_companion_acts")),
         ("", tr("keys_group_dates")),
         ("230826 · 2308", tr("keys_dates")),
     ]
@@ -49189,6 +49190,28 @@ impl App {
                 i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowRight),
             )
         });
+        // **Les cinq gestes au clavier.** La barre se conduit sans
+        // souris — le champ garde le foyer, les flèches parcourent,
+        // Entrée ouvre, Échap efface — et ses cinq gestes demandaient un
+        // clic : la seule chose qu'on ne pouvait pas faire en tapant.
+        //
+        // Alt, parce que le champ prend les chiffres nus : ce qu'on tape
+        // est un nom de médicament, et « 5 » en est le début d'aucun
+        // mais le milieu de beaucoup. Et le rang suit
+        // [`Self::COMPANION_ACTS`], donc les touches suivent l'ordre
+        // dessiné sans que personne ait à les accorder.
+        let keyed = ctx.input_mut(|i| {
+            const DIGITS: [egui::Key; 5] = [
+                egui::Key::Num1,
+                egui::Key::Num2,
+                egui::Key::Num3,
+                egui::Key::Num4,
+                egui::Key::Num5,
+            ];
+            DIGITS
+                .into_iter()
+                .position(|k| i.consume_key(egui::Modifiers::ALT, k))
+        });
         // Les flèches marchent dans la liste **de l'image d'avant** :
         // c'est celle qui est à l'écran, et c'est donc elle qui décide
         // du tour. Rien à recalculer pour cela.
@@ -49334,6 +49357,15 @@ impl App {
         if enter {
             if let Some(d) = read.1.hits.get(read.1.pick) {
                 go = Some(CompanionGo::Card(d.id));
+            }
+        }
+        // Le geste appelé au clavier, s'il en demande une fiche et qu'il
+        // y en a une : les deux premiers portent sur la fiche lue, et
+        // sans fiche ils ne font rien — comme leurs boutons, qui gardent
+        // leur place et cessent de répondre.
+        if let Some(i) = keyed {
+            if let Some((_, _, act)) = Self::COMPANION_ACTS.get(i) {
+                go = act.go(read.1.hits.get(read.1.pick).map(|d| d.id));
             }
         }
         // La liste garnie une fois, pour la démonstration : voir

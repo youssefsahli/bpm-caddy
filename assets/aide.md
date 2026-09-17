@@ -197,6 +197,9 @@ ou une molécule ; les flèches parcourent les fiches qui répondent,
 Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
 question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
 qu'une douchette — qui est un clavier — tape dedans sans rien installer.
+**Alt et 1 à 5** appellent les cinq gestes du bas, dans leur ordre : la
+barre se conduit alors entièrement au clavier, ce qui est la façon dont
+on s'en sert pendant qu'on tient une boîte de l'autre main.
 
 **Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
 bas parcourent les fiches qui répondent, gauche et droite ce que la

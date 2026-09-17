@@ -1905,8 +1905,9 @@ watch_print_tooltip = "Le plan de surveillance : dosages à demander et périodi
 
 # --- Le compagnon (F9) ---
 keys_companion = "Compagnon : la fenêtre réduite en barre, au-dessus des autres"
+keys_companion_acts = "Dans le compagnon : les cinq gestes du bas, dans leur ordre"
 companion_hint = "Nom ou molécule…"
-companion_idle = "Tapez un nom. Flèches haut et bas pour changer de fiche, gauche et droite pour changer de page, Entrée pour ouvrir, Échap pour effacer."
+companion_idle = "Tapez un nom. Flèches haut et bas pour changer de fiche, gauche et droite pour changer de page, Entrée pour ouvrir, Échap pour effacer. Alt et 1 à 5 pour les cinq gestes du bas."
 companion_found = "Trouvée par le texte de sa fiche :"
 companion_none = "Aucun nom, aucune molécule et aucun texte de fiche ne répond."
 companion_page_signals = "Signaux"

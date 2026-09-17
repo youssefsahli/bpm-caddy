@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Les cinq gestes de la barre au clavier : `Alt` + 1 à 5.** Elle se
+  conduisait déjà sans souris — le champ garde le foyer, les flèches
+  parcourent les fiches et les pages, Entrée ouvre, Échap efface — et ses
+  cinq gestes demandaient un clic : la seule chose qu'on ne pouvait pas
+  faire en tapant, sur la fenêtre dont tout l'objet est d'être à portée
+  pendant qu'on tient une boîte de l'autre main.
+
+  `Alt`, parce que le champ prend les chiffres nus : ce qu'on y tape est
+  un nom de médicament, et « 5 » n'est le début d'aucun mais le milieu de
+  beaucoup. Le rang suit la liste des gestes, si bien que les touches
+  suivent l'ordre dessiné sans que personne ait à les accorder — et la
+  garde du mode d'emploi imprimé a exigé sa ligne, comme elle doit.
+
 ## [0.209.0] - 2026-09-17
 
 ### Added
