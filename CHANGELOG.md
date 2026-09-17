@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.213.2] - 2026-09-17
+
+### Fixed
+- **Ce qui est copié est ce qui est lu, dans l'ordre où on le lit.** La
+  page de la posologie met devant ce que le dossier retient pour cette
+  personne-là ; le presse-papier copiait la référence et taisait cette
+  ligne, c'est-à-dire que la règle portée par le nom de la fonction avait
+  cessé d'être vraie le jour où la page a changé. Une posologie collée
+  sans elle est un schéma de référence qu'on lira pour une prise, et la
+  coller la transporte là où personne ne verra la page.
+
+### Changed
+- **« Un changement d'écran a des compagnons, et ils ne tombent pas
+  bruyamment »** entre dans `CLAUDE.md`. Trois fois dans la même
+  journée, un changement a laissé derrière lui une mesure, un test ou une
+  copie qui disait encore l'ancienne chose — sans qu'aucun test tombe,
+  parce que chacun portait sa propre écriture du même calcul. Le piège
+  que ce fichier nomme partout — deux écritures d'une même chose
+  divergent — vaut pour le **filet** autant que pour le code.
+
 ## [0.213.1] - 2026-09-17
 
 ### Changed
