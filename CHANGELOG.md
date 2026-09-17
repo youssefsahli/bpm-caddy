@@ -8,6 +8,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **La réponse est posée dans un puits, et deux pages disent enfin
+  tout.** Tout ce qui se lit dans cette application est dans un creux —
+  une liste, un graphe, un texte qui défile — et la réponse de la barre
+  flottait seule sur le fond du panneau, sans rien qui dise où elle
+  commence ni où elle finit. Sur une fenêtre où le nom, les onglets et
+  les gestes se touchent, c'est le cadre qui sépare ce qu'on lit de ce
+  qu'on clique — et la bande d'onglets se referme dessus comme sur une
+  page, ce qu'elle est.
+
+  « Posologie » porte maintenant les **formes et dosages disponibles** :
+  « en quel dosage ça existe » est posé au comptoir aussi souvent que
+  « combien », et aller le chercher sur un autre écran pendant qu'on
+  tient la boîte est ce que cette barre existe pour éviter.
+  « Précautions » se ferme sur la **marge thérapeutique et l'antidote**,
+  les deux choses qu'on cherche quand la question cesse d'être « est-ce
+  que je délivre » pour devenir « qu'est-ce qui se passe si ».
 - **« Copier » : ce que la barre lit peut enfin en sortir.** Elle lisait,
   et rien n'en sortait. Une posologie indication par indication, une
   conduite en cas d'oubli, finissent souvent dans le commentaire d'une

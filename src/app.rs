@@ -48931,6 +48931,12 @@ impl App {
     /// rend dans cet ordre-là.
     fn companion_poso_page(ui: &mut egui::Ui, d: &Drug, read: &CompanionRead) {
         Self::companion_part(ui, tr("mono_f_dosage"), &d.dosage);
+        // Les formes et dosages disponibles : « en quel dosage ça
+        // existe » est posé au comptoir aussi souvent que « combien »,
+        // et c'est la même page qui doit y répondre — chercher la
+        // réponse sur un autre écran pendant qu'on tient la boîte est
+        // exactement ce que cette barre existe pour éviter.
+        Self::companion_part(ui, tr("mono_f_forms"), &d.forms);
         if read.poso.is_empty() {
             if d.dosage.trim().is_empty() {
                 ui.add_space(4.0);
@@ -49038,6 +49044,12 @@ impl App {
         Self::companion_part(ui, tr("drug_sec_ci"), &d.contraindications);
         Self::companion_part(ui, tr("drug_sec_adverse"), &d.adverse);
         Self::companion_part(ui, tr("drug_sec_monitoring"), &d.monitoring);
+        // La marge thérapeutique et l'antidote ferment la page : ce sont
+        // les deux choses qu'on cherche quand la question cesse d'être
+        // « est-ce que je délivre » pour devenir « qu'est-ce qui se
+        // passe si ».
+        Self::companion_part(ui, tr("drug_sec_toxicity"), &d.toxicity);
+        Self::companion_part(ui, tr("drug_antidote"), &d.antidote);
     }
 
     /// Le compagnon : un champ, ce qu'il trouve, ce que les tables en
@@ -49443,6 +49455,14 @@ impl App {
                 });
             }
             let (answer, acts_rect) = (split[at[2]], split[at[3]]);
+            // **La réponse est un puits.** Tout ce qui se lit dans cette
+            // application est posé dans un creux — une liste, un graphe,
+            // un texte qui défile — et la réponse de la barre flottait
+            // seule sur le fond du panneau, sans rien qui dise où elle
+            // commence ni où elle finit. Sur une fenêtre de six cents
+            // pixels où le nom, les onglets et les gestes se touchent,
+            // c'est le cadre qui sépare ce qu'on lit de ce qu'on clique.
+            let answer = motif::well(ui, answer);
             // **Le liseré, avant la réponse et sur toutes ses pages.**
             // Il dit ce qui presse le plus, là où les puces disent chacune
             // leur table — et sur « Posologie » ou « Conseils », où il n'y
@@ -50061,10 +50081,14 @@ fn companion_look(
         .into_iter()
         .filter(|p| match p {
             CompanionPage::Signals => true,
-            CompanionPage::Posology => has(&card.dosage) || !poso.is_empty(),
+            CompanionPage::Posology => has(&card.dosage) || has(&card.forms) || !poso.is_empty(),
             CompanionPage::Advice => has(&card.iup) || has(&card.missed_dose),
             CompanionPage::Care => {
-                has(&card.contraindications) || has(&card.adverse) || has(&card.monitoring)
+                has(&card.contraindications)
+                    || has(&card.adverse)
+                    || has(&card.monitoring)
+                    || has(&card.toxicity)
+                    || has(&card.antidote)
             }
             // Sans dossier ouvert, il n'y a pas d'ordonnance à
             // descendre — et un onglet « Dossier » vide dirait qu'il y
