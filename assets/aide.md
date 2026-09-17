@@ -206,12 +206,16 @@ bas parcourent les fiches qui répondent, gauche et droite ce que la
 fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
 « Signaux » porte ce que les tables disent ; « Posologie » d'abord **ce
 que le dossier retient pour cette personne-là** — la fiche dit la
-référence, le dossier dit le sien —, puis la prose de la fiche **et ses
-lignes indication par indication**, parce que « combien » n'a pas de
-réponse sans « pour quoi » ; « Conseils » ce
-qu'on dit à la personne et ce qu'on fait d'une prise oubliée, qui
-sortent par la même bouche au même moment ; « Précautions » ce qui
-contre-indique, ce qui arrive et ce qu'on surveille. Une page qui n'a
+référence, le dossier dit le sien —, puis la prose de la fiche, **ses
+lignes indication par indication** — parce que « combien » n'a pas de
+réponse sans « pour quoi » — et les formes et dosages disponibles, qu'on
+demande au comptoir aussi souvent que la dose ; « Conseils » ce qu'on
+dit à la personne et ce qu'on fait d'une prise oubliée, qui sortent par
+la même bouche au même moment ; « Précautions » ce qui contre-indique,
+ce qui arrive, ce qu'on surveille, et pour finir la marge thérapeutique
+et l'antidote — les deux choses qu'on cherche quand la question cesse
+d'être « est-ce que je délivre » pour devenir « qu'est-ce qui se passe
+si ». Une page qui n'a
 rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de
 bande d'onglets.
 
