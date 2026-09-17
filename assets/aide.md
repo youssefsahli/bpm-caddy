@@ -217,8 +217,10 @@ plate d'une glargine — et pour tout le reste la décroissance
 plasmatique, avec ce qu'il en reste à vingt-quatre heures. « Combien de
 temps ça reste » est une question de comptoir, et « demi-vie ≈ 12
 heures » demande une arithmétique qu'on n'a pas à faire ; « Conseils » ce qu'on
-dit à la personne et ce qu'on fait d'une prise oubliée, qui sortent par
-la même bouche au même moment ; « Précautions » ce qui contre-indique,
+dit à la personne, ce qu'on fait d'une prise oubliée, **les signes
+d'alerte en entier** — la page des signaux n'en montre que la première
+phrase, et « ce qui doit vous faire consulter » se dit en entier — et ce
+que l'équipe a écrit elle-même sur la fiche ; « Précautions » ce qui contre-indique,
 ce qui arrive, ce qu'on surveille, et pour finir la marge thérapeutique
 et l'antidote — les deux choses qu'on cherche quand la question cesse
 d'être « est-ce que je délivre » pour devenir « qu'est-ce qui se passe

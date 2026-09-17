@@ -48911,6 +48911,8 @@ impl App {
             Some(CompanionPage::Advice) => {
                 part(tr("mono_f_iup"), &d.iup);
                 part(tr("mono_f_missed"), &d.missed_dose);
+                part(tr("mono_f_flags"), &d.red_flags);
+                part(tr("mono_f_notes"), &d.notes);
             }
             Some(CompanionPage::Care) => {
                 part(tr("drug_sec_ci"), &d.contraindications);
@@ -49256,6 +49258,19 @@ impl App {
     fn companion_advice_page(ui: &mut egui::Ui, d: &Drug) {
         Self::companion_part(ui, tr("mono_f_iup"), &d.iup);
         Self::companion_part(ui, tr("mono_f_missed"), &d.missed_dose);
+        // **Les signes d'alerte en entier, ici et pas ailleurs.** La
+        // page des signaux n'en montre que la première phrase, et c'est
+        // voulu : elle doit tenir au-dessus du pli, à côté des
+        // pastilles. Mais « ce qui doit vous faire consulter » est ce
+        // qu'on dit à la personne en lui rendant sa boîte, et cela se
+        // dit en entier — la phrase coupée était tout ce que la barre
+        // portait.
+        Self::companion_part(ui, tr("mono_f_flags"), &d.red_flags);
+        // Et ce que l'officine a écrit elle-même sur cette fiche. Ce
+        // n'est pas de la référence, c'est ce que l'équipe sait : le
+        // fournisseur qui dépanne, la présentation que les patients
+        // confondent, ce qu'on a répondu la dernière fois.
+        Self::companion_part(ui, tr("mono_f_notes"), &d.notes);
     }
 
     /// La page du dossier : l'ordonnance ouverte, ligne par ligne.
@@ -50761,7 +50776,9 @@ fn companion_look(
                     || has(&filed.0)
                     || has(&filed.1)
             }
-            CompanionPage::Advice => has(&card.iup) || has(&card.missed_dose),
+            CompanionPage::Advice => {
+                has(&card.iup) || has(&card.missed_dose) || has(&card.red_flags) || has(&card.notes)
+            }
             CompanionPage::Care => {
                 has(&card.contraindications)
                     || has(&card.adverse)
@@ -57866,23 +57883,39 @@ mod tests {
             "une fiche nue n'offre que la page qui dit que les tables se taisent"
         );
         // Et chaque champ ouvre **sa** page, et elle seule.
+        // **Chaque champ que les pages dessinent est ici.** La liste
+        // avait cinq champs de retard : les formes sont entrées sur la
+        // posologie, la marge et l'antidote sur les précautions, les
+        // signes d'alerte et les notes de l'équipe sur les conseils — et
+        // le test continuait d'affirmer une liste plus courte, c'est-à-
+        // dire de garder moins qu'il n'en dessine.
         for (field, page) in [
             ("dosage", CompanionPage::Posology),
+            ("forms", CompanionPage::Posology),
             ("iup", CompanionPage::Advice),
             ("missed_dose", CompanionPage::Advice),
+            ("red_flags", CompanionPage::Advice),
+            ("notes", CompanionPage::Advice),
             ("contraindications", CompanionPage::Care),
             ("adverse", CompanionPage::Care),
             ("monitoring", CompanionPage::Care),
+            ("toxicity", CompanionPage::Care),
+            ("antidote", CompanionPage::Care),
         ] {
             let mut d = bare.clone();
             let said = "Quelque chose de dit.".to_owned();
             match field {
                 "dosage" => d.dosage = said,
+                "forms" => d.forms = said,
                 "iup" => d.iup = said,
                 "missed_dose" => d.missed_dose = said,
+                "red_flags" => d.red_flags = said,
+                "notes" => d.notes = said,
                 "contraindications" => d.contraindications = said,
                 "adverse" => d.adverse = said,
-                _ => d.monitoring = said,
+                "monitoring" => d.monitoring = said,
+                "toxicity" => d.toxicity = said,
+                _ => d.antidote = said,
             }
             let read = companion_read(std::slice::from_ref(&d), &[], None, None, "zorglubine", 0);
             assert_eq!(

@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Les signes d'alerte en entier, et les notes de l'équipe.** La barre
+  ne portait du champ « Signes d'alerte » que sa première phrase — celle
+  qui tient au-dessus du pli, à côté des pastilles —, et « ce qui doit
+  vous faire consulter » est ce qu'on dit à la personne en lui rendant
+  sa boîte : cela se dit en entier. Il est sur la page des conseils,
+  avec ce que l'officine a écrit elle-même sur la fiche, qui n'est pas
+  de la référence mais ce que l'équipe sait — le fournisseur qui
+  dépanne, la présentation que les patients confondent, ce qu'on a
+  répondu la dernière fois.
+
+### Fixed
+- **Le test des pages avait cinq champs de retard.** Les formes sont
+  entrées sur la posologie, la marge thérapeutique et l'antidote sur les
+  précautions, les signes d'alerte et les notes sur les conseils ; le
+  test continuait d'affirmer une liste plus courte, c'est-à-dire de
+  garder moins que les pages n'en dessinent. Encore un compagnon laissé
+  derrière — la règle inscrite hier dans `CLAUDE.md`, vérifiée sur ses
+  propres suites.
+
 ## [0.216.1] - 2026-09-17
 
 ### Fixed
