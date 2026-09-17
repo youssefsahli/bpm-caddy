@@ -49379,6 +49379,19 @@ impl App {
                 self.companion_pick,
                 poso,
                 &session.surveillance,
+                // Les valeurs du dossier, comme le volet de biologie
+                // les compose : celles qui portent un code du
+                // catalogue, les seules qu'une règle sache lire.
+                &session
+                    .bio_results
+                    .iter()
+                    .filter(|r| !r.code.is_empty())
+                    .map(|r| crate::biology::Reading {
+                        code: r.code.as_str(),
+                        value: r.value,
+                        date: r.taken_on.as_str(),
+                    })
+                    .collect::<Vec<_>>(),
                 found,
             );
             (key, look)
@@ -49813,7 +49826,8 @@ impl App {
                                     CompanionWhere::Cross(section) => {
                                         go = Some(CompanionGo::Cross(d.id, Some(section)));
                                     }
-                                    CompanionWhere::Watch => go = Some(CompanionGo::Watch),
+                                    CompanionWhere::Watch => go = Some(CompanionGo::Bio(1)),
+                                    CompanionWhere::Values => go = Some(CompanionGo::Bio(0)),
                                     // Une page de la barre elle-même :
                                     // rien ne remonte, on tourne. La
                                     // page est retrouvée par son rang
@@ -49930,13 +49944,13 @@ impl App {
                     session.open_registres(RegistreTab::Stupefiants);
                     session.stup_new_kind = crate::ordonnancier::Kind::Sortie;
                 }
-                // La surveillance se lit au dossier, avec ses dates : la
-                // puce ne peut naître que sur un dossier ouvert, donc
-                // l'onglet est là.
-                CompanionGo::Watch => {
+                // Les deux lectures qui vivent au dossier, avec ses
+                // chiffres et ses dates : leurs puces ne peuvent naître
+                // que sur un dossier ouvert, donc l'onglet est là.
+                CompanionGo::Bio(tab) => {
                     session.view = MainView::Search;
                     session.patient_tab = PatientTab::Bio;
-                    session.bio_side_tab = 1;
+                    session.bio_side_tab = tab;
                 }
             }
             leave = true;
@@ -50128,6 +50142,13 @@ enum CompanionWhere {
     Cross(DdiSection),
     /// L'onglet « À surveiller » du dossier ouvert.
     Watch,
+    /// L'onglet des **valeurs** de biologie du dossier ouvert.
+    ///
+    /// Sa voisine dit ce qui n'a pas été demandé ; celle-ci dit ce que
+    /// les chiffres écrits veulent dire sous ce traitement-là. Deux
+    /// questions, deux onglets — et la barre ne peut pas renvoyer l'une
+    /// à la place de l'autre.
+    Values,
     /// Une autre page de la barre elle-même.
     ///
     /// Le doublon est la seule lecture que la barre fait pour son propre
@@ -50147,9 +50168,14 @@ enum CompanionWhere {
 /// fenêtre en cours de dessin.
 enum CompanionGo {
     Card(i64),
-    /// L'onglet « À surveiller » du dossier ouvert : c'est là que la
-    /// surveillance se lit, avec les dates qu'elle lit.
-    Watch,
+    /// Le volet de biologie du dossier ouvert, sur l'onglet nommé :
+    /// zéro pour les valeurs, un pour ce qui n'a pas été demandé.
+    ///
+    /// Ce sont deux questions et deux onglets — ce que les chiffres
+    /// écrits veulent dire, et ceux que personne n'a demandés depuis
+    /// trop longtemps —, et la barre ne peut pas renvoyer à l'un pour
+    /// l'autre.
+    Bio(usize),
     /// Le croisement, chargé du dossier ouvert **et** de la fiche
     /// cherchée.
     ///
@@ -50484,6 +50510,7 @@ fn companion_look(
     pick: usize,
     poso: Vec<db::Posologie>,
     watch: &[crate::surveillance::ResolvedDue],
+    bio: &[crate::biology::Reading],
     found: Vec<String>,
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
@@ -50505,7 +50532,7 @@ fn companion_look(
             found,
         };
     };
-    let signals = companion_signals(&card, file, dfg, age, watch);
+    let signals = companion_signals(&card, file, dfg, age, watch, bio);
     // Les pages qui parlent. La première est toujours là : les puces,
     // le signe d'alerte et ce à quoi le produit sert sont ce que la
     // barre est venue dire, et quand toutes les tables se taisent c'est
@@ -50582,6 +50609,7 @@ fn companion_signals(
     dfg: Option<f64>,
     age: Option<u32>,
     watch: &[crate::surveillance::ResolvedDue],
+    bio: &[crate::biology::Reading],
 ) -> Vec<CompanionSignal> {
     let mut out: Vec<CompanionSignal> = Vec::new();
     // Le dossier, plus la fiche cherchée si elle n'y est pas déjà : la
@@ -50772,12 +50800,58 @@ fn companion_signals(
             });
         }
     }
+    // **Ce que les chiffres du dossier disent sous ce traitement-là.**
+    // Les huit autres tables lisent la fiche ; celle-ci lit les valeurs
+    // écrites au dossier et ne parle que parce qu'un traitement les
+    // explique — une kaliémie basse ne veut pas dire la même chose sous
+    // un diurétique de l'anse et sans lui.
+    //
+    // Refaite pour la seule fiche cherchée, comme l'écrasement ou le
+    // rein : la lecture du dossier porte sur l'ordonnance entière et ne
+    // dit pas laquelle de ses lignes a fait parler la règle. C'est
+    // quatre-vingt-sept règles sur une carte, dans la branche que la
+    // mémoïsation ne prend que lorsque la question a bougé.
     let one = [crate::revue::Treatment {
         name: &card.name,
         dci: &card.dci,
         class: &card.class,
         tags: &card.tags,
     }];
+    // **Ce que cette fiche ajoute à la lecture, et non la lecture.**
+    // Une règle sans `needs` tient quel que soit le traitement — « une
+    // créatininémie au-dessus de tel seuil » se lit sans savoir ce que
+    // la personne prend —, et rendue ici elle donnerait la même puce sur
+    // toutes les fiches de la base : la rangée de « à vérifier » que ce
+    // module refuse par ailleurs, et un libellé qui mentirait en prime,
+    // puisqu'il dit « que ce traitement explique ».
+    //
+    // On lit donc deux fois, avec et sans la fiche, et on garde la
+    // différence. Le type ne dit pas d'où vient une règle — `Finding`
+    // ne porte pas le traitement qui l'a déclenchée —, et c'est la
+    // soustraction qui le dit. Quatre-vingt-sept règles deux fois, dans
+    // la branche que la mémoïsation ne prend que lorsque la question a
+    // bougé.
+    let common = crate::biology::read(bio, &[]);
+    let values: Vec<crate::biology::Finding> = crate::biology::read(bio, &one)
+        .into_iter()
+        .filter(|f| !common.iter().any(|c| c.code == f.code && c.text == f.text))
+        .collect();
+    if let Some(worst) = values.iter().max_by_key(|f| f.severity) {
+        let mut hover = trf("companion_bio_head", values.len());
+        for f in &values {
+            hover.push_str(&format!("\n\n{}", f.text));
+        }
+        out.push(CompanionSignal {
+            chip: trf("companion_sig_bio", values.len()),
+            tone: match worst.severity {
+                crate::biology::Severity::Alert => CompanionTone::Stop,
+                crate::biology::Severity::Warn => CompanionTone::Watch,
+                crate::biology::Severity::Info => CompanionTone::Ok,
+            },
+            hover,
+            goes: CompanionWhere::Values,
+        });
+    }
     // « Peut-on l'écraser ? » — la question du téléphone de l'EHPAD.
     if let Some(a) = crate::crush::read(&one)
         .into_iter()
@@ -56732,6 +56806,7 @@ mod tests {
             pick,
             Vec::new(),
             &[],
+            &[],
             Vec::new(),
         )
     }
@@ -56749,7 +56824,7 @@ mod tests {
         // Le mot est celui de la table, cité : `crush` répond « sous
         // condition » d'une gélule à microgranules, et la puce le
         // reprend plutôt que de le reformuler.
-        let signals = super::companion_signals(&skenan, &[], None, None, &[]);
+        let signals = super::companion_signals(&skenan, &[], None, None, &[], &[]);
         let crush = signals
             .iter()
             .find(|s| s.chip.starts_with("Écraser"))
@@ -56779,7 +56854,7 @@ mod tests {
             name: "Zorglubine".to_owned(),
             ..Drug::default()
         };
-        assert!(super::companion_signals(&unknown, &[], None, None, &[]).is_empty());
+        assert!(super::companion_signals(&unknown, &[], None, None, &[], &[]).is_empty());
         let read = companion_read(
             std::slice::from_ref(&unknown),
             &[],
@@ -56806,8 +56881,14 @@ mod tests {
             class: "macrolide".to_owned(),
             ..Drug::default()
         };
-        let crossed =
-            super::companion_signals(&macrolide, std::slice::from_ref(&statin), None, None, &[]);
+        let crossed = super::companion_signals(
+            &macrolide,
+            std::slice::from_ref(&statin),
+            None,
+            None,
+            &[],
+            &[],
+        );
         assert!(
             crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
             "{crossed:?}",
@@ -56838,6 +56919,7 @@ mod tests {
             &[statin.clone(), macrolide.clone()],
             None,
             None,
+            &[],
             &[],
         );
         assert!(
@@ -57016,6 +57098,81 @@ mod tests {
         assert_eq!(loud.tone("Autre chose"), None);
     }
 
+    /// **Ce que les chiffres du dossier disent sous ce traitement-là.**
+    ///
+    /// Les huit tables cliniques lisent la fiche ; celle-ci lit les
+    /// valeurs écrites au dossier, et elle ne parle que parce qu'un
+    /// traitement les explique — une kaliémie basse ne veut pas dire la
+    /// même chose sous un diurétique de l'anse et sans lui. C'est la
+    /// lecture que seule une barre posée sur le dossier ouvert peut
+    /// faire, et elle ne peut naître sans dossier.
+    ///
+    /// Refaite pour la seule fiche cherchée, comme l'écrasement ou le
+    /// rein : la lecture du dossier porte sur l'ordonnance entière et
+    /// **ne dit pas** laquelle de ses lignes a fait parler la règle —
+    /// `biology::Finding` ne porte pas le traitement qui l'a déclenchée.
+    #[test]
+    fn the_companion_reads_the_values_of_the_file_under_this_treatment() {
+        use crate::db::Drug;
+        // Une règle de la table, prise telle qu'elle y est écrite : un
+        // TCA au-delà de trois fois le témoin **sous héparine**.
+        let heparine = Drug {
+            id: 1,
+            name: "Calciparine".to_owned(),
+            dci: "héparine".to_owned(),
+            class: "anticoagulant injectable".to_owned(),
+            ..Drug::default()
+        };
+        let other = Drug {
+            id: 2,
+            name: "Coversyl".to_owned(),
+            dci: "périndopril".to_owned(),
+            ..Drug::default()
+        };
+        let high = [crate::biology::Reading {
+            code: "TCA",
+            value: 4.0,
+            date: "2026-09-01",
+        }];
+        let chips = |card: &Drug, bio: &[crate::biology::Reading]| -> Vec<String> {
+            super::companion_signals(card, &[], None, None, &[], bio)
+                .into_iter()
+                .map(|s| s.chip)
+                .collect()
+        };
+        assert!(
+            chips(&heparine, &high)
+                .iter()
+                .any(|c| c.starts_with("Biologie")),
+            "un TCA à quatre sous héparine est une lecture"
+        );
+        // **Le même chiffre sous un autre traitement ne dit rien.**
+        // C'est tout l'intérêt : la valeur seule est au dossier, et la
+        // barre dit ce qu'elle devient sous *cette* fiche.
+        assert!(
+            !chips(&other, &high)
+                .iter()
+                .any(|c| c.starts_with("Biologie")),
+            "le périndopril n'explique pas un TCA"
+        );
+        // **Et une règle qui tient quel que soit le traitement n'est pas
+        // une lecture de cette fiche.** « Le périndopril n'explique pas
+        // un TCA » ne tenait pas avant que la lecture soit une
+        // différence : la table porte des règles sans `needs`, qui se
+        // lisent sans savoir ce que la personne prend, et la puce
+        // s'affichait alors sur toutes les fiches de la base en disant
+        // « que ce traitement explique ».
+        //
+        // Et sans valeur au dossier, rien : la table lit des chiffres,
+        // et il n'y en a pas.
+        assert!(
+            !chips(&heparine, &[])
+                .iter()
+                .any(|c| c.starts_with("Biologie")),
+            "aucune valeur, aucune lecture"
+        );
+    }
+
     /// **Ce qui arrête passe devant, et à ton égal l'ordre des tables
     /// ne bouge pas.**
     ///
@@ -57050,8 +57207,14 @@ mod tests {
             class: "biguanide".to_owned(),
             ..Drug::default()
         };
-        let signals =
-            super::companion_signals(&stagid, std::slice::from_ref(&glucophage), None, None, &[]);
+        let signals = super::companion_signals(
+            &stagid,
+            std::slice::from_ref(&glucophage),
+            None,
+            None,
+            &[],
+            &[],
+        );
         assert!(
             signals.len() >= 2,
             "il faut plusieurs tons pour que l'ordre veuille dire quelque chose"
@@ -57109,7 +57272,7 @@ mod tests {
             ..Drug::default()
         };
         let chips = |card: &Drug, file: &[Drug]| -> Vec<String> {
-            super::companion_signals(card, file, None, None, &[])
+            super::companion_signals(card, file, None, None, &[], &[])
                 .into_iter()
                 .map(|s| s.chip)
                 .collect()
@@ -57275,6 +57438,7 @@ mod tests {
                 remarque: "à heure fixe".to_owned(),
             }],
             &[],
+            &[],
             Vec::new(),
         );
         // Le nom d'abord, sur toutes les pages.
@@ -57399,6 +57563,7 @@ mod tests {
             "zorglubine",
             0,
             lines,
+            &[],
             &[],
             Vec::new(),
         );
@@ -57591,15 +57756,17 @@ mod tests {
             // main. Elle mène à l'onglet du dossier où cette lecture
             // vit — un chapitre du croisement qui ne la porterait pas
             // serait le défaut que ce fichier a déjà corrigé une fois.
-            // Deux exceptions, chacune pour sa raison. **La
-            // surveillance** lit les *dates* du dossier, et « depuis
-            // combien de temps personne n'a demandé cet examen » n'a pas
-            // de sens sur une liste composée à la main : elle mène à
-            // l'onglet du dossier. **Le doublon** est la seule lecture
-            // que la barre fait pour son propre compte — aucune table ne
-            // la porte, aucun écran ne la montre — et il mène à la page
-            // de la barre qui liste l'ordonnance.
-            if name == "Watch" || name.starts_with("Page(") {
+            // Trois exceptions, chacune pour sa raison. **La
+            // surveillance** et **la biologie** lisent les dates et les
+            // chiffres du dossier — « depuis combien de temps personne
+            // n'a demandé cet examen », « que vaut cette kaliémie sous
+            // ce traitement » n'ont pas de sens sur une liste composée à
+            // la main —, et elles mènent aux deux onglets du dossier où
+            // elles se lisent. **Le doublon** est la seule lecture que la
+            // barre fait pour son propre compte — aucune table ne la
+            // porte, aucun écran ne la montre — et il mène à la page de
+            // la barre qui liste l'ordonnance.
+            if name == "Watch" || name == "Values" || name.starts_with("Page(") {
                 continue;
             }
             let chapter = name

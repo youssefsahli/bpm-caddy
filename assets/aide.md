@@ -227,12 +227,13 @@ n'est pas là.
 
 Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
 rien à leur place : chaque pastille cite le mot de sa table, et son
-survol donne la portée du module avant la conduite. Neuf lectures : ce
+survol donne la portée du module avant la conduite. Dix lectures : ce
 que les fiches du dossier disent de celle-ci, ce que la revue
 d'ordonnance en dit une fois qu'on l'ajoute aux autres, **si le dossier
-porte déjà cette molécule sous un autre nom**, ce que ce traitement
-demande qu'on mesure et depuis combien de temps personne ne l'a demandé,
-les cytochromes, « peut-on écraser ? », la grossesse et l'allaitement,
+porte déjà cette molécule sous un autre nom**, ce que les valeurs de
+biologie du dossier veulent dire sous ce traitement-là, ce que ce
+traitement demande qu'on mesure et depuis combien de temps personne ne
+l'a demandé, les cytochromes, « peut-on écraser ? », la grossesse et l'allaitement,
 ce que la clairance du dossier change, et ce que l'âge change — l'âge est au dossier depuis le jour où la fiche a été créée, et
 c'est bien pour cela que personne ne le regarde.
 

@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **La dixième lecture : ce que les chiffres du dossier disent sous ce
+  traitement-là.** Les huit tables cliniques lisent la fiche ; celle-ci
+  lit les valeurs écrites au dossier, et elle ne parle que parce qu'un
+  traitement les explique — une kaliémie basse ne veut pas dire la même
+  chose sous un diurétique de l'anse et sans lui. C'est la lecture que
+  seule une barre posée sur le dossier ouvert peut faire.
+
+  **Ce que la fiche ajoute à la lecture, et non la lecture.** La table
+  porte des règles sans condition de traitement — « une créatininémie
+  au-dessus de tel seuil » se lit sans savoir ce que la personne prend —
+  et les rendre ici donnait la même pastille sur toutes les fiches de la
+  base, avec un libellé qui mentait en prime puisqu'il dit « que ce
+  traitement explique ». On lit donc deux fois, avec et sans la fiche, et
+  on garde la différence : `Finding` ne porte pas le traitement qui l'a
+  déclenchée, et c'est la soustraction qui le dit. Sur le Lasilix du
+  dossier de démonstration, cinq lectures deviennent une — la bonne.
+
 ## [0.211.2] - 2026-09-17
 
 ### Fixed
