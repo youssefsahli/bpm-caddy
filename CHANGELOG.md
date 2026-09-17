@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **La barre montrait les puces d'une ordonnance qui avait changé.** Sa
+  lecture se mémorise contre la question — ce qu'on tape, le rang lu, le
+  dossier, sa clairance, la révision des fiches. Le **numéro de
+  dossier** ne bouge pas quand un autre poste ajoute un traitement à
+  l'ordonnance ouverte : `resync` relit la liste, les six lectures du
+  dossier sont refaites, et la barre continuait de montrer les
+  croisements d'avant. C'est la panne de la clairance oubliée, sur une
+  donnée plus grosse.
+
+  Un seul numéro couvre maintenant tout ce sur quoi les lectures du
+  dossier reposent — les traitements, leurs posologies, la biologie —
+  et il est avancé dans `refresh_bio_findings`, l'unique endroit où ces
+  six lectures sont refaites, plutôt que dans chacun des chemins qui y
+  mènent : un compteur qu'il faut penser à bouger est un compteur qu'on
+  oublie, et le premier oubli est un écran qui ne bouge plus.
+
 ## [0.210.0] - 2026-09-17
 
 ### Added

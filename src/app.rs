@@ -3589,9 +3589,22 @@ struct Session {
     /// Le dosage en cours de frappe dans le champ libre. Voir
     /// [`StupEdits`] : un `TextEdit` ne garde pas son contenu.
     strength_edit: String,
-    /// Bumped whenever the treatments or their posologies are re-read,
-    /// so the conciliation knows its answer is stale.
-    treats_rev: u64,
+    /// Bumped whenever **anything the file's readings rest on** is
+    /// re-read : the treatments, their posologies, the biology.
+    ///
+    /// C'est le numéro contre lequel se mémorisent la conciliation et la
+    /// barre du compagnon. Il est incrémenté dans `refresh_bio_findings`
+    /// — l'unique endroit où les six lectures du dossier sont refaites —
+    /// et non dans chacun des chemins qui y mènent : un compteur qu'il
+    /// faut penser à bouger est un compteur qu'on oublie, et le premier
+    /// oubli est un écran qui ne bouge plus.
+    ///
+    /// **Ce n'est pas un compteur inter-postes.** Celui-là est
+    /// `PRAGMA data_version`, que rien ne peut oublier de bouger ; ici
+    /// il s'agit de savoir qu'une lecture *de cette session* a été
+    /// refaite, y compris parce que l'autre poste a écrit et que
+    /// `resync` est passé.
+    file_rev: u64,
     /// The discharge prescription being conciliated, the table it gives
     /// against the file, and the question that table answers.
     concil_sheet: String,
@@ -4383,7 +4396,7 @@ impl Session {
             caisse_off: Vec::new(),
             open_template: None,
             strength_edit: String::new(),
-            treats_rev: 0,
+            file_rev: 0,
             concil_sheet: String::new(),
             concil_sheet_open: false,
             concil_rows: Vec::new(),
@@ -6815,9 +6828,9 @@ impl Session {
         // posologie : une requête par traitement serait huit requêtes
         // sur le chemin d'une fiche qu'on ouvre entre deux clients.
         self.patient_strengths = self.db.patient_dosages(patient_id).unwrap_or_default();
-        self.treats_rev = self.treats_rev.wrapping_add(1);
         // The biology is read against the treatments: change the second
-        // and the first has a different answer.
+        // and the first has a different answer — et c'est elle qui
+        // avance le numéro de révision, pour les deux.
         self.refresh_bio_findings();
     }
 
@@ -6874,7 +6887,7 @@ impl Session {
     }
 
     fn refresh_conciliation(&mut self, patient_id: i64) {
-        let key = (patient_id, self.concil_sheet.clone(), self.treats_rev);
+        let key = (patient_id, self.concil_sheet.clone(), self.file_rev);
         if self.concil_key.as_ref() == Some(&key) {
             return;
         }
@@ -6915,6 +6928,15 @@ impl Session {
     /// for an answer that only moves when a value is written or a
     /// treatment added. It is now computed where those two are.
     fn refresh_bio_findings(&mut self) {
+        // **Le numéro de révision du dossier, avancé ici et nulle part
+        // ailleurs.** C'est le seul endroit où les six lectures sont
+        // refaites — la revue, le rein, la grossesse, l'écrasement,
+        // l'âge, la surveillance —, et tous les chemins qui changent
+        // quelque chose y passent : un traitement ajouté, une valeur de
+        // biologie, un `resync` parce que l'autre poste a écrit. Le
+        // bouger dans chacun de ces chemins serait un compteur qu'on
+        // oublie, et le premier oubli est un écran qui ne bouge plus.
+        self.file_rev = self.file_rev.wrapping_add(1);
         let readings: Vec<crate::biology::Reading> = self
             .bio_results
             .iter()
@@ -49283,6 +49305,14 @@ impl App {
             session.viewing.as_ref().map(|p| p.id),
             session.renal_dfg,
             session.drugs_rev,
+            // **Et la révision du dossier.** Le numéro de dossier ne
+            // bouge pas quand un autre poste ajoute un traitement à
+            // l'ordonnance ouverte ; `resync` relit la liste, les six
+            // lectures sont refaites, et la barre continuait de montrer
+            // les puces d'avant — les croisements d'une ordonnance qui
+            // a changé. C'est la même panne que la clairance oubliée,
+            // sur une donnée plus grosse.
+            session.file_rev,
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
         // **Une autre réponse se lit par son début.** La zone qui porte
@@ -50095,7 +50125,7 @@ enum CompanionGo {
 
 /// La question qui a produit une lecture du compagnon : ce qu'on tape,
 /// la fiche choisie parmi celles qui répondent, le dossier ouvert, sa
-/// clairance, et la révision des fiches.
+/// clairance, la révision des fiches et celle du dossier.
 ///
 /// **La clairance en fait partie bien qu'elle vienne du dossier.** Le
 /// numéro de dossier ne bouge pas quand un autre poste inscrit un DFG
@@ -50104,7 +50134,7 @@ enum CompanionGo {
 /// règle que ce fichier écrit pour toute mémoïsation — on se souvient
 /// contre **la question**, et le DFG est dans la question que
 /// `renal::read` reçoit.
-type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64);
+type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
