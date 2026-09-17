@@ -31827,7 +31827,20 @@ impl App {
         let rows = motif::split_rows(body, &[head, 0.0], 6.0);
         let mut drop: Option<i64> = None;
         let mut add: Option<i64> = None;
-        motif::panel(ui, rows[0], Some(tr("ddi_compose")), |ui| {
+        // **Et le titre dit combien.** La barre pleine permet
+        // *d'atteindre* les puces ; elle ne dit pas qu'il y en a. À
+        // 1024x700 en `text_scale = 1,6`, presser « Depuis le dossier »
+        // ne change rien de visible — les neuf puces naissent sous le
+        // pli —, si bien que rien ne distingue « la liste est chargée »
+        // de « le bouton n'a rien fait ». Les deux remèdes ne
+        // s'excluent pas : l'un mène aux puces, l'autre dit qu'elles
+        // existent.
+        let title = if picked.is_empty() {
+            tr("ddi_compose").to_owned()
+        } else {
+            trf("ddi_compose_n", picked.len())
+        };
+        motif::panel(ui, rows[0], Some(title.as_str()), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
                 // **Barre pleine : ce qui est sous le pli est le sujet.**

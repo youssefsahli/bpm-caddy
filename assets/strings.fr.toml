@@ -1765,6 +1765,7 @@ libelles_restore_tooltip = "Retire la réécriture : la clé suit de nouveau ce 
 libelles_saved = "Textes enregistrés dans {} — ils s'afficheront à la prochaine ouverture."
 libelles_file_header = "# Réécritures des textes de l'interface, écrites par BPM-Caddy.\n# Chaque entrée dit contre quel texte livré elle a été écrite : si\n# une mise à jour change ce texte, la réécriture ne s'applique plus\n# et l'écran « Textes de l'interface » la montre pour relecture.\n\n"
 ddi_compose = "Ce qu'on croise"
+ddi_compose_n = "Ce qu'on croise — {} médicament(s)"
 ddi_title = "Ce que cette liste dit d'elle-même"
 ddi_map = "Carte des croisements"
 ddi_empty = "Composez une liste : depuis le dossier ouvert, ou en tapant un nom."

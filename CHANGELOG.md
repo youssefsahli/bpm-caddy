@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **« Ce qu'on croise » dit combien.** À 1024x700 en `text_scale = 1,6`,
+  presser « Depuis le dossier » ne changeait rien de visible : la rangée
+  des commandes prend les deux rangées de la bande, et les neuf puces
+  naissent sous le pli. Rien ne distinguait « la liste est chargée » de
+  « le bouton n'a rien fait ». La barre pleine, posée ici il y a quelque
+  temps, permet d'*atteindre* les puces ; elle ne dit pas qu'il y en a.
+  Les deux remèdes ne s'excluent pas — l'un mène aux puces, l'autre dit
+  qu'elles existent —, et c'est la règle que ce dépôt écrit déjà pour
+  toute bande coupée.
+
 ## [0.220.0] - 2026-09-17
 
 ### Added
