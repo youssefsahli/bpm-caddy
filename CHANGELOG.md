@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.210.2] - 2026-09-17
+
+### Fixed
+- **Deux filets détendus par les changements de la veille, retendus.**
+  La rangée des autres réponses dessine le rang lu en pastille depuis
+  qu'elle a pris son relief, et son test mesurait les huit noms comme du
+  texte : il balayait une rangée plus étroite que celle qui se dessine,
+  et aurait laissé passer le débordement qu'il existe pour refuser. Et
+  le test des bandes balayait jusqu'au corps de la taille d'origine,
+  alors que la barre s'ouvre plus haut à `text_scale = 1,6` depuis
+  qu'elle se mesure : la hauteur qu'elle a vraiment restait hors du
+  test.
+
+  Aucun des deux ne tombait, et c'est le propre d'un filet détendu. La
+  règle de ce dépôt — deux écritures d'une même mesure finissent par
+  diverger — vaut aussi pour la mesure que fait le test.
+
 ## [0.210.1] - 2026-09-17
 
 ### Fixed
