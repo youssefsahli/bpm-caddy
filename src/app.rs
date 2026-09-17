@@ -57464,8 +57464,14 @@ mod tests {
         for scale in [1.0_f32, 1.25, 1.6] {
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-            let seen =
-                std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, egui::Vec2::ZERO, 0.0_f32));
+            let seen = std::cell::RefCell::new((
+                0.0_f32,
+                0.0_f32,
+                0.0_f32,
+                egui::Vec2::ZERO,
+                0.0_f32,
+                egui::Vec2::ZERO,
+            ));
             let _ = ctx.run(Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     *seen.borrow_mut() = (
@@ -57474,10 +57480,11 @@ mod tests {
                         ui.spacing().item_spacing.y,
                         App::companion_floor(ui),
                         motif::tab_strip_height(ui),
+                        App::companion_opening(ui),
                     );
                 });
             });
-            let (row, line, gap, floor, strip) = seen.take();
+            let (row, line, gap, floor, strip, opening) = seen.take();
             // Le corps que le plancher promet, et celui de la fenêtre
             // ouverte — mesuré à 560 × 420 dans la vraie barre, aux trois
             // échelles : 279 px à 1,6, 305 à 1,25, 331 à 1. Le chiffre
@@ -57486,13 +57493,19 @@ mod tests {
             // du panneau et par deux rangées, et qu'une seconde écriture
             // de cette relation dirait autre chose que le dessin.
             let smallest = App::companion_body_floor(row, line, gap, strip);
-            // Le corps de la fenêtre ouverte, **sous-estimé** : la
-            // marge du panneau se mesure au dessin et n'est pas
-            // atteignable ici, alors on l'enlève à la louche. Le balayage
-            // et l'affirmation « les deux rangées de gestes tiennent »
-            // portent donc sur un corps plus petit que le vrai, ce qui
-            // est du bon côté dans les deux cas.
-            let largest = App::COMPANION_SIZE[1] - 2.0 * row - 2.0 * gap - 16.0;
+            // Le corps de la fenêtre **telle qu'elle s'ouvre**, et non
+            // de sa taille d'origine : à `text_scale = 1,6` elle est
+            // plus haute que la constante, et balayer jusqu'à celle-ci
+            // laisserait la vraie hauteur hors du test.
+            //
+            // **Sous-estimé** : la marge du panneau se mesure au dessin
+            // et n'est pas atteignable ici, alors on l'enlève à la
+            // louche. Le balayage et l'affirmation « les deux rangées de
+            // gestes tiennent » portent donc sur un corps plus petit que
+            // le vrai, ce qui est du bon côté dans les deux cas. Une
+            // barre que l'officine a agrandie elle-même va au-delà, et
+            // les mêmes règles y tiennent d'autant plus facilement.
+            let largest = opening.y - 2.0 * row - 2.0 * gap - 16.0;
             assert!(
                 floor.y > smallest && floor.x > 0.0,
                 "échelle {scale} : le plancher {floor:?} ne porte pas son corps"
