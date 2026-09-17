@@ -57602,10 +57602,17 @@ mod tests {
         ];
         // Ce que chaque nom et chaque compte occupent, dans la face qui
         // les dessinera, plus la gouttière du style.
-        let measured = |scale: f32| -> (Vec<f32>, Vec<f32>, f32) {
+        //
+        // **Deux largeurs par nom, parce que le dessin en a deux.** Le
+        // rang lu est une pastille — un rembourrage de bouton et deux
+        // pixels de biseau de chaque côté —, les autres du texte. Les
+        // mesurer tous comme du texte ferait passer ce test sur une
+        // rangée plus étroite que celle qui se dessine, c'est-à-dire
+        // qu'il garderait exactement ce qu'il existe pour refuser.
+        let measured = |scale: f32| -> (Vec<f32>, Vec<f32>, Vec<f32>, f32) {
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
-            let seen = std::cell::RefCell::new((Vec::new(), Vec::new(), 0.0_f32));
+            let seen = std::cell::RefCell::new((Vec::new(), Vec::new(), Vec::new(), 0.0_f32));
             let _ = ctx.run(Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let font = egui::FontId::proportional(motif::pt(ui, 11.0));
@@ -57614,6 +57621,10 @@ mod tests {
                     };
                     *seen.borrow_mut() = (
                         NAMES.iter().map(|n| w(ui, format!("  {n}  "))).collect(),
+                        NAMES
+                            .iter()
+                            .map(|n| App::companion_chip_size(ui, n).x)
+                            .collect(),
                         (0..=NAMES.len())
                             .map(|n| w(ui, trf("companion_more", n)))
                             .collect(),
@@ -57644,9 +57655,17 @@ mod tests {
         const ROOMS: [f32; 3] = [300.0, 460.0, 552.0];
         let mut bit = false;
         for scale in [1.0_f32, 1.25, 1.6] {
-            let (names, marks, gap) = measured(scale);
+            let (text, chips, marks, gap) = measured(scale);
             for room in ROOMS {
                 for pick in 0..NAMES.len() {
+                    // Les largeurs que la rangée aura **pour ce rang-là** :
+                    // une pastille à la place qu'on lit, du texte partout
+                    // ailleurs. C'est ce que le dessin compose.
+                    let names: Vec<f32> = text
+                        .iter()
+                        .enumerate()
+                        .map(|(i, w)| if i == pick { chips[i] } else { *w })
+                        .collect();
                     let shown = App::companion_window(&names, |n| marks[n], pick, room, gap);
                     assert!(
                         shown.contains(&pick),
