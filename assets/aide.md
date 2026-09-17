@@ -220,13 +220,14 @@ n'est pas là.
 
 Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
 rien à leur place : chaque pastille cite le mot de sa table, et son
-survol donne la portée du module avant la conduite. Sept lectures : ce
+survol donne la portée du module avant la conduite. Huit lectures : ce
 que les fiches du dossier disent de celle-ci, ce que la revue
-d'ordonnance en dit une fois qu'on l'ajoute aux autres, les
-cytochromes, « peut-on écraser ? », la grossesse et l'allaitement, ce
-que la clairance du dossier change, et ce que l'âge change — l'âge est
-au dossier depuis le jour où la fiche a été créée, et c'est bien pour
-cela que personne ne le regarde.
+d'ordonnance en dit une fois qu'on l'ajoute aux autres, ce que ce
+traitement demande qu'on mesure et depuis combien de temps personne ne
+l'a demandé, les cytochromes, « peut-on écraser ? », la grossesse et
+l'allaitement, ce que la clairance du dossier change, et ce que l'âge
+change — l'âge est au dossier depuis le jour où la fiche a été créée, et
+c'est bien pour cela que personne ne le regarde.
 
 Une table qui n'a rien à dire ne dessine pas de pastille : une rangée de
 « à vérifier » ne signale rien et apprend à ne plus regarder la bande.
@@ -241,7 +242,11 @@ croisement, où trois boutons l'attendent.
 Cliquer une pastille ouvre le croisement chargé de l'ordonnance du
 dossier **et** de la fiche cherchée, **sur le chapitre que la pastille
 nomme** : c'est la question du téléphone passée entière, et non un écran
-vide à recomposer ni un écran de neuf chapitres ouvert au mauvais.
+vide à recomposer ni un écran de neuf chapitres ouvert au mauvais. La
+surveillance fait exception et mène à l'onglet « À surveiller » du
+dossier : elle lit les **dates** de celui-ci, et « depuis combien de
+temps personne n'a demandé cet examen » n'a pas de sens sur une liste
+composée à la main.
 
 « Copier » met la page lue dans le presse-papier, pour la coller dans le
 logiciel de comptoir : une posologie ou une conduite en cas d'oubli

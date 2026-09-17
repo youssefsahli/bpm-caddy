@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **La huitième table : ce que ce traitement demande qu'on mesure.** La
+  barre rapportait sept lectures ; `surveillance` n'en était pas, et
+  c'est la seule des huit qui parle d'une **absence** — les autres
+  lisent ce qui est écrit, celle-ci ce qui n'a pas été demandé depuis
+  trop longtemps. Elle exige donc le dossier deux fois : pour savoir
+  quels examens sont dus, et pour savoir quand ils ont été faits. Une
+  fiche hors dossier n'a pas de date contre laquelle être en retard, et
+  n'a donc pas de pastille.
+
+  La lecture n'est pas refaite : le dossier l'a calculée en s'ouvrant, et
+  la barre ne garde que les lignes qui **nomment** la fiche lue.
+
+  **Et sa pastille ne mène pas au croisement.** Sept des huit tables s'y
+  lisent ; celle-ci lit les dates du dossier, et « depuis combien de
+  temps personne n'a demandé cet examen » n'a pas de sens sur une liste
+  composée à la main — elle mène donc à l'onglet « À surveiller » du
+  dossier. `CompanionWhere` impose la destination au lieu de l'espérer :
+  une pastille qui ouvrirait un chapitre ne portant pas sa table serait
+  le défaut corrigé une version plus tôt.
 - **La réponse est posée dans un puits, et deux pages disent enfin
   tout.** Tout ce qui se lit dans cette application est dans un creux —
   une liste, un graphe, un texte qui défile — et la réponse de la barre

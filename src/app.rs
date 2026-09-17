@@ -48741,7 +48741,7 @@ impl App {
             .map(|s| s.tone.fill())
     }
 
-    fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> Option<DdiSection> {
+    fn companion_band(ui: &mut egui::Ui, read: &CompanionRead) -> Option<CompanionWhere> {
         let mut clicked = None;
         if read.silent {
             // **Le silence n'est pas une autorisation** : la première
@@ -48771,7 +48771,7 @@ impl App {
                     .on_hover_text(format!("{}\n\n{}", s.hover, tr("companion_signal_open")))
                     .clicked()
                 {
-                    clicked = Some(s.section);
+                    clicked = Some(s.goes);
                 }
             }
         });
@@ -48873,7 +48873,7 @@ impl App {
         ui: &mut egui::Ui,
         d: &Drug,
         read: &CompanionRead,
-    ) -> Option<DdiSection> {
+    ) -> Option<CompanionWhere> {
         let clicked = Self::companion_band(ui, read);
         // Ce qui doit se dire au comptoir avant tout le reste, quand la
         // fiche le porte — **au-dessus** de l'identité et de ce à quoi le
@@ -49190,6 +49190,7 @@ impl App {
                 q,
                 self.companion_pick,
                 poso,
+                &session.surveillance,
             );
             (key, look)
         });
@@ -49576,8 +49577,13 @@ impl App {
                             walk = Self::companion_file_page(ui, d, &session.patient_treats);
                         }
                         _ => {
-                            if let Some(section) = Self::companion_signals_page(ui, d, &read.1) {
-                                go = Some(CompanionGo::Cross(d.id, Some(section)));
+                            if let Some(dest) = Self::companion_signals_page(ui, d, &read.1) {
+                                go = Some(match dest {
+                                    CompanionWhere::Cross(section) => {
+                                        CompanionGo::Cross(d.id, Some(section))
+                                    }
+                                    CompanionWhere::Watch => CompanionGo::Watch,
+                                });
                             }
                         }
                     }
@@ -49678,6 +49684,14 @@ impl App {
                     session.open_registres(RegistreTab::Stupefiants);
                     session.stup_new_kind = crate::ordonnancier::Kind::Sortie;
                 }
+                // La surveillance se lit au dossier, avec ses dates : la
+                // puce ne peut naître que sur un dossier ouvert, donc
+                // l'onglet est là.
+                CompanionGo::Watch => {
+                    session.view = MainView::Search;
+                    session.patient_tab = PatientTab::Bio;
+                    session.bio_side_tab = 1;
+                }
             }
             leave = true;
         }
@@ -49748,6 +49762,26 @@ impl CompanionAct {
     }
 }
 
+/// Où mène une puce.
+///
+/// **Une puce renvoie là où sa table se lit**, et toutes ne se lisent
+/// pas au même endroit. Sept des huit vivent au croisement, qui prend
+/// une liste quelconque ; la surveillance, elle, lit les **dates** du
+/// dossier — « depuis combien de temps personne n'a demandé cet
+/// examen » n'a pas de sens sur une liste composée à la main. Sa puce
+/// mène donc à l'onglet du dossier où cette lecture vit.
+///
+/// Le type l'impose plutôt que de l'espérer : il n'y a pas de puce sans
+/// destination, et une destination qui ne porte pas la table serait le
+/// défaut que ce fichier a déjà corrigé une fois.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CompanionWhere {
+    /// Le croisement, sur son chapitre.
+    Cross(DdiSection),
+    /// L'onglet « À surveiller » du dossier ouvert.
+    Watch,
+}
+
 /// Ce qu'un bouton du compagnon a demandé.
 ///
 /// Comme les clics des listes du registre : cela **remonte** hors du
@@ -49756,6 +49790,9 @@ impl CompanionAct {
 /// fenêtre en cours de dessin.
 enum CompanionGo {
     Card(i64),
+    /// L'onglet « À surveiller » du dossier ouvert : c'est là que la
+    /// surveillance se lit, avec les dates qu'elle lit.
+    Watch,
     /// Le croisement, chargé du dossier ouvert **et** de la fiche
     /// cherchée.
     ///
@@ -49866,14 +49903,8 @@ struct CompanionSignal {
     tone: CompanionTone,
     /// La portée de la table, puis la conduite.
     hover: String,
-    /// Le chapitre du croisement qui porte cette table.
-    ///
-    /// **Une puce renvoie là où sa table se lit**, et non « en haut de
-    /// l'écran ». Le croisement en écrit huit : cliquer « Écraser · Ne
-    /// pas écraser » et tomber sur les cytochromes, c'est cliquer sur
-    /// une réponse et en obtenir une autre. Le type l'impose plutôt que
-    /// de l'espérer — il n'y a pas de puce sans chapitre.
-    section: DdiSection,
+    /// Là où cette table se lit en entier : voir [`CompanionWhere`].
+    goes: CompanionWhere,
 }
 
 /// Une page de la barre : ce que la réponse montre.
@@ -50045,6 +50076,7 @@ fn companion_look(
     query: &str,
     pick: usize,
     poso: Vec<db::Posologie>,
+    watch: &[crate::surveillance::ResolvedDue],
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -50064,7 +50096,7 @@ fn companion_look(
             pages: Vec::new(),
         };
     };
-    let signals = companion_signals(&card, file, dfg, age);
+    let signals = companion_signals(&card, file, dfg, age, watch);
     // Les pages qui parlent. La première est toujours là : les puces,
     // le signe d'alerte et ce à quoi le produit sert sont ce que la
     // barre est venue dire, et quand toutes les tables se taisent c'est
@@ -50139,6 +50171,7 @@ fn companion_signals(
     file: &[Drug],
     dfg: Option<f64>,
     age: Option<u32>,
+    watch: &[crate::surveillance::ResolvedDue],
 ) -> Vec<CompanionSignal> {
     let mut out: Vec<CompanionSignal> = Vec::new();
     // Le dossier, plus la fiche cherchée si elle n'y est pas déjà : la
@@ -50174,7 +50207,7 @@ fn companion_signals(
                 chip: trf("companion_sig_cross", pairs.len()),
                 tone: CompanionTone::Stop,
                 hover,
-                section: DdiSection::Interactions,
+                goes: CompanionWhere::Cross(DdiSection::Interactions),
             });
         }
         let terms = ordonnance_terms(&list);
@@ -50211,7 +50244,53 @@ fn companion_signals(
                     CompanionTone::Watch
                 },
                 hover,
-                section: DdiSection::Revue,
+                goes: CompanionWhere::Cross(DdiSection::Revue),
+            });
+        }
+        // Et ce que ce traitement demande qu'on mesure, **contre les
+        // dates de ce dossier-là**.
+        //
+        // C'est la seule des huit tables qui parle d'une **absence** :
+        // les autres lisent ce qui est écrit, celle-ci ce qui n'a pas
+        // été demandé depuis trop longtemps. Elle exige donc le dossier
+        // deux fois — pour savoir quels examens sont dus, et pour savoir
+        // quand ils ont été faits — et une fiche hors dossier n'a pas de
+        // date contre laquelle être en retard.
+        //
+        // La lecture n'est pas refaite ici : le dossier l'a calculée en
+        // s'ouvrant, et on ne garde que les lignes qui **nomment** cette
+        // fiche. Recalculer donnerait la même réponse au prix d'une
+        // seconde écriture de la même question.
+        let mine: Vec<&crate::surveillance::ResolvedDue> = watch
+            .iter()
+            .filter(|d| d.drugs.iter().any(|n| n.trim() == me))
+            .collect();
+        if let Some(worst) = mine.iter().min_by_key(|d| match d.level {
+            crate::surveillance::Level::Overdue => 0,
+            crate::surveillance::Level::Never => 1,
+            crate::surveillance::Level::Soon => 2,
+            crate::surveillance::Level::Ok => 3,
+        }) {
+            use crate::surveillance::Level;
+            let said = match worst.level {
+                Level::Overdue => tr("watch_overdue"),
+                Level::Never => tr("watch_never"),
+                Level::Soon => tr("watch_soon"),
+                Level::Ok => worst.label,
+            };
+            let mut hover = trf("companion_watch_head", mine.len());
+            for d in &mine {
+                hover.push_str(&format!("\n\n{} — {}", d.label, d.why));
+            }
+            out.push(CompanionSignal {
+                chip: format!("{} · {said}", tr("companion_sig_watch")),
+                tone: match worst.level {
+                    Level::Overdue => CompanionTone::Stop,
+                    Level::Never | Level::Soon => CompanionTone::Watch,
+                    Level::Ok => CompanionTone::Ok,
+                },
+                hover,
+                goes: CompanionWhere::Watch,
             });
         }
         // Et ce que les cytochromes en disent, qui n'est pas la même
@@ -50238,7 +50317,7 @@ fn companion_signals(
                 chip: trf("companion_sig_cyp", mine.len()),
                 tone: CompanionTone::Watch,
                 hover,
-                section: DdiSection::Cyp,
+                goes: CompanionWhere::Cross(DdiSection::Cyp),
             });
         }
     }
@@ -50266,7 +50345,7 @@ fn companion_signals(
                 _ => CompanionTone::Ok,
             },
             hover,
-            section: DdiSection::Crush,
+            goes: CompanionWhere::Cross(DdiSection::Crush),
         });
     }
     // La grossesse et l'allaitement : **deux questions**, et la puce
@@ -50306,7 +50385,7 @@ fn companion_signals(
                 _ => CompanionTone::Watch,
             },
             hover,
-            section: DdiSection::Gravidity,
+            goes: CompanionWhere::Cross(DdiSection::Gravidity),
         });
     }
     // Le rein, au DFG du dossier quand il y en a un. Sans chiffre la
@@ -50324,7 +50403,7 @@ fn companion_signals(
                 None => CompanionTone::Pending,
             },
             hover: format!("{}\n\n{}", tr("renal_scope"), f.conduct),
-            section: DdiSection::Renal,
+            goes: CompanionWhere::Cross(DdiSection::Renal),
         });
     }
     // Et l'âge, dont le chiffre est déjà au dossier : le rein demande
@@ -50347,7 +50426,7 @@ fn companion_signals(
                 None => CompanionTone::Pending,
             },
             hover,
-            section: DdiSection::Elderly,
+            goes: CompanionWhere::Cross(DdiSection::Elderly),
         });
     }
     out
@@ -56178,6 +56257,7 @@ mod tests {
             query,
             pick,
             Vec::new(),
+            &[],
         )
     }
 
@@ -56194,7 +56274,7 @@ mod tests {
         // Le mot est celui de la table, cité : `crush` répond « sous
         // condition » d'une gélule à microgranules, et la puce le
         // reprend plutôt que de le reformuler.
-        let signals = super::companion_signals(&skenan, &[], None, None);
+        let signals = super::companion_signals(&skenan, &[], None, None, &[]);
         let crush = signals
             .iter()
             .find(|s| s.chip.starts_with("Écraser"))
@@ -56224,7 +56304,7 @@ mod tests {
             name: "Zorglubine".to_owned(),
             ..Drug::default()
         };
-        assert!(super::companion_signals(&unknown, &[], None, None).is_empty());
+        assert!(super::companion_signals(&unknown, &[], None, None, &[]).is_empty());
         let read = companion_read(
             std::slice::from_ref(&unknown),
             &[],
@@ -56252,7 +56332,7 @@ mod tests {
             ..Drug::default()
         };
         let crossed =
-            super::companion_signals(&macrolide, std::slice::from_ref(&statin), None, None);
+            super::companion_signals(&macrolide, std::slice::from_ref(&statin), None, None, &[]);
         assert!(
             crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
             "{crossed:?}",
@@ -56278,8 +56358,13 @@ mod tests {
             class: "antalgique".to_owned(),
             ..Drug::default()
         };
-        let aside =
-            super::companion_signals(&bystander, &[statin.clone(), macrolide.clone()], None, None);
+        let aside = super::companion_signals(
+            &bystander,
+            &[statin.clone(), macrolide.clone()],
+            None,
+            None,
+            &[],
+        );
         assert!(
             !aside.iter().any(|s| s.chip.starts_with("Revue")),
             "{aside:?}",
@@ -56433,6 +56518,7 @@ mod tests {
                 posologie: "5 mg × 2".to_owned(),
                 remarque: "à heure fixe".to_owned(),
             }],
+            &[],
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -56556,6 +56642,7 @@ mod tests {
             "zorglubine",
             0,
             lines,
+            &[],
         );
         assert_eq!(
             read.pages,
@@ -56719,30 +56806,45 @@ mod tests {
                  une puce qui renvoie dans le vide"
             );
         }
-        // Et chaque puce nomme un chapitre. Le champ est obligatoire, ce
-        // que le test ne peut donc pas manquer ; ce qu'il vérifie, c'est
-        // qu'aucune n'est passée à un chapitre que `ALL` ignore — ce que
-        // le balayage ci-dessus ne regarde pas.
+        // Et chaque puce nomme sa destination. Le champ est obligatoire,
+        // ce que le test ne peut donc pas manquer ; ce qu'il vérifie,
+        // c'est qu'aucune ne renvoie à un chapitre que `ALL` ignore — ce
+        // que le balayage ci-dessus ne regarde pas.
+        //
         // Avec sa parenthèse : `companion_signals_page` commence par le
         // même nom, et sans elle c'est elle qu'on lisait — un corps sans
         // une seule puce, donc un test qui passe en ne gardant rien.
         let signals = body_of("fn companion_signals(");
-        let named: Vec<&str> = signals
+        let goes: Vec<&str> = signals
             .iter()
-            .filter_map(|l| l.trim().strip_prefix("section: DdiSection::"))
+            .filter_map(|l| l.trim().strip_prefix("goes: CompanionWhere::"))
             .map(|l| l.trim_end_matches(','))
             .collect();
         assert!(
-            named.len() >= 6,
-            "le compagnon composait six puces ; il n'en nomme plus que {}",
-            named.len()
+            goes.len() >= 8,
+            "le compagnon composait huit puces ; il n'en nomme plus que {}",
+            goes.len()
         );
-        for name in named {
+        for name in goes {
+            // **La surveillance est la seule à ne pas mener au
+            // croisement, et c'est réfléchi** : elle lit les *dates* du
+            // dossier, et « depuis combien de temps personne n'a demandé
+            // cet examen » n'a pas de sens sur une liste composée à la
+            // main. Elle mène à l'onglet du dossier où cette lecture
+            // vit — un chapitre du croisement qui ne la porterait pas
+            // serait le défaut que ce fichier a déjà corrigé une fois.
+            if name == "Watch" {
+                continue;
+            }
+            let chapter = name
+                .strip_prefix("Cross(DdiSection::")
+                .and_then(|n| n.strip_suffix(')'))
+                .unwrap_or_else(|| panic!("« {name} » n'est ni un croisement ni la surveillance"));
             assert!(
                 super::DdiSection::ALL
                     .into_iter()
-                    .any(|s| format!("{s:?}") == name),
-                "« {name} » n'est pas un chapitre de `DdiSection::ALL`"
+                    .any(|s| format!("{s:?}") == chapter),
+                "« {chapter} » n'est pas un chapitre de `DdiSection::ALL`"
             );
         }
     }

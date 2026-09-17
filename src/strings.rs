@@ -1400,10 +1400,10 @@ livre = "Une phrase qui n'est plus livrée"
                     "in chips: {} readings of that one card",
                     match APP
                         .lines()
-                        .filter(|l| l.trim().starts_with("section: DdiSection::"))
+                        .filter(|l| l.trim().starts_with("goes: CompanionWhere::"))
                         .count()
                     {
-                        7 => "seven",
+                        8 => "eight",
                         n => panic!(
                             "le compagnon rapporte {n} tables : l'écrire en toutes \
                              lettres dans le README et ici"
@@ -1418,10 +1418,10 @@ livre = "Une phrase qui n'est plus livrée"
                     "{} lectures : ce",
                     match APP
                         .lines()
-                        .filter(|l| l.trim().starts_with("section: DdiSection::"))
+                        .filter(|l| l.trim().starts_with("goes: CompanionWhere::"))
                         .count()
                     {
-                        7 => "Sept",
+                        8 => "Huit",
                         n => panic!(
                             "le compagnon rapporte {n} tables : l'écrire en toutes \
                              lettres dans le manuel et ici"
