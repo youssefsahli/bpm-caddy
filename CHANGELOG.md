@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   qu'elles existent —, et c'est la règle que ce dépôt écrit déjà pour
   toute bande coupée.
 
+- **Le manuel avait perdu un référent.** « Les deux choses qu'on cherche
+  quand la question cesse d'être "est-ce que je délivre" » désignait la
+  marge thérapeutique et l'antidote ; la phrase des sources, insérée
+  entre les deux, laissait la clause pendre et la faisait lire comme
+  portant sur les sources. C'est exactement ce que ce dépôt reproche à
+  une liste recopiée — ça vieillit là où personne ne relit —, à ceci près
+  que la page était relue : la description de « Précautions » a sa propre
+  section maintenant, ce que ses trois ajouts du jour justifiaient.
+
 ## [0.220.0] - 2026-09-17
 
 ### Added

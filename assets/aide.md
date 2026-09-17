@@ -220,23 +220,27 @@ heures » demande une arithmétique qu'on n'a pas à faire ; « Conseils » ce q
 dit à la personne, ce qu'on fait d'une prise oubliée, **les signes
 d'alerte en entier** — la page des signaux n'en montre que la première
 phrase, et « ce qui doit vous faire consulter » se dit en entier — et ce
-que l'équipe a écrit elle-même sur la fiche ; « Précautions » s'ouvre sur **une rangée
-d'organes** — ce que ce produit peut abîmer, du plus grave au moins, en
-couleur : sur la Cordarone, thyroïde et poumon en rouge, puis cœur, œil,
-foie, peau, puis le neurologique. C'est le profil de l'amiodarone en un
-coup d'œil, là où trois paragraphes le disent en désordre ; le degré et
-la clause sont au survol. Elle ne nomme que ce que le produit **abîme** :
-l'amiodarone traite le cœur et l'altère, et mêler les deux sens ferait
-paraître « Cœur » deux fois en sens contraires. Un organe absent n'est
-pas une innocuité — la prose entière est juste dessous. Puis ce qui
-contre-indique,
-ce qui arrive, ce qu'on surveille, la marge thérapeutique,
-l'antidote, et pour finir **les sources de la fiche** — cette page porte
-ses affirmations les plus fortes, et on les répète au comptoir — les deux choses qu'on cherche quand la question cesse
-d'être « est-ce que je délivre » pour devenir « qu'est-ce qui se passe
-si ». Une page qui n'a
-rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de
-bande d'onglets.
+que l'équipe a écrit elle-même sur la fiche. Une page qui n'a rien à
+dire n'est pas offerte, et quand une seule parle il n'y a pas de bande
+d'onglets.
+
+**« Précautions » s'ouvre sur une rangée d'organes** : ce que ce produit
+peut abîmer, du plus grave au moins, en couleur. Sur la Cordarone,
+thyroïde et poumon en rouge, puis cœur, œil, foie, peau, puis le
+neurologique — le profil de l'amiodarone en un coup d'œil, là où trois
+paragraphes le disent en désordre. Le degré et la clause sont au survol.
+La rangée ne nomme que ce que le produit **abîme** : l'amiodarone traite
+le cœur et l'altère, et mêler les deux sens ferait paraître « Cœur »
+deux fois en sens contraires — le « traite » passerait même devant les
+deux atteintes qui font arrêter ce traitement-là. Un organe absent n'est
+pas une innocuité : la prose entière est juste dessous.
+
+Vient ensuite cette prose — ce qui contre-indique, ce qui arrive, ce
+qu'on surveille —, puis **la marge thérapeutique et l'antidote**, les
+deux choses qu'on cherche quand la question cesse d'être « est-ce que je
+délivre » pour devenir « qu'est-ce qui se passe si ». Et pour finir
+**les sources de la fiche** : cette page porte ses affirmations les plus
+fortes, et on les répète au comptoir.
 
 La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
 cherchée : c'est l'ordonnance ouverte, ligne par ligne **avec ce que le
