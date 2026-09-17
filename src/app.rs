@@ -49135,6 +49135,15 @@ impl App {
     /// plate d'une glargine.
     fn companion_insulin(ui: &mut egui::Ui, d: &Drug) {
         let Some(p) = crate::insulin::for_card(&d.name, &d.dci) else {
+            // **Pas d'insuline : la décroissance, si la fiche donne une
+            // demi-vie.** C'est la règle que la carte du médicament suit
+            // déjà, et pour la même raison — la demi-vie d'une insuline
+            // ne dit rien d'utile, puisque ce qu'on injecte est un dépôt
+            // sous-cutané et que la question est quand elle agit, pas ce
+            // qui reste dans le plasma. Là, c'est l'inverse : « combien
+            // de temps ça reste » est la question, et « ≈ 12 heures »
+            // demande une arithmétique que le comptoir n'a pas à faire.
+            Self::companion_decay(ui, d);
             return;
         };
         ui.add_space(4.0);
@@ -49182,6 +49191,57 @@ impl App {
         };
         ui.add(egui::Label::new(egui::RichText::new(said).size(motif::pt(ui, 11.0))).wrap());
         Self::companion_part(ui, tr("companion_insulin_note"), p.note);
+    }
+
+    /// La décroissance plasmatique, quand la fiche donne une demi-vie.
+    ///
+    /// **« Combien de temps ça reste » est une question de comptoir** —
+    /// avant une intervention, après un arrêt, entre deux prises — et
+    /// « demi-vie ≈ 12 heures » demande de calculer. Cinq demi-vies pour
+    /// le tracé, ce qui est la durée au bout de laquelle il ne reste
+    /// rien qui compte, et la part restante à vingt-quatre heures écrite
+    /// à côté : c'est ce chiffre-là qu'on cherche.
+    ///
+    /// Les mêmes bornes et la même phrase que la carte du médicament :
+    /// deux dessins d'une même chose finiraient par ne plus dire la même.
+    fn companion_decay(ui: &mut egui::Ui, d: &Drug) {
+        let Some(hl) = parse_hours(&d.half_life).filter(|v| *v > 0.0) else {
+            return;
+        };
+        ui.add_space(4.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("drug_half_life"))
+                    .size(motif::pt(ui, 10.5))
+                    .strong()
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        let span = (hl * 5.0).clamp(6.0, 240.0);
+        let curve: Vec<f64> = (0..=60)
+            .map(|i| 100.0 * 0.5_f64.powf(span * f64::from(i) / 60.0 / hl))
+            .collect();
+        let (rect, resp) = ui.allocate_exact_size(
+            egui::vec2(ui.available_width(), motif::pt(ui, 34.0)),
+            egui::Sense::hover(),
+        );
+        let inner = motif::well(ui, rect);
+        motif::chart::sparkline(ui, inner, &curve, motif::accent());
+        resp.on_hover_text(trf("drug_decay_tooltip", crate::strings::decimal(hl, 1)));
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(trn(
+                    "drug_decay_caption",
+                    &[
+                        &format!("{span:.0}"),
+                        &format!("{:.0}", 100.0 * 0.5_f64.powf(24.0 / hl)),
+                    ],
+                ))
+                .size(motif::pt(ui, 11.0)),
+            )
+            .wrap(),
+        );
     }
 
     /// La page des conseils : ce qu'on dit à la personne, et ce qu'on

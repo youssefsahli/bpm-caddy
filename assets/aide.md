@@ -209,11 +209,14 @@ que le dossier retient pour cette personne-là** — la fiche dit la
 référence, le dossier dit le sien —, puis la prose de la fiche, **ses
 lignes indication par indication** — parce que « combien » n'a pas de
 réponse sans « pour quoi » — et les formes et dosages disponibles, qu'on
-demande au comptoir aussi souvent que la dose — et, pour une insuline,
-**sa courbe d'action** : « début 15 min, pic 1 à 3 h, durée 5 h »
-demande de se représenter une forme, et la forme se voit. Le pic de
-l'après-midi d'une NPH et la ligne plate d'une glargine se lisent alors
-d'un coup d'œil ; « Conseils » ce qu'on
+demande au comptoir aussi souvent que la dose — et **une courbe** : le profil
+d'action pour une insuline — « début 15 min, pic 1 à 3 h, durée 5 h »
+demande de se représenter une forme, et la forme se voit, le pic de
+l'après-midi d'une NPH se lisant d'un coup d'œil à côté de la ligne
+plate d'une glargine — et pour tout le reste la décroissance
+plasmatique, avec ce qu'il en reste à vingt-quatre heures. « Combien de
+temps ça reste » est une question de comptoir, et « demi-vie ≈ 12
+heures » demande une arithmétique qu'on n'a pas à faire ; « Conseils » ce qu'on
 dit à la personne et ce qu'on fait d'une prise oubliée, qui sortent par
 la même bouche au même moment ; « Précautions » ce qui contre-indique,
 ce qui arrive, ce qu'on surveille, et pour finir la marge thérapeutique

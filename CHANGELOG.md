@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Et la décroissance plasmatique pour tout ce qui n'est pas une
+  insuline.** « Combien de temps ça reste » est une question de comptoir
+  — avant une intervention, après un arrêt, entre deux prises — et
+  « demi-vie ≈ 12 heures » demande de calculer. La courbe va jusqu'à cinq
+  demi-vies, au bout desquelles il ne reste rien qui compte, et la part
+  restante à vingt-quatre heures est écrite à côté : c'est ce chiffre-là
+  qu'on cherche.
+
+  C'est la règle que la carte du médicament suit déjà, reprise avec ses
+  bornes et sa phrase — deux dessins d'une même chose finiraient par ne
+  plus dire la même. La demi-vie d'une insuline ne dit rien d'utile
+  (ce qu'on injecte est un dépôt sous-cutané, et la question est quand
+  elle agit) : son profil d'action prend la place de la courbe.
+
 ## [0.215.0] - 2026-09-17
 
 ### Added
