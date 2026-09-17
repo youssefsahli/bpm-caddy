@@ -48136,6 +48136,15 @@ impl App {
     /// texte qui perdrait la ligne.
     const COMPANION_ANSWER_LINES: f32 = 1.0;
 
+    /// Ce que la réponse a **à l'aise**, en lignes, et qui décide de la
+    /// taille d'ouverture.
+    ///
+    /// Le plancher dit ce qu'on refuse de perdre ; celui-ci dit ce qu'on
+    /// veut voir sans faire défiler. Cinq lignes, c'est un nom, une
+    /// rangée de pastilles et trois lignes de phrase — ou six lignes
+    /// d'ordonnance sur la page du dossier.
+    const COMPANION_ANSWER_COMFORT: f32 = 5.0;
+
     /// Ce que devient la fenêtre, pour le harnais qui la regarde.
     ///
     /// Muet sauf sous `BPM_CADDY_MAXIMIZED` — voir [`Self::shape_trace`]
@@ -48432,6 +48441,34 @@ impl App {
     /// marge. Estimée, elle valait seize pixels de moins que la réalité
     /// — ce qui est exactement assez pour qu'un plancher promette une
     /// rangée de gestes que la fenêtre ne porte pas.
+    /// La taille à laquelle la barre s'ouvre.
+    ///
+    /// **Six cents sur cinq cents, ou ce que le texte demande — le plus
+    /// grand des deux.** La taille était un chiffre en pixels, et ce
+    /// fichier écrivait pourquoi : une fenêtre se pose dans un coin
+    /// d'écran en pixels, et ce qui suit l'échelle du texte est ce
+    /// qu'elle *contient*, lequel défile.
+    ///
+    /// Cela tenait quand la barre portait un champ et une phrase. Elle
+    /// porte maintenant cinq bandes — la tête, le champ, les autres
+    /// réponses, les onglets, les gestes — dont **aucune ne défile** et
+    /// qui grandissent toutes avec le texte. À `text_scale = 1,6` elles
+    /// prenaient quatre cents pixels des cinq cents, et la page du
+    /// dossier montrait deux lignes d'une ordonnance qui en compte six :
+    /// la personne qui agrandit le texte le plus est celle qui voyait le
+    /// moins.
+    ///
+    /// Ce n'est donc pas la taille qu'on multiplie par l'échelle, c'est
+    /// le contenu qu'on **mesure** : le plancher, plus de quoi lire à
+    /// l'aise. Aux deux échelles ordinaires le compte reste sous six
+    /// cents sur cinq cents, et la taille d'origine l'emporte.
+    fn companion_opening(ui: &egui::Ui) -> egui::Vec2 {
+        let extra =
+            (Self::COMPANION_ANSWER_COMFORT - Self::COMPANION_ANSWER_LINES) * Self::label_line(ui);
+        let floor = Self::companion_floor(ui);
+        egui::Vec2::from(Self::COMPANION_SIZE).max(floor + egui::vec2(0.0, extra))
+    }
+
     fn companion_floor(ui: &egui::Ui) -> egui::Vec2 {
         let gap = ui.spacing().item_spacing.y;
         let row = Self::row_height(ui);
@@ -49297,7 +49334,7 @@ impl App {
                     let want = self
                         .layout
                         .companion()
-                        .map_or_else(|| egui::Vec2::from(Self::COMPANION_SIZE), egui::Vec2::from);
+                        .map_or_else(|| Self::companion_opening(ui), egui::Vec2::from);
                     ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(floor));
                     ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(want.max(floor)));
                 }
@@ -56877,6 +56914,74 @@ mod tests {
                 "« {chapter} » n'est pas un chapitre de `DdiSection::ALL`"
             );
         }
+    }
+
+    /// **La barre s'ouvre à la taille que son texte demande, et pas
+    /// plus grande qu'il ne faut.**
+    ///
+    /// Sa taille était un chiffre en pixels, et ce fichier écrivait
+    /// pourquoi : une fenêtre se pose dans un coin d'écran en pixels, et
+    /// ce qui suit l'échelle du texte est ce qu'elle *contient*, lequel
+    /// défile. Cela tenait quand la barre portait un champ et une
+    /// phrase. Elle porte cinq bandes maintenant — tête, champ, autres
+    /// réponses, onglets, gestes — dont **aucune ne défile** et qui
+    /// grandissent toutes avec le texte : à `text_scale = 1,6` elles
+    /// prenaient quatre cents pixels des cinq cents, et la page du
+    /// dossier montrait deux lignes d'une ordonnance qui en compte six.
+    /// La personne qui agrandit le texte le plus est celle qui voyait le
+    /// moins.
+    ///
+    /// Le test tient les deux côtés. **Toujours de quoi lire à l'aise** :
+    /// l'ouverture laisse à la réponse ses lignes confortables par-dessus
+    /// le plancher, à toutes les échelles. **Et pas de fenêtre plus
+    /// grande sans raison** : aux deux échelles ordinaires le compte
+    /// reste sous la taille d'origine, qui l'emporte — la barre ne
+    /// grandit qu'à celle où elle le doit.
+    #[test]
+    fn the_companion_opens_at_the_size_its_text_needs() {
+        use super::App;
+        let mut grew = 0;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((egui::Vec2::ZERO, egui::Vec2::ZERO, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    *seen.borrow_mut() = (
+                        App::companion_floor(ui),
+                        App::companion_opening(ui),
+                        App::label_line(ui),
+                    );
+                });
+            });
+            let (floor, open, line) = seen.take();
+            let comfort = (App::COMPANION_ANSWER_COMFORT - App::COMPANION_ANSWER_LINES) * line;
+            assert!(
+                open.y >= floor.y + comfort - 0.5,
+                "échelle {scale} : la barre s'ouvre à {} sur un plancher de {} — \
+                 il manque {comfort} pour lire à l'aise",
+                open.y,
+                floor.y
+            );
+            assert!(
+                open.x >= floor.x,
+                "échelle {scale} : plus étroite que son plancher"
+            );
+            if open.y > App::COMPANION_SIZE[1] + 0.5 {
+                grew += 1;
+                assert!(
+                    scale > 1.4,
+                    "échelle {scale} : la barre grandit alors que la taille d'origine \
+                     suffit ({} contre {})",
+                    open.y,
+                    App::COMPANION_SIZE[1]
+                );
+            }
+        }
+        // **Et la boucle mord** : à la plus grande échelle elle *doit*
+        // grandir, sinon le calcul ne sert à rien et la taille d'origine
+        // ferait aussi bien.
+        assert_eq!(grew, 1, "la barre doit grandir à 1,6 et à 1,6 seulement");
     }
 
     /// **Le corps de la barre garde une réponse à toute taille, et le

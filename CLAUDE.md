@@ -1667,9 +1667,18 @@ add clicking and typing; it is not the price of entry.
   carries a solid bar. `MinInnerSize`
   is sent with it, because `main.rs` gives the window a 960x640 floor and
   a window manager that honours it would make the companion 960 px wide.
-  The size is deliberately *not* scaled by `[ui] text_scale`: a window is
-  placed in a screen corner in pixels; what follows the scale is what it
-  holds, which scrolls. And the layout record skips the companion's size,
+  The size **was** deliberately not scaled by `[ui] text_scale` — a window
+  is placed in a screen corner in pixels, and what follows the scale is
+  what it holds, which scrolls. That held while the bar was a field and a
+  sentence. It now carries five bands — head, field, other answers, tabs,
+  gestures — **none of which scroll** and all of which grow with the
+  text: at 1,6 they took four hundred pixels of the five hundred, and the
+  file page showed two lines of a six-line ordonnance. The person who
+  enlarges the text most was the one seeing least. So the size is not
+  multiplied by the scale, the **content is measured**:
+  `companion_opening` is the floor plus room to read at ease, and the
+  constant wins at the two ordinary scales — the bar grows only at the
+  one where it must. And the layout record skips the companion's size,
   or the next session would open on a 560 px workspace.
 
   **What it answers, and what it refuses to.** It used to answer « à

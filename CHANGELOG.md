@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **La barre s'ouvre à la taille que son texte demande.** Sa taille était
+  un chiffre en pixels, et ce dépôt écrivait pourquoi : une fenêtre se
+  pose dans un coin d'écran en pixels, et ce qui suit l'échelle du texte
+  est ce qu'elle *contient*, lequel défile. Cela tenait quand la barre
+  portait un champ et une phrase. Elle porte cinq bandes maintenant —
+  tête, champ, autres réponses, onglets, gestes — dont **aucune ne
+  défile** et qui grandissent toutes avec le texte : à
+  `text_scale = 1,6` elles prenaient quatre cents pixels des cinq cents,
+  et la page du dossier montrait deux lignes d'une ordonnance qui en
+  compte six. La personne qui agrandit le texte le plus était celle qui
+  voyait le moins.
+
+  Ce n'est donc pas la taille qu'on multiplie par l'échelle, c'est le
+  contenu qu'on **mesure** : le plancher, plus de quoi lire à l'aise. Aux
+  deux échelles ordinaires le compte reste sous six cents sur cinq cents
+  et la taille d'origine l'emporte — la barre ne grandit qu'à celle où
+  elle le doit, et le test tient les deux côtés.
+
 ## [0.207.0] - 2026-09-17
 
 ### Added
