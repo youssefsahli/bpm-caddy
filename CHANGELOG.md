@@ -5,7 +5,7 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.210.0] - 2026-09-17
 
 ### Added
 - **Les cinq gestes de la barre au clavier : `Alt` + 1 à 5.** Elle se
