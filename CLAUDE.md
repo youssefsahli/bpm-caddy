@@ -1684,8 +1684,42 @@ add clicking and typing; it is not the price of entry.
   **What it answers, and what it refuses to.** It used to answer « à
   quoi ça sert » — the one question the person at the counter can
   already answer — and nothing else: one fuzzy guess with no way to see
-  or correct the alternatives, one sentence, four destinations. It now
-  reports **what the tables say**, in chips: what the open file's own
+  or correct the alternatives, one sentence, four destinations.
+
+  **It turns pages now**: Signaux, Posologie, Conseils, Précautions, and
+  — with a file open — Dossier. ←/→ turn them while ↑/↓ walk the
+  answers: two perpendicular questions, two pairs of arrows. A page with
+  nothing to say is not offered, and a single page draws no strip — a
+  strip of one tab is not a strip. « Posologie » carries the card's prose
+  *and* its lines indication by indication, because « combien » has no
+  answer without « pour quoi »: the same molecule is 75 mg in prevention
+  and a gram in treatment. Those lines live in the base, not on the card,
+  which splits the read into three steps — search, query, read — and
+  keeps the last one **pure**: it receives the lines rather than fetching
+  them, like every clinical module here receives its treatments.
+  « Dossier » is the only page not about the searched card: it is the
+  open prescription, a clicked line becomes the question, and a bar marks
+  the lines a table wants you to stop at — computed from the six readings
+  the file already made, and marking only the two tones that ask for a
+  look, because marking whenever any table has a row marked six lines out
+  of six.
+
+  **What leaves it**: « Copier » puts the read page on the clipboard,
+  name first, each page copying its own content — and the Dossier page
+  copying the card instead, because a nominative treatment list has no
+  business in a clipboard. **What reaches it**: a scanner is a keyboard,
+  and `Alt` + 1 … 5 work the five gestures, so the whole bar is
+  keyboard-driven.
+
+  **And when no name answers, the prose does.** The field searches a name
+  and a molecule; « pamplemousse » returned « aucun résultat dans la
+  base » while 116 passages name it — the same defect as a barcode
+  searched as a name. It falls back to the app's own full-text search
+  over the thirteen prose fields **and the posology lines**, only when no
+  name answers, and each card arrives carrying the sentence that made it
+  answer.
+
+  It reports **what the tables say**, in chips: what the open file's own
   ordonnance says about this card (`interactions_paired`, written once
   and read by the file and by the bar), what `revue` says of the
   ordonnance once this card is in it — the reading no monograph can
@@ -1720,7 +1754,34 @@ add clicking and typing; it is not the price of entry.
   against the question (`CompanionKey`, the file's DFG included — a
   clairance written by another post moves nothing else in the key): the
   fuzzy pass over the 862 cards used to run sixty times a second, and
-  seven clinical tables on top of it would have cost far more. The demo's view key opens **on a
+  eight clinical tables on top of it would have cost far more.
+
+  **Its chips have relief and its answer has an edge.** A chip was a
+  label with a coloured background — the one object in this interface
+  without a bevel, in a chrome where buttons rise and fields sink; a flat
+  rectangle does not read as an object but as a highlight, and this one
+  is clicked. What stops you **rises**, what reassures is **sunk**, the
+  same movement by which the calmest tone takes the theme's trough. And
+  being allocated rather than written makes the mid-row split
+  structurally impossible rather than merely forbidden. The answer's left
+  edge carries the colour of whatever presses most — on « Posologie » or
+  « Conseils », where there is no chip at all, it is the only thing
+  saying this card stops something — and carries nothing when there is
+  nothing to say, a permanent grey edge being a decoration one stops
+  seeing.
+
+  **And its size is measured, not written.** It was a pixel constant,
+  deliberately unscaled, and the reason was written down: a window is
+  placed in a screen corner in pixels, and what follows the text scale is
+  what it *holds*, which scrolls. That held while the bar was a field and
+  a sentence. It carries five bands now — head, field, other answers,
+  tabs, gestures — **none of which scroll**, all of which grow with the
+  text: at 1,6 they took four hundred pixels of the five hundred and the
+  file page showed two lines of a six-line ordonnance. So the content is
+  measured (`companion_opening` = the floor plus room to read at ease),
+  the constant still wins at the two ordinary scales, and `layout.toml`
+  keeps the bar's own size apart from the workspace's — one key each, two
+  lives of one window. The demo's view key opens **on a
   file** — the one carrying the most treatments *and* a biology — or the
   two signals only this software can give would appear in no capture
   ever taken, and the kidney chip would read « dépend du DFG » in all of
