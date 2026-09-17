@@ -548,6 +548,23 @@ linted too), `cargo test --workspace`, `./scripts/coverage.sh`, and
 `./scripts/smoke.sh` — which used to run only when somebody remembered,
 and is the only guard the interface has.
 
+**A change to a screen has companions, and they do not fail loudly.**
+Three times in one session on the companion bar, a change left something
+behind that no test caught, because each of them had its own writing of
+the same thing. Making the read match a **chip** widened it, and its test
+kept measuring every name as text — sweeping a narrower row than the one
+drawn, so it would have passed through the overflow it exists to refuse.
+Making the window **open at the size its text needs** left the band
+test's sweep stopping at the old constant, so the real body went
+untested. Putting the file's own posology **first on the page** left the
+clipboard copying the reference alone — breaking the rule that function
+carries in its name, « ce qui est copié est ce qui est lu ». None of the
+three failed. When you change what a screen draws, go and read: its
+measurement, its test's measurement, what it copies, what it prints, and
+what the manual says it shows. The named trap of this file — two
+writings of one thing diverge — applies to the *net* as much as to the
+code.
+
 **Measure before optimising, and write the measurement down.**
 `the_first_launch_seeds_what_it_says_and_is_timed` (run it with
 `cargo test the_first_launch -- --nocapture`) times the session's
