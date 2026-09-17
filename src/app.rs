@@ -48885,6 +48885,19 @@ impl App {
         };
         match page {
             Some(CompanionPage::Posology) => {
+                // **Dans l'ordre de la page**, donc ce que le dossier
+                // retient d'abord : c'est la seule ligne qui réponde
+                // « combien en prend-il », et une posologie collée sans
+                // elle est un schéma de référence qu'on lira pour une
+                // prise.
+                part(
+                    tr("companion_poso_filed"),
+                    &[read.filed.0.trim(), read.filed.1.trim()]
+                        .into_iter()
+                        .filter(|t| !t.is_empty())
+                        .collect::<Vec<_>>()
+                        .join("  ·  "),
+                );
                 part(tr("mono_f_dosage"), &d.dosage);
                 for line in &read.poso {
                     let mut said =
@@ -57569,6 +57582,36 @@ mod tests {
         // Chaque page copie **la sienne**, et pas celle d'à côté.
         let poso = App::companion_clip(&d, &read, Some(CompanionPage::Posology));
         assert!(poso.contains("5 mg deux fois par jour"));
+        // **Ce que le dossier retient est copié, et en tête.** La page
+        // le met devant la référence ; une posologie collée sans lui est
+        // un schéma qu'on lira pour une prise, et « ce qui est copié est
+        // ce qui est lu » ne serait plus vrai.
+        let filed = App::companion_clip(
+            &d,
+            &super::companion_look(
+                super::companion_hits(std::slice::from_ref(&d), "eliquis"),
+                std::slice::from_ref(&d),
+                None,
+                None,
+                "2026-09-17",
+                "eliquis",
+                0,
+                Vec::new(),
+                &[],
+                &[],
+                Vec::new(),
+                ("5 mg".to_owned(), "matin et soir".to_owned()),
+            ),
+            Some(CompanionPage::Posology),
+        );
+        let at_filed = filed
+            .find("matin et soir")
+            .expect("ce que le dossier retient");
+        let at_ref = filed.find("5 mg deux fois par jour").expect("la référence");
+        assert!(
+            at_filed < at_ref,
+            "le dossier passe devant la référence, comme sur la page : {filed}"
+        );
         assert!(poso.contains("Fibrillation atriale : 5 mg × 2 (à heure fixe)"));
         assert!(
             !poso.contains("Hématomes") && !poso.contains("Ne pas arrêter"),
