@@ -1231,6 +1231,10 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
         "Plus de huit cents fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et les textes de l'équipe ne sont jamais réécrits par une mise à jour.",
     ),
     (
+        "La barre au-dessus des autres fenêtres (F9)",
+        "La fenêtre réduite à une barre posée par-dessus le logiciel de comptoir. On tape un nom ou une molécule — une douchette tape dedans aussi, c'est un clavier ; les flèches haut et bas parcourent les fiches qui répondent, gauche et droite tournent cinq pages : ce que les tables disent, la posologie, les conseils, les précautions, et l'ordonnance du dossier ouvert. Les pastilles rapportent dix lectures de la fiche cherchée — ce que les monographies du dossier en disent, la revue d'ordonnance, un doublon de molécule sous un autre nom, ce que les valeurs de biologie veulent dire sous ce traitement, les examens à refaire, les cytochromes, l'écrasement, la grossesse, le rein au DFG du dossier et l'âge. Chacune cite le mot de sa table et ne conclut rien ; cliquée, elle ouvre l'écran qui répond en entier. Quand aucun nom ne répond, la barre cherche dans le texte des fiches. « Copier » met la page lue dans le presse-papier.",
+    ),
+    (
         "Les tables, le codex, les protocoles",
         "Depuis les médicaments : « Tables de conversion » (les références de comptoir, chacune datée et sourcée, qu'une seule recherche traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
     ),

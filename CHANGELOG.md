@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Le mode d'emploi imprimé a enfin une section sur la barre.** Il en
+  compte une par partie de l'application — le dossier, la biologie, le
+  carnet, le référentiel, les tables, l'agenda, le tableau de bord — et
+  la barre n'y figurait que comme une touche dans la liste des
+  raccourcis, alors qu'elle porte cinq pages et dix lectures. C'est la
+  feuille qu'une officine imprime et pose près du poste.
+
+### Changed
+- **La prose qui décrit la barre rattrape la barre.** Le manuel
+  décrivait « Précautions » sans la marge thérapeutique ni l'antidote,
+  et « Posologie » sans les formes et dosages disponibles ; le mode
+  d'emploi imprimé ne nommait que `Alt + 1 … 5` et taisait les deux
+  paires de flèches ; le README annonçait une barre qu'on parcourt sans
+  dire qu'elle tourne des pages. C'est l'audit que le paragraphe de la
+  veille réclame, fait sur ses propres changements.
+
 ## [0.213.2] - 2026-09-17
 
 ### Fixed

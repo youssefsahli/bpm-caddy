@@ -1502,7 +1502,7 @@ livre = "Une phrase qui n'est plus livrée"
                 format!(
                     "{} sections in two columns on one sheet",
                     match crate::pdf::guide_section_count() {
-                        16 => "sixteen",
+                        17 => "seventeen",
                         n => panic!("{n} sections au mode d'emploi : l'écrire ici et au README"),
                     }
                 ),
