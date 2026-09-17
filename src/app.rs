@@ -49037,6 +49037,20 @@ impl App {
     /// lignes de la base portent les trois colonnes, et la barre les
     /// rend dans cet ordre-là.
     fn companion_poso_page(ui: &mut egui::Ui, d: &Drug, read: &CompanionRead) {
+        // **Ce que le dossier retient, avant ce que la fiche
+        // recommande.** « Combien en prend-il ? » ne se répond pas dans
+        // une monographie : elle donne les schémas de l'indication, et
+        // le dossier donne le sien. Mettre la référence devant ferait
+        // lire un schéma pour une prise, ce qui est l'erreur que cette
+        // page doit empêcher.
+        let filed = [read.filed.0.trim(), read.filed.1.trim()]
+            .into_iter()
+            .filter(|t| !t.is_empty())
+            .collect::<Vec<_>>()
+            .join("  ·  ");
+        if !filed.is_empty() {
+            Self::companion_part(ui, tr("companion_poso_filed"), &filed);
+        }
         Self::companion_part(ui, tr("mono_f_dosage"), &d.dosage);
         // Les formes et dosages disponibles : « en quel dosage ça
         // existe » est posé au comptoir aussi souvent que « combien »,
@@ -49365,9 +49379,21 @@ impl App {
                 hits = cards;
                 found = why;
             }
-            let poso = hits
-                .get(self.companion_pick.min(hits.len().saturating_sub(1)))
+            let here = hits.get(self.companion_pick.min(hits.len().saturating_sub(1)));
+            let poso = here
                 .map(|d| session.db.posologies(d.id).unwrap_or_default())
+                .unwrap_or_default();
+            // Ce que le dossier retient pour cette fiche-là, quand elle
+            // y est : le dosage et la posologie qu'on y a écrits. La
+            // fiche dit la référence, le dossier dit cette personne-là.
+            let filed = here
+                .filter(|d| session.patient_treats.iter().any(|t| t.id == d.id))
+                .map(|d| {
+                    (
+                        session.strength_of(d.id).to_owned(),
+                        session.dose_of(d.id).to_owned(),
+                    )
+                })
                 .unwrap_or_default();
             let look = companion_look(
                 hits,
@@ -49393,6 +49419,7 @@ impl App {
                     })
                     .collect::<Vec<_>>(),
                 found,
+                filed,
             );
             (key, look)
         });
@@ -50395,6 +50422,19 @@ struct CompanionRead {
     /// de cette application est celui qu'un humain a posé au registre
     /// des stupéfiants, en présentant une boîte.
     scanned: Option<String>,
+    /// Ce que **le dossier** retient pour ce traitement : le dosage et
+    /// la posologie, tels qu'ils y sont écrits.
+    ///
+    /// **La fiche dit la référence, le dossier dit cette personne-là.**
+    /// « Combien en prend-il ? » ne se répond pas dans une monographie :
+    /// elle donne les schémas de l'indication, et le dossier donne le
+    /// sien. La barre montrait le premier et taisait le second, qu'elle
+    /// avait pourtant sous la main.
+    ///
+    /// Vides quand la fiche n'est pas au dossier, ou quand personne n'a
+    /// rien écrit — et la page ne dit alors rien plutôt que d'annoncer
+    /// une ligne vide.
+    filed: (String, String),
     /// Les lignes de posologie de la fiche lue, indication par
     /// indication.
     ///
@@ -50512,6 +50552,7 @@ fn companion_look(
     watch: &[crate::surveillance::ResolvedDue],
     bio: &[crate::biology::Reading],
     found: Vec<String>,
+    filed: (String, String),
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -50530,6 +50571,7 @@ fn companion_look(
             poso: Vec::new(),
             pages: Vec::new(),
             found,
+            filed,
         };
     };
     let signals = companion_signals(&card, file, dfg, age, watch, bio);
@@ -50549,7 +50591,13 @@ fn companion_look(
         .into_iter()
         .filter(|p| match p {
             CompanionPage::Signals => true,
-            CompanionPage::Posology => has(&card.dosage) || has(&card.forms) || !poso.is_empty(),
+            CompanionPage::Posology => {
+                has(&card.dosage)
+                    || has(&card.forms)
+                    || !poso.is_empty()
+                    || has(&filed.0)
+                    || has(&filed.1)
+            }
             CompanionPage::Advice => has(&card.iup) || has(&card.missed_dose),
             CompanionPage::Care => {
                 has(&card.contraindications)
@@ -50577,6 +50625,7 @@ fn companion_look(
         poso,
         pages,
         found,
+        filed,
     }
 }
 
@@ -56808,6 +56857,7 @@ mod tests {
             &[],
             &[],
             Vec::new(),
+            <(String, String)>::default(),
         )
     }
 
@@ -57096,6 +57146,54 @@ mod tests {
         );
         // Et une ligne que rien ne nomme ne porte rien.
         assert_eq!(loud.tone("Autre chose"), None);
+    }
+
+    /// **La fiche dit la référence, le dossier dit cette personne-là.**
+    ///
+    /// « Combien en prend-il ? » ne se répond pas dans une monographie :
+    /// elle donne les schémas de l'indication, et le dossier donne le
+    /// sien. La barre montrait le premier et taisait le second, qu'elle
+    /// avait pourtant sous la main — et la page s'ouvre maintenant pour
+    /// une fiche dont *seul* le dossier dit quelque chose.
+    #[test]
+    fn the_posology_page_opens_for_what_the_file_alone_records() {
+        use super::CompanionPage;
+        use crate::db::Drug;
+        // Une fiche muette sur sa posologie : la base en porte que
+        // l'officine a écrites, et c'est précisément là que ce que le
+        // dossier retient est la seule réponse.
+        let bare = Drug {
+            id: 1,
+            name: "Machinol".to_owned(),
+            ..Drug::default()
+        };
+        let base = std::slice::from_ref(&bare);
+        let read = companion_read(base, &[], None, None, "machinol", 0);
+        assert!(
+            !read.pages.contains(&CompanionPage::Posology),
+            "sans rien à dire, la page n'est pas offerte"
+        );
+        // Avec ce que le dossier retient, elle l'est.
+        let filed = super::companion_look(
+            super::companion_hits(base, "machinol"),
+            base,
+            None,
+            None,
+            "2026-09-17",
+            "machinol",
+            0,
+            Vec::new(),
+            &[],
+            &[],
+            Vec::new(),
+            ("50 mg".to_owned(), "1 le matin".to_owned()),
+        );
+        assert!(
+            filed.pages.contains(&CompanionPage::Posology),
+            "ce que le dossier retient est une posologie, et la seule"
+        );
+        assert_eq!(filed.filed.0, "50 mg");
+        assert_eq!(filed.filed.1, "1 le matin");
     }
 
     /// **Ce que les chiffres du dossier disent sous ce traitement-là.**
@@ -57440,6 +57538,7 @@ mod tests {
             &[],
             &[],
             Vec::new(),
+            <(String, String)>::default(),
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -57566,6 +57665,7 @@ mod tests {
             &[],
             &[],
             Vec::new(),
+            <(String, String)>::default(),
         );
         assert_eq!(
             read.pages,

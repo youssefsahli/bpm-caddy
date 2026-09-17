@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **« Combien en prend-il ? » : la page de la posologie dit d'abord ce
+  que le dossier retient.** Une monographie donne les schémas de
+  l'indication ; le dossier donne celui de cette personne-là, et la
+  barre montrait le premier en taisant le second, qu'elle avait pourtant
+  sous la main. Le dosage et la posologie du dossier passent devant la
+  référence — mettre la référence en tête ferait lire un schéma pour une
+  prise, ce qui est l'erreur que cette page doit empêcher.
+
+  Et la page s'ouvre pour une fiche dont **seul** le dossier dit quelque
+  chose : les huit cent soixante-deux fiches livrées portent leur
+  posologie, celles que l'officine écrit souvent pas, et c'est
+  précisément là que ce que le dossier retient est la seule réponse.
+
 ## [0.212.0] - 2026-09-17
 
 ### Added

@@ -204,9 +204,11 @@ on s'en sert pendant qu'on tient une boîte de l'autre main.
 **Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
 bas parcourent les fiches qui répondent, gauche et droite ce que la
 fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
-« Signaux » porte ce que les tables disent ; « Posologie » la prose de
-la fiche **et ses lignes indication par indication**, parce que
-« combien » n'a pas de réponse sans « pour quoi » ; « Conseils » ce
+« Signaux » porte ce que les tables disent ; « Posologie » d'abord **ce
+que le dossier retient pour cette personne-là** — la fiche dit la
+référence, le dossier dit le sien —, puis la prose de la fiche **et ses
+lignes indication par indication**, parce que « combien » n'a pas de
+réponse sans « pour quoi » ; « Conseils » ce
 qu'on dit à la personne et ce qu'on fait d'une prise oubliée, qui
 sortent par la même bouche au même moment ; « Précautions » ce qui
 contre-indique, ce qui arrive et ce qu'on surveille. Une page qui n'a
