@@ -1587,7 +1587,7 @@ add clicking and typing; it is not the price of entry.
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
-  finances|stats|companion|companion_poso|companion_conseils|companion_soins|script|carnets|caisse|caisses|peaux|aide`
+  finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|script|carnets|caisse|caisses|peaux|aide`
   — land on a specific view (screenshots, e2e). `aide` is not a view at
   all: it opens the right-hand dock on its « Aide » tab, which is in no
   tab strip and therefore reachable no other way.

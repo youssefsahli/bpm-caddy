@@ -10362,7 +10362,7 @@ impl App {
                         // ne montre jamais la puce du rein qui conclut.
                         Ok(
                             "companion" | "companion_poso" | "companion_conseils"
-                            | "companion_soins",
+                            | "companion_soins" | "companion_dossier",
                         ) => {
                             let pick = session
                                 .patients
@@ -11047,6 +11047,7 @@ impl App {
                 "companion_poso" => 1,
                 "companion_conseils" => 2,
                 "companion_soins" => 3,
+                "companion_dossier" => 4,
                 _ => 0,
             },
             companion_read: None,
@@ -48888,6 +48889,52 @@ impl App {
         Self::companion_part(ui, tr("mono_f_missed"), &d.missed_dose);
     }
 
+    /// La page du dossier : l'ordonnance ouverte, ligne par ligne.
+    ///
+    /// Rend le nom qu'on a cliqué, pour que la barre le lise.
+    ///
+    /// **C'est le geste de la révision au comptoir** : descendre une
+    /// ordonnance en posant la même question à chaque ligne. Il
+    /// demandait de retaper huit noms, dont on ne se souvient ni de
+    /// l'orthographe ni du dosage — alors que le dossier les porte.
+    ///
+    /// La ligne lue est marquée, et elle ne se clique pas : cliquer ce
+    /// qu'on lit déjà ne fait rien, et un rang qui répond au clic sans
+    /// rien changer apprend à ne pas cliquer les autres.
+    fn companion_file_page(ui: &mut egui::Ui, d: &Drug, file: &[Drug]) -> Option<String> {
+        let mut picked = None;
+        ui.add_space(2.0);
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(trf("companion_file_head", file.len()))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+        ui.add_space(2.0);
+        for line in file {
+            let here = line.id == d.id;
+            let label = if line.dci.trim().is_empty() || line.dci.trim() == line.name.trim() {
+                line.name.trim().to_owned()
+            } else {
+                format!("{}  ·  {}", line.name.trim(), line.dci.trim())
+            };
+            if motif::list_row(
+                ui,
+                egui::RichText::new(label).size(motif::pt(ui, 11.5)),
+                here,
+            )
+            .on_hover_text(tr("companion_file_row_tooltip"))
+            .clicked()
+                && !here
+            {
+                picked = Some(line.name.trim().to_owned());
+            }
+        }
+        picked
+    }
+
     /// La page des précautions : ce qui contre-indique, ce qui arrive, ce
     /// qu'on surveille.
     fn companion_care_page(ui: &mut egui::Ui, d: &Drug) {
@@ -49044,6 +49091,11 @@ impl App {
             .min(read.1.pages.len().saturating_sub(1));
         let mut leave = false;
         let mut go: Option<CompanionGo> = None;
+        // Le nom cliqué dans l'ordonnance du dossier : posé dans le
+        // champ **après** le dessin, comme tout ce qui remonte d'ici —
+        // changer la question au milieu d'une image rendrait la réponse
+        // fausse pour le reste de celle-ci.
+        let mut walk: Option<String> = None;
         // Entrée ouvre la fiche choisie : le geste le plus fréquent de
         // la barre, sur la touche qu'on presse déjà après avoir tapé.
         if enter {
@@ -49323,6 +49375,9 @@ impl App {
                         Some(CompanionPage::Care) => {
                             Self::companion_care_page(ui, d);
                         }
+                        Some(CompanionPage::File) => {
+                            walk = Self::companion_file_page(ui, d, &session.patient_treats);
+                        }
                         _ => {
                             if let Some(section) = Self::companion_signals_page(ui, d, &read.1) {
                                 go = Some(CompanionGo::Cross(d.id, Some(section)));
@@ -49365,6 +49420,13 @@ impl App {
         // La lecture est rendue au champ : c'est elle que l'image
         // suivante relira si la question n'a pas bougé.
         self.companion_read = Some(read);
+        if let Some(name) = walk {
+            // La page reste celle du dossier : on descend l'ordonnance,
+            // et retomber sur les signaux à chaque ligne obligerait à
+            // revenir d'une flèche entre deux lignes.
+            self.companion_query = name;
+            self.companion_pick = 0;
+        }
         if let Some(dest) = go {
             match dest {
                 CompanionGo::Card(id) => {
@@ -49632,16 +49694,27 @@ enum CompanionPage {
     Advice,
     /// Ce qui contre-indique, ce qui arrive, ce qu'on surveille.
     Care,
+    /// L'ordonnance du dossier ouvert, ligne par ligne.
+    ///
+    /// **La seule page qui ne parle pas de la fiche cherchée.** Les
+    /// quatre autres répondent « ce produit-ci » ; celle-ci répond
+    /// « cette personne-là », et elle sert à passer de l'un à l'autre :
+    /// une ligne cliquée devient la question, et la barre la lit. C'est
+    /// le geste de la révision au comptoir — descendre une ordonnance en
+    /// posant la même question à chaque ligne —, qui demandait jusqu'ici
+    /// de retaper huit noms.
+    File,
 }
 
 impl CompanionPage {
     /// Dans l'ordre où on les lit au comptoir : d'abord ce qui arrête,
     /// puis combien, puis ce qu'on dit, puis ce qu'on surveille.
-    const ALL: [CompanionPage; 4] = [
+    const ALL: [CompanionPage; 5] = [
         CompanionPage::Signals,
         CompanionPage::Posology,
         CompanionPage::Advice,
         CompanionPage::Care,
+        CompanionPage::File,
     ];
 
     /// Le libellé de l'onglet.
@@ -49651,6 +49724,7 @@ impl CompanionPage {
             CompanionPage::Posology => tr("mono_f_dosage"),
             CompanionPage::Advice => tr("companion_page_advice"),
             CompanionPage::Care => tr("companion_page_care"),
+            CompanionPage::File => tr("companion_page_file"),
         }
     }
 }
@@ -49802,6 +49876,10 @@ fn companion_look(
             CompanionPage::Care => {
                 has(&card.contraindications) || has(&card.adverse) || has(&card.monitoring)
             }
+            // Sans dossier ouvert, il n'y a pas d'ordonnance à
+            // descendre — et un onglet « Dossier » vide dirait qu'il y
+            // en a un.
+            CompanionPage::File => !file.is_empty(),
         })
         .collect();
     CompanionRead {
@@ -56179,9 +56257,31 @@ mod tests {
             read.pages,
             vec![CompanionPage::Signals, CompanionPage::Posology]
         );
+        // **Et la page du dossier ne s'ouvre qu'avec un dossier.** Elle
+        // est la seule à ne pas parler de la fiche cherchée : sans
+        // ordonnance ouverte il n'y a rien à descendre, et un onglet
+        // « Dossier » vide dirait qu'il y en a une.
+        let other = Drug {
+            id: 9,
+            name: "Coversyl".to_owned(),
+            ..Drug::default()
+        };
+        let read = companion_read(
+            std::slice::from_ref(&bare),
+            std::slice::from_ref(&other),
+            None,
+            None,
+            "zorglubine",
+            0,
+        );
+        assert_eq!(
+            read.pages,
+            vec![CompanionPage::Signals, CompanionPage::File],
+            "un dossier ouvert ouvre sa page, et rien d'autre ne l'ouvre"
+        );
         // L'ordre est celui de la lecture au comptoir, et non celui du
         // hasard : ce qui arrête, puis combien, puis ce qu'on dit, puis
-        // ce qu'on surveille.
+        // ce qu'on surveille, puis le dossier.
         let mut full = bare.clone();
         full.monitoring = "Surveiller.".to_owned();
         full.iup = "Dire.".to_owned();

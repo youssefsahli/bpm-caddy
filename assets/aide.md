@@ -198,7 +198,7 @@ Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
 question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
 qu'une douchette — qui est un clavier — tape dedans sans rien installer.
 
-**Quatre pages, et les flèches gauche et droite pour tourner.** Haut et
+**Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
 bas parcourent les fiches qui répondent, gauche et droite ce que la
 fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
 « Signaux » porte ce que les tables disent ; « Posologie » la prose de
@@ -209,6 +209,14 @@ sortent par la même bouche au même moment ; « Précautions » ce qui
 contre-indique, ce qui arrive et ce qu'on surveille. Une page qui n'a
 rien à dire n'est pas offerte, et quand une seule parle il n'y a pas de
 bande d'onglets.
+
+La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
+cherchée : c'est l'ordonnance ouverte, ligne par ligne, et **une ligne
+cliquée devient la question**. C'est le geste de la révision au
+comptoir — descendre une ordonnance en posant la même question à chaque
+ligne —, qui demandait jusqu'ici de retaper huit noms dont on ne se
+rappelle ni l'orthographe ni le dosage. Sans dossier ouvert, la page
+n'est pas là.
 
 Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
 rien à leur place : chaque pastille cite le mot de sa table, et son

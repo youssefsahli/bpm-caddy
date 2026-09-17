@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ce qui contre-indique. Ce sont les questions du comptoir, et la barre
   est ce qui est au comptoir.
 
-  Quatre pages, et **les flèches gauche et droite pour tourner** : haut
+  Cinq pages, et **les flèches gauche et droite pour tourner** : haut
   et bas parcourent les fiches qui répondent, gauche et droite ce que la
   fiche lue dit — deux questions perpendiculaires, deux paires de
   flèches. « Signaux » porte ce que les tables disent ; « Posologie » la
@@ -32,6 +32,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'un onglet qui parle. Et quand une seule page parle, il n'y a pas de
   bande d'onglets — une bande d'un onglet n'est pas une bande.
 
+- **Une page « Dossier » : l'ordonnance ouverte, et une ligne cliquée
+  devient la question.** C'est le geste de la révision au comptoir —
+  descendre une ordonnance en posant la même question à chaque ligne —
+  et il demandait de retaper huit noms dont on ne se rappelle ni
+  l'orthographe ni le dosage, alors que le dossier les porte. La ligne
+  lue est marquée et ne se clique pas : un rang qui répond au clic sans
+  rien changer apprend à ne pas cliquer les autres. C'est la seule page
+  qui ne parle pas de la fiche cherchée, et sans dossier ouvert elle
+  n'est pas offerte.
 - **Les pastilles prennent le relief de la maison, et la réponse porte
   un liseré.** Une pastille était une étiquette à fond coloré,
   c'est-à-dire le seul objet de cette interface sans biseau : dans un
