@@ -24,7 +24,10 @@
 //! on its own disk, and the only answer to that is to re-key the
 //! officine — exactly as the only answer to a stolen base is to change
 //! its password. **Revocation is about the future; re-keying is about
-//! the past.**
+//! the past.** And re-keying keeps the history rather than costing it:
+//! the new trousseau seals what comes next, the old ones stay in the
+//! base, and [`crate::Journal::read_with`] tries the ring. Nothing is
+//! re-sealed, because re-sealing would rename every record.
 //!
 //! Both are thirty-two bytes, both are wiped when they go out of scope,
 //! and neither is ever written to a link in clear — the trousseau

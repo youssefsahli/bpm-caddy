@@ -90,6 +90,26 @@ qui, et les corrections. Contre trois choses.
   d'en changer le mot de passe. **La révocation est affaire d'avenir ;
   la re-clé est affaire de passé.**
 
+### Re-clé : ce que ça coûte, et ce que ça ne coûte pas
+
+Une officine ne jette pas quatre ans de registre parce qu'un poste a été
+volé. Re-sceller tous les enregistrements sous la nouvelle clé les
+**renommerait** tous — le nom est un hachage du chiffré — et un journal
+renommé est un autre journal : ce n'est donc pas la voie.
+
+La voie est celle-ci, et elle est déjà en place : la nouvelle clé scelle
+ce qui s'écrit à partir de maintenant, les anciennes restent dans la
+base, et `Journal::read_with` les essaie dans l'ordre, la plus récente
+d'abord. Rien ne change sur le fil, aucun enregistrement ne bouge, et il
+n'y a **pas de marqueur d'époque** dans l'en-tête à tenir à jour : le
+sceau répond tout seul, puisqu'un AEAD sous la mauvaise clé ne s'ouvre
+pas. Un enregistrement qu'aucune clé du trousseau n'ouvre reste
+**nommé**, jamais sauté.
+
+Ce que la re-clé ne rend pas : ce que le poste volé détient déjà. Elle
+coupe la suite, pas le passé — la même chose exactement que changer le
+mot de passe d'une base dont quelqu'un a pris une copie.
+
 ---
 
 ## 3. Les quatre garanties, et la règle qui va avec chacune

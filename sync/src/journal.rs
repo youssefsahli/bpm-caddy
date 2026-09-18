@@ -260,8 +260,29 @@ impl Journal {
         all
     }
 
-    /// What a stream currently says.
+    /// What a stream currently says, under the officine's key.
     pub fn read(&self, trousseau: &Trousseau, stream: Stream) -> Reading {
+        self.read_with(std::slice::from_ref(trousseau), stream)
+    }
+
+    /// The same, under an officine that has changed its key.
+    ///
+    /// Re-keying is the only answer to a trousseau that walked out on
+    /// somebody's laptop, and it has to be an answer that keeps the
+    /// history: an officine does not throw away four years of register
+    /// because a machine was stolen. Re-sealing every record would
+    /// **rename** every record — the name is a hash of the ciphertext —
+    /// and a renamed journal is a new journal, so that is not the way.
+    ///
+    /// The way is this: the new trousseau seals what is written from now
+    /// on, the old ones stay in the base, and a reading tries them in
+    /// order. Nothing on the wire changes, no record moves, and there is
+    /// no epoch marker in the header to get wrong — the seal itself
+    /// answers, because an AEAD under the wrong key does not open.
+    ///
+    /// Newest first, so the ordinary record costs one attempt. A record
+    /// no key in the ring opens is still **named** rather than skipped.
+    pub fn read_with(&self, keyring: &[Trousseau], stream: Stream) -> Reading {
         let of_stream: Vec<&Record> = self
             .ordered()
             .into_iter()
@@ -287,9 +308,9 @@ impl Journal {
             if corrected.contains(&record.id()) {
                 continue;
             }
-            let payload = match record.open(trousseau) {
-                Ok(bytes) => bytes,
-                Err(_) => {
+            let payload = match keyring.iter().find_map(|key| record.open(key).ok()) {
+                Some(bytes) => bytes,
+                None => {
                     reading.unopened.push(record.id());
                     continue;
                 }
@@ -610,6 +631,60 @@ mod tests {
         let reading = post.journal.read(&t, Stream::Registre);
         assert_eq!(reading.facts.len(), 1);
         assert!(reading.unopened.is_empty());
+    }
+
+    /// An officine that has changed its key still reads what it wrote
+    /// before it changed it.
+    ///
+    /// The whole point of the keyring: re-sealing would rename every
+    /// record, so the old key stays and a reading tries it. And the
+    /// reading under the new key alone still **names** what it cannot
+    /// open — an officine that has lost a key learns it, rather than
+    /// finding its register four lines short.
+    #[test]
+    fn an_officine_that_changed_its_key_still_reads_its_own_past() {
+        let before = officine();
+        let mut e = Counted(150);
+        let after = Trousseau::generate(&mut e);
+
+        let mut post = Post::new(1);
+        post.write(&before, b"ecrit avant la re-cle", None);
+        // The laptop walked out; the officine re-keys and goes on
+        // writing. Nothing already written moves.
+        let mut real = crate::OsEntropy;
+        post.journal
+            .write(
+                &post.device,
+                &after,
+                Stream::Registre,
+                b"ecrit apres la re-cle",
+                None,
+                &mut real,
+            )
+            .unwrap();
+
+        // The ring, newest first: the whole register reads.
+        let reading = post
+            .journal
+            .read_with(&[after.clone(), before.clone()], Stream::Registre);
+        assert_eq!(reading.facts.len(), 2);
+        assert!(reading.unopened.is_empty());
+        assert_eq!(reading.facts[0].payload, b"ecrit avant la re-cle");
+        assert_eq!(reading.facts[1].payload, b"ecrit apres la re-cle");
+
+        // The new key alone: half the register, and the other half
+        // named rather than quietly missing.
+        let reading = post.journal.read(&after, Stream::Registre);
+        assert_eq!(reading.facts.len(), 1);
+        assert_eq!(reading.unopened.len(), 1);
+        // And the old key alone, symmetrically.
+        let reading = post.journal.read(&before, Stream::Registre);
+        assert_eq!(reading.facts.len(), 1);
+        assert_eq!(reading.unopened.len(), 1);
+        // An empty ring opens nothing and hides nothing.
+        let reading = post.journal.read_with(&[], Stream::Registre);
+        assert!(reading.facts.is_empty());
+        assert_eq!(reading.unopened.len(), 2);
     }
 
     /// Streams do not bleed into one another: a register reading shows

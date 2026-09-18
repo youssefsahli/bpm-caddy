@@ -30,6 +30,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   d'horaire — une porte, un poste, une conversation, et c'est l'appelant
   qui décide s'il y en a une autre.
 
+- **Une officine qui change de clé lit encore ce qu'elle a écrit
+  avant.** Le document disait que la seule réponse à un trousseau parti
+  sur un portable volé est de re-clé, et rien ne rendait cela possible :
+  une promesse sans mécanisme. Re-sceller tous les enregistrements les
+  **renommerait** tous — le nom est un hachage du chiffré — et un
+  journal renommé est un autre journal.
+
+  Alors le trousseau est un anneau : la nouvelle clé scelle ce qui
+  s'écrit désormais, les anciennes restent, et `Journal::read_with` les
+  essaie, la plus récente d'abord. Rien ne change sur le fil, aucun
+  enregistrement ne bouge, et il n'y a **pas de marqueur d'époque** dans
+  l'en-tête à tenir à jour : le sceau répond tout seul, puisqu'un AEAD
+  sous la mauvaise clé ne s'ouvre pas. Et la règle de la maison tient
+  jusqu'au bout — un enregistrement qu'aucune clé n'ouvre reste
+  **nommé**, jamais sauté : une officine qui a perdu une clé l'apprend,
+  au lieu de trouver son registre quatre lignes plus court.
+
 ## [0.223.0] - 2026-09-18
 
 ### Added
