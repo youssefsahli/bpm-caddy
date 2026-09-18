@@ -194,25 +194,32 @@ du contraire par symétrie serait le mauvais échange.
 ### L'API, en entier
 
 ```rust
-let device    = Device::generate(&mut OsEntropy);   // ce poste
+let device    = Device::generate(&mut OsEntropy);    // ce poste
 let trousseau = Trousseau::generate(&mut OsEntropy); // cette officine
 let mut journal = Journal::new();
 
+// Écrire un fait, lire un flux. Ce qui entre, ce sont des octets : ce
+// crate ne sait pas ce qu'est une ligne de registre, et ne doit pas.
 journal.write(&device, &trousseau, Stream::Registre, octets, None, &mut e)?;
 let lecture = journal.read(&trousseau, Stream::Registre);
 
+// Parler à un poste. `drive` porte la boucle, parce qu'il n'y a qu'une
+// façon correcte de l'écrire : `confirm` reçoit le code, l'écran le
+// montre, et répondre « non » arrête la conversation au lieu de la
+// continuer en silence.
 let mut session = Session::new(&device, Some(&trousseau), Intent::Sync, true, &connus)?;
-loop {
-    match session.step(&mut meter)? {
-        Step::Send(o)    => link.send(&o)?,
-        Step::Await      => { let o = link.recv()?; session.deliver(&o, &mut journal, &mut meter)?; }
-        Step::Confirm(c) => { /* montrer c.groups(), puis */ session.accept(&journal, &mut meter)?; }
-        Step::Done       => break,
-    }
-}
+let mut link = link::dial("192.168.1.14:7742", patience)?;
+drive(&mut session, &mut link, &mut journal, &mut meter, &mut |code| {
+    montrer(code.groups()) == Reponse::MemeCode
+})?;
 ```
 
-C'est tout. Six types, quatre verbes.
+Et de l'autre côté : `let door = link::Door::open("0.0.0.0:7742")?;`
+puis `door.accept(patience)?`, avec `Intent::Invite` la première fois.
+
+C'est tout. `Session::step` / `deliver` restent publics pour qui veut
+conduire la conversation autrement — sur autre chose qu'un socket, ou
+au rythme d'une interface — mais personne n'est obligé de les toucher.
 
 ---
 
