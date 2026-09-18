@@ -5,6 +5,38 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Audit de registre des textes de l'interface.** Vingt-neuf libellés,
+  invites et infobulles remis dans la langue du reste de la monographie.
+  Les quatre tournures proscrites reviennent toutes à la même chose : un
+  intitulé qui se lit comme un essai coûte un temps de compréhension à
+  chaque fois, et détonne à côté de « Contre-indications » et de
+  « Pharmacocinétique ».
+
+  Les titres de panneaux redeviennent des groupes nominaux :
+  « Ce qu'on croise » → « Liste à croiser », « Ce que cette liste dit
+  d'elle-même » → « Analyse de la liste », « Ce que les fiches en
+  disent » → « Interactions citées », « Combien de temps » → « Demi-vie
+  plasmatique », « Ce que ce produit peut abîmer » → « Retentissement
+  organique », « Lignes que cette table ne connaît pas » → « Lignes hors
+  table », « Vu à l'instant » → « Dernières fiches lues ». Le « on »
+  impersonnel quitte les infobulles, et les chutes aphoristiques en
+  tiret cèdent au deux-points (« le silence ne vaut pas autorisation »).
+  La feuille d'appel **imprimée** portait deux en-têtes de colonne en
+  forme de phrase au milieu de « Patient », « Téléphone », « Motif » :
+  ce sont « Dossier » et « Réponse ».
+
+  Un titre de panneau n'est pas non plus une phrase à l'impératif : le
+  volet des carnets s'intitulait « Choisissez une feuille à gauche. » —
+  c'est « Aucune feuille ouverte », la phrase restant dans le corps, où
+  un état vide s'écrit en toutes lettres.
+
+  Les longues notes de pied de panneau sont conservées telles quelles :
+  ce sont les réserves cliniques que le panneau existe pour énoncer, et
+  leur longueur est celle de la réserve.
+
 ## [0.221.0] - 2026-09-17
 
 ### Fixed

@@ -7538,7 +7538,7 @@ struct DdiReading {
     /// Ce que les monographies de la liste disent les unes des autres,
     /// cité.
     ///
-    /// Le panneau s'intitule « ce que cette liste dit d'elle-même », et
+    /// Le panneau s'intitule « Analyse de la liste », et
     /// c'était la seule chose qu'il ne montrait pas : les phrases que
     /// les fiches écrivent en nommant leurs voisines vivaient dans le
     /// bandeau du dossier, derrière un survol, et nulle part ici. La
@@ -32581,7 +32581,7 @@ impl App {
     /// **Rien n'est déduit** : ce sont les phrases des monographies,
     /// citées, avec la paire qu'elles concernent. C'est la plus ancienne
     /// lecture de l'application et la seule que ce panneau ne portait
-    /// pas, alors qu'il s'intitule « ce que cette liste dit d'elle-même »
+    /// pas, alors qu'il s'intitule « Analyse de la liste »
     /// — elle vivait dans le bandeau du dossier, derrière un survol, et
     /// la puce « Ordonnance » du compagnon renvoyait donc ici sans l'y
     /// trouver.
@@ -42645,7 +42645,7 @@ impl App {
         motif::panel(
             ui,
             sheet_rect,
-            Some(open.map_or(tr("carnets_pick"), |s| s.title)),
+            Some(open.map_or(tr("carnets_none"), |s| s.title)),
             |ui| {
                 let Some(sheet) = open else {
                     ui.add(

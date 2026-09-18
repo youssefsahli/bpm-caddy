@@ -1766,8 +1766,8 @@ add clicking and typing; it is not the price of entry.
   and landing at the top after clicking « Écraser » is answering a
   different question. That cost the crossing three readings it did not
   have — `crush`, `gravidity`, and the monographs' own sentences, which
-  lived only in the file's band although the panel is titled « ce que
-  cette liste dit d'elle-même ». A table that is silent draws
+  lived only in the file's band although the panel is titled
+  « Analyse de la liste ». A table that is silent draws
   no chip — a row of « à vérifier » signals nothing and teaches people
   to stop looking at the band — and when they are all silent a sentence
   says so, because **silence is not permission**. The liver has no chip

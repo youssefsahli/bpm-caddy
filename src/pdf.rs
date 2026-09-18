@@ -1586,11 +1586,11 @@ const DEFAULT_APPELS_TEMPLATE: &str = r##"
 #v(4mm)
 
 #table(columns: (auto, auto, auto, auto, 1.4fr, 1fr), inset: 5pt, stroke: 0.5pt,
-  [], [*Patient*], [*Téléphone*], [*Motif*], [*Ce que dit le dossier*], [*Ce qui a été dit*],
+  [], [*Patient*], [*Téléphone*], [*Motif*], [*Dossier*], [*Réponse*],
 {{ROWS}})
 
 #v(4mm)
-#text(9pt, style: "italic")[Liste établie le {{DATE}} : elle vieillit avec la base, et se réimprime plutôt qu'elle ne se conserve.]
+#text(9pt, style: "italic")[Liste établie le {{DATE}} ; elle suit l'état de la base et se réimprime à chaque usage.]
 "##;
 
 fn call_list_values(
@@ -4768,7 +4768,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         ),
         "liste" => checklist_values(
             "Ouverture de l'officine",
-            "Ce qu'on vérifie avant d'ouvrir",
+            "Vérifications avant ouverture",
             &[
                 crate::db::ChecklistItem {
                     id: 1,
@@ -7810,7 +7810,7 @@ mod tests {
         assert!(source.contains("06 01 02 03 04"));
         // A tick box and a column to write in: without them it is a
         // list one reads, not a list one works through.
-        assert!(source.contains("Ce qui a été dit"));
+        assert!(source.contains("[*Réponse*]"));
         assert!(source.contains("stroke: 0.6pt"));
         assert!(!source.contains("#eval \"x\"]"));
         let world = PdfWorld::new(source);
