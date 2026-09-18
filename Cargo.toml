@@ -1,5 +1,5 @@
 [workspace]
-members = ["motif", "launcher"]
+members = ["motif", "launcher", "sync"]
 
 [package]
 name = "bpm-caddy"
@@ -44,6 +44,20 @@ libloading = "0.8"
 # santé chiffrées ne doit pas pouvoir les faire sortir. Le seul chemin
 # qu'un script a vers le monde est le volet où il écrit.
 rhai = { version = "1.25", default-features = false, features = ["std", "sync"] }
+# La synchronisation pair-à-pair, chiffrée de bout en bout (voir
+# `sync/` et `docs/SYNC.md`). **Optionnelle, et éteinte par défaut** :
+# c'est le seul module qui ouvre un chemin réseau dans une application
+# dont toute la posture est « tout est local ». `optional = true` n'est
+# donc pas une commodité de compilation, c'est la règle — un binaire
+# construit sans `--features sync` ne contient ni socket d'écoute, ni
+# protocole, ni rien à attaquer. Le crate est quand même membre de
+# l'atelier, donc l'intégration continue le compile et le teste à
+# chaque fois : optionnel ne veut pas dire non surveillé.
+bpm-sync = { path = "sync", optional = true }
+
+[features]
+default = []
+sync = ["dep:bpm-sync"]
 
 
 [profile.release]

@@ -5,6 +5,68 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Un journal clinique versionné, chiffré de bout en bout, que deux
+  postes réconcilient entre eux — sans serveur.** C'est le crate
+  `sync/` (`bpm-sync`), la dernière ligne de `ROADMAP.md` restée seule,
+  et il arrive **optionnel et éteint** : `--features sync`, absent par
+  défaut. Ce n'est pas une commodité de compilation. C'est le seul
+  module qui ouvre un chemin réseau dans une application dont toute la
+  posture tient en une phrase — tout est local, la base est chiffrée,
+  et la seule requête sortante est la vérification de version, sur un
+  bouton —, alors un binaire construit sans le drapeau ne contient ni
+  socket d'écoute, ni protocole, ni rien à attaquer. Le crate ne dépend
+  de rien de l'application : ni base, ni egui, ni la moindre idée de ce
+  qu'est un patient. C'est ce qui permet de faire dialoguer deux postes
+  entiers, appairage et divergence compris, dans un seul `#[test]`.
+
+  Quatre garanties, chacune tenue par son test. **Un pair ne voit
+  jamais de clair** : `a_relay_cannot_read_what_it_carries` ramasse tous
+  les octets d'une conversation complète et y cherche les phrases
+  écrites, le trousseau et les graines des deux postes — mesuré sur les
+  octets, pas argumenté depuis le dessin. **Un enregistrement ne se
+  réécrit pas** : son nom est le hachage de son contenu, les suivants le
+  nomment comme parent, et une correction est un *autre* enregistrement
+  qui dit lequel il corrige — la règle que l'ordonnancier suit déjà
+  (R. 5132-36), généralisée, et gardée par un test qui lit le texte du
+  module comme `the_register_can_only_ever_be_written_to` le fait dans
+  `db.rs`. **L'horloge de personne ne décide** : l'ordre vient d'un
+  compteur de Lamport et du nom de l'auteur, et il est *total*, sans
+  quoi deux postes détenant les mêmes enregistrements les afficheraient
+  dans deux ordres. **Un conflit se montre, il ne se tranche pas** :
+  deux postes qui corrigent la même ligne sans s'être vus laissent deux
+  corrections debout, et chacune nomme l'autre — dans la donnée, pas à
+  côté. C'est le refus que les avis de compare-and-set font déjà au
+  comptoir, pour la même raison.
+
+  **La poignée de main n'est pas inventée ici** — Noise XX via `snow` —
+  et les deux choses qu'elle ne peut pas donner sont fournies à part :
+  l'identité est liée au canal par une signature sur l'empreinte de la
+  poignée de main, et un inconnu est admis par un humain, une fois, sur
+  un code de cinq groupes que les deux opérateurs se lisent. On ne peut
+  pas sauter l'étape : la seule chose qui appelle `accept()` est une
+  personne.
+
+  **La télémétrie est un volet, pas une balise.** Rien n'y envoie rien
+  nulle part, aucun champ n'est une chaîne — un refus est une
+  énumération sans rien dedans, parce que l'endroit où personne ne
+  cherche une fuite est un journal que quelqu'un a allumé pour déboguer
+  autre chose — et un garde lit le texte du module et refuse le jour où
+  l'un ou l'autre change.
+
+  Ce qu'il ne fait **pas** est écrit à côté de ce qu'il fait : pas de
+  confidentialité persistante au repos (un poste qui rejoint l'officine
+  en mars doit lire ce qui a été écrit en janvier), aucun tampon de
+  réassemblage — donc une ordonnance scannée n'est pas un
+  enregistrement —, et révoquer un poste arrête son avenir, jamais son
+  passé.
+
+  `docs/SYNC.md` est la carte : le modèle de menace, le protocole, et ce
+  qui reste à brancher dans l'application — ce qui n'est pas commencé,
+  délibérément, parce que ces décisions-là appartiennent à l'officine.
+
 ## [0.222.0] - 2026-09-18
 
 ### Changed

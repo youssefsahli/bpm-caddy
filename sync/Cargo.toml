@@ -1,0 +1,36 @@
+[package]
+name = "bpm-sync"
+version = "0.222.0"
+edition = "2021"
+description = "Versioned, end-to-end encrypted peer-to-peer journal for clinical data. Optional, self-contained, no server."
+license-file = "../LICENSE"
+publish = false
+
+[dependencies]
+# The record seal. XChaCha20-Poly1305: a 192-bit nonce is wide enough to
+# be drawn at random on every post without any of them coordinating a
+# counter, which is the whole reason this application can seal a record
+# on three machines at once and never repeat a nonce.
+chacha20poly1305 = "0.11"
+# Who wrote a record. A signature over the record's own name, so a relay
+# that stores ciphertext cannot invent a line in a register.
+ed25519-dalek = "2"
+# Names records (content hashes) and derives keys (`derive_key`, which
+# is a KDF with a domain string and not a bare hash).
+blake3 = "1"
+# The handshake. Noise XX is not invented here on purpose: a protocol
+# written for one application is a protocol nobody has attacked.
+snow = "0.10"
+# Secrets are wiped when they go out of scope rather than left in a
+# freed page.
+zeroize = { version = "1", features = ["derive"] }
+# Comparing a secret in constant time.
+subtle = "2"
+# The one place randomness enters: `OsEntropy`, at the edge.
+getrandom = "0.3"
+
+[features]
+default = ["tcp"]
+# `TcpLink` — the only socket in this crate, and it uses nothing but
+# `std::net`. Off by default: a build without it carries no listener.
+tcp = []

@@ -540,6 +540,46 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   skin: it is the first window of the evening, and it does not depend on
   the application crate
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
+- `sync/` — `bpm-sync`: a versioned, end-to-end encrypted journal two
+  posts reconcile between themselves, with no server. **Optional and off
+  by default** (`--features sync`), and that is the rule rather than a
+  build convenience: this is the only module that opens a network path
+  in an application whose whole posture is « tout est local », so a
+  binary built without the flag contains no listener, no protocol and
+  nothing to attack. It depends on nothing from the application — no
+  base, no egui, no idea what a patient is — which is what lets two
+  whole posts, pairing and divergence included, talk to each other
+  inside one `#[test]` with no socket. Everything but `link.rs` is pure;
+  the entropy is passed in, like the day is everywhere else. Four claims
+  carry it, each with its test: **a peer never sees clear text**
+  (`a_relay_cannot_read_what_it_carries` collects every byte that
+  crossed a whole conversation and searches it for the sentences, for
+  the trousseau and for both posts' seeds — measured on the bytes, not
+  argued from the design); **a record is never rewritten** — it is named
+  by a hash of its own content and a correction is a *further* record
+  naming the one it corrects, which is `db.rs`'s register rule
+  (R. 5132-36) generalised, held by a guard that reads the module's own
+  text the way `the_register_can_only_ever_be_written_to` does;
+  **nobody's clock decides** (Lamport plus the author's name, a *total*
+  order, or two posts holding the same records would list them
+  differently); and **a conflict is shown, never settled** — two posts
+  correcting one record without having seen each other leave two
+  corrections standing, each naming the other, in the data and not
+  beside it. Its telemetry is **a pane, not a beacon**: nothing in
+  `meter.rs` sends anything anywhere, no field is a string (a refusal is
+  an `Error`, an enum with nothing in it, because the place nobody looks
+  for a leak is a log somebody turned on to debug something else), and a
+  guard reads that module's text and refuses both the socket and the
+  sentence. The handshake is **not invented here** — Noise XX through
+  `snow`, with the identity bound to the channel by an Ed25519 signature
+  over the handshake hash, and a five-group code two humans read to each
+  other, which is the whole of the authentication and cannot be skipped.
+  What it deliberately does not do is written beside it: no forward
+  secrecy at rest (a post joining in March must read January), no
+  reassembly buffer — so a scanned ordonnance is not a record — and
+  revoking a post stops its future, never its past. `docs/SYNC.md` is
+  the map: the threat model, the protocol, and what remains to wire it
+  into the application, which is not started on purpose
 
 Always build/lint with `--workspace`: plain `cargo build` only builds the
 root package. CI enforces `cargo fmt --all --check`,

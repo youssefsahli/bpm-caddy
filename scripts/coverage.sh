@@ -31,7 +31,13 @@ set -uo pipefail
 # de la logique reste à 89 : huit dixièmes de marge ne suffisent pas
 # pour le monter, un module pur de plus le ferait tomber le jour où il
 # arrive avec ses premiers tests.
-TOTAL_FLOOR=47
+#
+# Mesuré le 18/09/2026, `sync/` arrivé : 51,8 % le workspace, 90,4 % la
+# logique. Le workspace monte de 47 à 49 — presque trois points de
+# marge. La logique reste à 89, et pour la raison écrite juste au-dessus
+# plutôt que par prudence : quatre dixièmes de marge, c'est moins que
+# les huit qui n'avaient déjà pas suffi.
+TOTAL_FLOOR=49
 LOGIC_FLOOR=89
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
@@ -48,8 +54,12 @@ LOGIC_FLOOR=89
 #   app.rs, main.rs   the interface; smoke.sh is what holds it
 #   winscard.rs       the PC/SC library, opened by name at run time —
 #                     there is no reader in CI and there never will be
-# (`motif` and the launcher are separate crates and are excluded by the
-#  path test below.)
+# (`motif` and the launcher are the shell around the logic and are
+#  excluded by name in the path test below. `sync` is **not**: it is a
+#  separate crate but it is pure logic — a journal, a seal, a protocol —
+#  and the one thing this script exists to prevent is logic nobody
+#  counts. It is held to the logic floor like the modules beside it,
+#  and escaping would take a line here, in writing.)
 LOGIC_SKIP=(src/app.rs src/main.rs src/winscard.rs)
 
 if ! command -v cargo-llvm-cov >/dev/null 2>&1; then
