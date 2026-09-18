@@ -881,8 +881,7 @@ mod tests {
     #[cfg(feature = "tcp")]
     #[test]
     fn two_posts_pair_and_sync_over_two_real_sockets() {
-        use crate::link::TcpLink;
-        use std::net::{TcpListener, TcpStream};
+        use crate::link::{dial, Door};
         use std::time::Duration;
 
         let t = officine(5);
@@ -892,14 +891,13 @@ mod tests {
             a.write(line.as_bytes());
         }
 
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = listener.local_addr().unwrap();
         let patience = Duration::from_secs(20);
+        let door = Door::open("127.0.0.1:0").unwrap();
+        let address = door.address().unwrap().to_string();
 
         // The post that holds the officine waits and lets the other in.
         let waiting = std::thread::spawn(move || {
-            let (socket, _) = listener.accept().unwrap();
-            let mut link = TcpLink::new(socket, patience).unwrap();
+            let mut link = door.accept(patience).unwrap();
             let mut session =
                 Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[]).unwrap();
             let mut shown = None;
@@ -917,7 +915,7 @@ mod tests {
             (a, shown)
         });
 
-        let mut link = TcpLink::new(TcpStream::connect(address).unwrap(), patience).unwrap();
+        let mut link = dial(&address, patience).unwrap();
         let mut session = Session::new(&b.device, None, Intent::Join, true, &[]).unwrap();
         let mut shown = None;
         drive(

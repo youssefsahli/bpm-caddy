@@ -162,7 +162,7 @@ comme une liste complète.
 | `wire.rs` | six trames, et rien d'autre |
 | `session.rs` | le protocole comme machine à états qui ne touche à rien |
 | `meter.rs` | les compteurs — un volet, pas une balise |
-| `link.rs` | le seul endroit où des octets bougent |
+| `link.rs` | le seul endroit où des octets bougent : la porte, le lien, et de quoi frapper |
 
 Tout sauf `link.rs` est pur. L'aléa est **passé** (`Entropy`), comme la
 date est passée partout ailleurs dans cette application. La seule
@@ -350,16 +350,25 @@ haute ne s'élide jamais — il se réduit ou il ne se dessine pas.
 
 ### 7.5 Le transport
 
-`TcpLink` existe et ne dépend que de `std::net`. Pour deux postes du
-même comptoir, c'est tout ce qu'il faut : l'un écoute, l'autre appelle,
-et le chiffrement est celui de bout en bout — pas de TLS, pas de
-certificat, pas de seconde chose à faire correctement.
+Les deux moitiés existent et ne dépendent que de `std::net` :
+`link::Door` (ouvrir, dire où l'on est, accepter **un** poste) et
+`link::dial` (frapper). Pour deux postes du même comptoir, c'est tout ce
+qu'il faut, et le chiffrement est celui de bout en bout — pas de TLS,
+pas de certificat, pas de seconde chose à faire correctement.
 
-Ce qui reste : le côté qui **écoute**. Un fil dédié, une adresse et un
-port dans `config.toml` (c'est propre au poste, donc c'est bien là), et
-la règle que `link.rs` énonce déjà — *rien ici ne décide de rien* : pas
-de reconnexion automatique, pas d'horaire. Une officine qui veut
-synchroniser à la fermeture appuie sur un bouton, ou pose une tâche.
+Deux choses y sont déjà réglées parce qu'elles se règlent mal plus
+haut : une porte à laquelle personne ne vient **rend la main** (`std`
+n'a pas d'`accept` avec échéance, alors elle scrute — c'est le seul
+endroit du crate qui le fait, et c'est écrit là plutôt que dans
+l'appelant), et frapper là où il n'y a personne répond tout de suite au
+lieu des quatre-vingt-dix secondes du système.
+
+Ce qui reste, côté application : un fil dédié, une adresse et un port
+dans `config.toml` — c'est propre au poste, donc c'est bien là —, et la
+règle que `link.rs` énonce et ne s'autorise pas à assouplir : *rien ici
+ne décide de rien*. Pas de reconnexion automatique, pas d'horaire. Une
+officine qui veut synchroniser à la fermeture appuie sur un bouton, ou
+pose une tâche.
 
 Le relais entre deux sites viendra après, s'il vient : il n'a rien à
 apprendre de neuf, puisqu'il ne porte que des octets opaques.

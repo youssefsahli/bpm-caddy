@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Le transport de `sync/` a ses deux moitiés.** `TcpLink` savait
+  habiller une connexion déjà faite, ce qui est une moitié de
+  transport : rien n'ouvrait de porte et rien n'allait frapper.
+  `link::Door` ouvre, dit où elle est — « 0.0.0.0:0 » prend un port
+  libre et le nomme, ce qu'un écran lit à l'opérateur d'en face — et
+  accepte **un** poste ; `link::dial` frappe.
+
+  Deux choses y sont réglées parce qu'elles se règlent mal plus haut, et
+  chacune a son test. Une porte à laquelle personne ne vient **rend la
+  main** : `std` n'a pas d'`accept` avec échéance, alors elle scrute —
+  c'est le seul endroit du crate qui le fasse, et c'est écrit là plutôt
+  que laissé à l'appelant, parce qu'un fil qu'une officine ne peut pas
+  récupérer est un fil perdu. Et frapper là où il n'y a personne répond
+  tout de suite, au lieu des quatre-vingt-dix secondes que le système
+  met à renoncer : personne au comptoir n'attend une minute et demie
+  pour apprendre que l'autre poste est débranché.
+
+  Ce que cela ne change pas : la règle que `link.rs` énonce et ne
+  s'autorise pas à assouplir. Pas de boucle, pas de reconnexion, pas
+  d'horaire — une porte, un poste, une conversation, et c'est l'appelant
+  qui décide s'il y en a une autre.
+
 ## [0.223.0] - 2026-09-18
 
 ### Added
