@@ -151,13 +151,14 @@ L'écran « Croisement » pose les mêmes questions à une liste qu'on
 compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
 des noms.
 
-Neuf chapitres sur la même liste : ce que les fiches en disent les unes
-des autres — cité, rien n'est déduit —, les croisements sur les
-cytochromes, le temps que met une exposition déplacée à revenir, la
-revue d'ordonnance — doublons, associations, cascades —, ce que la
-clairance change si on la tape, ce que le foie change au stade qu'on
-désigne, ce que l'âge change, la grossesse et l'allaitement, et
-« peut-on écraser ? ».
+Neuf chapitres sur la même liste : les **interactions citées** par les
+monographies les unes sur les autres, sans rien de déduit ; les
+croisements sur les **cytochromes** ; la **demi-vie plasmatique**, soit
+le délai de retour d'une exposition déplacée ; la **revue
+d'ordonnance** — doublons, associations, cascades ; l'**adaptation
+rénale** à la clairance saisie ; l'**adaptation hépatique** au stade
+désigné ; le **retentissement de l'âge** ; la **grossesse et
+l'allaitement** ; et « peut-on écraser ? ».
 
 **Le foie n'a pas de DFG.** Le rein donne un chiffre qui se lit sur un
 compte rendu ; le foie donne un stade — Child-Pugh A, B ou C — qu'un
@@ -204,8 +205,8 @@ on s'en sert pendant qu'on tient une boîte de l'autre main.
 **Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
 bas parcourent les fiches qui répondent, gauche et droite ce que la
 fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
-« Signaux » porte ce que les tables disent ; « Posologie » d'abord **ce
-que le dossier retient pour cette personne-là** — la fiche dit la
+« Signaux » porte les lectures des tables ; « Posologie » d'abord **la
+posologie du dossier, pour cette personne-là** — la fiche dit la
 référence, le dossier dit le sien —, puis la prose de la fiche, **ses
 lignes indication par indication** — parce que « combien » n'a pas de
 réponse sans « pour quoi » — et les formes et dosages disponibles, qu'on
@@ -216,9 +217,9 @@ l'après-midi d'une NPH se lisant d'un coup d'œil à côté de la ligne
 plate d'une glargine — et pour tout le reste la décroissance
 plasmatique, avec ce qu'il en reste à vingt-quatre heures. « Combien de
 temps ça reste » est une question de comptoir, et « demi-vie ≈ 12
-heures » demande une arithmétique qu'on n'a pas à faire ; « Conseils » ce qu'on
-dit à la personne, ce qu'on fait d'une prise oubliée, **les signes
-d'alerte en entier** — la page des signaux n'en montre que la première
+heures » demande une arithmétique dont la page dispense ; « Conseils »
+les explications à donner à la personne, la conduite en cas de prise
+oubliée, **les signes d'alerte en entier** — la page des signaux n'en montre que la première
 phrase, et « ce qui doit vous faire consulter » se dit en entier — et ce
 que l'équipe a écrit elle-même sur la fiche. Une page qui n'a rien à
 dire n'est pas offerte, et quand une seule parle il n'y a pas de bande
@@ -246,9 +247,9 @@ La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
 cherchée : c'est l'ordonnance ouverte, ligne par ligne **avec ce que le
 dossier retient de chacune** — « Zeclar · 500 mg matin et soir, 7
 jours », et non « Zeclar » —, et **une ligne cliquée devient la
-question**. Un liseré marque les lignes sur
-lesquelles une table demande qu'on s'arrête — le tri du comptoir, avant
-de les ouvrir une par une. Il ne marque que cela : « à vérifier » et
+question**. Un liseré signale les lignes
+qu'une table demande de vérifier : le tri du comptoir, avant de les
+ouvrir une par une. Il ne marque que cela : « à vérifier » et
 « sans donnée » sont des réponses, pas des arrêts, et les marquer
 marquerait toute l'ordonnance. C'est le geste de la révision au
 comptoir — descendre une ordonnance en posant la même question à chaque
