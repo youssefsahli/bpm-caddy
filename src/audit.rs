@@ -55,7 +55,7 @@
 //!
 //! Pur, testé, sans horloge : le jour est passé.
 
-use crate::strings::tr;
+use crate::strings::{tr, trf};
 
 /// Ce qui a été fait d'un dossier.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -217,6 +217,239 @@ pub fn summarize(accesses: &[Access]) -> Summary {
     }
 }
 
+/// Ce qu'une officine a fait sur la période — **compté, jamais nommé**.
+///
+/// Les actes portent une nature et un opérateur ; ils ne portent pas le
+/// patient. Le rapport est un relevé de décision, pas une liste de
+/// dossiers : la liste de dossiers existe déjà, elle est dans la base,
+/// et elle y est chiffrée.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Activity {
+    /// Par nature d'acte, du plus fréquent au moins fréquent.
+    pub acts: Vec<(String, usize)>,
+    /// Par opérateur, même ordre.
+    pub by_operator: Vec<(String, usize)>,
+    pub register_lines: usize,
+    /// Combien de soirs ont été comptés, et l'écart cumulé en centimes.
+    ///
+    /// `None` quand aucune recette attendue n'a été saisie : **sans
+    /// attendu il n'y a pas d'écart**, et annoncer zéro serait annoncer
+    /// que tout tombe juste. La règle de `caisse.rs`, telle quelle.
+    pub till_evenings: usize,
+    /// Sur combien de ces soirs une recette attendue avait été saisie.
+    ///
+    /// **Ce n'est pas `till_evenings`**, et confondre les deux est
+    /// précisément l'erreur que le récapitulatif de la caisse refuse :
+    /// un écart cumulé annoncé « sur vingt-quatre soirs » quand il n'en
+    /// couvre que vingt-deux est un écart qu'on croit plus petit qu'il
+    /// n'est.
+    pub till_expected_evenings: usize,
+    pub till_gap_cents: Option<i64>,
+}
+
+/// Ce que la base dit d'elle-même.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Conformity {
+    /// Libellés de classe que `classes.rs` ne sait pas replier, et
+    /// combien de fiches les portent. C'est la dérive que ce
+    /// référentiel existe pour montrer : deux orthographes d'une classe
+    /// sont deux classes, et une fiche se retrouve seule de son espèce
+    /// sans que rien n'ait l'air cassé.
+    pub unknown_classes: Vec<(String, usize)>,
+    /// Réécritures que la version livrée a périmées : elles attendent
+    /// une relecture et **ne s'impriment pas**.
+    pub outdated_rewrites: usize,
+    pub cards_without_dci: usize,
+    pub cards_without_class: usize,
+}
+
+/// L'en-tête : de qui, de quoi, sur quand.
+#[derive(Clone, PartialEq, Eq, Debug, Default)]
+pub struct Head {
+    pub officine: String,
+    pub base: String,
+    pub made_on: String,
+    pub from: String,
+    pub to: String,
+    pub days: usize,
+}
+
+/// Écrit le rapport.
+///
+/// Trois sections, et **aucune n'est laissée vide** : une section qui ne
+/// trouve rien l'écrit en toutes lettres. Un blanc se lit comme une
+/// panne du programme, ce qui est exactement le contraire de ce qu'un
+/// rapport d'audit doit produire.
+pub fn render(
+    head: &Head,
+    activity: &Activity,
+    access: &Summary,
+    conformity: &Conformity,
+) -> String {
+    let mut out = String::new();
+    let line = |out: &mut String, s: &str| {
+        out.push_str(s);
+        out.push('\n');
+    };
+    let rule = |out: &mut String| line(out, "────────────────────────────────────────────────────");
+    // Un libellé, un chiffre, et des points entre les deux. Le libellé
+    // **plus long que la colonne** collait son chiffre contre lui :
+    // « au registre des stupéfiants     5 » se lisait comme une
+    // quantité de stupéfiants. Il reste toujours une espace.
+    let figure = |label: &str, n: &dyn std::fmt::Display, indent: &str| {
+        let n = n.to_string();
+        let width = 40usize.saturating_sub(indent.chars().count());
+        let dots = width.saturating_sub(label.chars().count());
+        format!("{indent}{label}{} {n}", ".".repeat(dots))
+    };
+
+    // Une officine qui n'a pas encore écrit son nom donne un titre qui
+    // s'arrête sur un tiret en l'air : c'est le même défaut qu'un état
+    // vide laissé blanc, et il se lit comme une panne du programme.
+    line(
+        &mut out,
+        &if head.officine.trim().is_empty() {
+            tr("audit_report_title_none").to_owned()
+        } else {
+            trf("audit_report_title", head.officine.trim())
+        },
+    );
+    line(&mut out, &trf("audit_report_base", &head.base));
+    line(
+        &mut out,
+        &crate::strings::trn("audit_report_period", &[&head.from, &head.to, &head.days]),
+    );
+    line(&mut out, &trf("audit_report_made", &head.made_on));
+    line(&mut out, tr("audit_report_scope"));
+    line(&mut out, "");
+
+    rule(&mut out);
+    line(&mut out, tr("audit_report_activity"));
+    rule(&mut out);
+    if activity.acts.is_empty() && activity.register_lines == 0 && activity.till_evenings == 0 {
+        line(&mut out, tr("audit_report_nothing"));
+    } else {
+        line(&mut out, tr("audit_report_acts"));
+        for (kind, n) in &activity.acts {
+            line(&mut out, &figure(kind, n, "  "));
+        }
+        if activity.acts.is_empty() {
+            line(&mut out, &format!("  {}", tr("audit_report_nothing")));
+        }
+        line(&mut out, "");
+        line(&mut out, tr("audit_by_operator"));
+        for (who, n) in &activity.by_operator {
+            line(&mut out, &figure(who, n, "  "));
+        }
+        line(&mut out, "");
+        line(
+            &mut out,
+            &figure(tr("audit_report_register"), &activity.register_lines, ""),
+        );
+        line(
+            &mut out,
+            &figure(tr("audit_report_tills"), &activity.till_evenings, ""),
+        );
+        match activity.till_gap_cents {
+            Some(cents) => line(
+                &mut out,
+                &crate::strings::trn(
+                    "audit_report_gap",
+                    &[
+                        &activity.till_expected_evenings,
+                        &format!("{} €", crate::caisse::euros(cents)),
+                    ],
+                ),
+            ),
+            None => line(&mut out, tr("audit_report_gap_none")),
+        }
+    }
+    line(&mut out, "");
+
+    rule(&mut out);
+    line(&mut out, tr("audit_report_access"));
+    rule(&mut out);
+    if access.lines == 0 {
+        line(&mut out, tr("audit_report_nothing"));
+    } else {
+        for (act, n) in &access.by_act {
+            line(&mut out, &figure(act.label(), n, "  "));
+        }
+        line(&mut out, "");
+        line(&mut out, tr("audit_by_operator"));
+        for (who, n) in &access.by_operator {
+            line(&mut out, &figure(who, n, "  "));
+        }
+        line(&mut out, "");
+        line(
+            &mut out,
+            &crate::strings::trn(
+                "audit_span",
+                &[
+                    &access.lines,
+                    &access.days,
+                    &crate::db::format_french_date(&access.first),
+                    &crate::db::format_french_date(&access.last),
+                    &access.files,
+                ],
+            ),
+        );
+    }
+    line(&mut out, "");
+
+    rule(&mut out);
+    line(&mut out, tr("audit_report_conformity"));
+    rule(&mut out);
+    let clean = conformity.unknown_classes.is_empty()
+        && conformity.outdated_rewrites == 0
+        && conformity.cards_without_dci == 0
+        && conformity.cards_without_class == 0;
+    if clean {
+        line(&mut out, tr("audit_report_conform"));
+    } else {
+        if !conformity.unknown_classes.is_empty() {
+            line(&mut out, tr("audit_report_unknown_classes"));
+            for (label, n) in &conformity.unknown_classes {
+                line(&mut out, &figure(label, n, "  "));
+            }
+            line(&mut out, "");
+        }
+        line(
+            &mut out,
+            &trf("audit_report_outdated", conformity.outdated_rewrites),
+        );
+        line(
+            &mut out,
+            &trf("audit_report_no_dci", conformity.cards_without_dci),
+        );
+        line(
+            &mut out,
+            &trf("audit_report_no_class", conformity.cards_without_class),
+        );
+    }
+    out
+}
+
+/// Ce que le programme répond quand il ne peut pas faire le rapport.
+/// Écrites ici parce que c'est ici que vivent les clés de ce module —
+/// une clé employée dans `main.rs` seul serait une clé que le garde des
+/// libellés compte comme inutilisée.
+pub fn linux_only() -> &'static str {
+    tr("audit_report_linux")
+}
+
+pub fn usage() -> &'static str {
+    tr("audit_report_usage")
+}
+
+pub fn locked() -> &'static str {
+    tr("audit_report_locked")
+}
+
+pub fn unreadable(why: &str) -> String {
+    trf("audit_report_unreadable", why)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,6 +575,183 @@ mod tests {
         // Et un relevé vide ne prétend rien.
         assert_eq!(summarize(&[]).days, 0);
         assert!(summarize(&[]).first.is_empty());
+    }
+
+    fn full() -> (Head, Activity, Summary, Conformity) {
+        let head = Head {
+            officine: "Pharmacie des Lilas".to_owned(),
+            base: "/srv/officine/bpm_caddy.db".to_owned(),
+            made_on: "19/09/2026".to_owned(),
+            from: "21/08/2026".to_owned(),
+            to: "19/09/2026".to_owned(),
+            days: 30,
+        };
+        let activity = Activity {
+            acts: vec![("BPM".to_owned(), 4), ("AOD".to_owned(), 3)],
+            by_operator: vec![("CL".to_owned(), 5), ("—".to_owned(), 2)],
+            register_lines: 5,
+            till_evenings: 24,
+            till_expected_evenings: 22,
+            till_gap_cents: Some(1975),
+        };
+        let access = summarize(&[
+            at("2026-09-17", "09:00:00", "CL", Act::Ouvert, 4021),
+            at("2026-09-18", "18:00:00", "MB", Act::Exporte, 0),
+        ]);
+        let conformity = Conformity {
+            unknown_classes: vec![("anti-TNF alpha".to_owned(), 3)],
+            outdated_rewrites: 2,
+            cards_without_dci: 7,
+            cards_without_class: 1,
+        };
+        (head, activity, access, conformity)
+    }
+
+    /// Le rapport dit de qui il parle, de quelle base, et **sur quelle
+    /// période** — un relevé sans période se lit comme s'il couvrait
+    /// tout ce qui a jamais existé.
+    #[test]
+    fn a_report_says_whose_it_is_and_over_what_period() {
+        let (head, activity, access, conformity) = full();
+        let text = render(&head, &activity, &access, &conformity);
+        assert!(text.contains("Pharmacie des Lilas"));
+        assert!(text.contains("/srv/officine/bpm_caddy.db"));
+        assert!(text.contains("du 21/08/2026 au 19/09/2026"));
+        assert!(text.contains("30 jour(s)"));
+        // Les trois sections sont là, dans l'ordre.
+        let one = text.find("1. Activité").expect("activité");
+        let two = text.find("2. Accès aux dossiers").expect("accès");
+        let three = text.find("3. Conformité").expect("conformité");
+        assert!(one < two && two < three);
+        // Et la réserve, **avant** le contenu.
+        let scope = text.find("désigné par son numéro").expect("la réserve");
+        assert!(scope < one, "la réserve se lit avant ce qu'elle qualifie");
+    }
+
+    /// Une officine qui n'a pas encore écrit son nom donne un titre qui
+    /// s'arrête, et non un titre qui pend sur un tiret — lequel se lit
+    /// comme une panne du programme.
+    #[test]
+    fn a_report_with_no_officine_name_does_not_end_on_a_dash() {
+        let (mut head, activity, access, conformity) = full();
+        head.officine = "   ".to_owned();
+        let text = render(&head, &activity, &access, &conformity);
+        let title = text.lines().next().expect("un titre");
+        assert_eq!(title, "Rapport d'audit");
+        assert!(!title.ends_with('—'));
+    }
+
+    /// **L'écart est annoncé sur les soirs où il est calculé**, et non
+    /// sur ceux qui ont été comptés : ce sont deux nombres, et les
+    /// confondre fait croire l'écart plus petit qu'il n'est.
+    #[test]
+    fn a_cumulative_gap_says_over_how_many_evenings_it_was_computed() {
+        let (head, activity, access, conformity) = full();
+        let text = render(&head, &activity, &access, &conformity);
+        assert!(text.contains("sur 22 soir(s)"), "{text}");
+        assert!(!text.contains("sur 24 soir(s)"));
+        // Le nombre de soirs comptés est dit ailleurs, et il n'a pas
+        // disparu.
+        assert!(text.contains("Caisses comptées"));
+        assert!(text.contains("24"));
+        // Et l'unité : un montant sans monnaie est un nombre.
+        assert!(text.contains("19,75 €"), "{text}");
+    }
+
+    /// Sans recette attendue il n'y a **pas** d'écart : la règle de la
+    /// caisse, telle quelle. Annoncer zéro serait annoncer que tout
+    /// tombe juste.
+    #[test]
+    fn with_no_expected_takings_there_is_no_gap() {
+        let (head, mut activity, access, conformity) = full();
+        activity.till_expected_evenings = 0;
+        activity.till_gap_cents = None;
+        let text = render(&head, &activity, &access, &conformity);
+        assert!(text.contains("il n'y a pas d'écart à dire"), "{text}");
+        assert!(!text.contains("Écart cumulé"));
+    }
+
+    /// Aucune section n'est laissée vide : un blanc se lit comme une
+    /// panne, ce qui est l'exact contraire de ce qu'un rapport d'audit
+    /// doit produire.
+    #[test]
+    fn a_section_that_finds_nothing_writes_it_in_words() {
+        let head = Head {
+            officine: "Pharmacie des Lilas".to_owned(),
+            days: 30,
+            ..Head::default()
+        };
+        let text = render(
+            &head,
+            &Activity::default(),
+            &Summary::default(),
+            &Conformity::default(),
+        );
+        assert_eq!(text.matches("Rien sur la période.").count(), 2);
+        assert!(text.contains("Rien à signaler."));
+        // Et aucune section n'est suivie de rien : après chaque titre
+        // il y a au moins une ligne qui parle.
+        for title in ["1. Activité", "2. Accès aux dossiers", "3. Conformité"] {
+            let after: Vec<&str> = text
+                .lines()
+                .skip_while(|l| !l.starts_with(title))
+                .skip(2)
+                .take(1)
+                .collect();
+            assert!(
+                after.first().is_some_and(|l| !l.trim().is_empty()),
+                "{title} ne dit rien"
+            );
+        }
+    }
+
+    /// Un libellé plus long que la colonne garde son espace.
+    ///
+    /// « Lignes portées au registre des stupéfiants » fait plus de
+    /// quarante caractères, et son chiffre venait se coller contre lui :
+    /// « …des stupéfiants5 » se lit comme une quantité.
+    #[test]
+    fn a_label_longer_than_its_column_keeps_its_space() {
+        let (head, activity, access, conformity) = full();
+        let text = render(&head, &activity, &access, &conformity);
+        let line = text
+            .lines()
+            .find(|l| l.starts_with("Lignes portées"))
+            .expect("la ligne du registre");
+        assert!(line.ends_with(" 5"), "« {line} »");
+        // Et une colonne ordinaire garde ses points de conduite.
+        let short = text
+            .lines()
+            .find(|l| l.trim_start().starts_with("BPM"))
+            .unwrap();
+        assert!(short.contains("...."), "« {short} »");
+        assert!(short.ends_with(" 4"));
+    }
+
+    /// Un rapport ne nomme personne d'autre qu'un opérateur : ce qu'on
+    /// lui donne à écrire ne porte aucun patient. La règle est tenue
+    /// par le texte du module, comme celle d'une ligne d'accès.
+    #[test]
+    fn a_report_is_given_nothing_that_names_a_patient() {
+        let text = include_str!("audit.rs");
+        for shape in [
+            "pub struct Activity {",
+            "pub struct Conformity {",
+            "pub struct Head {",
+        ] {
+            let fields: String = text
+                .split(shape)
+                .nth(1)
+                .and_then(|t| t.split("\n}").next())
+                .expect(shape)
+                .lines()
+                .filter(|l| !l.trim_start().starts_with("//"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            for named in ["patient", "name", "nom", "nir", "birth"] {
+                assert!(!fields.contains(named), "{shape} porte « {named} »");
+            }
+        }
     }
 
     /// Les clés sont écrites dans la base : stables pour toujours, et

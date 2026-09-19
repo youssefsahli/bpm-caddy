@@ -628,6 +628,30 @@ un an au départ ; au-delà, les lignes sont purgées à l'ouverture de la
 séance, et la purge s'écrit dans le journal qu'elle purge. `0` ne purge
 rien.
 
+# Le rapport d'audit
+
+`bpm-caddy audit` écrit un relevé sur la sortie standard, au lieu
+d'ouvrir une fenêtre. C'est un mode de la même application et non un
+second programme : un outil séparé devrait connaître le schéma de la
+base, et deux écritures d'un schéma finissent par différer.
+
+    bpm-caddy audit --jours 90 > audit-septembre.txt
+
+Trois sections. **L'activité** : les actes par nature et par opérateur,
+les lignes portées au registre, les caisses comptées et l'écart cumulé —
+annoncé sur les soirs où il est calculé, qui ne sont pas tous ceux qui
+ont été comptés. **Les accès** : ce que le journal ci-dessus contient
+sur la période. **La conformité** : les libellés de classe que le
+référentiel ne sait pas replier, les phrases réécrites que la version
+livrée a périmées, les fiches sans DCI ou sans classe.
+
+Il ne nomme que les opérateurs : un dossier y est désigné par son
+numéro, comme au registre.
+
+Il ne demande rien et n'ouvre rien : le mot de passe vient de
+`BPM_CADDY_PASSWORD` ou du trousseau du système, ce qui le rend posable
+dans une tâche de nuit. Sous Linux seulement ; ailleurs il le dit.
+
 # La console
 
 Un endroit pour poser à la base une question que personne n'a prévue, en

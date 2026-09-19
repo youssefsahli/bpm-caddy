@@ -31779,6 +31779,127 @@ impl Db {
         Ok(removed)
     }
 
+    /// Ce que l'officine a fait entre deux dates — **compté, jamais
+    /// nommé**.
+    ///
+    /// Les actes sont rendus par nature et par opérateur, et le patient
+    /// n'entre pas dans la lecture : un rapport d'audit est un relevé
+    /// de décision, et la liste des dossiers existe déjà — elle est
+    /// dans cette base, et elle y est chiffrée.
+    pub fn audit_activity(&self, from: &str, to: &str) -> Result<crate::audit::Activity, String> {
+        let group = |column: &str| -> Result<Vec<(String, usize)>, String> {
+            let sql = format!(
+                "SELECT {column}, COUNT(*) FROM interviews
+                 WHERE date(created_at) BETWEEN ?1 AND ?2
+                 GROUP BY {column}"
+            );
+            let mut q = self.conn.prepare(&sql).map_err(|e| e.to_string())?;
+            let rows = q
+                .query_map([from, to], |r| {
+                    Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as usize))
+                })
+                .map_err(|e| e.to_string())?;
+            let mut out = rows
+                .collect::<Result<Vec<(String, usize)>, _>>()
+                .map_err(|e| e.to_string())?;
+            // Le plus fréquent d'abord, puis par nom : un ordre
+            // **total**, sans quoi deux rapports du même mois ne se
+            // ressemblent pas.
+            out.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+            Ok(out)
+        };
+        let mut acts = group("kind")?;
+        for (kind, _) in &mut acts {
+            if let Some(k) = InterviewKind::parse(kind) {
+                *kind = k.label().to_owned();
+            }
+        }
+        let mut by_operator = group("operator")?;
+        for (who, _) in &mut by_operator {
+            if who.trim().is_empty() {
+                // La même règle que le journal des accès : ce qui manque
+                // se dit, il ne se devine pas.
+                *who = "—".to_owned();
+            }
+        }
+
+        // Le registre vit dans son propre fichier, donc sa propre
+        // connexion.
+        let register_lines = self
+            .stups
+            .query_row(
+                "SELECT COUNT(*) FROM stup_moves WHERE happened_on BETWEEN ?1 AND ?2",
+                [from, to],
+                |r| r.get::<_, i64>(0),
+            )
+            .unwrap_or(0)
+            .max(0) as usize;
+
+        // La caisse passe par son propre module : un soir recompté est
+        // **une** soirée, et la somme des écarts ne se calcule pas
+        // autrement ici que là-bas.
+        let counted: Vec<crate::caisse::Counted> = self
+            .caisse_counts_between(from, to)?
+            .iter()
+            .map(CaisseCount::counted)
+            .collect();
+        let till = crate::caisse::summarize(&counted);
+
+        Ok(crate::audit::Activity {
+            acts,
+            by_operator,
+            register_lines,
+            till_evenings: till.days,
+            till_expected_evenings: till.with_expected,
+            till_gap_cents: till.gap,
+        })
+    }
+
+    /// Ce que la base dit d'elle-même.
+    ///
+    /// Trois questions qu'aucun écran ne pose d'un bloc : quelles
+    /// classes le référentiel ne sait pas replier — la dérive qu'il
+    /// existe pour montrer —, combien de réécritures la version livrée
+    /// a périmées, et combien de fiches manquent de ce qui les rend
+    /// trouvables.
+    pub fn audit_conformity(&self) -> Result<crate::audit::Conformity, String> {
+        let drugs = self.drugs()?;
+        let mut unknown: std::collections::BTreeMap<String, usize> =
+            std::collections::BTreeMap::new();
+        let (mut no_dci, mut no_class) = (0, 0);
+        for d in &drugs {
+            if d.dci.trim().is_empty() {
+                no_dci += 1;
+            }
+            let class = d.class.trim();
+            if class.is_empty() {
+                no_class += 1;
+                continue;
+            }
+            if crate::classes::canonical(class).is_none() {
+                *unknown.entry(class.to_owned()).or_default() += 1;
+            }
+        }
+        let mut unknown_classes: Vec<(String, usize)> = unknown.into_iter().collect();
+        unknown_classes.sort_by(|a, b| b.1.cmp(&a.1).then(a.0.cmp(&b.0)));
+
+        let overrides = self.content_overrides()?;
+        let outdated_rewrites = crate::content::documents()
+            .iter()
+            .flat_map(|d| d.phrases.iter())
+            .filter(|(key, _, shipped)| {
+                overrides.state(key, shipped) == crate::content::State::Outdated
+            })
+            .count();
+
+        Ok(crate::audit::Conformity {
+            unknown_classes,
+            outdated_rewrites,
+            cards_without_dci: no_dci,
+            cards_without_class: no_class,
+        })
+    }
+
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
     pub fn setting(&self, key: &str) -> Option<String> {
         self.conn

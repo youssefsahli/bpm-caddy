@@ -960,6 +960,36 @@ audit_span = "{} ligne(s) sur {} jour(s), du {} au {} — {} dossier(s) touché(
 audit_span_none = "Aucun accès enregistré sur la période."
 audit_window = "Les {} derniers jours"
 audit_by_operator = "Par opérateur"
+# --- Le rapport d'audit (bpm-caddy audit, Linux) ---
+# Un relevé de décision, écrit sur la sortie standard. Il ne nomme
+# personne d'autre que les opérateurs : un dossier y est désigné par son
+# numéro, comme au registre et dans le journal des accès.
+audit_report_title = "Rapport d'audit — {}"
+# Quand l'officine n'a pas encore écrit son nom : un titre qui s'arrête
+# sur un tiret en l'air se lit comme une panne du programme.
+audit_report_title_none = "Rapport d'audit"
+audit_report_base = "Base : {}"
+audit_report_period = "Période : du {} au {} ({} jour(s))"
+audit_report_made = "Établi le {}"
+audit_report_scope = "Ce rapport ne nomme que les opérateurs : un dossier y est désigné par son numéro."
+audit_report_activity = "1. Activité"
+audit_report_access = "2. Accès aux dossiers"
+audit_report_conformity = "3. Conformité des données"
+audit_report_acts = "Actes enregistrés"
+audit_report_register = "Lignes portées au registre des stupéfiants"
+audit_report_tills = "Caisses comptées"
+audit_report_gap = "Écart cumulé sur {} soir(s) : {}"
+audit_report_gap_none = "Aucune recette attendue n'a été saisie : il n'y a pas d'écart à dire."
+audit_report_nothing = "Rien sur la période."
+audit_report_unknown_classes = "Libellés de classe que le référentiel ne connaît pas"
+audit_report_outdated = "Phrases réécrites que la version livrée a changées depuis : {}"
+audit_report_no_dci = "Fiches sans DCI : {}"
+audit_report_no_class = "Fiches sans classe : {}"
+audit_report_conform = "Rien à signaler."
+audit_report_linux = "L'audit ne tourne que sous Linux."
+audit_report_usage = "Usage : bpm-caddy audit [--jours N]"
+audit_report_locked = "Base verrouillée. Posez BPM_CADDY_PASSWORD, ou ouvrez l'application une fois pour que le mot de passe soit enregistré."
+audit_report_unreadable = "Base illisible : {}"
 audit_act_ouvert = "Dossiers ouverts"
 audit_act_exporte = "Exports de données"
 audit_act_purge = "Purges du journal"

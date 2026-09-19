@@ -5,6 +5,44 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **`bpm-caddy audit` — un relevé de décision, sur la sortie standard.**
+  Sous Linux, sans fenêtre, sans rien demander : le mot de passe vient
+  de `BPM_CADDY_PASSWORD` ou du trousseau du système, ce qui le rend
+  posable dans une tâche de nuit.
+
+      bpm-caddy audit --jours 90 > audit-septembre.txt
+
+  **Un mode de ce binaire et non un second programme**, et c'est la
+  seule forme défendable : un outil séparé devrait connaître le schéma
+  de la base, et deux écritures d'un schéma finissent par différer — le
+  jour où elles diffèrent, c'est celle que personne ne fait tourner qui
+  a l'air juste.
+
+  Trois sections, et **aucune n'est laissée vide** : celle qui ne trouve
+  rien l'écrit en toutes lettres, parce qu'un blanc se lit comme une
+  panne du programme — l'exact contraire de ce qu'un rapport d'audit
+  doit produire. **L'activité** : les actes par nature et par opérateur,
+  les lignes portées au registre, les caisses comptées et l'écart
+  cumulé. **Les accès** : ce que le journal contient sur la période.
+  **La conformité** : les libellés de classe que le référentiel ne sait
+  pas replier — la dérive qu'il existe pour montrer —, les phrases
+  réécrites que la version livrée a périmées, les fiches sans DCI ou
+  sans classe.
+
+  Il ne recalcule rien qui existe déjà : la caisse passe par
+  `caisse::summarize`, donc un soir recompté est **un** soir. Et
+  l'écart cumulé est annoncé sur les soirs où il est **calculé**, qui ne
+  sont pas tous ceux qui ont été comptés — vingt-deux et non
+  vingt-quatre sur la base de démonstration : deux nombres, et les
+  confondre fait croire l'écart plus petit qu'il n'est.
+
+  Il ne nomme que les opérateurs ; un dossier y est désigné par son
+  numéro, comme au registre. Un garde relit les structures qu'on lui
+  donne à écrire et refuse le champ qui porterait un patient.
+
 ## [0.226.0] - 2026-09-19
 
 ### Added

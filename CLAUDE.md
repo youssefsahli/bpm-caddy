@@ -313,7 +313,22 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   call sites go through, and exporting — and what is **not** traced is
   written where one would look: printing, because the one function all
   twenty-one printables pass through holds neither the operator nor the
-  file. Pure, tested, no clock: the day is passed in),
+  file. And the **report**: `bpm-caddy audit [--jours N]`, a decision
+  sheet on stdout, Linux-only — a *mode of this binary and not a second
+  programme*, because a separate tool would have to know the base's
+  schema and two writings of a schema end up differing, at which point
+  the one nobody runs is the one that looks right. Three sections and
+  none left blank — a section that finds nothing writes it in words,
+  since a gap reads as a crash, which is the opposite of what an audit
+  report is for. It reuses the modules rather than recomputing: the
+  till goes through `caisse::summarize` (so a re-counted evening is
+  **one** evening), and the cumulative gap is announced over
+  `with_expected` evenings and **not** over the evenings counted — two
+  numbers, and confusing them makes the gap read smaller than it is.
+  It names only operators; a file is a number. It asks for nothing —
+  the password comes from `BPM_CADDY_PASSWORD` or the system keyring —
+  so it can sit in a night job. Pure, tested, no clock: the day is
+  passed in),
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only

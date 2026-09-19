@@ -2306,7 +2306,14 @@ fn merge_team_notes(base: &str, ours: &str, theirs: &str) -> String {
 /// The master password can be kept in the OS credential manager
 /// (spec 4.2): Windows Credential Manager, macOS Keychain, or the
 /// Secret Service on Linux.
-fn keyring_entry() -> Option<keyring::Entry> {
+/// Le trousseau du système, là où le mot de passe de la base est
+/// enregistré quand l'officine l'a demandé.
+///
+/// `pub(crate)` pour que `bpm-caddy audit` s'en serve : le relevé
+/// s'exécute sur un poste où l'application tourne déjà, et redemander
+/// le mot de passe dans un terminal serait le taper une fois de plus
+/// là où il n'a rien à faire.
+pub(crate) fn keyring_entry() -> Option<keyring::Entry> {
     if std::env::var_os("BPM_CADDY_NO_KEYRING").is_some() {
         return None;
     }
