@@ -82,10 +82,10 @@ pub enum Signal {
     /// same thing at the same time, and no other screen says it.
     ///
     /// It was absent for a while, for a reason worth keeping in mind:
-    /// forty-six shared writes each answer `false` in their own place,
-    /// and counting at forty-five of them would be a counter quietly
-    /// short — worse than one that is not there. It arrived when those
-    /// answers were made to go through **one** function,
+    /// every shared write answers `false` in its own place — dozens of
+    /// them — and counting at all but one would be a counter quietly
+    /// short, which is worse than one that is not there. It arrived
+    /// when those answers were made to go through **one** function,
     /// `Session::stale`, which is the only thing that raises a
     /// « rechargez » notice. A guard refuses the forty-seventh written
     /// by hand.
@@ -161,12 +161,13 @@ impl Signal {
 
 /// What the modules have counted at home, since this process started.
 ///
-/// Five of the nine signals are written in **one** place each — every
-/// printable document goes through `pdf::compile_and_open`, every act
-/// through `Db::add_interview_by`, every register line through
-/// `Db::add_stup_moves` — and counting there is one line instead of
-/// twenty-one chances to forget one. A process counter rather than a
-/// field, because those functions have no session to hand it to.
+/// Five signals are written in **one** place each — every printable
+/// document goes through `pdf::compile_and_open`, every act through
+/// `Db::add_interview_by`, every register line through
+/// `Db::add_stup_moves` — and counting there is one line instead of one
+/// chance to forget per call site, of which the printables alone have
+/// thirty-four. A process counter rather than a field, because those
+/// functions have no session to hand it to.
 ///
 /// Nothing leaves this array. The session reads its **difference** at
 /// each flush and carries it into [`Counters`], which is where the

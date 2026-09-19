@@ -266,18 +266,18 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   holds is a date. **A night shift does not put Tuesday's work on
   Monday's line** — `Counters::turn` hands back what the old day is owed
   before the new one is counted into, because an officine on garde works
-  through midnight. Five of the nine signals are counted **where the
+  through midnight. Five signals are counted **where the
   thing happens**, once — every printable document goes through
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be twenty-one chances to forget one.
-  The tenth — « combien de fois un autre poste avait écrit le premier »,
-  the most useful number the pane carries and the one no other screen
-  says — was absent for two versions for a reason worth keeping: every
-  compare-and-set answers `false` in its own place, forty-six of them,
-  and counting at forty-five would be a counter quietly short, which is
-  worse than one that is not there. It arrived by making those answers
+  `pdf::open_*` call sites would be 34 chances to forget one.
+The one that was missing — « combien de fois un autre poste avait
+  écrit le premier », the most useful number the pane carries and the
+  one no other screen says — was absent for two versions for a reason
+  worth keeping: every compare-and-set answers `false` in its own place,
+  56 of them, and counting at all but one would be a counter quietly
+  short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
   reads `app.rs` and refuses the forty-seventh written beside it

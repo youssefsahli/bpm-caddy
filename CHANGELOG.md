@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Les deux lectures du rapport d'audit n'étaient couvertes par rien.**
+  Elles passent par `unwrap_or_default` côté outil : un nom de colonne
+  mal tapé y aurait rendu un rapport plein de zéros tranquilles au lieu
+  d'une erreur — exactement ce que `bio_results` a fait en son temps.
+  Elles sont maintenant exercées par
+  `a_base_from_an_older_version_still_answers_every_query`, comme toute
+  lecture que l'application fait, et le filet mord : une colonne
+  renommée le dit.
+
+- **Deux comptes de cette documentation avaient déjà glissé, le jour
+  même où ils ont été écrits.** « vingt et un appels de `pdf::open_*` » :
+  il y en a trente-quatre. « quarante-six écritures partagées » : c'était
+  le chiffre d'avant la conversion, il y en a cinquante-six. Et « cinq
+  des neuf signaux » en comptait dix depuis la version précédente.
+
+  C'est précisément ce que `the_documentation_counts_what_the_code_holds`
+  existe pour empêcher — de la prose qui énonce un fait et qui vieillit
+  sans que personne la relise. Les deux qui restent chiffrés y sont
+  maintenant tenus ; les deux autres ont perdu leur nombre, parce qu'un
+  nombre dont personne n'a besoin est un nombre qui n'attend que de
+  devenir faux.
+
 ## [0.230.0] - 2026-09-19
 
 ### Fixed

@@ -1304,6 +1304,35 @@ livre = "Une phrase qui n'est plus livrée"
                         .count()
                 ),
             ),
+            // **Deux comptes de plus, et tous deux avaient déjà
+            // glissé le jour où ils ont été écrits.** « vingt et un
+            // appels de `pdf::open_*` » : il y en a trente-quatre.
+            // « quarante-six écritures partagées » : le chiffre était
+            // celui d'avant la conversion, il y en a cinquante-six.
+            // C'est exactement ce que ce test existe pour empêcher —
+            // de la prose qui énonce un fait et qui vieillit sans que
+            // personne la relise.
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "`pdf::open_*` call sites would be {} chances to forget one.",
+                    APP.matches("crate::pdf::open_").count()
+                ),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "{} of them, and counting at all but one would be a counter quietly",
+                    // Le chemin unique vers un avis « rechargez », moins
+                    // l'appel que `stale` fait à `stale_note` : c'est un
+                    // relais, pas un site.
+                    APP.matches(concat!(".sta", "le(")).count()
+                        + APP.matches(concat!(".sta", "le_note(")).count()
+                        - 1
+                ),
+            ),
             (
                 "docs/CONTENU.md",
                 CONTENU,

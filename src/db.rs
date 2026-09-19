@@ -37518,6 +37518,53 @@ mod tests {
         assert_eq!(after[0].act, crate::audit::Act::Purge);
         assert_eq!(after[0].file, 2, "combien de lignes ont été retirées");
 
+        // Les deux lectures du rapport d'audit.
+        //
+        // Elles passent par `unwrap_or_default` côté outil : un nom de
+        // colonne mal tapé y rendrait un rapport plein de zéros
+        // tranquilles au lieu d'une erreur — exactement ce que
+        // `bio_results` a fait en son temps, et la raison pour laquelle
+        // toute lecture que l'application fait est exercée ici.
+        let day = db.today_iso().unwrap();
+        let activity = db
+            .audit_activity("1900-01-01", &day)
+            .expect("audit_activity");
+        // La caisse a été écrite plus haut, et elle passe par
+        // `caisse::summarize` : un soir recompté est **un** soir.
+        assert_eq!(activity.till_evenings, 1);
+        // Sans recette attendue, il n'y a pas d'écart — et zéro n'est
+        // pas la réponse.
+        assert_eq!(activity.till_gap_cents, None);
+        assert_eq!(activity.till_expected_evenings, 0);
+        // Un ordre **total** sur les deux répartitions, sans quoi deux
+        // rapports du même mois ne se ressembleraient pas.
+        for column in [&activity.acts, &activity.by_operator] {
+            assert!(
+                column
+                    .windows(2)
+                    .all(|w| w[0].1 > w[1].1 || (w[0].1 == w[1].1 && w[0].0 <= w[1].0)),
+                "{column:?}"
+            );
+        }
+        // Ce qui manque se dit : un acte sans opérateur déclaré est
+        // rendu sous un tiret, jamais sous une chaîne vide.
+        assert!(
+            !activity
+                .by_operator
+                .iter()
+                .any(|(who, _)| who.trim().is_empty()),
+            "{:?}",
+            activity.by_operator
+        );
+
+        let conformity = db.audit_conformity(&day, 30, 7).expect("audit_conformity");
+        // La base d'une vieille version ne porte ni location en cours
+        // ni produit suivi : ce sont des zéros vrais, et le test les
+        // fixe pour que le jour où la lecture casse, elle le dise.
+        assert_eq!(conformity.overdue_rentals, 0);
+        assert!(conformity.uncounted_stups.is_empty());
+        assert_eq!(conformity.outdated_rewrites, 0);
+
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
         // created with `SCHEMA` they would name columns an old base has
