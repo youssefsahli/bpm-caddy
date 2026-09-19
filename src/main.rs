@@ -2,6 +2,7 @@
 
 mod agenda;
 mod app;
+mod audit;
 mod biology;
 mod bulletin;
 mod caisse;

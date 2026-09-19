@@ -607,6 +607,27 @@ Allumés au départ, éteints en un clic sur la même page, et poste par
 poste. Décocher arrête le comptage tout de suite et ne perd rien :
 effacer est un bouton à part, qui demande deux fois.
 
+# Le journal des accès
+
+Sur la même page, juste en dessous : qui a ouvert quel dossier, et
+quand. C'est l'exact contraire des compteurs — ceux-là comptent le
+logiciel et jamais la personne, celui-ci nomme la personne et jamais le
+logiciel, parce qu'il n'existe que pour répondre à « qui a regardé ce
+dossier-là, le 12 mars ».
+
+Une ligne porte un **numéro** de dossier et jamais un nom : ce qui
+s'imprime doit permettre de remonter au patient, pas de l'afficher.
+Sans initiales déclarées dans Options › Interface, la ligne écrit un
+tiret — elle ne devine pas.
+
+Deux gestes sont tracés : ouvrir un dossier et exporter. L'impression ne
+l'est pas, et mieux vaut le savoir que le croire.
+
+La durée de conservation est dans `[audit] keep_days` de `config.toml`,
+un an au départ ; au-delà, les lignes sont purgées à l'ouverture de la
+séance, et la purge s'écrit dans le journal qu'elle purge. `0` ne purge
+rien.
+
 # La console
 
 Un endroit pour poser à la base une question que personne n'a prévue, en

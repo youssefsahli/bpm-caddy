@@ -948,6 +948,21 @@ telem_clear = "Effacer les compteurs…"
 telem_clear_tooltip = "Remet à zéro les compteurs de toute l'officine. Deux clics."
 telem_clear_confirm = "Confirmer l'effacement"
 telem_cleared = "Compteurs effacés."
+# --- Le journal des accès, dans Options › À propos ---
+# L'exact contraire des compteurs au-dessus : il nomme la personne, et
+# jamais le logiciel. Une ligne porte un **numéro** de dossier et jamais
+# un nom — ce qui s'imprime doit permettre de remonter au patient, pas
+# de l'afficher.
+audit_title = "Journal des accès"
+audit_scope = "Qui a ouvert quel dossier, et quand. Une ligne porte un numéro de dossier, jamais un nom. Conservé {} jour(s) ; au-delà, les lignes sont purgées et la purge est écrite dans le journal."
+audit_scope_kept = "Qui a ouvert quel dossier, et quand. Une ligne porte un numéro de dossier, jamais un nom. Aucune durée de conservation n'est fixée : rien n'est purgé."
+audit_span = "{} ligne(s) sur {} jour(s), du {} au {} — {} dossier(s) touché(s)"
+audit_span_none = "Aucun accès enregistré sur la période."
+audit_window = "Les {} derniers jours"
+audit_by_operator = "Par opérateur"
+audit_act_ouvert = "Dossiers ouverts"
+audit_act_exporte = "Exports de données"
+audit_act_purge = "Purges du journal"
 telem_ouverture = "Ouvertures de l'application"
 telem_dossier = "Dossiers ouverts"
 telem_fiche = "Fiches consultées"

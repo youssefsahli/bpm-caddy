@@ -202,6 +202,29 @@ CREATE TABLE IF NOT EXISTS telemetry (
     n      INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (day, signal)
 );
+-- Le journal des accès — voir `src/audit.rs`.
+--
+-- L'exact contraire de `telemetry` juste au-dessus : celle-là compte le
+-- logiciel et jamais la personne, celle-ci nomme la personne et jamais
+-- le logiciel. Les deux répondent à deux questions, et les confondre
+-- donnerait le pire des deux — des chiffres d'usage nominatifs que
+-- personne n'a demandés, et une traçabilité anonyme qui ne trace rien.
+--
+-- Une ligne porte un **numéro** de dossier et jamais un nom : ce qui
+-- s'imprime doit permettre de remonter au patient, pas de l'afficher.
+-- La même règle que l'ordonnancier.
+--
+-- Rien ne modifie une ligne. La seule suppression est la purge de
+-- conservation, qui s'écrit elle-même dans le journal qu'elle purge —
+-- sans quoi un journal qui a rétréci et un journal qu'on a vidé se
+-- lisent pareil.
+CREATE TABLE IF NOT EXISTS access_log (
+    id       INTEGER PRIMARY KEY,
+    at       TEXT NOT NULL,
+    operator TEXT NOT NULL DEFAULT '',
+    act      TEXT NOT NULL,
+    file     INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -533,6 +556,8 @@ CREATE TABLE IF NOT EXISTS caisse_counts (
 /// The two-column ones are ordered so the equality column comes first,
 /// which is the only order SQLite can seek on.
 const INDEXES: &[&str] = &[
+    // Le journal des accès se lit par période, jamais en entier.
+    "CREATE INDEX IF NOT EXISTS idx_access_at ON access_log(at)",
     // The seeding hot path, and the lookup every other pass makes.
     "CREATE INDEX IF NOT EXISTS idx_drugs_name ON drugs(name)",
     "CREATE INDEX IF NOT EXISTS idx_drugs_dci ON drugs(dci)",
@@ -598,6 +623,15 @@ const MIGRATIONS: &[&str] = &[
         signal TEXT NOT NULL,
         n      INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (day, signal)
+    )",
+    // Le journal des accès — voir le commentaire au-dessus de la table
+    // dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS access_log (
+        id       INTEGER PRIMARY KEY,
+        at       TEXT NOT NULL,
+        operator TEXT NOT NULL DEFAULT '',
+        act      TEXT NOT NULL,
+        file     INTEGER NOT NULL DEFAULT 0
     )",
     // Les phrases imprimées que l'officine a réécrites — voir le
     // commentaire au-dessus de la table dans `SCHEMA`.
@@ -31677,6 +31711,74 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    /// Écrit une ligne au journal des accès.
+    ///
+    /// L'horodatage est pris **ici** et non passé par l'appelant : une
+    /// trace dont l'heure vient de la vue qui l'a demandée est une trace
+    /// dont l'heure dépend de la dernière fois que cette vue a regardé
+    /// l'horloge. Il y en a une, et c'est celle de la base.
+    ///
+    /// Elle ne rend pas d'erreur à l'écran : une trace qui empêche
+    /// d'ouvrir un dossier serait une trace qui coûte au comptoir. Ce
+    /// qu'elle fait quand elle échoue, c'est manquer — et c'est ce que
+    /// le relevé montre, puisqu'il dit combien de lignes il porte et sur
+    /// combien de jours.
+    pub fn log_access(&self, operator: &str, act: crate::audit::Act, file: i64) -> bool {
+        self.conn
+            .execute(
+                "INSERT INTO access_log (at, operator, act, file)
+                 VALUES (datetime('now', 'localtime'), ?1, ?2, ?3)",
+                rusqlite::params![operator.trim(), act.key(), file],
+            )
+            .is_ok()
+    }
+
+    /// Le journal depuis un jour donné, dans l'ordre où il a été écrit.
+    ///
+    /// Un acte qu'une version postérieure a inventé est **gardé** et
+    /// rendu sous sa clé : la ligne reste, et dans un journal d'accès
+    /// c'est ce qui compte. L'appelant la nomme comme il peut.
+    pub fn accesses_since(&self, from_day: &str) -> Result<Vec<crate::audit::Access>, String> {
+        let mut q = self
+            .conn
+            .prepare(
+                "SELECT at, operator, act, file FROM access_log
+                 WHERE at >= ?1 ORDER BY at, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = q
+            .query_map([from_day], |r| {
+                Ok(crate::audit::Access {
+                    at: r.get::<_, String>(0)?,
+                    operator: r.get::<_, String>(1)?,
+                    act: crate::audit::Act::from_key(&r.get::<_, String>(2)?)
+                        .unwrap_or(crate::audit::Act::Ouvert),
+                    file: r.get::<_, i64>(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Purge ce qui est au-delà de l'horizon, et **l'écrit**.
+    ///
+    /// La seule suppression de cette table. Elle laisse une ligne qui
+    /// dit qu'elle a eu lieu, sans quoi un journal qui a rétréci et un
+    /// journal qu'on a vidé se lisent pareil — et la ligne porte le
+    /// nombre de lignes retirées dans son champ `file`, qui est le seul
+    /// nombre qu'une ligne ait. Rend combien ont été retirées.
+    pub fn purge_accesses(&self, horizon: &str, operator: &str) -> Result<usize, String> {
+        let removed = self
+            .conn
+            .execute("DELETE FROM access_log WHERE at < ?1", [horizon])
+            .map_err(|e| e.to_string())?;
+        if removed > 0 {
+            self.log_access(operator, crate::audit::Act::Purge, removed as i64);
+        }
+        Ok(removed)
+    }
+
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
     pub fn setting(&self, key: &str) -> Option<String> {
         self.conn
@@ -37214,6 +37316,35 @@ mod tests {
         db.clear_telemetry().expect("clear_telemetry");
         assert!(db.telemetry_totals().unwrap().is_empty());
 
+        // Le journal des accès. Même raison que les compteurs
+        // ci-dessus : la table n'existait pas dans cette version-là.
+        assert!(db.accesses_since("").expect("accesses_since").is_empty());
+        assert!(db.log_access("CL", crate::audit::Act::Ouvert, 4021));
+        assert!(db.log_access("", crate::audit::Act::Exporte, 0));
+        let lines = db.accesses_since("").expect("accesses_since");
+        assert_eq!(lines.len(), 2);
+        assert_eq!(lines[0].file, 4021);
+        assert_eq!(lines[0].who(), "CL");
+        // Sans opérateur déclaré : dit, jamais deviné.
+        assert_eq!(lines[1].who(), "—");
+        // La purge ne touche rien au-delà de l'horizon, et **s'écrit**
+        // quand elle retire quelque chose : un journal qui a rétréci et
+        // un journal qu'on a vidé se lisent autrement pareil.
+        assert_eq!(db.purge_accesses("1900-01-01", "CL").unwrap(), 0);
+        assert_eq!(db.accesses_since("").unwrap().len(), 2);
+        // **La borne est gardée** : l'horizon du jour même ne retire pas
+        // le jour même. Un intervalle dont on ne sait pas si sa borne
+        // est dedans est un intervalle dont personne ne peut dire
+        // combien de jours il couvre.
+        let today = db.today_iso().unwrap();
+        assert_eq!(db.purge_accesses(&today, "CL").unwrap(), 0);
+        assert_eq!(db.accesses_since("").unwrap().len(), 2);
+        assert_eq!(db.purge_accesses("2999-01-01", "CL").unwrap(), 2);
+        let after = db.accesses_since("").unwrap();
+        assert_eq!(after.len(), 1, "la purge laisse sa propre ligne");
+        assert_eq!(after[0].act, crate::audit::Act::Purge);
+        assert_eq!(after[0].file, 2, "combien de lignes ont été retirées");
+
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
         // created with `SCHEMA` they would name columns an old base has
@@ -38252,6 +38383,46 @@ mod tests {
                 !SOURCE.contains(verb),
                 "le registre ne se réécrit pas : {verb}"
             );
+        }
+    }
+
+    /// Le journal des accès ne se réécrit pas, et ne se vide qu'à la
+    /// purge — qui est **une** suppression, et qui s'écrit dedans.
+    ///
+    /// La même garde que celle du registre juste au-dessus, et pour une
+    /// raison proche : un journal de qui-a-vu-quoi qu'on peut corriger
+    /// ne prouve rien. La différence est qu'il en existe une
+    /// suppression légitime — la conservation a une durée —, alors le
+    /// test compte : exactement un effacement, et aucune mise à jour.
+    #[test]
+    fn the_access_log_is_only_added_to_and_purged_once() {
+        const SOURCE: &str = include_str!("db.rs");
+        // Assemblés, comme au-dessus : un test qui se lit lui-même
+        // trouverait d'abord ses propres constantes.
+        let table = concat!("access_", "log");
+        let update = concat!("UPDA", "TE");
+        let delete = concat!("DELE", "TE FROM ", "access_", "log");
+        let mut deletes = 0;
+        for (n, line) in SOURCE.lines().enumerate() {
+            let line = line.trim();
+            if line.starts_with("//") || line.starts_with("--") {
+                continue;
+            }
+            if line.contains(delete) {
+                deletes += 1;
+            }
+            assert!(
+                !(line.contains(table) && line.contains(update)),
+                "une ligne d'accès ne se corrige pas (db.rs:{}) : {line}",
+                n + 1
+            );
+        }
+        assert_eq!(deletes, 1, "une seule suppression : la purge");
+        for verb in [
+            concat!("fn upda", "te_access"),
+            concat!("fn dele", "te_access"),
+        ] {
+            assert!(!SOURCE.contains(verb), "{verb}");
         }
     }
 
@@ -42876,6 +43047,56 @@ mod tests {
                 counts.push(("passe", 1));
             }
             db.bump_telemetry(&day, &counts).unwrap();
+        }
+
+        // Le journal des accès, sur la même quinzaine.
+        //
+        // Écrit en SQL plutôt que par `log_access`, qui horodate à
+        // l'instant : une démonstration où tout s'est passé aujourd'hui
+        // ne montre ni la période, ni la purge, ni deux opérateurs qui
+        // ne travaillent pas les mêmes jours. Et sans lui le volet
+        // d'« À propos » dirait « aucun accès » sur toutes les captures
+        // jamais prises.
+        let files: Vec<i64> = db.patients().unwrap().iter().map(|p| p.id).collect();
+        if !files.is_empty() {
+            for d in 1..=15u32 {
+                let day = day(9, d);
+                // Claire au comptoir tous les jours, Maya un jour sur
+                // deux : deux colonnes qui ne se ressemblent pas, ce
+                // qui est le seul cas où un relevé par opérateur dit
+                // quelque chose.
+                for (who, every) in [("CL", 1u32), ("MB", 2)] {
+                    if d % every != 0 {
+                        continue;
+                    }
+                    for k in 0..(2 + d % 3) {
+                        let file = files[((d + k) as usize) % files.len()];
+                        db.conn
+                            .execute(
+                                "INSERT INTO access_log (at, operator, act, file)
+                                 VALUES (?1, ?2, 'ouvert', ?3)",
+                                rusqlite::params![
+                                    format!("{day} {:02}:{:02}:00", 9 + k, 5 + k * 7),
+                                    who,
+                                    file
+                                ],
+                            )
+                            .unwrap();
+                    }
+                }
+                // Un export en fin de mois, par quelqu'un dont le poste
+                // ne déclarait pas d'initiales : la ligne écrit un
+                // tiret plutôt que de deviner.
+                if d == 15 {
+                    db.conn
+                        .execute(
+                            "INSERT INTO access_log (at, operator, act, file)
+                             VALUES (?1, '', 'exporte', 0)",
+                            [format!("{day} 19:40:00")],
+                        )
+                        .unwrap();
+                }
+            }
         }
     }
 

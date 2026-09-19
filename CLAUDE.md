@@ -285,6 +285,35 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   shared write in this base that is **not** a compare-and-set, because a
   monotone counter has no displayed value to confront, it has an
   increment. Pure, tested, no clock: the day is passed in),
+  `src/audit.rs` (the access trail: who opened which file, and when —
+  and it is built on the **exact opposite** rule to `telemetry.rs`,
+  which is the design rather than an accident. Telemetry counts the
+  software and never the person; traceability **names the person and
+  never the software**, because it exists only to answer « qui a regardé
+  ce dossier-là, le 12 mars ». Confusing the two would give the worst of
+  both: nominative usage figures nobody asked for, and an anonymous
+  trail that traces nothing. A line carries a **file number and never a
+  name** — the register's rule, for the register's reason: what gets
+  printed must let you go *back* to the patient, not display them, and a
+  nominative access sheet is a second patient file, in clear, that
+  nobody decided to create; a guard reads the struct's own fields and
+  refuses the next `name`. **What is missing is said**: with no operator
+  declared in `[ui] operator` the line writes a dash — a trail that
+  guesses who it was is worse than one that says it does not know,
+  because the first reads as proof. The retention is
+  `[audit] keep_days`, a year by default, and **0 purges nothing** — an
+  empty or forgotten setting must not wipe a log, the same direction as
+  the opening hours shipped empty. The purge **writes itself into the
+  log it purges**, carrying how many lines it removed, or a log that
+  shrank and a log somebody emptied read alike; it runs once per
+  session, at unlock, because a deletion that repeats all day is a
+  deletion nobody looks at. `the_access_log_is_only_added_to_and_purged_once`
+  reads `db.rs` and counts: exactly one deletion, no update. Two
+  gestures are traced — opening a file, at the single door the twenty
+  call sites go through, and exporting — and what is **not** traced is
+  written where one would look: printing, because the one function all
+  twenty-one printables pass through holds neither the operator nor the
+  file. Pure, tested, no clock: the day is passed in),
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only

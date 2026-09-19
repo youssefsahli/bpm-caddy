@@ -3363,6 +3363,17 @@ struct Session {
     /// days' notice the officine asked for (`[locations] notice_days`).
     loc_watch: Vec<LocWatch>,
     loc_notice_days: u32,
+    /// Les initiales déclarées dans `[ui] operator`, pour le journal des
+    /// accès — voir `src/audit.rs`.
+    ///
+    /// Poussées ici comme `loc_notice_days` : la session n'a pas la
+    /// configuration, et une trace qui devine qui c'était est pire
+    /// qu'une trace qui dit qu'elle ne sait pas. Vides, la ligne écrit
+    /// un tiret.
+    operator: String,
+    /// Combien de jours le journal des accès est conservé.
+    /// Zéro ne purge rien — et surtout pas tout.
+    audit_keep_days: u32,
     /// Où vivent les scripts de la console — à côté de la base, comme
     /// les notes d'équipe. Posé par `App` à l'ouverture de la session :
     /// la session ne connaît pas la configuration, et une vue qui la
@@ -4345,6 +4356,8 @@ impl Session {
             bio_watch: Vec::new(),
             loc_watch: Vec::new(),
             loc_notice_days: 7,
+            operator: String::new(),
+            audit_keep_days: 0,
             scripts_dir: std::path::PathBuf::new(),
             password: String::new(),
             to_schedule: Vec::new(),
@@ -5394,6 +5407,23 @@ impl Session {
     /// cours de correction — appartiennent à la personne qui a les
     /// doigts dessus, et une synchronisation qui les remplacerait serait
     /// pire que l'écran périmé qu'elle corrige.
+    /// Purge le journal des accès au-delà de l'horizon, une fois par
+    /// séance.
+    ///
+    /// Au déverrouillage et pas à intervalle : une purge est une
+    /// suppression, et une suppression qui se répète toute la journée
+    /// est une suppression que personne ne regarde. Zéro jour de
+    /// conservation ne purge rien.
+    fn purge_accesses(&mut self) {
+        let Ok(today) = self.db.today_iso() else {
+            return;
+        };
+        let Some(horizon) = crate::audit::horizon(&today, self.audit_keep_days) else {
+            return;
+        };
+        let _ = self.db.purge_accesses(&horizon, &self.operator);
+    }
+
     /// Compte un geste. Le seul chemin vers les compteurs.
     ///
     /// L'interrupteur est vérifié **dans** `Counters::note`, et non ici
@@ -6852,6 +6882,11 @@ impl Session {
 
     fn open_patient(&mut self, patient: Patient) {
         self.note(crate::telemetry::Signal::File);
+        // Et la trace. Ici parce que c'est la porte unique : une
+        // vingtaine d'endroits ouvrent un dossier, et tous passent par
+        // celle-ci. Le **numéro**, jamais le nom.
+        self.db
+            .log_access(&self.operator, crate::audit::Act::Ouvert, patient.id);
         // The file is set before it is filled, not after: the loaders
         // below rebuild what the calendrier vaccinal owes, and that
         // answer is read against this patient's age. Set last, they
@@ -9993,6 +10028,9 @@ impl App {
                 })
                 .map(|mut s| {
                     s.loc_notice_days = config.locations.notice_days;
+                    s.operator.clone_from(&config.ui.operator);
+                    s.audit_keep_days = config.audit.keep_days;
+                    s.purge_accesses();
                     s.scripts_dir = config.scripts_dir();
                     s.password.clone_from(&pw);
                     s.refresh_dashboard();
@@ -13190,6 +13228,9 @@ impl App {
                 })
                 .map(|mut s| {
                     s.loc_notice_days = self.config.locations.notice_days;
+                    s.operator.clone_from(&self.config.ui.operator);
+                    s.audit_keep_days = self.config.audit.keep_days;
+                    s.purge_accesses();
                     s.scripts_dir = self.config.scripts_dir();
                     s.password.clone_from(&pw);
                     s.refresh_dashboard();
@@ -44270,6 +44311,11 @@ impl App {
         };
         ui.with_layout(layout, |ui| {
             if motif::button(ui, tr("dash_export")).clicked() {
+                // Des données sortent de la base : tracé, et sans
+                // dossier — c'est la période entière qui part.
+                session
+                    .db
+                    .log_access(&session.operator, crate::audit::Act::Exporte, 0);
                 match session.db.export_rows(config.rules.cycle_months.max(1)) {
                     Ok(rows) => {
                         let csv = interviews_csv(&rows, config);
@@ -52826,6 +52872,24 @@ impl eframe::App for App {
             }
             _ => None,
         };
+        // Le journal des accès, sur une fenêtre bornée.
+        //
+        // **Trente jours et pas tout le journal** : un an d'accès, c'est
+        // des dizaines de milliers de lignes, et ce volet est redessiné
+        // tant que la page est ouverte. Le relevé complet est l'affaire
+        // de l'outil d'audit ; ici on répond à « est-ce que ça tourne,
+        // et qui a regardé quoi ces temps-ci ».
+        let audit_window = 30u32;
+        let audit_reading = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => {
+                let since = crate::date::add_days(&s.today, -i64::from(audit_window) + 1)
+                    .unwrap_or_else(|| s.today.clone());
+                s.db.accesses_since(&since)
+                    .ok()
+                    .map(|lines| crate::audit::summarize(&lines))
+            }
+            _ => None,
+        };
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -53474,6 +53538,82 @@ impl eframe::App for App {
                                         } else {
                                             editor.confirm_telemetry_clear = true;
                                         }
+                                    }
+                                }
+
+                                // Le journal des accès. L'exact
+                                // contraire du volet au-dessus : il
+                                // nomme la personne, et jamais le
+                                // logiciel.
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("audit_title"));
+                                // La réserve avant le contenu, encore :
+                                // ce qui dit ce qu'une ligne porte — un
+                                // numéro, jamais un nom — et combien de
+                                // temps elle est gardée.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(if editor.cfg.audit.keep_days == 0 {
+                                            tr("audit_scope_kept").to_owned()
+                                        } else {
+                                            trf("audit_scope", editor.cfg.audit.keep_days)
+                                        })
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.add_space(2.0);
+                                ui.label(dim(&trf("audit_window", audit_window)));
+                                if let Some(reading) = &audit_reading {
+                                    if reading.lines == 0 {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(tr("audit_span_none"))
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
+                                    } else {
+                                        egui::Grid::new("opts_audit_acts")
+                                            .num_columns(2)
+                                            .spacing([12.0, 5.0])
+                                            .show(ui, |ui| {
+                                                for (act, n) in &reading.by_act {
+                                                    ui.label(dim(act.label()));
+                                                    ui.label(n.to_string());
+                                                    ui.end_row();
+                                                }
+                                                ui.label(dim(tr("audit_by_operator")));
+                                                ui.end_row();
+                                                for (who, n) in &reading.by_operator {
+                                                    ui.label(dim(who.as_str()));
+                                                    ui.label(n.to_string());
+                                                    ui.end_row();
+                                                }
+                                            });
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(crate::strings::trn(
+                                                    "audit_span",
+                                                    &[
+                                                        &reading.lines,
+                                                        &reading.days,
+                                                        &crate::db::format_french_date(
+                                                            &reading.first,
+                                                        ),
+                                                        &crate::db::format_french_date(
+                                                            &reading.last,
+                                                        ),
+                                                        &reading.files,
+                                                    ],
+                                                ))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                            )
+                                            .wrap(),
+                                        );
                                     }
                                 }
                             }

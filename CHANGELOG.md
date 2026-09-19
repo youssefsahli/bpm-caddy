@@ -5,6 +5,46 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Un journal des accès : qui a ouvert quel dossier, et quand.** Dans
+  Options › À propos, sous les compteurs, et bâti sur la règle **exactement
+  inverse** — c'est le dessin, pas un hasard. Les compteurs comptent le
+  logiciel et jamais la personne ; le journal nomme la personne et jamais
+  le logiciel, parce qu'il n'existe que pour répondre à « qui a regardé
+  ce dossier-là, le 12 mars ». Confondre les deux donnerait le pire des
+  deux : des chiffres d'usage nominatifs que personne n'a demandés, et
+  une traçabilité anonyme qui ne trace rien.
+
+  **Une ligne porte un numéro de dossier et jamais un nom** — la règle
+  de l'ordonnancier, pour sa raison : ce qui s'imprime doit permettre de
+  remonter au patient, pas de l'afficher, et un relevé d'accès nominatif
+  est un second fichier de patients, en clair, que personne n'a décidé
+  de créer. Un garde lit les champs de la structure et refuse le
+  suivant.
+
+  **Ce qui manque se dit** : sans initiales déclarées, la ligne écrit un
+  tiret. Une trace qui devine qui c'était est pire qu'une trace qui dit
+  qu'elle ne sait pas — la première se lit comme une preuve.
+
+  La conservation est dans `[audit] keep_days`, un an au départ, et
+  **0 ne purge rien** : un réglage vide ou oublié ne doit pas effacer un
+  journal. La purge **s'écrit dans le journal qu'elle purge**, avec le
+  nombre de lignes retirées — sans quoi un journal qui a rétréci et un
+  journal qu'on a vidé se lisent pareil — et elle a lieu une fois par
+  séance, à l'ouverture, parce qu'une suppression qui se répète toute la
+  journée est une suppression que personne ne regarde. Un test relit
+  `db.rs` et compte : exactement un effacement, aucune mise à jour.
+
+  Deux gestes sont tracés — ouvrir un dossier, à la porte unique par
+  laquelle passe la vingtaine d'endroits qui en ouvrent un, et
+  exporter. Et **ce qui ne l'est pas est écrit là où on le
+  chercherait** : l'impression, parce que la fonction unique par
+  laquelle passent les vingt et un imprimables n'a en main ni
+  l'opérateur ni le dossier. Un journal qui prétendrait tout voir serait
+  pire que celui-là.
+
 ## [0.225.0] - 2026-09-19
 
 ### Added

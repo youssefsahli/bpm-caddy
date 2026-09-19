@@ -198,6 +198,7 @@ mod tests {
             ("ordonnancier.rs", include_str!("ordonnancier.rs")),
             ("scans.rs", include_str!("scans.rs")),
             ("telemetry.rs", include_str!("telemetry.rs")),
+            ("audit.rs", include_str!("audit.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
         for (file, source) in SOURCES {
@@ -267,6 +268,7 @@ mod tests {
             include_str!("script.rs"),
             include_str!("selfcheck.rs"),
             include_str!("telemetry.rs"),
+            include_str!("audit.rs"),
             // Le registre des textes imprimés y nomme ses
             // documents : une source de clés comme les autres.
             include_str!("content.rs"),
@@ -1575,6 +1577,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("surveillance.rs", include_str!("surveillance.rs")),
             ("tables.rs", include_str!("tables.rs")),
             ("telemetry.rs", include_str!("telemetry.rs")),
+            ("audit.rs", include_str!("audit.rs")),
         ];
         let mut orphans: Vec<String> = Vec::new();
         for (file, src) in SOURCES {

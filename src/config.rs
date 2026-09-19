@@ -319,6 +319,31 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # sur une case à cocher est pire que ne pas compter.
 # enabled = true
 
+[audit]
+# Le journal des accès : qui a ouvert quel dossier, et quand.
+#
+# **L'exact contraire de `[telemetry]` au-dessus.** Celui-là compte le
+# logiciel et jamais la personne ; celui-ci nomme la personne et jamais
+# le logiciel, parce qu'il n'existe que pour répondre à « qui a regardé
+# ce dossier-là, le 12 mars ». Une ligne porte un **numéro** de dossier
+# et jamais un nom : ce qui s'imprime doit permettre de remonter au
+# patient, pas de l'afficher.
+#
+# Combien de jours le journal est conservé. Un journal d'accès se garde
+# une durée fixée et proportionnée, et pas pour toujours : c'est un
+# fichier de qui-a-vu-quoi sur les gens qui travaillent là. Trois cent
+# soixante-cinq jours est un point de départ, pas un avis : c'est à
+# l'officine de le mettre en face de ce qu'elle s'est engagée à faire.
+#
+# **0 ne purge rien** — et surtout pas tout. Un réglage vide ou oublié
+# ne doit pas effacer un journal ; c'est la même direction que les
+# horaires d'ouverture livrés vides, où sans consigne écrite on ne fait
+# rien plutôt que tout.
+#
+# La purge s'écrit dans le journal qu'elle purge, sans quoi un journal
+# qui a rétréci et un journal qu'on a vidé se lisent pareil.
+# keep_days = 365
+
 # [prevention]
 # Les sujets d'un rendez-vous de prévention. Il n'a pas de thème — on en
 # couvre plusieurs dans la même séance —, et ce sont ces sujets qu'on
@@ -345,6 +370,27 @@ pub struct Config {
     pub vitale: VitaleConfig,
     pub prevention: PreventionConfig,
     pub telemetry: TelemetryConfig,
+    pub audit: AuditConfig,
+}
+
+/// Le journal des accès — voir `src/audit.rs` et le modèle ci-dessus.
+///
+/// Comme `[telemetry]`, le réglage est dans `config.toml` et les lignes
+/// dans la base : le journal appartient à l'officine et se lit sur
+/// n'importe quel poste, mais la durée de conservation est une consigne
+/// qu'on écrit là où l'on écrit les consignes.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct AuditConfig {
+    pub keep_days: u32,
+}
+
+impl Default for AuditConfig {
+    fn default() -> Self {
+        // Un an. Un point de départ, que l'officine met en face de ce
+        // qu'elle s'est engagée à faire — et non un avis.
+        Self { keep_days: 365 }
+    }
 }
 
 /// Les compteurs d'usage — voir `src/telemetry.rs` et le modèle de
@@ -1944,6 +1990,36 @@ mod tests {
         // saurait qu'elle existe — ni qu'on peut l'éteindre.
         assert!(CONFIG_TEMPLATE.contains("[telemetry]"));
         assert!(CONFIG_TEMPLATE.contains("enabled = true"));
+    }
+
+    /// Le journal des accès se garde un an, sauf consigne contraire —
+    /// et **zéro ne purge rien**.
+    ///
+    /// C'est la direction qui compte : un réglage vide ou oublié ne doit
+    /// pas effacer un journal. La même que les horaires d'ouverture
+    /// livrés vides, où sans consigne écrite on ne fait rien plutôt que
+    /// tout.
+    #[test]
+    fn the_access_log_is_kept_a_year_unless_the_officine_says_otherwise() {
+        assert_eq!(Config::default().audit.keep_days, 365);
+        let cfg: Config = toml::from_str(
+            r#"
+            [audit]
+            keep_days = 0
+            "#,
+        )
+        .unwrap();
+        assert_eq!(cfg.audit.keep_days, 0);
+        assert_eq!(
+            crate::audit::horizon("2026-09-19", cfg.audit.keep_days),
+            None
+        );
+        // Une configuration écrite avant que la section existe garde
+        // l'année.
+        let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
+        assert_eq!(silent.audit.keep_days, 365);
+        assert!(CONFIG_TEMPLATE.contains("[audit]"));
+        assert!(CONFIG_TEMPLATE.contains("keep_days = 365"));
     }
 
     #[test]
