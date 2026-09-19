@@ -2984,6 +2984,12 @@ fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
     let out = std::env::temp_dir().join(format!("bpm_caddy_{stem}_{stamp}.pdf"));
     std::fs::write(&out, pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
+    // Compté ici et nulle part ailleurs : les vingt et un `open_*`
+    // passent tous par cette fonction, et compter chez chacun d'eux
+    // serait vingt et une occasions d'en oublier un. Voir
+    // `src/telemetry.rs` — le compteur ne sort pas du processus, et
+    // c'est la session qui décide s'il est enregistré.
+    crate::telemetry::tally(crate::telemetry::Signal::Printed);
     Ok(out)
 }
 
@@ -3287,6 +3293,7 @@ pub fn open_bulletin(
     ));
     std::fs::write(&out, bytes).map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
+    crate::telemetry::tally(crate::telemetry::Signal::Printed);
     Ok(out)
 }
 

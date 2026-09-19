@@ -185,6 +185,23 @@ CREATE TABLE IF NOT EXISTS settings (
     updated_on TEXT NOT NULL DEFAULT '',
     updated_by TEXT NOT NULL DEFAULT ''
 );
+-- Les compteurs d'usage — voir `src/telemetry.rs`.
+--
+-- Une ligne par jour et par signal, et **rien de plus** : pas
+-- d'opérateur, pas de poste, pas d'identifiant. Ils comptent le
+-- logiciel, jamais la personne.
+--
+-- L'écriture est un `INSERT … ON CONFLICT DO UPDATE SET n = n +
+-- excluded.n` : deux postes qui rendent leurs compteurs en même temps
+-- s'additionnent au lieu de s'écraser. Ce n'est donc pas un
+-- compare-and-set comme partout ailleurs, et c'est voulu — un compteur
+-- monotone n'a pas de valeur affichée à confronter, il a un incrément.
+CREATE TABLE IF NOT EXISTS telemetry (
+    day    TEXT NOT NULL,
+    signal TEXT NOT NULL,
+    n      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (day, signal)
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -573,6 +590,14 @@ const MIGRATIONS: &[&str] = &[
         value      TEXT NOT NULL,
         updated_on TEXT NOT NULL DEFAULT '',
         updated_by TEXT NOT NULL DEFAULT ''
+    )",
+    // Les compteurs d'usage — voir le commentaire au-dessus de la table
+    // dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS telemetry (
+        day    TEXT NOT NULL,
+        signal TEXT NOT NULL,
+        n      INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (day, signal)
     )",
     // Les phrases imprimées que l'officine a réécrites — voir le
     // commentaire au-dessus de la table dans `SCHEMA`.
@@ -29681,6 +29706,7 @@ impl Db {
         self.conn
             .execute("VACUUM INTO ?1", [path_str])
             .map_err(|e| format!("sauvegarde impossible : {e}"))?;
+        crate::telemetry::tally(crate::telemetry::Signal::Backup);
         Ok(())
     }
 
@@ -29912,6 +29938,7 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
+        crate::telemetry::tally(crate::telemetry::Signal::Till);
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -30309,6 +30336,10 @@ impl Db {
                 (patient_id, kind.as_str(), theme, operator.trim()),
             )
             .map_err(|e| e.to_string())?;
+        // Compté là où l'acte s'écrit — voir `src/telemetry.rs`. Les
+        // deux autres `add_interview*` passent par ici, donc il n'y a
+        // qu'un endroit à ne pas oublier.
+        crate::telemetry::tally(crate::telemetry::Signal::Act);
         Ok(self.conn.last_insert_rowid())
     }
 
@@ -31553,6 +31584,97 @@ impl Db {
                 .unwrap_or(0)
         };
         (read(&self.conn), read(&self.scans), read(&self.stups))
+    }
+
+    /// Rend ce qu'un poste a compté, en une transaction.
+    ///
+    /// `INSERT … ON CONFLICT DO UPDATE SET n = n + excluded.n` : deux
+    /// postes qui rendent leurs compteurs au même instant
+    /// **s'additionnent** au lieu de s'écraser. C'est la seule écriture
+    /// partagée de cette base qui ne soit pas un compare-and-set, et
+    /// c'est voulu : un compteur monotone n'a pas de valeur affichée à
+    /// confronter, il a un incrément, et personne n'a jamais eu ce
+    /// nombre-là sous les yeux au moment d'écrire.
+    ///
+    /// En une transaction parce que rendre la moitié d'une journée est
+    /// le pire état où laisser un compteur : rien ne dirait laquelle.
+    pub fn bump_telemetry(&self, day: &str, counts: &[(&str, u64)]) -> Result<(), String> {
+        if counts.is_empty() {
+            return Ok(());
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        {
+            let mut add = tx
+                .prepare(
+                    "INSERT INTO telemetry (day, signal, n) VALUES (?1, ?2, ?3)
+                     ON CONFLICT (day, signal) DO UPDATE SET n = n + excluded.n",
+                )
+                .map_err(|e| e.to_string())?;
+            for (signal, n) in counts {
+                add.execute(rusqlite::params![day, signal, *n as i64])
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Les totaux par signal, toutes journées confondues.
+    ///
+    /// La clé est rendue telle qu'elle est écrite : un signal qu'une
+    /// version postérieure a inventé revient ici, et c'est l'appelant
+    /// qui décide de ne pas le dessiner. Le supprimer ferait perdre à
+    /// une officine ses propres chiffres le jour où un poste passe à la
+    /// version suivante avant les autres.
+    pub fn telemetry_totals(&self) -> Result<Vec<(String, u64)>, String> {
+        let mut q = self
+            .conn
+            .prepare("SELECT signal, SUM(n) FROM telemetry GROUP BY signal")
+            .map_err(|e| e.to_string())?;
+        let rows = q
+            .query_map([], |r| {
+                Ok((r.get::<_, String>(0)?, r.get::<_, i64>(1)?.max(0) as u64))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<Vec<_>, _>>()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Sur combien de journées ces totaux courent, et lesquelles.
+    ///
+    /// Un cumul sans période à côté se lit comme s'il couvrait tout ce
+    /// qui a jamais existé — la règle que le récapitulatif mensuel de la
+    /// caisse suit déjà, et la raison pour laquelle il dit sur combien
+    /// de soirs son écart est calculé.
+    pub fn telemetry_span(&self) -> crate::telemetry::Span {
+        self.conn
+            .query_row(
+                "SELECT COUNT(DISTINCT day), MIN(day), MAX(day) FROM telemetry",
+                [],
+                |r| {
+                    Ok(crate::telemetry::Span {
+                        days: r.get::<_, i64>(0)?.max(0) as usize,
+                        first: r.get::<_, Option<String>>(1)?.unwrap_or_default(),
+                        last: r.get::<_, Option<String>>(2)?.unwrap_or_default(),
+                    })
+                },
+            )
+            .unwrap_or_default()
+    }
+
+    /// Efface les compteurs de toute l'officine.
+    ///
+    /// Un geste à part, demandé deux fois, et jamais un effet de bord de
+    /// la case à cocher : décocher arrête de compter, effacer efface, et
+    /// confondre les deux ferait disparaître des chiffres que personne
+    /// n'a demandé à perdre.
+    pub fn clear_telemetry(&self) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM telemetry", [])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
@@ -33554,6 +33676,9 @@ impl Db {
             ids.push(Self::insert_stup_move(&tx, m)?);
         }
         tx.commit().map_err(|e| e.to_string())?;
+        for _ in &ids {
+            crate::telemetry::tally(crate::telemetry::Signal::Register);
+        }
         Ok(ids)
     }
 
@@ -37061,6 +37186,33 @@ mod tests {
                 .len(),
             1
         );
+
+        // Les compteurs d'usage. La table n'existait pas dans cette
+        // version-là, et les trois lectures passent par
+        // `unwrap_or_default` côté écran : sans l'`ALTER`/`CREATE` de
+        // `MIGRATIONS`, la page « À propos » afficherait neuf zéros
+        // tranquilles au lieu d'une erreur — exactement ce que
+        // `bio_results` a fait en son temps.
+        assert!(db.telemetry_totals().expect("telemetry_totals").is_empty());
+        assert_eq!(db.telemetry_span(), crate::telemetry::Span::default());
+        db.bump_telemetry("2026-09-19", &[("dossier", 2), ("fiche", 5)])
+            .expect("bump_telemetry");
+        // Le même jour, le même signal : on **ajoute**, on n'écrase pas.
+        // C'est la seule écriture partagée de cette base qui ne soit pas
+        // un compare-and-set, et deux postes qui rendent leurs compteurs
+        // au même instant doivent s'additionner.
+        db.bump_telemetry("2026-09-19", &[("dossier", 3)])
+            .expect("bump_telemetry");
+        let mut totals = db.telemetry_totals().unwrap();
+        totals.sort();
+        assert_eq!(
+            totals,
+            vec![("dossier".to_owned(), 5), ("fiche".to_owned(), 5)]
+        );
+        let span = db.telemetry_span();
+        assert_eq!((span.days, span.first.as_str()), (1, "2026-09-19"));
+        db.clear_telemetry().expect("clear_telemetry");
+        assert!(db.telemetry_totals().unwrap().is_empty());
 
         // And the indexes are there too. They are created after the
         // migrations precisely so that a base of this age gets them:
@@ -42695,6 +42847,36 @@ mod tests {
             &tiny("facture", 0),
         )
         .unwrap();
+
+        // Les compteurs d'usage, sur une quinzaine de journées.
+        //
+        // **Sans quoi la page « À propos » montrerait neuf zéros** sur
+        // toutes les captures jamais prises — la règle de la maison :
+        // une vue que la démonstration laisse vide est une vue que
+        // personne n'a jamais regardée. Les chiffres sont ceux d'une
+        // officine ordinaire : beaucoup de fiches consultées, un
+        // dossier sur trois ouvert, quelques impressions, une caisse
+        // par soir, une sauvegarde par jour. Deux journées portent des
+        // lignes au registre et pas les autres, parce que c'est ainsi.
+        for d in 1..=15u32 {
+            let day = day(9, d);
+            let mut counts: Vec<(&str, u64)> = vec![
+                ("ouverture", 1 + u64::from(d % 3 == 0)),
+                ("dossier", 4 + u64::from(d % 4)),
+                ("fiche", 9 + u64::from(d % 7) * 3),
+                ("impression", 2 + u64::from(d % 3)),
+                ("acte", u64::from(d % 5 == 0) * 2),
+                ("caisse", 1),
+                ("sauvegarde", 1),
+            ];
+            if d % 6 == 0 {
+                counts.push(("registre", 3));
+            }
+            if d == 15 {
+                counts.push(("passe", 1));
+            }
+            db.bump_telemetry(&day, &counts).unwrap();
+        }
     }
 
     #[test]

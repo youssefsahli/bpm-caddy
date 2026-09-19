@@ -931,6 +931,33 @@ about_sync_none = "Base déjà au niveau de cette version."
 about_sync_done = "{} élément(s) de référence ajouté(s)."
 about_offline = "Hors ligne le reste du temps : les autres boutons « … » transmettent une adresse au navigateur."
 
+# --- Les compteurs d'usage, dans Options › À propos ---
+# Rien n'en sort : ils vivent dans la base chiffrée de l'officine et se
+# lisent sur cette page. Ils comptent le logiciel, jamais la personne —
+# aucun opérateur, aucune initiale : « combien de dossiers ont été
+# ouverts » est une question sur laquelle on décide, « combien Claire en
+# a ouverts » n'en est pas une.
+telem_title = "Compteurs d'usage"
+telem_enabled = "Compter ce que fait ce poste"
+telem_enabled_tooltip = "Décoché : ce poste cesse immédiatement de compter. Les compteurs déjà enregistrés sont conservés — « Effacer les compteurs… » est un geste à part."
+telem_scope = "Ces compteurs restent dans la base de l'officine : rien n'est envoyé nulle part. Ils comptent le logiciel, jamais la personne."
+telem_span = "Sur {} jour(s), du {} au {}"
+telem_span_none = "Rien de compté pour l'instant."
+telem_off = "Compteurs arrêtés sur ce poste."
+telem_clear = "Effacer les compteurs…"
+telem_clear_tooltip = "Remet à zéro les compteurs de toute l'officine. Deux clics."
+telem_clear_confirm = "Confirmer l'effacement"
+telem_cleared = "Compteurs effacés."
+telem_ouverture = "Ouvertures de l'application"
+telem_dossier = "Dossiers ouverts"
+telem_fiche = "Fiches consultées"
+telem_impression = "Documents imprimés"
+telem_acte = "Actes enregistrés"
+telem_registre = "Lignes au registre"
+telem_caisse = "Caisses comptées"
+telem_sauvegarde = "Sauvegardes"
+telem_passe = "Passes longues sur la base"
+
 # --- Les passes longues sur la base, sur leur propre fil ---
 # Une ligne par étape de `maintenance::steps`. Une clé sans libellé
 # s'afficherait telle quelle au comptoir : un test le refuse.

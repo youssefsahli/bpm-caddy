@@ -38,6 +38,7 @@ mod selfcheck;
 mod strings;
 mod surveillance;
 mod tables;
+mod telemetry;
 mod timeline;
 mod vaccines;
 mod vigilance;

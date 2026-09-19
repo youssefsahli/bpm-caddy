@@ -3686,6 +3686,19 @@ struct Session {
     export_notice: Option<String>,
     /// Today as ISO `YYYY-MM-DD`, to flag overdue appointments.
     today: String,
+    /// Les compteurs d'usage de ce poste — voir `src/telemetry.rs`.
+    ///
+    /// Tenus en mémoire et rendus à la base par paquets : un compteur
+    /// qui écrirait une ligne par événement serait une écriture par
+    /// frappe sur une base qui est souvent un partage réseau.
+    telemetry: crate::telemetry::Counters,
+    /// Combien de passes de la cadence depuis le dernier versement.
+    ///
+    /// L'application n'a **qu'une** horloge — celle de
+    /// [`Self::sync_if_others_wrote`], toutes les deux secondes — et en
+    /// poser une deuxième serait une deuxième chose à ne pas oublier.
+    /// Celle-ci en est un diviseur, pas un second réveil.
+    telemetry_ticks: u32,
     /// L'heure qu'il est, en minutes depuis minuit — le trait
     /// « maintenant » du plan de journée.
     ///
@@ -4259,7 +4272,11 @@ struct PatientForm {
 }
 
 impl Session {
-    fn new(db: Db, cycle_months: u32, count_days: i64) -> Result<Self, String> {
+    fn new(db: Db, cycle_months: u32, count_days: i64, telemetry_on: bool) -> Result<Self, String> {
+        // Le jour d'ouverture, lu une fois : les compteurs sont rangés
+        // par journée, et `sync_if_others_wrote` tourne la page quand
+        // minuit passe — une officine de garde travaille à cheval.
+        let opening_day = db.today_iso().unwrap_or_default();
         let patients = db.patients()?;
         let pending = db.pending_counts().unwrap_or_default();
         // First unlock of a fresh base: starter drug cards (names, DCI,
@@ -4438,6 +4455,8 @@ impl Session {
             today_notes: Vec::new(),
             export_notice: None,
             today: String::new(),
+            telemetry: crate::telemetry::Counters::new(&opening_day, telemetry_on),
+            telemetry_ticks: 0,
             now_minutes: 0,
             tomorrow: String::new(),
             agenda_week: Vec::new(),
@@ -4666,6 +4685,9 @@ impl Session {
             ],
             error: None,
         };
+        // Une ouverture, comptée une fois, ici : c'est le seul endroit
+        // par où passent les deux chemins de déverrouillage.
+        session.note(crate::telemetry::Signal::Opened);
         session.set_patients(patients);
         // The jump box searches the codex and the dispositifs too, so
         // both have to be loaded before the first Ctrl+K, not only when
@@ -5372,6 +5394,34 @@ impl Session {
     /// cours de correction — appartiennent à la personne qui a les
     /// doigts dessus, et une synchronisation qui les remplacerait serait
     /// pire que l'écran périmé qu'elle corrige.
+    /// Compte un geste. Le seul chemin vers les compteurs.
+    ///
+    /// L'interrupteur est vérifié **dans** `Counters::note`, et non ici
+    /// ni aux vingt endroits qui appellent : l'un d'eux finirait par
+    /// être écrit sans la vérification, et rien ne le dirait.
+    fn note(&mut self, signal: crate::telemetry::Signal) {
+        self.telemetry.note(signal);
+    }
+
+    /// Rend à la base ce qui est compté, et tourne la journée si minuit
+    /// est passé.
+    ///
+    /// Appelée à la fermeture et une fois toutes les cinq minutes. Ce
+    /// qui est rendu est retiré des compteurs, donc rien n'est compté
+    /// deux fois ; une écriture qui échoue perd ce paquet-là et rien
+    /// d'autre — un compteur d'usage n'est pas un registre, et le faire
+    /// échouer bruyamment au comptoir serait la mauvaise affaire.
+    fn flush_telemetry(&mut self) {
+        self.telemetry.gather();
+        if let Some(owed) = self.telemetry.turn(&self.today) {
+            let _ = self.db.bump_telemetry(&owed.day, &owed.counts);
+        }
+        if self.telemetry.pending() {
+            let owed = self.telemetry.take();
+            let _ = self.db.bump_telemetry(&owed.day, &owed.counts);
+        }
+    }
+
     fn sync_if_others_wrote(&mut self) {
         if Instant::now() < self.sync_next {
             return;
@@ -5390,6 +5440,27 @@ impl Session {
         if let Ok((day, minutes)) = self.db.now_local() {
             self.today = day;
             self.now_minutes = minutes;
+        }
+        // Les compteurs d'usage suivent cette même cadence, divisée :
+        // rendus toutes les cent cinquante passes, soit cinq minutes.
+        // À chaque passe ce serait une écriture toutes les deux
+        // secondes sur une base qui est souvent un partage réseau ; une
+        // seconde horloge, elle, serait une seconde chose à oublier.
+        // La journée, en revanche, tourne **à chaque passe** : c'est
+        // gratuit, et c'est ce qui garde le travail d'une garde du bon
+        // côté de minuit.
+        self.telemetry_ticks = self.telemetry_ticks.saturating_add(1);
+        if self.telemetry_ticks >= 150 {
+            self.telemetry_ticks = 0;
+            self.flush_telemetry();
+        } else {
+            // La journée tourne à chaque passe, et ce que les modules
+            // ont compté chez eux est rattrapé **avant** : un document
+            // imprimé à 23 h 59 appartient au 23 h 59.
+            self.telemetry.gather();
+            if let Some(owed) = self.telemetry.turn(&self.today) {
+                let _ = self.db.bump_telemetry(&owed.day, &owed.counts);
+            }
         }
         let now = self.db.data_version();
         if now == self.sync_seen {
@@ -6452,6 +6523,7 @@ impl Session {
     /// Open a drug card: load its baseline for CAS and the patients
     /// currently on it (recall / alert lookup).
     fn open_drug_card(&mut self, d: Drug) {
+        self.note(crate::telemetry::Signal::Card);
         self.close_drug_lists();
         self.drug_patients = self.db.patients_for_drug(d.id).unwrap_or_default();
         self.drug_notes = self
@@ -6779,6 +6851,7 @@ impl Session {
     }
 
     fn open_patient(&mut self, patient: Patient) {
+        self.note(crate::telemetry::Signal::File);
         // The file is set before it is filled, not after: the loaders
         // below rebuild what the calendrier vaccinal owes, and that
         // answer is read against this patient's age. Set last, they
@@ -9746,6 +9819,8 @@ struct OptionsEditor {
     page: OptionsPage,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
+    /// Le même garde-fou sur « Effacer les compteurs ».
+    confirm_telemetry_clear: bool,
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
@@ -9913,6 +9988,7 @@ impl App {
                         db,
                         config.rules.cycle_months,
                         i64::from(config.stock.count_days),
+                        config.telemetry.enabled,
                     )
                 })
                 .map(|mut s| {
@@ -11023,6 +11099,7 @@ impl App {
                 db_path_text: String::new(),
                 message: None,
                 confirm_reset: false,
+                confirm_telemetry_clear: false,
             })
         } else {
             None
@@ -13108,6 +13185,7 @@ impl App {
                         db,
                         self.config.rules.cycle_months,
                         i64::from(self.config.stock.count_days),
+                        self.config.telemetry.enabled,
                     )
                 })
                 .map(|mut s| {
@@ -48448,6 +48526,7 @@ impl App {
                         .unwrap_or_default(),
                     message: None,
                     confirm_reset: false,
+                    confirm_telemetry_clear: false,
                 })
             };
         }
@@ -52652,6 +52731,7 @@ impl eframe::App for App {
         let mut check_update = false;
         let mut open_releases = false;
         let mut sync_content = false;
+        let mut clear_telemetry = false;
         // What that page states, read before the borrow.
         let about_counts = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => Some([
@@ -52694,6 +52774,55 @@ impl eframe::App for App {
         let stup_weight = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
                 s.db.stup_weight().ok()
+            }
+            _ => None,
+        };
+        // Les compteurs d'usage, à la même condition et pour la même
+        // raison que les deux poids ci-dessus : une somme sur toute la
+        // table, posée seulement quand la page est ouverte.
+        //
+        // L'ordre est celui de `Signal::ALL` et non celui de la base :
+        // une clé qu'une version postérieure aurait écrite est
+        // **gardée** dans la table et simplement pas dessinée ici, ce
+        // qui est le seul moyen de ne pas faire perdre ses chiffres à
+        // une officine dont un poste passe à la version suivante avant
+        // les autres.
+        // **Et ce que la séance en cours a compté sans l'avoir encore
+        // rendu.** Sans cette ligne, une officine qui vient de cocher la
+        // case voit neuf zéros jusqu'au prochain versement — cinq
+        // minutes, ou la fermeture —, ce qui se lit comme un réglage qui
+        // ne marche pas. Le rattrapage est fait ici parce que c'est ici
+        // qu'on regarde : rien n'est écrit, seulement additionné.
+        if let (Some(e), State::Unlocked(s)) = (&self.options, &mut self.state) {
+            if e.page == OptionsPage::About {
+                s.telemetry.gather();
+            }
+        }
+        let telemetry_rows = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => {
+                let mut counts = [0u64; crate::telemetry::Signal::ALL.len()];
+                for (key, n) in s.db.telemetry_totals().unwrap_or_default() {
+                    // `from_key` rend `None` pour une clé qu'une version
+                    // postérieure a écrite : la ligne reste dans la
+                    // table et n'est simplement pas dessinée.
+                    if let Some(signal) = crate::telemetry::Signal::from_key(&key) {
+                        if let Some(slot) = crate::telemetry::Signal::ALL
+                            .iter()
+                            .position(|s| *s == signal)
+                            .and_then(|i| counts.get_mut(i))
+                        {
+                            *slot = n;
+                        }
+                    }
+                }
+                Some((
+                    crate::telemetry::Signal::ALL
+                        .iter()
+                        .zip(counts)
+                        .map(|(signal, n)| (signal.label(), n + s.telemetry.count(*signal)))
+                        .collect::<Vec<_>>(),
+                    s.db.telemetry_span(),
+                ))
             }
             _ => None,
         };
@@ -53254,6 +53383,99 @@ impl eframe::App for App {
                                     )
                                     .wrap(),
                                 );
+
+                                // Les compteurs d'usage.
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("telem_title"));
+                                // **La réserve avant le contenu**, comme
+                                // les panneaux cliniques : ce qui est
+                                // écrit après les chiffres est ce que
+                                // personne ne lit, et ici c'est la seule
+                                // phrase qui dise où ces chiffres vont —
+                                // c'est-à-dire nulle part.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("telem_scope"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.add_space(2.0);
+                                ui.checkbox(&mut editor.cfg.telemetry.enabled, tr("telem_enabled"))
+                                    .on_hover_text(tr("telem_enabled_tooltip"));
+                                if let Some((rows, span)) = &telemetry_rows {
+                                    egui::Grid::new("opts_telemetry")
+                                        .num_columns(2)
+                                        .spacing([12.0, 5.0])
+                                        .show(ui, |ui| {
+                                            for (label, n) in rows {
+                                                ui.label(dim(label));
+                                                ui.label(n.to_string());
+                                                ui.end_row();
+                                            }
+                                        });
+                                    // **Sur combien de jours.** Un cumul
+                                    // sans période à côté se lit comme
+                                    // s'il couvrait tout ce qui a jamais
+                                    // existé — la règle du récapitulatif
+                                    // de la caisse, qui dit sur combien
+                                    // de soirs son écart est calculé.
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(if span.days == 0 {
+                                                tr("telem_span_none").to_owned()
+                                            } else {
+                                                crate::strings::trn(
+                                                    "telem_span",
+                                                    &[
+                                                        &span.days,
+                                                        &crate::db::format_french_date(&span.first),
+                                                        &crate::db::format_french_date(&span.last),
+                                                    ],
+                                                )
+                                            })
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                    if !editor.cfg.telemetry.enabled {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(tr("telem_off"))
+                                                    .size(motif::pt(ui, 11.0))
+                                                    .color(motif::accent()),
+                                            )
+                                            .wrap(),
+                                        );
+                                    }
+                                    // Effacer est un geste à part, et
+                                    // demandé deux fois : décocher
+                                    // arrête de compter, effacer efface,
+                                    // et confondre les deux ferait
+                                    // disparaître des chiffres que
+                                    // personne n'a demandé à perdre.
+                                    if span.days > 0
+                                        && motif::button(
+                                            ui,
+                                            if editor.confirm_telemetry_clear {
+                                                tr("telem_clear_confirm")
+                                            } else {
+                                                tr("telem_clear")
+                                            },
+                                        )
+                                        .on_hover_text(tr("telem_clear_tooltip"))
+                                        .clicked()
+                                    {
+                                        if editor.confirm_telemetry_clear {
+                                            clear_telemetry = true;
+                                            editor.confirm_telemetry_clear = false;
+                                        } else {
+                                            editor.confirm_telemetry_clear = true;
+                                        }
+                                    }
+                                }
                             }
                             if page == OptionsPage::Database {
                                 // The card reader lives on the Base page:
@@ -54192,13 +54414,42 @@ impl eframe::App for App {
         } else {
             None
         };
+        if clear_telemetry {
+            if let State::Unlocked(session) = &mut self.state {
+                // Ce qui est en mémoire part avec le reste : le rendre
+                // juste après l'effacement ferait réapparaître la
+                // journée en cours, ce qui se lirait comme un bouton
+                // qui ne marche pas.
+                let _ = session.telemetry.take();
+                let _ = session.db.clear_telemetry();
+            }
+            // Dit, et sur la page même : un bouton qui efface sans rien
+            // répondre se lit comme un bouton qui n'a pas marché, et le
+            // geste suivant est de le presser encore.
+            self.update_note = Some((false, tr("telem_cleared").to_owned()));
+        }
+        // Le poste cesse de compter — ou s'y remet — à l'instant où la
+        // case change, et non au prochain lancement. Ce qui est déjà
+        // compté est rendu avant la bascule : décocher arrête, cela
+        // n'efface pas.
+        if let State::Unlocked(session) = &mut self.state {
+            let want = self.config.telemetry.enabled;
+            if session.telemetry.on() != want {
+                session.flush_telemetry();
+                session.telemetry.set_on(want);
+            }
+        }
         if let Some(job) = asked {
             let note = if self.maint_job.is_some() {
                 // One at a time. The buttons are disabled while a pass
                 // runs, so this is the keyboard or a very fast hand.
                 Some(tr("maint_busy").to_owned())
-            } else if let State::Unlocked(session) = &self.state {
+            } else if let State::Unlocked(session) = &mut self.state {
                 self.maint_step = None;
+                // Comptée au lancement et non à l'arrivée : une passe
+                // qu'on lance est une passe qu'on a demandée, même si
+                // elle échoue à mi-chemin.
+                session.note(crate::telemetry::Signal::Pass);
                 self.maint_job = Some(crate::maintenance::spawn(
                     self.config.db_path(),
                     session.password.clone(),
@@ -54395,6 +54646,13 @@ impl eframe::App for App {
             // No cursor to protect on the way out: allow the merge.
             self.doc_focused = false;
             self.save_doc();
+        }
+        // Ce que ce poste a compté depuis le dernier versement. Sans
+        // cette ligne, les cinq dernières minutes de chaque journée
+        // seraient perdues — et la dernière journée en entier sur un
+        // poste qu'on ferme avant midi.
+        if let State::Unlocked(s) = &mut self.state {
+            s.flush_telemetry();
         }
     }
 }
@@ -61180,7 +61438,7 @@ mod tests {
         let db = crate::db::Db::open(&dir.join("live.db"), "secret").unwrap();
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
-        (super::Session::new(db, 12, 30).unwrap(), swept)
+        (super::Session::new(db, 12, 30, true).unwrap(), swept)
     }
 
     /// **Ce qu'un autre poste écrit arrive à l'écran sans qu'on demande
@@ -61208,7 +61466,7 @@ mod tests {
         let other = crate::db::Db::open(&path, "secret").unwrap();
         let mine = crate::db::Db::open(&path, "secret").unwrap();
         mine.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
-        let mut s = super::Session::new(mine, 12, 30).unwrap();
+        let mut s = super::Session::new(mine, 12, 30, true).unwrap();
         // Le premier regard n'est qu'une prise de repère.
         s.sync_if_others_wrote();
         let before = s.patients.len();

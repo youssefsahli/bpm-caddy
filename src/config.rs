@@ -295,6 +295,30 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # rangée. 0 désactive la copie des pièces.
 # backups_keep = 2
 #
+[telemetry]
+# Les compteurs d'usage : combien de dossiers ouverts, de fiches lues,
+# de documents imprimés, de lignes au registre.
+#
+# **Ils ne sortent pas.** Il n'y a pas d'adresse à régler ici, et il n'y
+# en aura pas : ils vivent dans la base chiffrée de l'officine et se
+# lisent dans Options › À propos. Ce que le mot « télémétrie » veut dire
+# dans un logiciel qui tient des données de santé, c'est ce que
+# l'officine voit de ses propres machines.
+#
+# **Ils comptent le logiciel, jamais la personne** : aucun opérateur,
+# aucune initiale. « Combien de dossiers ont été ouverts » est une
+# question sur laquelle on décide ; « combien Claire en a ouverts » n'en
+# est pas une, et ce n'est pas ici qu'elle trouvera une réponse par
+# inadvertance.
+#
+# Allumé par défaut, et éteint en un clic sur la même page. Un compteur
+# éteint par défaut est un compteur que personne n'allume : le volet
+# resterait vide sur tous les postes et l'interrupteur serait un
+# ornement. Le décocher arrête le comptage **de ce poste** tout de
+# suite ; ce qui est déjà enregistré reste, parce qu'effacer en silence
+# sur une case à cocher est pire que ne pas compter.
+# enabled = true
+
 # [prevention]
 # Les sujets d'un rendez-vous de prévention. Il n'a pas de thème — on en
 # couvre plusieurs dans la même séance —, et ce sont ces sujets qu'on
@@ -320,6 +344,31 @@ pub struct Config {
     pub scans: ScansConfig,
     pub vitale: VitaleConfig,
     pub prevention: PreventionConfig,
+    pub telemetry: TelemetryConfig,
+}
+
+/// Les compteurs d'usage — voir `src/telemetry.rs` et le modèle de
+/// `config.toml` ci-dessus.
+///
+/// Ce réglage vit dans `config.toml` et non dans la base, alors que les
+/// compteurs eux-mêmes sont dans la base. Ce n'est pas une
+/// inconséquence : ce qui est compté appartient à l'officine et se lit
+/// sur n'importe quel poste, mais **décider de se compter soi-même
+/// appartient au poste**. Un poste d'arrière-boutique qu'on ne veut pas
+/// voir dans les chiffres se décoche tout seul, sans rien changer pour
+/// les autres.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct TelemetryConfig {
+    pub enabled: bool,
+}
+
+impl Default for TelemetryConfig {
+    fn default() -> Self {
+        // Opt-out, et c'est une direction choisie : un compteur éteint
+        // par défaut est un compteur que personne n'allume.
+        Self { enabled: true }
+    }
 }
 
 /// Les sujets d'un rendez-vous de prévention.
@@ -1864,6 +1913,37 @@ mod tests {
         // Le gabarit commenté livré avec l'application la mentionne,
         // faute de quoi personne ne saurait qu'elle existe.
         assert!(CONFIG_TEMPLATE.contains("caisse_expected"));
+    }
+
+    /// Les compteurs d'usage sont allumés sauf mention contraire.
+    ///
+    /// **Opt-out, et c'est une direction choisie.** Un compteur éteint
+    /// par défaut est un compteur que personne n'allume : le volet
+    /// d'« À propos » serait vide sur tous les postes et l'interrupteur
+    /// serait un ornement. Il s'éteint en un clic, sur cette page-là.
+    #[test]
+    fn usage_counters_are_on_unless_the_post_says_otherwise() {
+        assert!(Config::default().telemetry.enabled);
+        let cfg: Config = toml::from_str(
+            r#"
+            [telemetry]
+            enabled = false
+            "#,
+        )
+        .unwrap();
+        assert!(!cfg.telemetry.enabled);
+        // Une section écrite seule n'efface rien d'autre.
+        assert!(cfg.ui.caisse_expected);
+        assert_eq!(cfg.ui.text_scale, 1.0);
+        // Une configuration qui ne dit rien les laisse allumés : c'est
+        // ce que lit une officine qui a écrit son `config.toml` avant
+        // que cette section existe.
+        let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
+        assert!(silent.telemetry.enabled);
+        // Le gabarit commenté la mentionne, faute de quoi personne ne
+        // saurait qu'elle existe — ni qu'on peut l'éteindre.
+        assert!(CONFIG_TEMPLATE.contains("[telemetry]"));
+        assert!(CONFIG_TEMPLATE.contains("enabled = true"));
     }
 
     #[test]

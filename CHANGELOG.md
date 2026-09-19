@@ -5,6 +5,63 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Des compteurs d'usage dans Options › À propos, allumés et éteints
+  en un clic.** Combien de dossiers ouverts, de fiches consultées, de
+  documents imprimés, de lignes au registre, de caisses comptées — et
+  sur combien de journées, parce qu'un cumul sans période à côté se lit
+  comme s'il couvrait tout ce qui a jamais existé.
+
+  **C'est un volet, pas une balise.** Rien n'en sort : pas d'adresse à
+  régler, pas d'identifiant d'installation, pas de « statistiques
+  d'usage », et il n'y en aura pas. Ce que le mot télémétrie veut dire
+  dans un logiciel qui tient des données de santé, c'est ce que
+  l'officine voit de ses propres machines ; un garde lit le texte du
+  module et refuse le jour où quelqu'un y ajoute un socket.
+
+  **Ils comptent le logiciel, jamais la personne.** Aucun opérateur,
+  aucune initiale, aucun nom de machine — et c'est la règle autour de
+  laquelle le module est bâti, pas un oubli. « Combien de dossiers ont
+  été ouverts » est une question sur laquelle on décide ; « combien un
+  tel en a ouverts » n'en est pas une, et ce n'est pas ici qu'elle
+  trouvera une réponse par inadvertance. Le registre, les actes et le
+  planning portent l'opérateur parce qu'une délivrance doit être
+  imputable ; un compteur, non.
+
+  **Éteints en un clic, et le décocher n'efface rien.** Le réglage vit
+  dans `config.toml`, donc poste par poste : ce qui est compté
+  appartient à l'officine et se lit partout, mais décider de se compter
+  soi-même appartient au poste, et une machine d'arrière-boutique sort
+  des chiffres sans rien changer pour les autres. Décocher arrête le
+  comptage à l'instant ; effacer est un bouton à part, qui demande deux
+  fois — confondre les deux ferait disparaître des chiffres que
+  personne n'a demandé à perdre.
+
+  Deux détails qui n'en sont pas. Cinq des neuf compteurs sont pris
+  **là où la chose arrive**, une fois : tous les documents imprimés
+  passent par `pdf::compile_and_open`, tous les actes par
+  `add_interview_by`, toutes les lignes de registre par
+  `add_stup_moves` — compter aux vingt et un appels de `pdf::open_*`
+  aurait été vingt et une occasions d'en oublier un. Et **une garde ne
+  met pas le travail du mardi sur la ligne du lundi** : la journée
+  tourne au rythme de la seule horloge de l'application, et ce qui est
+  dû à la veille est rendu avant que la nouvelle soit comptée.
+
+  Deux compteurs manquent **exprès**, et c'est écrit là où on les
+  chercherait. « Combien de fois un autre poste avait écrit le
+  premier » serait le plus utile de tous — c'est ainsi qu'une officine
+  découvre que deux personnes travaillent sur la même chose en même
+  temps, et aucun autre écran ne le dit ; il manque parce que chaque
+  compare-and-set répond `false` chez lui, et compter à vingt d'entre
+  eux finirait par en rater un vingt et unième : un compteur
+  discrètement incomplet est pire qu'un compteur absent. Une
+  synchronisation manque pour la raison inverse : `bpm-sync` est
+  optionnel, donc dans un binaire livré ce compteur afficherait zéro
+  pour toujours — ce qui n'est pas un chiffre, c'est un mensonge avec
+  un nombre dessus.
+
 ## [0.224.0] - 2026-09-18
 
 ### Added

@@ -589,6 +589,24 @@ Ce qui appartient à l'officine — son identité, l'équipe, les horaires —
 est rangé dans la base et vaut pour tous les postes. Le reste de
 `config.toml` appartient au poste.
 
+# Les compteurs d'usage
+
+Options › À propos tient quelques nombres : combien de dossiers ouverts,
+de fiches consultées, de documents imprimés, de lignes au registre, sur
+combien de journées.
+
+Ils ne sortent pas. Il n'y a pas d'adresse à régler et il n'y en aura
+pas : ils vivent dans la base chiffrée de l'officine et se lisent sur
+cette page-là.
+
+Ils comptent le logiciel, jamais la personne — aucun opérateur, aucune
+initiale. « Combien de dossiers ont été ouverts » est une question sur
+laquelle on décide ; « combien un tel en a ouverts » n'en est pas une.
+
+Allumés au départ, éteints en un clic sur la même page, et poste par
+poste. Décocher arrête le comptage tout de suite et ne perd rien :
+effacer est un bouton à part, qui demande deux fois.
+
 # La console
 
 Un endroit pour poser à la base une question que personne n'a prévue, en

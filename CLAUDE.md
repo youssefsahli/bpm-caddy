@@ -243,6 +243,48 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   of them is about a local form, and the day one is — a beta-blocker
   collyre does slow the heart — it is that one line to reopen, with a
   word in the rule rather than an omission),
+  `src/telemetry.rs` (the usage counters, and what the word is allowed
+  to mean in an application that holds health data: **a pane, not a
+  beacon**. Nothing in it reaches the world — no endpoint, no
+  installation identifier, no « usage statistics », and a guard reads
+  the module's own text and refuses the day somebody adds a socket. It
+  is **opt-out**, `[telemetry] enabled` in `config.toml`, and that is a
+  direction rather than a default nobody chose: a counter off by default
+  is a counter nobody turns on, so the pane would be empty on every post
+  and the switch would be decoration. The switch lives in `config.toml`
+  and the figures live in the base, which is not an inconsistency —
+  *what* is counted belongs to the officine and reads on any post, but
+  *deciding to count oneself* belongs to the post, so a back-office
+  machine drops out of the figures without changing anything for the
+  others. Three rules carry it. **It counts the software, never the
+  person**: no operator, no initials, no machine name — « combien de
+  dossiers ont été ouverts » is a question one decides on, « combien
+  Claire en a ouverts » is not, and a pharmacy's software is not where
+  that gets answered by accident; a guard refuses the words. **It
+  counts, it never quotes** — a signal is an enum with nothing in it,
+  the French comes from the strings file, and the only text the module
+  holds is a date. **A night shift does not put Tuesday's work on
+  Monday's line** — `Counters::turn` hands back what the old day is owed
+  before the new one is counted into, because an officine on garde works
+  through midnight. Five of the nine signals are counted **where the
+  thing happens**, once — every printable document goes through
+  `pdf::compile_and_open`, every act through `Db::add_interview_by`,
+  every register line through `Db::add_stup_moves` — via a process
+  tally the session reads the *difference* of; counting at the twenty-one
+  `pdf::open_*` call sites would be twenty-one chances to forget one.
+  Two signals are deliberately **absent** and it is written where one
+  would look: « combien de fois un autre poste avait écrit le premier »
+  is the most useful number the pane could carry, and it is missing
+  because every compare-and-set answers `false` in its own place —
+  counting at twenty of them would eventually miss the twenty-first, and
+  a counter that is quietly short is worse than one that is not there.
+  A sync conversation is absent for the mirror reason: `bpm-sync` is
+  optional, so in a shipped binary that counter would read zero for
+  ever, which is not a figure but a lie with a number on it. The write
+  is `INSERT … ON CONFLICT DO UPDATE SET n = n + excluded.n` — the one
+  shared write in this base that is **not** a compare-and-set, because a
+  monotone counter has no displayed value to confront, it has an
+  increment. Pure, tested, no clock: the day is passed in),
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only
