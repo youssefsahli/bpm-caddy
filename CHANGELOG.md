@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **La conformité du rapport d'audit lit deux choses de plus, et ce sont
+  celles qu'un contrôle demande.** Les **produits du registre à aller
+  compter** — jamais inventoriés, ou pas depuis plus longtemps que
+  l'officine ne se l'est donné dans `[stock] count_days` : « Subutex
+  8 mg … jamais inventorié » sur la base de démonstration. Et les
+  **locations dont le renouvellement est dépassé**.
+
+  Les deux passent par ce qui les calcule déjà — `ordonnancier::to_check`
+  et `location::standing`, c'est-à-dire exactement ce que les écrans
+  affichent. Deux calculs du même « à compter » finiraient par ne plus
+  dire la même chose, et c'est celui que personne ne regarde qui aurait
+  l'air juste.
+
+  Les locations sont **comptées et non listées** : chaque ligne porterait
+  un patient, et ce rapport n'en nomme aucun. Qui, se lit à l'écran, dans
+  le dossier, là où l'on peut agir. Les produits, eux, portent le nom
+  d'un médicament — qui n'est le nom de personne.
+
+  Et « jamais inventorié » n'est pas « compté il y a beaucoup de
+  jours » : deux motifs, deux phrases.
+
 ## [0.228.0] - 2026-09-19
 
 ### Added

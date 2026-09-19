@@ -181,7 +181,13 @@ fn run_audit(args: &[String]) -> i32 {
     };
     let activity = db.audit_activity(&from, &today).unwrap_or_default();
     let access = audit::summarize(&db.accesses_since(&from).unwrap_or_default());
-    let conformity = db.audit_conformity().unwrap_or_default();
+    let conformity = db
+        .audit_conformity(
+            &today,
+            i64::from(cfg.stock.count_days),
+            cfg.locations.notice_days,
+        )
+        .unwrap_or_default();
     print!("{}", audit::render(&head, &activity, &access, &conformity));
     0
 }

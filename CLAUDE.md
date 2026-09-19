@@ -327,9 +327,14 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   since a gap reads as a crash, which is the opposite of what an audit
   report is for. It reuses the modules rather than recomputing: the
   till goes through `caisse::summarize` (so a re-counted evening is
-  **one** evening), and the cumulative gap is announced over
+  **one** evening), the register's « à aller compter » through
+  `ordonnancier::to_check` and the rentals through `location::standing`
+  — what the screens already show, because two calculations of one
+  « à compter » end up disagreeing and the one nobody looks at is the
+  one that seems right. The cumulative gap is announced over
   `with_expected` evenings and **not** over the evenings counted — two
   numbers, and confusing them makes the gap read smaller than it is.
+  Rentals are **counted, not listed**: each line would carry a patient.
   It names only operators; a file is a number. It asks for nothing —
   the password comes from `BPM_CADDY_PASSWORD` or the system keyring —
   so it can sit in a night job. Pure, tested, no clock: the day is

@@ -261,6 +261,20 @@ pub struct Conformity {
     pub outdated_rewrites: usize,
     pub cards_without_dci: usize,
     pub cards_without_class: usize,
+    /// Produits du registre à aller compter : jamais inventoriés, ou
+    /// pas depuis plus longtemps que l'officine ne se l'est donné
+    /// (`[stock] count_days`). Le nom du produit et depuis quand.
+    ///
+    /// C'est la lecture qu'un contrôle demande en premier, et la seule
+    /// de ce rapport qui porte un nom — celui d'un médicament, ce qui
+    /// n'est le nom de personne.
+    pub uncounted_stups: Vec<(String, Option<i64>)>,
+    /// Locations dont le renouvellement est dépassé.
+    ///
+    /// **Un nombre et non une liste** : chaque ligne porterait un
+    /// patient, et ce rapport n'en nomme aucun. Qui, se lit à l'écran,
+    /// dans le dossier, là où l'on peut agir.
+    pub overdue_rentals: usize,
 }
 
 /// L'en-tête : de qui, de quoi, sur quand.
@@ -403,7 +417,9 @@ pub fn render(
     let clean = conformity.unknown_classes.is_empty()
         && conformity.outdated_rewrites == 0
         && conformity.cards_without_dci == 0
-        && conformity.cards_without_class == 0;
+        && conformity.cards_without_class == 0
+        && conformity.uncounted_stups.is_empty()
+        && conformity.overdue_rentals == 0;
     if clean {
         line(&mut out, tr("audit_report_conform"));
     } else {
@@ -426,6 +442,27 @@ pub fn render(
             &mut out,
             &trf("audit_report_no_class", conformity.cards_without_class),
         );
+        if !conformity.uncounted_stups.is_empty() {
+            line(&mut out, "");
+            line(&mut out, tr("audit_report_uncounted"));
+            for (label, days) in &conformity.uncounted_stups {
+                let since = match days {
+                    Some(d) => trf("audit_report_uncounted_days", d),
+                    // Jamais compté et compté il y a trop longtemps
+                    // sont deux motifs, et le second n'est pas le
+                    // premier avec un grand nombre.
+                    None => tr("audit_report_uncounted_never").to_owned(),
+                };
+                line(&mut out, &figure(label, &since, "  "));
+            }
+        }
+        if conformity.overdue_rentals > 0 {
+            line(&mut out, "");
+            line(
+                &mut out,
+                &trf("audit_report_rentals", conformity.overdue_rentals),
+            );
+        }
     }
     out
 }
@@ -603,6 +640,14 @@ mod tests {
             outdated_rewrites: 2,
             cards_without_dci: 7,
             cards_without_class: 1,
+            // Jamais compté et compté il y a trop longtemps sont deux
+            // motifs : le second n'est pas le premier avec un grand
+            // nombre, et la feuille les écrit autrement.
+            uncounted_stups: vec![
+                ("Skenan LP 30 mg".to_owned(), Some(412)),
+                ("Méthadone 20 mg".to_owned(), None),
+            ],
+            overdue_rentals: 2,
         };
         (head, activity, access, conformity)
     }

@@ -649,7 +649,9 @@ annoncé sur les soirs où il est calculé, qui ne sont pas tous ceux qui
 ont été comptés. **Les accès** : ce que le journal ci-dessus contient
 sur la période. **La conformité** : les libellés de classe que le
 référentiel ne sait pas replier, les phrases réécrites que la version
-livrée a périmées, les fiches sans DCI ou sans classe.
+livrée a périmées, les fiches sans DCI ou sans classe, les produits du
+registre à aller compter, et les locations dont le renouvellement est
+dépassé.
 
 Il ne nomme que les opérateurs : un dossier y est désigné par son
 numéro, comme au registre.

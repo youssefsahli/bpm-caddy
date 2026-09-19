@@ -31862,7 +31862,12 @@ impl Db {
     /// existe pour montrer —, combien de réécritures la version livrée
     /// a périmées, et combien de fiches manquent de ce qui les rend
     /// trouvables.
-    pub fn audit_conformity(&self) -> Result<crate::audit::Conformity, String> {
+    pub fn audit_conformity(
+        &self,
+        today: &str,
+        count_days: i64,
+        notice_days: u32,
+    ) -> Result<crate::audit::Conformity, String> {
         let drugs = self.drugs()?;
         let mut unknown: std::collections::BTreeMap<String, usize> =
             std::collections::BTreeMap::new();
@@ -31892,11 +31897,58 @@ impl Db {
             })
             .count();
 
+        // Les produits du registre à aller compter : la lecture qu'un
+        // contrôle demande en premier. Elle passe par
+        // `ordonnancier::to_check`, qui est déjà ce que l'écran du
+        // registre affiche — deux calculs du même « à compter »
+        // finiraient par ne plus dire la même chose, et c'est celui que
+        // personne ne regarde qui aurait l'air juste.
+        let followed: Vec<crate::ordonnancier::Followed> = self
+            .stup_summary()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|s| !s.product.archived)
+            .map(|s| crate::ordonnancier::Followed {
+                id: s.product.id,
+                label: s.product.label,
+                unit: s.product.unit,
+                stock: s.stock,
+                threshold: s.product.threshold,
+                last_count: s.last_count,
+                to_destroy: s.to_destroy,
+                waiting_since: s.waiting_since,
+            })
+            .collect();
+        let uncounted_stups = crate::ordonnancier::to_check(&followed, today, count_days)
+            .into_iter()
+            .filter(|c| c.why == crate::ordonnancier::Why::Uncounted)
+            .map(|c| (c.label, c.days))
+            .collect();
+
+        // Les locations dont le renouvellement est dépassé, **comptées
+        // et non listées** : chaque ligne porte un patient, et ce
+        // rapport n'en nomme aucun.
+        let overdue_rentals = self
+            .running_locations()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|(l, _)| {
+                crate::location::next_renewal(l.renewal_base(), l.renewal_days).is_some_and(|r| {
+                    matches!(
+                        crate::location::standing(&r, today, notice_days),
+                        Some(crate::location::Standing::Overdue)
+                    )
+                })
+            })
+            .count();
+
         Ok(crate::audit::Conformity {
             unknown_classes,
             outdated_rewrites,
             cards_without_dci: no_dci,
             cards_without_class: no_class,
+            uncounted_stups,
+            overdue_rentals,
         })
     }
 
