@@ -4147,6 +4147,22 @@ struct Session {
     /// vient d'ajouter. `None` veut dire « la base n'en portait pas » —
     /// une base d'avant cette version, ou une base neuve.
     officine_seen: Option<crate::config::PharmacyConfig>,
+    /// Ce qu'un **autre poste** a écrit de l'officine et que celui-ci
+    /// n'a pas encore pris.
+    ///
+    /// L'officine est un réglage partagé comme les autres, et le seul
+    /// qui s'imprime : l'adresse changée au comptoir doit atteindre
+    /// l'en-tête du bilan de l'arrière-boutique. Elle ne l'atteignait
+    /// qu'au déverrouillage suivant — si bien que le poste qui n'avait
+    /// rien vu ouvrait Options › Officine sur un texte périmé, le
+    /// corrigeait, et se faisait refuser l'écriture. Le conflit était
+    /// réel ; ce qui le fabriquait, c'était l'écran.
+    ///
+    /// Posé par `resync`, pris par l'application quand **aucun
+    /// formulaire n'est ouvert** : remplacer ce que quelqu'un est en
+    /// train de taper serait pire que l'écran périmé que cela corrige.
+    /// Il attend donc que le dialogue se ferme.
+    officine_fresh: Option<crate::config::PharmacyConfig>,
     /// Un autre poste a enregistré l'officine avant nous, et ce qui est
     /// à l'écran vient d'être remplacé par ce qu'il a écrit.
     officine_stale: bool,
@@ -4593,6 +4609,7 @@ impl Session {
             content: crate::content::Overrides::default(),
             text_edit: None,
             officine_seen: None,
+            officine_fresh: None,
             officine_stale: false,
             sync_seen: (0, 0, 0),
             sync_next: Instant::now(),
@@ -5563,6 +5580,22 @@ impl Session {
         // au comptoir doit atteindre l'imprimante de l'autre poste.
         if let Ok(over) = self.db.content_overrides() {
             self.content = over;
+        }
+        // **L'officine elle-même**, pour la même raison, et c'est la
+        // lecture partagée qui manquait ici : son identité, son équipe
+        // et ses horaires valent pour tous les postes et s'impriment en
+        // tête de ce qui sort. Sans cette ligne, le poste qui n'avait
+        // rien vu rouvrait Options › Officine sur un texte périmé et se
+        // faisait refuser sa correction — un conflit que l'écran
+        // fabriquait tout seul.
+        //
+        // Posé ici, pris ailleurs : cette fonction ne touche pas à la
+        // configuration de l'application, et surtout pas à un
+        // formulaire ouvert.
+        if let Some(theirs) = self.db.officine() {
+            if self.officine_seen.as_ref() != Some(&theirs) {
+                self.officine_fresh = Some(theirs);
+            }
         }
         // Le référentiel, **sauf si sa fiche est ouverte en
         // correction** : recharger la liste sous un formulaire ouvert
@@ -52072,6 +52105,32 @@ impl eframe::App for App {
         if let (State::Unlocked(session), None) = (&mut self.state, &self.maint_job) {
             session.sync_if_others_wrote();
         }
+        // **Ce qu'un autre poste a écrit de l'officine, pris ici.**
+        //
+        // Elle vit dans la base et vaut pour tous les postes ; elle ne
+        // parvenait au poste voisin qu'à son déverrouillage suivant.
+        // Celui qui n'avait rien vu rouvrait Options › Officine sur un
+        // texte périmé, le corrigeait, et se faisait refuser
+        // l'écriture : le conflit était réel, et c'est l'écran qui le
+        // fabriquait.
+        //
+        // **Seulement quand aucun dialogue n'est ouvert.** Le dialogue
+        // des options porte sa propre copie de la configuration, et
+        // quelqu'un peut y avoir tapé sans avoir encore enregistré —
+        // remplacer cela serait pire que l'écran périmé que l'on
+        // corrige. L'adoption attend donc la fermeture, ce qui ne coûte
+        // rien : `officine_fresh` garde ce qui est à prendre.
+        if self.options.is_none() {
+            if let State::Unlocked(session) = &mut self.state {
+                if let Some(theirs) = session.officine_fresh.take() {
+                    self.config.pharmacy = theirs.clone();
+                    // Et le témoin du compare-and-set suit : la
+                    // prochaine écriture se mesure à ce que la base
+                    // porte, non à ce que ce poste avait vu ce matin.
+                    session.officine_seen = Some(theirs);
+                }
+            }
+        }
 
         // Multi-PC: pick up teammates' edits to the shared notes while our
         // copy is clean and the cursor is elsewhere; concurrent edits are
@@ -52972,6 +53031,11 @@ impl eframe::App for App {
             }
         }
         let mut set_stup_start: Option<u32> = None;
+        // Le paquet : écrit d'un côté, rendu de l'autre. Comme tout ce
+        // que cette page décide, les deux sortent en drapeau et sont
+        // faits après l'emprunt.
+        let mut bundle_out: Option<std::path::PathBuf> = None;
+        let mut bundle_in: Option<(std::path::PathBuf, std::path::PathBuf)> = None;
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -54338,6 +54402,42 @@ impl eframe::App for App {
                                         }
                                     }
                                 });
+                                // **Les trois fichiers en un seul.**
+                                // La base, les pièces et le registre
+                                // vivent à part pour de bonnes raisons,
+                                // et cela fait trois choses à emporter
+                                // sans en oublier une. L'import écrit à
+                                // côté et n'écrase rien : la base y
+                                // pointe au redémarrage, comme
+                                // « Déplacer la base vers… ».
+                                ui.horizontal(|ui| {
+                                    if motif::button(ui, tr("opts_bundle_export"))
+                                        .on_hover_text(tr("opts_bundle_export_tooltip"))
+                                        .clicked()
+                                    {
+                                        if let Some(p) = rfd::FileDialog::new()
+                                            .set_file_name("officine.bpmpack")
+                                            .save_file()
+                                        {
+                                            bundle_out = Some(p);
+                                        }
+                                    }
+                                    if motif::button(ui, tr("opts_bundle_import"))
+                                        .on_hover_text(tr("opts_bundle_import_tooltip"))
+                                        .clicked()
+                                    {
+                                        // Deux dialogues : le paquet,
+                                        // puis où le rendre. Le second
+                                        // n'est demandé que si le
+                                        // premier a été choisi.
+                                        if let Some(pack) = rfd::FileDialog::new().pick_file() {
+                                            if let Some(dir) = rfd::FileDialog::new().pick_folder()
+                                            {
+                                                bundle_in = Some((pack, dir));
+                                            }
+                                        }
+                                    }
+                                });
                                 // Maintenance: complete a base created before
                                 // the starter list grew, or wipe everything
                                 // (debug/demo — two clicks, never one).
@@ -54706,6 +54806,54 @@ impl eframe::App for App {
             // vraiment retenu plutôt que ce qu'on a tapé.
             if let Some(editor) = &mut self.options {
                 editor.stup_start_text = None;
+            }
+        }
+        if let (Some(to), State::Unlocked(session)) = (&bundle_out, &self.state) {
+            let said = match session.db.export_bundle(to, &session.password) {
+                Ok(()) => (false, trf("opts_bundle_done", to.display())),
+                Err(e) => (true, e),
+            };
+            if let Some(editor) = &mut self.options {
+                editor.message = Some(said);
+            }
+        }
+        if let (Some((pack, into)), State::Unlocked(session)) = (&bundle_in, &self.state) {
+            // Ce que le paquet dit de lui-même, lu **avant** d'écrire
+            // quoi que ce soit : c'est aussi ce qui prouve la clé, et
+            // un mot de passe qui n'est pas le sien doit se dire avant
+            // d'avoir posé trois fichiers quelque part.
+            let about = db::Db::bundle_about(pack, &session.password);
+            let said = match about.and_then(|about| {
+                db::Db::import_bundle(pack, &session.password, into).map(|base| (base, about))
+            }) {
+                Ok((base, (version, day, weight))) => {
+                    // La configuration pointe dessus, et l'officine
+                    // redémarre : rien n'est fermé sous les doigts de
+                    // personne, et le chemin d'avant reste écrit dans
+                    // le fichier tant qu'on n'a pas enregistré.
+                    self.config.database.path = Some(base.clone());
+                    if let Some(editor) = &mut self.options {
+                        editor.cfg.database.path = Some(base);
+                        editor.db_path_text =
+                            into.join(db::BUNDLE_BASE).to_string_lossy().into_owned();
+                    }
+                    (
+                        false,
+                        trn(
+                            "opts_bundle_imported",
+                            &[
+                                &version,
+                                &db::format_french_date(&day),
+                                &crate::strings::decimal(weight as f64 / 1e6, 1),
+                                &into.display(),
+                            ],
+                        ),
+                    )
+                }
+                Err(e) => (true, e),
+            };
+            if let Some(editor) = &mut self.options {
+                editor.message = Some(said);
             }
         }
         if clear_telemetry {
@@ -61776,6 +61924,88 @@ mod tests {
     /// The guard comes back with the session and not instead of it: it
     /// removes the directory when it drops, and dropping it here would
     /// delete the database out from under the session it just opened.
+    /// Ce qu'un autre poste écrit de l'officine arrive **sans qu'on se
+    /// reverrouille**.
+    ///
+    /// L'officine vit dans la base et vaut pour tous les postes ; elle
+    /// ne parvenait au poste voisin qu'à son déverrouillage suivant.
+    /// Celui qui n'avait rien vu rouvrait Options › Officine sur un
+    /// texte périmé, le corrigeait, et se faisait refuser l'écriture :
+    /// le conflit était réel, et c'est l'écran qui le fabriquait.
+    #[test]
+    fn what_another_post_writes_of_the_officine_arrives_without_relocking() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-officine-resync-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("shared.db");
+
+        let mine = crate::db::Db::open(&path, "secret").unwrap();
+        let mut session = super::Session::new(mine, 12, 30, true).unwrap();
+        // Ce poste-ci a adopté ce que la base portait en ouvrant.
+        let ours = crate::config::PharmacyConfig {
+            name: "Pharmacie des Lilas".to_owned(),
+            phone: "01 02 03 04 05".to_owned(),
+            ..Default::default()
+        };
+        session
+            .db
+            .set_officine(&ours, None, "2026-09-19", "CL")
+            .unwrap();
+        session.officine_seen = Some(ours.clone());
+        session.resync();
+        assert_eq!(session.officine_fresh, None, "rien de neuf, rien à prendre");
+
+        // L'autre poste corrige le téléphone.
+        let theirs = crate::config::PharmacyConfig {
+            phone: "01 99 99 99 99".to_owned(),
+            ..ours.clone()
+        };
+        let other = crate::db::Db::open(&path, "secret").unwrap();
+        assert!(other
+            .set_officine(&theirs, Some(&ours), "2026-09-19", "MB")
+            .unwrap());
+
+        session.resync();
+        assert_eq!(
+            session.officine_fresh.as_ref(),
+            Some(&theirs),
+            "ce que l'autre poste a écrit est là, à prendre"
+        );
+
+        // Pris, le témoin du compare-and-set suit : la prochaine
+        // écriture se mesure à ce que la base porte, et non à ce que ce
+        // poste avait vu en ouvrant. Sans cela, la correction suivante
+        // se ferait refuser — ce qui est exactement le conflit qu'on
+        // vient d'enlever.
+        let taken = session.officine_fresh.take().unwrap();
+        session.officine_seen = Some(taken.clone());
+        let mine_now = crate::config::PharmacyConfig {
+            address: "14 rue des Lilas".to_owned(),
+            ..taken
+        };
+        assert!(
+            session
+                .db
+                .set_officine(
+                    &mine_now,
+                    session.officine_seen.as_ref(),
+                    "2026-09-19",
+                    "CL"
+                )
+                .unwrap(),
+            "l'écriture suivante passe"
+        );
+        // Et rien n'est signalé deux fois : ce qui est pris ne revient
+        // pas au tour d'après.
+        session.resync();
+        assert_eq!(session.officine_fresh.as_ref(), Some(&mine_now));
+        session.officine_seen = session.officine_fresh.take();
+        session.resync();
+        assert_eq!(session.officine_fresh, None);
+    }
+
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tab-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);

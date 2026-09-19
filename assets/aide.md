@@ -595,7 +595,15 @@ Supprimer des pièces ne rend pas la place : seul « Compacter » le fait.
 
 Ce qui appartient à l'officine — son identité, l'équipe, les horaires —
 est rangé dans la base et vaut pour tous les postes. Le reste de
-`config.toml` appartient au poste.
+`config.toml` appartient au poste. Ce qu'un autre poste y change arrive
+tout seul, sans qu'on ait à se reverrouiller — sauf pendant qu'un
+dialogue est ouvert, où l'on n'écrit pas sous les doigts de quelqu'un.
+
+**Les trois fichiers en un seul.** « Exporter en un fichier… » écrit la
+base, les pièces et le registre dans un seul paquet chiffré du même mot
+de passe, à emporter ou à archiver. « Importer un paquet… » les rend
+dans un dossier **vide** : rien n'est écrasé, et la base y pointe au
+redémarrage.
 
 # Les compteurs d'usage
 

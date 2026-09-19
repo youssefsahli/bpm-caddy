@@ -5,6 +5,48 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Modifier l'officine depuis deux postes se terminait par un
+  conflit.** Son identité, son équipe et ses horaires vivent dans la
+  base et valent pour tous les postes — c'est aussi le seul réglage
+  partagé qui **s'imprime**, en tête de ce qui sort. Il ne parvenait au
+  poste voisin qu'au déverrouillage suivant : celui qui n'avait rien vu
+  rouvrait Options › Officine sur un texte périmé, le corrigeait, et se
+  faisait refuser l'écriture. Le conflit était réel, et c'est l'écran
+  qui le fabriquait.
+
+  Il arrive maintenant comme toutes les autres lectures partagées, dans
+  les deux secondes — **sauf pendant qu'un dialogue est ouvert**. Celui
+  des options porte sa propre copie de la configuration et quelqu'un
+  peut y avoir tapé sans avoir enregistré : remplacer cela serait pire
+  que l'écran périmé qu'on corrige. Ce qui est à prendre attend la
+  fermeture.
+
+### Added
+- **Les trois fichiers d'une officine voyagent en un seul.** La base,
+  les pièces et le registre vivent à part pour de bonnes raisons, et
+  cela fait trois choses à emporter sans en oublier une — dont deux ne
+  veulent rien dire seules.
+
+  « Exporter en un fichier… » les écrit dans un paquet ; « Importer un
+  paquet… » les rend tous les trois. Le paquet est **une base SQLCipher
+  de plus**, chiffrée du même mot de passe : pas un format inventé,
+  mais un fichier que `sqlite3` ouvre, dont on peut lister le contenu,
+  et dont le chiffrement est celui que cette application sait déjà
+  faire. Un zip aurait coûté une dépendance et aurait posé en clair le
+  nom de ce qu'il porte. Il dit aussi de quelle version et de quel jour
+  il vient : un paquet retrouvé dans six mois sur une clé n'a personne
+  pour l'expliquer.
+
+  Les copies sont prises par `VACUUM INTO`, donc cohérentes même si
+  quelqu'un écrit pendant ce temps. Et **l'import n'écrase rien** : il
+  refuse un dossier qui porte déjà l'un des trois noms, écrit à côté, et
+  la base y pointe au redémarrage — le même enchaînement que « Déplacer
+  la base vers… », et le seul qui ne ferme pas une connexion sous les
+  doigts de quelqu'un.
+
 ## [0.232.0] - 2026-09-19
 
 ### Changed

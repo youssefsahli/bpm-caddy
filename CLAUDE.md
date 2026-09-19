@@ -1689,6 +1689,22 @@ add clicking and typing; it is not the price of entry.
   « Copier la base… » copies both, `[scans] backups_keep` is separate
   and defaults to 2, and reading falls back to the legacy `bytes` column
   so a base from before the split still opens its pieces.
+- **Three files travel as one.** The base, the scans and the register
+  live apart for reasons written beside each of them, and that makes
+  three things to carry without forgetting one, two of which mean
+  nothing alone. `Db::export_bundle` writes them into **one** file and
+  `Db::import_bundle` gives all three back. The package is *another
+  SQLCipher base*, encrypted with the same password, carrying the three
+  as blobs — not an invented format: a file `sqlite3` opens, whose
+  contents can be listed, and whose encryption is the one this
+  application already knows how to do; a zip would have cost a
+  dependency and put the names of what it carries in clear. The three
+  copies are taken with `VACUUM INTO`, so they are **consistent** even
+  if somebody writes during the export. **Import overwrites nothing**:
+  it refuses a directory that already holds one of the three names,
+  writes beside instead, and the base points at it on restart — the
+  same arrangement as « Déplacer la base vers… », and the only one that
+  does not close a connection under somebody's fingers.
 - **SQLite never shrinks a file.** Deleting 200 pieces frees pages and
   leaves the file at 56 MB. Only `VACUUM` gives the disk back — that is
   `Job::Compact`, which also moves any legacy bytes out and sweeps
@@ -1703,6 +1719,20 @@ add clicking and typing; it is not the price of entry.
   returning `bool`; `false` → reload + French notice). UI caches must
   be reloadable, and the team-notes file merges (`merge_team_notes`) —
   never blind last-writer-wins on shared data.
+- **The officine is a shared reading, and `resync` reads it.** Its
+  identity, team and opening hours live in the base and hold for every
+  post — and it is the only shared setting that **prints**, in the head
+  of everything that leaves. It reached the neighbouring post only at
+  that post's next unlock, so the one that had seen nothing reopened
+  Options › Officine on stale text, corrected it, and had its write
+  refused: the conflict was real, and the screen was what manufactured
+  it. `resync` now surfaces it in `officine_fresh`, and the application
+  takes it **only when no dialog is open** — the Options dialog carries
+  its own copy of the configuration and somebody may have typed in it
+  without saving, and replacing that would be worse than the stale
+  screen it fixes. What is taken updates `officine_seen` too, so the
+  next compare-and-set measures against what the base holds rather than
+  what this post saw at breakfast.
 - **And the screen learns of another post's write without being asked.**
   The compare-and-set notices all fire *at the moment of writing*; until
   then a view showed whatever the base held when it opened, with nothing

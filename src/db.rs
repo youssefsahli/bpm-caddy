@@ -29388,6 +29388,15 @@ const STUP_MIGRATIONS: &[&str] = &[
 ///
 /// Les deux se déplacent ensemble, et « Copier la base… » prend les
 /// deux, en nommant la copie des pièces d'après la destination.
+/// Les trois noms que porte un paquet, et ceux qu'il rend.
+///
+/// Écrits une fois : l'export les pose et l'import les cherche, et deux
+/// listes des mêmes noms finiraient par ne plus se répondre — un paquet
+/// qu'on ne peut plus ouvrir.
+pub const BUNDLE_BASE: &str = "bpm_caddy.db";
+pub const BUNDLE_SCANS: &str = "bpm_caddy_scans.db";
+pub const BUNDLE_STUPS: &str = "bpm_caddy_stups.db";
+
 pub fn scans_path(db_path: &Path) -> PathBuf {
     side_path(db_path, "scans")
 }
@@ -29765,6 +29774,168 @@ impl Db {
             .map_err(|e| format!("sauvegarde impossible : {e}"))?;
         crate::telemetry::tally(crate::telemetry::Signal::Backup);
         Ok(())
+    }
+
+    /// Les trois fichiers d'une officine, en **un seul**.
+    ///
+    /// La base, les pièces et le registre vivent à part pour de bonnes
+    /// raisons — chacune écrite à côté de son fichier —, et cela fait
+    /// trois choses à emporter, à recopier sans en oublier une, et à
+    /// remettre dans le bon ordre. « Copier la base vers… » les prend
+    /// bien toutes les trois, mais ce qui arrive à l'autre bout reste
+    /// trois fichiers dont deux ne veulent rien dire seuls.
+    ///
+    /// Le paquet est **une base SQLCipher de plus**, chiffrée avec le
+    /// même mot de passe, qui porte les trois en blobs. Pas un format
+    /// inventé : un fichier que `sqlite3` ouvre, dont on peut lister le
+    /// contenu, et dont le chiffrement est celui que cette application
+    /// sait déjà faire. Un zip aurait demandé une dépendance de plus et
+    /// aurait posé en clair le nom des fichiers qu'il porte.
+    ///
+    /// Les trois copies sont prises par `VACUUM INTO`, donc
+    /// **cohérentes** même si quelqu'un écrit pendant ce temps : c'est
+    /// la même façon que la sauvegarde quotidienne, et la seule qui ne
+    /// rende pas un fichier à moitié écrit.
+    /// Le mot de passe est **passé** et non retenu : cette structure
+    /// n'en garde pas, et lui en faire garder un pour ce seul usage
+    /// serait mettre une clé dans un objet qui vit toute la séance.
+    pub fn export_bundle(&self, to: &Path, password: &str) -> Result<(), String> {
+        let stage = to.with_extension("en-cours");
+        let _ = std::fs::remove_dir_all(&stage);
+        std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+
+        let base = stage.join(BUNDLE_BASE);
+        let scans = stage.join(BUNDLE_SCANS);
+        let stups = stage.join(BUNDLE_STUPS);
+        self.backup_to(&base)?;
+        self.backup_scans_to(&scans)?;
+        self.backup_stups_to(&stups)?;
+
+        // Le paquet est réécrit et jamais complété : un export par
+        // dessus un autre laisserait la moitié d'hier sous la moitié
+        // d'aujourd'hui, et rien ne dirait laquelle est laquelle.
+        let _ = std::fs::remove_file(to);
+        let out = Connection::open(to).map_err(|e| e.to_string())?;
+        out.pragma_update(None, "key", password)
+            .map_err(|e| e.to_string())?;
+        out.execute_batch(
+            "CREATE TABLE IF NOT EXISTS files (
+                 name  TEXT PRIMARY KEY,
+                 bytes BLOB NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS about (
+                 key   TEXT PRIMARY KEY,
+                 value TEXT NOT NULL
+             );",
+        )
+        .map_err(|e| e.to_string())?;
+        for (name, path) in [
+            (BUNDLE_BASE, &base),
+            (BUNDLE_SCANS, &scans),
+            (BUNDLE_STUPS, &stups),
+        ] {
+            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+            out.execute(
+                "INSERT INTO files (name, bytes) VALUES (?1, ?2)",
+                rusqlite::params![name, bytes],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        // De quoi et de quand : un paquet qu'on retrouve dans six mois
+        // sur une clé doit pouvoir dire lui-même ce qu'il est.
+        for (key, value) in [
+            ("version", env!("CARGO_PKG_VERSION")),
+            ("fait_le", &self.today_iso().unwrap_or_default()),
+        ] {
+            out.execute(
+                "INSERT INTO about (key, value) VALUES (?1, ?2)",
+                rusqlite::params![key, value],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        drop(out);
+        // Les trois copies intermédiaires ne traînent pas : ce sont des
+        // bases en clair de rien du tout — chiffrées, mais posées dans
+        // un dossier que personne ne surveille.
+        let _ = std::fs::remove_dir_all(&stage);
+        Ok(())
+    }
+
+    /// Rend les trois fichiers d'un paquet, dans un dossier choisi.
+    ///
+    /// **Rien n'est écrasé.** L'import écrit à côté et ne touche pas à
+    /// ce que ce poste a ouvert : le dossier de destination doit être
+    /// vide de ces trois noms-là, sans quoi c'est refusé. L'officine
+    /// pointe ensuite sa configuration dessus et redémarre, exactement
+    /// comme « Déplacer la base vers… ». C'est le seul enchaînement qui
+    /// n'ait pas à fermer une connexion ouverte sous les doigts de
+    /// quelqu'un, et le seul qui laisse revenir en arrière.
+    ///
+    /// Le paquet doit s'ouvrir avec le mot de passe donné : c'est celui
+    /// de la base dont il vient. Un paquet d'une autre officine se
+    /// refuse ici, et le dit.
+    pub fn import_bundle(from: &Path, password: &str, into: &Path) -> Result<PathBuf, String> {
+        let pack = Connection::open(from).map_err(|e| e.to_string())?;
+        pack.pragma_update(None, "key", password)
+            .map_err(|e| e.to_string())?;
+        // La première lecture est ce qui prouve la clé : SQLCipher ne
+        // refuse pas à l'ouverture, il refuse au premier octet lu.
+        let names: Vec<String> = {
+            let mut q = pack
+                .prepare("SELECT name FROM files ORDER BY name")
+                .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?;
+            let rows = q
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?;
+            rows.collect::<Result<_, _>>()
+                .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?
+        };
+        // Les trois, et pas deux : un paquet amputé rendrait une
+        // officine sans registre, ce qui se verrait le jour d'un
+        // contrôle et pas avant.
+        for wanted in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            if !names.iter().any(|n| n == wanted) {
+                return Err(crate::strings::trf("opts_bundle_missing", wanted));
+            }
+        }
+
+        let target = into.join(BUNDLE_BASE);
+        for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            if into.join(name).exists() {
+                return Err(crate::strings::trf("opts_bundle_occupied", name));
+            }
+        }
+        std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
+        for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            let bytes: Vec<u8> = pack
+                .query_row("SELECT bytes FROM files WHERE name = ?1", [name], |r| {
+                    r.get(0)
+                })
+                .map_err(|e| e.to_string())?;
+            std::fs::write(into.join(name), bytes).map_err(|e| e.to_string())?;
+        }
+        Ok(target)
+    }
+
+    /// Ce qu'un paquet dit de lui-même, sans rien en sortir.
+    ///
+    /// De quelle version et de quel jour il vient, et le poids des trois
+    /// fichiers qu'il porte — de quoi reconnaître celui qu'on cherche
+    /// avant d'en faire quoi que ce soit.
+    pub fn bundle_about(from: &Path, password: &str) -> Result<(String, String, u64), String> {
+        let pack = Connection::open(from).map_err(|e| e.to_string())?;
+        pack.pragma_update(None, "key", password)
+            .map_err(|e| e.to_string())?;
+        let read = |key: &str| -> String {
+            pack.query_row("SELECT value FROM about WHERE key = ?1", [key], |r| {
+                r.get::<_, String>(0)
+            })
+            .unwrap_or_default()
+        };
+        let weight: i64 = pack
+            .query_row("SELECT SUM(LENGTH(bytes)) FROM files", [], |r| r.get(0))
+            .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?;
+        Ok((read("version"), read("fait_le"), weight.max(0) as u64))
     }
 
     /// Rendre au disque ce que les suppressions ont laissé.
@@ -38683,6 +38854,93 @@ mod tests {
                 "le registre ne se réécrit pas : {verb}"
             );
         }
+    }
+
+    /// Un paquet emporte les trois fichiers et les rend tous les trois.
+    ///
+    /// C'est ce que cette fonction existe pour faire : la base, les
+    /// pièces et le registre vivent à part, et deux des trois ne
+    /// veulent rien dire seuls. Un paquet qui en rendrait deux ferait
+    /// une officine sans registre, ce qui se verrait le jour d'un
+    /// contrôle et pas avant.
+    #[test]
+    fn a_bundle_carries_the_three_files_and_gives_them_all_back() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-bundle-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("live.db");
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        // Une pièce et une ligne de registre : les deux fichiers d'à
+        // côté portent quelque chose, sans quoi le test ne dirait rien
+        // de ce qu'il prétend vérifier.
+        let sid = db
+            .follow_stupefiant(&Stupefiant {
+                id: 0,
+                drug_id: 0,
+                label: "Skenan LP 30 mg".to_owned(),
+                unit: "gélule".to_owned(),
+                threshold: 0.0,
+                archived: false,
+                family: String::new(),
+                status: "STUPEFIANT".to_owned(),
+                max_days: 28,
+                note: String::new(),
+                per_box: 14.0,
+            })
+            .unwrap();
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: sid,
+            kind: "ENTREE".to_owned(),
+            happened_on: "2026-01-08".to_owned(),
+            quantity: 28.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: "OCP".to_owned(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "CL".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        })
+        .unwrap();
+
+        let pack = dir.join("officine.bpmpack");
+        db.export_bundle(&pack, "secret").unwrap();
+        assert!(pack.exists(), "le paquet est un fichier");
+        // Et il dit de lui-même ce qu'il est : un paquet retrouvé dans
+        // six mois sur une clé n'a personne pour l'expliquer.
+        let (version, _day, weight) = Db::bundle_about(&pack, "secret").unwrap();
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+        assert!(weight > 0);
+        // Chiffré du mot de passe de la base, et de lui seul.
+        assert!(Db::bundle_about(&pack, "autre").is_err());
+
+        // Rendu dans un dossier vide, il redonne les trois.
+        let into = dir.join("ailleurs");
+        let base = Db::import_bundle(&pack, "secret", &into).unwrap();
+        for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+            assert!(into.join(name).exists(), "{name} manque");
+        }
+        // Et ce qui revient est bien la même officine : le dossier et
+        // la ligne de registre sont là, lisibles du même mot de passe.
+        let back = Db::open(&base, "secret").unwrap();
+        assert_eq!(back.patients().unwrap().len(), 1);
+        assert_eq!(back.stup_moves(sid).unwrap().len(), 1);
+        assert_eq!(back.patients().unwrap()[0].id, pid);
+
+        // **Rien n'est écrasé.** Le même dossier une seconde fois est
+        // refusé : l'import écrit à côté, il ne remplace pas une
+        // officine en place.
+        assert!(Db::import_bundle(&pack, "secret", &into).is_err());
+        // Et un mot de passe qui n'est pas le sien n'ouvre rien.
+        assert!(Db::import_bundle(&pack, "autre", &dir.join("encore")).is_err());
     }
 
     /// Le journal des accès ne se réécrit pas, et ne se vide qu'à la

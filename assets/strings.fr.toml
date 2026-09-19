@@ -1728,6 +1728,18 @@ stup_ordo_print_tooltip = "Imprimer l'ordonnancier de l'année, ligne par ligne,
 # Le premier numéro d'ordonnancier, déclaré une fois dans Options ›
 # Base. Une officine qui s'installe avec ce logiciel continue son
 # registre de papier : elle en est à 18 950, pas à 1.
+# Le paquet : les trois fichiers de l'officine en un seul, chiffré du
+# même mot de passe. L'import n'écrase rien — il écrit à côté, et la
+# base y pointe au redémarrage, comme « Déplacer la base vers… ».
+opts_bundle_export = "Exporter en un fichier…"
+opts_bundle_export_tooltip = "Écrire la base, les pièces et le registre dans un seul fichier chiffré, à emporter ou à archiver"
+opts_bundle_import = "Importer un paquet…"
+opts_bundle_import_tooltip = "Rendre les trois fichiers d'un paquet dans un dossier vide. Rien n'est écrasé : la base y pointera au redémarrage."
+opts_bundle_done = "Paquet écrit : {}"
+opts_bundle_imported = "Paquet de la version {}, fait le {} — {} Mo, rendu dans {}. La base y pointera au redémarrage."
+opts_bundle_wrong_key = "Ce paquet est chiffré avec un autre mot de passe que celui de cette base."
+opts_bundle_missing = "Paquet incomplet : {} manque. Rien n'a été écrit."
+opts_bundle_occupied = "Le dossier choisi contient déjà {}. L'import n'écrase rien : prenez un dossier vide."
 opts_stup_start = "Premier numéro d'ordonnancier"
 opts_stup_start_hint = "ex. 18950"
 opts_stup_start_tooltip = "Le numéro auquel votre ordonnancier de papier s'est arrêté, pour que la suite continue. Vide ou 0 : la numérotation part à 1. Un numéro déjà posé n'est jamais réattribué — déclaré trop bas, il ne fait rien."
