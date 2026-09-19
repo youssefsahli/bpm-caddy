@@ -43164,6 +43164,12 @@ mod tests {
             if d % 6 == 0 {
                 counts.push(("registre", 3));
             }
+            // Deux postes qui se marchent dessus, de temps en temps.
+            // C'est le chiffre que seul ce volet donne, et sur une
+            // démonstration à zéro il passerait pour une ligne morte.
+            if d % 5 == 0 {
+                counts.push(("collision", 1));
+            }
             if d == 15 {
                 counts.push(("passe", 1));
             }

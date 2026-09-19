@@ -272,15 +272,20 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
   `pdf::open_*` call sites would be twenty-one chances to forget one.
-  Two signals are deliberately **absent** and it is written where one
-  would look: « combien de fois un autre poste avait écrit le premier »
-  is the most useful number the pane could carry, and it is missing
-  because every compare-and-set answers `false` in its own place —
-  counting at twenty of them would eventually miss the twenty-first, and
-  a counter that is quietly short is worse than one that is not there.
-  A sync conversation is absent for the mirror reason: `bpm-sync` is
-  optional, so in a shipped binary that counter would read zero for
-  ever, which is not a figure but a lie with a number on it. The write
+  The tenth — « combien de fois un autre poste avait écrit le premier »,
+  the most useful number the pane carries and the one no other screen
+  says — was absent for two versions for a reason worth keeping: every
+  compare-and-set answers `false` in its own place, forty-six of them,
+  and counting at forty-five would be a counter quietly short, which is
+  worse than one that is not there. It arrived by making those answers
+  go through **one** function, `Session::stale` / `stale_note`, the only
+  path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
+  reads `app.rs` and refuses the forty-seventh written beside it
+  (verified by putting one back). One signal is still deliberately
+  absent, and it is written where one would look: a sync conversation,
+  because `bpm-sync` is optional and in a shipped binary that counter
+  would read zero for ever — not a figure but a lie with a number on
+  it. The write
   is `INSERT … ON CONFLICT DO UPDATE SET n = n + excluded.n` — the one
   shared write in this base that is **not** a compare-and-set, because a
   monotone counter has no displayed value to confront, it has an

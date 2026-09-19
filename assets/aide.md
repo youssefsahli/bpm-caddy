@@ -595,6 +595,12 @@ Options › À propos tient quelques nombres : combien de dossiers ouverts,
 de fiches consultées, de documents imprimés, de lignes au registre, sur
 combien de journées.
 
+Le plus utile est le dernier : « écritures concurrentes signalées »
+compte les fois où un autre poste avait écrit le premier et où celui-ci
+s'est rechargé plutôt que d'écraser. C'est ainsi qu'on découvre que deux
+personnes travaillent sur la même chose au même moment, et aucun autre
+écran ne le dit.
+
 Ils ne sortent pas. Il n'y a pas d'adresse à régler et il n'y en aura
 pas : ils vivent dans la base chiffrée de l'officine et se lisent sur
 cette page-là.

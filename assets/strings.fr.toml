@@ -1002,6 +1002,7 @@ telem_registre = "Lignes au registre"
 telem_caisse = "Caisses comptées"
 telem_sauvegarde = "Sauvegardes"
 telem_passe = "Passes longues sur la base"
+telem_collision = "Écritures concurrentes signalées"
 
 # --- Les passes longues sur la base, sur leur propre fil ---
 # Une ligne par étape de `maintenance::steps`. Une clé sans libellé

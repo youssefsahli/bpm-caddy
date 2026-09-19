@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Le compteur qui manquait : « écritures concurrentes signalées ».**
+  C'est ainsi qu'une officine découvre que deux personnes travaillent
+  sur la même chose au même moment, et aucun autre écran ne le dit.
+
+  Il était absent depuis deux versions, et pour une raison écrite là où
+  on la chercherait : quarante-six écritures partagées répondent `false`
+  chacune chez elle, et compter à quarante-cinq d'entre elles aurait
+  fait un compteur discrètement incomplet — ce qui est pire qu'un
+  compteur absent.
+
+  Alors ce n'est pas le compteur qu'on a ajouté, c'est le chemin :
+  les quarante-six posaient chacune sa phrase « rechargez » toute
+  seule, et elles passent maintenant par `Session::stale`. Une fonction,
+  un endroit où compter, et `no_stale_notice_is_written_by_hand` qui
+  relit `app.rs` et refuse la quarante-septième écrite à côté — vérifié
+  en en remettant une.
+
 ## [0.227.0] - 2026-09-19
 
 ### Added

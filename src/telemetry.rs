@@ -74,24 +74,33 @@ pub enum Signal {
     Backup,
     /// One of the long passes over the base was run.
     Pass,
+    /// Another post had written first, and this one was told so rather
+    /// than overwriting it.
+    ///
+    /// The most useful number on the pane, and the least obvious: it is
+    /// how an officine finds out that two people are working on the
+    /// same thing at the same time, and no other screen says it.
+    ///
+    /// It was absent for a while, for a reason worth keeping in mind:
+    /// forty-six shared writes each answer `false` in their own place,
+    /// and counting at forty-five of them would be a counter quietly
+    /// short — worse than one that is not there. It arrived when those
+    /// answers were made to go through **one** function,
+    /// `Session::stale`, which is the only thing that raises a
+    /// « rechargez » notice. A guard refuses the forty-seventh written
+    /// by hand.
+    Collision,
 }
 
 // Deliberately **not** here, and it is worth saying why rather than
-// leaving a gap: « combien de fois un autre poste avait écrit le
-// premier » is the most useful number this pane could carry — it is how
-// an officine discovers that two people work on one thing at once, and
-// no other screen says it. It is absent because every compare-and-set
-// answers `false` in its own place, and there is no single one to count
-// at; counting at twenty of them would eventually miss the
-// twenty-first, and a counter that is quietly short is worse than one
-// that is not there. It arrives the day those answers go through one
-// function. The same goes for a sync conversation: `bpm-sync` is an
-// optional crate, so in a shipped binary that counter would read zero
-// for ever — which is not a figure, it is a lie with a number on it.
+// leaving a gap: a sync conversation. `bpm-sync` is an optional crate,
+// so in a shipped binary that counter would read zero for ever — which
+// is not a figure, it is a lie with a number on it. It arrives with the
+// day the module is wired in, and not before.
 
 impl Signal {
     /// Every signal, so a pane and a test cannot miss one.
-    pub const ALL: [Signal; 9] = [
+    pub const ALL: [Signal; 10] = [
         Signal::Opened,
         Signal::File,
         Signal::Card,
@@ -101,6 +110,7 @@ impl Signal {
         Signal::Till,
         Signal::Backup,
         Signal::Pass,
+        Signal::Collision,
     ];
 
     /// What is written in the base. Never changes.
@@ -115,6 +125,7 @@ impl Signal {
             Signal::Till => "caisse",
             Signal::Backup => "sauvegarde",
             Signal::Pass => "passe",
+            Signal::Collision => "collision",
         }
     }
 
@@ -143,6 +154,7 @@ impl Signal {
             Signal::Till => tr("telem_caisse"),
             Signal::Backup => tr("telem_sauvegarde"),
             Signal::Pass => tr("telem_passe"),
+            Signal::Collision => tr("telem_collision"),
         }
     }
 }
@@ -428,6 +440,7 @@ mod tests {
                 "caisse",
                 "sauvegarde",
                 "passe",
+                "collision",
             ]
         );
     }

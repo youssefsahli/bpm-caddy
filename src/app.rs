@@ -5431,6 +5431,28 @@ impl Session {
         let _ = self.db.purge_accesses(&horizon, &self.operator);
     }
 
+    /// Un autre poste avait écrit le premier.
+    ///
+    /// **Le seul chemin vers un avis « rechargez »**, et donc le seul
+    /// endroit où la chose se compte. Quarante-six écritures partagées
+    /// répondent `false` chacune chez elle ; compter à quarante-cinq
+    /// d'entre elles ferait un compteur discrètement incomplet, ce qui
+    /// est pire qu'un compteur absent. `no_stale_notice_is_written_by_hand`
+    /// relit `app.rs` et refuse la quarante-septième écrite à la main.
+    fn stale(&mut self, key: &'static str) {
+        let said = self.stale_note(key);
+        self.error = Some(said);
+    }
+
+    /// La même chose quand la phrase ne va pas dans `error` : un volet
+    /// qui a son propre avis, un formulaire, une valeur rendue à
+    /// l'appelant. Elle passe par ici pour que le compteur, lui, n'ait
+    /// qu'un chemin.
+    fn stale_note(&mut self, key: &'static str) -> String {
+        self.note(crate::telemetry::Signal::Collision);
+        tr(key).to_owned()
+    }
+
     /// Compte un geste. Le seul chemin vers les compteurs.
     ///
     /// L'interrupteur est vérifié **dans** `Counters::note`, et non ici
@@ -11498,7 +11520,7 @@ impl App {
                 .unwrap_or_default();
             match session.db.delete_note(id, &expected) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Ok(false) => session.stale("note_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.load_transmissions();
@@ -15355,7 +15377,7 @@ impl App {
                                 session.load_carnet(patient.id);
                             }
                             Ok(false) => {
-                                session.error = Some(tr("vacc_stale").to_owned());
+                                session.stale("vacc_stale");
                                 session.load_carnet(patient.id);
                             }
                             Err(e) => session.error = Some(e),
@@ -15372,7 +15394,7 @@ impl App {
                     session.load_carnet(patient.id);
                 }
                 Ok(false) => {
-                    session.error = Some(tr("vacc_stale").to_owned());
+                    session.stale("vacc_stale");
                     session.load_carnet(patient.id);
                 }
                 Err(e) => session.error = Some(e),
@@ -16806,7 +16828,7 @@ impl App {
                 Ok(true) => session.reload_treatments(patient.id),
                 Ok(false) => {
                     session.reload_treatments(patient.id);
-                    session.error = Some(tr("concil_stale").to_owned());
+                    session.stale("concil_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -17206,7 +17228,7 @@ impl App {
                 .set_patient_posology(patient.id, id, &dose, &expected)
             {
                 Ok(true) => done += 1,
-                Ok(false) => session.error = Some(tr("concil_stale").to_owned()),
+                Ok(false) => session.stale("concil_stale"),
                 Err(e) => session.error = Some(e),
             }
         }
@@ -17741,7 +17763,7 @@ impl App {
                         ) {
                             Ok(true) => session.load_locations(patient.id),
                             Ok(false) => {
-                                session.error = Some(tr("loc_stale").to_owned());
+                                session.stale("loc_stale");
                                 session.load_locations(patient.id);
                             }
                             Err(e) => session.error = Some(e),
@@ -17762,7 +17784,7 @@ impl App {
                 ) {
                     Ok(true) => session.load_locations(patient.id),
                     Ok(false) => {
-                        session.error = Some(tr("loc_stale").to_owned());
+                        session.stale("loc_stale");
                         session.load_locations(patient.id);
                     }
                     Err(e) => session.error = Some(e),
@@ -17773,7 +17795,7 @@ impl App {
             match session.db.delete_location(id, &label) {
                 Ok(true) => session.load_locations(patient.id),
                 Ok(false) => {
-                    session.error = Some(tr("loc_stale").to_owned());
+                    session.stale("loc_stale");
                     session.load_locations(patient.id);
                 }
                 Err(e) => session.error = Some(e),
@@ -18370,7 +18392,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.load_biology(patient.id);
-                    session.error = Some(tr("bio_stale").to_owned());
+                    session.stale("bio_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -18470,7 +18492,7 @@ impl App {
             }
             Ok(false) => {
                 session.load_biology(patient.id);
-                session.error = Some(tr("bio_stale").to_owned());
+                session.stale("bio_stale");
             }
             Err(e) => session.error = Some(e),
         }
@@ -21406,7 +21428,7 @@ impl App {
                     }
                     Ok(false) => {
                         session.reload_treatments(patient.id);
-                        session.error = Some(tr("concil_stale").to_owned());
+                        session.stale("concil_stale");
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -21425,7 +21447,7 @@ impl App {
                     // on montre ce qu'il a mis, plutôt que de l'écraser.
                     Ok(false) => {
                         session.reload_treatments(patient.id);
-                        session.error = Some(tr("concil_stale").to_owned());
+                        session.stale("concil_stale");
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -21881,8 +21903,13 @@ impl App {
                             session.set_patients(list);
                             session.resync_viewing();
                         }
+                        // Composé avant l'emprunt du formulaire, et
+                        // compté même si aucun n'est ouvert : la
+                        // collision a eu lieu, que quelqu'un ait eu
+                        // l'écran sous les yeux ou non.
+                        let said = session.stale_note("patient_stale");
                         if let Some(form) = &mut session.edit_patient {
-                            form.error = Some(tr("patient_stale").to_owned());
+                            form.error = Some(said);
                         }
                     }
                     Err(e) => {
@@ -22747,7 +22774,6 @@ impl App {
             set_remote,
             set_change,
         } = out;
-        let stale_msg = tr("itv_stale");
         if let Some((id, changed, expected)) = set_change {
             match session.db.set_treatment_change(id, changed, expected) {
                 Ok(true) => {
@@ -22756,7 +22782,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22769,7 +22795,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22787,7 +22813,7 @@ impl App {
                 Ok(false) => {
                     session.hour_edits.remove(&id);
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22810,7 +22836,7 @@ impl App {
                 Ok(false) => {
                     session.by_edits.remove(&id);
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22827,7 +22853,7 @@ impl App {
                 Ok(false) => {
                     session.made_edits.remove(&id);
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22840,7 +22866,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22853,7 +22879,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22866,7 +22892,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22876,7 +22902,7 @@ impl App {
                 Ok(true) => session.reload_interviews(patient.id),
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22892,7 +22918,7 @@ impl App {
                 }
                 Ok(false) => {
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -22911,7 +22937,7 @@ impl App {
                     // value instead of writing the stale one back.
                     session.date_edits.remove(&id);
                     session.reload_interviews(patient.id);
-                    session.error = Some(stale_msg.to_owned());
+                    session.stale("itv_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -23037,7 +23063,7 @@ impl App {
             match session.db.set_trod_result(id, &result, &expected) {
                 Ok(true) => session.reload_interviews(patient.id),
                 Ok(false) => {
-                    session.error = Some(tr("trod_stale").to_owned());
+                    session.stale("trod_stale");
                     session.reload_interviews(patient.id);
                 }
                 Err(e) => session.error = Some(e),
@@ -23267,7 +23293,7 @@ impl App {
                     .unwrap_or_default();
                 match session.db.delete_note(id, &expected) {
                     Ok(true) => {}
-                    Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                    Ok(false) => session.stale("note_stale"),
                     Err(e) => session.error = Some(e),
                 }
                 session.patient_notes = session
@@ -23883,7 +23909,7 @@ impl App {
                     .unwrap_or_default();
                 match session.db.delete_note(id, &expected) {
                     Ok(true) => {}
-                    Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                    Ok(false) => session.stale("note_stale"),
                     Err(e) => session.error = Some(e),
                 }
                 session.load_transmissions();
@@ -25295,7 +25321,7 @@ impl App {
             if let Some(time) = time {
                 match session.db.set_scheduled_time(id, &time, &expected) {
                     Ok(true) => {}
-                    Ok(false) => session.error = Some(tr("itv_stale").to_owned()),
+                    Ok(false) => session.stale("itv_stale"),
                     Err(e) => session.error = Some(e),
                 }
                 session.refresh_dashboard();
@@ -25313,7 +25339,7 @@ impl App {
                         session.refresh_dashboard();
                         session.load_day();
                     }
-                    Ok(false) => session.error = Some(tr("itv_stale").to_owned()),
+                    Ok(false) => session.stale("itv_stale"),
                     Err(e) => session.error = Some(e),
                 },
                 Err(e) => session.error = Some(e),
@@ -25325,7 +25351,7 @@ impl App {
                 Ok(true) => session.load_day(),
                 Ok(false) => {
                     session.load_day();
-                    session.error = Some(tr("agenda_event_stale").to_owned());
+                    session.stale("agenda_event_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -25350,7 +25376,7 @@ impl App {
                 .unwrap_or_default();
             match session.db.delete_note(id, &expected) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Ok(false) => session.stale("note_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.load_day();
@@ -27091,7 +27117,7 @@ impl App {
                         session.load_shifts(true);
                     }
                     Ok(false) => {
-                        session.error = Some(tr("planning_stale").to_owned());
+                        session.stale("planning_stale");
                         session.load_shifts(true);
                     }
                     Err(e) => session.error = Some(e),
@@ -27147,7 +27173,7 @@ impl App {
                         session.load_shifts(true);
                     }
                     Ok(false) => {
-                        session.error = Some(tr("planning_stale").to_owned());
+                        session.stale("planning_stale");
                         session.load_shifts(true);
                     }
                     Err(e) => session.error = Some(e),
@@ -28158,20 +28184,18 @@ impl App {
                 pause,
                 now_start,
                 now_end,
-            } => session
+            } => match session
                 .db
                 // Le compare-and-set porte sur ce que l'écriture avait
                 // mis : si quelqu'un d'autre a bougé le poste depuis,
                 // le retour arrière ne passe pas — et c'est ce qu'on
                 // veut, plutôt qu'écraser son travail.
                 .update_shift(id, &start, &end, pause, &now_start, &now_end)
-                .and_then(|ok| {
-                    if ok {
-                        Ok(())
-                    } else {
-                        Err(tr("planning_stale").to_owned())
-                    }
-                }),
+            {
+                Ok(true) => Ok(()),
+                Ok(false) => Err(session.stale_note("planning_stale")),
+                Err(e) => Err(e),
+            },
             PlanningUndo::Deleted { family } => Self::restore_family(session, family),
             // Poser une trame est **un** geste, même quand il a retiré
             // ce qu'il remplaçait : on enlève ce qui a été écrit, puis
@@ -30749,7 +30773,7 @@ impl App {
                     session.codex_open = None;
                     session.reload_codex();
                 }
-                Ok(false) => session.error = Some(tr("codex_stale").to_owned()),
+                Ok(false) => session.stale("codex_stale"),
                 Err(e) => session.error = Some(e),
             }
         }
@@ -30951,7 +30975,7 @@ impl App {
                     session.reload_codex();
                 }
                 Ok(false) => {
-                    session.error = Some(tr("codex_stale").to_owned());
+                    session.stale("codex_stale");
                     session.reload_codex();
                 }
                 Err(e) => session.error = Some(e),
@@ -33553,7 +33577,7 @@ impl App {
                     session.checklist_items.clear();
                     session.reload_checklists();
                 }
-                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Ok(false) => session.stale("listes_stale"),
                 Err(e) => session.error = Some(e),
             }
         }
@@ -33752,7 +33776,7 @@ impl App {
                 .update_checklist_item(id, &text, &note, &expected)
             {
                 Ok(true) => session.checklist_edit = None,
-                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Ok(false) => session.stale("listes_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.reload_checklist_items();
@@ -33760,7 +33784,7 @@ impl App {
         if let Some((id, text)) = remove {
             match session.db.delete_checklist_item(id, &text) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Ok(false) => session.stale("listes_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.reload_checklist_items();
@@ -33778,7 +33802,7 @@ impl App {
                 .rename_checklist(list.id, &list.title, &subject, &list.title)
             {
                 Ok(true) => session.reload_checklists(),
-                Ok(false) => session.error = Some(tr("listes_stale").to_owned()),
+                Ok(false) => session.stale("listes_stale"),
                 Err(e) => session.error = Some(e),
             }
         }
@@ -34663,7 +34687,8 @@ impl App {
             match session.db.delete_scan(id, &label) {
                 Ok(true) => session.scan_note = None,
                 Ok(false) => {
-                    session.scan_note = Some((true, tr("scan_stale").to_owned()));
+                    let said = session.stale_note("scan_stale");
+                    session.scan_note = Some((true, said));
                 }
                 Err(e) => session.scan_note = Some((true, e)),
             }
@@ -36063,7 +36088,8 @@ impl App {
                 // On recharge et on affiche ce qu'il a écrit, plutôt que
                 // d'écraser un seuil qu'on n'a jamais vu.
                 Ok(false) => {
-                    session.stup_note = Some((true, tr("stup_stale").to_owned()));
+                    let said = session.stale_note("stup_stale");
+                    session.stup_note = Some((true, said));
                     session.reload_stup();
                 }
                 Ok(true) => {
@@ -40021,7 +40047,7 @@ impl App {
                     session.dispo_open = None;
                     session.reload_dispositifs();
                 }
-                Ok(false) => session.error = Some(tr("dispo_stale").to_owned()),
+                Ok(false) => session.stale("dispo_stale"),
                 Err(e) => session.error = Some(e),
             }
         }
@@ -40117,7 +40143,7 @@ impl App {
                     session.reload_dispositifs();
                 }
                 Ok(false) => {
-                    session.error = Some(tr("dispo_stale").to_owned());
+                    session.stale("dispo_stale");
                     session.reload_dispositifs();
                 }
                 Err(e) => session.error = Some(e),
@@ -40376,7 +40402,7 @@ impl App {
         if let Some((id, title)) = delete {
             match session.db.delete_protocol(id, &title) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                Ok(false) => session.stale("proto_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.reload_protocols();
@@ -40740,7 +40766,7 @@ impl App {
                     .update_protocol_node(id, kind, text.trim(), &expected)
                 {
                     Ok(true) => session.protocol_node_edit = None,
-                    Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                    Ok(false) => session.stale("proto_stale"),
                     Err(e) => session.error = Some(e),
                 }
                 reload(session);
@@ -40749,7 +40775,7 @@ impl App {
         if let Some((id, text)) = delete {
             match session.db.delete_protocol_node(proto.id, id, &text) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("proto_stale").to_owned()),
+                Ok(false) => session.stale("proto_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.protocol_node_edit = None;
@@ -40795,7 +40821,7 @@ impl App {
                         session.protocol_header = None;
                     }
                     Ok(false) => {
-                        session.error = Some(tr("proto_stale").to_owned());
+                        session.stale("proto_stale");
                         session.reload_protocols();
                         session.protocol_header = None;
                     }
@@ -41611,7 +41637,7 @@ impl App {
                 .set_table_cell(t.short, r, c, value.trim(), shipped, &previous)
             {
                 Ok(true) => session.table_undo = Some((r, c, previous)),
-                Ok(false) => session.error = Some(tr("tables_cell_stale").to_owned()),
+                Ok(false) => session.stale("tables_cell_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
@@ -42176,7 +42202,7 @@ impl App {
                 .unwrap_or_default();
             match session.db.delete_note(id, &expected) {
                 Ok(true) => {}
-                Ok(false) => session.error = Some(tr("note_stale").to_owned()),
+                Ok(false) => session.stale("note_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.drug_notes = session
@@ -43859,7 +43885,7 @@ impl App {
                         }
                         Ok(false) => {
                             session.class_note = session.db.class_note(&class).unwrap_or_default();
-                            session.error = Some(tr("drug_class_stale").to_owned());
+                            session.stale("drug_class_stale");
                         }
                         Err(e) => session.error = Some(e),
                     }
@@ -43917,7 +43943,7 @@ impl App {
                     let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
                     match session.db.update_posologie(edited.id, &edited, &expected) {
                         Ok(true) => session.poso_edit = None,
-                        Ok(false) => session.error = Some(tr("drug_stale").to_owned()),
+                        Ok(false) => session.stale("drug_stale"),
                         Err(e) => session.error = Some(e),
                     }
                     session.posologies = session.db.posologies(drug_id).unwrap_or_default();
@@ -43927,7 +43953,7 @@ impl App {
                 let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
                 match session.db.delete_posologie(id, &indication) {
                     Ok(true) => {}
-                    Ok(false) => session.error = Some(tr("drug_stale").to_owned()),
+                    Ok(false) => session.stale("drug_stale"),
                     Err(e) => session.error = Some(e),
                 }
                 session.posologies = session.db.posologies(drug_id).unwrap_or_default();
@@ -43979,7 +44005,7 @@ impl App {
                                 session.drug_base =
                                     session.drugs.iter().find(|d| d.id == form.id).cloned();
                             }
-                            session.error = Some(tr("drug_stale").to_owned());
+                            session.stale("drug_stale");
                         }
                         Err(e) => session.error = Some(e),
                     }
@@ -44005,7 +44031,7 @@ impl App {
                         }
                         Ok(false) => {
                             session.confirm_delete_drug = false;
-                            session.error = Some(tr("drug_delete_stale").to_owned());
+                            session.stale("drug_delete_stale");
                         }
                         Err(e) => session.error = Some(e),
                     }
@@ -54715,9 +54741,10 @@ impl eframe::App for App {
                         // ne porte pas.
                         if let Some(theirs) = session.db.officine() {
                             self.config.pharmacy = theirs.clone();
+                            let said = session.stale_note("opts_officine_stale");
                             if let Some(editor) = &mut self.options {
                                 editor.cfg.pharmacy = theirs.clone();
-                                editor.message = Some((true, tr("opts_officine_stale").to_owned()));
+                                editor.message = Some((true, said));
                             }
                             session.officine_seen = Some(theirs);
                         }
@@ -56523,6 +56550,50 @@ mod tests {
     /// Et **la mesure passe par la même fonction que le dessin** :
     /// mesurée à onze et peinte à dix-huit, une colonne élide tout ce
     /// qu'elle porte.
+    /// Un avis « rechargez » ne s'écrit pas à la main.
+    ///
+    /// Quarante-six écritures partagées répondent `false` chacune chez
+    /// elle, et chacune posait sa phrase toute seule. C'est exactement
+    /// la forme qui a tenu le compteur de collisions hors du volet
+    /// d'usage pendant deux versions : compter à quarante-cinq d'entre
+    /// elles aurait fait un compteur discrètement incomplet, ce qui est
+    /// pire qu'un compteur absent.
+    ///
+    /// Elles passent maintenant par `Session::stale` ou
+    /// `Session::stale_note`, qui sont le seul chemin vers cet avis et
+    /// donc le seul endroit où compter. Ce test refuse la
+    /// quarante-septième écrite à côté.
+    #[test]
+    fn no_stale_notice_is_written_by_hand() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblé, sinon le test se trouve lui-même.
+        let needle = concat!("_sta", "le\")");
+        let helper = concat!(".sta", "le(");
+        let helper_note = concat!(".sta", "le_note(");
+        let mut loose: Vec<&str> = Vec::new();
+        for line in SOURCE.lines() {
+            let t = line.trim();
+            if t.starts_with("//") || !t.contains(needle) {
+                continue;
+            }
+            if !t.contains(helper) && !t.contains(helper_note) {
+                loose.push(t);
+            }
+        }
+        assert!(
+            loose.is_empty(),
+            "un avis « rechargez » écrit à la main : {loose:?}"
+        );
+        // Et il y en a bien, sans quoi ce test garderait le vide : le
+        // jour où la dernière écriture partagée disparaît, c'est une
+        // autre conversation.
+        let through = SOURCE.matches(helper).count();
+        assert!(
+            through > 40,
+            "seulement {through} avis par le chemin unique"
+        );
+    }
+
     #[test]
     fn no_font_size_is_written_in_pixels() {
         const SOURCE: &str = include_str!("app.rs");
