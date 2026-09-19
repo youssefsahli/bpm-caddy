@@ -5,6 +5,54 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **L'annuaire se met à jour depuis une adresse, sur un bouton.**
+  Jusqu'ici il s'importait depuis un fichier ; il peut maintenant aller
+  se chercher tout seul — à une adresse que l'officine a écrite dans
+  `[prescribers] source_url`.
+
+  C'est la **deuxième** requête réseau de cette application, après la
+  recherche de mise à jour, et la dernière. Elle obéit aux mêmes règles,
+  parce que ce sont elles qui font la posture et non leur nombre.
+
+  **Sur un bouton.** Rien ne part au lancement, ni à heure fixe, ni
+  parce qu'un annuaire a trois mois. **Vers une adresse que l'officine a
+  écrite** : aucune n'est livrée, et tant que le réglage est vide *le
+  bouton n'existe pas* — un bouton grisé invite à chercher pourquoi, un
+  bouton absent ne promet rien. Embarquer une adresse, ce serait décider
+  à la place de l'officine à qui elle parle, et ce serait une adresse
+  morte dans deux ans avec un bouton qui échoue sans raison visible.
+  **Rien ne monte** : c'est un `GET`, la fonction ne reçoit qu'une
+  adresse et n'a rien d'autre à envoyer. **Sur un fil à part**, comme la
+  recherche de mise à jour : une requête qui gèle la fenêtre au comptoir
+  est pire que pas de requête.
+
+  Et en `https` seulement, refusé avant de partir : un annuaire de noms
+  propres ne traverse pas le réseau de l'officine en clair.
+
+  Deux choses arrêtent la réponse avant qu'elle soit lue, et les deux se
+  disent. **Une archive n'est pas un fichier texte** : les jeux publics
+  sont souvent zippés, et importer les octets d'un zip donnerait un
+  annuaire de caractères illisibles — reconnue à sa signature et refusée
+  avec « dézippez-le et importez-le », qui est une consigne là où
+  « 0 prescripteur importé » n'en est pas une. Et **un fichier plus gros
+  que ce poste ne lira est refusé avant d'être gardé** : un serveur ne
+  choisit pas la mémoire de la machine qui l'interroge.
+
+  Le corps est lu en UTF-8 **puis en latin-1**, jamais avec
+  remplacement : les fichiers publics français sont encore souvent en
+  Windows-1252, et « Lefèvre » mal lu est un nom faux dans un annuaire
+  de noms propres.
+
+### Changed
+- **La documentation ne dit plus qu'il n'y a qu'une requête réseau.**
+  Elle le disait à cinq endroits — le manuel, deux infobulles, le
+  README, `CLAUDE.md` — et c'était vrai jusqu'à cette version. Il y en a
+  deux, toutes deux sur un bouton, et la seconde n'existe que si
+  l'officine a écrit une adresse.
+
 ## [0.234.0] - 2026-09-20
 
 ### Changed

@@ -346,6 +346,27 @@ The one that was missing — « combien de fois un autre poste avait
   often a network share. It is invalidated when the page is left and
   when the counters are erased — a pane still showing what was just
   erased reads as a button that did not work.)
+  `src/annuaire.rs` (going to **fetch** that directory, on a button —
+  the second network request in this application and the last. The
+  rules are the ones that make the posture, not the count: **on a
+  button** (nothing leaves at launch, on a schedule, or because a
+  directory is three months old), **towards an address the officine
+  wrote** (none ships, and the button does not exist while
+  `[prescribers] source_url` is empty — shipping an address decides who
+  the officine talks to, and it is an address that will be dead in two
+  years with a button that fails for no visible reason), **nothing goes
+  up** (a `GET`: the function receives an address and has nothing else
+  to send), and **on a thread of its own**. Two things stop the answer
+  before it is read, and both say so: an **archive is not a text file**
+  — public sets are usually zipped, and importing a zip's bytes would
+  give a directory of gibberish, so it is known by its signature and
+  refused with « dézippez-le et importez-le », which is an instruction
+  where « 0 prescripteur importé » is not; and a body larger than this
+  post will hold is refused **before** being kept. The body is read as
+  UTF-8 **then as latin-1**, never with replacement: French public
+  files are still often Windows-1252, and « Lefèvre » read wrong is a
+  wrong name in a directory of proper names. A guard reads the module's
+  own text and holds the three rules a type cannot),
   `src/prescribers.rs` (the directory of practitioners, and why a free
   text field was not enough: the prescriber is typed by hand everywhere
   it is asked for, so « Dr Morel », « dr morel », « Morel » and
@@ -653,7 +674,9 @@ The one that was missing — « combien de fois un autre poste avait
   500 / 1800 / titration rules — static, pure, tested),
   `src/release.rs` (what version this is, and — only on a button press,
   from Options › À propos — what GitHub says the newest release is; the
-  **only** network request in the application, everything else hands a
+  **first** of the two network requests in the application — the other
+  is `annuaire.rs`, and it does not exist until an officine writes an
+  address; everything else hands a
   URL to the browser),
   `src/vitale.rs` (finding the beneficiaries on a carte Vitale — the NIR
   proves itself by its control key, so nothing is read at an offset

@@ -9752,6 +9752,13 @@ pub struct App {
     /// A version check in flight (Options › À propos), and what the last
     /// one answered. `true` marks a failure.
     update_check: Option<std::sync::mpsc::Receiver<crate::release::Checked>>,
+    /// Un téléchargement d'annuaire en cours — voir `src/annuaire.rs`.
+    ///
+    /// Le même agencement que la recherche de mise à jour : un fil à
+    /// part, un canal, et l'interface qui continue de peindre. Une
+    /// requête qui gèle la fenêtre au comptoir est pire que pas de
+    /// requête.
+    presc_fetch: Option<std::sync::mpsc::Receiver<crate::annuaire::Fetched>>,
     update_note: Option<(bool, String)>,
     /// A long pass over the base running on its own thread (Options ›
     /// Base, Options › À propos), and the step it last reported.
@@ -11298,6 +11305,7 @@ impl App {
             op_note_confirm: None,
             db_adopted: adopted_db,
             update_check: None,
+            presc_fetch: None,
             update_note: None,
             maint_job: None,
             maint_step: None,
@@ -52200,6 +52208,39 @@ impl eframe::App for App {
         // its own thread. Polled rather than blocked on: the counter
         // goes on working while GitHub takes its time, and a network
         // that never answers costs a timeout, not the session.
+        // L'annuaire qu'on est allé chercher, quand il arrive.
+        if let Some(rx) = &self.presc_fetch {
+            match rx.try_recv() {
+                Ok(crate::annuaire::Fetched::Got(text)) => {
+                    self.presc_fetch = None;
+                    let read = crate::prescribers::import(&text).and_then(|read| {
+                        let State::Unlocked(session) = &mut self.state else {
+                            return Err(tr("opts_db_locked").to_owned());
+                        };
+                        let n = session.db.set_prescribers(&read.found)?;
+                        session.prescribers = session.db.prescribers().unwrap_or_default();
+                        Ok((n, read.skipped, read.unverified))
+                    });
+                    let said = match read {
+                        Ok((n, skipped, unverified)) => {
+                            (false, trn("opts_presc_done", &[&n, &skipped, &unverified]))
+                        }
+                        Err(e) => (true, e),
+                    };
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some(said);
+                    }
+                }
+                Ok(crate::annuaire::Fetched::Failed(e)) => {
+                    self.presc_fetch = None;
+                    if let Some(editor) = &mut self.options {
+                        editor.message = Some((true, trf("opts_presc_fetch_failed", e)));
+                    }
+                }
+                Err(std::sync::mpsc::TryRecvError::Empty) => {}
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.presc_fetch = None,
+            }
+        }
         if let Some(rx) = &self.update_check {
             match rx.try_recv() {
                 Ok(crate::release::Checked::Latest { tag, newer }) => {
@@ -53211,6 +53252,8 @@ impl eframe::App for App {
         let mut bundle_out: Option<std::path::PathBuf> = None;
         let mut bundle_in: Option<(std::path::PathBuf, std::path::PathBuf)> = None;
         let mut presc_file: Option<std::path::PathBuf> = None;
+        let mut presc_url: Option<String> = None;
+        let presc_busy = self.presc_fetch.is_some();
         // Ce que la page dit de l'annuaire, lu avec le reste.
         let presc_count = match (&self.options, &self.state) {
             (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
@@ -54628,13 +54671,50 @@ impl eframe::App for App {
                                         .wrap(),
                                     );
                                 }
-                                if motif::button(ui, tr("opts_presc_import"))
-                                    .on_hover_text(tr("opts_presc_import_tooltip"))
-                                    .clicked()
-                                {
-                                    if let Some(p) = rfd::FileDialog::new().pick_file() {
-                                        presc_file = Some(p);
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("opts_presc_import"))
+                                        .on_hover_text(tr("opts_presc_import_tooltip"))
+                                        .clicked()
+                                    {
+                                        if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                            presc_file = Some(p);
+                                        }
                                     }
+                                    // **Le bouton n'existe pas tant
+                                    // qu'aucune adresse n'est écrite.**
+                                    // Un bouton grisé invite à chercher
+                                    // pourquoi ; un bouton absent ne
+                                    // promet rien — et l'application
+                                    // n'ouvre alors aucune connexion
+                                    // pour cela, jamais.
+                                    let url = editor.cfg.prescribers.source_url.trim().to_owned();
+                                    if !url.is_empty()
+                                        && motif::button_enabled(
+                                            ui,
+                                            tr("opts_presc_fetch"),
+                                            !presc_busy,
+                                        )
+                                        .on_hover_text(tr("opts_presc_fetch_tooltip"))
+                                        .clicked()
+                                    {
+                                        presc_url = Some(url);
+                                    }
+                                });
+                                if presc_busy {
+                                    ui.label(
+                                        egui::RichText::new(tr("opts_presc_fetching"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::accent()),
+                                    );
+                                } else if editor.cfg.prescribers.source_url.trim().is_empty() {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(tr("opts_presc_no_url"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
                                 }
                                 // **Les trois fichiers en un seul.**
                                 // La base, les pièces et le registre
@@ -55041,6 +55121,10 @@ impl eframe::App for App {
             if let Some(editor) = &mut self.options {
                 editor.stup_start_text = None;
             }
+        }
+        if let Some(url) = presc_url {
+            // Parti **ici**, sur ce clic, et nulle part ailleurs.
+            self.presc_fetch = Some(crate::annuaire::fetch_async(url));
         }
         if let (Some(path), State::Unlocked(session)) = (&presc_file, &mut self.state) {
             let said = std::fs::read_to_string(path)

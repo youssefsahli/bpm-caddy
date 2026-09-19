@@ -917,7 +917,7 @@ about_count_tables = "Tables de référence"
 about_db_found = "Base trouvée au démarrage, non configurée — vérifiez qu'il s'agit de la bonne."
 about_updates = "Version et contenu"
 about_check = "Vérifier la dernière version…"
-about_check_tooltip = "Interroger GitHub : seule requête réseau de l'application"
+about_check_tooltip = "Interroger GitHub. Ne part que sur ce clic ; rien n'est envoyé."
 about_checking = "Vérification en cours…"
 about_up_to_date = "À jour ({})."
 about_update_available = "{} disponible — relancez par le lanceur pour l'installer."
@@ -929,7 +929,7 @@ about_sync = "Synchroniser le contenu de référence"
 about_sync_tooltip = "Compléter la base avec les contenus manquants de cette version — vos textes sont conservés"
 about_sync_none = "Base déjà au niveau de cette version."
 about_sync_done = "{} élément(s) de référence ajouté(s)."
-about_offline = "Hors ligne le reste du temps : les autres boutons « … » transmettent une adresse au navigateur."
+about_offline = "Hors ligne le reste du temps. L'application ne fait que deux requêtes, toutes deux sur un bouton : celle-ci, et la mise à jour de l'annuaire des prescripteurs. Les autres boutons « … » transmettent une adresse au navigateur."
 
 # --- Les compteurs d'usage, dans Options › À propos ---
 # Rien n'en sort : ils vivent dans la base chiffrée de l'officine et se
@@ -966,6 +966,19 @@ audit_by_operator = "Par opérateur"
 # son rang — les fichiers publics changent d'ordre d'une version à
 # l'autre, et lire la septième colonne c'est lire autre chose l'année
 # suivante, en silence.
+# Aller chercher l'annuaire, sur un bouton — voir `src/annuaire.rs`.
+# C'est la **deuxième** requête réseau de l'application, après la
+# recherche de mise à jour, et la dernière. Rien ne part tout seul, rien
+# ne monte, et aucune adresse n'est livrée.
+annuaire_empty = "Le serveur n'a rien rendu : zéro octet. Ce n'est pas un annuaire vide, c'est une requête qui a échoué sans le dire."
+annuaire_archive = "Ce fichier est une archive (zip, gzip) et non du texte. Dézippez-le, puis importez-le avec « Importer un annuaire… »."
+annuaire_too_big = "Fichier trop gros pour être chargé d'un bloc. Téléchargez-le à part et importez-le."
+annuaire_not_https = "L'adresse doit commencer par « https:// » : un annuaire de noms propres ne traverse pas le réseau en clair."
+opts_presc_fetch = "Mettre à jour depuis l'adresse…"
+opts_presc_fetch_tooltip = "Aller chercher l'annuaire à l'adresse écrite dans [prescribers] source_url de config.toml. Rien ne part tant que vous n'appuyez pas."
+opts_presc_fetching = "Téléchargement en cours…"
+opts_presc_no_url = "Aucune adresse n'est écrite dans [prescribers] source_url : rien à aller chercher."
+opts_presc_fetch_failed = "Téléchargement impossible : {}"
 opts_presc_import = "Importer un annuaire…"
 opts_presc_import_tooltip = "Un fichier de prescripteurs exporté de l'annuaire santé ou de votre logiciel. Les colonnes sont trouvées par leur nom ; l'annuaire précédent est remplacé."
 opts_presc_none = "Aucun annuaire de prescripteurs importé."

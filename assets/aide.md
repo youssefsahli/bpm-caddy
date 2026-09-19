@@ -4,10 +4,12 @@ Le suivi des entretiens pharmaceutiques au comptoir : les dossiers, les
 actes, l'agenda de l'équipe, le registre des stupéfiants, la caisse — et
 ce qui s'imprime au nom de l'officine.
 
-Tout est local. La base est chiffrée et ne sort pas du poste ; rien n'est
-envoyé nulle part. La seule requête réseau de l'application est la
-recherche d'une mise à jour, et elle ne part que si on presse le bouton
-qui la demande.
+Tout est local. La base est chiffrée et ne sort pas du poste ; rien n'y
+est envoyé nulle part. L'application ne fait que **deux** requêtes
+réseau, et aucune ne part toute seule : la recherche d'une mise à jour,
+et la mise à jour de l'annuaire des prescripteurs — cette dernière
+seulement si l'officine a écrit une adresse, sans quoi le bouton
+n'existe pas. Les deux vont chercher, aucune n'envoie.
 
 # Le plan de travail
 
@@ -623,6 +625,18 @@ ou le numéro, qui est écrit sur l'ordonnance. **Il propose, il ne décide
 pas** : ce qui est tapé reste ce qui sera écrit tant que personne n'a
 choisi une ligne, et un prescripteur que l'annuaire ne connaît pas
 s'écrit comme avant.
+
+**Le mettre à jour depuis une adresse.** Si l'officine en a une — un
+export de son propre logiciel, un fichier posé sur son serveur, un jeu
+public décompressé —, elle l'écrit dans `[prescribers] source_url` de
+`config.toml` et un second bouton apparaît : « Mettre à jour depuis
+l'adresse… ». Tant qu'aucune adresse n'est écrite, **le bouton n'existe
+pas** et l'application n'ouvre aucune connexion pour cela.
+
+Rien ne part tant que personne n'appuie, rien n'est envoyé — on demande
+un fichier, on ne raconte rien —, et l'adresse doit être en `https` :
+un annuaire de noms propres ne traverse pas le réseau en clair. Une
+archive est reconnue et refusée, avec la consigne de la décompresser.
 
 Le RPPS est vérifié par sa clé — onze chiffres dont le dernier prouve
 les dix autres. Un numéro qui ne se prouve pas est **gardé** et compté à

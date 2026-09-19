@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod agenda;
+mod annuaire;
 mod app;
 mod audit;
 mod biology;

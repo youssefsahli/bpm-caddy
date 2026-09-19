@@ -319,6 +319,30 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # sur une case à cocher est pire que ne pas compter.
 # enabled = true
 
+[prescribers]
+# L'annuaire des prescripteurs — voir `src/prescribers.rs`.
+#
+# **Aucun annuaire n'est livré** : ce fichier appartient à l'officine,
+# comme les codes-barres qu'elle apprend une boîte à la main. Une table
+# figée dans un binaire vieillit sans que personne le voie, et celle-ci
+# désigne des personnes.
+#
+# L'adresse d'où le mettre à jour, si l'officine en a une : un export de
+# son propre logiciel, un fichier posé sur son serveur, un jeu public
+# décompressé. Vide — ce qui est le cas par défaut —, **le bouton
+# n'existe pas** et l'application n'ouvre aucune connexion pour cela :
+# « Importer un annuaire… » reste là, qui lit un fichier.
+#
+# Elle doit commencer par « https:// » : un annuaire de noms propres ne
+# traverse pas le réseau en clair. Ce qui revient doit être du **texte**
+# — une archive est reconnue et refusée, avec la consigne de la
+# décompresser.
+#
+# Rien ne part tant que personne n'appuie : ni au lancement, ni à heure
+# fixe. C'est la deuxième requête réseau de cette application après la
+# recherche de mise à jour, et la dernière.
+# source_url = ""
+
 [audit]
 # Le journal des accès : qui a ouvert quel dossier, et quand.
 #
@@ -371,6 +395,22 @@ pub struct Config {
     pub prevention: PreventionConfig,
     pub telemetry: TelemetryConfig,
     pub audit: AuditConfig,
+    pub prescribers: PrescribersConfig,
+}
+
+/// L'annuaire des prescripteurs — voir `src/prescribers.rs` et le
+/// modèle ci-dessus.
+///
+/// Une seule chose : d'où le mettre à jour, si l'officine a une
+/// adresse. **Vide par défaut**, et le bouton n'existe pas tant qu'elle
+/// l'est — embarquer une adresse, c'est décider à la place de
+/// l'officine à qui elle parle, et c'est une adresse qui sera morte
+/// dans deux ans avec un bouton qui échouera sans que personne sache
+/// pourquoi.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug, Default)]
+#[serde(default)]
+pub struct PrescribersConfig {
+    pub source_url: String,
 }
 
 /// Le journal des accès — voir `src/audit.rs` et le modèle ci-dessus.
@@ -2019,6 +2059,49 @@ mod tests {
         let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
         assert_eq!(silent.audit.keep_days, 365);
         assert!(CONFIG_TEMPLATE.contains("[audit]"));
+    }
+
+    /// **Aucune adresse d'annuaire n'est livrée**, et c'est la
+    /// direction qui compte.
+    ///
+    /// Embarquer une adresse, c'est décider à la place de l'officine à
+    /// qui elle parle — et c'est une adresse qui sera morte dans deux
+    /// ans, avec un bouton qui échouera sans que personne sache
+    /// pourquoi. Vide, le bouton n'existe pas et l'application n'ouvre
+    /// aucune connexion pour cela.
+    #[test]
+    fn no_directory_address_ships_and_an_empty_one_opens_nothing() {
+        assert!(Config::default().prescribers.source_url.is_empty());
+        // Le gabarit la mentionne — commentée : on dit qu'elle existe,
+        // on ne la remplit pas.
+        assert!(CONFIG_TEMPLATE.contains("[prescribers]"));
+        assert!(CONFIG_TEMPLATE.contains("# source_url = \"\""));
+        // Et le gabarit ne porte aucune **adresse**, en commentaire ou
+        // non. Le mot « https:// » y est, parce que la consigne
+        // l'exige et qu'une consigne se dit ; ce qui est refusé, c'est
+        // un hôte derrière — la prose écrit « https:// » suivi d'une
+        // espace, une adresse écrit une lettre.
+        for at in CONFIG_TEMPLATE.match_indices("https://") {
+            let after = CONFIG_TEMPLATE[at.0 + "https://".len()..]
+                .chars()
+                .next()
+                .unwrap_or(' ');
+            assert!(
+                !after.is_alphanumeric(),
+                "une adresse livrée dans le gabarit"
+            );
+        }
+        let cfg: Config =
+            toml::from_str("[prescribers]\nsource_url = \"https://annuaire.exemple.fr/ps.csv\"\n")
+                .unwrap();
+        assert_eq!(
+            cfg.prescribers.source_url,
+            "https://annuaire.exemple.fr/ps.csv"
+        );
+        // Une configuration écrite avant que la section existe reste
+        // muette, et donc sans bouton.
+        let silent: Config = toml::from_str("[ui]\ntext_scale = 1.25\n").unwrap();
+        assert!(silent.prescribers.source_url.is_empty());
         assert!(CONFIG_TEMPLATE.contains("keep_days = 365"));
     }
 
