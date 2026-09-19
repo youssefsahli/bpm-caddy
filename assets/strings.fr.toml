@@ -960,6 +960,19 @@ audit_span = "{} ligne(s) sur {} jour(s), du {} au {} — {} dossier(s) touché(
 audit_span_none = "Aucun accès enregistré sur la période."
 audit_window = "Les {} derniers jours"
 audit_by_operator = "Par opérateur"
+# --- L'annuaire des prescripteurs ---
+# Rien n'est livré : ce fichier appartient à l'officine, qui l'importe
+# et le met à jour. Une colonne s'y trouve par son **nom** et jamais par
+# son rang — les fichiers publics changent d'ordre d'une version à
+# l'autre, et lire la septième colonne c'est lire autre chose l'année
+# suivante, en silence.
+opts_presc_import = "Importer un annuaire…"
+opts_presc_import_tooltip = "Un fichier de prescripteurs exporté de l'annuaire santé ou de votre logiciel. Les colonnes sont trouvées par leur nom ; l'annuaire précédent est remplacé."
+opts_presc_none = "Aucun annuaire de prescripteurs importé."
+opts_presc_count = "Annuaire : {} prescripteur(s), colonnes lues : {}."
+opts_presc_done = "{} prescripteur(s) importé(s). {} ligne(s) sans nom écartée(s), {} numéro(s) RPPS qui ne se prouvent pas par leur clé."
+presc_import_empty = "Fichier vide : il n'y a pas même une ligne d'en-tête à lire."
+presc_import_no_name = "Ce fichier ne porte pas de colonne de nom : on y a lu {}. Un annuaire en a une ; sans elle, chaque ligne ne désignerait personne."
 # --- Le rapport d'audit (bpm-caddy audit, Linux) ---
 # Un relevé de décision, écrit sur la sortie standard. Il ne nomme
 # personne d'autre que les opérateurs : un dossier y est désigné par son

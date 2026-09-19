@@ -605,6 +605,29 @@ de passe, à emporter ou à archiver. « Importer un paquet… » les rend
 dans un dossier **vide** : rien n'est écrasé, et la base y pointe au
 redémarrage.
 
+# L'annuaire des prescripteurs
+
+Options › Base, « Importer un annuaire… » : un fichier de prescripteurs
+exporté de l'annuaire santé ou de votre propre logiciel. Les colonnes y
+sont trouvées **par leur nom** et non par leur rang — ces fichiers
+changent d'ordre d'une version à l'autre —, et un fichier qui ne porte
+pas de colonne de nom est refusé en disant ce qu'il portait.
+
+L'annuaire précédent est remplacé et non complété : c'est une
+photographie à une date, et importer par-dessus laisserait les
+praticiens partis sous ceux qui les remplacent.
+
+Sous le champ « prescripteur » du registre, taper deux lettres propose
+les praticiens qui correspondent — par le nom, la ville, la spécialité
+ou le numéro, qui est écrit sur l'ordonnance. **Il propose, il ne décide
+pas** : ce qui est tapé reste ce qui sera écrit tant que personne n'a
+choisi une ligne, et un prescripteur que l'annuaire ne connaît pas
+s'écrit comme avant.
+
+Le RPPS est vérifié par sa clé — onze chiffres dont le dernier prouve
+les dix autres. Un numéro qui ne se prouve pas est **gardé** et compté à
+part : c'est à l'officine de regarder, pas au logiciel de trancher.
+
 # Les compteurs d'usage
 
 Options › À propos tient quelques nombres : combien de dossiers ouverts,

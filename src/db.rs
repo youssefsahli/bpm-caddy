@@ -218,6 +218,26 @@ CREATE TABLE IF NOT EXISTS telemetry (
 -- conservation, qui s'écrit elle-même dans le journal qu'elle purge —
 -- sans quoi un journal qui a rétréci et un journal qu'on a vidé se
 -- lisent pareil.
+-- L'annuaire des prescripteurs — voir `src/prescribers.rs`.
+--
+-- **Rien n'est livré** : ce fichier appartient à l'officine, qui
+-- l'importe et le met à jour, comme les codes-barres qu'elle apprend
+-- une boîte à la main. Une table figée dans un binaire vieillit sans
+-- que personne le voie, et celle-ci désigne des personnes.
+--
+-- Le RPPS est ce qui désigne quand il y en a un ; sinon la ligne existe
+-- quand même. Un annuaire exporté d'un logiciel d'officine ne porte pas
+-- toujours le numéro, et le refuser reviendrait à refuser l'annuaire.
+CREATE TABLE IF NOT EXISTS prescribers (
+    id         INTEGER PRIMARY KEY,
+    rpps       TEXT NOT NULL DEFAULT '',
+    last_name  TEXT NOT NULL DEFAULT '',
+    first_name TEXT NOT NULL DEFAULT '',
+    speciality TEXT NOT NULL DEFAULT '',
+    finess     TEXT NOT NULL DEFAULT '',
+    am         TEXT NOT NULL DEFAULT '',
+    city       TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS access_log (
     id       INTEGER PRIMARY KEY,
     at       TEXT NOT NULL,
@@ -623,6 +643,18 @@ const MIGRATIONS: &[&str] = &[
         signal TEXT NOT NULL,
         n      INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (day, signal)
+    )",
+    // L'annuaire des prescripteurs — voir le commentaire au-dessus de
+    // la table dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS prescribers (
+        id         INTEGER PRIMARY KEY,
+        rpps       TEXT NOT NULL DEFAULT '',
+        last_name  TEXT NOT NULL DEFAULT '',
+        first_name TEXT NOT NULL DEFAULT '',
+        speciality TEXT NOT NULL DEFAULT '',
+        finess     TEXT NOT NULL DEFAULT '',
+        am         TEXT NOT NULL DEFAULT '',
+        city       TEXT NOT NULL DEFAULT ''
     )",
     // Le journal des accès — voir le commentaire au-dessus de la table
     // dans `SCHEMA`.
@@ -31905,6 +31937,71 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    /// Remplace l'annuaire des prescripteurs par celui qu'on importe.
+    ///
+    /// **Remplace, et n'ajoute pas.** Un annuaire est une photographie
+    /// à une date : importer par-dessus laisserait les praticiens
+    /// partis à la retraite sous ceux qui les remplacent, et une
+    /// recherche rendrait les deux sans rien dire. En une transaction,
+    /// pour la raison qui vaut partout ici — un annuaire à moitié
+    /// remplacé est le pire état où le laisser.
+    pub fn set_prescribers(&self, who: &[crate::prescribers::Prescriber]) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        tx.execute("DELETE FROM prescribers", [])
+            .map_err(|e| e.to_string())?;
+        {
+            let mut add = tx
+                .prepare(
+                    "INSERT INTO prescribers
+                       (rpps, last_name, first_name, speciality, finess, am, city)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                )
+                .map_err(|e| e.to_string())?;
+            for p in who {
+                add.execute(rusqlite::params![
+                    p.rpps,
+                    p.last,
+                    p.first,
+                    p.speciality,
+                    p.finess,
+                    p.am,
+                    p.city
+                ])
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(who.len())
+    }
+
+    /// L'annuaire, dans l'ordre des noms.
+    pub fn prescribers(&self) -> Result<Vec<crate::prescribers::Prescriber>, String> {
+        let mut q = self
+            .conn
+            .prepare(
+                "SELECT rpps, last_name, first_name, speciality, finess, am, city
+                 FROM prescribers ORDER BY last_name, first_name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = q
+            .query_map([], |r| {
+                Ok(crate::prescribers::Prescriber {
+                    rpps: r.get(0)?,
+                    last: r.get(1)?,
+                    first: r.get(2)?,
+                    speciality: r.get(3)?,
+                    finess: r.get(4)?,
+                    am: r.get(5)?,
+                    city: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Écrit une ligne au journal des accès.
     ///
     /// L'horodatage est pris **ici** et non passé par l'appelant : une
@@ -37768,6 +37865,36 @@ mod tests {
         assert_eq!(after[0].act, crate::audit::Act::Purge);
         assert_eq!(after[0].file, 2, "combien de lignes ont été retirées");
 
+        // L'annuaire des prescripteurs. La table n'existait pas dans
+        // cette version-là, et la vue le lit par `unwrap_or_default` :
+        // sans le `CREATE` de `MIGRATIONS`, la recherche sous le champ
+        // « prescripteur » ne proposerait jamais rien — un silence, pas
+        // une erreur.
+        assert!(db.prescribers().expect("prescribers").is_empty());
+        let who = crate::prescribers::Prescriber {
+            rpps: "10002345675".to_owned(),
+            last: "Morel".to_owned(),
+            first: "Jean".to_owned(),
+            speciality: "Médecin généraliste".to_owned(),
+            finess: String::new(),
+            am: String::new(),
+            city: "Montpellier".to_owned(),
+        };
+        assert_eq!(db.set_prescribers(std::slice::from_ref(&who)).unwrap(), 1);
+        assert_eq!(db.prescribers().unwrap(), vec![who.clone()]);
+        // **Remplace, et n'ajoute pas** : un annuaire est une
+        // photographie à une date, et importer par-dessus laisserait
+        // les partis à la retraite sous ceux qui les remplacent.
+        let other = crate::prescribers::Prescriber {
+            last: "Bonnet".to_owned(),
+            ..who
+        };
+        db.set_prescribers(std::slice::from_ref(&other)).unwrap();
+        assert_eq!(db.prescribers().unwrap(), vec![other]);
+        // Et un annuaire vide est un annuaire vide, pas une erreur.
+        assert_eq!(db.set_prescribers(&[]).unwrap(), 0);
+        assert!(db.prescribers().unwrap().is_empty());
+
         // Les deux lectures du rapport d'audit.
         //
         // Elles passent par `unwrap_or_default` côté outil : un nom de
@@ -43620,6 +43747,64 @@ mod tests {
             },
             &tiny("facture", 0),
         )
+        .unwrap();
+
+        // Un petit annuaire de prescripteurs.
+        //
+        // Sans lui, la recherche sous le champ « prescripteur » ne
+        // proposerait jamais rien sur aucune capture jamais prise — et
+        // c'est la règle de la maison : une vue que la démonstration
+        // laisse vide est une vue que personne n'a jamais regardée. Les
+        // noms sont ceux que le registre de démonstration porte déjà,
+        // sans quoi l'annuaire et le registre parleraient de deux
+        // officines différentes.
+        db.set_prescribers(&[
+            crate::prescribers::Prescriber {
+                rpps: "10002345675".to_owned(),
+                last: "Morel".to_owned(),
+                first: "Jean".to_owned(),
+                speciality: "Médecin généraliste".to_owned(),
+                finess: String::new(),
+                am: "341234565".to_owned(),
+                city: "Montpellier".to_owned(),
+            },
+            crate::prescribers::Prescriber {
+                rpps: "10003456786".to_owned(),
+                last: "Moreau".to_owned(),
+                first: "Sylvie".to_owned(),
+                speciality: "Médecin généraliste".to_owned(),
+                finess: String::new(),
+                am: String::new(),
+                city: "Montpellier".to_owned(),
+            },
+            crate::prescribers::Prescriber {
+                rpps: "10004567896".to_owned(),
+                last: "Nguyen".to_owned(),
+                first: "Thi".to_owned(),
+                speciality: "Psychiatre".to_owned(),
+                finess: "340000123".to_owned(),
+                am: String::new(),
+                city: "Montpellier".to_owned(),
+            },
+            crate::prescribers::Prescriber {
+                rpps: "10005678908".to_owned(),
+                last: "Bonnet".to_owned(),
+                first: "Alice".to_owned(),
+                speciality: "Chirurgien-dentiste".to_owned(),
+                finess: String::new(),
+                am: String::new(),
+                city: "Sète".to_owned(),
+            },
+            crate::prescribers::Prescriber {
+                rpps: "10006789019".to_owned(),
+                last: "Lefèvre".to_owned(),
+                first: "Marc".to_owned(),
+                speciality: "Anesthésiste".to_owned(),
+                finess: "340000123".to_owned(),
+                am: String::new(),
+                city: "Montpellier".to_owned(),
+            },
+        ])
         .unwrap();
 
         // Les compteurs d'usage, sur une quinzaine de journées.

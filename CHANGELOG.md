@@ -5,6 +5,77 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **Ce qu'on remplit descend, ce qu'on presse monte.** C'est le seul
+  signe qui distingue à l'œil un champ d'un bouton dans ce chrome, et
+  les champs ne l'avaient pas : egui les dessinait de la couleur du
+  creux, cernés d'un trait d'un pixel, à côté de boutons biseautés.
+  Cent soixante-dix cases de saisie, toutes plates.
+
+  Elles passent toutes par `motif::field`, qui pose le creux — et un
+  liseré d'accent quand le champ a la main : sur un formulaire de dix
+  cases, savoir où l'on tape est ce qu'on demande d'abord à un écran.
+  Une seconde forme, `field_sized`, sert les grilles qui ont déjà
+  mesuré leurs rangées : un champ qui y reprendrait la hauteur du style
+  se désalignerait d'un pixel par ligne, ce qui se voit sur cinq lignes.
+
+- **Les menus déroulants aussi, et il y en a deux sortes.** Le
+  `ComboBox` d'egui se peint dans `widgets.*.weak_bg_fill`, que le
+  thème met au fond du panneau pour tous les états : il sortait plat,
+  de la couleur du panneau, à côté de boutons biseautés — le même piège
+  que la glissière, nommé dans ce dépôt depuis des mois et jamais
+  rapproché de celui-là.
+
+  `motif::select` montre une valeur ; `motif::menu` n'en montre pas, et
+  ce n'est pas cosmétique : un menu d'actions — « quel opérateur
+  signe », « depuis quelle fiche » — n'a pas de valeur courante, et y
+  écrire le dernier choix ferait croire à un réglage. Les treize
+  déroulants de l'application sont répartis entre les deux.
+
+  Et les explications par ligne sont conservées : « les semaines
+  paires » et « une semaine sur deux » portent le même nombre de mots
+  et ne sont pas la même règle, ce qui se dit sur la ligne qui le porte.
+
+- **Un annuaire de prescripteurs, cherché en tapant.** Le prescripteur
+  est du texte libre partout où il est demandé, si bien que « Dr
+  Morel », « dr morel », « Morel » et « Dr MOREL J. » sont quatre
+  chaînes pour un médecin — la dérive que le référentiel des classes a
+  déjà trouvée sur les fiches, avec ici une conséquence qu'elle n'avait
+  pas : la vigilance du registre pose la question « plusieurs
+  prescripteurs ? » **en comparant ces chaînes-là**.
+
+  Options › Base, « Importer un annuaire… ». Sous le champ du registre,
+  deux lettres proposent les praticiens qui correspondent : par le nom,
+  la ville, la spécialité ou le numéro — celui qui est écrit sur
+  l'ordonnance qu'on a sous les yeux.
+
+  **Rien n'est livré** : ce fichier appartient à l'officine, comme les
+  codes-barres qu'elle apprend une boîte à la main. **Une colonne s'y
+  trouve par son nom**, jamais par son rang — ces fichiers changent
+  d'ordre d'une version à l'autre, et lire la septième colonne c'est
+  lire autre chose l'année suivante, en silence. Un fichier qui n'est
+  pas un annuaire est refusé **en disant ce qu'il portait**.
+
+  Le RPPS se prouve par sa clé, comme le NIR et le CIP13 : onze chiffres
+  dont le dernier prouve les dix autres, et c'est la clé qui décide,
+  jamais la longueur. Un numéro qui ne se prouve pas est **gardé et
+  compté**, jamais jeté — un import qui laisse trente lignes sur le
+  carreau sans le dire est un annuaire qu'on croit complet.
+
+  Et **il propose, il ne décide pas** : ce qui est tapé reste ce qui
+  sera écrit tant que personne n'a choisi une ligne. Un logiciel qui
+  rapprocherait tout seul « Morel » du docteur Morel le ferait un jour
+  d'un autre Morel.
+
+### Fixed
+- **La case de l'opérateur et sa marque passaient la ligne
+  séparément.** Une marque seule, tombée sur la ligne d'en dessous, ne
+  désigne plus le champ qu'elle remplit — c'est la règle que le dossier
+  suit déjà pour la croix qui retire un traitement, et ce coin-là ne la
+  suivait pas.
+
 ## [0.233.0] - 2026-09-19
 
 ### Fixed

@@ -403,13 +403,13 @@ fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
         .spacing([10.0, 8.0])
         .show(ui, |ui| {
             ui.label(dim(tr("drug_name")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.name));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.name));
             ui.end_row();
             ui.label(dim(tr("drug_dci")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.dci));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.dci));
             ui.end_row();
             ui.label(dim(tr("drug_class")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.class));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.class));
             ui.end_row();
             ui.label(dim(tr("drug_sec_indications")));
             field_box(ui, "fld_indications", w, 84.0, &mut form.indications);
@@ -448,7 +448,7 @@ fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
             field_box(ui, "fld_flags", w, 84.0, &mut form.red_flags);
             ui.end_row();
             ui.label(dim(tr("drug_antidote")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.antidote));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.antidote));
             ui.end_row();
             ui.label(dim(tr("drug_notes")));
             field_box(ui, "fld_notes", w, 64.0, &mut form.notes);
@@ -483,7 +483,7 @@ fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
         .spacing([10.0, 8.0])
         .show(ui, |ui| {
             ui.label(dim(tr("drug_half_life")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.half_life));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.half_life));
             ui.end_row();
             ui.label(dim(tr("drug_auc")));
             field_box(ui, "fld_auc", w, 64.0, &mut form.auc);
@@ -505,14 +505,14 @@ fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
             field_box(ui, "fld_forms", w, 64.0, &mut form.forms);
             ui.end_row();
             ui.label(dim(tr("drug_status")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.status));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.status));
             ui.end_row();
             ui.label(dim(tr("drug_tags")))
                 .on_hover_text(tr("drug_tags_hint"));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.tags));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.tags));
             ui.end_row();
             ui.label(dim(tr("drug_sec_smr")));
-            ui.add_sized([w, 26.0], egui::TextEdit::singleline(&mut form.smr));
+            motif::field(ui, w, egui::TextEdit::singleline(&mut form.smr));
             ui.end_row();
             ui.label(dim(tr("drug_sec_toxicity")));
             field_box(ui, "fld_toxicity", w, 76.0, &mut form.toxicity);
@@ -2246,13 +2246,12 @@ fn notes_box(
                 } else {
                     (room - button_w - ui.spacing().item_spacing.x).max(60.0)
                 };
-                let field = ui
-                    .add_sized(
-                        [field_w, 24.0],
-                        egui::TextEdit::singleline(text)
-                            .hint_text(motif::hint(tr("notes_add_hint"))),
-                    )
-                    .on_hover_text(tr("notes_markup_hint"));
+                let field = motif::field(
+                    ui,
+                    field_w,
+                    egui::TextEdit::singleline(text).hint_text(motif::hint(tr("notes_add_hint"))),
+                )
+                .on_hover_text(tr("notes_markup_hint"));
                 if !stacked {
                     pressed = motif::button(ui, tr("notes_add")).clicked();
                 }
@@ -3370,6 +3369,13 @@ struct Session {
     /// days' notice the officine asked for (`[locations] notice_days`).
     loc_watch: Vec<LocWatch>,
     loc_notice_days: u32,
+    /// L'annuaire des prescripteurs — voir `src/prescribers.rs`.
+    ///
+    /// Chargé une fois et relu par `resync` : une officine qui importe
+    /// son annuaire sur un poste doit le voir arriver sur l'autre, et
+    /// le chercher à chaque frappe serait une requête par caractère
+    /// tapé.
+    prescribers: Vec<crate::prescribers::Prescriber>,
     /// Les initiales déclarées dans `[ui] operator`, pour le journal des
     /// accès — voir `src/audit.rs`.
     ///
@@ -4379,6 +4385,7 @@ impl Session {
             bio_watch: Vec::new(),
             loc_watch: Vec::new(),
             loc_notice_days: 7,
+            prescribers: Vec::new(),
             operator: String::new(),
             audit_keep_days: 0,
             scripts_dir: std::path::PathBuf::new(),
@@ -4724,6 +4731,7 @@ impl Session {
         };
         // Une ouverture, comptée une fois, ici : c'est le seul endroit
         // par où passent les deux chemins de déverrouillage.
+        session.prescribers = session.db.prescribers().unwrap_or_default();
         session.note(crate::telemetry::Signal::Opened);
         session.set_patients(patients);
         // The jump box searches the codex and the dispositifs too, so
@@ -5580,6 +5588,11 @@ impl Session {
         // au comptoir doit atteindre l'imprimante de l'autre poste.
         if let Ok(over) = self.db.content_overrides() {
             self.content = over;
+        }
+        // L'annuaire des prescripteurs : importé sur un poste, il doit
+        // arriver sur l'autre.
+        if let Ok(list) = self.db.prescribers() {
+            self.prescribers = list;
         }
         // **L'officine elle-même**, pour la même raison, et c'est la
         // lecture partagée qui manquait ici : son identité, son équipe
@@ -9311,7 +9324,9 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
         .anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])
         .fixed_size([460.0, 0.0])
         .show(ctx, |ui| {
-            let field = ui.add(
+            let field = motif::field(
+                ui,
+                ui.available_width(),
                 egui::TextEdit::singleline(&mut session.goto_query)
                     .desired_width(f32::INFINITY)
                     .hint_text(motif::hint(tr("goto_hint"))),
@@ -9656,35 +9671,23 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
 /// Thematic drop-down: the standard list plus "no theme" and whatever
 /// free text the row already carries. Returns true when changed.
 fn theme_combo(ui: &mut egui::Ui, id_salt: &str, theme: &mut String) -> bool {
-    let mut changed = false;
-    let shown = if theme.is_empty() {
-        tr("itv_theme_none").to_owned()
-    } else {
-        theme.clone()
-    };
-    egui::ComboBox::from_id_salt(id_salt)
-        .selected_text(egui::RichText::new(shown).size(motif::pt(ui, 12.0)))
-        // **Une largeur de liste déroulante non plus.** Le « 0 » du
-        // corps fait huit pixels à l'échelle 1 : ces cent quatre-vingt-dix
-        // en font vingt-quatre, et ils suivent maintenant `text_scale`
-        // comme le texte qu'ils portent.
-        .width(chars_wide(ui, 24.0))
-        .show_ui(ui, |ui| {
-            if ui
-                .selectable_label(theme.is_empty(), tr("itv_theme_none"))
-                .clicked()
-            {
-                theme.clear();
-                changed = true;
-            }
-            for t in db::THEMES {
-                if ui.selectable_label(theme == t, *t).clicked() {
-                    *theme = (*t).to_owned();
-                    changed = true;
-                }
-            }
-        });
-    changed
+    // « Aucun thème », la liste, et **ce que la ligne porte déjà** : un
+    // thème tapé à la main avant que la liste existe ne doit pas
+    // disparaître de sa propre case le jour où on la rouvre.
+    let mut options: Vec<(String, String)> = vec![(String::new(), tr("itv_theme_none").to_owned())];
+    options.extend(
+        db::THEMES
+            .iter()
+            .map(|t| ((*t).to_owned(), (*t).to_owned())),
+    );
+    if !theme.is_empty() && !db::THEMES.iter().any(|t| t == theme) {
+        options.push((theme.clone(), theme.clone()));
+    }
+    // **Une largeur de liste déroulante ne s'écrit pas en pixels.** Le
+    // « 0 » du corps fait huit pixels à l'échelle 1 : ces cent
+    // quatre-vingt-dix en faisaient vingt-quatre, et ils suivent
+    // maintenant `text_scale` comme le texte qu'ils portent.
+    motif::select(ui, id_salt, chars_wide(ui, 24.0), theme, &options).changed()
 }
 
 pub struct App {
@@ -10447,6 +10450,15 @@ impl App {
                         // n'exercerait ni la courbe ni les motifs.
                         Ok("stup" | "registres") => {
                             session.open_registres(RegistreTab::Stupefiants);
+                            // **Avec deux lettres dans le champ du
+                            // prescripteur.** L'annuaire ne propose
+                            // rien sur un champ vide — et c'est juste —,
+                            // si bien qu'aucune capture jamais prise ne
+                            // montrerait la recherche qui est tout
+                            // l'intérêt de l'avoir importé. La même
+                            // raison que la caisse, qui s'ouvre sur un
+                            // tiroir déjà compté.
+                            session.stup_new_prescriber = "Mor".to_owned();
                         }
                         // Le catalogue, qui est l'autre moitié de la
                         // colonne de gauche et se peint tout autrement :
@@ -11615,10 +11627,13 @@ impl App {
     /// ligne ajoutée ailleurs — et fausse en silence, puisque personne
     /// ne relit un mode d'emploi pour vérifier qu'il a vieilli.
     fn side_help(&mut self, ui: &mut egui::Ui) {
-        ui.add(
+        let room = ui.available_width() - ui.spacing().item_spacing.x;
+        motif::field(
+            ui,
+            room,
             egui::TextEdit::singleline(&mut self.help_query)
                 .hint_text(motif::hint(tr("help_search")))
-                .desired_width(ui.available_width() - ui.spacing().item_spacing.x),
+                .desired_width(f32::INFINITY),
         );
         ui.add_space(4.0);
         let key = crate::fuzzy::sort_key(&self.help_query);
@@ -12062,8 +12077,9 @@ impl App {
         // ». Quand le nom ne tient pas, on garde le verbe.
         let w = ui.available_width();
         let hint = Self::hint_that_fits(ui, w, hint);
-        let resp = ui.add_sized(
-            [w, 26.0],
+        let resp = motif::field(
+            ui,
+            w,
             egui::TextEdit::singleline(text).hint_text(motif::hint(hint)),
         );
         motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
@@ -12912,34 +12928,44 @@ impl App {
                     // team down, the arrow picks from it and the
                     // tooltip says who is behind the letters.
                     let known = config_operator_label(&self.config, &self.operator);
-                    ui.add_sized(
-                        [chars_wide(ui, 6.0), 22.0],
-                        egui::TextEdit::singleline(&mut self.operator),
-                    )
-                    .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
-                    if !self.config.pharmacy.operators.is_empty() {
-                        egui::ComboBox::from_id_salt("operator_pick")
-                            // Le seul chevron, sans texte : trois
-                            // caractères, qui grandissent avec lui.
-                            .width(chars_wide(ui, 3.0))
-                            .selected_text("")
-                            .show_ui(ui, |ui| {
-                                for op in &self.config.pharmacy.operators {
-                                    let initials = op.initials.trim().to_owned();
-                                    if initials.is_empty() {
-                                        continue;
-                                    }
-                                    if ui
-                                        .selectable_label(self.operator == initials, op.label())
-                                        .clicked()
-                                    {
-                                        self.operator = initials;
-                                    }
-                                }
-                            })
-                            .response
-                            .on_hover_text(tr("docs_operator_pick"));
-                    }
+                    // **La case et sa marque sont un seul objet.** Une
+                    // marque seule, tombée sur la ligne d'en dessous,
+                    // ne désigne plus le champ qu'elle remplit — c'est
+                    // la règle que le dossier suit déjà pour la croix
+                    // qui retire un traitement.
+                    let (field_w, mark_w) = (chars_wide(ui, 6.0), chars_wide(ui, 3.0));
+                    let has_team = !self.config.pharmacy.operators.is_empty();
+                    let together = if has_team {
+                        Self::group_width(ui, [field_w, mark_w].into_iter())
+                    } else {
+                        field_w
+                    };
+                    Self::keep_together(ui, egui::vec2(together, Self::row_height(ui)), |ui| {
+                        motif::field(ui, field_w, egui::TextEdit::singleline(&mut self.operator))
+                            .on_hover_text(known.unwrap_or_else(|| tr("docs_operator").to_owned()));
+                        if has_team {
+                            // La seule marque, sans texte : trois
+                            // caractères, qui grandissent avec elle. Un
+                            // **menu** et non un réglage — ce qu'on y
+                            // choisit part dans le champ d'à côté, et
+                            // l'écrire dans la case ferait croire à une
+                            // valeur posée. L'infobulle est alors la seule
+                            // chose qui dise ce qu'elle ouvre.
+                            let ops: Vec<(String, String)> = self
+                                .config
+                                .pharmacy
+                                .operators
+                                .iter()
+                                .map(|o| (o.initials.trim().to_owned(), o.label().to_owned()))
+                                .filter(|(i, _)| !i.is_empty())
+                                .collect();
+                            let picked = motif::menu(ui, "operator_pick", mark_w, "", &ops);
+                            picked.response.on_hover_text(tr("docs_operator_pick"));
+                            if let Some(initials) = picked.inner {
+                                self.operator = initials;
+                            }
+                        }
+                    });
                     if unlocked
                         && motif::button(ui, tr("docs_stamp"))
                             .on_hover_text(tr("docs_stamp_tooltip"))
@@ -13226,8 +13252,9 @@ impl App {
                     );
                     ui.add_space(14.0);
 
-                    let field = ui.add_sized(
-                        [(ui.available_width() - 20.0).clamp(60.0, 320.0), 30.0],
+                    let field = motif::field(
+                        ui,
+                        (ui.available_width() - 20.0).clamp(60.0, 320.0),
                         egui::TextEdit::singleline(password)
                             .password(true)
                             .hint_text(motif::hint(tr("lock_password_hint"))),
@@ -13504,8 +13531,9 @@ impl App {
                     ui.label(tr("app_tagline"));
                 });
                 ui.add_space(14.0);
-                let search = ui.add_sized(
-                    [ui.available_width(), 32.0],
+                let search = motif::field(
+                    ui,
+                    ui.available_width(),
                     egui::TextEdit::singleline(&mut session.query)
                         .hint_text(motif::hint(tr("search_hint"))),
                 );
@@ -13688,28 +13716,31 @@ impl App {
                         .spacing([12.0, 8.0])
                         .show(ui, |ui| {
                             ui.label(dim(tr("form_last_name")));
-                            let a = ui.add_sized(
-                                [chars_wide(ui, 30.0), 26.0],
+                            let a = motif::field(
+                                ui,
+                                chars_wide(ui, 30.0),
                                 egui::TextEdit::singleline(&mut form.last_name),
                             );
                             ui.end_row();
                             ui.label(dim(tr("form_first_name")));
-                            let b = ui.add_sized(
-                                [
+                            let b = motif::field_sized(
+                                ui,
+                                egui::vec2(
                                     Self::field_width(ui, [tr("form_birth_hint")].into_iter())
                                         .max(240.0),
                                     26.0,
-                                ],
+                                ),
                                 egui::TextEdit::singleline(&mut form.first_name),
                             );
                             ui.end_row();
                             ui.label(dim(tr("form_birth")));
-                            let c = ui.add_sized(
-                                [
+                            let c = motif::field_sized(
+                                ui,
+                                egui::vec2(
                                     Self::field_width(ui, [tr("form_birth_hint")].into_iter())
                                         .max(240.0),
                                     26.0,
-                                ],
+                                ),
                                 egui::TextEdit::singleline(&mut form.birth_date)
                                     .hint_text(motif::hint(tr("form_birth_hint"))),
                             );
@@ -14338,8 +14369,9 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
-                                    ui.add_sized(
-                                        [ui.available_width().max(120.0), 24.0],
+                                    motif::field(
+                                        ui,
+                                        ui.available_width().max(120.0),
                                         egui::TextEdit::singleline(&mut choice.posology)
                                             .hint_text(motif::hint(tr("ord_posology_hint"))),
                                     );
@@ -14420,8 +14452,9 @@ impl App {
                             }
                             ui.horizontal(|ui| {
                                 ui.add_space(12.0);
-                                ui.add_sized(
-                                    [ui.available_width().max(120.0), 24.0],
+                                motif::field(
+                                    ui,
+                                    ui.available_width().max(120.0),
                                     egui::TextEdit::singleline(&mut choice.adjuvant_posology)
                                         .hint_text(motif::hint(tr("ord_posology_hint"))),
                                 );
@@ -15211,33 +15244,39 @@ impl App {
                                 // panneau est étroit.
                                 let h = Self::row_height(ui);
                                 let fields = [
-                                    ui.add_sized(
-                                        [widths[0], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[0], h),
                                         egui::TextEdit::singleline(&mut e.label)
                                             .hint_text(motif::hint(tr("vacc_label_hint"))),
                                     ),
-                                    ui.add_sized(
-                                        [widths[1], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[1], h),
                                         egui::TextEdit::singleline(&mut e.dose)
                                             .hint_text(motif::hint(tr("vacc_dose_hint"))),
                                     ),
-                                    ui.add_sized(
-                                        [widths[2], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[2], h),
                                         egui::TextEdit::singleline(vacc_edit_date)
                                             .hint_text(motif::hint(tr("vacc_date_hint"))),
                                     ),
-                                    ui.add_sized(
-                                        [widths[3], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[3], h),
                                         egui::TextEdit::singleline(&mut e.lot)
                                             .hint_text(motif::hint(tr("vacc_lot_hint"))),
                                     ),
-                                    ui.add_sized(
-                                        [widths[4], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[4], h),
                                         egui::TextEdit::singleline(&mut e.site)
                                             .hint_text(motif::hint(tr("vacc_site_hint"))),
                                     ),
-                                    ui.add_sized(
-                                        [widths[5], h],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(widths[5], h),
                                         egui::TextEdit::singleline(&mut e.operator)
                                             .hint_text(motif::hint(tr("vacc_col_operator"))),
                                     ),
@@ -15267,8 +15306,9 @@ impl App {
                             // dose, et recliquer entre chacune est le
                             // geste qu'on finit par ne plus faire.
                             let want_focus = std::mem::take(&mut session.focus_vacc_name);
-                            let name = ui.add_sized(
-                                [widths[0], h],
+                            let name = motif::field_sized(
+                                ui,
+                                egui::vec2(widths[0], h),
                                 egui::TextEdit::singleline(&mut session.vacc_new.label)
                                     .hint_text(motif::hint(tr("vacc_label_hint"))),
                             );
@@ -15277,23 +15317,27 @@ impl App {
                             }
                             name_field = Some(name);
                             rest = vec![
-                                ui.add_sized(
-                                    [widths[1], h],
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(widths[1], h),
                                     egui::TextEdit::singleline(&mut session.vacc_new.dose)
                                         .hint_text(motif::hint(tr("vacc_dose_hint"))),
                                 ),
-                                ui.add_sized(
-                                    [widths[2], h],
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(widths[2], h),
                                     egui::TextEdit::singleline(&mut session.vacc_new_date)
                                         .hint_text(motif::hint(tr("vacc_date_hint"))),
                                 ),
-                                ui.add_sized(
-                                    [widths[3], h],
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(widths[3], h),
                                     egui::TextEdit::singleline(&mut session.vacc_new.lot)
                                         .hint_text(motif::hint(tr("vacc_lot_hint"))),
                                 ),
-                                ui.add_sized(
-                                    [widths[4], h],
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(widths[4], h),
                                     egui::TextEdit::singleline(&mut session.vacc_new.site)
                                         .hint_text(motif::hint(tr("vacc_site_hint"))),
                                 ),
@@ -16865,11 +16909,12 @@ impl App {
                                     .truncate(),
                                 );
                             });
-                            let field = ui.add_sized(
-                                [
+                            let field = motif::field_sized(
+                                ui,
+                                egui::vec2(
                                     (ui.available_width() - 4.0).max(60.0),
                                     ui.spacing().interact_size.y,
-                                ],
+                                ),
                                 egui::TextEdit::singleline(buf)
                                     .hint_text(motif::hint(tr("concil_posology_hint"))),
                             );
@@ -17345,13 +17390,18 @@ impl App {
             } else {
                 ui.horizontal_wrapped(|ui| {
                     session.loc_pick = session.loc_pick.min(forfaits.len() - 1);
-                    egui::ComboBox::from_id_salt("loc_pick")
-                        .selected_text(forfaits[session.loc_pick].label.clone())
-                        .show_ui(ui, |ui| {
-                            for (i, f) in forfaits.iter().enumerate() {
-                                ui.selectable_value(&mut session.loc_pick, i, &f.label);
-                            }
-                        });
+                    let choices: Vec<(usize, String)> = forfaits
+                        .iter()
+                        .enumerate()
+                        .map(|(i, f)| (i, f.label.clone()))
+                        .collect();
+                    motif::select(
+                        ui,
+                        "loc_pick",
+                        chars_wide(ui, 22.0),
+                        &mut session.loc_pick,
+                        &choices,
+                    );
                     // **« posé le » ne quitte pas sa date.** La rangée
                     // enveloppe, et un mot qui nomme un champ posé à la
                     // ligne au-dessus ne nomme rien.
@@ -17369,8 +17419,9 @@ impl App {
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
-                            ui.add_sized(
-                                [field_w, 22.0],
+                            motif::field(
+                                ui,
+                                field_w,
                                 egui::TextEdit::singleline(&mut session.loc_start)
                                     .hint_text(motif::hint(db::format_french_date(&today))),
                             )
@@ -17749,8 +17800,9 @@ impl App {
                                             if l.running() {
                                                 match &mut session.loc_return {
                                                     Some((id, date)) if *id == l.id => {
-                                                        ui.add_sized(
-                                                            [chars_wide(ui, 11.0), 20.0],
+                                                        motif::field(
+                                                            ui,
+                                                            chars_wide(ui, 11.0),
                                                             egui::TextEdit::singleline(date)
                                                                 .hint_text(motif::hint(
                                                                     db::format_french_date(&today),
@@ -18244,14 +18296,16 @@ impl App {
                                         // line loses its date.
                                         if session.bio_edit.as_ref().map(|e| e.id) == Some(r.id) {
                                             ui.horizontal(|ui| {
-                                                ui.add_sized(
-                                                    [chars_wide(ui, 7.0), 20.0],
+                                                motif::field(
+                                                    ui,
+                                                    chars_wide(ui, 7.0),
                                                     egui::TextEdit::singleline(
                                                         &mut session.bio_edit_value,
                                                     ),
                                                 );
-                                                ui.add_sized(
-                                                    [Self::date_field_width(ui), 20.0],
+                                                motif::field(
+                                                    ui,
+                                                    Self::date_field_width(ui),
                                                     egui::TextEdit::singleline(
                                                         &mut session.bio_edit_date,
                                                     )
@@ -18362,8 +18416,9 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            let analyte = ui.add_sized(
-                                [field, 22.0],
+                            let analyte = motif::field(
+                                ui,
+                                field,
                                 egui::TextEdit::singleline(&mut session.bio_query)
                                     .hint_text(motif::hint(hint)),
                             );
@@ -18378,8 +18433,9 @@ impl App {
                                     session.bio_new_unit.clear();
                                 }
                             }
-                            let value = ui.add_sized(
-                                [value_w, 22.0],
+                            let value = motif::field(
+                                ui,
+                                value_w,
                                 egui::TextEdit::singleline(&mut session.bio_new_value)
                                     .hint_text(motif::hint(tr("bio_value_hint"))),
                             );
@@ -18388,8 +18444,9 @@ impl App {
                                     .size(motif::pt(ui, 11.5))
                                     .color(motif::text_dim()),
                             );
-                            let when = ui.add_sized(
-                                [date_w, 22.0],
+                            let when = motif::field(
+                                ui,
+                                date_w,
                                 egui::TextEdit::singleline(&mut session.bio_new_date)
                                     .hint_text(motif::hint(tr("itv_rdv_hint"))),
                             );
@@ -18916,8 +18973,9 @@ impl App {
         let mut remove: Option<String> = None;
         let mut add: Option<&'static str> = None;
         motif::panel(ui, rect, Some(tr("vacc_travel_section")), |ui| {
-            ui.add_sized(
-                [ui.available_width().min(260.0), 22.0],
+            motif::field(
+                ui,
+                ui.available_width().min(260.0),
                 egui::TextEdit::singleline(&mut session.travel_query)
                     .hint_text(motif::hint(tr("vacc_travel_add_hint"))),
             );
@@ -20974,70 +21032,78 @@ impl App {
                 .spacing([12.0, 8.0])
                 .show(ui, |ui| {
                     ui.label(dim(tr("form_last_name")));
-                    ui.add_sized(
-                        [chars_wide(ui, 30.0), 26.0],
+                    motif::field(
+                        ui,
+                        chars_wide(ui, 30.0),
                         egui::TextEdit::singleline(&mut form.last_name),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_first_name")));
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
                             26.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut form.first_name),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_birth")));
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
                             26.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut form.birth_date)
                             .hint_text(motif::hint(tr("form_birth_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_phone")));
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("form_phone_hint")].into_iter()).max(240.0),
                             26.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut form.phone)
                             .hint_text(motif::hint(tr("form_phone_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_comment")));
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("form_comment_hint")].into_iter()).max(240.0),
                             26.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut form.notes)
                             .hint_text(motif::hint(tr("form_comment_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_physician")));
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("form_physician_hint")].into_iter())
                                 .max(240.0),
                             26.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut form.physician)
                             .hint_text(motif::hint(tr("form_physician_hint"))),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_email")));
-                    ui.add_sized(
-                        [chars_wide(ui, 30.0), 26.0],
+                    motif::field(
+                        ui,
+                        chars_wide(ui, 30.0),
                         egui::TextEdit::singleline(&mut form.email),
                     );
                     ui.end_row();
                     ui.label(dim(tr("form_address")));
-                    ui.add_sized(
-                        [chars_wide(ui, 30.0), 26.0],
+                    motif::field(
+                        ui,
+                        chars_wide(ui, 30.0),
                         egui::TextEdit::singleline(&mut form.address),
                     );
                     ui.end_row();
@@ -21046,21 +21112,23 @@ impl App {
                     // dotted rule for the patient's carte Vitale.
                     ui.label(dim(tr("form_nir")));
                     ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::field_width(ui, [tr("form_nir_hint")].into_iter()).max(200.0),
                                 26.0,
-                            ],
+                            ),
                             egui::TextEdit::singleline(&mut form.nir)
                                 .hint_text(motif::hint(tr("form_nir_hint"))),
                         );
                         ui.label(dim(tr("form_regime")));
-                        ui.add_sized(
-                            [
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::field_width(ui, [tr("form_regime_hint")].into_iter())
                                     .max(56.0),
                                 26.0,
-                            ],
+                            ),
                             egui::TextEdit::singleline(&mut form.regime)
                                 .hint_text(motif::hint(tr("form_regime_hint"))),
                         );
@@ -21212,11 +21280,12 @@ impl App {
                 // déborder la bande de sa part, ce qui emporte
                 // « Nouvel entretien » et le choix rapide des actes.
                 let want_focus = std::mem::take(&mut session.focus_treat_add);
-                let f = ui.add_sized(
-                    [
+                let f = motif::field_sized(
+                    ui,
+                    egui::vec2(
                         Self::field_width(ui, [tr("treat_add_hint")].into_iter()).max(140.0),
                         ui.spacing().interact_size.y,
-                    ],
+                    ),
                     egui::TextEdit::singleline(&mut session.treat_query)
                         .hint_text(motif::hint(tr("treat_add_hint"))),
                 );
@@ -21428,12 +21497,13 @@ impl App {
                         // prend réellement est dans sa boîte à pilules
                         // même si aucun laboratoire ne le vend. Une
                         // liste fermée dirait qu'il n'existe pas.
-                        let resp = ui.add_sized(
-                            [
+                        let resp = motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::field_width(ui, [tr("treat_strength_hint")].into_iter())
                                     .max(90.0),
                                 ui.spacing().interact_size.y,
-                            ],
+                            ),
                             egui::TextEdit::singleline(&mut strength_edit)
                                 .hint_text(motif::hint(tr("treat_strength_hint"))),
                         );
@@ -22316,12 +22386,12 @@ impl App {
                 .made_edits
                 .entry(row.itv.id)
                 .or_insert_with(|| db::format_french_date(made));
-            let field = ui
-                .add_sized(
-                    [Self::date_field_width(ui), 22.0],
-                    egui::TextEdit::singleline(text).hint_text(motif::hint(tr("itv_rdv_hint"))),
-                )
-                .on_hover_text(tr("itv_created_tooltip"));
+            let field = motif::field(
+                ui,
+                Self::date_field_width(ui),
+                egui::TextEdit::singleline(text).hint_text(motif::hint(tr("itv_rdv_hint"))),
+            )
+            .on_hover_text(tr("itv_created_tooltip"));
             if field.lost_focus() {
                 let year = session.db.current_year();
                 match db::parse_french_date(text, year, db::YearHint::Future) {
@@ -22350,18 +22420,18 @@ impl App {
                 .by_edits
                 .entry(row.itv.id)
                 .or_insert_with(|| row.itv.operator.clone());
-            let by = ui
-                .add_sized(
-                    [
-                        Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter()),
-                        22.0,
-                    ],
-                    egui::TextEdit::singleline(who).hint_text(motif::hint(tr("itv_by_hint"))),
-                )
-                .on_hover_text(
-                    config_operator_label(row.config, &row.itv.operator)
-                        .unwrap_or_else(|| tr("itv_by_tooltip").to_owned()),
-                );
+            let by = motif::field_sized(
+                ui,
+                egui::vec2(
+                    Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter()),
+                    22.0,
+                ),
+                egui::TextEdit::singleline(who).hint_text(motif::hint(tr("itv_by_hint"))),
+            )
+            .on_hover_text(
+                config_operator_label(row.config, &row.itv.operator)
+                    .unwrap_or_else(|| tr("itv_by_tooltip").to_owned()),
+            );
             if by.lost_focus() && who.trim() != row.itv.operator {
                 out.set_by = Some((row.itv.id, who.trim().to_owned(), row.itv.operator.clone()));
             }
@@ -22532,8 +22602,9 @@ impl App {
         // `Grid` a été introduit pour aligner.
         let field = ui
             .horizontal(|ui| {
-                let field = ui.add_sized(
-                    [Self::date_field_width(ui), 22.0],
+                let field = motif::field(
+                    ui,
+                    Self::date_field_width(ui),
                     egui::TextEdit::singleline(text).hint_text(motif::hint(tr("itv_rdv_hint"))),
                 );
                 // The hour sits with its date; it only
@@ -22543,11 +22614,12 @@ impl App {
                         .hour_edits
                         .entry(row.itv.id)
                         .or_insert_with(|| row.itv.scheduled_time.clone());
-                    let h = ui.add_sized(
-                        [
+                    let h = motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter()),
                             22.0,
-                        ],
+                        ),
                         egui::TextEdit::singleline(hour)
                             .hint_text(motif::hint(tr("agenda_hour_hint"))),
                     );
@@ -25080,12 +25152,13 @@ impl App {
                         .as_mut()
                         .filter(|(id, _)| *id == rdv.id);
                     if let Some((_, text)) = editing {
-                        let field = ui.add_sized(
-                            [
+                        let field = motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::field_width(ui, [tr("agenda_hour_hint")].into_iter())
                                     .max(56.0),
                                 22.0,
-                            ],
+                            ),
                             egui::TextEdit::singleline(text)
                                 .hint_text(motif::hint(tr("agenda_hour_hint"))),
                         );
@@ -25142,8 +25215,9 @@ impl App {
                         .as_mut()
                         .filter(|(id, _)| *id == rdv.id);
                     if let Some((_, text)) = moving {
-                        let field = ui.add_sized(
-                            [Self::date_field_width(ui), 22.0],
+                        let field = motif::field(
+                            ui,
+                            Self::date_field_width(ui),
                             egui::TextEdit::singleline(text)
                                 .hint_text(motif::hint(tr("itv_rdv_hint"))),
                         );
@@ -25258,16 +25332,20 @@ impl App {
             let narrow = avail - reserve < title_min;
             let mut entered = false;
             let category = |ui: &mut egui::Ui, session: &mut Session| {
-                egui::ComboBox::from_id_salt("event_cat")
-                    .selected_text(session.event_category.label())
-                    .width(cat_w - arrow)
-                    .show_ui(ui, |ui| {
-                        for c in db::EventCategory::ALL {
-                            ui.selectable_value(&mut session.event_category, c, c.label());
-                        }
-                    });
-                ui.add_sized(
-                    [hour_w, 24.0],
+                let cats: Vec<(db::EventCategory, String)> = db::EventCategory::ALL
+                    .into_iter()
+                    .map(|c| (c, c.label().to_owned()))
+                    .collect();
+                motif::select(
+                    ui,
+                    "event_cat",
+                    cat_w - arrow,
+                    &mut session.event_category,
+                    &cats,
+                );
+                motif::field(
+                    ui,
+                    hour_w,
                     egui::TextEdit::singleline(&mut session.event_time)
                         .hint_text(motif::hint(tr("agenda_hour_hint"))),
                 )
@@ -25279,15 +25357,17 @@ impl App {
                         .size(motif::pt(ui, 11.0))
                         .color(motif::text_faint()),
                 );
-                ui.add_sized(
-                    [end_w, 24.0],
+                motif::field(
+                    ui,
+                    end_w,
                     egui::TextEdit::singleline(&mut session.event_end)
                         .hint_text(motif::hint(tr("agenda_end_hint"))),
                 );
             };
             let title = |ui: &mut egui::Ui, session: &mut Session, w: f32| -> egui::Response {
-                let field = ui.add_sized(
-                    [w, 24.0],
+                let field = motif::field(
+                    ui,
+                    w,
                     egui::TextEdit::singleline(&mut session.event_title)
                         .hint_text(motif::hint(tr("agenda_event_hint"))),
                 );
@@ -25299,17 +25379,18 @@ impl App {
                 field
             };
             let repeat = |ui: &mut egui::Ui, session: &mut Session| {
-                egui::ComboBox::from_id_salt("event_repeat")
-                    .selected_text(session.event_cadence.label())
-                    .width(rep_w - arrow)
-                    .show_ui(ui, |ui| {
-                        for c in Self::EVENT_RHYTHMS {
-                            ui.selectable_value(&mut session.event_cadence, c, c.label())
-                                .on_hover_text(c.hint());
-                        }
-                    })
-                    .response
-                    .on_hover_text(session.event_cadence.hint());
+                let rhythms: Vec<(planning::Cadence, String, String)> = Self::EVENT_RHYTHMS
+                    .into_iter()
+                    .map(|c| (c, c.label().to_owned(), c.hint().to_owned()))
+                    .collect();
+                motif::select_hinted(
+                    ui,
+                    "event_repeat",
+                    rep_w - arrow,
+                    &mut session.event_cadence,
+                    &rhythms,
+                )
+                .on_hover_text(session.event_cadence.hint());
             };
             if narrow {
                 ui.horizontal(|ui| category(ui, session));
@@ -26733,41 +26814,38 @@ impl App {
                         // et se tapent si l'officine n'a rien déclaré : une
                         // liste vide ne doit pas empêcher d'écrire.
                         if config.pharmacy.operators.is_empty() {
-                            ui.add(
-                                egui::TextEdit::singleline(&mut session.shift_form.operator)
-                                    .desired_width(chars_wide(ui, 6.0)),
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 6.0),
+                                egui::TextEdit::singleline(&mut session.shift_form.operator),
                             );
                         } else {
-                            egui::ComboBox::from_id_salt("planning_who")
-                                .selected_text(session.shift_form.operator.clone())
-                                .show_ui(ui, |ui| {
-                                    for o in &config.pharmacy.operators {
-                                        let initials = o.initials.trim().to_owned();
-                                        ui.selectable_value(
-                                            &mut session.shift_form.operator,
-                                            initials.clone(),
-                                            o.label(),
-                                        );
-                                    }
-                                });
+                            let team: Vec<(String, String)> = config
+                                .pharmacy
+                                .operators
+                                .iter()
+                                .map(|o| (o.initials.trim().to_owned(), o.label().to_owned()))
+                                .collect();
+                            motif::select(
+                                ui,
+                                "planning_who",
+                                chars_wide(ui, 16.0),
+                                &mut session.shift_form.operator,
+                                &team,
+                            );
                         }
-                        egui::ComboBox::from_id_salt("planning_kind")
-                            .selected_text(
-                                session
-                                    .shift_form
-                                    .kind
-                                    .unwrap_or(planning::ShiftKind::Journee)
-                                    .label(),
-                            )
-                            .show_ui(ui, |ui| {
-                                for k in planning::ShiftKind::ALL {
-                                    ui.selectable_value(
-                                        &mut session.shift_form.kind,
-                                        Some(k),
-                                        k.label(),
-                                    );
-                                }
-                            });
+                        let kinds: Vec<(Option<planning::ShiftKind>, String)> =
+                            planning::ShiftKind::ALL
+                                .into_iter()
+                                .map(|k| (Some(k), k.label().to_owned()))
+                                .collect();
+                        motif::select(
+                            ui,
+                            "planning_kind",
+                            chars_wide(ui, 16.0),
+                            &mut session.shift_form.kind,
+                            &kinds,
+                        );
                         let day_field = Self::field_width(
                             ui,
                             [tr("agenda_hour_hint"), tr("agenda_end_hint")].into_iter(),
@@ -26783,22 +26861,25 @@ impl App {
                             egui::RichText::new(db::format_french_date(&session.shift_form.day))
                                 .size(motif::pt(ui, 11.0)),
                         );
-                        ui.add(
+                        motif::field(
+                            ui,
+                            day_field,
                             egui::TextEdit::singleline(&mut session.shift_form.from)
-                                .hint_text(motif::hint(tr("agenda_hour_hint")))
-                                .desired_width(day_field),
+                                .hint_text(motif::hint(tr("agenda_hour_hint"))),
                         )
                         .on_hover_text(tr("planning_from_tooltip"));
-                        ui.add(
+                        motif::field(
+                            ui,
+                            day_field,
                             egui::TextEdit::singleline(&mut session.shift_form.to)
-                                .hint_text(motif::hint(tr("agenda_end_hint")))
-                                .desired_width(day_field),
+                                .hint_text(motif::hint(tr("agenda_end_hint"))),
                         )
                         .on_hover_text(tr("planning_to_tooltip"));
-                        ui.add(
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 5.0),
                             egui::TextEdit::singleline(&mut session.shift_form.pause)
-                                .hint_text(motif::hint("45"))
-                                .desired_width(chars_wide(ui, 5.0)),
+                                .hint_text(motif::hint("45")),
                         )
                         .on_hover_text(tr("planning_pause_tooltip"));
                         // Le rythme, là où il y avait une case à cocher.
@@ -26810,20 +26891,19 @@ impl App {
                             .shift_form
                             .cadence
                             .unwrap_or(planning::Cadence::Unique);
-                        egui::ComboBox::from_id_salt("planning_cadence")
-                            .selected_text(rhythm.label())
-                            .show_ui(ui, |ui| {
-                                for c in planning::Cadence::ALL {
-                                    ui.selectable_value(
-                                        &mut session.shift_form.cadence,
-                                        Some(c),
-                                        c.label(),
-                                    )
-                                    .on_hover_text(c.hint());
-                                }
-                            })
-                            .response
-                            .on_hover_text(rhythm.hint());
+                        let cadences: Vec<(Option<planning::Cadence>, String, String)> =
+                            planning::Cadence::ALL
+                                .into_iter()
+                                .map(|c| (Some(c), c.label().to_owned(), c.hint().to_owned()))
+                                .collect();
+                        motif::select_hinted(
+                            ui,
+                            "planning_cadence",
+                            chars_wide(ui, 20.0),
+                            &mut session.shift_form.cadence,
+                            &cadences,
+                        )
+                        .on_hover_text(rhythm.hint());
                         // **La fin ne se demande que quand elle a un
                         // sens.** Sur « ce jour-là » il n'y a rien à
                         // borner ; sur « tous les jours » elle est
@@ -26852,7 +26932,9 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
-                                    ui.add(
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 12.0),
                                         egui::TextEdit::singleline(
                                             &mut session.shift_form.until_text,
                                         )
@@ -28619,28 +28701,30 @@ impl App {
                                 // viderait la grille lettre après
                                 // lettre. Le menu, lui, ne rend que des
                                 // noms entiers.
-                                if ui
-                                    .add(
-                                        egui::TextEdit::singleline(&mut session.frame.operator)
-                                            .desired_width(chars_wide(ui, 6.0)),
-                                    )
-                                    .lost_focus()
+                                if motif::field(
+                                    ui,
+                                    chars_wide(ui, 6.0),
+                                    egui::TextEdit::singleline(&mut session.frame.operator),
+                                )
+                                .lost_focus()
                                     && session.frame.loaded_for != session.frame.operator.trim()
                                 {
                                     reload = true;
                                 }
                             } else {
-                                egui::ComboBox::from_id_salt("frame_who")
-                                    .selected_text(session.frame.operator.clone())
-                                    .show_ui(ui, |ui| {
-                                        for o in &config.pharmacy.operators {
-                                            ui.selectable_value(
-                                                &mut session.frame.operator,
-                                                o.initials.trim().to_owned(),
-                                                o.label(),
-                                            );
-                                        }
-                                    });
+                                let team: Vec<(String, String)> = config
+                                    .pharmacy
+                                    .operators
+                                    .iter()
+                                    .map(|o| (o.initials.trim().to_owned(), o.label().to_owned()))
+                                    .collect();
+                                motif::select(
+                                    ui,
+                                    "frame_who",
+                                    chars_wide(ui, 16.0),
+                                    &mut session.frame.operator,
+                                    &team,
+                                );
                             }
                             // Changer de personne, c'est ouvrir *sa*
                             // trame : la grille suit le menu plutôt que
@@ -28654,20 +28738,19 @@ impl App {
                                 reload = true;
                             }
                             let rhythm = session.frame.cadence;
-                            egui::ComboBox::from_id_salt("frame_cadence")
-                                .selected_text(rhythm.label())
-                                .show_ui(ui, |ui| {
-                                    for c in FrameForm::RHYTHMS {
-                                        ui.selectable_value(
-                                            &mut session.frame.cadence,
-                                            c,
-                                            c.label(),
-                                        )
-                                        .on_hover_text(c.hint());
-                                    }
-                                })
-                                .response
-                                .on_hover_text(rhythm.hint());
+                            let cadences: Vec<(planning::Cadence, String, String)> =
+                                FrameForm::RHYTHMS
+                                    .into_iter()
+                                    .map(|c| (c, c.label().to_owned(), c.hint().to_owned()))
+                                    .collect();
+                            motif::select_hinted(
+                                ui,
+                                "frame_cadence",
+                                chars_wide(ui, 20.0),
+                                &mut session.frame.cadence,
+                                &cadences,
+                            )
+                            .on_hover_text(rhythm.hint());
                         });
                         // — À partir de quand, jusqu'à quand.
                         ui.horizontal_wrapped(|ui| {
@@ -28694,10 +28777,11 @@ impl App {
                                                 .size(motif::pt(ui, 11.0))
                                                 .color(motif::text_dim()),
                                         );
-                                        let r = ui.add(
+                                        let r = motif::field(
+                                            ui,
+                                            field_w,
                                             egui::TextEdit::singleline(text)
-                                                .hint_text(motif::hint(tr("vacc_date_hint")))
-                                                .desired_width(field_w),
+                                                .hint_text(motif::hint(tr("vacc_date_hint"))),
                                         );
                                         if let Some(tip) = tip {
                                             r.on_hover_text(tip);
@@ -28822,21 +28906,18 @@ impl App {
                                         ),
                                     );
                                     let day = &mut session.frame.weeks[page][i];
-                                    egui::ComboBox::from_id_salt(("frame_kind", page, i))
-                                        .selected_text(
-                                            day.kind
-                                                .unwrap_or(planning::ShiftKind::Journee)
-                                                .label(),
-                                        )
-                                        .show_ui(ui, |ui| {
-                                            for k in planning::ShiftKind::ALL {
-                                                ui.selectable_value(
-                                                    &mut day.kind,
-                                                    Some(k),
-                                                    k.label(),
-                                                );
-                                            }
-                                        });
+                                    let kinds: Vec<(Option<planning::ShiftKind>, String)> =
+                                        planning::ShiftKind::ALL
+                                            .into_iter()
+                                            .map(|k| (Some(k), k.label().to_owned()))
+                                            .collect();
+                                    motif::select(
+                                        ui,
+                                        ("frame_kind", page, i),
+                                        chars_wide(ui, 14.0),
+                                        &mut day.kind,
+                                        &kinds,
+                                    );
                                     // **`add_sized`, et non une largeur
                                     // souhaitée.** Une cellule de
                                     // `Grid` doit annoncer sa largeur ;
@@ -28847,20 +28928,23 @@ impl App {
                                     // hauteur est un plancher que le
                                     // style relève, comme partout
                                     // ailleurs ici.
-                                    ui.add_sized(
-                                        [hour_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        hour_w,
                                         egui::TextEdit::singleline(&mut day.from)
                                             .hint_text(motif::hint(tr("agenda_hour_hint"))),
                                     )
                                     .on_hover_text(tr("planning_from_tooltip"));
-                                    ui.add_sized(
-                                        [hour_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        hour_w,
                                         egui::TextEdit::singleline(&mut day.to)
                                             .hint_text(motif::hint(tr("agenda_end_hint"))),
                                     )
                                     .on_hover_text(tr("planning_to_tooltip"));
-                                    ui.add_sized(
-                                        [chars_wide(ui, 5.0), 24.0],
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 5.0),
                                         egui::TextEdit::singleline(&mut day.pause)
                                             .hint_text(motif::hint("45")),
                                     )
@@ -28870,14 +28954,16 @@ impl App {
                                     // longue pause : une pause n'a pas
                                     // d'heure, donc la couverture ne
                                     // sait pas où est le trou.
-                                    ui.add_sized(
-                                        [hour_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        hour_w,
                                         egui::TextEdit::singleline(&mut day.from2)
                                             .hint_text(motif::hint(tr("frame_afternoon_from"))),
                                     )
                                     .on_hover_text(tr("frame_split_tooltip"));
-                                    ui.add_sized(
-                                        [hour_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        hour_w,
                                         egui::TextEdit::singleline(&mut day.to2)
                                             .hint_text(motif::hint(tr("frame_afternoon_to"))),
                                     )
@@ -30018,23 +30104,26 @@ impl App {
                 );
                 // Any drug of the base whose demi-vie parses feeds the
                 // curve directly.
-                egui::ComboBox::from_id_salt("calc_drug")
-                    .selected_text(tr("calc_from_drug"))
-                    .width(chars_wide(ui, 25.0))
-                    .show_ui(ui, |ui| {
-                        for d in session
-                            .drugs
-                            .iter()
-                            .filter(|d| parse_hours(&d.half_life).is_some())
-                            .take(60)
-                        {
-                            if ui.selectable_label(false, &d.name).clicked() {
-                                if let Some(h) = parse_hours(&d.half_life) {
-                                    session.calc_half_life = h;
-                                }
-                            }
-                        }
-                    });
+                // Un **menu** : ce qu'on y prend part dans le champ
+                // d'à côté, et la case garde son intitulé plutôt que
+                // d'afficher la dernière fiche lue comme un réglage.
+                let sources: Vec<(f64, String)> = session
+                    .drugs
+                    .iter()
+                    .filter_map(|d| parse_hours(&d.half_life).map(|h| (h, d.name.clone())))
+                    .take(60)
+                    .collect();
+                if let Some(h) = motif::menu(
+                    ui,
+                    "calc_drug",
+                    chars_wide(ui, 25.0),
+                    tr("calc_from_drug"),
+                    &sources,
+                )
+                .inner
+                {
+                    session.calc_half_life = h;
+                }
             });
             let t12 = session.calc_half_life.max(0.1);
             let elimination = t12 * 5.0;
@@ -30443,11 +30532,12 @@ impl App {
                     session.show_codex = false;
                     session.codex_edit = None;
                 }
-                ui.add_sized(
-                    [
+                motif::field_sized(
+                    ui,
+                    egui::vec2(
                         Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
                         24.0,
-                    ],
+                    ),
                     egui::TextEdit::singleline(&mut session.codex_new_name)
                         .hint_text(motif::hint(tr("codex_new_hint"))),
                 );
@@ -30501,8 +30591,9 @@ impl App {
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("codex_list")), |ui| {
             let w = ui.available_width();
-            let field = ui.add_sized(
-                [w, 24.0],
+            let field = motif::field(
+                ui,
+                w,
                 egui::TextEdit::singleline(&mut session.codex_query).hint_text(motif::hint(
                     Self::hint_that_fits(ui, w, tr("codex_search_hint")),
                 )),
@@ -30678,8 +30769,9 @@ impl App {
                         if session.codex_target.trim().is_empty() {
                             session.codex_target = prep.yield_amount.clone();
                         }
-                        ui.add_sized(
-                            [chars_wide(ui, 11.0), 22.0],
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 11.0),
                             egui::TextEdit::singleline(&mut session.codex_target)
                                 .hint_text(motif::hint(prep.yield_amount.trim())),
                         );
@@ -30862,8 +30954,9 @@ impl App {
         let calc = &mut session.codex_calc;
         let num = |s: &str| crate::codex::parse_amount(s).map(|(v, _)| v);
         let field = |ui: &mut egui::Ui, value: &mut String, hint: &str| {
-            ui.add_sized(
-                [chars_wide(ui, 8.0), 22.0],
+            motif::field(
+                ui,
+                chars_wide(ui, 8.0),
                 egui::TextEdit::singleline(value).hint_text(motif::hint(hint)),
             );
         };
@@ -31010,7 +31103,7 @@ impl App {
                     ] {
                         ui.label(dim(label));
                         if rows == 1 {
-                            ui.add_sized([w, 24.0], egui::TextEdit::singleline(value));
+                            motif::field(ui, w, egui::TextEdit::singleline(value));
                         } else {
                             ui.add_sized(
                                 [w, 22.0 * rows as f32],
@@ -32118,8 +32211,9 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
-                                    ui.add_sized(
-                                        [field_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        field_w,
                                         egui::TextEdit::singleline(&mut session.ddi_query)
                                             .hint_text(motif::hint(tr("ddi_add_hint"))),
                                     );
@@ -32725,8 +32819,9 @@ impl App {
                             .size(motif::pt(ui, 11.0))
                             .color(motif::text_dim()),
                     );
-                    ui.add_sized(
-                        [field_w, 24.0],
+                    motif::field(
+                        ui,
+                        field_w,
                         egui::TextEdit::singleline(&mut session.ddi_age)
                             .hint_text(motif::hint(tr("ddi_age_hint"))),
                     );
@@ -32993,11 +33088,12 @@ impl App {
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
-            ui.add_sized(
-                [
+            motif::field_sized(
+                ui,
+                egui::vec2(
                     Self::field_width(ui, [tr("ddi_dfg_hint")].into_iter()),
                     24.0,
-                ],
+                ),
                 egui::TextEdit::singleline(&mut session.ddi_dfg)
                     .hint_text(motif::hint(tr("ddi_dfg_hint"))),
             );
@@ -33212,11 +33308,12 @@ impl App {
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("libelles_title"));
-                ui.add_sized(
-                    [
+                motif::field_sized(
+                    ui,
+                    egui::vec2(
                         Self::field_width(ui, [tr("libelles_search_hint")].into_iter()),
                         24.0,
-                    ],
+                    ),
                     egui::TextEdit::singleline(&mut session.ui_text_query)
                         .hint_text(motif::hint(tr("libelles_search_hint"))),
                 );
@@ -33580,11 +33677,12 @@ impl App {
                     .id_salt("checklists")
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
-                            ui.add_sized(
-                                [
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(
                                     Self::field_width(ui, [tr("listes_new_hint")].into_iter()),
                                     24.0,
-                                ],
+                                ),
                                 egui::TextEdit::singleline(&mut session.checklist_title)
                                     .hint_text(motif::hint(tr("listes_new_hint"))),
                             );
@@ -33718,11 +33816,12 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                         ui.horizontal_wrapped(|ui| {
-                            ui.add_sized(
-                                [
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(
                                     Self::field_width(ui, [tr("listes_subject_hint")].into_iter()),
                                     24.0,
-                                ],
+                                ),
                                 egui::TextEdit::singleline(&mut session.checklist_subject)
                                     .hint_text(motif::hint(tr("listes_subject_hint"))),
                             );
@@ -33740,12 +33839,14 @@ impl App {
                                 .is_some_and(|(id, _, _)| *id == item.id);
                             if editing {
                                 if let Some((_, text, note)) = session.checklist_edit.as_mut() {
-                                    ui.add_sized(
-                                        [ui.available_width(), 24.0],
+                                    motif::field(
+                                        ui,
+                                        ui.available_width(),
                                         egui::TextEdit::singleline(text),
                                     );
-                                    ui.add_sized(
-                                        [ui.available_width(), 24.0],
+                                    motif::field(
+                                        ui,
+                                        ui.available_width(),
                                         egui::TextEdit::singleline(note)
                                             .hint_text(motif::hint(tr("listes_note_hint"))),
                                     );
@@ -33802,13 +33903,15 @@ impl App {
                         }
                         motif::section(ui, tr("listes_add"));
                         ui.add_space(4.0);
-                        ui.add_sized(
-                            [ui.available_width(), 24.0],
+                        motif::field(
+                            ui,
+                            ui.available_width(),
                             egui::TextEdit::singleline(&mut session.checklist_text)
                                 .hint_text(motif::hint(tr("listes_item_hint"))),
                         );
-                        ui.add_sized(
-                            [ui.available_width(), 24.0],
+                        motif::field(
+                            ui,
+                            ui.available_width(),
                             egui::TextEdit::singleline(&mut session.checklist_note)
                                 .hint_text(motif::hint(tr("listes_note_hint"))),
                         );
@@ -34281,19 +34384,21 @@ impl App {
             motif::inside(ui, split[1], |ui| {
                 {
                     ui.horizontal_wrapped(|ui| {
-                        ui.add_sized(
-                            [label_w, Self::button_height(ui)],
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(label_w, Self::button_height(ui)),
                             egui::TextEdit::singleline(&mut session.scan_new_label)
                                 .hint_text(motif::hint(tr("scan_label_hint"))),
                         );
                         // Mesurée sur le texte d'invite : « Date du document »
                         // dans un champ de 110 px se lit « Date du docume », ce
                         // qui est un champ dont personne ne sait ce qu'il veut.
-                        ui.add_sized(
-                            [
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::button_width(ui, tr("scan_day_hint")) + 8.0,
                                 Self::button_height(ui),
-                            ],
+                            ),
                             egui::TextEdit::singleline(&mut session.scan_new_day)
                                 .hint_text(motif::hint(tr("scan_day_hint"))),
                         );
@@ -34654,27 +34759,30 @@ impl App {
                             }
                         }
                     });
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("scan_label_hint")].into_iter()).max(320.0),
                             Self::button_height(ui),
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut edited.label)
                             .hint_text(motif::hint(tr("scan_label_hint"))),
                     );
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("scan_day_iso_hint")].into_iter()).max(320.0),
                             Self::button_height(ui),
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut edited.taken_on)
                             .hint_text(motif::hint(tr("scan_day_iso_hint"))),
                     );
-                    ui.add_sized(
-                        [
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
                             Self::field_width(ui, [tr("scan_remark_hint")].into_iter()).max(320.0),
                             Self::button_height(ui),
-                        ],
+                        ),
                         egui::TextEdit::singleline(&mut edited.remark)
                             .hint_text(motif::hint(tr("scan_remark_hint"))),
                     );
@@ -35064,12 +35172,13 @@ impl App {
                         // la ligne et valide, donc c'est un champ de texte comme
                         // un autre. Tout ce qui le distingue est ce qu'on fait
                         // de son contenu.
-                        let scan = ui.add_sized(
-                            [
+                        let scan = motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 Self::field_width(ui, [tr("stup_scan_hint")].into_iter())
                                     .max(140.0),
                                 Self::button_height(ui),
-                            ],
+                            ),
                             egui::TextEdit::singleline(&mut session.stup_scan)
                                 .hint_text(motif::hint(tr("stup_scan_hint"))),
                         );
@@ -35279,8 +35388,9 @@ impl App {
             } else {
                 tr("stup_search_hint")
             };
-            let search = ui.add_sized(
-                [w, Self::row_height(ui)],
+            let search = motif::field_sized(
+                ui,
+                egui::vec2(w, Self::row_height(ui)),
                 egui::TextEdit::singleline(&mut query)
                     .hint_text(motif::hint(Self::hint_that_fits(ui, w, hint))),
             );
@@ -35769,13 +35879,13 @@ impl App {
                             // `StupEdits`.
                             let mut edited = product.clone();
                             if let Some(e) = stup_edits.as_mut() {
-                                let resp = ui
-                                    .add_sized(
-                                        [label_w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut e.label)
-                                            .hint_text(motif::hint(tr("stup_label_hint"))),
-                                    )
-                                    .on_hover_text(tr("stup_label_tooltip"));
+                                let resp = motif::field_sized(
+                                    ui,
+                                    egui::vec2(label_w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut e.label)
+                                        .hint_text(motif::hint(tr("stup_label_hint"))),
+                                )
+                                .on_hover_text(tr("stup_label_tooltip"));
                                 if resp.lost_focus()
                                     && e.label.trim() != product.label
                                     && !e.label.trim().is_empty()
@@ -35784,8 +35894,9 @@ impl App {
                                     renamed.label = e.label.trim().to_owned();
                                     set_threshold = Some((renamed, product.clone()));
                                 }
-                                let resp = ui.add_sized(
-                                    [thr_w, Self::button_height(ui)],
+                                let resp = motif::field_sized(
+                                    ui,
+                                    egui::vec2(thr_w, Self::button_height(ui)),
                                     egui::TextEdit::singleline(&mut e.threshold)
                                         .hint_text(motif::hint(tr("stup_threshold_hint"))),
                                 );
@@ -35799,8 +35910,9 @@ impl App {
                                 // L'unité de comptage se corrige au même endroit : un
                                 // produit inscrit à la main n'en a pas, et un solde sans
                                 // unité ne dit pas s'il s'agit de boîtes ou de gélules.
-                                let resp = ui.add_sized(
-                                    [unit_w, Self::button_height(ui)],
+                                let resp = motif::field_sized(
+                                    ui,
+                                    egui::vec2(unit_w, Self::button_height(ui)),
                                     egui::TextEdit::singleline(&mut e.unit)
                                         .hint_text(motif::hint(tr("stup_unit_hint"))),
                                 );
@@ -35817,13 +35929,13 @@ impl App {
                                 // où le titulaire reconditionne. C'est
                                 // ce nombre qui multiplie une réception
                                 // et que le comptage propose.
-                                let resp = ui
-                                    .add_sized(
-                                        [box_w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut e.per_box)
-                                            .hint_text(motif::hint(tr("stup_per_box_hint"))),
-                                    )
-                                    .on_hover_text(tr("stup_per_box_tooltip"));
+                                let resp = motif::field_sized(
+                                    ui,
+                                    egui::vec2(box_w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut e.per_box)
+                                        .hint_text(motif::hint(tr("stup_per_box_hint"))),
+                                )
+                                .on_hover_text(tr("stup_per_box_tooltip"));
                                 if resp.lost_focus() {
                                     let typed = crate::codex::parse_amount(&e.per_box)
                                         .map_or(0.0, |(v, _)| v);
@@ -36431,14 +36543,16 @@ impl App {
                         }
                     });
                     ui.horizontal_wrapped(|ui| {
-                        ui.add_sized(
-                            [day_w, Self::button_height(ui)],
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(day_w, Self::button_height(ui)),
                             egui::TextEdit::singleline(&mut batch.day)
                                 .hint_text(motif::hint(tr("stup_day_hint"))),
                         );
                         if kind.is_dispensing() {
-                            ui.add_sized(
-                                [text_w, Self::button_height(ui)],
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(text_w, Self::button_height(ui)),
                                 egui::TextEdit::singleline(&mut batch.prescriber)
                                     .hint_text(motif::hint(tr("stup_prescriber_hint"))),
                             );
@@ -36449,19 +36563,22 @@ impl App {
                             // arrive sous un seul bon, et le retaper par
                             // produit est ce que cet écran existe pour
                             // éviter.
-                            ui.add_sized(
-                                [text_w, Self::button_height(ui)],
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(text_w, Self::button_height(ui)),
                                 egui::TextEdit::singleline(&mut session.stup_new_supplier)
                                     .hint_text(motif::hint(tr("stup_supplier_hint"))),
                             );
-                            ui.add_sized(
-                                [text_w, Self::button_height(ui)],
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(text_w, Self::button_height(ui)),
                                 egui::TextEdit::singleline(&mut session.stup_new_reference)
                                     .hint_text(motif::hint(tr("stup_reference_hint"))),
                             );
                         }
-                        ui.add_sized(
-                            [text_w, Self::button_height(ui)],
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(text_w, Self::button_height(ui)),
                             egui::TextEdit::singleline(&mut batch.query)
                                 .hint_text(motif::hint(tr("batch_filter_hint"))),
                         );
@@ -36678,8 +36795,9 @@ impl App {
                                         Self::grid_cell(ui, name_w, name_cell);
                                         Self::grid_cell(ui, state_w, state);
                                     }
-                                    ui.add_sized(
-                                        [qty_w, Self::button_height(ui)],
+                                    motif::field_sized(
+                                        ui,
+                                        egui::vec2(qty_w, Self::button_height(ui)),
                                         egui::TextEdit::singleline(
                                             batch.typed.entry(id).or_default(),
                                         )
@@ -36728,8 +36846,9 @@ impl App {
                                                 crate::ordonnancier::reason_owed(kind, s.stock, v)
                                                     .is_some()
                                             });
-                                        ui.add_sized(
-                                            [reason_w, Self::button_height(ui)],
+                                        motif::field_sized(
+                                            ui,
+                                            egui::vec2(reason_w, Self::button_height(ui)),
                                             egui::TextEdit::singleline(
                                                 batch.reasons.entry(id).or_default(),
                                             )
@@ -37022,8 +37141,9 @@ impl App {
         // dossier déjà ouvert, et une rangée de plus dans ce volet est
         // une ligne de registre en moins.
         if on_file.is_none() || session.stup_file_pick.is_some() {
-            let resp = ui.add_sized(
-                [w, Self::button_height(ui)],
+            let resp = motif::field_sized(
+                ui,
+                egui::vec2(w, Self::button_height(ui)),
                 egui::TextEdit::singleline(&mut session.stup_file_query)
                     .hint_text(motif::hint(tr("stup_file_hint"))),
             );
@@ -37125,30 +37245,30 @@ impl App {
         let mut carry = None;
         ui.horizontal_wrapped(|ui| {
             Self::keep_together(ui, egui::vec2(calc_w, Self::button_height(ui)), |ui| {
-                *focus |= ui
-                    .add_sized(
-                        [cell, Self::button_height(ui)],
-                        egui::TextEdit::singleline(&mut session.stup_count_boxes)
-                            .hint_text(motif::hint(tr("stup_count_boxes"))),
-                    )
-                    .has_focus();
+                *focus |= motif::field_sized(
+                    ui,
+                    egui::vec2(cell, Self::button_height(ui)),
+                    egui::TextEdit::singleline(&mut session.stup_count_boxes)
+                        .hint_text(motif::hint(tr("stup_count_boxes"))),
+                )
+                .has_focus();
                 ui.label(dim(ui, COUNT_TIMES));
-                *focus |= ui
-                    .add_sized(
-                        [cell, Self::button_height(ui)],
-                        egui::TextEdit::singleline(&mut session.stup_count_per_box)
-                            .hint_text(motif::hint(tr("stup_count_per_box"))),
-                    )
-                    .on_hover_text(tr("stup_per_box_tooltip"))
-                    .has_focus();
+                *focus |= motif::field_sized(
+                    ui,
+                    egui::vec2(cell, Self::button_height(ui)),
+                    egui::TextEdit::singleline(&mut session.stup_count_per_box)
+                        .hint_text(motif::hint(tr("stup_count_per_box"))),
+                )
+                .on_hover_text(tr("stup_per_box_tooltip"))
+                .has_focus();
                 ui.label(dim(ui, COUNT_PLUS));
-                *focus |= ui
-                    .add_sized(
-                        [cell, Self::button_height(ui)],
-                        egui::TextEdit::singleline(&mut session.stup_count_loose)
-                            .hint_text(motif::hint(tr("stup_count_loose"))),
-                    )
-                    .has_focus();
+                *focus |= motif::field_sized(
+                    ui,
+                    egui::vec2(cell, Self::button_height(ui)),
+                    egui::TextEdit::singleline(&mut session.stup_count_loose)
+                        .hint_text(motif::hint(tr("stup_count_loose"))),
+                )
+                .has_focus();
             });
             // Le total ne s'annonce que s'il y a quelque chose à
             // annoncer : « = 0 » sur trois champs vides est du bruit
@@ -37441,13 +37561,13 @@ impl App {
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                             );
-                            focus_here |= ui
-                                .add_sized(
-                                    [(w * 0.28).max(56.0), Self::button_height(ui)],
-                                    egui::TextEdit::singleline(&mut session.stup_new_qty)
-                                        .hint_text(motif::hint(product.unit.as_str())),
-                                )
-                                .has_focus();
+                            focus_here |= motif::field_sized(
+                                ui,
+                                egui::vec2((w * 0.28).max(56.0), Self::button_height(ui)),
+                                egui::TextEdit::singleline(&mut session.stup_new_qty)
+                                    .hint_text(motif::hint(product.unit.as_str())),
+                            )
+                            .has_focus();
                             // Ce qui reste de la rangée, mesuré et non
                             // deviné : la glissière ne doit pas pousser
                             // le champ hors du volet.
@@ -37497,26 +37617,24 @@ impl App {
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
-                            focus_here |= ui
-                                .add_sized(
-                                    [(w * 0.4).max(80.0), Self::button_height(ui)],
-                                    egui::TextEdit::singleline(&mut session.stup_new_day)
-                                        .hint_text(motif::hint(tr("stup_day_hint"))),
-                                )
-                                .has_focus();
+                            focus_here |= motif::field_sized(
+                                ui,
+                                egui::vec2((w * 0.4).max(80.0), Self::button_height(ui)),
+                                egui::TextEdit::singleline(&mut session.stup_new_day)
+                                    .hint_text(motif::hint(tr("stup_day_hint"))),
+                            )
+                            .has_focus();
                         });
                         match kind {
                             Kind::Sortie => {
                                 focus_here |= Self::stup_file_row(ui, session, w, true);
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(
-                                            &mut session.stup_new_prescriber,
-                                        )
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_prescriber)
                                         .hint_text(motif::hint(tr("stup_prescriber_hint"))),
-                                    )
-                                    .has_focus();
+                                )
+                                .has_focus();
                                 // Les derniers prescripteurs rencontrés
                                 // sur ce produit, d'un clic. Ils sont
                                 // dans le registre depuis toujours et
@@ -37553,6 +37671,38 @@ impl App {
                                         session.stup_new_prescriber = p;
                                     }
                                 }
+                                // **L'annuaire**, quand l'officine en a
+                                // importé un. Il propose, il ne décide
+                                // pas : ce qui est tapé reste ce qui
+                                // sera écrit tant que personne n'a
+                                // choisi une ligne.
+                                //
+                                // À partir de deux caractères : une
+                                // seule lettre rendrait la moitié de
+                                // l'annuaire, c'est-à-dire rien.
+                                let typed = session.stup_new_prescriber.trim().to_owned();
+                                if !session.prescribers.is_empty() && typed.chars().count() >= 2 {
+                                    let hits: Vec<(String, String)> =
+                                        crate::prescribers::search(&session.prescribers, &typed, 5)
+                                            .into_iter()
+                                            // Ce qui s'écrit sur la ligne est
+                                            // court ; ce qui s'affiche pour
+                                            // choisir distingue deux homonymes.
+                                            .map(|p| (p.short(), p.label()))
+                                            .filter(|(short, _)| short.trim() != typed)
+                                            .collect();
+                                    for (short, label) in hits {
+                                        if motif::list_row(
+                                            ui,
+                                            egui::RichText::new(label).size(motif::pt(ui, 11.0)),
+                                            false,
+                                        )
+                                        .clicked()
+                                        {
+                                            session.stup_new_prescriber = short;
+                                        }
+                                    }
+                                }
                             }
                             Kind::Entree => {
                                 // Les grossistes de `[stock] suppliers`,
@@ -37572,20 +37722,20 @@ impl App {
                                         }
                                     }
                                 });
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut session.stup_new_supplier)
-                                            .hint_text(motif::hint(tr("stup_supplier_hint"))),
-                                    )
-                                    .has_focus();
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                            .hint_text(motif::hint(tr("stup_reference_hint"))),
-                                    )
-                                    .has_focus();
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_supplier)
+                                        .hint_text(motif::hint(tr("stup_supplier_hint"))),
+                                )
+                                .has_focus();
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_reference)
+                                        .hint_text(motif::hint(tr("stup_reference_hint"))),
+                                )
+                                .has_focus();
                                 // **Le lot est un champ à lui.** Il
                                 // était écrit dans la référence, qui
                                 // est le bon de livraison : deux choses
@@ -37593,14 +37743,14 @@ impl App {
                                 // n'avait rien de fiable à interroger.
                                 // La douchette le remplit ; on peut
                                 // aussi le lire sur la boîte.
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
-                                    )
-                                    .on_hover_text(tr("stup_lot_tooltip"))
-                                    .has_focus();
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                        .hint_text(motif::hint(tr("stup_lot_hint"))),
+                                )
+                                .on_hover_text(tr("stup_lot_tooltip"))
+                                .has_focus();
                                 // **On ne reçoit pas des unités, on
                                 // reçoit des boîtes.** Le grossiste
                                 // livre trois boîtes d'Actiskenan, qui
@@ -37664,14 +37814,14 @@ impl App {
                                         motif::text_dim()
                                     }),
                                 );
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                            .hint_text(motif::hint(tr("stup_pv_hint"))),
-                                    )
-                                    .on_hover_text(tr("stup_pv_tooltip"))
-                                    .has_focus();
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_reference)
+                                        .hint_text(motif::hint(tr("stup_pv_hint"))),
+                                )
+                                .on_hover_text(tr("stup_pv_tooltip"))
+                                .has_focus();
                             }
                             // Une péremption sort du délivrable et va
                             // au troisième coffre : la boîte est encore
@@ -37683,14 +37833,14 @@ impl App {
                                         .size(motif::pt(ui, 11.0))
                                         .color(motif::text_dim()),
                                 );
-                                focus_here |= ui
-                                    .add_sized(
-                                        [w, Self::button_height(ui)],
-                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
-                                    )
-                                    .on_hover_text(tr("stup_lot_tooltip"))
-                                    .has_focus();
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2(w, Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                        .hint_text(motif::hint(tr("stup_lot_hint"))),
+                                )
+                                .on_hover_text(tr("stup_lot_tooltip"))
+                                .has_focus();
                             }
                             Kind::Inventaire => {
                                 // **Le comptage se fait en boîtes et en
@@ -37750,27 +37900,27 @@ impl App {
                         if let Some(v) = set_qty {
                             session.stup_new_qty = crate::codex::format_quantity(v);
                         }
-                        focus_here |= ui
-                            .add_sized(
-                                [w, Self::button_height(ui)],
-                                egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
-                                    motif::hint(match kind {
-                                        Kind::Perte => tr("stup_loss_hint"),
-                                        // Obligatoire, et l'invite le
-                                        // dit avant qu'on presse
-                                        // « Inscrire » plutôt qu'après :
-                                        // la base la refuse sans motif,
-                                        // et découvrir la règle par un
-                                        // refus est la découvrir une
-                                        // fois de trop.
-                                        Kind::Destruction => tr("stup_destroy_reason_hint"),
-                                        Kind::Retour => tr("stup_return_reason_hint"),
-                                        _ if gap_needs_reason => tr("stup_gap_reason_hint"),
-                                        _ => tr("stup_remark_hint"),
-                                    }),
-                                ),
-                            )
-                            .has_focus();
+                        focus_here |= motif::field_sized(
+                            ui,
+                            egui::vec2(w, Self::button_height(ui)),
+                            egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
+                                motif::hint(match kind {
+                                    Kind::Perte => tr("stup_loss_hint"),
+                                    // Obligatoire, et l'invite le
+                                    // dit avant qu'on presse
+                                    // « Inscrire » plutôt qu'après :
+                                    // la base la refuse sans motif,
+                                    // et découvrir la règle par un
+                                    // refus est la découvrir une
+                                    // fois de trop.
+                                    Kind::Destruction => tr("stup_destroy_reason_hint"),
+                                    Kind::Retour => tr("stup_return_reason_hint"),
+                                    _ if gap_needs_reason => tr("stup_gap_reason_hint"),
+                                    _ => tr("stup_remark_hint"),
+                                }),
+                            ),
+                        )
+                        .has_focus();
                     });
             });
             motif::inside(ui, split[1], |ui| {
@@ -37979,8 +38129,9 @@ impl App {
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
-            ui.add_sized(
-                [field_w, Self::button_height(ui)],
+            motif::field_sized(
+                ui,
+                egui::vec2(field_w, Self::button_height(ui)),
                 egui::TextEdit::singleline(lab).hint_text(motif::hint(tr("stup_lab_hint"))),
             )
             .on_hover_text(tr("stup_lab_tooltip"));
@@ -38552,11 +38703,12 @@ impl App {
                 // obligatoire : le bouton reste éteint tant qu'il est vide.
                 if cancelling {
                     ui.horizontal(|ui| {
-                        ui.add_sized(
-                            [
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(
                                 (ui.available_width() - 160.0).max(80.0),
                                 Self::row_height(ui),
-                            ],
+                            ),
                             egui::TextEdit::singleline(reason)
                                 .hint_text(motif::hint(tr("stup_cancel_reason_hint"))),
                         );
@@ -39796,11 +39948,12 @@ impl App {
                     session.show_dispositifs = false;
                     session.dispo_edit = None;
                 }
-                ui.add_sized(
-                    [
+                motif::field_sized(
+                    ui,
+                    egui::vec2(
                         Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
                         24.0,
-                    ],
+                    ),
                     egui::TextEdit::singleline(&mut session.dispo_new_name)
                         .hint_text(motif::hint(tr("dispo_new_hint"))),
                 );
@@ -39857,8 +40010,9 @@ impl App {
         let mut open: Option<i64> = None;
         motif::panel(ui, cols[0], Some(tr("dispo_list")), |ui| {
             let w = ui.available_width();
-            let field = ui.add_sized(
-                [w, 24.0],
+            let field = motif::field(
+                ui,
+                w,
                 egui::TextEdit::singleline(&mut session.dispo_query).hint_text(motif::hint(
                     Self::hint_that_fits(ui, w, tr("dispo_search_hint")),
                 )),
@@ -40172,7 +40326,7 @@ impl App {
                     ] {
                         ui.label(dim(label));
                         if rows == 1 {
-                            ui.add_sized([w, 24.0], egui::TextEdit::singleline(value));
+                            motif::field(ui, w, egui::TextEdit::singleline(value));
                         } else {
                             ui.add_sized(
                                 [w, 22.0 * rows as f32],
@@ -40254,11 +40408,12 @@ impl App {
                     session.show_protocols = false;
                     session.protocol_open = None;
                 }
-                ui.add_sized(
-                    [
+                motif::field_sized(
+                    ui,
+                    egui::vec2(
                         Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
                         24.0,
-                    ],
+                    ),
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
                         .hint_text(motif::hint(tr("proto_new_hint"))),
                 );
@@ -40327,8 +40482,9 @@ impl App {
         let selected = session.protocol_open.as_ref().map(|p| p.id);
         motif::panel(ui, rect, Some(tr("proto_list")), |ui| {
             let w = ui.available_width();
-            let field = ui.add_sized(
-                [w, 24.0],
+            let field = motif::field(
+                ui,
+                w,
                 egui::TextEdit::singleline(&mut session.protocol_query).hint_text(motif::hint(
                     Self::hint_that_fits(ui, w, tr("proto_search_hint")),
                 )),
@@ -40521,8 +40677,8 @@ impl App {
                             // row is for.
                             let title_w = (field * 0.60).clamp(200.0, 460.0);
                             let subject_w = (field * 0.42).clamp(180.0, 340.0);
-                            let t = ui
-                                .add_sized([title_w, 24.0], egui::TextEdit::singleline(&mut title));
+                            let t =
+                                motif::field(ui, title_w, egui::TextEdit::singleline(&mut title));
                             // **« Sujet » ne quitte pas son champ.** Le
                             // libellé et la case qu'il nomme sont alloués
                             // d'un seul tenant : c'est le couple qui passe
@@ -40542,8 +40698,9 @@ impl App {
                                             .size(motif::pt(ui, 11.0))
                                             .color(motif::text_dim()),
                                     );
-                                    ui.add_sized(
-                                        [subject_w, 24.0],
+                                    motif::field(
+                                        ui,
+                                        subject_w,
                                         egui::TextEdit::singleline(&mut subject),
                                     )
                                 },
@@ -40691,10 +40848,7 @@ impl App {
                                             session.protocol_node_edit.as_mut()
                                         {
                                             let w = (body_w - indent - 100.0).clamp(150.0, 520.0);
-                                            ui.add_sized(
-                                                [w, 22.0],
-                                                egui::TextEdit::singleline(text),
-                                            );
+                                            motif::field(ui, w, egui::TextEdit::singleline(text));
                                         }
                                         if motif::button(ui, tr("form_save")).clicked() {
                                             save_edit = true;
@@ -41184,8 +41338,9 @@ impl App {
             // hand: the next table added would have left the old number
             // sitting there, and a figure that lies once is a figure
             // nobody reads again.
-            let field = ui.add_sized(
-                [ui.available_width().min(420.0), 24.0],
+            let field = motif::field(
+                ui,
+                ui.available_width().min(420.0),
                 egui::TextEdit::singleline(&mut session.table_query).hint_text(motif::hint(trf(
                     "tables_search_hint",
                     crate::tables::TABLES.len(),
@@ -41404,8 +41559,9 @@ impl App {
                     let edited = session.table_cells.get(&(r, c)).cloned();
                     if let Some((er, ec, text)) = &mut session.table_edit {
                         if *er == r && *ec == c {
-                            let resp = ui.add_sized(
-                                [col_w, 22.0],
+                            let resp = motif::field(
+                                ui,
+                                col_w,
                                 egui::TextEdit::singleline(text).font(egui::TextStyle::Small),
                             );
                             if resp.lost_focus() {
@@ -43697,16 +43853,19 @@ impl App {
                                             let editing =
                                                 session.poso_edit.as_mut().filter(|e| e.id == p.id);
                                             if let Some(e) = editing {
-                                                ui.add_sized(
-                                                    [poso_w * 0.3, 22.0],
+                                                motif::field(
+                                                    ui,
+                                                    poso_w * 0.3,
                                                     egui::TextEdit::singleline(&mut e.indication),
                                                 );
-                                                ui.add_sized(
-                                                    [poso_w * 0.38, 22.0],
+                                                motif::field(
+                                                    ui,
+                                                    poso_w * 0.38,
                                                     egui::TextEdit::singleline(&mut e.posologie),
                                                 );
-                                                ui.add_sized(
-                                                    [poso_w * 0.32, 22.0],
+                                                motif::field(
+                                                    ui,
+                                                    poso_w * 0.32,
                                                     egui::TextEdit::singleline(&mut e.remarque),
                                                 );
                                                 if motif::button(ui, tr("form_save")).clicked() {
@@ -43734,18 +43893,21 @@ impl App {
                                             }
                                             ui.end_row();
                                         }
-                                        ui.add_sized(
-                                            [poso_w * 0.3, 22.0],
+                                        motif::field(
+                                            ui,
+                                            poso_w * 0.3,
                                             egui::TextEdit::singleline(&mut session.poso_new.0)
                                                 .hint_text(motif::hint(tr("poso_indication"))),
                                         );
-                                        ui.add_sized(
-                                            [poso_w * 0.38, 22.0],
+                                        motif::field(
+                                            ui,
+                                            poso_w * 0.38,
                                             egui::TextEdit::singleline(&mut session.poso_new.1)
                                                 .hint_text(motif::hint(tr("poso_dose"))),
                                         );
-                                        ui.add_sized(
-                                            [poso_w * 0.32, 22.0],
+                                        motif::field(
+                                            ui,
+                                            poso_w * 0.32,
                                             egui::TextEdit::singleline(&mut session.poso_new.2)
                                                 .hint_text(motif::hint(tr("poso_remark"))),
                                         );
@@ -44172,8 +44334,9 @@ impl App {
         let mut open_drug: Option<Drug> = None;
         let idle = session.drug_query.trim().is_empty();
         motif::page(ui, 720.0, |ui| {
-            let search = ui.add_sized(
-                [ui.available_width(), 32.0],
+            let search = motif::field(
+                ui,
+                ui.available_width(),
                 egui::TextEdit::singleline(&mut session.drug_query)
                     .hint_text(motif::hint(tr("drug_search_hint"))),
             );
@@ -44665,8 +44828,9 @@ impl App {
                     let _ = std::fs::create_dir_all(&dir);
                     let _ = open::that_detached(&dir);
                 }
-                ui.add_sized(
-                    [Self::script_name_hint_width(ui), Self::button_height(ui)],
+                motif::field_sized(
+                    ui,
+                    egui::vec2(Self::script_name_hint_width(ui), Self::button_height(ui)),
                     egui::TextEdit::singleline(&mut session.script_name)
                         .hint_text(motif::hint(tr("script_name_hint"))),
                 );
@@ -45193,8 +45357,9 @@ impl App {
                                     egui::vec2(field, Self::button_height(ui)),
                                     egui::Layout::left_to_right(egui::Align::Center),
                                     |ui| {
-                                        ui.add_sized(
-                                            [field, 24.0],
+                                        motif::field(
+                                            ui,
+                                            field,
                                             egui::TextEdit::singleline(&mut session.caisse_qty[i])
                                                 .horizontal_align(egui::Align::RIGHT),
                                         );
@@ -45229,13 +45394,15 @@ impl App {
                     let mut drop: Option<usize> = None;
                     for (i, (label, value)) in session.caisse_others.iter_mut().enumerate() {
                         ui.horizontal(|ui| {
-                            ui.add_sized(
-                                [chars_wide(ui, 18.0), 24.0],
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 18.0),
                                 egui::TextEdit::singleline(label)
                                     .hint_text(motif::hint(tr("caisse_other_hint"))),
                             );
-                            ui.add_sized(
-                                [chars_wide(ui, 10.0), 24.0],
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 10.0),
                                 egui::TextEdit::singleline(value)
                                     .horizontal_align(egui::Align::RIGHT),
                             );
@@ -45254,8 +45421,9 @@ impl App {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.label(tr("caisse_float"));
-                        ui.add_sized(
-                            [chars_wide(ui, 10.0), 24.0],
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 10.0),
                             egui::TextEdit::singleline(&mut session.caisse_float)
                                 .horizontal_align(egui::Align::RIGHT),
                         );
@@ -45264,8 +45432,9 @@ impl App {
                     if want_expected {
                         ui.horizontal(|ui| {
                             ui.label(tr("caisse_expected"));
-                            ui.add_sized(
-                                [chars_wide(ui, 10.0), 24.0],
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 10.0),
                                 egui::TextEdit::singleline(&mut session.caisse_expected)
                                     .horizontal_align(egui::Align::RIGHT),
                             )
@@ -47285,8 +47454,9 @@ impl App {
                 // The centre is moved by typing as well as by clicking:
                 // « et la simvastatine ? » is a question you answer
                 // without going back to a list.
-                let resp = ui.add_sized(
-                    [search_w, Self::button_height(ui)],
+                let resp = motif::field_sized(
+                    ui,
+                    egui::vec2(search_w, Self::button_height(ui)),
                     egui::TextEdit::singleline(&mut session.graph_query).hint_text(motif::hint(
                         Self::hint_that_fits(ui, search_w, tr("graph_hint")),
                     )),
@@ -47704,8 +47874,9 @@ impl App {
                     .color(motif::text_dim()),
             );
             ui.add_space(10.0);
-            let search = ui.add_sized(
-                [ui.available_width(), 32.0],
+            let search = motif::field(
+                ui,
+                ui.available_width(),
                 egui::TextEdit::singleline(&mut session.mono_query)
                     .hint_text(motif::hint(tr("mono_hint"))),
             );
@@ -50324,8 +50495,9 @@ impl App {
                     .on_hover_text(note);
                 });
             });
-            let field = ui.add_sized(
-                [ui.available_width(), Self::button_height(ui)],
+            let field = motif::field_sized(
+                ui,
+                egui::vec2(ui.available_width(), Self::button_height(ui)),
                 egui::TextEdit::singleline(&mut self.companion_query)
                     .hint_text(motif::hint(tr("companion_hint"))),
             );
@@ -52622,14 +52794,16 @@ impl eframe::App for App {
                         .spacing([12.0, 8.0])
                         .show(ui, |ui| {
                             ui.label(tr("pw_new"));
-                            ui.add_sized(
-                                [chars_wide(ui, 25.0), 26.0],
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 25.0),
                                 egui::TextEdit::singleline(&mut form.new1).password(true),
                             );
                             ui.end_row();
                             ui.label(tr("pw_confirm"));
-                            ui.add_sized(
-                                [chars_wide(ui, 25.0), 26.0],
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 25.0),
                                 egui::TextEdit::singleline(&mut form.new2).password(true),
                             );
                             ui.end_row();
@@ -53036,6 +53210,14 @@ impl eframe::App for App {
         // faits après l'emprunt.
         let mut bundle_out: Option<std::path::PathBuf> = None;
         let mut bundle_in: Option<(std::path::PathBuf, std::path::PathBuf)> = None;
+        let mut presc_file: Option<std::path::PathBuf> = None;
+        // Ce que la page dit de l'annuaire, lu avec le reste.
+        let presc_count = match (&self.options, &self.state) {
+            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::Database => {
+                Some(s.prescribers.len())
+            }
+            _ => None,
+        };
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -53146,47 +53328,52 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         ui.label(dim(tr("form_last_name")));
-                                        ui.add_sized(
-                                            [chars_wide(ui, 38.0), 24.0],
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 38.0),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.name,
                                             ),
                                         );
                                         ui.end_row();
                                         ui.label(dim(tr("form_address")));
-                                        ui.add_sized(
-                                            [chars_wide(ui, 38.0), 24.0],
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 38.0),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.address,
                                             ),
                                         );
                                         ui.end_row();
                                         ui.label(dim(tr("form_phone")));
-                                        ui.add_sized(
-                                            [chars_wide(ui, 38.0), 24.0],
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 38.0),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.phone,
                                             ),
                                         );
                                         ui.end_row();
                                         ui.label(dim(tr("opts_pharmacist")));
-                                        ui.add_sized(
-                                            [chars_wide(ui, 38.0), 24.0],
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 38.0),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.pharmacist,
                                             ),
                                         );
                                         ui.end_row();
                                         ui.label(dim(tr("opts_am_number")));
-                                        ui.add_sized(
-                                            [
+                                        motif::field_sized(
+                                            ui,
+                                            egui::vec2(
                                                 Self::field_width(
                                                     ui,
                                                     [tr("opts_am_number_hint")].into_iter(),
                                                 )
                                                 .max(300.0),
                                                 24.0,
-                                            ],
+                                            ),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.am_number,
                                             )
@@ -53229,12 +53416,14 @@ impl eframe::App for App {
                                         for (i, op) in
                                             editor.cfg.pharmacy.operators.iter_mut().enumerate()
                                         {
-                                            ui.add_sized(
-                                                [chars_wide(ui, 7.0), 24.0],
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 7.0),
                                                 egui::TextEdit::singleline(&mut op.initials),
                                             );
-                                            ui.add_sized(
-                                                [chars_wide(ui, 25.0), 24.0],
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 25.0),
                                                 egui::TextEdit::singleline(&mut op.name),
                                             );
                                             // **Le menu écrit dans la
@@ -53252,27 +53441,37 @@ impl eframe::App for App {
                                             // est écrit n'est d'aucune
                                             // qualité qu'il connaisse.
                                             let kind = op.role_kind();
-                                            egui::ComboBox::from_id_salt(("opts_op_role", i))
-                                                .width(chars_wide(ui, 20.0))
-                                                .selected_text(
-                                                    if kind == crate::config::Role::Autre {
-                                                        tr("opts_op_role_other")
-                                                    } else {
-                                                        kind.label()
-                                                    },
-                                                )
-                                                .show_ui(ui, |ui| {
-                                                    for r in crate::config::Role::ALL {
-                                                        if ui
-                                                            .selectable_label(kind == r, r.label())
-                                                            .clicked()
-                                                        {
-                                                            op.role = r.label().to_owned();
-                                                        }
-                                                    }
-                                                });
-                                            ui.add_sized(
-                                                [chars_wide(ui, 22.0), 24.0],
+                                            // « Autre » n'a pas de
+                                            // libellé à écrire : elle
+                                            // *est* ce qui est écrit,
+                                            // donc la case montre ce
+                                            // que l'officine a tapé.
+                                            let mut roles: Vec<(crate::config::Role, String)> =
+                                                crate::config::Role::ALL
+                                                    .into_iter()
+                                                    .map(|r| (r, r.label().to_owned()))
+                                                    .collect();
+                                            if kind == crate::config::Role::Autre {
+                                                roles.push((
+                                                    crate::config::Role::Autre,
+                                                    tr("opts_op_role_other").to_owned(),
+                                                ));
+                                            }
+                                            let mut picked = kind;
+                                            if motif::select(
+                                                ui,
+                                                ("opts_op_role", i),
+                                                chars_wide(ui, 20.0),
+                                                &mut picked,
+                                                &roles,
+                                            )
+                                            .changed()
+                                            {
+                                                op.role = picked.label().to_owned();
+                                            }
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 22.0),
                                                 egui::TextEdit::singleline(&mut op.role).hint_text(
                                                     motif::hint(tr("opts_op_role_hint")),
                                                 ),
@@ -53321,12 +53520,12 @@ impl eframe::App for App {
                                             .color(motif::text_dim()),
                                     );
                                     let mut notice = editor.cfg.locations.notice_days.to_string();
-                                    if ui
-                                        .add_sized(
-                                            [chars_wide(ui, 7.0), 24.0],
-                                            egui::TextEdit::singleline(&mut notice),
-                                        )
-                                        .changed()
+                                    if motif::field(
+                                        ui,
+                                        chars_wide(ui, 7.0),
+                                        egui::TextEdit::singleline(&mut notice),
+                                    )
+                                    .changed()
                                     {
                                         editor.cfg.locations.notice_days =
                                             notice.trim().parse().unwrap_or(0);
@@ -53369,26 +53568,28 @@ impl eframe::App for App {
                                         for (i, f) in
                                             editor.cfg.locations.forfaits.iter_mut().enumerate()
                                         {
-                                            ui.add_sized(
-                                                [chars_wide(ui, 21.0), 24.0],
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 21.0),
                                                 egui::TextEdit::singleline(&mut f.label),
                                             );
-                                            ui.add_sized(
-                                                [chars_wide(ui, 25.0), 24.0],
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 25.0),
                                                 egui::TextEdit::singleline(&mut f.lpp),
                                             );
-                                            egui::ComboBox::from_id_salt(("loc_period", i))
-                                                .selected_text(f.period.label())
-                                                .width(chars_wide(ui, 11.0))
-                                                .show_ui(ui, |ui| {
-                                                    for p in crate::config::Period::ALL {
-                                                        ui.selectable_value(
-                                                            &mut f.period,
-                                                            p,
-                                                            p.label(),
-                                                        );
-                                                    }
-                                                });
+                                            let periods: Vec<(crate::config::Period, String)> =
+                                                crate::config::Period::ALL
+                                                    .into_iter()
+                                                    .map(|p| (p, p.label().to_owned()))
+                                                    .collect();
+                                            motif::select(
+                                                ui,
+                                                ("loc_period", i),
+                                                chars_wide(ui, 11.0),
+                                                &mut f.period,
+                                                &periods,
+                                            );
                                             // **Relu quand le champ se
                                             // ferme, pas à chaque
                                             // frappe.** Réécrire la
@@ -53399,8 +53600,9 @@ impl eframe::App for App {
                                             // « 1,5 » donnait « 15 » et
                                             // un forfait à décimales
                                             // était impossible à saisir.
-                                            let resp = ui.add_sized(
-                                                [chars_wide(ui, 9.0), 24.0],
+                                            let resp = motif::field(
+                                                ui,
+                                                chars_wide(ui, 9.0),
                                                 egui::TextEdit::singleline(&mut fee_text[i]),
                                             );
                                             if resp.lost_focus() {
@@ -53410,22 +53612,22 @@ impl eframe::App for App {
                                                 fee_text[i] = crate::codex::format_quantity(f.fee);
                                             }
                                             let mut days = f.renewal_days.to_string();
-                                            if ui
-                                                .add_sized(
-                                                    [chars_wide(ui, 7.0), 24.0],
-                                                    egui::TextEdit::singleline(&mut days),
-                                                )
-                                                .changed()
+                                            if motif::field(
+                                                ui,
+                                                chars_wide(ui, 7.0),
+                                                egui::TextEdit::singleline(&mut days),
+                                            )
+                                            .changed()
                                             {
                                                 f.renewal_days = days.trim().parse().unwrap_or(0);
                                             }
                                             let mut max = f.max_periods.to_string();
-                                            if ui
-                                                .add_sized(
-                                                    [chars_wide(ui, 7.0), 24.0],
-                                                    egui::TextEdit::singleline(&mut max),
-                                                )
-                                                .changed()
+                                            if motif::field(
+                                                ui,
+                                                chars_wide(ui, 7.0),
+                                                egui::TextEdit::singleline(&mut max),
+                                            )
+                                            .changed()
                                             {
                                                 f.max_periods = max.trim().parse().unwrap_or(0);
                                             }
@@ -53792,8 +53994,9 @@ impl eframe::App for App {
                                 );
                                 ui.horizontal(|ui| {
                                     ui.label(dim(tr("opts_vitale_reader")));
-                                    ui.add_sized(
-                                        [chars_wide(ui, 30.0), 24.0],
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 30.0),
                                         egui::TextEdit::singleline(&mut editor.cfg.vitale.reader),
                                     );
                                 });
@@ -53886,8 +54089,9 @@ impl eframe::App for App {
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
                                         ui.label(dim(tr("docs_operator")));
-                                        ui.add_sized(
-                                            [chars_wide(ui, 10.0), 24.0],
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 10.0),
                                             egui::TextEdit::singleline(&mut editor.cfg.ui.operator),
                                         );
                                         ui.end_row();
@@ -53974,22 +54178,21 @@ impl eframe::App for App {
                                                 .as_ref()
                                                 .map(|p| p.display().to_string())
                                                 .unwrap_or_default();
-                                            if ui
-                                                .add_sized(
-                                                    [
-                                                        Self::field_width(
-                                                            ui,
-                                                            [tr("opts_font_default")].into_iter(),
-                                                        )
-                                                        .max(220.0),
-                                                        24.0,
-                                                    ],
-                                                    egui::TextEdit::singleline(&mut shown)
-                                                        .hint_text(motif::hint(tr(
-                                                            "opts_font_default",
-                                                        ))),
-                                                )
-                                                .changed()
+                                            if motif::field_sized(
+                                                ui,
+                                                egui::vec2(
+                                                    Self::field_width(
+                                                        ui,
+                                                        [tr("opts_font_default")].into_iter(),
+                                                    )
+                                                    .max(220.0),
+                                                    24.0,
+                                                ),
+                                                egui::TextEdit::singleline(&mut shown).hint_text(
+                                                    motif::hint(tr("opts_font_default")),
+                                                ),
+                                            )
+                                            .changed()
                                             {
                                                 editor.cfg.ui.font_path = if shown.trim().is_empty()
                                                 {
@@ -54137,8 +54340,9 @@ impl eframe::App for App {
                                         ui.end_row();
                                         ui.label(dim(tr("opts_db_path")));
                                         ui.horizontal(|ui| {
-                                            ui.add_sized(
-                                                [chars_wide(ui, 32.0), 24.0],
+                                            motif::field(
+                                                ui,
+                                                chars_wide(ui, 32.0),
                                                 egui::TextEdit::singleline(
                                                     &mut editor.db_path_text,
                                                 ),
@@ -54247,7 +54451,9 @@ impl eframe::App for App {
                                             .suffix(" Mo"),
                                     );
                                 });
-                                ui.add(
+                                motif::field(
+                                    ui,
+                                    ui.available_width(),
                                     egui::TextEdit::singleline(&mut editor.cfg.scans.command)
                                         .desired_width(f32::INFINITY)
                                         .hint_text(motif::hint(tr("opts_scan_command_hint"))),
@@ -54341,9 +54547,10 @@ impl eframe::App for App {
                                 if let Some(text) = &mut editor.stup_start_text {
                                     ui.horizontal(|ui| {
                                         ui.label(dim(tr("opts_stup_start")));
-                                        let field = ui.add(
+                                        let field = motif::field(
+                                            ui,
+                                            chars_wide(ui, 8.0),
                                             egui::TextEdit::singleline(text)
-                                                .desired_width(chars_wide(ui, 8.0))
                                                 .hint_text(motif::hint(tr("opts_stup_start_hint"))),
                                         );
                                         // Pris quand le champ rend la
@@ -54402,6 +54609,33 @@ impl eframe::App for App {
                                         }
                                     }
                                 });
+                                // **L'annuaire des prescripteurs.**
+                                // Rien n'est livré : ce fichier
+                                // appartient à l'officine, comme les
+                                // codes-barres qu'elle apprend une
+                                // boîte à la main.
+                                if let Some(n) = presc_count {
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(if n == 0 {
+                                                tr("opts_presc_none").to_owned()
+                                            } else {
+                                                trf("opts_presc_count", n)
+                                            })
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                                if motif::button(ui, tr("opts_presc_import"))
+                                    .on_hover_text(tr("opts_presc_import_tooltip"))
+                                    .clicked()
+                                {
+                                    if let Some(p) = rfd::FileDialog::new().pick_file() {
+                                        presc_file = Some(p);
+                                    }
+                                }
                                 // **Les trois fichiers en un seul.**
                                 // La base, les pièces et le registre
                                 // vivent à part pour de bonnes raisons,
@@ -54806,6 +55040,27 @@ impl eframe::App for App {
             // vraiment retenu plutôt que ce qu'on a tapé.
             if let Some(editor) = &mut self.options {
                 editor.stup_start_text = None;
+            }
+        }
+        if let (Some(path), State::Unlocked(session)) = (&presc_file, &mut self.state) {
+            let said = std::fs::read_to_string(path)
+                .map_err(|e| e.to_string())
+                .and_then(|text| crate::prescribers::import(&text))
+                .and_then(|read| {
+                    session
+                        .db
+                        .set_prescribers(&read.found)
+                        .map(|n| (n, read.skipped, read.unverified))
+                });
+            let said = match said {
+                Ok((n, skipped, unverified)) => {
+                    session.prescribers = session.db.prescribers().unwrap_or_default();
+                    (false, trn("opts_presc_done", &[&n, &skipped, &unverified]))
+                }
+                Err(e) => (true, e),
+            };
+            if let Some(editor) = &mut self.options {
+                editor.message = Some(said);
             }
         }
         if let (Some(to), State::Unlocked(session)) = (&bundle_out, &self.state) {
@@ -56868,6 +57123,84 @@ mod tests {
             through > 40,
             "seulement {through} avis par le chemin unique"
         );
+    }
+
+    /// **Ce qu'on remplit descend, ce qu'on presse monte.**
+    ///
+    /// C'est le seul signe qui distingue à l'œil un champ d'un bouton
+    /// dans ce chrome, et les champs ne l'avaient pas : egui les
+    /// dessinait de la couleur du creux, cernés d'un trait d'un pixel,
+    /// à côté de boutons biseautés. Cent soixante-dix cases de saisie
+    /// dans cette vue, toutes plates.
+    ///
+    /// Elles passent par `motif::field`, qui pose le creux et le
+    /// liseré du foyer. Ce test refuse la suivante écrite à côté —
+    /// vérifié en en remettant une.
+    #[test]
+    fn no_text_field_is_drawn_without_its_relief() {
+        const SOURCE: &str = include_str!("app.rs");
+        // Assemblés, sinon le test se trouve lui-même.
+        let edit = concat!("TextEd", "it::singleline");
+        let ours = concat!("motif::fi", "eld");
+        let mut loose: Vec<usize> = Vec::new();
+        let mut from = 0;
+        while let Some(at) = SOURCE[from..].find(edit) {
+            let at = from + at;
+            from = at + edit.len();
+            // **Le plus proche des deux gagne**, et non « y a-t-il
+            // notre nom dans les deux cents caractères d'avant » : une
+            // largeur qui se calcule sur cinq lignes repousse l'appel
+            // bien au-delà de n'importe quelle fenêtre, et une fenêtre
+            // assez large pour l'attraper attrape aussi l'appel d'à
+            // côté. On compare les distances.
+            let back = &SOURCE[..at];
+            let mine = back.rfind(ours);
+            let theirs = back
+                .rfind(concat!("add_si", "zed("))
+                .into_iter()
+                .chain(back.rfind(concat!("ui.a", "dd(")))
+                .max();
+            let bare = match (mine, theirs) {
+                (Some(m), Some(t)) => t > m,
+                (None, Some(_)) => true,
+                _ => false,
+            };
+            if bare {
+                loose.push(SOURCE[..at].lines().count());
+            }
+        }
+        assert!(
+            loose.is_empty(),
+            "des cases de saisie sans relief, lignes {loose:?}"
+        );
+        // Et il y en a bien : le jour où la dernière disparaît, ce test
+        // garderait le vide sans le dire.
+        assert!(SOURCE.matches(ours).count() > 150);
+    }
+
+    /// Un menu d'options ne se peint pas dans `weak_bg_fill`.
+    ///
+    /// `motif::apply` met ce champ au fond du panneau pour tous les
+    /// états, si bien que **tout ce qu'egui en tire sort plat** — c'est
+    /// le piège que ce fichier nomme déjà pour la glissière, et le
+    /// `ComboBox` y tombait : de la couleur du panneau, cerné d'un
+    /// trait, à côté de boutons biseautés.
+    ///
+    /// `motif::select` et `motif::menu` le dessinent, avec leur marque.
+    /// Les deux ne sont pas la même chose et ce n'est pas cosmétique :
+    /// un menu d'actions n'a pas de valeur courante à montrer, et
+    /// écrire le dernier choix dans sa case ferait croire à un réglage.
+    #[test]
+    fn no_egui_combo_box_is_drawn_flat_beside_a_bevelled_button() {
+        const SOURCE: &str = include_str!("app.rs");
+        let combo = concat!("egui::Combo", "Box");
+        assert!(
+            !SOURCE.contains(combo),
+            "un menu déroulant d'egui, qui sortira plat ici"
+        );
+        // Les deux maisons existent, et sont employées.
+        assert!(SOURCE.contains(concat!("motif::sel", "ect(")));
+        assert!(SOURCE.contains(concat!("motif::me", "nu(")));
     }
 
     #[test]
@@ -60922,8 +61255,9 @@ mod tests {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.heading(tr("codex_title"));
                                     motif::button(ui, tr("patient_back"));
-                                    ui.add_sized(
-                                        [field, 24.0],
+                                    motif::field(
+                                        ui,
+                                        field,
                                         egui::TextEdit::singleline(&mut text)
                                             .hint_text(motif::hint(tr("codex_new_hint"))),
                                     );

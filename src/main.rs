@@ -30,6 +30,7 @@ mod ordonnance;
 mod ordonnancier;
 mod pdf;
 mod planning;
+mod prescribers;
 mod release;
 mod renal;
 mod revue;

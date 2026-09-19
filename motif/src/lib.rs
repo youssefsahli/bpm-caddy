@@ -1739,6 +1739,246 @@ pub fn scale(
     scale_range(ui, width, value, 0.0, max, step)
 }
 
+/// Le contrôle fermé d'un menu : relief levé, libellé, marque.
+///
+/// Écrit une fois et partagé par [`select`] et [`menu`] : deux dessins
+/// du même objet finiraient par ne plus se ressembler, et c'est
+/// justement l'objet dont tout l'intérêt est de se reconnaître.
+fn menu_head(ui: &mut egui::Ui, id: egui::Id, width: f32, shown: &str) -> egui::Response {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let height = ui.spacing().interact_size.y;
+    let (rect, response) = ui.allocate_exact_size(Vec2::new(width, height), egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let open = ui.memory(|m| m.is_popup_open(id));
+        let fill = if open {
+            crate::trough()
+        } else if response.hovered() {
+            crate::bg_hover()
+        } else {
+            crate::bg()
+        };
+        ui.painter().rect_filled(rect, 0.0, fill);
+        bevel(ui.painter(), rect, !open);
+        // La marque, à droite : un triangle plein, le même que celui
+        // d'un menu déroulant Motif.
+        let m = height * 0.22;
+        let cx = rect.right() - m - 6.0;
+        let cy = rect.center().y;
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![
+                egui::pos2(cx - m, cy - m * 0.5),
+                egui::pos2(cx + m, cy - m * 0.5),
+                egui::pos2(cx, cy + m * 0.7),
+            ],
+            crate::text(),
+            Stroke::NONE,
+        ));
+        // Le libellé, à gauche, et **coupé à ce qui reste** : laissé
+        // sans largeur il peindrait par-dessus la marque et jusque sur
+        // le widget d'à côté — un `Painter` peint où on lui dit, rien
+        // ne le coupe.
+        if !shown.is_empty() {
+            let room = (cx - m - rect.left() - 12.0).max(0.0);
+            let mut job =
+                egui::text::LayoutJob::simple_singleline(shown.to_owned(), font, crate::text());
+            job.wrap.max_width = room;
+            job.wrap.max_rows = 1;
+            job.wrap.break_anywhere = true;
+            job.wrap.overflow_character = Some('…');
+            let galley = ui.fonts(|f| f.layout_job(job));
+            ui.painter().galley(
+                egui::pos2(rect.left() + 8.0, rect.center().y - galley.size().y / 2.0),
+                galley,
+                crate::text(),
+            );
+        }
+    }
+    response
+}
+
+/// Un **menu** : il ne montre pas une valeur, il en propose une.
+///
+/// La différence avec [`select`] n'est pas cosmétique. Un menu d'actions
+/// — « quel opérateur signe », « depuis quelle fiche » — n'a pas de
+/// valeur courante à afficher : ce qu'on y choisit part ailleurs, et
+/// écrire le dernier choix dans la case ferait croire à un réglage.
+/// `label` peut donc être vide : il ne reste que la marque, ce qui est
+/// exactement ce qu'on veut à côté d'un champ.
+///
+/// Rend ce qui a été choisi — ou `None` — **et la réponse du contrôle
+/// fermé**, pour que l'appelant y accroche son infobulle. Une marque
+/// seule, sans texte, n'a rien qui dise ce qu'elle ouvre : l'infobulle
+/// est alors la seule explication qu'il y ait.
+pub fn menu<T: Clone>(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    label: &str,
+    options: &[(T, String)],
+) -> egui::InnerResponse<Option<T>> {
+    let id = ui.make_persistent_id(id_salt);
+    let response = menu_head(ui, id, width, label);
+    if response.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(id));
+    }
+    let mut picked = None;
+    egui::popup::popup_below_widget(
+        ui,
+        id,
+        &response,
+        egui::popup::PopupCloseBehavior::CloseOnClick,
+        |ui| {
+            ui.set_min_width(width);
+            for (value, text) in options {
+                if list_row(ui, egui::RichText::new(text), false).clicked() {
+                    picked = Some(value.clone());
+                }
+            }
+        },
+    );
+    egui::InnerResponse::new(picked, response)
+}
+
+/// Un champ de saisie **creusé**, comme tout ce qui se remplit ici.
+///
+/// Les boutons de cette interface montent, les champs descendent : c'est
+/// la seule chose qui distingue à l'œil ce qu'on presse de ce qu'on
+/// remplit, et c'est le mouvement que le reste du chrome suit partout.
+/// Les champs, eux, étaient dessinés par egui : un rectangle de la
+/// couleur du creux, cerné d'un trait d'un pixel. La couleur disait
+/// « ici on écrit » ; le relief ne disait rien, et à côté d'un bouton
+/// biseauté cela se voit.
+///
+/// Le `TextEdit` est passé tel quel, avec ses réglages — invite, mot de
+/// passe, alignement : ce widget ne remplace pas le vôtre, il l'encadre.
+/// Son propre cadre est éteint, sans quoi il y aurait deux bords.
+///
+/// **Le foyer se voit.** Un liseré d'accent à l'intérieur du biseau,
+/// quand le champ a la main : sur un formulaire de dix champs, savoir
+/// où l'on tape est ce qu'on demande d'abord à un écran.
+pub fn field(ui: &mut egui::Ui, width: f32, edit: egui::TextEdit<'_>) -> egui::Response {
+    // La hauteur vient du style, comme celle d'un bouton : une
+    // constante ici ne suivrait pas `[ui] text_scale`, et le champ
+    // resterait petit sur l'écran de quelqu'un qui grossit le texte.
+    let height = ui.spacing().interact_size.y;
+    field_sized(ui, Vec2::new(width, height), edit)
+}
+
+/// Le même, quand la rangée qui l'accueille a déjà décidé sa hauteur.
+///
+/// Une grille de saisie mesure ses rangées une fois et pose tout
+/// dedans ; un champ qui reprendrait la hauteur du style s'y
+/// désalignerait d'un ou deux pixels par ligne, ce qui se voit sur
+/// cinq lignes et se lit comme un défaut de rendu.
+pub fn field_sized(ui: &mut egui::Ui, size: Vec2, edit: egui::TextEdit<'_>) -> egui::Response {
+    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        ui.painter().rect_filled(rect, 0.0, crate::trough());
+        bevel(ui.painter(), rect, false);
+    }
+    // Ce qui reste une fois le biseau posé : deux pixels de chaque
+    // côté, plus l'air qu'un texte demande pour ne pas toucher le bord.
+    let inner = rect.shrink2(Vec2::new(6.0, 3.0));
+    let response = ui.put(inner, edit.frame(false));
+    if response.has_focus() && ui.is_rect_visible(rect) {
+        ui.painter()
+            .rect_stroke(rect.shrink(2.0), 0.0, Stroke::new(1.0_f32, crate::accent()));
+    }
+    response
+}
+
+/// Un menu d'options : **relief levé**, comme un bouton, avec sa marque.
+///
+/// Le `ComboBox` d'egui se peint dans `widgets.*.weak_bg_fill`, que
+/// `apply` met au fond du panneau pour tous les états — il sortait donc
+/// plat, de la couleur du panneau, cerné d'un trait d'un pixel, à côté
+/// de boutons biseautés. C'est le même piège que la glissière : tout ce
+/// qu'egui dessine à partir de ce champ-là n'a pas de relief ici.
+///
+/// Rend la [`egui::Response`] du contrôle fermé, marquée modifiée quand
+/// le choix a changé : l'appelant peut donc y accrocher son infobulle,
+/// comme sur n'importe quel widget.
+///
+/// Le libellé de chaque option est donné par l'appelant, jamais deviné :
+/// ces listes portent des intitulés de `strings.fr.toml`, et un `Debug`
+/// qui s'échapperait à l'écran serait de l'anglais au comptoir.
+pub fn select<T: PartialEq + Clone>(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    current: &mut T,
+    options: &[(T, String)],
+) -> egui::Response {
+    let hinted: Vec<(T, String, String)> = options
+        .iter()
+        .map(|(v, l)| (v.clone(), l.clone(), String::new()))
+        .collect();
+    select_hinted(ui, id_salt, width, current, &hinted)
+}
+
+/// Le même, quand **chaque ligne a quelque chose à expliquer**.
+///
+/// « Les semaines paires » et « une semaine sur deux » portent le même
+/// nombre de mots et ne sont pas la même règle : elles s'accordent des
+/// années puis divergent pour toujours à la première année ISO de
+/// cinquante-trois semaines. Ce genre d'écart se dit sur la ligne qui
+/// le porte, au moment où l'on choisit — pas dans un manuel.
+///
+/// Une explication vide ne pose pas d'infobulle : ce n'est pas la même
+/// chose qu'une infobulle vide, qui est une boîte qui s'ouvre pour ne
+/// rien dire.
+pub fn select_hinted<T: PartialEq + Clone>(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    current: &mut T,
+    options: &[(T, String, String)],
+) -> egui::Response {
+    let id = ui.make_persistent_id(id_salt);
+    let shown = options
+        .iter()
+        .find(|(v, _, _)| v == current)
+        .map(|(_, label, _)| label.clone())
+        // Une valeur qui n'est dans aucune option n'invente pas de
+        // libellé : elle laisse la case vide plutôt que d'écrire un
+        // nom qui n'est pas le sien.
+        .unwrap_or_default();
+    let response = menu_head(ui, id, width, &shown);
+    if response.clicked() {
+        ui.memory_mut(|m| m.toggle_popup(id));
+    }
+    let mut changed = false;
+    egui::popup::popup_below_widget(
+        ui,
+        id,
+        &response,
+        egui::popup::PopupCloseBehavior::CloseOnClick,
+        |ui| {
+            ui.set_min_width(width);
+            for (value, label, hint) in options {
+                let row = list_row(ui, egui::RichText::new(label), value == current);
+                // Une explication vide ne pose pas d'infobulle : une
+                // boîte qui s'ouvre pour ne rien dire est pire que pas
+                // de boîte du tout.
+                let row = if hint.is_empty() {
+                    row
+                } else {
+                    row.on_hover_text(hint)
+                };
+                if row.clicked() && value != current {
+                    *current = value.clone();
+                    changed = true;
+                }
+            }
+        },
+    );
+    let mut response = response;
+    if changed {
+        response.mark_changed();
+    }
+    response
+}
+
 /// The same scale over a range that **does not start at zero**.
 ///
 /// A quantity at the counter runs from nothing upwards, which is why
@@ -2014,6 +2254,131 @@ mod tests {
     /// « Efferalgan » sortaient coupés alors qu'ils tiennent entiers
     /// sans elle. Mesuré sur la liste des médicaments à 1024x700 en
     /// texte 1,6 : cinq rangées, cinq noms abîmés, zéro après.
+    /// **Ce qu'on remplit descend, ce qu'on presse monte.**
+    ///
+    /// C'est le seul signe qui distingue à l'œil un champ d'un bouton
+    /// dans ce chrome, et les champs ne l'avaient pas : egui les
+    /// dessinait de la couleur du creux, cernés d'un trait d'un pixel.
+    /// La couleur disait « ici on écrit », le relief ne disait rien.
+    ///
+    /// Dessiné pour de vrai et relu dans la liste des formes : le biseau
+    /// creusé pose sa teinte sombre **en haut à gauche**, le levé en
+    /// bas à droite. C'est cela qu'on vérifie, et non qu'un trait
+    /// existe.
+    #[test]
+    fn what_is_filled_in_is_sunk_and_what_is_pressed_rises() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("gris");
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+
+        // La couleur d'un segment, par son point de départ.
+        let corner_ink = |shapes: &[egui::epaint::ClippedShape], top_left: bool| {
+            let mut found = None;
+            for s in shapes {
+                if let egui::Shape::LineSegment { points, stroke } = &s.shape {
+                    let going_up = points[0].y > points[1].y;
+                    let going_right = points[1].x > points[0].x;
+                    if (top_left && (going_up || going_right))
+                        || (!top_left && !going_up && !going_right)
+                    {
+                        found.get_or_insert(stroke.color.clone());
+                    }
+                }
+            }
+            found
+        };
+
+        let mut text = String::from("Dupont");
+        let field = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                super::field(ui, 160.0, egui::TextEdit::singleline(&mut text));
+            });
+        });
+        let sunk = corner_ink(&field.shapes, true).expect("un biseau");
+        assert_eq!(
+            sunk,
+            egui::epaint::ColorMode::Solid(super::bg_dark()),
+            "le champ est creusé"
+        );
+
+        let button = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                super::button(ui, "Enregistrer");
+            });
+        });
+        let raised = corner_ink(&button.shapes, true).expect("un biseau");
+        assert_eq!(
+            raised,
+            egui::epaint::ColorMode::Solid(super::bg_light()),
+            "le bouton est levé"
+        );
+        assert_ne!(sunk, raised, "les deux reliefs ne se ressemblent pas");
+    }
+
+    /// Un menu d'options ne se peint pas dans `weak_bg_fill`.
+    ///
+    /// C'est le piège que ce fichier nomme déjà pour la glissière :
+    /// `apply` met ce champ au fond du panneau pour tous les états, si
+    /// bien que tout ce qu'egui en tire sort plat. Le `ComboBox` en
+    /// sortait : de la couleur du panneau, cerné d'un trait, à côté de
+    /// boutons biseautés.
+    ///
+    /// Celui-ci est dessiné ici, et il monte comme un bouton — plus une
+    /// marque, qu'on vérifie aussi : un menu sans marque est un bouton
+    /// qui ment.
+    #[test]
+    fn a_select_rises_like_a_button_and_shows_its_mark() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("gris");
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+
+        let options = vec![
+            (1_u8, "Docteur".to_owned()),
+            (2, "Sage-femme".to_owned()),
+            (3, "Chirurgien-dentiste".to_owned()),
+        ];
+        let mut picked = 2_u8;
+        let out = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                super::select(ui, "qualite", 180.0, &mut picked, &options);
+            });
+        });
+        // Le relief : le biseau levé pose sa teinte claire en haut à
+        // gauche, comme un bouton.
+        let lit = out.shapes.iter().any(|s| {
+            matches!(&s.shape, egui::Shape::LineSegment { stroke, .. }
+                if stroke.color == egui::epaint::ColorMode::Solid(super::bg_light()))
+        });
+        assert!(lit, "le menu ne monte pas");
+        // La marque : un triangle, c'est-à-dire un polygone de trois
+        // points. Sans elle, rien ne dit que cela s'ouvre.
+        let marked = out
+            .shapes
+            .iter()
+            .any(|s| matches!(&s.shape, egui::Shape::Path(p) if p.points.len() == 3));
+        assert!(marked, "le menu n'a pas de marque");
+        // Et il montre le libellé choisi, jamais la valeur.
+        let drawn: String = out
+            .shapes
+            .iter()
+            .filter_map(|s| match &s.shape {
+                egui::Shape::Text(t) => Some(t.galley.text().to_owned()),
+                _ => None,
+            })
+            .collect();
+        assert!(drawn.contains("Sage-femme"), "« {drawn} »");
+        assert!(
+            !drawn.contains('2'),
+            "la valeur ne s'écrit pas : « {drawn} »"
+        );
+    }
+
     #[test]
     fn the_quiet_half_of_a_row_leaves_whole_or_does_not_leave() {
         use eframe::egui;

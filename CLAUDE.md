@@ -346,6 +346,31 @@ The one that was missing — « combien de fois un autre poste avait
   often a network share. It is invalidated when the page is left and
   when the counters are erased — a pane still showing what was just
   erased reads as a button that did not work.)
+  `src/prescribers.rs` (the directory of practitioners, and why a free
+  text field was not enough: the prescriber is typed by hand everywhere
+  it is asked for, so « Dr Morel », « dr morel », « Morel » and
+  « Dr MOREL J. » are four strings for one doctor — the same drift
+  `classes.rs` found on therapeutic classes, with a consequence the
+  class did not have: `vigilance.rs` asks « several prescribers? » **by
+  comparing those strings**. Four spellings of one doctor is a question
+  asked for nothing; one spelling shared by two doctors is a question
+  never asked. A directory gives an identifier — the RPPS, eleven
+  digits, and **the key decides, never the length**: a Luhn check, the
+  same rule as the NIR and the CIP13. **Nothing ships**: the file
+  belongs to the officine, which imports and updates it, exactly as it
+  teaches barcodes a box at a time — a table frozen in a binary ages
+  where nobody sees it, and this one names people. **A column is found
+  by its name, never by its rank**: public files change column order
+  between versions, and reading the seventh is reading something else
+  next year in silence; a file whose header carries no name column is
+  refused *and says what it saw*, because a refusal that does not name
+  what it read leaves you guessing. A number that does not prove itself
+  is **kept and counted**, never dropped — an import that silently
+  leaves thirty rows behind is a directory you believe is complete. And
+  the search **proposes, it never decides**: an unknown prescriber
+  stays free text, because software that matched « Morel » to Dr Morel
+  by itself would one day match a different Morel. Pure, tested, reads
+  no disk: the text is passed in),
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only
@@ -767,6 +792,31 @@ add clicking and typing; it is not the price of entry.
   no plotting library — `motif::chart` has bars, hbars, stacked,
   sparkline, `lines` (several series on one shared scale), meter, pips,
   heat strip and legend.
+- **What is filled in is sunk; what is pressed rises.** That is the only
+  thing telling a field from a button at a glance in this chrome, and
+  the fields did not have it: egui drew them as a trough-coloured
+  rectangle with a one-pixel outline, beside bevelled buttons — a
+  hundred and seventy of them, all flat. `motif::field` (and
+  `field_sized`, for a row that has already decided its height) draws
+  the sunken bevel and an accent ring when the field has focus: on a
+  form of ten fields, knowing where you are typing is the first thing
+  one asks of a screen. `no_text_field_is_drawn_without_its_relief`
+  reads `app.rs` and refuses the next one written beside it — by
+  **distance**, not by a window: a width computed over five lines
+  pushes the call past any fixed lookback, so the guard compares which
+  of `motif::field` and `add_sized` is nearer.
+- **A drop-down is a Motif widget too, and there are two of them.**
+  `egui::ComboBox` paints from `widgets.*.weak_bg_fill`, which `apply`
+  sets to `bg()` for every state — the same trap as the slider, so it
+  came out flat. `motif::select` is bound to a value and shows it;
+  `motif::menu` is **not**, and the difference is not cosmetic: a menu
+  of actions (« which operator signs », « from which card ») has no
+  current value to display, and writing the last pick into its box
+  would read as a setting. `select_hinted` carries a hover per row,
+  because « les semaines paires » and « une semaine sur deux » are the
+  same length and not the same rule.
+  `no_egui_combo_box_is_drawn_flat_beside_a_bevelled_button` refuses
+  the next one.
 - **And an egui widget that paints itself from `widgets.*.bg_fill` comes
   out invisible here.** `apply` sets that field to `bg()` for every
   widget state — right for a button, which is a raised panel on the
