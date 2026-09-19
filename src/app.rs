@@ -9911,6 +9911,15 @@ struct OptionsEditor {
     /// Voir [`AboutRead`] : posé en arrivant sur la page, jeté en la
     /// quittant.
     about_read: Option<AboutRead>,
+    /// Le premier numéro d'ordonnancier, **tel qu'il est tapé**.
+    ///
+    /// Le texte vit ici jusqu'à ce que le champ perde le foyer, comme
+    /// les forfaits de location et pour la même raison : relu comme un
+    /// nombre et reformaté à chaque frappe, « 189 » deviendrait 189 et
+    /// « 18950 » serait impossible à saisir. `None` veut dire « pas
+    /// encore lu » — la page le remplit en arrivant, et le jette en
+    /// partant.
+    stup_start_text: Option<String>,
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
@@ -11194,6 +11203,7 @@ impl App {
                 confirm_reset: false,
                 confirm_telemetry_clear: false,
                 about_read: None,
+                stup_start_text: None,
             })
         } else {
             None
@@ -38207,13 +38217,10 @@ impl App {
                 ui,
                 w,
                 dress(
-                    egui::RichText::new(crate::ordonnancier::number_label(
-                        m.ordo_year as u32,
-                        m.ordo_no as u32,
-                    ))
-                    .size(motif::pt(ui, 11.0))
-                    .monospace()
-                    .color(motif::text_dim()),
+                    egui::RichText::new(crate::ordonnancier::number_label(m.ordo_no as u32))
+                        .size(motif::pt(ui, 11.0))
+                        .monospace()
+                        .color(motif::text_dim()),
                 ),
             );
         } else {
@@ -48634,6 +48641,7 @@ impl App {
                     confirm_reset: false,
                     confirm_telemetry_clear: false,
                     about_read: None,
+                    stup_start_text: None,
                 })
             };
         }
@@ -52948,6 +52956,22 @@ impl eframe::App for App {
                 });
             }
         }
+        // Où l'ordonnancier de papier s'était arrêté. Lu en arrivant
+        // sur la page, et une seule fois : c'est une déclaration, pas
+        // un compteur, et elle ne bouge pas pendant qu'on la regarde.
+        if let (Some(editor), State::Unlocked(s)) = (&mut self.options, &self.state) {
+            if editor.page == OptionsPage::Database && editor.stup_start_text.is_none() {
+                let declared = s.db.ordonnancier_start();
+                editor.stup_start_text = Some(if declared == 0 {
+                    // Rien de déclaré s'écrit vide et non « 0 » : un
+                    // zéro dans un champ se lit comme une valeur posée.
+                    String::new()
+                } else {
+                    declared.to_string()
+                });
+            }
+        }
+        let mut set_stup_start: Option<u32> = None;
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -53000,6 +53024,7 @@ impl eframe::App for App {
                                 // relire plutôt que montrer l'état
                                 // d'avant.
                                 editor.about_read = None;
+                                editor.stup_start_text = None;
                             }
                         }
                     });
@@ -54236,6 +54261,61 @@ impl eframe::App for App {
                                         );
                                     }
                                 }
+                                // **Où l'ordonnancier de papier s'est
+                                // arrêté.** Une officine qui s'installe
+                                // avec ce logiciel en est à dix-huit
+                                // mille neuf cent cinquante, pas à un,
+                                // et le numéro qu'elle écrit sur
+                                // l'ordonnance doit suivre le précédent.
+                                // Le champ rend deux réponses possibles
+                                // et n'en écrit aucune lui-même : il
+                                // tient le texte de quelqu'un sous les
+                                // doigts, et le relire depuis la base
+                                // au milieu d'une frappe le lui
+                                // arracherait.
+                                let mut reread_start = false;
+                                if let Some(text) = &mut editor.stup_start_text {
+                                    ui.horizontal(|ui| {
+                                        ui.label(dim(tr("opts_stup_start")));
+                                        let field = ui.add(
+                                            egui::TextEdit::singleline(text)
+                                                .desired_width(chars_wide(ui, 8.0))
+                                                .hint_text(motif::hint(tr("opts_stup_start_hint"))),
+                                        );
+                                        // Pris quand le champ rend la
+                                        // main, et jamais à la frappe :
+                                        // « 189 » n'est pas ce qu'on
+                                        // voulait déclarer, c'est le
+                                        // début de « 18950 ».
+                                        if field.lost_focus() {
+                                            let typed = text.trim();
+                                            if typed.is_empty() {
+                                                set_stup_start = Some(0);
+                                            } else if let Ok(n) = typed.parse::<u32>() {
+                                                set_stup_start = Some(n);
+                                            } else {
+                                                // Ce qui n'est pas un
+                                                // nombre n'est pas pris,
+                                                // et le champ revient à
+                                                // ce qui est écrit : un
+                                                // refus muet se lirait
+                                                // comme une acceptation.
+                                                reread_start = true;
+                                            }
+                                        }
+                                    });
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(tr("opts_stup_start_tooltip"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
+                                if reread_start {
+                                    editor.stup_start_text = None;
+                                }
                                 // File-level tools: consistent encrypted copy
                                 // (VACUUM INTO) to any destination; "move"
                                 // additionally points the config at the copy
@@ -54619,6 +54699,15 @@ impl eframe::App for App {
         } else {
             None
         };
+        if let (Some(first), State::Unlocked(session)) = (set_stup_start, &self.state) {
+            let _ = session.db.set_ordonnancier_start(first);
+            // Relu : déclaré sous ce qui est déjà écrit, il ne fait
+            // rien, et le champ doit montrer ce que le registre a
+            // vraiment retenu plutôt que ce qu'on a tapé.
+            if let Some(editor) = &mut self.options {
+                editor.stup_start_text = None;
+            }
+        }
         if clear_telemetry {
             if let State::Unlocked(session) = &mut self.state {
                 // Ce qui est en mémoire part avec le reste : le rendre

@@ -515,9 +515,17 @@ produits qu'on a réellement comptés sont inscrits.
 Une ligne porte le **numéro de dossier** et jamais le nom : un registre
 s'imprime et se laisse sur un comptoir.
 
-Le numéro de délivrance est attribué au moment de l'écriture et n'est
+Le numéro d'ordonnancier est attribué au moment de l'écriture et n'est
 jamais réattribué : une ligne annulée garde le sien, et la suite
 continue après lui.
+
+**Une seule suite, continue.** Elle ne repart pas au premier janvier :
+« le 18950 » désigne une délivrance et une seule, ce qui est la
+condition pour l'écrire sur une ordonnance et la retrouver.
+
+Une officine qui s'installe continue son registre de papier : Options ›
+Base, « Premier numéro d'ordonnancier », une fois. Déclaré trop bas
+après coup, il ne fait rien — un numéro posé est posé.
 
 ## Les questions que le registre pose
 

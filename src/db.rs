@@ -29262,6 +29262,23 @@ CREATE TABLE IF NOT EXISTS stup_moves (
     cancels      INTEGER NOT NULL DEFAULT 0,
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Ce que l'officine a déclaré de son propre registre.
+--
+-- Une seule chose pour l'instant : le premier numéro d'ordonnancier que
+-- ce registre-ci doit porter, pour **continuer celui de papier**. Une
+-- officine qui s'installe avec ce logiciel en est à dix-huit mille neuf
+-- cent cinquante, pas à un, et le numéro qu'elle écrit sur l'ordonnance
+-- doit suivre le précédent.
+--
+-- **Ici et non dans `settings` de la base**, où vivent pourtant les
+-- réglages de l'officine : une inspection demande ce fichier-là seul,
+-- et un registre qui ne porte pas l'origine de sa propre numérotation
+-- ne s'explique pas tout seul. C'est la même raison qui l'a fait vivre
+-- à part.
+CREATE TABLE IF NOT EXISTS stup_settings (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 -- Les libellés qu'un produit a portés. Un produit suivi sous une faute
 -- de frappe la gardait pour toujours : seuls le seuil, l'unité et
 -- l'archivage se corrigeaient, et ce libellé-là s'imprime sur chaque
@@ -29322,6 +29339,12 @@ CREATE INDEX IF NOT EXISTS idx_stup_moves_cancels ON stup_moves(cancels);
 /// version d'avant. Même règle que `MIGRATIONS` : idempotent, et un
 /// échec sur une colonne déjà là n'est pas une erreur.
 const STUP_MIGRATIONS: &[&str] = &[
+    // Ce que l'officine a déclaré de son registre — voir le commentaire
+    // au-dessus de la table dans `STUP_SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS stup_settings (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )",
     "ALTER TABLE stupefiants ADD COLUMN family TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE stupefiants ADD COLUMN status TEXT NOT NULL DEFAULT 'STUPEFIANT'",
     "ALTER TABLE stupefiants ADD COLUMN max_days INTEGER NOT NULL DEFAULT 0",
@@ -33740,6 +33763,41 @@ impl Db {
         )
     }
 
+    /// Le premier numéro d'ordonnancier que ce registre doit porter.
+    ///
+    /// Zéro veut dire « rien de déclaré », donc la suite part à un. Ce
+    /// n'est pas un compteur : il ne bouge pas tout seul, il dit
+    /// seulement où l'officine reprend son ordonnancier de papier.
+    pub fn ordonnancier_start(&self) -> u32 {
+        self.stups
+            .query_row(
+                "SELECT value FROM stup_settings WHERE key = 'ordonnancier_start'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.trim().parse::<u32>().ok())
+            .unwrap_or(0)
+    }
+
+    /// Déclare où reprend l'ordonnancier.
+    ///
+    /// **Ne réattribue rien.** Posé sous ce qui est déjà écrit, il ne
+    /// fait rien du tout : un numéro posé est posé, et deux délivrances
+    /// sous un même numéro font un registre qui ne prouve plus rien.
+    /// C'est `ordonnancier::next_number` qui le tient, et c'est là que
+    /// le test est.
+    pub fn set_ordonnancier_start(&self, first: u32) -> Result<(), String> {
+        self.stups
+            .execute(
+                "INSERT INTO stup_settings (key, value) VALUES ('ordonnancier_start', ?1)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [first.to_string()],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// Les délivrances d'une année, dans l'ordre de l'ordonnancier.
     ///
     /// C'est **le** document : la suite des numéros, sans trou visible
@@ -34053,27 +34111,48 @@ impl Db {
             }
         }
         let (year, no) = if kind.is_dispensing() {
+            // L'année reste **écrite sur la ligne** : c'est celle où la
+            // délivrance a eu lieu, et l'ordonnancier s'imprime par
+            // exercice. Ce qu'elle ne fait plus, c'est borner la suite.
             let year: i64 = day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
-            // Les numéros déjà pris de cette année, et la règle qui en
-            // tire le suivant est celle de `crate::ordonnancier` — pas
-            // un `MAX(…) + 1` écrit ici, qui serait la même règle dite
-            // une seconde fois et un jour différemment.
+            // **Tous** les numéros déjà pris, et non ceux de l'année :
+            // un ordonnancier se numérote d'un bout à l'autre, et « le
+            // 42 » doit désigner une délivrance et une seule. La règle
+            // qui en tire le suivant est celle de `crate::ordonnancier`
+            // — pas un `MAX(…) + 1` écrit ici, qui serait la même règle
+            // dite une seconde fois et un jour différemment.
             //
-            // La liste entière et non son maximum : l'index
-            // `idx_stup_moves_ordo` la rend sans toucher la table, et
+            // La liste entière et non son maximum : l'index partiel
+            // `idx_stup_ordo_unique` la rend sans toucher la table, et
             // cela n'arrive qu'au moment où quelqu'un délivre.
             let used: Vec<u32> = {
                 let mut stmt = tx
-                    .prepare("SELECT ordo_no FROM stup_moves WHERE ordo_year = ?1")
+                    .prepare("SELECT ordo_no FROM stup_moves WHERE ordo_no > 0")
                     .map_err(|e| e.to_string())?;
                 let rows = stmt
-                    .query_map([year], |r| r.get::<_, i64>(0))
+                    .query_map([], |r| r.get::<_, i64>(0))
                     .map_err(|e| e.to_string())?;
                 rows.map(|r| r.map(|n| n.max(0) as u32))
                     .collect::<Result<_, _>>()
                     .map_err(|e| e.to_string())?
             };
-            (year, i64::from(crate::ordonnancier::next_number(&used)))
+            // Là où l'officine a dit que son ordonnancier de papier
+            // s'arrêtait. Lu dans la même transaction que l'écriture :
+            // deux postes qui délivrent au même instant voient le même
+            // registre et la même déclaration.
+            let start: u32 = tx
+                .query_row(
+                    "SELECT value FROM stup_settings WHERE key = 'ordonnancier_start'",
+                    [],
+                    |r| r.get::<_, String>(0),
+                )
+                .ok()
+                .and_then(|v| v.trim().parse().ok())
+                .unwrap_or(0);
+            (
+                year,
+                i64::from(crate::ordonnancier::next_number(&used, start)),
+            )
         } else {
             (0, 0)
         };
@@ -38990,10 +39069,50 @@ mod tests {
         );
         assert_eq!(summary[0].last_count, "2026-01-20", "le dernier comptage");
 
-        // L'année suivante repart à un.
+        // **L'année suivante ne repart pas à un.** Un ordonnancier se
+        // numérote d'un bout à l'autre : c'est ce que le comptoir écrit
+        // sur l'ordonnance et ce que le prescripteur retrouve, et « le
+        // 3 » doit désigner une délivrance et une seule. La ligne porte
+        // quand même son année, qui est celle où la délivrance a eu
+        // lieu — elle ne borne simplement plus la suite.
+        let before = db
+            .stup_moves(sid)
+            .unwrap()
+            .iter()
+            .map(|m| m.ordo_no)
+            .max()
+            .unwrap_or(0);
         write(Kind::Sortie, 2.0, "2027-01-03", pid);
         let last = db.stup_moves(sid).unwrap().pop().unwrap();
-        assert_eq!((last.ordo_year, last.ordo_no), (2027, 1));
+        assert_eq!((last.ordo_year, last.ordo_no), (2027, before + 1));
+
+        // **Et une officine reprend son ordonnancier de papier.**
+        //
+        // Elle en est à dix-huit mille neuf cent cinquante, pas à un, et
+        // le numéro qu'elle écrit sur l'ordonnance doit suivre le
+        // précédent. Déclaré une fois, dans le fichier du registre
+        // lui-même : une inspection demande ce fichier-là seul, et un
+        // registre qui ne porte pas l'origine de sa numérotation ne
+        // s'explique pas tout seul.
+        assert_eq!(db.ordonnancier_start(), 0, "rien de déclaré au départ");
+        db.set_ordonnancier_start(18_950).unwrap();
+        assert_eq!(db.ordonnancier_start(), 18_950);
+        write(Kind::Sortie, 1.0, "2027-02-01", pid);
+        let last = db.stup_moves(sid).unwrap().pop().unwrap();
+        assert_eq!(
+            last.ordo_no, 18_950,
+            "le registre reprend où le papier s'arrête"
+        );
+        write(Kind::Sortie, 1.0, "2027-02-02", pid);
+        assert_eq!(db.stup_moves(sid).unwrap().pop().unwrap().ordo_no, 18_951);
+
+        // **Un numéro ne recule jamais.** Déclaré trop bas après coup —
+        // une faute de frappe, un second registre repris —, la suite
+        // continue d'avancer : deux délivrances sous un même numéro
+        // feraient un registre qui ne prouve plus rien.
+        db.set_ordonnancier_start(12).unwrap();
+        write(Kind::Sortie, 1.0, "2027-02-03", pid);
+        assert_eq!(db.stup_moves(sid).unwrap().pop().unwrap().ordo_no, 18_952);
 
         // Ce qui n'est pas un mouvement est refusé : pas de jour, une
         // quantité négative, une sortie de zéro. Un inventaire de zéro,
@@ -42842,6 +42961,12 @@ mod tests {
         // tombe pas juste, et un produit sous son seuil. Sans quoi la
         // vue s'ouvrirait sur trois cadres vides et ne montrerait ni la
         // courbe, ni l'écart, ni la liste de contrôle.
+        // **L'officine continue son ordonnancier de papier.** Déclaré
+        // avant la première délivrance, sans quoi la démonstration
+        // montrerait un registre numéroté 1, 2, 3 — ce qu'aucune
+        // officine n'a sous les yeux, et ce qui ne montrerait pas ce
+        // que ce réglage sert à faire.
+        db.set_ordonnancier_start(18_950).unwrap();
         let pid = db.patients().unwrap().first().map_or(0, |p| p.id);
         let year: i64 = db
             .conn

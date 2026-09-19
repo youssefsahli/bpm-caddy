@@ -1888,7 +1888,7 @@ fn stup_register_values(
             String::new()
         };
         let no = if m.ordo_no > 0 {
-            crate::ordonnancier::number_label(m.ordo_year as u32, m.ordo_no as u32)
+            crate::ordonnancier::number_label(m.ordo_no as u32)
         } else {
             String::new()
         };
@@ -2021,10 +2021,7 @@ fn ordonnancier_values(
         };
         body.push_str(&format!(
             "[*#{}*], {}, {}, {}, {}, {}, {}, [#{}],\n",
-            typst_str(&crate::ordonnancier::number_label(
-                m.ordo_year as u32,
-                m.ordo_no as u32
-            )),
+            typst_str(&crate::ordonnancier::number_label(m.ordo_no as u32)),
             cell(&crate::db::format_french_date(&m.happened_on)),
             cell(labels.get(&m.stup_id).map_or("—", String::as_str)),
             cell(&crate::codex::format_quantity(m.quantity)),
@@ -6938,7 +6935,15 @@ mod tests {
             ),
         );
         assert!(!src.contains("#eval \"Martin\"]"));
-        assert!(src.contains("2026-0001") && src.contains("2026-0002"));
+        // Le numéro nu : la suite est continue, et l'année devant ne
+        // servait qu'à désambiguïser un « 1 » qui revenait tous les
+        // ans. C'est aussi ce qui est écrit sur l'ordonnance, où
+        // personne ne recopie un millésime.
+        assert!(
+            src.contains(r#"[*#"1"*]"#) && src.contains(r#"[*#"2"*]"#),
+            "{src}"
+        );
+        assert!(!src.contains("2026-0001"));
         assert!(src.contains("Skenan LP 30 mg"));
         // Le dossier, et **jamais** le nom : une feuille imprimée sort
         // du logiciel, se pose sur un comptoir et se garde dix ans.

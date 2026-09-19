@@ -888,21 +888,45 @@ pub fn waiting_since(moves: &[Move]) -> Option<String> {
 
 /// Le prochain numéro d'ordonnancier de l'année.
 ///
-/// Séquentiel dans l'année et **jamais réattribué** : `used` est ce que
-/// le registre porte déjà pour cette année, et le prochain est un de
-/// plus que le plus grand. Un trou dans la suite reste un trou — une
-/// ligne annulée l'est par une contre-passation, et son numéro ne
-/// revient pas servir une autre délivrance.
-pub fn next_number(used: &[u32]) -> u32 {
-    used.iter().copied().max().unwrap_or(0) + 1
+/// **Une seule suite, continue**, et non une par année.
+///
+/// Un ordonnancier se numérote d'un bout à l'autre : c'est ce que le
+/// comptoir écrit sur l'ordonnance et ce que le prescripteur retrouve,
+/// et « le 42 » y désigne une délivrance et une seule, pas une par
+/// année. La suite repartait à un chaque premier janvier ; elle ne
+/// repart plus.
+///
+/// `start` est ce que l'officine a déclaré : le premier numéro que ce
+/// registre-ci doit porter, pour **continuer un ordonnancier de
+/// papier** qui en est à dix-huit mille neuf cent cinquante. Il ne fait
+/// qu'avancer la suite, jamais la reculer — un numéro posé est posé, et
+/// un `start` mis sous ce qui est déjà écrit ne réattribue rien.
+///
+/// **Jamais réattribué** : `used` est ce que le registre porte déjà, et
+/// le prochain est un de plus que le plus grand. Un trou dans la suite
+/// reste un trou — une ligne annulée l'est par une contre-passation, et
+/// son numéro ne revient pas servir une autre délivrance.
+pub fn next_number(used: &[u32], start: u32) -> u32 {
+    let highest = used.iter().copied().max().unwrap_or(0);
+    // `start` est le premier numéro **voulu**, donc le plancher est
+    // celui d'avant : sur un registre vierge, la première délivrance
+    // porte exactement `start`. `saturating_sub` parce que zéro veut
+    // dire « rien de déclaré », et non « commencer à moins un ».
+    highest.max(start.saturating_sub(1)) + 1
 }
 
-/// Le numéro tel qu'il s'écrit et se lit : « 2026-0042 ».
+/// Le numéro tel qu'il s'écrit et se lit : « 18950 ».
 ///
-/// L'année devant, parce que la suite repart à un chaque année et qu'un
-/// « 42 » seul ne désigne rien dans un registre de dix ans.
-pub fn number_label(year: u32, no: u32) -> String {
-    format!("{year}-{no:04}")
+/// Nu, parce que la suite est continue : l'année devant servait à
+/// désambiguïser un « 42 » qui revenait tous les ans, et il ne revient
+/// plus. C'est aussi ce qui est écrit sur l'ordonnance, où personne ne
+/// recopie un millésime.
+///
+/// Une fonction pour trois lecteurs — la vue, l'ordonnancier imprimé et
+/// la feuille de délivrance — plutôt qu'un `to_string` à trois endroits
+/// qui finiraient par ne plus s'écrire pareil.
+pub fn number_label(no: u32) -> String {
+    no.to_string()
 }
 
 /// Ce qu'un inventaire a trouvé.
@@ -1919,18 +1943,66 @@ mod tests {
     /// un registre qui ne prouve plus rien.
     #[test]
     fn a_dispensing_number_is_never_reused() {
-        assert_eq!(next_number(&[]), 1);
-        assert_eq!(next_number(&[1, 2, 3]), 4);
+        assert_eq!(next_number(&[], 0), 1);
+        assert_eq!(next_number(&[1, 2, 3], 0), 4);
         // Le 3 a été annulé : le suivant est quand même le 5.
-        assert_eq!(next_number(&[1, 2, 4]), 5);
+        assert_eq!(next_number(&[1, 2, 4], 0), 5);
         // L'ordre dans lequel la base les rend ne change rien.
-        assert_eq!(next_number(&[4, 1, 2]), 5);
-        assert_eq!(number_label(2026, 42), "2026-0042");
-        assert_eq!(number_label(2026, 1), "2026-0001");
-        // Au-delà de dix mille, le numéro s'écrit en entier plutôt que
-        // d'être tronqué : une officine qui délivre beaucoup ne perd pas
-        // ses quatre premiers chiffres.
-        assert_eq!(number_label(2026, 12345), "2026-12345");
+        assert_eq!(next_number(&[4, 1, 2], 0), 5);
+        assert_eq!(number_label(42), "42");
+        assert_eq!(number_label(18950), "18950");
+    }
+
+    /// Une officine ne commence pas son registre à un : elle continue
+    /// celui de papier, qui en est à dix-huit mille neuf cent
+    /// cinquante.
+    ///
+    /// Et **un numéro ne recule jamais**. Un `start` posé sous ce qui
+    /// est déjà écrit ne réattribue rien : ce serait deux délivrances
+    /// sous un même numéro, c'est-à-dire un registre qui ne prouve plus
+    /// rien.
+    #[test]
+    fn a_register_continues_the_paper_one_and_never_goes_backwards() {
+        // Registre vierge : la première délivrance porte exactement le
+        // numéro déclaré, et non celui d'après.
+        assert_eq!(next_number(&[], 18950), 18950);
+        assert_eq!(next_number(&[18950], 18950), 18951);
+        // Déclaré trop bas, après coup : la suite continue d'avancer.
+        assert_eq!(next_number(&[18950, 18951], 12), 18952);
+        assert_eq!(next_number(&[18950, 18951], 0), 18952);
+        // Déclaré plus haut en cours de route — une officine qui reprend
+        // un second registre papier : la suite saute, elle ne recule
+        // pas, et le trou est un trou comme un autre.
+        assert_eq!(next_number(&[40, 41], 900), 900);
+        // Un début à un ou à zéro se comportent pareil : « rien de
+        // déclaré » et « commencer au premier » sont le même registre.
+        assert_eq!(next_number(&[], 1), 1);
+        assert_eq!(next_number(&[], 0), 1);
+    }
+
+    /// La suite ne repart pas au premier janvier.
+    ///
+    /// C'était le cas, et c'est ce que le comptoir ne peut pas écrire
+    /// sur une ordonnance : « le 42 » désignerait une délivrance par
+    /// année de registre. La fonction ne connaît plus l'année du tout —
+    /// la meilleure garantie qu'elle ne s'en serve pas.
+    #[test]
+    fn the_sequence_does_not_start_again_in_january() {
+        let text = include_str!("ordonnancier.rs");
+        let body = text
+            .split("pub fn next_number")
+            .nth(1)
+            .and_then(|t| t.split("\n}").next())
+            .expect("la suite des numéros");
+        for yearly in ["year", "annee", "ordo_year"] {
+            assert!(
+                !body.contains(yearly),
+                "la suite ne connaît pas « {yearly} »"
+            );
+        }
+        // Décembre et janvier se suivent : le registre de l'an passé
+        // finit à 18 999, celui de l'an neuf commence à 19 000.
+        assert_eq!(next_number(&[18_999], 0), 19_000);
     }
 
     /// Une clé que cette version ne connaît pas est lue comme une perte.

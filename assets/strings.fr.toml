@@ -1725,6 +1725,12 @@ stup_seq_doubled = "Numéro(s) portés deux fois : {}. Anomalie à signaler."
 stup_ordo_empty ="Aucune délivrance inscrite pour cette année."
 stup_ordo_print = "Imprimer…"
 stup_ordo_print_tooltip = "Imprimer l'ordonnancier de l'année, ligne par ligne, annulations comprises"
+# Le premier numéro d'ordonnancier, déclaré une fois dans Options ›
+# Base. Une officine qui s'installe avec ce logiciel continue son
+# registre de papier : elle en est à 18 950, pas à 1.
+opts_stup_start = "Premier numéro d'ordonnancier"
+opts_stup_start_hint = "ex. 18950"
+opts_stup_start_tooltip = "Le numéro auquel votre ordonnancier de papier s'est arrêté, pour que la suite continue. Vide ou 0 : la numérotation part à 1. Un numéro déjà posé n'est jamais réattribué — déclaré trop bas, il ne fait rien."
 
 # --- Les pièces numérisées ---
 scan_kind_ordonnance = "Ordonnance"

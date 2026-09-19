@@ -5,6 +5,36 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+- **L'ordonnancier se numérote d'un bout à l'autre, et reprend là où le
+  papier s'est arrêté.** La suite repartait à un chaque premier
+  janvier, et le numéro s'écrivait « 2026-0001 ». Or « le 18950 » doit
+  désigner une délivrance et une seule : c'est la condition pour
+  l'écrire sur une ordonnance et la retrouver. Une seule suite,
+  continue, et le numéro nu — l'année devant ne servait qu'à
+  désambiguïser un « 1 » qui revenait tous les ans.
+
+  Et une officine qui s'installe avec ce logiciel ne commence pas à un :
+  elle en est à dix-huit mille neuf cent cinquante. Options › Base,
+  « Premier numéro d'ordonnancier », déclaré une fois.
+
+  La déclaration vit **dans le fichier du registre** et non dans les
+  réglages de la base, où vivent pourtant ceux de l'officine : une
+  inspection demande ce fichier-là seul, et un registre qui ne porte pas
+  l'origine de sa propre numérotation ne s'explique pas tout seul. C'est
+  la raison qui l'a fait vivre à part.
+
+  Elle ne fait qu'avancer la suite. **Un numéro posé est posé** :
+  déclarée sous ce qui est déjà écrit — une faute de frappe, un second
+  registre repris —, elle ne réattribue rien, parce que deux délivrances
+  sous un même numéro font un registre qui ne prouve plus rien.
+
+  Les lignes déjà écrites gardent leur numéro : on ne renumérote pas un
+  registre. Ce qui change pour elles est l'affichage, qui perd l'année
+  de devant.
+
 ## [0.231.0] - 2026-09-19
 
 ### Fixed
