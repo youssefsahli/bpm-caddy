@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **La page « À propos » lisait la base soixante fois par seconde.** Les
+  compteurs d'usage, leur période et le journal des accès des trente
+  derniers jours sont trois agrégats sur des tables qui grossissent, et
+  ils étaient posés à chaque image — pour un panneau dont rien ne bouge
+  pendant qu'on le regarde, sur un fichier qui est souvent un partage
+  réseau. Le défaut était arrivé avec le volet, deux versions plus tôt,
+  et c'est la règle que cette maison écrit partout : *rien de coûteux
+  dans une frame*.
+
+  Lu une fois en arrivant sur la page, jeté en la quittant, et relu en y
+  revenant — et relu aussi après « Effacer les compteurs… », sans quoi
+  le panneau continuerait d'afficher ce qu'on vient d'effacer, ce qui se
+  lit comme un bouton qui n'a pas marché.
+
 ## [0.229.0] - 2026-09-19
 
 ### Changed

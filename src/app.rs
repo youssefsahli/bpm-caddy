@@ -9879,12 +9879,38 @@ impl OptionsPage {
     }
 }
 
+/// Ce que la page « À propos » lit dans la base, **une fois**.
+///
+/// Les compteurs d'usage, leur période et le journal des accès des
+/// trente derniers jours sont des agrégats sur des tables qui
+/// grossissent. Posés à chaque image, ce sont soixante interrogations
+/// par seconde d'un fichier qui est souvent un partage réseau — et
+/// pour un panneau dont rien ne bouge pendant qu'on le regarde. La
+/// boîte est modale et brève : lu quand on arrive sur la page, relu
+/// quand on y revient.
+/// Sur combien de jours le volet « À propos » lit le journal des accès.
+///
+/// Une fenêtre et non tout le journal : un an d'accès, ce sont des
+/// dizaines de milliers de lignes, et ce panneau répond à « est-ce que
+/// ça tourne », pas à « qu'a-t-on fait cette année ». La seconde
+/// question a son outil, et il s'appelle `bpm-caddy audit`.
+const AUDIT_WINDOW_DAYS: u32 = 30;
+
+struct AboutRead {
+    counters: Vec<(&'static str, u64)>,
+    span: crate::telemetry::Span,
+    access: crate::audit::Summary,
+}
+
 struct OptionsEditor {
     page: OptionsPage,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
     confirm_telemetry_clear: bool,
+    /// Voir [`AboutRead`] : posé en arrivant sur la page, jeté en la
+    /// quittant.
+    about_read: Option<AboutRead>,
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
@@ -11167,6 +11193,7 @@ impl App {
                 message: None,
                 confirm_reset: false,
                 confirm_telemetry_clear: false,
+                about_read: None,
             })
         } else {
             None
@@ -48606,6 +48633,7 @@ impl App {
                     message: None,
                     confirm_reset: false,
                     confirm_telemetry_clear: false,
+                    about_read: None,
                 })
             };
         }
@@ -52866,19 +52894,25 @@ impl eframe::App for App {
         // qui est le seul moyen de ne pas faire perdre ses chiffres à
         // une officine dont un poste passe à la version suivante avant
         // les autres.
-        // **Et ce que la séance en cours a compté sans l'avoir encore
-        // rendu.** Sans cette ligne, une officine qui vient de cocher la
-        // case voit neuf zéros jusqu'au prochain versement — cinq
-        // minutes, ou la fermeture —, ce qui se lit comme un réglage qui
-        // ne marche pas. Le rattrapage est fait ici parce que c'est ici
-        // qu'on regarde : rien n'est écrit, seulement additionné.
+        // **Ce que la page « À propos » lit dans la base, une fois.**
+        //
+        // Voir [`AboutRead`] : trois agrégats sur des tables qui
+        // grossissent, et une boîte de dialogue redessinée soixante
+        // fois par seconde. Lus en arrivant sur la page, et pas à
+        // chaque image.
+        //
+        // Ce que la séance en cours a compté sans l'avoir encore rendu
+        // est rattrapé au même moment : sans cela, une officine qui
+        // vient de cocher la case voit neuf zéros jusqu'au prochain
+        // versement — cinq minutes, ou la fermeture —, ce qui se lit
+        // comme un réglage qui ne marche pas.
         if let (Some(e), State::Unlocked(s)) = (&self.options, &mut self.state) {
-            if e.page == OptionsPage::About {
+            if e.page == OptionsPage::About && e.about_read.is_none() {
                 s.telemetry.gather();
             }
         }
-        let telemetry_rows = match (&self.options, &self.state) {
-            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => {
+        if let (Some(editor), State::Unlocked(s)) = (&mut self.options, &self.state) {
+            if editor.page == OptionsPage::About && editor.about_read.is_none() {
                 let mut counts = [0u64; crate::telemetry::Signal::ALL.len()];
                 for (key, n) in s.db.telemetry_totals().unwrap_or_default() {
                     // `from_key` rend `None` pour une clé qu'une version
@@ -52894,35 +52928,26 @@ impl eframe::App for App {
                         }
                     }
                 }
-                Some((
-                    crate::telemetry::Signal::ALL
+                // **Trente jours et pas tout le journal** : un an
+                // d'accès, ce sont des dizaines de milliers de lignes.
+                // Le relevé complet est l'affaire de `bpm-caddy audit` ;
+                // ici on répond à « est-ce que ça tourne, et qui a
+                // regardé quoi ces temps-ci ».
+                let since = crate::date::add_days(&s.today, -i64::from(AUDIT_WINDOW_DAYS) + 1)
+                    .unwrap_or_else(|| s.today.clone());
+                editor.about_read = Some(AboutRead {
+                    counters: crate::telemetry::Signal::ALL
                         .iter()
                         .zip(counts)
                         .map(|(signal, n)| (signal.label(), n + s.telemetry.count(*signal)))
-                        .collect::<Vec<_>>(),
-                    s.db.telemetry_span(),
-                ))
+                        .collect(),
+                    span: s.db.telemetry_span(),
+                    access: crate::audit::summarize(
+                        &s.db.accesses_since(&since).unwrap_or_default(),
+                    ),
+                });
             }
-            _ => None,
-        };
-        // Le journal des accès, sur une fenêtre bornée.
-        //
-        // **Trente jours et pas tout le journal** : un an d'accès, c'est
-        // des dizaines de milliers de lignes, et ce volet est redessiné
-        // tant que la page est ouverte. Le relevé complet est l'affaire
-        // de l'outil d'audit ; ici on répond à « est-ce que ça tourne,
-        // et qui a regardé quoi ces temps-ci ».
-        let audit_window = 30u32;
-        let audit_reading = match (&self.options, &self.state) {
-            (Some(e), State::Unlocked(s)) if e.page == OptionsPage::About => {
-                let since = crate::date::add_days(&s.today, -i64::from(audit_window) + 1)
-                    .unwrap_or_else(|| s.today.clone());
-                s.db.accesses_since(&since)
-                    .ok()
-                    .map(|lines| crate::audit::summarize(&lines))
-            }
-            _ => None,
-        };
+        }
         let about_checking = self.update_check.is_some();
         let about_note = self.update_note.clone();
         // A long pass over the base, in flight. Read before the borrow,
@@ -52970,6 +52995,11 @@ impl eframe::App for App {
                         for page in OptionsPage::ALL {
                             if motif::toggle(ui, page.label(), editor.page == page).clicked() {
                                 editor.page = page;
+                                // On quitte la page : ce qu'elle avait
+                                // lu ne vaut plus, et y revenir doit
+                                // relire plutôt que montrer l'état
+                                // d'avant.
+                                editor.about_read = None;
                             }
                         }
                     });
@@ -53501,7 +53531,8 @@ impl eframe::App for App {
                                 ui.add_space(2.0);
                                 ui.checkbox(&mut editor.cfg.telemetry.enabled, tr("telem_enabled"))
                                     .on_hover_text(tr("telem_enabled_tooltip"));
-                                if let Some((rows, span)) = &telemetry_rows {
+                                if let Some(read) = &editor.about_read {
+                                    let (rows, span) = (&read.counters, &read.span);
                                     egui::Grid::new("opts_telemetry")
                                         .num_columns(2)
                                         .spacing([12.0, 5.0])
@@ -53597,8 +53628,9 @@ impl eframe::App for App {
                                     .wrap(),
                                 );
                                 ui.add_space(2.0);
-                                ui.label(dim(&trf("audit_window", audit_window)));
-                                if let Some(reading) = &audit_reading {
+                                ui.label(dim(&trf("audit_window", AUDIT_WINDOW_DAYS)));
+                                if let Some(reading) = editor.about_read.as_ref().map(|r| &r.access)
+                                {
                                     if reading.lines == 0 {
                                         ui.add(
                                             egui::Label::new(
@@ -54600,6 +54632,13 @@ impl eframe::App for App {
             // répondre se lit comme un bouton qui n'a pas marché, et le
             // geste suivant est de le presser encore.
             self.update_note = Some((false, tr("telem_cleared").to_owned()));
+            // Et ce que la page avait lu ne vaut plus : sans cela elle
+            // continuerait d'afficher les chiffres qu'on vient
+            // d'effacer, ce qui se lit comme un bouton qui n'a pas
+            // marché — et le geste suivant est de le presser encore.
+            if let Some(editor) = &mut self.options {
+                editor.about_read = None;
+            }
         }
         // Le poste cesse de compter — ou s'y remet — à l'instant où la
         // case change, et non au prochain lancement. Ce qui est déjà

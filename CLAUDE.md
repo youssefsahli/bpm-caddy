@@ -339,6 +339,13 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   the password comes from `BPM_CADDY_PASSWORD` or the system keyring —
   so it can sit in a night job. Pure, tested, no clock: the day is
   passed in),
+  (And the pane that draws all three — Options › À propos — reads them
+  **once** into `AboutRead` when the page is opened, not per frame: a
+  modal dialog still repaints sixty times a second, and three aggregates
+  over growing tables is sixty questions a second to a file that is
+  often a network share. It is invalidated when the page is left and
+  when the counters are erased — a pane still showing what was just
+  erased reads as a button that did not work.)
   There is no `stats` module: the figures the « Statistiques » view
   shows are counts over lists the session already holds (the 862 cards,
   the summaries) plus four aggregate queries, and a module that only
