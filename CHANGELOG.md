@@ -5,6 +5,88 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Les cases de saisie rendent le cadre qu'elles dessinent.** Posées
+  par `ui.put`, elles rendaient la réponse du `TextEdit` — le rectangle
+  du *texte*, six pixels plus étroit et trois plus court que la case —
+  et quatre vues dessinaient leur propre biseau dessus, deux pixels à
+  l'intérieur du vrai : la case sortait **à double bord**, celle du
+  volet de gauche débordant même sur le bord du volet. Le même `put`
+  allouait une seconde fois, en retrait, ce qui faisait *reculer* le
+  curseur de la rangée de six pixels : le widget suivant mordait sur la
+  marge de celui-ci.
+
+  Et la marge du biseau n'appartenait à personne — cliquer sur le bord
+  d'une case ne faisait rien, ce qui est le genre de détail qu'on ne
+  signale jamais et qui fait cliquer deux fois. Le cadre écoute le clic
+  maintenant, et le renvoie au texte.
+
+  `a_field_hands_back_the_frame_it_drew_and_takes_the_room_it_asked_for`
+  dessine deux champs dans une rangée, sans fenêtre, et tient les trois
+  choses d'un coup.
+
+- **Et les treize zones de plusieurs lignes sont creusées comme les
+  autres.** Les cent soixante-dix cases d'une ligne étaient passées au
+  relief de la maison ; les zones de texte — les notes d'équipe, la
+  console, le collage de conciliation, l'éditeur de modèles, la remarque
+  de caisse, les mentions — étaient restées peintes par egui,
+  c'est-à-dire plates. Une case plate entourée de cases creusées ne se
+  lit pas comme « il en reste une » : elle se lit comme un défaut de
+  rendu, parce qu'elle est devenue la seule de l'écran. Le garde qui
+  refusait la prochaine case plate ne lisait qu'une des deux formes
+  — et c'est exactement là qu'étaient les treize.
+
+### Added
+- **Un séparateur gravé**, `motif::separator` et `motif::separator_v` :
+  ce que `ui.separator()` d'egui ne sait pas faire ici, où il sort en
+  trait d'un pixel à côté de panneaux biseautés. Les deux peintres
+  existaient déjà pour les mises en page découpées ; ce qui manquait
+  était la forme qui prend sa place dans une rangée.
+
+- **Deux peaux claires de plus, pour un écran qu'on lit mal.**
+  « Papier » abandonne la teinte — un gris neutre et des cases blanches,
+  parce qu'un écran dont les couleurs ont dérivé rend un bleu-gris
+  indistinct d'un gris ; « Sépia » garde le même écart et enlève le
+  bleu, pour qui le blanc d'écran éblouit. Trois réponses à trois gênes
+  différentes avec « Contraste », et non trois nuances du même réglage.
+  Le compte des peaux est tenu par un test : il était écrit « huit » à
+  onze endroits.
+
+- **La console colore ce qu'on y tape et propose ce qu'on peut
+  écrire.** Cinq teintes — commentaire, chaîne, nombre, mot-clé, appel
+  connu — dans une rampe nommée, ajustée sur le **creux** et non sur le
+  panneau : ce qu'on écrit dans une case se lit sur le fond d'une case,
+  qui est plus sombre que le panneau sur les peaux claires.
+
+  Les appels colorés sont lus dans `script::API`, jamais dans une
+  seconde liste : un nom colorié qui n'existe pas enseigne une API
+  fausse à qui apprend le langage dans cette console, et c'est là qu'on
+  l'apprend. Le découpage **couvre tout, une fois, dans l'ordre** —
+  `a_reading_loses_not_one_byte` le vérifie sur tout ce qui est livré :
+  un octet oublié est un caractère qui disparaît du script qu'on est en
+  train d'écrire.
+
+  La complétion ne s'ouvre pas sur le vide, se conduit aux flèches, et
+  s'écrit à la tabulation. Une parenthèse vide s'écrit en entier,
+  une parenthèse qui attend quelque chose s'ouvre et s'arrête : écrire
+  `fiche(id)` poserait dans le script un mot qu'il faudrait effacer.
+
+- **Le compagnon n'a plus de bordure, et sait où se poser.** Une barre
+  de titre de trente pixels au-dessus d'une fenêtre qui en fait cinq
+  cents, c'est six pour cent de la barre pour un nom qu'elle écrit déjà
+  dans sa tête — et un bouton de fermeture qui ferait *quitter
+  l'application* là où F9 rend la fenêtre. Sa tête est devenue la
+  poignée qui la déplace.
+
+  Quatre places au menu : libre, un coin, un bandeau en bas sur toute la
+  largeur, une colonne à droite. Une place ne descend jamais sous le
+  plancher que les cinq bandes demandent, et elle se pose **avec la
+  taille qu'elle a** et non celle qu'elle a demandée : le bandeau
+  calculé sur la hauteur demandée sortirait par le bas de l'écran, qui
+  est l'endroit où l'on ne peut plus le rattraper.
+
 ## [0.235.0] - 2026-09-20
 
 ### Added

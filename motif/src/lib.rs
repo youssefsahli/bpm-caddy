@@ -76,19 +76,27 @@ pub struct Theme {
 /// The skins that ship.
 ///
 /// Five palettes off the same workstations the look itself comes from,
-/// one that is not history but eyesight — a counter in full sun, or an
-/// operator who wants the contrast turned up — and two dark ones, for
-/// the garde de nuit: an officine at three in the morning is lit by
-/// whatever is on the screen. The first is the default and must stay
-/// first — a `config.toml` naming a theme this version does not know
-/// falls back to it.
+/// three that are not history but eyesight — a counter in full sun, an
+/// operator who wants the contrast turned up, a screen whose colours
+/// have gone — and two dark ones, for the garde de nuit: an officine at
+/// three in the morning is lit by whatever is on the screen. The first
+/// is the default and must stay first — a `config.toml` naming a theme
+/// this version does not know falls back to it.
+///
+/// **Les trois claires ne se ressemblent pas par accident.**
+/// « Contraste » garde le gris bleuté de la maison et monte l'écart ;
+/// « Papier » abandonne la teinte — un gris neutre et des cases
+/// blanches, parce qu'un écran dont les couleurs ont dérivé rend un
+/// bleu-gris indistinct d'un gris ; « Sépia » garde l'écart et enlève
+/// le bleu, pour qui le blanc d'écran éblouit. Trois réponses à trois
+/// gênes différentes, et non trois nuances du même réglage.
 ///
 /// A dark skin is a palette and nothing else: no branch anywhere draws
 /// differently for it. What it *does* change is that a colour picked
 /// once for a light grey — a categorical hue, an amber warning — can no
 /// longer be written down and drawn as it is, which is what
 /// [`data_ramp`], [`data_tones`] and [`on_fill`] are for.
-pub const THEMES: [Theme; 8] = [
+pub const THEMES: [Theme; 10] = [
     Theme {
         key: "motif",
         label: "Motif",
@@ -213,6 +221,52 @@ pub const THEMES: [Theme; 8] = [
             paper: Color32::WHITE,
             ink: Color32::BLACK,
             ink_light: Color32::from_rgb(0x3c, 0x3c, 0x46),
+        },
+    },
+    Theme {
+        key: "papier",
+        label: "Papier",
+        note: "Le gris d'un formulaire et le blanc d'une case : l'écart le plus grand.",
+        palette: Palette {
+            bg: Color32::from_rgb(0xdc, 0xdc, 0xde),
+            bg_light: Color32::WHITE,
+            bg_dark: Color32::from_rgb(0x2a, 0x2a, 0x31),
+            // Les cases sont **blanches**, et pas d'un gris un peu
+            // creusé : sur un écran fatigué, ce que l'on remplit se
+            // distingue de ce qui ne se remplit pas par la couleur bien
+            // avant de se distinguer par un biseau de deux pixels.
+            trough: Color32::WHITE,
+            accent: Color32::from_rgb(0x12, 0x30, 0x6e),
+            bg_hover: Color32::from_rgb(0xeb, 0xeb, 0xed),
+            text: Color32::BLACK,
+            text_dim: Color32::from_rgb(0x16, 0x16, 0x1c),
+            text_faint: Color32::from_rgb(0x2b, 0x2b, 0x34),
+            alert: Color32::from_rgb(0x8e, 0x00, 0x00),
+            warn: Color32::from_rgb(0x5e, 0x3c, 0x00),
+            paper: Color32::WHITE,
+            ink: Color32::BLACK,
+            ink_light: Color32::from_rgb(0x3a, 0x3a, 0x42),
+        },
+    },
+    Theme {
+        key: "sepia",
+        label: "Sépia",
+        note: "Le même écart, en chaud : pour qui le blanc d'écran éblouit.",
+        palette: Palette {
+            bg: Color32::from_rgb(0xe0, 0xd7, 0xbf),
+            bg_light: Color32::from_rgb(0xfd, 0xf8, 0xea),
+            bg_dark: Color32::from_rgb(0x44, 0x3c, 0x2a),
+            trough: Color32::from_rgb(0xfd, 0xf8, 0xec),
+            accent: Color32::from_rgb(0x2c, 0x3a, 0x6e),
+            bg_hover: Color32::from_rgb(0xea, 0xe2, 0xcd),
+            text: Color32::from_rgb(0x12, 0x0e, 0x06),
+            text_dim: Color32::from_rgb(0x24, 0x1d, 0x10),
+            text_faint: Color32::from_rgb(0x38, 0x30, 0x1c),
+            alert: Color32::from_rgb(0x8a, 0x14, 0x08),
+            warn: Color32::from_rgb(0x5c, 0x3c, 0x00),
+            paper: Color32::from_rgb(0xfd, 0xf8, 0xec),
+            ink: Color32::from_rgb(0x12, 0x0e, 0x06),
+            ink_light: Color32::from_rgb(0x45, 0x3d, 0x2a),
         },
     },
     Theme {
@@ -358,7 +412,7 @@ pub fn text_faint() -> Color32 {
 /// premier). [`text_faint`] est le bon cran — les légendes, les unités,
 /// les horodatages — et c'est le seul dont `every_palette_can_be_read`
 /// garantisse déjà la lisibilité **dans un creux**, c'est-à-dire sur la
-/// surface où l'on tape, sur les huit palettes.
+/// surface où l'on tape, sur les dix palettes.
 ///
 /// Pas `RichText::weak()`, qui l'emporterait aussi : il teinte vers
 /// `window_fill`, c'est-à-dire vers le fond du panneau et non vers celui
@@ -556,7 +610,26 @@ pub fn emphasize(c: Color32) -> Color32 {
 ///
 /// `apart` says what the ramp is *for*: [`AS_TEXT`] or [`AS_FILL`].
 pub fn data_ramp<const N: usize>(ramp: [Color32; N], apart: f32) -> [Color32; N] {
-    let on = luminance(bg());
+    data_ramp_on(bg(), ramp, apart)
+}
+
+/// La même, sur un fond **qu'on nomme** plutôt que sur le panneau.
+///
+/// Presque toutes les teintes de données se posent sur `bg()`, et c'est
+/// ce que [`data_ramp`] suppose. Une exception existe et elle est
+/// entière : ce qu'on écrit *dans* une case se pose sur le creux, qui
+/// est plus sombre que le panneau sur les peaux claires. Une teinte
+/// calculée à trente centièmes du panneau n'en est plus qu'à vingt du
+/// creux — et la différence se voit exactement là où l'on relit son
+/// propre texte. C'est la règle que ce dépôt écrit déjà pour les
+/// invites : le pas juste dans un creux n'est pas le pas juste sur un
+/// panneau.
+pub fn data_ramp_on<const N: usize>(
+    ground: Color32,
+    ramp: [Color32; N],
+    apart: f32,
+) -> [Color32; N] {
+    let on = luminance(ground);
     let dark = on < 0.5;
     let mut lo = 1.0_f32;
     let mut hi = 0.0_f32;
@@ -606,6 +679,34 @@ pub fn data_ramp<const N: usize>(ramp: [Color32; N], apart: f32) -> [Color32; N]
         *c = Color32::from_rgb(s(c.r()), s(c.g()), s(c.b()));
     }
     out
+}
+
+/// Les cinq teintes d'un éditeur de code — dans cet ordre : le
+/// commentaire, la chaîne, le nombre, le mot-clé, l'appel connu.
+///
+/// Une rampe nommée et une seule, comme toutes les teintes catégorielles
+/// de ce chrome : ajouter une catégorie est ajouter une ligne ici, et
+/// jamais une couleur écrite au point où l'on peint. Elles sont sombres
+/// telles qu'elles sont écrites, parce que les six peaux claires sont
+/// six sur huit — [`code_ink`] les relève sur les deux autres.
+pub const CODE_RAMP: [Color32; 5] = [
+    Color32::from_rgb(0x3f, 0x62, 0x38), // commentaire, vert
+    Color32::from_rgb(0x8a, 0x36, 0x12), // chaîne, terre
+    Color32::from_rgb(0x1c, 0x5a, 0x66), // nombre, bleu-vert
+    Color32::from_rgb(0x2e, 0x2c, 0x84), // mot-clé, indigo
+    Color32::from_rgb(0x75, 0x1f, 0x5e), // appel de l'API, prune
+];
+
+/// [`CODE_RAMP`], ajustée pour être lue **dans un creux**.
+///
+/// Et non sur le panneau : un éditeur de code est une case de saisie,
+/// son fond est celui d'une case de saisie, et sur les peaux claires le
+/// creux est plus sombre que le panneau. Passer par [`data_ramp`] aurait
+/// donné cinq teintes calculées pour un fond qui n'est pas celui sur
+/// lequel elles se posent — exactement la faute que ce fichier nomme
+/// pour les invites.
+pub fn code_ink() -> [Color32; 5] {
+    data_ramp_on(trough(), CODE_RAMP, AS_TEXT)
 }
 
 /// The three tones of one hue, for a set with more members than the
@@ -1620,6 +1721,65 @@ pub fn toggle(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {
     resp
 }
 
+/// Le séparateur gravé d'un `XmSeparator`, **posé dans la rangée** :
+/// il prend la place, là où [`rule`] peint à des coordonnées.
+///
+/// Les deux existaient déjà sous forme de peintres — `rule` et
+/// [`vrule`] —, et c'est justement ce qui manquait : une mise en page
+/// découpée sait où poser son trait, une mise en page qui coule ne le
+/// sait pas, et `ui.separator()` d'egui est un trait d'un pixel tiré de
+/// `widgets.noninteractive.bg_stroke`. À côté d'un panneau biseauté et
+/// d'un champ creusé, il se lit comme une bordure oubliée. Le creux dit
+/// ce qu'il faut : cette ligne est en retrait, donc elle sépare.
+///
+/// La hauteur prise est celle d'un espacement, filet compris : une
+/// bande qui mesure ses rangées compte `item_spacing.y` pour lui et
+/// rien de plus.
+pub fn separator(ui: &mut egui::Ui) {
+    let h = ui.spacing().item_spacing.y.max(6.0);
+    let (rect, _) =
+        ui.allocate_exact_size(Vec2::new(ui.available_width(), h), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        rule(
+            ui.painter(),
+            rect.left(),
+            rect.right(),
+            rect.center().y.round(),
+        );
+    }
+}
+
+/// Le même, debout : ce qui sépare deux groupes d'une barre d'outils.
+///
+/// La hauteur vient de la rangée qui l'accueille — un filet plus haut
+/// que les boutons qu'il sépare déborde sur le panneau, et un filet
+/// plus court flotte au milieu de rien. Sa largeur, espacement compris,
+/// est [`separator_v_width`] : une barre qui mesure ses groupes avant
+/// de les dessiner la lit là plutôt que de la recopier.
+pub fn separator_v(ui: &mut egui::Ui, height: f32) {
+    let w = separator_v_width(ui) - ui.spacing().item_spacing.x;
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(w, height), egui::Sense::hover());
+    if ui.is_rect_visible(rect) {
+        vrule(
+            ui.painter(),
+            rect.top(),
+            rect.bottom(),
+            rect.center().x.round(),
+        );
+    }
+}
+
+/// Ce qu'un [`separator_v`] coûte à une rangée : son filet **et** la
+/// gouttière que la mise en page insère après lui.
+///
+/// Deux écritures d'une largeur finissent par diverger, et c'est la
+/// mesure qui ment — la règle que ce dépôt applique déjà aux colonnes
+/// d'un tableau et aux groupes qu'on garde ensemble.
+pub fn separator_v_width(ui: &egui::Ui) -> f32 {
+    let spacing = ui.spacing().item_spacing.x;
+    spacing.max(6.0) + spacing
+}
+
 /// A section heading: small bold label with a sunken rule to the right,
 /// the Motif take on group separators.
 pub fn section(ui: &mut egui::Ui, label: &str) {
@@ -1871,7 +2031,135 @@ pub fn field(ui: &mut egui::Ui, width: f32, edit: egui::TextEdit<'_>) -> egui::R
 /// désalignerait d'un ou deux pixels par ligne, ce qui se voit sur
 /// cinq lignes et se lit comme un défaut de rendu.
 pub fn field_sized(ui: &mut egui::Ui, size: Vec2, edit: egui::TextEdit<'_>) -> egui::Response {
-    let (rect, _) = ui.allocate_exact_size(size, egui::Sense::hover());
+    // Toute la largeur, et le texte au milieu de la hauteur : une
+    // ligne se centre dans sa case.
+    let layout = egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true);
+    sunken(ui, size, edit, layout)
+}
+
+/// Une **zone** de saisie : le même creux, pour plusieurs lignes.
+///
+/// Elle existe parce que le creux s'était arrêté à mi-chemin. Les cent
+/// soixante-dix cases d'une ligne sont passées par [`field`] ; les
+/// treize zones de texte — les notes d'équipe, la console, le collage
+/// de conciliation, l'éditeur de modèles, la remarque de caisse — sont
+/// restées peintes par egui, c'est-à-dire plates. Et une case plate
+/// entourée de cases creusées ne se lit pas comme « il en reste une » :
+/// elle se lit comme un défaut de rendu, parce que c'est devenu la
+/// seule de l'écran.
+///
+/// La différence avec [`field_sized`] tient en un mot : le texte s'y
+/// range **en haut**, et non au milieu. Une ligne se centre dans sa
+/// case ; dix lignes commencent au bord haut, sans quoi un paragraphe
+/// qui grandit ferait remonter sa première ligne à chaque frappe.
+pub fn area(ui: &mut egui::Ui, size: Vec2, edit: egui::TextEdit<'_>) -> egui::Response {
+    // Toute la case, dans les deux sens : ce qu'on tape doit pouvoir
+    // descendre jusqu'au bas du creux, et cliquer sous la dernière
+    // ligne doit poser le curseur au bout du texte.
+    let layout = egui::Layout::top_down(egui::Align::Min)
+        .with_main_justify(true)
+        .with_cross_justify(true);
+    sunken(ui, size, edit, layout)
+}
+
+/// La même zone, quand ce qu'on y écrit peut dépasser la case.
+///
+/// Un `TextEdit` grandit avec son contenu : une zone qui tient une
+/// section de monographie débordait sur les rangées d'en dessous et
+/// peignait par-dessus leurs intitulés. Ici le texte défile **dans** le
+/// creux, qui garde la hauteur qu'on lui a donnée.
+///
+/// L'`id` est celui de la zone de défilement, et il doit être unique
+/// dans la vue : deux `ScrollArea` anonymes dans un même écran partagent
+/// leur identité et egui peint sa plainte en rouge en travers.
+pub fn area_scrolled(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    size: Vec2,
+    edit: egui::TextEdit<'_>,
+) -> egui::Response {
+    let (rect, frame) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        ui.painter().rect_filled(rect, 0.0, crate::trough());
+        bevel(ui.painter(), rect, false);
+    }
+    let inner = rect.shrink2(Vec2::new(6.0, 3.0));
+    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+    let response = egui::ScrollArea::vertical()
+        .id_salt(id)
+        .max_height(inner.height())
+        .auto_shrink([false, false])
+        .show(&mut child, |ui| {
+            // La barre de défilement flotte : ce qui passe dessous ne
+            // se voit pas, et ici ce qui passe dessous est ce qu'on
+            // vient d'écrire.
+            ui.spacing_mut().scroll.floating = false;
+            let w = ui.available_width();
+            ui.add(edit.desired_width(w).frame(false))
+        })
+        .inner;
+    if response.has_focus() && ui.is_rect_visible(rect) {
+        ui.painter()
+            .rect_stroke(rect.shrink(2.0), 0.0, Stroke::new(1.0_f32, crate::accent()));
+    }
+    if frame.clicked() {
+        response.request_focus();
+    }
+    response | frame
+}
+
+/// Ce que les deux partagent : le creux, le liseré, et la géométrie.
+///
+/// **Trois choses qu'un `ui.put` ne donne pas.**
+///
+/// La première est le rectangle rendu. `put` rend la réponse du
+/// `TextEdit`, dont le rectangle est celui du *texte* — six pixels plus
+/// étroit et trois plus court que la case dessinée. Or c'est à ce
+/// rectangle-là que l'appelant accroche son infobulle, sa liste de
+/// propositions et son propre biseau : quatre vues en dessinaient un
+/// second, deux pixels *à l'intérieur* du premier, et la case sortait à
+/// double bord. On rend donc l'identité et l'état du champ avec la
+/// géométrie du cadre — c'est exactement ce que fait l'union de deux
+/// réponses, qui garde l'`Id` de la première.
+///
+/// La deuxième est le curseur de la rangée. `put` alloue une seconde
+/// fois, et comme le rectangle intérieur est en retrait, l'allocation
+/// *recule* le curseur de six pixels : le widget suivant mordait sur la
+/// marge de celui-ci. Un `new_child` ne prend pas de place, et la place
+/// a déjà été prise.
+///
+/// La troisième est le clic. La marge du biseau appartenait à personne :
+/// cliquer sur le bord d'une case ne faisait rien, ce qui est le genre
+/// de détail qu'on ne signale jamais et qui fait cliquer deux fois. Le
+/// cadre est donc alloué **avant** le texte et écoute le clic — egui
+/// donne la main au dernier inscrit là où deux se recouvrent, donc le
+/// `TextEdit` garde le sien et la marge renvoie vers lui.
+fn sunken(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    edit: egui::TextEdit<'_>,
+    layout: egui::Layout,
+) -> egui::Response {
+    sunken_with(ui, size, Some(layout), |ui| {
+        let r = ui.add(edit.frame(false));
+        (r.clone(), r)
+    })
+    .0
+}
+
+/// Le creux, le liseré et la géométrie — autour de **ce qu'on voudra**.
+///
+/// Un éditeur qui sait compléter ce qu'on tape a besoin de savoir où est
+/// le curseur, donc de la sortie entière d'un `TextEdit` et pas
+/// seulement de sa réponse. Le cadre, lui, ne change pas : il est écrit
+/// ici une fois, et trois widgets le portent.
+fn sunken_with<R>(
+    ui: &mut egui::Ui,
+    size: Vec2,
+    layout: Option<egui::Layout>,
+    add: impl FnOnce(&mut egui::Ui) -> (egui::Response, R),
+) -> (egui::Response, R) {
+    let (rect, frame) = ui.allocate_exact_size(size, egui::Sense::click());
     if ui.is_rect_visible(rect) {
         ui.painter().rect_filled(rect, 0.0, crate::trough());
         bevel(ui.painter(), rect, false);
@@ -1879,12 +2167,49 @@ pub fn field_sized(ui: &mut egui::Ui, size: Vec2, edit: egui::TextEdit<'_>) -> e
     // Ce qui reste une fois le biseau posé : deux pixels de chaque
     // côté, plus l'air qu'un texte demande pour ne pas toucher le bord.
     let inner = rect.shrink2(Vec2::new(6.0, 3.0));
-    let response = ui.put(inner, edit.frame(false));
+    let mut builder = egui::UiBuilder::new().max_rect(inner);
+    if let Some(layout) = layout {
+        builder = builder.layout(layout);
+    }
+    let mut child = ui.new_child(builder);
+    let (response, extra) = add(&mut child);
     if response.has_focus() && ui.is_rect_visible(rect) {
         ui.painter()
             .rect_stroke(rect.shrink(2.0), 0.0, Stroke::new(1.0_f32, crate::accent()));
     }
-    response
+    if frame.clicked() {
+        response.request_focus();
+    }
+    (response | frame, extra)
+}
+
+/// Une zone de saisie de **code** : le même creux, et la sortie entière
+/// du `TextEdit` — sa galée et son curseur avec sa réponse.
+///
+/// C'est ce qu'il faut pour proposer une complétion : sans la galée on
+/// ne sait pas *où* poser la liste, et une liste posée sous la case
+/// plutôt que sous le mot en cours se lit comme un panneau de plus.
+///
+/// Elle défile dans les deux sens : une ligne de code ne se replie pas
+/// — un repli change les numéros de ligne que la console rapporte dans
+/// ses erreurs, et c'est par eux qu'on retrouve la faute.
+pub fn code_area<'t>(
+    ui: &mut egui::Ui,
+    id: impl std::hash::Hash,
+    size: Vec2,
+    edit: egui::TextEdit<'t>,
+) -> (egui::Response, egui::text_edit::TextEditOutput) {
+    sunken_with(ui, size, None, |ui| {
+        egui::ScrollArea::both()
+            .id_salt(id)
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                let out = edit.frame(false).show(ui);
+                (out.response.clone(), out)
+            })
+            .inner
+    })
 }
 
 /// Un menu d'options : **relief levé**, comme un bouton, avec sa marque.
@@ -1989,7 +2314,7 @@ pub fn select_hinted<T: PartialEq + Clone>(
 /// Written the day the only `egui::Slider` left in the application was
 /// replaced. That slider painted its rail with
 /// `widgets.inactive.bg_fill`, and [`apply`] sets that to [`bg`] for
-/// every widget state — so on the eight palettes alike the rail was the
+/// every widget state — so on the ten palettes alike the rail was the
 /// panel's own ground and the thumb floated on nothing. Measured on a
 /// capture of Options › Interface: along the middle of the control,
 /// two hundred and thirty pixels of background and two pixels of thumb
@@ -2240,7 +2565,7 @@ mod tests {
     /// la section porte.
     ///
     /// La seconde est la raison d'être : l'invite doit être **plus près
-    /// du fond du champ que l'encre**, sur les huit palettes, sinon on
+    /// du fond du champ que l'encre**, sur les dix palettes, sinon on
     /// a changé la teinte sans lever la confusion. C'est une distance
     /// et jamais une direction — les deux palettes de nuit écrivent
     /// clair sur sombre.
@@ -2316,6 +2641,78 @@ mod tests {
             "le bouton est levé"
         );
         assert_ne!(sunk, raised, "les deux reliefs ne se ressemblent pas");
+    }
+
+    /// **Un champ rend le cadre qu'il a dessiné, et prend la place
+    /// qu'il a demandée.**
+    ///
+    /// Les deux se sont perdues ensemble, et pour la même raison : le
+    /// champ était posé par `ui.put`, qui rend la réponse du `TextEdit`
+    /// — le rectangle du *texte*, six pixels plus étroit que la case —
+    /// et qui **alloue une seconde fois**, en retrait, ce qui faisait
+    /// reculer le curseur de la rangée. Quatre vues dessinaient leur
+    /// propre biseau sur le rectangle rendu, deux pixels à l'intérieur
+    /// du vrai : la case sortait à double bord. Et le widget suivant
+    /// mordait de six pixels sur la marge de celui-ci.
+    ///
+    /// Les deux se vérifient d'un coup en posant deux champs dans une
+    /// rangée : le premier doit rendre sa taille entière, le second doit
+    /// commencer exactement une gouttière plus loin.
+    #[test]
+    fn a_field_hands_back_the_frame_it_drew_and_takes_the_room_it_asked_for() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("motif");
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+
+        let (mut a, mut b) = (String::from("Dupont"), String::from("Jean"));
+        let mut rects = Vec::new();
+        let mut gap = 0.0;
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                ui.horizontal(|ui| {
+                    gap = ui.spacing().item_spacing.x;
+                    rects.push(super::field(ui, 160.0, egui::TextEdit::singleline(&mut a)).rect);
+                    rects.push(super::field(ui, 120.0, egui::TextEdit::singleline(&mut b)).rect);
+                });
+            });
+        });
+        assert_eq!(rects.len(), 2);
+        assert!(
+            (rects[0].width() - 160.0).abs() < 0.5,
+            "le rectangle rendu n'est pas celui du cadre : {:?}",
+            rects[0].width()
+        );
+        assert!(
+            (rects[1].width() - 120.0).abs() < 0.5,
+            "le second non plus : {:?}",
+            rects[1].width()
+        );
+        assert!(
+            (rects[1].left() - rects[0].right() - gap).abs() < 0.5,
+            "le champ n'a pas pris la place qu'il a demandée : {} puis {}",
+            rects[0].right(),
+            rects[1].left()
+        );
+        // Et la hauteur vient du style, jamais d'une constante : c'est
+        // ce qui la fait suivre `[ui] text_scale`.
+        let ctx2 = egui::Context::default();
+        super::apply(&ctx2);
+        super::apply_scale(&ctx2, 1.6, super::Density::Comfortable);
+        let mut tall = egui::Rect::NOTHING;
+        let _ = ctx2.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                tall = super::field(ui, 160.0, egui::TextEdit::singleline(&mut a)).rect;
+            });
+        });
+        assert!(
+            tall.height() > rects[0].height() + 4.0,
+            "le champ ne grandit pas avec le texte : {} puis {}",
+            rects[0].height(),
+            tall.height()
+        );
     }
 
     /// Un menu d'options ne se peint pas dans `weak_bg_fill`.

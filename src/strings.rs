@@ -1427,6 +1427,38 @@ livre = "Une phrase qui n'est plus livrée"
                     }
                 ),
             ),
+            // **Le compte des peaux**, que rien ne tenait : il était
+            // écrit « huit » à onze endroits — le README, trois lignes
+            // de CLAUDE.md, trois commentaires de `motif` et cinq
+            // d'`app.rs` — et une peau de plus les aurait tous laissés
+            // dire le nombre d'avant. C'est la page d'Options qui les
+            // montre, et elle en aurait montré dix sous une phrase qui
+            // en annonce huit.
+            (
+                "README.md",
+                README,
+                format!(
+                    "- **{} skins, and the shape never moves**",
+                    match motif::THEMES.len() {
+                        10 => "Ten",
+                        n => panic!(
+                            "il y a {n} peaux : l'écrire en toutes lettres dans le \
+                             README, dans CLAUDE.md et ici"
+                        ),
+                    }
+                ),
+            ),
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "« Interface », where the {} skins are picked",
+                    match motif::THEMES.len() {
+                        10 => "ten",
+                        n => panic!("il y a {n} peaux : l'écrire dans CLAUDE.md et ici"),
+                    }
+                ),
+            ),
             // Et ce que la barre du compagnon rapporte, compté sur le
             // texte de la vue : une table de plus y entre en une ligne,
             // et la phrase du manuel ne bouge pas toute seule.

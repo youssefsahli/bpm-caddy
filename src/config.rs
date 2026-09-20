@@ -30,8 +30,10 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # Densité de l'interface : "confortable" ou "compact".
 # density = "confortable"
 # Palette de l'interface : "motif", "cde", "decwindows", "indigo",
-# "olive", "contraste", "nuit" ou "ambre" — les deux dernières sur fond
-# sombre. La forme ne change pas — angles droits, biseaux de deux
+# "olive", "contraste", "papier", "sepia", "nuit" ou "ambre" — les deux
+# dernières sur fond sombre, les trois avant elles pour un écran qu'on
+# lit mal : le plein soleil, les couleurs qui ont dérivé, le blanc qui
+# éblouit. La forme ne change pas — angles droits, biseaux de deux
 # pixels — seules les couleurs changent.
 # theme = "motif"
 # Pictogrammes dans la barre d'outils.
@@ -2340,7 +2342,7 @@ mod tests {
     }
 
     /// Le modèle nomme les peaux livrées, et il en nommait six quand il
-    /// y en a huit.
+    /// y en avait huit — puis huit quand il y en a dix.
     ///
     /// C'est le genre de liste qui vieillit sans rien casser : le
     /// fichier reste valide, l'application démarre, et la seule chose

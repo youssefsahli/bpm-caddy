@@ -827,7 +827,37 @@ add clicking and typing; it is not the price of entry.
   reads `app.rs` and refuses the next one written beside it — by
   **distance**, not by a window: a width computed over five lines
   pushes the call past any fixed lookback, so the guard compares which
-  of `motif::field` and `add_sized` is nearer.
+  of `motif::field` and `add_sized` is nearer. **And it reads both
+  forms**: written for `singleline` it was silent on the thirteen
+  multiline boxes, which is exactly where the thirteen flat ones were —
+  the team notes, the console, the conciliation paste, the template
+  editor, the caisse remark. `motif::area` is the multiline twin
+  (`area_scrolled` when the text may outgrow the box, `code_area` when
+  the caller needs the caret), and a flat box among sunken ones does
+  not read as « one left over » but as a rendering fault, since it has
+  become the only one on the screen.
+- **A field hands back the frame it drew, and takes the room it asked
+  for.** Both were lost together and for one reason: `ui.put` returns
+  the `TextEdit`'s own response — the *text*'s rect, six pixels
+  narrower than the box — and **allocates a second time**, inset, which
+  walks the row's cursor *backwards* by six pixels. Four views drew
+  their own bevel on the returned rect, two pixels inside the real one,
+  and the box came out double-edged; the next widget bit into this
+  one's margin. The frame is allocated before the text and senses the
+  click (egui gives the later of two overlapping widgets the pointer,
+  so the `TextEdit` keeps its own and the bevel margin now focuses it),
+  and what is returned is the field's identity with the frame's
+  geometry — which is what the union of two responses is.
+  `a_field_hands_back_the_frame_it_drew_and_takes_the_room_it_asked_for`
+  draws two fields in a row, headless, and holds all three at once.
+- **A separator has relief too.** `ui.separator()` is a one-pixel line
+  off `widgets.noninteractive.bg_stroke`: beside a bevelled panel it
+  reads as a forgotten border. The two-tone painters existed
+  (`layout::rule`/`vrule`) for carved layouts; `motif::separator` and
+  `separator_v` are the forms that **take their place in a row**, and
+  `separator_v_width` is what one costs a band that measures its
+  groups — two writings of a width diverge, and it is the measurement
+  that lies.
 - **A drop-down is a Motif widget too, and there are two of them.**
   `egui::ComboBox` paints from `widgets.*.weak_bg_fill`, which `apply`
   sets to `bg()` for every state — the same trap as the slider, so it
@@ -847,7 +877,7 @@ add clicking and typing; it is not the price of entry.
   `egui::Slider` left in the application was exactly that: measured on a
   capture of Options › Interface, two hundred and thirty pixels of
   background along the middle of the control and two pixels of thumb
-  edge, on all eight palettes. Nothing said where 0,8 was, where 1,6
+  edge, on all ten palettes. Nothing said where 0,8 was, where 1,6
   was, nor where one stood — on « Taille du texte », the setting
   somebody who cannot read the screen goes to first.
   `motif::scale_range` is the house scale (sunken groove, raised thumb)
@@ -1033,7 +1063,13 @@ add clicking and typing; it is not the price of entry.
 - **A categorical hue lives in one named `const` ramp**, and reaches the
   screen through `data_ramp`. Adding a colour is adding a line to that
   array — never a second array, and never a literal at the point of
-  use. `motif::data_tones(c)` gives a set with more members than the ramp
+  use. The exception is whole and it is named: colours drawn **inside a
+  field** go through `data_ramp_on(trough(), …)`, because the trough is
+  darker than the panel on a daylight skin and a hue fitted thirty
+  hundredths off the panel is only twenty off the trough. That is the
+  same rule the hints already carry, one level up. `motif::CODE_RAMP`
+  and `code_ink()` are the console's five, in the order
+  `script::Ink` writes them. `motif::data_tones(c)` gives a set with more members than the ramp
   has colours its three tones — **chosen together**, inside that same
   band: computed one at a time they collide (a darker tone that hits the
   floor and turns round lands on its own lighter tone), and bounded by
@@ -1107,7 +1143,7 @@ add clicking and typing; it is not the price of entry.
   quick-act picker (nine acts of ten, on a screen whose printed guide
   promises the tenth digit), the shortcut window (eight of twenty-six),
   a checklist's items (one of five, each with its buttons), the Options
-  dialog (the eight skins, which is what that page exists to show) and
+  dialog (the ten skins, which is what that page exists to show) and
   the protocol ordonnance (the adjuvant, the advice and the free
   lines — all of them printed) and a self-monitoring sheet, whose first
   of four parts stopped mid-word. The last three are the **home
@@ -1868,7 +1904,7 @@ add clicking and typing; it is not the price of entry.
   tab strip and therefore reachable no other way.
   `about` is the Options
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
-  « Interface », where the eight skins are picked — each drawn in its
+  « Interface », where the ten skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
   `caisse` opens the till count **with a drawer already counted**:
   fifteen lines at zero show neither the summary, nor the gap, nor the
@@ -1932,8 +1968,24 @@ add clicking and typing; it is not the price of entry.
   application is always maximized: a counter. `scripts/maximized.sh`
   is the harness (it needs a compositor, so it is deliberately outside
   the two sweep scripts, which must stay dependency-free)
-- `companion` (F9) is the window **shrunk to a bar and put on top**, not
-  a second window. Opened by its
+- `companion` (F9) is the window **shrunk to a bar, undecorated and put
+  on top**, not a second window. The decorations go because a thirty-
+  pixel title bar over a five-hundred-pixel window is six per cent of
+  the bar spent on a name its own head already writes — and a close
+  button that would *quit the application* where F9 and « Agrandir »
+  hand the window back. What the title bar did is taken over by the
+  head, which is the handle: the drag rect is registered **before** the
+  row, so the buttons keep their clicks (egui gives the later of two
+  overlapping widgets the pointer) and the empty space between them
+  drags. Four places at a menu — free, a corner, a strip along the
+  bottom, a column at the right — through `App::companion_place`, pure
+  and tested. Two rules it holds: **a place never asks for less than
+  the five bands can draw** (a fifth of a 700-pixel screen is 140 px,
+  and the gestures row would land under the window's edge), and **it is
+  posted with the size it has, not the size it asked for** — a strip
+  stuck to the bottom and computed on the asked height would leave the
+  screen by the bottom, which is where a bar can no longer be caught.
+  Opened by its
   view key it now takes that size too — it used to be a flag and
   nothing else, so `smoke.sh` and `eyeball.sh` looked at the companion
   inside a 1024-pixel window, which is the one shape it never has in

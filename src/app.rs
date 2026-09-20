@@ -324,21 +324,12 @@ fn billing_lines(rows: &[db::ExportRow], config: &Config) -> Vec<crate::pdf::Bil
 /// overran the rows under it and drew over their labels; the text
 /// scrolls inside a fixed sunken box instead.
 fn field_box(ui: &mut egui::Ui, id: &str, width: f32, height: f32, text: &mut String) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(width, height), egui::Sense::hover());
-    motif::bevel(ui.painter(), rect, false);
-    let inner = rect.shrink(3.0);
-    let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
-    egui::ScrollArea::vertical()
-        .id_salt(id)
-        .max_height(inner.height())
-        .auto_shrink([false, false])
-        .show(&mut child, |ui| {
-            ui.add(
-                egui::TextEdit::multiline(text)
-                    .desired_width(inner.width() - 8.0)
-                    .frame(false),
-            );
-        });
+    motif::area_scrolled(
+        ui,
+        id,
+        egui::vec2(width, height),
+        egui::TextEdit::multiline(text),
+    );
 }
 
 /// Ce qui reste à un champ une fois la colonne des intitulés servie —
@@ -1703,6 +1694,36 @@ struct ExplorerRow {
 struct ExplorerSection {
     rows: Vec<ExplorerRow>,
     offsets: Vec<f32>,
+}
+
+/// Où le compagnon se pose sur l'écran.
+///
+/// Une place et non une taille : la taille en découle, et c'est la place
+/// qu'on choisit — « en bas, sur toute la largeur » se dit d'un coup
+/// d'œil, « mille neuf cent vingt sur cent quarante » ne se dit pas.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CompanionPlace {
+    /// Là où elle est, à la taille qu'elle s'ouvre.
+    Free,
+    Corner,
+    Strip,
+    Column,
+}
+
+/// Ce que la console propose, tel que l'image précédente l'a calculé.
+///
+/// Les candidats sont des `&'static str` : ils viennent de
+/// [`crate::script::API`] et des mots du langage, c'est-à-dire de tables
+/// livrées. Rien ici n'invente de nom.
+struct ScriptSuggestion {
+    /// La portion du mot commencé, en octets dans le texte du script.
+    from: usize,
+    to: usize,
+    found: Vec<&'static str>,
+    /// Celui que les flèches pointent, et que la tabulation écrit.
+    at: usize,
+    /// Où poser la liste : le coin bas-gauche du mot, à l'écran.
+    caret: egui::Pos2,
 }
 
 /// Ce que le tableau de l'explorateur a mesuré, pour ne pas le remesurer
@@ -3571,6 +3592,19 @@ struct Session {
     script_out: Option<crate::script::Outcome>,
     script_note: Option<(bool, String)>,
     script_name: String,
+    /// Ce que l'éditeur propose : la portion du mot commencé, les
+    /// candidats, et celui qui est pointé.
+    ///
+    /// Gardé d'une image à l'autre parce que **les touches se prennent
+    /// avant que l'éditeur ne les voie**. Le `TextEdit` mange la
+    /// tabulation et les flèches, donc une liste qui n'existerait
+    /// qu'après lui ne pourrait plus être conduite au clavier : on lit
+    /// donc ce que l'image précédente a proposé, on consomme la touche,
+    /// et on dessine ensuite.
+    script_sugg: Option<ScriptSuggestion>,
+    /// L'identité du `TextEdit` de la console : c'est par elle qu'on
+    /// repose le curseur après avoir écrit une proposition.
+    script_edit_id: Option<egui::Id>,
     /// Le comptage de caisse en cours. Voir [`crate::caisse`].
     ///
     /// Les quantités sont du **texte** et non des entiers : un champ
@@ -4452,6 +4486,8 @@ impl Session {
             script_out: None,
             script_note: None,
             script_name: String::new(),
+            script_sugg: None,
+            script_edit_id: None,
             caisse_qty: std::array::from_fn(|_| String::new()),
             caisse_float: String::new(),
             caisse_expected: String::new(),
@@ -9525,11 +9561,12 @@ fn export_window(
                 .size(motif::pt(ui, 10.5))
                 .color(motif::text_dim()),
         );
-        ui.add_sized(
-            [
+        motif::area(
+            ui,
+            egui::vec2(
                 ui.available_width(),
                 (screen.height() * 0.09).clamp(40.0, 74.0),
-            ],
+            ),
             egui::TextEdit::multiline(&mut box_.extra)
                 .hint_text(motif::hint(tr("export_extra_placeholder"))),
         );
@@ -11232,7 +11269,7 @@ impl App {
             Some(OptionsEditor {
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
-                    // The page where the eight skins are chosen. It
+                    // The page where the ten skins are chosen. It
                     // draws each of them in its own palette, which is
                     // exactly the thing no test can look at for you.
                     "peaux" => OptionsPage::Ui,
@@ -11807,7 +11844,7 @@ impl App {
     /// réflexe.
     ///
     /// Appuyer, c'est **s'éloigner du fond** et non noircir : il n'y a
-    /// pas de graisse dans la fonte livrée, et deux des huit peaux sont
+    /// pas de graisse dans la fonte livrée, et deux des dix peaux sont
     /// sombres. Un littéral passe en chasse fixe, qui est aussi la seule
     /// fonte livrée où la flèche a un glyphe.
     fn help_text(ui: &mut egui::Ui, text: &str) {
@@ -12090,7 +12127,6 @@ impl App {
             w,
             egui::TextEdit::singleline(text).hint_text(motif::hint(hint)),
         );
-        motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
         ui.add_space(6.0);
         resp
     }
@@ -13026,23 +13062,17 @@ impl App {
                 let mut editor_rect = ui.available_rect_before_wrap().shrink(2.0);
                 editor_rect
                     .set_bottom((editor_rect.bottom() - reserve).max(editor_rect.top() + 60.0));
-                motif::bevel(ui.painter(), editor_rect, false);
-                egui::ScrollArea::vertical()
-                    .id_salt("team_doc")
-                    .max_height(editor_rect.height())
-                    .show(ui, |ui| {
-                        let response = ui.add_sized(
-                            [ui.available_width(), editor_rect.height() - 8.0],
-                            egui::TextEdit::multiline(&mut self.doc_text)
-                                .font(egui::TextStyle::Monospace)
-                                .frame(false),
-                        );
-                        self.doc_focused = response.has_focus();
-                        if response.changed() {
-                            self.doc_dirty = true;
-                            self.doc_last_edit = Instant::now();
-                        }
-                    });
+                let response = motif::area_scrolled(
+                    ui,
+                    "team_doc",
+                    editor_rect.size(),
+                    egui::TextEdit::multiline(&mut self.doc_text).font(egui::TextStyle::Monospace),
+                );
+                self.doc_focused = response.has_focus();
+                if response.changed() {
+                    self.doc_dirty = true;
+                    self.doc_last_edit = Instant::now();
+                }
 
                 // Personal notes of the operator (private journal).
                 ui.add_space(10.0);
@@ -13267,7 +13297,6 @@ impl App {
                             .password(true)
                             .hint_text(motif::hint(tr("lock_password_hint"))),
                     );
-                    motif::bevel(ui.painter(), field.rect.expand(2.0), false);
                     // The lock screen holds a single field, so any Enter
                     // press submits. The previous focus-based idiom
                     // silently failed here: pressing Enter makes the
@@ -13545,7 +13574,6 @@ impl App {
                     egui::TextEdit::singleline(&mut session.query)
                         .hint_text(motif::hint(tr("search_hint"))),
                 );
-                motif::bevel(ui.painter(), search.rect.expand(2.0), false);
                 // Search is the default view: keep the bar focused.
                 if focus_search || !ctx.wants_keyboard_input() {
                     search.request_focus();
@@ -14484,8 +14512,9 @@ impl App {
                         ui.add_space(8.0);
                         motif::section(ui, tr("ord_extra_section"));
                         ui.add_space(4.0);
-                        ui.add_sized(
-                            [ui.available_width(), 60.0],
+                        motif::area(
+                            ui,
+                            egui::vec2(ui.available_width(), Self::row_height(ui) * 2.0),
                             egui::TextEdit::multiline(&mut choice.extra)
                                 .hint_text(motif::hint(tr("ord_extra_hint"))),
                         );
@@ -16819,8 +16848,9 @@ impl App {
                     job.wrap.max_width = wrap;
                     ui.fonts(|f| f.layout_job(job))
                 };
-                ui.add_sized(
-                    [ui.available_width(), h],
+                motif::area(
+                    ui,
+                    egui::vec2(ui.available_width(), h),
                     egui::TextEdit::multiline(&mut session.concil_sheet)
                         .hint_text(motif::hint(tr("concil_sheet_hint")))
                         .layouter(&mut layouter),
@@ -31113,8 +31143,9 @@ impl App {
                         if rows == 1 {
                             motif::field(ui, w, egui::TextEdit::singleline(value));
                         } else {
-                            ui.add_sized(
-                                [w, 22.0 * rows as f32],
+                            motif::area(
+                                ui,
+                                egui::vec2(w, Self::row_height(ui) * rows as f32),
                                 egui::TextEdit::multiline(value).desired_rows(rows),
                             );
                         }
@@ -33554,8 +33585,9 @@ impl App {
                         // c'est pourquoi les boutons sont carvés
                         // au-dessous, hors de cette zone défilante.
                         if let Some((_, text)) = session.ui_text_edit.as_mut() {
-                            ui.add_sized(
-                                [ui.available_width(), Self::row_height(ui) * 2.0],
+                            motif::area(
+                                ui,
+                                egui::vec2(ui.available_width(), Self::row_height(ui) * 2.0),
                                 egui::TextEdit::multiline(text),
                             );
                         }
@@ -40336,8 +40368,9 @@ impl App {
                         if rows == 1 {
                             motif::field(ui, w, egui::TextEdit::singleline(value));
                         } else {
-                            ui.add_sized(
-                                [w, 22.0 * rows as f32],
+                            motif::area(
+                                ui,
+                                egui::vec2(w, Self::row_height(ui) * rows as f32),
                                 egui::TextEdit::multiline(value).desired_rows(rows),
                             );
                         }
@@ -42553,8 +42586,9 @@ impl App {
             let Some(buf) = edit.typed.get_mut(key) else {
                 continue;
             };
-            ui.add_sized(
-                [w, Self::row_height(ui) * 2.0],
+            motif::area(
+                ui,
+                egui::vec2(w, Self::row_height(ui) * 2.0),
                 egui::TextEdit::multiline(buf).hint_text(motif::hint(*shipped)),
             );
             match state {
@@ -44099,8 +44133,9 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(6.0);
-                        ui.add_sized(
-                            [chars_wide(ui, 62.0), 150.0],
+                        motif::area(
+                            ui,
+                            egui::vec2(chars_wide(ui, 62.0), Self::row_height(ui) * 6.0),
                             egui::TextEdit::multiline(&mut buffer).desired_rows(8),
                         );
                         ui.add_space(6.0);
@@ -44348,7 +44383,6 @@ impl App {
                 egui::TextEdit::singleline(&mut session.drug_query)
                     .hint_text(motif::hint(tr("drug_search_hint"))),
             );
-            motif::bevel(ui.painter(), search.rect.expand(2.0), false);
             if !ctx.wants_keyboard_input() {
                 search.request_focus();
             }
@@ -44768,6 +44802,199 @@ impl App {
     /// sortie sinon. C'est l'éditeur qui reste entier : c'est là qu'on
     /// **écrit**, et la règle de la maison est que le volet où l'on tape
     /// passe devant celui qu'on lit.
+    /// L'éditeur de la console : ce qu'on tape coloré, et ce qu'on peut
+    /// encore écrire proposé.
+    ///
+    /// **La couleur ne réécrit rien.** La galée est reconstruite portion
+    /// par portion depuis `script::colour`, dont la règle est que le
+    /// découpage couvre tout une fois et dans l'ordre : un octet oublié
+    /// serait un caractère qui disparaît du script qu'on est en train
+    /// d'écrire.
+    ///
+    /// **Et la liste se conduit au clavier**, ce qui décide de l'ordre
+    /// de ce qui suit. Le `TextEdit` mange la tabulation et les flèches,
+    /// donc les touches sont prises *avant* lui, sur ce que l'image
+    /// précédente a proposé. C'est le même arrangement que le raccourci
+    /// qui ferme un dialogue : qui dessine en dernier lit en premier.
+    fn script_editor(ui: &mut egui::Ui, rect: egui::Rect, session: &mut Session) {
+        // --- Les touches, avant que l'éditeur ne les voie ------------
+        let mut accept: Option<&'static str> = None;
+        if let Some(sugg) = session.script_sugg.as_mut() {
+            let (tab, down, up, esc) = ui.input_mut(|i| {
+                (
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Tab),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
+                    i.consume_key(egui::Modifiers::NONE, egui::Key::Escape),
+                )
+            });
+            if down {
+                sugg.at = (sugg.at + 1) % sugg.found.len();
+            }
+            if up {
+                sugg.at = (sugg.at + sugg.found.len() - 1) % sugg.found.len();
+            }
+            if tab {
+                accept = sugg.found.get(sugg.at).copied();
+            }
+            if esc {
+                session.script_sugg = None;
+            }
+        }
+        // Écrire la proposition : la portion du mot commencé est
+        // remplacée, et le curseur se repose au bout de ce qu'on vient
+        // d'écrire — sans quoi il reste au début et la frappe suivante
+        // se met devant.
+        let mut put_caret: Option<usize> = None;
+        if let (Some(candidate), Some(sugg)) = (accept, session.script_sugg.take()) {
+            let text = crate::script::insertion(candidate);
+            session.script_text.replace_range(sugg.from..sugg.to, &text);
+            put_caret = Some(
+                session.script_text[..sugg.from + text.len()]
+                    .chars()
+                    .count(),
+            );
+        }
+
+        // --- Le texte, coloré ----------------------------------------
+        let inks = motif::code_ink();
+        let plain = motif::text();
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
+        let mut layouter = |ui: &egui::Ui, text: &str, _wrap: f32| {
+            let mut job = egui::text::LayoutJob::default();
+            for (from, to, ink) in crate::script::colour(text) {
+                use crate::script::Ink;
+                let colour = match ink {
+                    Ink::Comment => inks[0],
+                    Ink::Text => inks[1],
+                    Ink::Number => inks[2],
+                    Ink::Keyword => inks[3],
+                    Ink::Known => inks[4],
+                    Ink::Plain => plain,
+                };
+                job.append(
+                    &text[from..to],
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font.clone(),
+                        color: colour,
+                        italics: ink == Ink::Comment,
+                        ..Default::default()
+                    },
+                );
+            }
+            // **Une ligne de code ne se replie pas**, et c'est le
+            // découpeur qui le décide : le `TextEdit` lui passe la
+            // largeur disponible, on l'ignore, et la galée devient aussi
+            // large que la plus longue ligne — ce qui donne à la zone
+            // défilante de quoi offrir sa barre horizontale. Repliée,
+            // une ligne décale tous les numéros que la console rapporte
+            // dans ses erreurs, et c'est par eux qu'on retrouve la
+            // faute.
+            job.wrap.max_width = f32::INFINITY;
+            ui.fonts(|f| f.layout_job(job))
+        };
+        let (_, out) = motif::code_area(
+            ui,
+            "script_editor",
+            rect.size(),
+            egui::TextEdit::multiline(&mut session.script_text)
+                .code_editor()
+                .layouter(&mut layouter)
+                .hint_text(motif::hint(tr("script_hint"))),
+        );
+        session.script_edit_id = Some(out.response.id);
+        if let Some(chars) = put_caret {
+            let mut state = out.state.clone();
+            state
+                .cursor
+                .set_char_range(Some(egui::text::CCursorRange::one(
+                    egui::text::CCursor::new(chars),
+                )));
+            state.store(ui.ctx(), out.response.id);
+        }
+
+        // --- Ce qu'on peut encore écrire -----------------------------
+        //
+        // Rien tant qu'un mot n'est pas commencé, rien pendant une
+        // sélection — proposer un mot à qui vient d'en sélectionner
+        // trois est une liste qui s'ouvre pour être fermée.
+        let kept = session.script_sugg.take();
+        if out.response.has_focus() && put_caret.is_none() {
+            if let Some(range) = out.cursor_range.filter(|r| r.is_empty()) {
+                let chars = range.primary.ccursor.index;
+                let byte = session
+                    .script_text
+                    .char_indices()
+                    .nth(chars)
+                    .map_or(session.script_text.len(), |(b, _)| b);
+                if let Some((from, to, found)) = crate::script::suggest(&session.script_text, byte)
+                {
+                    // Le même mot qu'à l'image d'avant garde la ligne
+                    // pointée : les flèches ne serviraient à rien si la
+                    // liste se remettait à sa première ligne à chaque
+                    // image.
+                    let at = kept
+                        .filter(|k| k.from == from && k.to == to)
+                        .map_or(0, |k| k.at.min(found.len() - 1));
+                    let pos = out.galley.pos_from_cursor(&range.primary);
+                    session.script_sugg = Some(ScriptSuggestion {
+                        from,
+                        to,
+                        found,
+                        at,
+                        caret: out.galley_pos + pos.left_bottom().to_vec2(),
+                    });
+                }
+            }
+        }
+        if let Some(sugg) = session.script_sugg.as_ref() {
+            let mut picked: Option<&'static str> = None;
+            let width = chars_wide(ui, 22.0);
+            egui::Area::new(egui::Id::new("script_sugg"))
+                .order(egui::Order::Foreground)
+                .fixed_pos(sugg.caret)
+                .show(ui.ctx(), |ui| {
+                    let rows = sugg.found.len().min(6);
+                    let h = Self::row_height(ui) * rows as f32 + 8.0;
+                    let (rect, _) =
+                        ui.allocate_exact_size(egui::vec2(width, h), egui::Sense::hover());
+                    ui.painter().rect_filled(rect, 0.0, motif::bg());
+                    motif::bevel(ui.painter(), rect, true);
+                    motif::inside(ui, rect.shrink(4.0), |ui| {
+                        for (i, name) in sugg.found.iter().take(rows).enumerate() {
+                            if motif::list_row(
+                                ui,
+                                egui::RichText::new(*name).size(motif::pt(ui, 11.5)),
+                                i == sugg.at,
+                            )
+                            .clicked()
+                            {
+                                picked = Some(name);
+                            }
+                        }
+                    });
+                });
+            if let Some(name) = picked {
+                let text = crate::script::insertion(name);
+                let (from, to) = (sugg.from, sugg.to);
+                session.script_text.replace_range(from..to, &text);
+                let chars = session.script_text[..from + text.len()].chars().count();
+                if let Some(id) = session.script_edit_id {
+                    if let Some(mut state) = egui::TextEdit::load_state(ui.ctx(), id) {
+                        state
+                            .cursor
+                            .set_char_range(Some(egui::text::CCursorRange::one(
+                                egui::text::CCursor::new(chars),
+                            )));
+                        state.store(ui.ctx(), id);
+                    }
+                }
+                session.script_sugg = None;
+            }
+        }
+    }
+
     fn script_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
@@ -44950,19 +45177,7 @@ impl App {
             if rect.height() < 24.0 {
                 return;
             }
-            motif::inside(ui, rect, |ui| {
-                egui::ScrollArea::both()
-                    .id_salt("script_editor")
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
-                        ui.add_sized(
-                            [ui.available_width().max(80.0), rect.height().max(60.0)],
-                            egui::TextEdit::multiline(&mut session.script_text)
-                                .code_editor()
-                                .hint_text(motif::hint(tr("script_hint"))),
-                        );
-                    });
-            });
+            Self::script_editor(ui, rect, session);
         });
 
         // --- Ce que la dernière exécution a rendu -------------------
@@ -45578,8 +45793,9 @@ impl App {
                     );
                     ui.add_space(8.0);
                     ui.label(tr("caisse_remark"));
-                    ui.add_sized(
-                        [motif::visible_rect(ui).width() - 12.0, 3.0 * line + 12.0],
+                    motif::area(
+                        ui,
+                        egui::vec2(motif::visible_rect(ui).width() - 12.0, 3.0 * line + 12.0),
                         egui::TextEdit::multiline(&mut session.caisse_remark).hint_text(
                             motif::hint(if want_expected {
                                 tr("caisse_remark_hint")
@@ -47469,7 +47685,6 @@ impl App {
                         Self::hint_that_fits(ui, search_w, tr("graph_hint")),
                     )),
                 );
-                motif::bevel(ui.painter(), resp.rect.expand(2.0), false);
                 typed_changed = resp.changed();
                 let open = session.graph_centre.is_some();
                 if motif::button_enabled(ui, tr("graph_open_card"), open).clicked() {
@@ -47888,7 +48103,6 @@ impl App {
                 egui::TextEdit::singleline(&mut session.mono_query)
                     .hint_text(motif::hint(tr("mono_hint"))),
             );
-            motif::bevel(ui.painter(), search.rect.expand(2.0), false);
             if !ctx.wants_keyboard_input() {
                 search.request_focus();
             }
@@ -48641,6 +48855,67 @@ impl App {
         );
     }
 
+    /// Les quatre places d'une barre sans bordure, dans l'ordre du menu.
+    ///
+    /// Une barre qu'on doit replacer à la souris à chaque ouverture est
+    /// une barre qu'on finit par laisser au milieu de l'écran, c'est-à-
+    /// dire par-dessus ce qu'on lit. Les trois places qui ne sont pas
+    /// « libre » sont celles qu'un comptoir utilise vraiment : un coin
+    /// pendant qu'on tape ailleurs, un bandeau sous le logiciel de
+    /// comptoir, une colonne à côté de lui.
+    const COMPANION_PLACES: [(&'static str, CompanionPlace); 4] = [
+        ("companion_place_free", CompanionPlace::Free),
+        ("companion_place_corner", CompanionPlace::Corner),
+        ("companion_place_strip", CompanionPlace::Strip),
+        ("companion_place_column", CompanionPlace::Column),
+    ];
+
+    /// Ce qu'une place demande sur un écran donné : où, et de quelle
+    /// taille.
+    ///
+    /// Pure, et l'écran comme le plancher sont passés : c'est la règle
+    /// de ce dépôt pour toute arithmétique qui décide d'une mise en
+    /// page. Trois choses qu'elle tient, une par cas qui l'a écrite.
+    ///
+    /// **Une place ne descend pas sous le plancher mesuré.** « Vingt
+    /// pour cent de la hauteur » fait cent quarante pixels sur un écran
+    /// de sept cents, et la barre en demande davantage pour dessiner ses
+    /// cinq bandes : un bandeau à cent quarante pixels poserait la
+    /// rangée des gestes sous le bord de la fenêtre, c'est-à-dire nulle
+    /// part.
+    ///
+    /// **Et elle se pose avec la taille qu'elle a, pas avec celle
+    /// qu'elle a demandée.** Le bandeau se colle en bas : calculé sur la
+    /// hauteur demandée, il descendrait sous l'écran de tout ce que le
+    /// plancher lui a rendu — la barre déborderait par le bas, ce qui
+    /// est exactement l'endroit où l'on ne peut plus la rattraper.
+    ///
+    /// **Une fenêtre libre ne se place pas.** Elle garde où elle est :
+    /// la déplacer serait annuler le geste de celui qui l'a posée là.
+    fn companion_place(
+        place: CompanionPlace,
+        monitor: egui::Vec2,
+        floor: egui::Vec2,
+        opening: egui::Vec2,
+    ) -> (Option<egui::Pos2>, egui::Vec2) {
+        let clamp = |v: egui::Vec2| egui::vec2(v.x.max(floor.x), v.y.max(floor.y));
+        match place {
+            CompanionPlace::Free => (None, clamp(opening)),
+            CompanionPlace::Corner => {
+                let size = clamp(egui::vec2(monitor.x * 0.30, monitor.y * 0.45));
+                (Some(egui::Pos2::ZERO), size)
+            }
+            CompanionPlace::Strip => {
+                let size = clamp(egui::vec2(monitor.x, monitor.y * 0.20));
+                (Some(egui::pos2(0.0, (monitor.y - size.y).max(0.0))), size)
+            }
+            CompanionPlace::Column => {
+                let size = clamp(egui::vec2(monitor.x * 0.28, monitor.y));
+                (Some(egui::pos2((monitor.x - size.x).max(0.0), 0.0)), size)
+            }
+        }
+    }
+
     /// Réduire la fenêtre à la barre, ou la rendre.
     ///
     /// Le plancher de taille est déplacé avec elle : la fenêtre est
@@ -48660,10 +48935,19 @@ impl App {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::AlwaysOnTop,
             ));
+            // **Et sans bordure.** Une barre de titre de trente pixels
+            // au-dessus d'une fenêtre qui en fait cinq cents, c'est six
+            // pour cent de la barre pour un nom qu'elle écrit déjà dans
+            // sa tête — et un bouton de fermeture qui ferait *quitter
+            // l'application* là où F9 et « Agrandir » rendent la
+            // fenêtre. Ce qui la déplaçait est repris par sa tête, qui
+            // est devenue la poignée.
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
         } else {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::Normal,
             ));
+            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(true));
             ctx.send_viewport_cmd(egui::ViewportCommand::MinInnerSize(egui::vec2(
                 960.0, 640.0,
             )));
@@ -50295,6 +50579,7 @@ impl App {
             .companion_page
             .min(read.1.pages.len().saturating_sub(1));
         let mut leave = false;
+        let mut place_asked: Option<CompanionPlace> = None;
         let mut go: Option<CompanionGo> = None;
         // Le nom cliqué dans l'ordonnance du dossier : posé dans le
         // champ **après** le dessin, comme tout ce qui remonte d'ici —
@@ -50415,6 +50700,32 @@ impl App {
             // pendant ce temps deux des quatre gestes du bas agissent
             // sur le dossier ouvert et rien ne disait s'il y en avait
             // un — « Acte » basculait en silence sur la recherche.
+            // **La tête est la poignée.** Sans bordure il n'y a plus de
+            // barre de titre à saisir, et une fenêtre qu'on ne peut plus
+            // déplacer est une fenêtre posée là où le gestionnaire l'a
+            // mise. Le rectangle est pris **avant** la rangée : egui
+            // donne la main au dernier inscrit là où deux se recouvrent,
+            // donc les boutons de la tête gardent leurs clics et c'est
+            // le vide entre eux qui traîne la fenêtre.
+            let head_rect = egui::Rect::from_min_size(
+                ui.available_rect_before_wrap().min,
+                egui::vec2(ui.available_width(), Self::button_height(ui)),
+            );
+            let handle = ui
+                .interact(
+                    head_rect,
+                    ui.id().with("companion_drag"),
+                    egui::Sense::drag(),
+                )
+                .on_hover_cursor(egui::CursorIcon::Grab)
+                // L'infobulle du vide entre les boutons : ceux-ci sont
+                // inscrits après, donc c'est la leur qui s'ouvre sur
+                // eux, et celle-ci partout ailleurs sur la rangée —
+                // c'est-à-dire exactement là où l'on peut traîner.
+                .on_hover_text(tr("companion_drag_tooltip"));
+            if handle.drag_started() {
+                ctx.send_viewport_cmd(egui::ViewportCommand::StartDrag);
+            }
             ui.horizontal(|ui| {
                 let (file, note) = match &session.viewing {
                     Some(p) => (
@@ -50457,6 +50768,28 @@ impl App {
                         .clicked()
                     {
                         leave = true;
+                    }
+                    // **Où la poser** — un menu et non un réglage : ce
+                    // qu'on y choisit part ailleurs (la fenêtre se
+                    // déplace), il n'y a pas de valeur courante à
+                    // afficher, et écrire le dernier choix dans la case
+                    // ferait croire à un état que la fenêtre ne garde
+                    // pas. Une marque seule, donc, et l'infobulle est
+                    // tout ce qui l'explique.
+                    let places: Vec<(CompanionPlace, String)> = Self::COMPANION_PLACES
+                        .iter()
+                        .map(|(key, place)| (*place, tr(key).to_owned()))
+                        .collect();
+                    let menu = motif::menu(
+                        ui,
+                        "companion_place",
+                        Self::button_height(ui) * 1.2,
+                        "",
+                        &places,
+                    );
+                    menu.response.on_hover_text(tr("companion_place_tooltip"));
+                    if let Some(place) = menu.inner {
+                        place_asked = Some(place);
                     }
                     // **Ce qui sort de la barre.** Dans la tête et non
                     // dans la rangée des gestes : les cinq qui y sont
@@ -50503,6 +50836,25 @@ impl App {
                     .on_hover_text(note);
                 });
             });
+            // La place demandée s'applique ici, dans le `Ui` du
+            // panneau : c'est le seul endroit d'où le plancher se
+            // mesure, et une place qui descendrait sous lui poserait la
+            // rangée des gestes hors de la fenêtre.
+            if let Some(place) = place_asked.take() {
+                let monitor = ctx
+                    .input(|i| i.viewport().monitor_size)
+                    .unwrap_or_else(|| ctx.screen_rect().size());
+                let (pos, size) = Self::companion_place(
+                    place,
+                    monitor,
+                    Self::companion_floor(ui),
+                    Self::companion_opening(ui),
+                );
+                if let Some(pos) = pos {
+                    ctx.send_viewport_cmd(egui::ViewportCommand::OuterPosition(pos));
+                }
+                ctx.send_viewport_cmd(egui::ViewportCommand::InnerSize(size));
+            }
             let field = motif::field_sized(
                 ui,
                 egui::vec2(ui.available_width(), Self::button_height(ui)),
@@ -51158,7 +51510,7 @@ type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
-/// Voir `motif` : la teinte vient du thème, et deux des huit peaux sont
+/// Voir `motif` : la teinte vient du thème, et deux des dix peaux sont
 /// des peaux de nuit. Une puce qui porterait son rouge en dur serait
 /// fausse sur celles-là.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -51197,7 +51549,7 @@ impl CompanionTone {
     /// **La puce la plus calme est la plus près du fond.** C'est la
     /// règle que ce dépôt écrit pour toute emphase : une distance, et
     /// jamais une direction. `Ok` portait `text_dim`, c'est-à-dire une
-    /// couleur d'**encre** posée en aplat — mesurée sur les huit peaux,
+    /// couleur d'**encre** posée en aplat — mesurée sur les dix peaux,
     /// c'était le bloc le plus contrasté de la rangée, devant l'alerte
     /// rouge et l'ambre. « Écraser · Peut être écrasé », qui est la
     /// réponse rassurante, tirait donc l'œil avant « Ordonnance · 1
@@ -53021,16 +53373,14 @@ impl eframe::App for App {
                         + ui.text_style_height(&egui::TextStyle::Body);
                     let floor = 4.0 * ui.text_style_height(&egui::TextStyle::Monospace);
                     let editor_h = (ui.available_height() - foot).max(floor);
-                    egui::ScrollArea::vertical()
-                        .max_height(editor_h)
-                        .show(ui, |ui| {
-                            ui.add_sized(
-                                [ui.available_width(), editor_h - 8.0],
-                                egui::TextEdit::multiline(text)
-                                    .font(egui::TextStyle::Monospace)
-                                    .code_editor(),
-                            );
-                        });
+                    motif::area_scrolled(
+                        ui,
+                        "tpl_editor",
+                        egui::vec2(ui.available_width(), editor_h),
+                        egui::TextEdit::multiline(text)
+                            .font(egui::TextStyle::Monospace)
+                            .code_editor(),
+                    );
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("form_save")).clicked() {
@@ -53335,7 +53685,7 @@ impl eframe::App for App {
                     let bottom = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0 + 8.0;
                     // **Et la barre se voit au repos.** À 1024x700 en
                     // `text_scale = 1,6`, « Interface » s'arrête sous la
-                    // taille du texte : les huit peaux — ce que cette
+                    // taille du texte : les dix peaux — ce que cette
                     // page existe pour montrer, et la seule chose qu'une
                     // capture puisse vérifier — sont sous le pli, sans
                     // rien pour le dire. La région défile dans les deux
@@ -54049,14 +54399,14 @@ impl eframe::App for App {
                                 // grid of one-line fields for it is a
                                 // form nobody can paste into.
                                 let mut script = editor.cfg.vitale.apdu.join("\n");
-                                if ui
-                                    .add(
-                                        egui::TextEdit::multiline(&mut script)
-                                            .desired_rows(3)
-                                            .desired_width(f32::INFINITY)
-                                            .hint_text(motif::hint(tr("opts_vitale_apdu_hint"))),
-                                    )
-                                    .changed()
+                                if motif::area(
+                                    ui,
+                                    egui::vec2(ui.available_width(), Self::row_height(ui) * 3.0),
+                                    egui::TextEdit::multiline(&mut script)
+                                        .desired_rows(3)
+                                        .hint_text(motif::hint(tr("opts_vitale_apdu_hint"))),
+                                )
+                                .changed()
                                 {
                                     editor.cfg.vitale.apdu = script
                                         .lines()
@@ -54117,8 +54467,12 @@ impl eframe::App for App {
                                     ),
                                 ] {
                                     ui.label(dim(label));
-                                    ui.add_sized(
-                                        [ui.available_width().min(520.0), 44.0],
+                                    motif::area(
+                                        ui,
+                                        egui::vec2(
+                                            ui.available_width().min(520.0),
+                                            Self::row_height(ui) * 2.0,
+                                        ),
                                         egui::TextEdit::multiline(value)
                                             .hint_text(motif::hint(tr("opts_mention_hint"))),
                                     );
@@ -54160,7 +54514,7 @@ impl eframe::App for App {
                                         // que `motif::apply` met au fond
                                         // du panneau pour tous les états
                                         // — donc pas de rail du tout, sur
-                                        // les huit palettes. Mesuré sur
+                                        // les dix palettes. Mesuré sur
                                         // une capture : deux cent trente
                                         // pixels de fond et deux pixels
                                         // de bord de pouce. Rien ne
@@ -56404,7 +56758,7 @@ mod tests {
     /// Elle peint son rail avec `widgets.inactive.bg_fill`, et
     /// `motif::apply` met ce champ au fond du panneau pour tous les
     /// états de widget — c'est ce qu'il faut pour un bouton, et cela
-    /// rend le rail invisible sur les huit palettes. Mesuré sur une
+    /// rend le rail invisible sur les dix palettes. Mesuré sur une
     /// capture d'Options › Interface : le long du milieu du réglage,
     /// deux cent trente pixels de fond et deux pixels de bord de pouce.
     /// Rien ne disait où était 0,8, où était 1,6, ni où l'on se
@@ -56918,6 +57272,79 @@ mod tests {
         }
     }
 
+    /// **Une place ne descend pas sous ce que la barre sait dessiner,
+    /// et elle se pose avec la taille qu'elle a.**
+    ///
+    /// Les trois places qui ne sont pas « libre » sont des fractions de
+    /// l'écran, et une fraction d'un petit écran est plus petite que ce
+    /// que cinq bandes demandent : « vingt pour cent de la hauteur »
+    /// fait cent quarante pixels sur un écran de sept cents, et la
+    /// rangée des gestes se dessinerait sous le bord de la fenêtre.
+    ///
+    /// Le second piège est le seul qui ne se rattrape pas à la souris :
+    /// le bandeau se colle en bas, et calculé sur la hauteur *demandée*
+    /// il descendrait sous l'écran de tout ce que le plancher lui a
+    /// rendu. Une barre sortie par le bas d'un écran n'a plus de
+    /// poignée.
+    #[test]
+    fn a_place_never_asks_for_less_than_the_bar_can_draw() {
+        let floor = egui::vec2(420.0, 300.0);
+        let opening = egui::vec2(600.0, 500.0);
+        // Un écran étroit, où toutes les fractions tombent sous le
+        // plancher : c'est le cas qui a écrit la règle.
+        let small = egui::vec2(1024.0, 700.0);
+        for (place, name) in [
+            (super::CompanionPlace::Corner, "coin"),
+            (super::CompanionPlace::Strip, "bandeau"),
+            (super::CompanionPlace::Column, "colonne"),
+        ] {
+            let (pos, size) = App::companion_place(place, small, floor, opening);
+            assert!(
+                size.x >= floor.x && size.y >= floor.y,
+                "{name} sous le plancher : {size:?}"
+            );
+            let pos = pos.expect("une place se pose");
+            assert!(
+                pos.x >= 0.0 && pos.y >= 0.0,
+                "{name} hors de l'écran par le haut : {pos:?}"
+            );
+            assert!(
+                pos.y + size.y <= small.y + 0.5,
+                "{name} déborde par le bas : {} contre {}",
+                pos.y + size.y,
+                small.y
+            );
+        }
+        // Sur un écran large, les fractions valent ce qu'elles disent :
+        // le bandeau prend toute la largeur et se colle en bas.
+        let wide = egui::vec2(1920.0, 1080.0);
+        let (pos, size) = App::companion_place(super::CompanionPlace::Strip, wide, floor, opening);
+        assert!((size.x - wide.x).abs() < 0.5, "le bandeau prend la largeur");
+        assert!(
+            (size.y - (wide.y * 0.20).max(floor.y)).abs() < 0.5,
+            "et un cinquième, ou le plancher si le cinquième est trop court"
+        );
+        assert!(
+            (pos.expect("posée").y + size.y - wide.y).abs() < 0.5,
+            "en bas"
+        );
+        // La colonne se colle à droite, et le coin à l'origine.
+        let (pos, size) = App::companion_place(super::CompanionPlace::Column, wide, floor, opening);
+        assert!(
+            (pos.expect("posée").x + size.x - wide.x).abs() < 0.5,
+            "à droite"
+        );
+        assert_eq!(
+            App::companion_place(super::CompanionPlace::Corner, wide, floor, opening).0,
+            Some(egui::Pos2::ZERO)
+        );
+        // **Une fenêtre libre ne se place pas** : la déplacer annulerait
+        // le geste de celui qui l'a posée là.
+        let (pos, size) = App::companion_place(super::CompanionPlace::Free, wide, floor, opening);
+        assert_eq!(pos, None);
+        assert_eq!(size, opening);
+    }
+
     /// **Un groupe tenu ensemble ne se coupe jamais entre ses pièces.**
     ///
     /// C'est le défaut le plus répandu de cette application au moment où
@@ -57220,37 +57647,65 @@ mod tests {
     /// Elles passent par `motif::field`, qui pose le creux et le
     /// liseré du foyer. Ce test refuse la suivante écrite à côté —
     /// vérifié en en remettant une.
+    ///
+    /// **Et il lit les deux formes, pas une.** Écrit pour
+    /// `singleline`, il laissait passer les zones de plusieurs lignes —
+    /// et c'est exactement là qu'étaient les treize qui restaient
+    /// plates : les notes d'équipe, la console, le collage de
+    /// conciliation, l'éditeur de modèles, la remarque de caisse. Une
+    /// case plate au milieu de cases creusées ne se lit pas comme « il
+    /// en reste une » mais comme un défaut de rendu, puisqu'elle est
+    /// devenue la seule de l'écran. C'est la règle que ce dépôt écrit
+    /// ailleurs : un garde qui ne lit qu'une des deux formes laisse la
+    /// faute exactement là où il ne regarde pas.
     #[test]
     fn no_text_field_is_drawn_without_its_relief() {
         const SOURCE: &str = include_str!("app.rs");
         // Assemblés, sinon le test se trouve lui-même.
-        let edit = concat!("TextEd", "it::singleline");
-        let ours = concat!("motif::fi", "eld");
+        // Les deux maisons — une ligne et plusieurs — et le plus
+        // proche des trois noms gagne.
+        let ours = [
+            concat!("motif::fi", "eld"),
+            concat!("motif::ar", "ea"),
+            concat!("motif::code_ar", "ea"),
+        ];
         let mut loose: Vec<usize> = Vec::new();
-        let mut from = 0;
-        while let Some(at) = SOURCE[from..].find(edit) {
-            let at = from + at;
-            from = at + edit.len();
-            // **Le plus proche des deux gagne**, et non « y a-t-il
-            // notre nom dans les deux cents caractères d'avant » : une
-            // largeur qui se calcule sur cinq lignes repousse l'appel
-            // bien au-delà de n'importe quelle fenêtre, et une fenêtre
-            // assez large pour l'attraper attrape aussi l'appel d'à
-            // côté. On compare les distances.
-            let back = &SOURCE[..at];
-            let mine = back.rfind(ours);
-            let theirs = back
-                .rfind(concat!("add_si", "zed("))
-                .into_iter()
-                .chain(back.rfind(concat!("ui.a", "dd(")))
-                .max();
-            let bare = match (mine, theirs) {
-                (Some(m), Some(t)) => t > m,
-                (None, Some(_)) => true,
-                _ => false,
-            };
-            if bare {
-                loose.push(SOURCE[..at].lines().count());
+        for edit in [
+            concat!("TextEd", "it::singleline"),
+            concat!("TextEd", "it::multiline"),
+        ] {
+            let mut from = 0;
+            while let Some(at) = SOURCE[from..].find(edit) {
+                let at = from + at;
+                from = at + edit.len();
+                // Les commentaires en parlent, et ils ne dessinent rien :
+                // celui de `concil_sheet_pane` explique justement pourquoi
+                // sa case est carvée, et se faisait prendre pour une case.
+                let line_start = SOURCE[..at].rfind('\n').map_or(0, |n| n + 1);
+                if SOURCE[line_start..at].trim_start().starts_with("//") {
+                    continue;
+                }
+                // **Le plus proche des deux gagne**, et non « y a-t-il
+                // notre nom dans les deux cents caractères d'avant » : une
+                // largeur qui se calcule sur cinq lignes repousse l'appel
+                // bien au-delà de n'importe quelle fenêtre, et une fenêtre
+                // assez large pour l'attraper attrape aussi l'appel d'à
+                // côté. On compare les distances.
+                let back = &SOURCE[..at];
+                let mine = ours.iter().filter_map(|o| back.rfind(o)).max();
+                let theirs = back
+                    .rfind(concat!("add_si", "zed("))
+                    .into_iter()
+                    .chain(back.rfind(concat!("ui.a", "dd(")))
+                    .max();
+                let bare = match (mine, theirs) {
+                    (Some(m), Some(t)) => t > m,
+                    (None, Some(_)) => true,
+                    _ => false,
+                };
+                if bare {
+                    loose.push(SOURCE[..at].lines().count());
+                }
             }
         }
         assert!(
@@ -57259,7 +57714,8 @@ mod tests {
         );
         // Et il y en a bien : le jour où la dernière disparaît, ce test
         // garderait le vide sans le dire.
-        assert!(SOURCE.matches(ours).count() > 150);
+        assert!(SOURCE.matches(ours[0]).count() > 150);
+        assert!(SOURCE.contains(concat!("motif::ar", "ea(")));
     }
 
     /// Un menu d'options ne se peint pas dans `weak_bg_fill`.
@@ -60032,7 +60488,7 @@ mod tests {
     /// peaux.**
     ///
     /// C'est la règle que ce dépôt écrit pour toute emphase : une
-    /// **distance**, jamais une direction — deux des huit peaux sont des
+    /// **distance**, jamais une direction — deux des dix peaux sont des
     /// peaux de nuit, et « plus sombre » y veut dire « plus près ».
     /// `CompanionTone::Ok` portait `text_dim`, c'est-à-dire une couleur
     /// d'encre posée en aplat : mesurée, c'était le bloc le plus

@@ -450,6 +450,231 @@ pub const EXAMPLES: &[(&str, &str)] = &[
     ),
 ];
 
+/// Ce qu'une portion de source **est**, pour qui la colore.
+///
+/// Cinq natures et une neutre : c'est exactement [`motif::CODE_RAMP`],
+/// dans le même ordre, et c'est voulu — une teinte de plus est une
+/// ligne de plus dans la rampe nommée, jamais une couleur écrite au
+/// point où l'on peint.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Ink {
+    Comment,
+    Text,
+    Number,
+    Keyword,
+    /// Un appel que le moteur connaît vraiment — lu dans [`API`], et
+    /// jamais dans une seconde liste qui vieillirait à côté.
+    Known,
+    /// Tout le reste : les identifiants, les opérateurs, les espaces.
+    Plain,
+}
+
+/// Les mots que le langage se réserve.
+///
+/// Ceux de Rhai, et rien d'autre : un mot colorié qui n'est pas un
+/// mot-clé enseigne une syntaxe fausse à qui apprend le langage dans
+/// cette console.
+pub const KEYWORDS: &[&str] = &[
+    "let", "const", "if", "else", "switch", "do", "while", "until", "loop", "for", "in", "break",
+    "continue", "return", "fn", "private", "throw", "try", "catch", "import", "export", "as",
+    "true", "false", "this", "global",
+];
+
+/// Découper une source en portions colorées.
+///
+/// **Le découpage couvre tout, dans l'ordre, une fois.** C'est la règle
+/// dont tout le reste dépend : la galée est reconstruite portion par
+/// portion, donc un octet oublié est un caractère qui disparaît de
+/// l'écran, et un octet compté deux fois est un caractère qui se
+/// dédouble — dans le script qu'on est en train d'écrire, ce qui est la
+/// pire chose qu'un colorateur puisse faire. `a_reading_loses_not_one_byte`
+/// le vérifie sur tout ce qui est livré.
+///
+/// Les bornes sont en octets et tombent toujours sur une frontière de
+/// caractère : les commentaires de cette base sont en français, et
+/// couper « é » en deux fait paniquer le découpage d'une chaîne.
+pub fn colour(source: &str) -> Vec<(usize, usize, Ink)> {
+    let b = source.as_bytes();
+    let mut out: Vec<(usize, usize, Ink)> = Vec::new();
+    let mut i = 0;
+    // Une portion neutre en attente : on ne la ferme qu'au moment où
+    // quelque chose d'autre commence, sinon la liste compterait une
+    // entrée par espace.
+    let mut plain_from = 0;
+    let flush = |out: &mut Vec<(usize, usize, Ink)>, from: usize, to: usize| {
+        if to > from {
+            out.push((from, to, Ink::Plain));
+        }
+    };
+    while i < b.len() {
+        let c = b[i];
+        // --- Un commentaire, jusqu'au bout de la ligne ou du bloc ---
+        if c == b'/' && i + 1 < b.len() && (b[i + 1] == b'/' || b[i + 1] == b'*') {
+            flush(&mut out, plain_from, i);
+            let start = i;
+            if b[i + 1] == b'/' {
+                while i < b.len() && b[i] != b'\n' {
+                    i += 1;
+                }
+            } else {
+                i += 2;
+                while i + 1 < b.len() && !(b[i] == b'*' && b[i + 1] == b'/') {
+                    i += 1;
+                }
+                // Un bloc que rien ne ferme va jusqu'au bout : c'est ce
+                // que le moteur en fera aussi, et le montrer autrement
+                // cacherait la faute.
+                i = (i + 2).min(b.len());
+            }
+            out.push((start, i, Ink::Comment));
+            plain_from = i;
+            continue;
+        }
+        // --- Une chaîne, entre guillemets ou en accent grave --------
+        if c == b'"' || c == b'`' || c == b'\'' {
+            flush(&mut out, plain_from, i);
+            let quote = c;
+            let start = i;
+            i += 1;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i = (i + 2).min(b.len());
+                    continue;
+                }
+                if b[i] == quote {
+                    i += 1;
+                    break;
+                }
+                // Une chaîne entre guillemets ne passe pas la ligne :
+                // sans cela un guillemet oublié colore tout le script.
+                if quote == b'"' && b[i] == b'\n' {
+                    break;
+                }
+                i += 1;
+            }
+            out.push((start, i, Ink::Text));
+            plain_from = i;
+            continue;
+        }
+        // --- Un nombre ---------------------------------------------
+        if c.is_ascii_digit() && !starts_in_word(b, i) {
+            flush(&mut out, plain_from, i);
+            let start = i;
+            while i < b.len() && (b[i].is_ascii_digit() || b[i] == b'.' || b[i] == b'_') {
+                i += 1;
+            }
+            out.push((start, i, Ink::Number));
+            plain_from = i;
+            continue;
+        }
+        // --- Un mot : mot-clé, appel connu, ou rien de particulier --
+        if c == b'_' || c.is_ascii_alphabetic() {
+            let start = i;
+            while i < b.len() && (b[i] == b'_' || b[i].is_ascii_alphanumeric()) {
+                i += 1;
+            }
+            let word = &source[start..i];
+            let ink = if KEYWORDS.contains(&word) {
+                Ink::Keyword
+            } else if is_known_call(word) {
+                Ink::Known
+            } else {
+                Ink::Plain
+            };
+            if ink != Ink::Plain {
+                flush(&mut out, plain_from, start);
+                out.push((start, i, ink));
+                plain_from = i;
+            }
+            continue;
+        }
+        i += 1;
+    }
+    flush(&mut out, plain_from, b.len());
+    out
+}
+
+/// Un chiffre collé à la fin d'un mot n'est pas un nombre : `p2` est un
+/// nom de variable, et le colorer par morceaux fait clignoter la moitié
+/// des scripts.
+fn starts_in_word(b: &[u8], i: usize) -> bool {
+    i > 0 && (b[i - 1] == b'_' || b[i - 1].is_ascii_alphanumeric())
+}
+
+/// Ce que le moteur enregistre vraiment, lu dans [`API`].
+///
+/// Le nom est ce qui précède la parenthèse : la table écrit
+/// « patients() », le moteur connaît `patients`. Une seconde liste de
+/// noms vieillirait à côté de la première, et c'est la copie qui se
+/// tromperait — la règle que ce dépôt applique déjà au manuel.
+fn is_known_call(word: &str) -> bool {
+    API.iter().any(|c| c.call.split('(').next() == Some(word)) || word == "print" || word == "debug"
+}
+
+/// Ce que l'on peut proposer à qui est en train de taper un mot.
+///
+/// Rend la portion du mot commencé et les propositions, ou rien du
+/// tout : **on ne propose pas sur le vide**. Une liste qui s'ouvre dès
+/// qu'on pose le curseur cache le code qu'on lit et se referme à la
+/// touche suivante ; ce qu'on veut est une liste qui répond à un début
+/// de mot.
+///
+/// Le curseur est donné en octets, et il faut qu'il tombe sur une
+/// frontière de caractère : c'est l'appelant qui le convertit depuis le
+/// compte de caractères d'egui, une fois, plutôt que deux conversions
+/// qui finiraient par diverger.
+pub fn suggest(source: &str, caret: usize) -> Option<(usize, usize, Vec<&'static str>)> {
+    let caret = caret.min(source.len());
+    if !source.is_char_boundary(caret) {
+        return None;
+    }
+    let b = source.as_bytes();
+    let mut start = caret;
+    while start > 0 && (b[start - 1] == b'_' || b[start - 1].is_ascii_alphanumeric()) {
+        start -= 1;
+    }
+    // Un mot qui commence par un chiffre est un nombre, pas un nom.
+    if start == caret || b[start].is_ascii_digit() {
+        return None;
+    }
+    let typed = &source[start..caret];
+    // Déjà complet : proposer à quelqu'un le mot qu'il vient de finir
+    // d'écrire est une liste d'une ligne qu'il faut fermer.
+    let mut found: Vec<&'static str> = Vec::new();
+    for call in API {
+        let name = call.call;
+        if name.starts_with(typed) && name.len() > typed.len() {
+            found.push(name);
+        }
+    }
+    for word in KEYWORDS {
+        if word.starts_with(typed) && word.len() > typed.len() {
+            found.push(word);
+        }
+    }
+    if found.is_empty() {
+        None
+    } else {
+        Some((start, caret, found))
+    }
+}
+
+/// Ce qu'on écrit vraiment quand on accepte une proposition.
+///
+/// **Une parenthèse vide s'écrit en entier, une parenthèse qui attend
+/// quelque chose s'ouvre et s'arrête.** `patients()` est complet tel
+/// quel ; écrire `fiche(id)` poserait le mot `id` dans le script, qui
+/// n'est pas une variable de celui qui tape — il faudrait l'effacer
+/// avant d'écrire le numéro, c'est-à-dire défaire ce que la complétion
+/// vient de faire.
+pub fn insertion(candidate: &str) -> String {
+    match candidate.split_once('(') {
+        Some((name, rest)) if rest.trim_end_matches(')').is_empty() => format!("{name}()"),
+        Some((name, _)) => format!("{name}("),
+        None => candidate.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -676,5 +901,84 @@ mod tests {
             let out = run(source, &Snapshot::default());
             assert_eq!(out.error, None, "« {name} » à vide : {out:?}");
         }
+    }
+
+    /// **Une lecture ne perd pas un octet.** La galée est reconstruite
+    /// portion par portion : un octet oublié est un caractère qui
+    /// disparaît du script qu'on est en train d'écrire, un octet compté
+    /// deux fois un caractère qui se dédouble. Vérifié sur tout ce qui
+    /// est livré — les exemples et les exemples de l'API —, plus les
+    /// formes qui se trompent, qui sont celles qu'on tape le plus.
+    #[test]
+    fn a_reading_loses_not_one_byte() {
+        let mut sources: Vec<String> = EXAMPLES.iter().map(|(_, s)| (*s).to_owned()).collect();
+        sources.extend(API.iter().map(|c| c.example.to_owned()));
+        sources.extend(
+            [
+                "",
+                "let x = 1;",
+                "// un commentaire accentué : périmé, déjà réglé\n",
+                "/* jamais fermé",
+                "`une chaîne ${interpolée}`",
+                "\"un guillemet oublié",
+                "let p2 = 12; let x3 = 0.5;",
+                "print(\"éàü\"); // et après",
+            ]
+            .iter()
+            .map(|s| (*s).to_owned()),
+        );
+        for src in &sources {
+            let spans = colour(src);
+            let mut at = 0;
+            let mut rebuilt = String::new();
+            for (from, to, _) in &spans {
+                assert_eq!(*from, at, "un trou ou un recouvrement dans « {src} »");
+                assert!(from <= to && *to <= src.len(), "des bornes folles");
+                assert!(src.is_char_boundary(*from) && src.is_char_boundary(*to));
+                rebuilt.push_str(&src[*from..*to]);
+                at = *to;
+            }
+            assert_eq!(at, src.len(), "la fin manque dans « {src} »");
+            assert_eq!(&rebuilt, src);
+        }
+    }
+
+    /// **On ne colore en appel que ce que le moteur connaît.** Un nom
+    /// colorié qui n'existe pas enseigne une API fausse à qui apprend le
+    /// langage dans cette console, et c'est justement là qu'on
+    /// l'apprend.
+    #[test]
+    fn only_a_call_the_engine_answers_is_painted_as_one() {
+        let known = "for p in patients() { print(p.nom); }";
+        assert!(colour(known)
+            .iter()
+            .any(|(f, t, ink)| *ink == Ink::Known && &known[*f..*t] == "patients"));
+        let made_up = "fournisseurs()";
+        assert!(!colour(made_up).iter().any(|(_, _, ink)| *ink == Ink::Known));
+        // Et un mot-clé reste un mot-clé, pas un appel.
+        assert!(colour("let x = 1;")
+            .iter()
+            .any(|(f, t, ink)| *ink == Ink::Keyword && &"let x = 1;"[*f..*t] == "let"));
+    }
+
+    /// **On ne propose rien sur le vide.** Une liste qui s'ouvre dès
+    /// qu'on pose le curseur cache le code qu'on lit ; ce qu'on veut est
+    /// une liste qui répond à un début de mot — et qui se tait quand le
+    /// mot est fini.
+    #[test]
+    fn nothing_is_suggested_until_a_word_is_begun() {
+        assert_eq!(suggest("", 0), None);
+        assert_eq!(suggest("for p in ", 9), None);
+        assert_eq!(suggest("let x = 12", 10), None);
+        let (from, to, found) = suggest("pat", 3).expect("« pat » commence un mot");
+        assert_eq!((from, to), (0, 3));
+        assert!(found.contains(&"patients()"));
+        // Un mot déjà entier ne se propose pas lui-même.
+        assert_eq!(suggest("let", 3), None);
+        // Et la proposition s'écrit sans poser de mot qui n'est pas à
+        // celui qui tape.
+        assert_eq!(insertion("patients()"), "patients()");
+        assert_eq!(insertion("fiche(id)"), "fiche(");
+        assert_eq!(insertion("let"), "let");
     }
 }

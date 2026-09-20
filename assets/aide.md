@@ -195,7 +195,10 @@ dix jours quand sa demi-vie est de six heures.
 
 `F9` réduit la fenêtre à une barre de quelques centaines de pixels,
 posée au-dessus des autres applications — c'est la forme qu'on garde
-dans un coin d'écran pendant qu'on travaille ailleurs. On tape un nom
+dans un coin d'écran pendant qu'on travaille ailleurs. Elle n'a **pas
+de bordure** : on la déplace en la prenant par sa tête, et le menu à
+côté d'« Agrandir » la pose d'un coup — dans un coin, en bandeau sur
+toute la largeur en bas de l'écran, en colonne à droite, ou libre. On tape un nom
 ou une molécule ; les flèches parcourent les fiches qui répondent,
 Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
 question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
@@ -718,3 +721,14 @@ dans une tâche de nuit. Sous Linux seulement ; ailleurs il le dit.
 Un endroit pour poser à la base une question que personne n'a prévue, en
 quelques lignes. Le détail de ce qu'elle sait lire est plus bas, dans
 « L'API de la console ».
+
+**Ce qu'on tape est coloré**, et cinq natures se distinguent : les
+commentaires, les chaînes, les nombres, les mots du langage et les
+appels que la console connaît vraiment. Ce dernier point est le plus
+utile : un nom d'appel qui reste de la couleur ordinaire est un nom que
+le moteur ne connaît pas — une faute de frappe se voit avant d'exécuter.
+
+**Et elle propose.** Dès qu'un mot est commencé, une liste s'ouvre sous
+le curseur : les flèches haut et bas la parcourent, la tabulation écrit
+ce qui est pointé, Échap la referme. Rien ne s'ouvre sur un mot déjà
+fini ni sur le vide.
