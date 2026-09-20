@@ -876,7 +876,11 @@ add clicking and typing; it is not the price of entry.
   The word stays beside the mark, because a mark alone does not say
   *which table* is speaking — which is the whole point of a companion
   chip. `icon_label` is what a pictogram button's label really is, so a
-  band measures the string the drawing writes.
+  band measures the string the drawing writes. `motif::badge` is the
+  one coloured pastille — relief, mark, word, and a size function the
+  drawing reads — and the **mark is passed in, never derived from the
+  colour**: the colour comes from the theme, and two of the ten skins
+  are night skins.
 - **A drop-down is a Motif widget too, and there are two of them.**
   `egui::ComboBox` paints from `widgets.*.weak_bg_fill`, which `apply`
   sets to `bg()` for every state — the same trap as the slider, so it

@@ -2055,6 +2055,92 @@ pub fn radio(ui: &mut egui::Ui, on: bool, label: impl Into<egui::WidgetText>) ->
     response
 }
 
+/// Une pastille : un aplat, **son relief**, sa marque et son mot.
+///
+/// Elle était partout une étiquette à fond coloré — `RichText` avec un
+/// `background_color` —, c'est-à-dire le seul objet de cette interface
+/// sans biseau : dans un décor où tout est gravé, un rectangle plat ne
+/// se lit pas comme un objet mais comme une surbrillance.
+///
+/// **Et la marque dit ce que la couleur dit.** Une couleur seule ne
+/// dit rien à qui ne la voit pas, et sur un écran fatigué elle ne dit
+/// plus grand-chose à personne : le cercle barré, le triangle, la
+/// coche et les trois points se reconnaissent avant d'être lus. Le mot
+/// reste, parce qu'une marque ne dit pas *de quoi* on parle.
+///
+/// La marque est donnée par l'appelant et jamais déduite de la
+/// couleur : la couleur vient du thème, et deux des dix peaux sont des
+/// peaux de nuit.
+pub fn badge(
+    ui: &mut egui::Ui,
+    text: &str,
+    mark: Option<Pict>,
+    fill: Color32,
+    raised: bool,
+) -> egui::Response {
+    let ink = on_fill(fill);
+    let font = badge_font(ui);
+    let galley = ui.fonts(|f| f.layout_no_wrap(text.to_owned(), font, ink));
+    let pad = ui.spacing().button_padding * 0.6 + Vec2::splat(2.0);
+    let (rect, resp) =
+        ui.allocate_exact_size(badge_size(ui, text, mark.is_some()), egui::Sense::hover());
+    if !ui.is_rect_visible(rect) {
+        return resp;
+    }
+    let painter = ui.painter();
+    painter.rect_filled(rect, 0.0, fill);
+    bevel(painter, rect, raised);
+    let room = match mark {
+        Some(mark) => {
+            let (side, room) = badge_mark_room(ui);
+            let square = egui::Rect::from_min_size(
+                egui::pos2(rect.left() + pad.x, rect.center().y - side / 2.0),
+                Vec2::splat(side),
+            );
+            pictogram(painter, square, mark, ink);
+            room
+        }
+        None => 0.0,
+    };
+    painter.galley(
+        egui::pos2(
+            rect.left() + pad.x + room,
+            rect.center().y - galley.size().y / 2.0,
+        ),
+        galley,
+        ink,
+    );
+    resp
+}
+
+/// La fonte d'une pastille — petite, mais **prise au barreau** : un
+/// nombre de pixels ne suivrait pas `[ui] text_scale`.
+fn badge_font(ui: &egui::Ui) -> egui::FontId {
+    egui::FontId::proportional(pt(ui, 10.5))
+}
+
+/// Le côté de la marque d'une pastille, et l'air après elle.
+///
+/// Écrit une fois : la mesure et le dessin le lisent, sinon la pastille
+/// est mesurée sans sa marque et son dernier mot sort du rectangle.
+fn badge_mark_room(ui: &egui::Ui) -> (f32, f32) {
+    let side = pt(ui, 10.5);
+    (side, side + pt(ui, 4.0))
+}
+
+/// Ce qu'une pastille occupe. **C'est la fonction qui l'annonce**, et
+/// le dessin la lit : deux écritures d'une même taille finissent par se
+/// contredire, et c'est alors la promesse qui ment.
+pub fn badge_size(ui: &egui::Ui, text: &str, marked: bool) -> Vec2 {
+    let font = badge_font(ui);
+    let w = ui.fonts(|f| {
+        f.layout_no_wrap(text.to_owned(), font, crate::text())
+            .size()
+    });
+    let room = if marked { badge_mark_room(ui).1 } else { 0.0 };
+    w + ui.spacing().button_padding * 1.2 + Vec2::new(4.0 + room, 4.0)
+}
+
 /// A push button that stays in: raised when off, sunken when on. The
 /// Motif idiom for a mode, a filter or a flag.
 pub fn toggle(ui: &mut egui::Ui, text: &str, on: bool) -> egui::Response {

@@ -16493,24 +16493,29 @@ impl App {
                 .auto_shrink([false, false])
                 .show(ui, |ui| {
                     for d in &due {
-                        let (word, color) = match d.level {
-                            Level::Overdue => (tr("watch_overdue"), motif::alert()),
-                            // « Jamais noté » is an absence of data and
-                            // not an absence of care: on a base that has
-                            // just been started it is almost every line,
-                            // and it must not read like an alert.
-                            Level::Never => (tr("watch_never"), motif::warn()),
-                            Level::Soon => (tr("watch_soon"), motif::accent()),
-                            Level::Ok => (tr("watch_ok"), motif::text_dim()),
+                        // **La marque est donnée ici, jamais déduite de
+                        // la couleur** : la couleur vient du thème, et
+                        // deux des dix peaux sont des peaux de nuit.
+                        // « Jamais noté » est une absence de donnée et
+                        // non une absence de soin — sur une base qui
+                        // démarre c'est presque chaque ligne, et les
+                        // trois points le disent mieux qu'un triangle.
+                        let (word, color, mark) = match d.level {
+                            Level::Overdue => {
+                                (tr("watch_overdue"), motif::alert(), motif::Pict::Stop)
+                            }
+                            Level::Never => {
+                                (tr("watch_never"), motif::warn(), motif::Pict::Pending)
+                            }
+                            Level::Soon => (tr("watch_soon"), motif::accent(), motif::Pict::Warn),
+                            Level::Ok => (tr("watch_ok"), motif::text_dim(), motif::Pict::Check),
                         };
                         ui.horizontal_wrapped(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("  {word}  "))
-                                    .size(motif::pt(ui, 10.0))
-                                    .strong()
-                                    .color(motif::on_fill(color))
-                                    .background_color(color),
-                            );
+                            // La marque dit ce que la couleur dit : sur
+                            // un écran fatigué — celui pour lequel trois
+                            // des dix peaux existent — la couleur seule
+                            // ne dit plus grand-chose.
+                            motif::badge(ui, word, Some(mark), color, mark != motif::Pict::Check);
                             let row = ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(d.label)
@@ -18824,19 +18829,19 @@ impl App {
                         return;
                     }
                     for f in findings {
-                        let (label, color) = match f.severity {
-                            crate::biology::Severity::Alert => (tr("bio_alert"), motif::alert()),
-                            crate::biology::Severity::Warn => (tr("bio_warn"), motif::warn()),
-                            crate::biology::Severity::Info => (tr("bio_info"), motif::accent()),
+                        let (label, color, mark) = match f.severity {
+                            crate::biology::Severity::Alert => {
+                                (tr("bio_alert"), motif::alert(), motif::Pict::Stop)
+                            }
+                            crate::biology::Severity::Warn => {
+                                (tr("bio_warn"), motif::warn(), motif::Pict::Warn)
+                            }
+                            crate::biology::Severity::Info => {
+                                (tr("bio_info"), motif::accent(), motif::Pict::Pending)
+                            }
                         };
                         ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("  {label}  "))
-                                    .size(motif::pt(ui, 10.0))
-                                    .strong()
-                                    .color(motif::on_fill(color))
-                                    .background_color(color),
-                            );
+                            motif::badge(ui, label, Some(mark), color, true);
                             ui.label(
                                 egui::RichText::new(f.code)
                                     .size(motif::pt(ui, 10.5))
@@ -19051,19 +19056,19 @@ impl App {
                         return;
                     }
                     for line in lines {
-                        let (tag, color) = match line.level {
-                            vaccines::DueLevel::Ok => (tr("vacc_due_ok"), motif::text_faint()),
-                            vaccines::DueLevel::Due => (tr("vacc_due_todo"), motif::alert()),
-                            vaccines::DueLevel::Ask => (tr("vacc_due_ask"), motif::warn()),
+                        let (tag, color, mark) = match line.level {
+                            vaccines::DueLevel::Ok => {
+                                (tr("vacc_due_ok"), motif::text_faint(), motif::Pict::Check)
+                            }
+                            vaccines::DueLevel::Due => {
+                                (tr("vacc_due_todo"), motif::alert(), motif::Pict::Stop)
+                            }
+                            vaccines::DueLevel::Ask => {
+                                (tr("vacc_due_ask"), motif::warn(), motif::Pict::Warn)
+                            }
                         };
                         ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(format!("  {tag}  "))
-                                    .size(motif::pt(ui, 10.0))
-                                    .strong()
-                                    .color(motif::on_fill(color))
-                                    .background_color(color),
-                            );
+                            motif::badge(ui, tag, Some(mark), color, true);
                             if ui
                                 .add(
                                     egui::Label::new(
@@ -19201,19 +19206,17 @@ impl App {
                             );
                         }
                         let row = |ui: &mut egui::Ui, label: &str, done: bool| {
-                            let (tag, color) = if done {
-                                (tr("vacc_travel_done"), motif::text_faint())
+                            let (tag, color, mark) = if done {
+                                (
+                                    tr("vacc_travel_done"),
+                                    motif::text_faint(),
+                                    motif::Pict::Check,
+                                )
                             } else {
-                                (tr("vacc_travel_missing"), motif::alert())
+                                (tr("vacc_travel_missing"), motif::alert(), motif::Pict::Stop)
                             };
                             ui.horizontal(|ui| {
-                                ui.label(
-                                    egui::RichText::new(format!("  {tag}  "))
-                                        .size(motif::pt(ui, 10.0))
-                                        .strong()
-                                        .color(motif::on_fill(color))
-                                        .background_color(color),
-                                );
+                                motif::badge(ui, tag, Some(mark), color, true);
                                 ui.label(egui::RichText::new(label).size(motif::pt(ui, 11.5)));
                             });
                         };

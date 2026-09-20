@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   marque seule ne dit pas *quelle table* parle, et c'est ce que la puce
   est là pour dire.
 
+- **Et les pastilles cliniques portent la même marque que les puces** :
+  la surveillance (« en retard », « jamais noté », « bientôt », « à
+  jour »), les lectures de biologie (« alerte », « à vérifier »), le
+  calendrier vaccinal et les recommandations du voyageur. Toutes
+  étaient des étiquettes à fond coloré — le seul objet de cette
+  interface sans biseau — et toutes ne se distinguaient que par une
+  couleur. `motif::badge` leur donne le relief et la forme, et **la
+  marque est donnée par l'appelant, jamais déduite de la couleur** :
+  la couleur vient du thème, et deux des dix peaux sont des peaux de
+  nuit.
+
 - **Les cinq gestes du bas ont chacun leur marque** — la gélule, la
   croix du croisement, la plume de l'acte, la feuille d'une pièce, le
   registre. Cinq boutons du même gris et du même poids, dont deux
