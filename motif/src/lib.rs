@@ -1067,6 +1067,30 @@ pub enum Pict {
     Cog,
     /// A sheet with a folded corner — the templates.
     Template,
+    // --- Les marques d'état -------------------------------------
+    //
+    // **Une couleur seule ne dit rien à qui ne la voit pas**, et sur
+    // un écran fatigué elle ne dit plus grand-chose à personne. Les
+    // quatre tons d'un signal se distinguent donc aussi par une
+    // *forme* : le cercle barré, le triangle, la coche et l'attente.
+    // Quatre silhouettes qu'on reconnaît avant d'avoir lu le mot — et
+    // le mot reste, parce qu'une marque seule ne dit pas *quelle*
+    // table parle.
+    /// Un cercle barré : ce qu'on ne fait pas.
+    Stop,
+    /// Un triangle : ce sur quoi on s'arrête.
+    Warn,
+    /// Une coche : ce que la table autorise.
+    Check,
+    /// Trois points : la table nomme la ligne et attend un chiffre.
+    Pending,
+    // --- Les gestes de la barre ---------------------------------
+    /// Deux traits croisés — le croisement d'une liste.
+    Cross,
+    /// Un registre : un cahier avec son dos et ses lignes.
+    Register,
+    /// Un cadre avec un coin plein — où poser une fenêtre.
+    Corner,
 }
 
 /// Paint `pict` inside `rect` (a square of roughly 11 px) in `color`.
@@ -1164,6 +1188,97 @@ pub fn pictogram(painter: &egui::Painter, rect: egui::Rect, pict: Pict, color: C
             );
             painter.rect_stroke(shackle, 0.0, s);
         }
+        Pict::Stop => {
+            // Le cercle barré : la seule silhouette qu'on lit comme
+            // une interdiction sans avoir appris à la lire.
+            let c = r.center();
+            let rad = w.min(h) * 0.45;
+            painter.circle_stroke(c, rad, Stroke::new(1.4_f32, color));
+            let d = rad * 0.72;
+            painter.line_segment(
+                [egui::pos2(c.x - d, c.y + d), egui::pos2(c.x + d, c.y - d)],
+                Stroke::new(1.4_f32, color),
+            );
+        }
+        Pict::Warn => {
+            // Un triangle plein : la pointe en haut, comme partout.
+            painter.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(r.center().x, r.top()),
+                    egui::pos2(r.right(), r.bottom()),
+                    egui::pos2(r.left(), r.bottom()),
+                ],
+                color,
+                Stroke::NONE,
+            ));
+        }
+        Pict::Check => {
+            // La même coche que celle d'une case cochée : deux tiers en
+            // descendant, un tiers en remontant. Écrite deux fois
+            // serait deux coches qui ne se ressemblent plus.
+            let s = Stroke::new((w * 0.16).max(1.4), color);
+            let inner = r.shrink(w * 0.1);
+            painter.line_segment(
+                [
+                    egui::pos2(inner.left(), inner.center().y),
+                    egui::pos2(inner.left() + inner.width() * 0.38, inner.bottom()),
+                ],
+                s,
+            );
+            painter.line_segment(
+                [
+                    egui::pos2(inner.left() + inner.width() * 0.38, inner.bottom()),
+                    egui::pos2(inner.right(), inner.top()),
+                ],
+                s,
+            );
+        }
+        Pict::Pending => {
+            // Trois points : ce qui attend. Une forme qui ne prétend
+            // pas juger, ce qui est exactement ce que le ton dit.
+            let rad = (w * 0.11).max(1.2);
+            for i in 0..3 {
+                let x = r.left() + w * (0.2 + 0.3 * i as f32);
+                painter.circle_filled(egui::pos2(x, r.center().y), rad, color);
+            }
+        }
+        Pict::Cross => {
+            painter.line_segment(
+                [r.left_top(), r.right_bottom()],
+                Stroke::new(1.4_f32, color),
+            );
+            painter.line_segment(
+                [r.right_top(), r.left_bottom()],
+                Stroke::new(1.4_f32, color),
+            );
+        }
+        Pict::Register => {
+            painter.rect_stroke(r, 0.0, s);
+            // Le dos du cahier, puis ses lignes : un registre se
+            // distingue d'une feuille par sa reliure.
+            let spine = r.left() + w * 0.28;
+            painter.line_segment(
+                [egui::pos2(spine, r.top()), egui::pos2(spine, r.bottom())],
+                s,
+            );
+            for i in 1..3 {
+                let y = r.top() + h * i as f32 / 3.0;
+                painter.line_segment(
+                    [egui::pos2(spine + 2.0, y), egui::pos2(r.right() - 2.0, y)],
+                    s,
+                );
+            }
+        }
+        Pict::Corner => {
+            // Un écran, et le coin qu'on occupe : la marque du menu qui
+            // pose la barre quelque part.
+            painter.rect_stroke(r, 0.0, s);
+            let part = egui::Rect::from_min_max(
+                egui::pos2(r.left() + 2.0, r.top() + 2.0),
+                egui::pos2(r.left() + w * 0.5, r.top() + h * 0.5),
+            );
+            painter.rect_filled(part, 0.0, color);
+        }
         Pict::Cog => {
             // A hub with four teeth: distinct from the calendar grid.
             painter.rect_stroke(r.shrink(w * 0.3), 0.0, s);
@@ -1193,17 +1308,46 @@ pub fn pictogram(painter: &egui::Painter, rect: egui::Rect, pict: Pict, color: C
 }
 
 /// A Motif button carrying a painted pictogram before its label.
+/// Le libellé tel qu'un bouton à pictogramme le **dessine**.
+///
+/// La place de la marque est réservée dans le texte, et une bande qui
+/// mesure ses rangées doit lire la même chaîne que le dessin : mesurée
+/// sur le libellé nu, elle est courte de la marque à chaque bouton, ce
+/// qui fait passer une rangée à deux sans que rien ne l'annonce.
+pub fn icon_label(label: &str) -> String {
+    format!("     {label}")
+}
+
 pub fn icon_button(ui: &mut egui::Ui, pict: Option<Pict>, label: &str) -> egui::Response {
+    icon_button_enabled(ui, pict, label, true)
+}
+
+/// Le même, grisé quand `enabled` est faux — et **sa marque avec lui**.
+///
+/// Une marque restée noire sur un bouton éteint est la seule chose de
+/// l'écran qui contredise le gris : c'est elle qu'on voit, donc c'est
+/// elle qu'on clique.
+pub fn icon_button_enabled(
+    ui: &mut egui::Ui,
+    pict: Option<Pict>,
+    label: &str,
+    enabled: bool,
+) -> egui::Response {
     let Some(pict) = pict else {
-        return button(ui, label);
+        return button_enabled(ui, label, enabled);
     };
-    let resp = button(ui, &format!("     {label}"));
+    let ink = if enabled {
+        crate::text()
+    } else {
+        crate::text_dim()
+    };
+    let resp = button_enabled(ui, &icon_label(label), enabled);
     let size = (resp.rect.height() * 0.42).clamp(8.0, 14.0);
     let square = egui::Rect::from_min_size(
         egui::pos2(resp.rect.left() + 8.0, resp.rect.center().y - size / 2.0),
         egui::vec2(size, size),
     );
-    pictogram(ui.painter(), square, pict, crate::text());
+    pictogram(ui.painter(), square, pict, ink);
     resp
 }
 
@@ -1225,6 +1369,27 @@ pub fn bevel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {
             Stroke::new(1.0_f32, br),
         );
     }
+}
+
+/// **La hauteur d'une rangée de cette maison** : celle d'un bouton.
+///
+/// Elle est calculée ici, où le bouton est dessiné, parce que c'est la
+/// seule façon que les deux ne divergent pas. `interact_size.y` — ce
+/// qu'egui demande pour un widget nu — est *plus petit* : vingt pixels
+/// à l'échelle 1 contre trente et un, et l'écart grandit avec le texte.
+/// Une bande qui réserve ses rangées au premier nombre et dessine des
+/// boutons est courte de onze pixels par rangée.
+///
+/// C'est aussi la hauteur d'un [`field`], et ce n'est pas une
+/// coquetterie : un champ et un bouton se posent sur la même rangée
+/// vingt fois dans cette application, et deux hauteurs sur une rangée
+/// se lisent comme un défaut d'alignement. Surtout, à
+/// `interact_size.y` la case était **plus courte que son propre
+/// texte** : les jambages du « p » de « Dupont » tombaient sur le
+/// biseau du bas.
+pub fn button_height(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0
 }
 
 /// A Motif push button: raised bevel, sinks (and nudges its label) while
@@ -2220,6 +2385,31 @@ pub fn menu<T: Clone>(
     egui::InnerResponse::new(picked, response)
 }
 
+/// Le même menu, **avec une marque au lieu d'un libellé**.
+///
+/// Un menu d'actions n'a pas de valeur courante à afficher — c'est ce
+/// qui le distingue d'un [`select`] — et il ne lui restait donc que son
+/// triangle : une case vide surmontée d'une marque, dont rien ne dit ce
+/// qu'elle ouvre. L'infobulle le disait, mais une infobulle se lit
+/// après avoir cherché ; un pictogramme se lit avant.
+pub fn menu_marked<T: Clone>(
+    ui: &mut egui::Ui,
+    id_salt: impl std::hash::Hash,
+    width: f32,
+    mark: Pict,
+    options: &[(T, String)],
+) -> egui::InnerResponse<Option<T>> {
+    let out = menu(ui, id_salt, width, "", options);
+    let rect = out.response.rect;
+    let side = (rect.height() * 0.46).clamp(9.0, 16.0);
+    let square = egui::Rect::from_min_size(
+        egui::pos2(rect.left() + 6.0, rect.center().y - side / 2.0),
+        Vec2::splat(side),
+    );
+    pictogram(ui.painter(), square, mark, crate::text());
+    out
+}
+
 /// Un champ de saisie **creusé**, comme tout ce qui se remplit ici.
 ///
 /// Les boutons de cette interface montent, les champs descendent : c'est
@@ -2238,11 +2428,18 @@ pub fn menu<T: Clone>(
 /// quand le champ a la main : sur un formulaire de dix champs, savoir
 /// où l'on tape est ce qu'on demande d'abord à un écran.
 pub fn field(ui: &mut egui::Ui, width: f32, edit: egui::TextEdit<'_>) -> egui::Response {
-    // La hauteur vient du style, comme celle d'un bouton : une
-    // constante ici ne suivrait pas `[ui] text_scale`, et le champ
-    // resterait petit sur l'écran de quelqu'un qui grossit le texte.
-    let height = ui.spacing().interact_size.y;
-    field_sized(ui, Vec2::new(width, height), edit)
+    // **La hauteur est celle d'un bouton**, et pas `interact_size.y`.
+    // Ce dernier est ce qu'egui demande pour un widget nu : vingt
+    // pixels à l'échelle 1, pour un texte qui en occupe dix-sept et un
+    // `TextEdit` qui ajoute quatre de marge. La case était donc plus
+    // courte que ce qu'elle contient — mesuré sur une capture du
+    // dossier : les jambages du « p » de « Dupont » tombaient *sur* le
+    // biseau du bas, et la lettre haute touchait celui du haut.
+    //
+    // Et c'est la même hauteur qu'un bouton parce qu'ils partagent une
+    // rangée vingt fois ici : deux hauteurs sur une rangée se lisent
+    // comme un défaut d'alignement, pas comme une intention.
+    field_sized(ui, Vec2::new(width, button_height(ui)), edit)
 }
 
 /// Le même, quand la rangée qui l'accueille a déjà décidé sa hauteur.

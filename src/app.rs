@@ -365,7 +365,6 @@ fn form_field_width(ui: &egui::Ui, labels: &[&str]) -> f32 {
 
 /// The clinical half of the editable drug card.
 fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
-    let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
     motif::section(ui, tr("drug_sec_clinical"));
     ui.add_space(4.0);
     let w = form_field_width(
@@ -390,28 +389,28 @@ fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
     );
     egui::Grid::new("drug_card")
         .num_columns(2)
-        .min_col_width(90.0)
+        .min_col_width(chars_wide(ui, 11.0))
         .spacing([10.0, 8.0])
         .show(ui, |ui| {
-            ui.label(dim(tr("drug_name")));
+            App::form_label(ui, tr("drug_name"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.name));
             ui.end_row();
-            ui.label(dim(tr("drug_dci")));
+            App::form_label(ui, tr("drug_dci"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.dci));
             ui.end_row();
-            ui.label(dim(tr("drug_class")));
+            App::form_label(ui, tr("drug_class"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.class));
             ui.end_row();
-            ui.label(dim(tr("drug_sec_indications")));
+            App::form_label(ui, tr("drug_sec_indications"));
             field_box(ui, "fld_indications", w, 84.0, &mut form.indications);
             ui.end_row();
-            ui.label(dim(tr("drug_sec_mechanism")));
+            App::form_label(ui, tr("drug_sec_mechanism"));
             field_box(ui, "fld_mechanism", w, 84.0, &mut form.mechanism);
             ui.end_row();
-            ui.label(dim(tr("drug_dosage")));
+            App::form_label(ui, tr("drug_dosage"));
             field_box(ui, "fld_dosage", w, 84.0, &mut form.dosage);
             ui.end_row();
-            ui.label(dim(tr("drug_sec_ci")));
+            App::form_label(ui, tr("drug_sec_ci"));
             field_box(
                 ui,
                 "fld_contraindications",
@@ -420,28 +419,28 @@ fn drug_form_clinical(ui: &mut egui::Ui, form: &mut Drug) {
                 &mut form.contraindications,
             );
             ui.end_row();
-            ui.label(dim(tr("drug_ddi")));
+            App::form_label(ui, tr("drug_ddi"));
             field_box(ui, "fld_ddi", w, 84.0, &mut form.ddi);
             ui.end_row();
-            ui.label(dim(tr("drug_sec_adverse")));
+            App::form_label(ui, tr("drug_sec_adverse"));
             field_box(ui, "fld_adverse", w, 84.0, &mut form.adverse);
             ui.end_row();
-            ui.label(dim(tr("drug_sec_monitoring")));
+            App::form_label(ui, tr("drug_sec_monitoring"));
             field_box(ui, "fld_monitoring", w, 84.0, &mut form.monitoring);
             ui.end_row();
-            ui.label(dim(tr("drug_iup")));
+            App::form_label(ui, tr("drug_iup"));
             field_box(ui, "fld_iup", w, 150.0, &mut form.iup);
             ui.end_row();
-            ui.label(dim(tr("drug_missed")));
+            App::form_label(ui, tr("drug_missed"));
             field_box(ui, "fld_missed", w, 84.0, &mut form.missed_dose);
             ui.end_row();
-            ui.label(dim(tr("drug_flags")));
+            App::form_label(ui, tr("drug_flags"));
             field_box(ui, "fld_flags", w, 84.0, &mut form.red_flags);
             ui.end_row();
-            ui.label(dim(tr("drug_antidote")));
+            App::form_label(ui, tr("drug_antidote"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.antidote));
             ui.end_row();
-            ui.label(dim(tr("drug_notes")));
+            App::form_label(ui, tr("drug_notes"));
             field_box(ui, "fld_notes", w, 64.0, &mut form.notes);
             ui.end_row();
         });
@@ -470,42 +469,42 @@ fn drug_form_pk(ui: &mut egui::Ui, form: &mut Drug) {
     );
     egui::Grid::new("drug_pk")
         .num_columns(2)
-        .min_col_width(110.0)
+        .min_col_width(chars_wide(ui, 14.0))
         .spacing([10.0, 8.0])
         .show(ui, |ui| {
-            ui.label(dim(tr("drug_half_life")));
+            App::form_label(ui, tr("drug_half_life"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.half_life));
             ui.end_row();
-            ui.label(dim(tr("drug_auc")));
+            App::form_label(ui, tr("drug_auc"));
             field_box(ui, "fld_auc", w, 64.0, &mut form.auc);
             ui.end_row();
-            ui.label(dim(tr("drug_elimination")));
+            App::form_label(ui, tr("drug_elimination"));
             field_box(ui, "fld_elimination", w, 76.0, &mut form.elimination);
             ui.end_row();
-            ui.label(dim(tr("drug_renal")));
+            App::form_label(ui, tr("drug_renal"));
             field_box(ui, "fld_renal", w, 84.0, &mut form.renal);
             ui.end_row();
-            ui.label(dim(tr("drug_pregnancy")));
+            App::form_label(ui, tr("drug_pregnancy"));
             field_box(ui, "fld_pregnancy", w, 76.0, &mut form.pregnancy);
             ui.end_row();
             ui.label(dim(tr("tables_sources")))
                 .on_hover_text(tr("drug_sources_hint"));
             field_box(ui, "fld_sources", w, 76.0, &mut form.sources);
             ui.end_row();
-            ui.label(dim(tr("drug_forms")));
+            App::form_label(ui, tr("drug_forms"));
             field_box(ui, "fld_forms", w, 64.0, &mut form.forms);
             ui.end_row();
-            ui.label(dim(tr("drug_status")));
+            App::form_label(ui, tr("drug_status"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.status));
             ui.end_row();
             ui.label(dim(tr("drug_tags")))
                 .on_hover_text(tr("drug_tags_hint"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.tags));
             ui.end_row();
-            ui.label(dim(tr("drug_sec_smr")));
+            App::form_label(ui, tr("drug_sec_smr"));
             motif::field(ui, w, egui::TextEdit::singleline(&mut form.smr));
             ui.end_row();
-            ui.label(dim(tr("drug_sec_toxicity")));
+            App::form_label(ui, tr("drug_sec_toxicity"));
             field_box(ui, "fld_toxicity", w, 76.0, &mut form.toxicity);
             ui.end_row();
         });
@@ -13877,37 +13876,37 @@ impl App {
                 ui.vertical_centered(|ui| {
                     ui.label(tr("search_no_match"));
                     ui.add_space(8.0);
-                    let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
+
                     let submitted = egui::Grid::new("new_patient")
-                        .min_col_width(110.0)
+                        .min_col_width(chars_wide(ui, 14.0))
                         .num_columns(2)
                         .spacing([12.0, 8.0])
                         .show(ui, |ui| {
-                            ui.label(dim(tr("form_last_name")));
+                            Self::form_label(ui, tr("form_last_name"));
                             let a = motif::field(
                                 ui,
                                 chars_wide(ui, 30.0),
                                 egui::TextEdit::singleline(&mut form.last_name),
                             );
                             ui.end_row();
-                            ui.label(dim(tr("form_first_name")));
+                            Self::form_label(ui, tr("form_first_name"));
                             let b = motif::field_sized(
                                 ui,
                                 egui::vec2(
                                     Self::field_width(ui, [tr("form_birth_hint")].into_iter())
                                         .max(240.0),
-                                    26.0,
+                                    Self::button_height(ui),
                                 ),
                                 egui::TextEdit::singleline(&mut form.first_name),
                             );
                             ui.end_row();
-                            ui.label(dim(tr("form_birth")));
+                            Self::form_label(ui, tr("form_birth"));
                             let c = motif::field_sized(
                                 ui,
                                 egui::vec2(
                                     Self::field_width(ui, [tr("form_birth_hint")].into_iter())
                                         .max(240.0),
-                                    26.0,
+                                    Self::button_height(ui),
                                 ),
                                 egui::TextEdit::singleline(&mut form.birth_date)
                                     .hint_text(motif::hint(tr("form_birth_hint"))),
@@ -17569,7 +17568,7 @@ impl App {
                     motif::select(
                         ui,
                         "loc_pick",
-                        chars_wide(ui, 22.0),
+                        chars_wide(ui, Self::button_height(ui)),
                         &mut session.loc_pick,
                         &choices,
                     );
@@ -19930,8 +19929,11 @@ impl App {
     /// `interact_size.y` is *not* that number — a pane that reserved it
     /// for a button under a text box got « Vider » cut in half.
     fn button_height(ui: &egui::Ui) -> f32 {
-        let font = egui::TextStyle::Button.resolve(ui.style());
-        ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0
+        // **Écrite là où le bouton est dessiné**, et lue ici : deux
+        // calculs d'une hauteur finissent par diverger, et c'est la
+        // mesure qui ment. C'est aussi la hauteur d'un champ, pour que
+        // les deux s'alignent sur la rangée qu'ils partagent.
+        motif::button_height(ui)
     }
 
     /// How tall one row of controls is: the height of the tallest thing
@@ -20208,6 +20210,40 @@ impl App {
                 .size()
                 .x
         }) + ui.spacing().item_spacing.x
+    }
+
+    /// L'intitulé d'une ligne de formulaire : **centré sur le champ
+    /// qu'il nomme**.
+    ///
+    /// Une cellule de `Grid` est alignée en haut, et un champ fait
+    /// maintenant la hauteur d'un bouton : l'intitulé flottait donc
+    /// sept pixels au-dessus du texte qu'il désigne, sur chaque ligne
+    /// de chaque formulaire. Un intitulé qui n'est pas à la hauteur de
+    /// sa case ne se lit pas comme étant *à* elle — c'est le même
+    /// défaut que deux hauteurs de champ sur une rangée, dans l'autre
+    /// sens.
+    ///
+    /// La cellule annonce sa largeur, comme toutes les cellules de
+    /// grille de ce fichier : celle de son propre texte, donc la
+    /// colonne reste aussi large que le plus long intitulé et pas
+    /// davantage.
+    fn form_label(ui: &mut egui::Ui, text: &str) -> egui::Response {
+        let font = egui::TextStyle::Body.resolve(ui.style());
+        let w = ui.fonts(|f| {
+            f.layout_no_wrap(text.to_owned(), font, motif::text_dim())
+                .size()
+                .x
+        });
+        ui.allocate_ui_with_layout(
+            egui::vec2(w, Self::button_height(ui)),
+            egui::Layout::left_to_right(egui::Align::Center),
+            |ui| {
+                ui.add(egui::Label::new(
+                    egui::RichText::new(text).color(motif::text_dim()),
+                ))
+            },
+        )
+        .inner
     }
 
     fn widest<'a>(ui: &egui::Ui, size: f32, texts: impl Iterator<Item = &'a str>) -> f32 {
@@ -21198,80 +21234,80 @@ impl App {
             ui.add_space(8.0);
             let dim = |t: &str| egui::RichText::new(t).color(motif::text_dim());
             egui::Grid::new("edit_patient")
-                .min_col_width(110.0)
+                .min_col_width(chars_wide(ui, 14.0))
                 .num_columns(2)
                 .spacing([12.0, 8.0])
                 .show(ui, |ui| {
-                    ui.label(dim(tr("form_last_name")));
+                    Self::form_label(ui, tr("form_last_name"));
                     motif::field(
                         ui,
                         chars_wide(ui, 30.0),
                         egui::TextEdit::singleline(&mut form.last_name),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_first_name")));
+                    Self::form_label(ui, tr("form_first_name"));
                     motif::field_sized(
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
-                            26.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut form.first_name),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_birth")));
+                    Self::form_label(ui, tr("form_birth"));
                     motif::field_sized(
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("form_birth_hint")].into_iter()).max(240.0),
-                            26.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut form.birth_date)
                             .hint_text(motif::hint(tr("form_birth_hint"))),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_phone")));
+                    Self::form_label(ui, tr("form_phone"));
                     motif::field_sized(
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("form_phone_hint")].into_iter()).max(240.0),
-                            26.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut form.phone)
                             .hint_text(motif::hint(tr("form_phone_hint"))),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_comment")));
+                    Self::form_label(ui, tr("form_comment"));
                     motif::field_sized(
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("form_comment_hint")].into_iter()).max(240.0),
-                            26.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut form.notes)
                             .hint_text(motif::hint(tr("form_comment_hint"))),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_physician")));
+                    Self::form_label(ui, tr("form_physician"));
                     motif::field_sized(
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("form_physician_hint")].into_iter())
                                 .max(240.0),
-                            26.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut form.physician)
                             .hint_text(motif::hint(tr("form_physician_hint"))),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_email")));
+                    Self::form_label(ui, tr("form_email"));
                     motif::field(
                         ui,
                         chars_wide(ui, 30.0),
                         egui::TextEdit::singleline(&mut form.email),
                     );
                     ui.end_row();
-                    ui.label(dim(tr("form_address")));
+                    Self::form_label(ui, tr("form_address"));
                     motif::field(
                         ui,
                         chars_wide(ui, 30.0),
@@ -21281,13 +21317,13 @@ impl App {
                     // Both are for the bulletin d'adhésion, and both are
                     // optional: left empty, the printed form keeps its
                     // dotted rule for the patient's carte Vitale.
-                    ui.label(dim(tr("form_nir")));
+                    Self::form_label(ui, tr("form_nir"));
                     ui.horizontal(|ui| {
                         motif::field_sized(
                             ui,
                             egui::vec2(
                                 Self::field_width(ui, [tr("form_nir_hint")].into_iter()).max(200.0),
-                                26.0,
+                                Self::button_height(ui),
                             ),
                             egui::TextEdit::singleline(&mut form.nir)
                                 .hint_text(motif::hint(tr("form_nir_hint"))),
@@ -21298,14 +21334,14 @@ impl App {
                             egui::vec2(
                                 Self::field_width(ui, [tr("form_regime_hint")].into_iter())
                                     .max(56.0),
-                                26.0,
+                                Self::button_height(ui),
                             ),
                             egui::TextEdit::singleline(&mut form.regime)
                                 .hint_text(motif::hint(tr("form_regime_hint"))),
                         );
                     });
                     ui.end_row();
-                    ui.label(dim(tr("form_situation")));
+                    Self::form_label(ui, tr("form_situation"));
                     ui.horizontal(|ui| {
                         for (code, key) in db::SITUATIONS {
                             let btn = motif::toggle(ui, tr(key), form.situation == *code);
@@ -22595,7 +22631,7 @@ impl App {
                 ui,
                 egui::vec2(
                     Self::field_width(ui, [tr("itv_by_hint"), "AAA"].into_iter()),
-                    22.0,
+                    Self::button_height(ui),
                 ),
                 egui::TextEdit::singleline(who).hint_text(motif::hint(tr("itv_by_hint"))),
             )
@@ -22789,7 +22825,7 @@ impl App {
                         ui,
                         egui::vec2(
                             Self::field_width(ui, [tr("agenda_hour_hint"), "00:00"].into_iter()),
-                            22.0,
+                            Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(hour)
                             .hint_text(motif::hint(tr("agenda_hour_hint"))),
@@ -25328,7 +25364,7 @@ impl App {
                             egui::vec2(
                                 Self::field_width(ui, [tr("agenda_hour_hint")].into_iter())
                                     .max(56.0),
-                                22.0,
+                                Self::button_height(ui),
                             ),
                             egui::TextEdit::singleline(text)
                                 .hint_text(motif::hint(tr("agenda_hour_hint"))),
@@ -30715,7 +30751,7 @@ impl App {
                     ui,
                     egui::vec2(
                         Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
-                        24.0,
+                        Self::button_height(ui),
                     ),
                     egui::TextEdit::singleline(&mut session.codex_new_name)
                         .hint_text(motif::hint(tr("codex_new_hint"))),
@@ -33272,7 +33308,7 @@ impl App {
                 ui,
                 egui::vec2(
                     Self::field_width(ui, [tr("ddi_dfg_hint")].into_iter()),
-                    24.0,
+                    Self::button_height(ui),
                 ),
                 egui::TextEdit::singleline(&mut session.ddi_dfg)
                     .hint_text(motif::hint(tr("ddi_dfg_hint"))),
@@ -33492,7 +33528,7 @@ impl App {
                     ui,
                     egui::vec2(
                         Self::field_width(ui, [tr("libelles_search_hint")].into_iter()),
-                        24.0,
+                        Self::button_height(ui),
                     ),
                     egui::TextEdit::singleline(&mut session.ui_text_query)
                         .hint_text(motif::hint(tr("libelles_search_hint"))),
@@ -33862,7 +33898,7 @@ impl App {
                                 ui,
                                 egui::vec2(
                                     Self::field_width(ui, [tr("listes_new_hint")].into_iter()),
-                                    24.0,
+                                    Self::button_height(ui),
                                 ),
                                 egui::TextEdit::singleline(&mut session.checklist_title)
                                     .hint_text(motif::hint(tr("listes_new_hint"))),
@@ -34001,7 +34037,7 @@ impl App {
                                 ui,
                                 egui::vec2(
                                     Self::field_width(ui, [tr("listes_subject_hint")].into_iter()),
-                                    24.0,
+                                    Self::button_height(ui),
                                 ),
                                 egui::TextEdit::singleline(&mut session.checklist_subject)
                                     .hint_text(motif::hint(tr("listes_subject_hint"))),
@@ -36576,7 +36612,7 @@ impl App {
         let row = Self::row_height(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let day_w = Self::field_width(ui, [tr("stup_day_hint")].into_iter());
-        let text_w = chars_wide(ui, 22.0);
+        let text_w = chars_wide(ui, Self::button_height(ui));
         let kind_rows = Self::wrapped_rows_of(
             ui,
             body.width(),
@@ -40244,7 +40280,7 @@ impl App {
                     ui,
                     egui::vec2(
                         Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
-                        24.0,
+                        Self::button_height(ui),
                     ),
                     egui::TextEdit::singleline(&mut session.dispo_new_name)
                         .hint_text(motif::hint(tr("dispo_new_hint"))),
@@ -40705,7 +40741,7 @@ impl App {
                     ui,
                     egui::vec2(
                         Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
-                        24.0,
+                        Self::button_height(ui),
                     ),
                     egui::TextEdit::singleline(&mut session.protocol_new_title)
                         .hint_text(motif::hint(tr("proto_new_hint"))),
@@ -44139,7 +44175,7 @@ impl App {
                                     .num_columns(4)
                                     .spacing([8.0, 5.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("poso_indication")));
+                                        Self::form_label(ui, tr("poso_indication"));
                                         ui.label(dim(tr("poso_dose")));
                                         ui.label(dim(tr("poso_remark")));
                                         ui.label("");
@@ -49159,31 +49195,44 @@ impl App {
     /// `every_control_a_title_band_draws_is_measured_with_it` existe
     /// parce que trois bandes annonçaient deux rangées et en
     /// dessinaient trois.
-    const COMPANION_ACTS: [(&'static str, &'static str, CompanionAct); 5] = [
+    /// Les cinq gestes du bas, **avec leur marque**.
+    ///
+    /// Cinq boutons du même gris, du même poids, dont deux agissent sur
+    /// le dossier et trois sur la fiche : rien ne les distinguait qu'un
+    /// mot, et au comptoir on ne lit pas cinq mots, on cherche une
+    /// forme. La marque est peinte et non tapée — la fonte livrée ne
+    /// porte presque aucun symbole, et un caractère absent sort en
+    /// carré vide.
+    const COMPANION_ACTS: [(&'static str, &'static str, CompanionAct, motif::Pict); 5] = [
         (
             "companion_card",
             "companion_card_tooltip",
             CompanionAct::Card,
+            motif::Pict::Pill,
         ),
         (
             "companion_cross",
             "companion_cross_tooltip",
             CompanionAct::Cross,
+            motif::Pict::Cross,
         ),
         (
             "companion_trod",
             "companion_trod_tooltip",
             CompanionAct::Trod,
+            motif::Pict::Pen,
         ),
         (
             "companion_scan",
             "companion_scan_tooltip",
             CompanionAct::Scan,
+            motif::Pict::Doc,
         ),
         (
             "companion_stup",
             "companion_stup_tooltip",
             CompanionAct::Stup,
+            motif::Pict::Register,
         ),
     ];
 
@@ -49363,7 +49412,15 @@ impl App {
     /// même discipline que `wrapped_band_height` ou `acts_widths` : une
     /// arithmétique qui décide d'une mise en page se teste sans ouvrir
     /// de fenêtre.
-    fn toolbar_shape(ui: &egui::Ui, unlocked: bool) -> (bool, bool, bool) {
+    /// `icons` : la barre dessine-t-elle ses pictogrammes ?
+    ///
+    /// **Une marque prend de la place**, et la mesure doit la
+    /// connaître : `icon_button` réserve la sienne *dans le libellé*,
+    /// donc une bande mesurée sur le libellé nu est courte d'une marque
+    /// par bouton — sept ici, soit une rangée qui passe à deux sans que
+    /// rien ne l'annonce. Le défaut dormait tant que les pictogrammes
+    /// étaient éteints par défaut ; ils ne le sont plus.
+    fn toolbar_shape(ui: &egui::Ui, unlocked: bool, icons: bool) -> (bool, bool, bool, bool) {
         // **Les gouttières se comptent entre les boutons, pas
         // derrière chacun.** Comptées derrière, deux de trop
         // font trente-deux pixels, et la barre passait à deux
@@ -49372,39 +49429,74 @@ impl App {
         // largeurs plus *n − 1* espacements.
         let gap = ui.spacing().item_spacing.x;
 
-        let group = |ui: &egui::Ui, labels: &[&str]| -> f32 {
+        // La largeur d'un bouton **tel qu'il sera dessiné** : avec la
+        // place de sa marque quand il en porte une.
+        let group = |ui: &egui::Ui, marks: bool, labels: &[&str]| -> f32 {
             let n = labels.len() as f32;
             labels
                 .iter()
-                .map(|l| Self::button_width(ui, l))
+                .map(|l| {
+                    if marks {
+                        Self::button_width(ui, &motif::icon_label(l))
+                    } else {
+                        Self::button_width(ui, l)
+                    }
+                })
                 .sum::<f32>()
                 + (n - 1.0).max(0.0) * gap
         };
         let name = Self::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
-        let left = if unlocked {
-            group(
-                ui,
-                &[
-                    tr("toolbar_nav"),
-                    tr("toolbar_docs"),
-                    tr("toolbar_keys"),
-                    tr("toolbar_goto"),
-                ],
-            )
-        } else {
-            0.0
-        };
-        let right = if unlocked {
-            group(
-                ui,
-                &[
-                    tr("toolbar_lock"),
-                    tr("toolbar_options"),
-                    tr("toolbar_template"),
-                ],
-            )
-        } else {
-            group(ui, &[tr("toolbar_docs")])
+        let sides = |marks: bool, short: bool| -> (f32, f32) {
+            // **Le groupe de gauche ne porte pas de marque** : ses
+            // quatre contrôles sont des bascules, et `toggle` n'a pas
+            // de variante à pictogramme. Le mesurer comme s'il en avait
+            // réserverait quatre marques pour rien, ce qui est la même
+            // faute que de n'en réserver aucune, dans l'autre sens.
+            let left = if unlocked {
+                group(
+                    ui,
+                    false,
+                    &if short {
+                        [
+                            tr("toolbar_nav"),
+                            tr("toolbar_docs_short"),
+                            tr("toolbar_keys"),
+                            tr("toolbar_goto_short"),
+                        ]
+                    } else {
+                        [
+                            tr("toolbar_nav"),
+                            tr("toolbar_docs"),
+                            tr("toolbar_keys"),
+                            tr("toolbar_goto"),
+                        ]
+                    },
+                )
+            } else {
+                0.0
+            };
+            let right = if unlocked {
+                group(
+                    ui,
+                    marks,
+                    &if short {
+                        [
+                            tr("toolbar_lock"),
+                            tr("toolbar_options_short"),
+                            tr("toolbar_template_short"),
+                        ]
+                    } else {
+                        [
+                            tr("toolbar_lock"),
+                            tr("toolbar_options"),
+                            tr("toolbar_template"),
+                        ]
+                    },
+                )
+            } else {
+                group(ui, marks, &[tr("toolbar_docs")])
+            };
+            (left, right)
         };
         // **Le nom de l'application cède avant la place de
         // travail.** Il est décoratif — le titre de la fenêtre
@@ -49421,29 +49513,27 @@ impl App {
         // « Aller à… » devient « Aller… » : le raccourci est
         // dans l'infobulle et dans la fenêtre F12, la place de
         // travail ne se remplace pas.
-        let short_left = group(
-            ui,
-            &[
-                tr("toolbar_nav"),
-                tr("toolbar_docs_short"),
-                tr("toolbar_keys"),
-                tr("toolbar_goto_short"),
-            ],
-        );
-        let short_right = group(
-            ui,
-            &[
-                tr("toolbar_lock"),
-                tr("toolbar_options_short"),
-                tr("toolbar_template_short"),
-            ],
-        );
-        let short = left + gap + right > room;
-        let (left, right) = if short {
-            (short_left, short_right)
-        } else {
-            (left, right)
-        };
+        //
+        // **Et la marque cède avant la rangée.** C'est la règle de
+        // `richest_form` appliquée à la barre : on donne les formes de
+        // la plus riche à la plus pauvre et on prend la première qui
+        // tient. Marques et libellés entiers, puis marques et libellés
+        // courts, puis les libellés courts seuls — une seconde rangée
+        // coûte quarante-six pixels au volet central, un pictogramme
+        // n'en vaut pas le prix.
+        let mut marks = icons;
+        let mut short = false;
+        let (mut left, mut right) = sides(marks, short);
+        for (m, sh) in [(icons, false), (icons, true), (false, true)] {
+            marks = m;
+            short = sh;
+            let (l, r) = sides(m, sh);
+            left = l;
+            right = r;
+            if l + gap + r <= room {
+                break;
+            }
+        }
         let two_rows = left + gap + right > room;
         // Sur deux rangées, la première a de la place : le nom
         // revient. Il ne disparaît que lorsqu'il est ce qui
@@ -49453,7 +49543,7 @@ impl App {
         } else {
             name + left + gap + right <= room
         };
-        (show_name, two_rows, short)
+        (show_name, two_rows, short, marks)
     }
 
     /// Le groupe de droite de la barre du haut : verrouiller, les
@@ -49462,12 +49552,13 @@ impl App {
     /// Sorti de la rangée pour pouvoir être dessiné **ailleurs** : sur
     /// une barre trop étroite il descend d'une rangée au lieu de se
     /// peindre par-dessus le groupe de gauche.
-    fn toolbar_right(&mut self, ui: &mut egui::Ui, short: bool) {
-        // Optional pictograms: painted, not typed (the
-        // bundled font has almost no symbols). They cost
-        // width, so they are off by default.
-        let icons = self.config.ui.icons;
-        let pict = |p: motif::Pict| if icons { Some(p) } else { None };
+    fn toolbar_right(&mut self, ui: &mut egui::Ui, short: bool, marks: bool) {
+        // Les pictogrammes : peints et non tapés (la fonte livrée ne
+        // porte presque aucun symbole). Ils coûtent de la largeur,
+        // alors c'est **la mesure qui décide** s'ils tiennent : voir
+        // `toolbar_shape`, qui les lâche avant de passer la barre à
+        // deux rangées.
+        let pict = |p: motif::Pict| if marks { Some(p) } else { None };
         if !matches!(self.state, State::Unlocked(_))
             && motif::icon_button(ui, pict(motif::Pict::Doc), tr("toolbar_docs")).clicked()
         {
@@ -49621,7 +49712,7 @@ impl App {
         let line = Self::label_line(ui);
         let widest = Self::COMPANION_ACTS
             .into_iter()
-            .map(|(l, _, _)| Self::button_width(ui, tr(l)))
+            .map(|(l, _, _, _)| Self::button_width(ui, &motif::icon_label(tr(l))))
             .fold(0.0_f32, f32::max);
         let chrome = ui.ctx().screen_rect().size() - ui.max_rect().size();
         egui::vec2(
@@ -49797,7 +49888,7 @@ impl App {
                 .enumerate()
                 .map(|(i, l)| {
                     if i == read.pick {
-                        Self::companion_chip_size(ui, l.trim()).x
+                        Self::companion_chip_size(ui, l.trim(), false).x
                     } else {
                         width(ui, l)
                     }
@@ -49827,7 +49918,7 @@ impl App {
                 }
                 for i in shown.clone() {
                     let hit = if i == read.pick {
-                        Self::companion_chip(ui, labels[i].trim(), motif::accent(), true)
+                        Self::companion_chip(ui, labels[i].trim(), None, motif::accent(), true)
                     } else {
                         ui.add(
                             egui::Label::new(
@@ -49855,13 +49946,28 @@ impl App {
     /// Le rembourrage est celui des boutons — l'unité de la maison, qui
     /// suit la densité —, plus les deux pixels de biseau de chaque côté.
     /// Écrit une fois : la mesure et le dessin lisent cette taille-là.
-    fn companion_chip_size(ui: &egui::Ui, text: &str) -> egui::Vec2 {
+    /// Le côté de la marque d'une puce, et l'air après elle.
+    ///
+    /// Écrit une fois : la mesure et le dessin le lisent, sinon la
+    /// pastille est mesurée sans sa marque et son dernier mot sort du
+    /// rectangle.
+    fn companion_mark_room(ui: &egui::Ui) -> (f32, f32) {
+        let side = motif::pt(ui, 10.5);
+        (side, side + motif::pt(ui, 4.0))
+    }
+
+    fn companion_chip_size(ui: &egui::Ui, text: &str, marked: bool) -> egui::Vec2 {
         let font = egui::FontId::proportional(motif::pt(ui, 10.5));
         let w = ui.fonts(|f| {
             f.layout_no_wrap(text.to_owned(), font, motif::text())
                 .size()
         });
-        w + ui.spacing().button_padding * 2.0 + egui::vec2(4.0, 4.0)
+        let room = if marked {
+            Self::companion_mark_room(ui).1
+        } else {
+            0.0
+        };
+        w + ui.spacing().button_padding * 2.0 + egui::vec2(4.0 + room, 4.0)
     }
 
     /// Une pastille : un aplat, **son relief**, et son mot.
@@ -49886,6 +49992,7 @@ impl App {
     fn companion_chip(
         ui: &mut egui::Ui,
         text: &str,
+        mark: Option<motif::Pict>,
         fill: egui::Color32,
         raised: bool,
     ) -> egui::Response {
@@ -49896,12 +50003,31 @@ impl App {
         // **La taille vient de la fonction qui l'annonce**, et non d'un
         // second calcul : deux écritures d'une même taille finissent par
         // se contredire, et c'est alors la promesse qui ment.
-        let (rect, resp) =
-            ui.allocate_exact_size(Self::companion_chip_size(ui, text), egui::Sense::click());
+        let (rect, resp) = ui.allocate_exact_size(
+            Self::companion_chip_size(ui, text, mark.is_some()),
+            egui::Sense::click(),
+        );
         let painter = ui.painter();
         painter.rect_filled(rect, 0.0, fill);
         motif::bevel(painter, rect, raised);
-        painter.galley(rect.min + pad, galley, ink);
+        // **La marque d'abord** : c'est elle qu'on lit avant le mot, et
+        // c'est elle qui reste lisible quand la couleur ne dit plus
+        // rien. Elle est peinte de l'encre de la puce, comme le texte :
+        // une marque d'une autre couleur serait une troisième chose à
+        // interpréter.
+        let room = match mark {
+            Some(mark) => {
+                let (side, room) = Self::companion_mark_room(ui);
+                let square = egui::Rect::from_min_size(
+                    egui::pos2(rect.left() + pad.x, rect.center().y - side / 2.0),
+                    egui::vec2(side, side),
+                );
+                motif::pictogram(painter, square, mark, ink);
+                room
+            }
+            None => 0.0,
+        };
+        painter.galley(rect.min + pad + egui::vec2(room, 0.0), galley, ink);
         resp
     }
 
@@ -49960,7 +50086,7 @@ impl App {
             for s in &read.signals {
                 // Ce qui arrête saille, ce qui rassure est enfoncé.
                 let raised = s.tone != CompanionTone::Ok;
-                if Self::companion_chip(ui, &s.chip, s.tone.fill(), raised)
+                if Self::companion_chip(ui, &s.chip, Some(s.tone.mark()), s.tone.fill(), raised)
                     .on_hover_text(format!("{}\n\n{}", s.hover, tr("companion_signal_open")))
                     .clicked()
                 {
@@ -50683,7 +50809,7 @@ impl App {
                 // que sept « altère — » ne font que manger la largeur
                 // d'une fenêtre de six cents pixels. Le sens reste au
                 // survol, avec le degré et la clause.
-                Self::companion_chip(ui, im.organ.label(), fill, raised).on_hover_text(trn(
+                Self::companion_chip(ui, im.organ.label(), None, fill, raised).on_hover_text(trn(
                     "companion_harm_tooltip",
                     &[&tr("facet_harms"), &im.grade.label(), &im.why],
                 ));
@@ -50983,7 +51109,7 @@ impl App {
         // sans fiche ils ne font rien — comme leurs boutons, qui gardent
         // leur place et cessent de répondre.
         if let Some(i) = keyed {
-            if let Some((_, _, act)) = Self::COMPANION_ACTS.get(i) {
+            if let Some((_, _, act, _)) = Self::COMPANION_ACTS.get(i) {
                 go = act.go(read.1.hits.get(read.1.pick).map(|d| d.id), read.1.box_stup);
             }
         }
@@ -51173,11 +51299,17 @@ impl App {
                         .iter()
                         .map(|(key, place)| (*place, tr(key).to_owned()))
                         .collect();
-                    let menu = motif::menu(
+                    // **Une marque plutôt qu'une case vide.** Un menu
+                    // sans valeur courante n'a rien à écrire, et il
+                    // n'avait donc que son triangle : rien ne disait ce
+                    // qu'il ouvre, et une infobulle ne se lit qu'après
+                    // avoir cherché. Le cadre et son coin plein disent
+                    // « où poser la fenêtre » avant le survol.
+                    let menu = motif::menu_marked(
                         ui,
                         "companion_place",
-                        Self::button_height(ui) * 1.2,
-                        "",
+                        Self::button_height(ui) * 1.6,
+                        motif::Pict::Corner,
                         &places,
                     );
                     menu.response.on_hover_text(tr("companion_place_tooltip"));
@@ -51280,7 +51412,7 @@ impl App {
                 Self::scrolled_width(ui, body.width()),
                 Self::COMPANION_ACTS
                     .into_iter()
-                    .map(|(l, _, _)| Self::button_width(ui, tr(l))),
+                    .map(|(l, _, _, _)| Self::button_width(ui, &motif::icon_label(tr(l)))),
             );
             // La bande d'onglets ne se dessine que s'il y a plus d'une
             // page : **une bande d'un onglet n'est pas une bande**, elle
@@ -51323,11 +51455,29 @@ impl App {
             }
             if paged {
                 motif::inside(ui, split[at[1]], |ui| {
+                    // **L'onglet des signaux porte la couleur de ce qui
+                    // presse le plus.** Les quatre autres pages n'ont
+                    // pas de puces : sur « Posologie » ou « Conseils »,
+                    // rien ne disait qu'il y avait, une page plus loin,
+                    // une contre-indication. Le liseré de la réponse le
+                    // dit *sur la page lue* ; l'onglet le dit **avant**
+                    // qu'on y aille, ce qui est l'autre moitié de la
+                    // question.
+                    //
+                    // Rien quand il n'y a rien à dire : un bandeau gris
+                    // permanent ne distingue plus rien.
+                    let edge = Self::companion_edge(&read.1);
                     let labels: Vec<motif::Tab> = read
                         .1
                         .pages
                         .iter()
-                        .map(|p| motif::Tab::new(p.label()))
+                        .map(|p| {
+                            let tab = motif::Tab::new(p.label());
+                            match (p, edge) {
+                                (CompanionPage::Signals, Some(c)) => tab.tint(c),
+                                _ => tab,
+                            }
+                        })
                         .collect();
                     if let Some(motif::TabAction::Select(i)) =
                         motif::tab_strip(ui, "companion_pages", &labels, page)
@@ -51427,7 +51577,7 @@ impl App {
                             ui.add_space(2.0);
                             ui.horizontal_wrapped(|ui| {
                                 for (_, name) in &self.companion_seen {
-                                    if Self::companion_chip(ui, name, motif::trough(), false)
+                                    if Self::companion_chip(ui, name, None, motif::trough(), false)
                                         .on_hover_text(tr("companion_seen_tooltip"))
                                         .clicked()
                                     {
@@ -51526,7 +51676,7 @@ impl App {
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             let card = read.1.hits.get(read.1.pick).map(|d| d.id);
-                            for (label, note, act) in Self::COMPANION_ACTS {
+                            for (label, note, act, pict) in Self::COMPANION_ACTS {
                                 let on = !act.needs_card() || card.is_some();
                                 // **Le geste dit où il mène quand il le
                                 // sait.** « Délivrance » ouvre le
@@ -51541,7 +51691,7 @@ impl App {
                                     }
                                     _ => tr(note),
                                 };
-                                if motif::button_enabled(ui, tr(label), on)
+                                if motif::icon_button_enabled(ui, Some(pict), tr(label), on)
                                     .on_hover_text(note)
                                     .clicked()
                                 {
@@ -51959,6 +52109,24 @@ impl CompanionTone {
             CompanionTone::Watch => motif::warn(),
             CompanionTone::Ok => motif::trough(),
             CompanionTone::Pending => motif::text_faint(),
+        }
+    }
+
+    /// La **forme** du ton, à côté de sa couleur.
+    ///
+    /// Une couleur seule ne dit rien à qui ne la voit pas, et sur un
+    /// écran fatigué — celui pour lequel trois des dix peaux
+    /// existent — elle ne dit plus grand-chose à personne. Quatre
+    /// silhouettes qu'on reconnaît avant d'avoir lu : le cercle barré,
+    /// le triangle, la coche, l'attente. Le mot reste, parce qu'une
+    /// marque seule ne dit pas *quelle table* parle — et c'est
+    /// justement ce que la puce est là pour dire.
+    fn mark(self) -> motif::Pict {
+        match self {
+            CompanionTone::Stop => motif::Pict::Stop,
+            CompanionTone::Watch => motif::Pict::Warn,
+            CompanionTone::Ok => motif::Pict::Check,
+            CompanionTone::Pending => motif::Pict::Pending,
         }
     }
 }
@@ -53165,8 +53333,11 @@ impl eframe::App for App {
             // Ce que les deux groupes demandent, mesuré avant de les
             // dessiner : le nom, les quatre bascules de gauche, les
             // trois boutons de droite, et les gouttières entre eux.
-            let (show_name, two_rows, short_bar) =
-                Self::toolbar_shape(ui, matches!(self.state, State::Unlocked(_)));
+            let (show_name, two_rows, short_bar, marks) = Self::toolbar_shape(
+                ui,
+                matches!(self.state, State::Unlocked(_)),
+                self.config.ui.icons,
+            );
             ui.horizontal(|ui| {
                 if show_name {
                     ui.label(egui::RichText::new("BPM-Caddy").strong())
@@ -53230,7 +53401,7 @@ impl eframe::App for App {
                 }
                 if !two_rows {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.toolbar_right(ui, short_bar);
+                        self.toolbar_right(ui, short_bar, marks);
                     });
                 }
             });
@@ -53246,7 +53417,7 @@ impl eframe::App for App {
             if two_rows {
                 ui.horizontal(|ui| {
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        self.toolbar_right(ui, short_bar);
+                        self.toolbar_right(ui, short_bar, marks);
                     });
                 });
             }
@@ -54115,7 +54286,7 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("form_last_name")));
+                                        Self::form_label(ui, tr("form_last_name"));
                                         motif::field(
                                             ui,
                                             chars_wide(ui, 38.0),
@@ -54124,7 +54295,7 @@ impl eframe::App for App {
                                             ),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("form_address")));
+                                        Self::form_label(ui, tr("form_address"));
                                         motif::field(
                                             ui,
                                             chars_wide(ui, 38.0),
@@ -54133,7 +54304,7 @@ impl eframe::App for App {
                                             ),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("form_phone")));
+                                        Self::form_label(ui, tr("form_phone"));
                                         motif::field(
                                             ui,
                                             chars_wide(ui, 38.0),
@@ -54142,7 +54313,7 @@ impl eframe::App for App {
                                             ),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_pharmacist")));
+                                        Self::form_label(ui, tr("opts_pharmacist"));
                                         motif::field(
                                             ui,
                                             chars_wide(ui, 38.0),
@@ -54151,7 +54322,7 @@ impl eframe::App for App {
                                             ),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_am_number")));
+                                        Self::form_label(ui, tr("opts_am_number"));
                                         motif::field_sized(
                                             ui,
                                             egui::vec2(
@@ -54160,7 +54331,7 @@ impl eframe::App for App {
                                                     [tr("opts_am_number_hint")].into_iter(),
                                                 )
                                                 .max(300.0),
-                                                24.0,
+                                                Self::button_height(ui),
                                             ),
                                             egui::TextEdit::singleline(
                                                 &mut editor.cfg.pharmacy.am_number,
@@ -54476,12 +54647,12 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 5.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("about_version")));
+                                        Self::form_label(ui, tr("about_version"));
                                         ui.label(
                                             egui::RichText::new(crate::release::current()).strong(),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("about_target")));
+                                        Self::form_label(ui, tr("about_target"));
                                         ui.label(crate::release::target());
                                         ui.end_row();
                                         // Only when this copy was put
@@ -54885,7 +55056,7 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("docs_operator")));
+                                        Self::form_label(ui, tr("docs_operator"));
                                         motif::field(
                                             ui,
                                             chars_wide(ui, 10.0),
@@ -54908,7 +55079,7 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("opts_text_scale")));
+                                        Self::form_label(ui, tr("opts_text_scale"));
                                         // La glissière de la maison, et
                                         // non celle d'egui : celle-ci
                                         // peignait son rail avec
@@ -54968,7 +55139,7 @@ impl eframe::App for App {
                                             }
                                         });
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_font")));
+                                        Self::form_label(ui, tr("opts_font"));
                                         ui.horizontal(|ui| {
                                             let mut shown = editor
                                                 .cfg
@@ -54985,7 +55156,7 @@ impl eframe::App for App {
                                                         [tr("opts_font_default")].into_iter(),
                                                     )
                                                     .max(220.0),
-                                                    24.0,
+                                                    Self::button_height(ui),
                                                 ),
                                                 egui::TextEdit::singleline(&mut shown).hint_text(
                                                     motif::hint(tr("opts_font_default")),
@@ -55016,7 +55187,7 @@ impl eframe::App for App {
                                             }
                                         });
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_side_pane")));
+                                        Self::form_label(ui, tr("opts_side_pane"));
                                         ui.horizontal(|ui| {
                                             for (value, label) in [
                                                 ("docs", tr("docs_title")),
@@ -55045,7 +55216,7 @@ impl eframe::App for App {
                                                 .color(motif::text_dim()),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_density")));
+                                        Self::form_label(ui, tr("opts_density"));
                                         ui.horizontal(|ui| {
                                             for (value, label) in [
                                                 ("confortable", tr("opts_density_comfort")),
@@ -55077,7 +55248,7 @@ impl eframe::App for App {
                                         // un second réglage qui la
                                         // contredirait sur un écran
                                         // seulement serait un piège.
-                                        ui.label(dim(tr("opts_mono")));
+                                        Self::form_label(ui, tr("opts_mono"));
                                         let looks: Vec<(MonoStyle, String, String)> =
                                             MonoStyle::ALL
                                                 .iter()
@@ -55159,7 +55330,7 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("opts_autolock")));
+                                        Self::form_label(ui, tr("opts_autolock"));
                                         ui.add(
                                             egui::DragValue::new(
                                                 &mut editor.cfg.database.auto_lock_timeout_minutes,
@@ -55167,7 +55338,7 @@ impl eframe::App for App {
                                             .range(0..=240),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_backups")));
+                                        Self::form_label(ui, tr("opts_backups"));
                                         ui.add(
                                             egui::DragValue::new(
                                                 &mut editor.cfg.database.backups_keep,
@@ -55175,7 +55346,7 @@ impl eframe::App for App {
                                             .range(0..=60),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_db_path")));
+                                        Self::form_label(ui, tr("opts_db_path"));
                                         ui.horizontal(|ui| {
                                             motif::field(
                                                 ui,
@@ -55202,7 +55373,7 @@ impl eframe::App for App {
                                         // mount or a folder made read-only
                                         // is silent: this line is what
                                         // makes it audible.
-                                        ui.label(dim(tr("opts_backup_state")));
+                                        Self::form_label(ui, tr("opts_backup_state"));
                                         let state = crate::db::backup_state(&editor.cfg.db_path());
                                         let text = match (&state.newest, &state.oldest) {
                                             (Some(newest), Some(oldest)) => trn(
@@ -55739,7 +55910,7 @@ impl eframe::App for App {
                                         ui.label("");
                                         ui.label("");
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_fee_remote")));
+                                        Self::form_label(ui, tr("opts_fee_remote"));
                                         ui.label(
                                             egui::RichText::new(db::REMOTE_CODE)
                                                 .size(motif::pt(ui, 11.0))
@@ -55766,7 +55937,7 @@ impl eframe::App for App {
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        ui.label(dim(tr("opts_cycle_months")));
+                                        Self::form_label(ui, tr("opts_cycle_months"));
                                         ui.add(
                                             egui::DragValue::new(
                                                 &mut editor.cfg.rules.cycle_months,
@@ -55775,7 +55946,7 @@ impl eframe::App for App {
                                             .suffix(tr("opts_cycle_suffix")),
                                         );
                                         ui.end_row();
-                                        ui.label(dim(tr("opts_enforcement")));
+                                        Self::form_label(ui, tr("opts_enforcement"));
                                         ui.horizontal(|ui| {
                                             for (level, label) in [
                                                 (RuleEnforcement::Warn, tr("opts_enforce_warn")),
@@ -56973,9 +57144,23 @@ mod tests {
                         let rect =
                             egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 60.0));
                         motif::inside(ui, rect, |ui| {
-                            let (name, two_rows, short) = App::toolbar_shape(ui, true);
+                            // **Avec les pictogrammes demandés**, qui
+                            // est le réglage livré : la mesure doit
+                            // décider elle-même s'ils tiennent, et le
+                            // test lit ce qu'elle a décidé.
+                            let (name, two_rows, short, marks) = App::toolbar_shape(ui, true, true);
                             let gap = ui.spacing().item_spacing.x;
+                            // Le groupe de gauche est fait de bascules,
+                            // qui ne portent pas de marque ; celui de
+                            // droite en porte quand la barre les garde.
                             let w = |l: &str| App::button_width(ui, l);
+                            let r = |l: &str| {
+                                if marks {
+                                    App::button_width(ui, &motif::icon_label(l))
+                                } else {
+                                    App::button_width(ui, l)
+                                }
+                            };
                             let left = if short {
                                 w(tr("toolbar_nav"))
                                     + w(tr("toolbar_docs_short"))
@@ -56988,13 +57173,13 @@ mod tests {
                                     + w(tr("toolbar_goto"))
                             } + 3.0 * gap;
                             let right = if short {
-                                w(tr("toolbar_lock"))
-                                    + w(tr("toolbar_options_short"))
-                                    + w(tr("toolbar_template_short"))
+                                r(tr("toolbar_lock"))
+                                    + r(tr("toolbar_options_short"))
+                                    + r(tr("toolbar_template_short"))
                             } else {
-                                w(tr("toolbar_lock"))
-                                    + w(tr("toolbar_options"))
-                                    + w(tr("toolbar_template"))
+                                r(tr("toolbar_lock"))
+                                    + r(tr("toolbar_options"))
+                                    + r(tr("toolbar_template"))
                             } + 2.0 * gap;
                             let name_w = App::widest(ui, 14.0, ["BPM-Caddy"].into_iter()) + 10.0;
                             let asked = if two_rows {
@@ -58287,6 +58472,92 @@ mod tests {
         for (style, _, _) in super::MonoStyle::ALL {
             assert_eq!(super::MonoStyle::from_key(style.key()), style);
         }
+    }
+
+    /// **La hauteur d'une case de saisie n'est plus une exception.**
+    ///
+    /// Elle l'était, et ce fichier écrivait pourquoi : `add_sized([w,
+    /// 24.0], TextEdit…)` marchait, parce qu'egui relève un champ à
+    /// `spacing.interact_size.y` et que `motif::apply_scale` met *ce
+    /// nombre-là* à l'échelle. Le littéral était un **plancher** que le
+    /// style dépassait, pas une taille qu'il ignorait.
+    ///
+    /// `motif::field_sized` alloue exactement ce qu'on lui donne. La
+    /// même écriture est donc devenue un **plafond** : vingt et un
+    /// endroits demandaient 22, 24 ou 26 pixels pour un texte qui en
+    /// occupe trente et un à l'échelle 1,6, et cinq hauteurs de champ
+    /// différentes cohabitaient sur les mêmes écrans — dont deux sur le
+    /// formulaire du dossier. C'est ce que « mal espacé » veut dire.
+    ///
+    /// Le garde lit l'argument tel qu'il est écrit : le dernier terme
+    /// du `egui::vec2` d'un champ ne doit pas être un nombre.
+    #[test]
+    fn no_field_height_is_written_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        let call = concat!("motif::field_si", "zed(");
+        let mut loose: Vec<usize> = Vec::new();
+        let mut from = 0;
+        while let Some(at) = SOURCE[from..].find(call) {
+            let at = from + at;
+            from = at + call.len();
+            // Le `vec2` de cet appel-là, et la parenthèse qui le ferme.
+            let Some(v) = SOURCE[at..].find(concat!("egui::ve", "c2(")) else {
+                break;
+            };
+            let open = at + v + concat!("egui::ve", "c2(").len();
+            let mut depth = 1_i32;
+            let mut end = open;
+            for (i, c) in SOURCE[open..].char_indices() {
+                match c {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            end = open + i;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            // Le dernier terme de premier niveau **qui porte quelque
+            // chose** : `rustfmt` laisse une virgule finale, et prendre
+            // ce qui suit la dernière virgule donnait du blanc — le
+            // garde lisait alors « ce n'est pas un nombre » de tout, et
+            // passait sur les vingt et un qu'il cherchait. Vérifié en
+            // remettant un littéral.
+            let mut depth = 0_i32;
+            let mut cut = open;
+            let mut arg = "";
+            for (i, c) in SOURCE[open..end].char_indices() {
+                match c {
+                    '(' | '[' => depth += 1,
+                    ')' | ']' => depth -= 1,
+                    ',' if depth == 0 => {
+                        let seg = SOURCE[cut..open + i].trim();
+                        if !seg.is_empty() {
+                            arg = seg;
+                        }
+                        cut = open + i + 1;
+                    }
+                    _ => {}
+                }
+            }
+            let tail = SOURCE[cut..end].trim();
+            if !tail.is_empty() {
+                arg = tail;
+            }
+            if arg.parse::<f32>().is_ok() {
+                loose.push(SOURCE[..at].lines().count());
+            }
+        }
+        assert!(
+            loose.is_empty(),
+            "des champs dont la hauteur est un nombre de pixels, lignes {loose:?}"
+        );
+        // Et il y en a bien à lire : le jour où le dernier champ taillé
+        // disparaît, ce garde garderait le vide sans le dire.
+        assert!(SOURCE.matches(call).count() > 30);
     }
 
     /// **Une case à cocher a un relief, comme tout le reste ici.**
@@ -59979,9 +60250,14 @@ mod tests {
                         ui.set_max_width(width);
                         ui.horizontal_wrapped(|ui| {
                             for s in SIGNALS {
-                                let said = App::companion_chip_size(ui, s);
-                                let drawn =
-                                    App::companion_chip(ui, s, motif::alert(), true).rect.size();
+                                // **Avec sa marque** : c'est le cas qui
+                                // peut dériver, puisque la marque coûte
+                                // une place que la mesure doit connaître.
+                                let mark = Some(motif::Pict::Stop);
+                                let said = App::companion_chip_size(ui, s, mark.is_some());
+                                let drawn = App::companion_chip(ui, s, mark, motif::alert(), true)
+                                    .rect
+                                    .size();
                                 seen.borrow_mut().push((said, drawn));
                             }
                         });
@@ -61508,7 +61784,7 @@ mod tests {
                         NAMES.iter().map(|n| w(ui, format!("  {n}  "))).collect(),
                         NAMES
                             .iter()
-                            .map(|n| App::companion_chip_size(ui, n).x)
+                            .map(|n| App::companion_chip_size(ui, n, false).x)
                             .collect(),
                         (0..=NAMES.len())
                             .map(|n| w(ui, trf("companion_more", n)))

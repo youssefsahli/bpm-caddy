@@ -866,6 +866,17 @@ add clicking and typing; it is not the price of entry.
   `separator_v_width` is what one costs a band that measures its
   groups — two writings of a width diverge, and it is the measurement
   that lies.
+- **A colour alone says nothing to someone who cannot see it**, and on
+  a tired screen it says little to anyone — which is why three of the
+  ten skins exist. Every tone that carries a verdict therefore carries
+  a **shape** as well: `motif::Pict::{Stop, Warn, Check, Pending}`, the
+  circle-with-a-bar, the triangle, the tick, the three dots. They are
+  painted, like the rest of `Pict`: the bundled font has almost no
+  symbol glyphs and an absent character comes out as an empty square.
+  The word stays beside the mark, because a mark alone does not say
+  *which table* is speaking — which is the whole point of a companion
+  chip. `icon_label` is what a pictogram button's label really is, so a
+  band measures the string the drawing writes.
 - **A drop-down is a Motif widget too, and there are two of them.**
   `egui::ComboBox` paints from `widgets.*.weak_bg_fill`, which `apply`
   sets to `bg()` for every state — the same trap as the slider, so it
@@ -1655,12 +1666,29 @@ add clicking and typing; it is not the price of entry.
   `motif::inside` when content must not escape its frame. It also
   reserves **no space**, so a `ScrollArea` around it never learns the
   content is wider than the viewport and offers no bar.
-- **Heights are the exception, and deliberately so.** `add_sized([w,
-  24.0], TextEdit…)` is fine: egui raises a text field to
-  `spacing.interact_size.y`, and `motif::apply_scale` scales *that* with
-  `[ui] text_scale`. The literal is a floor the style overrides, not a
-  size the style ignores — which is exactly what a width literal was.
-  Don't "fix" the heights.
+- **Heights used to be the exception. They are not any more.** The old
+  rule read: `add_sized([w, 24.0], TextEdit…)` is fine, because egui
+  raises a text field to `spacing.interact_size.y` and
+  `motif::apply_scale` scales *that* — the literal was a floor the
+  style overrode, not a size the style ignored. `motif::field_sized`
+  allocates **exactly** what it is given, so the same writing became a
+  *ceiling*: twenty-one call sites asked for 22, 24 or 26 px for a text
+  that needs thirty-one at `text_scale = 1,6`, and five different field
+  heights lived on the same screens — two of them on the file's own
+  form. That is what "badly spaced" means, and
+  `no_field_height_is_written_in_pixels` refuses the next one (verified
+  by putting one back; its first version did not bite, because
+  `rustfmt`'s trailing comma made the last argument read as empty).
+- **One row height, and it is the button's.** `motif::button_height` is
+  written where the button is drawn and everything else reads it —
+  `App::button_height` delegates, `motif::field` uses it.
+  `interact_size.y` is what egui asks for a *bare* widget and it is
+  smaller: twenty pixels at scale 1 against thirty-one, and the gap
+  grows with the text. A field at that height was **shorter than its
+  own text** — measured on a capture of the file: the descender of the
+  « p » in « Dupont » landed *on* the bottom bevel. And a field and a
+  button share a row twenty times here; two heights on one row read as
+  a defect, not an intention.
 - **A text field's width is never written in pixels.** It is
   `chars_wide` (a width in characters of the body face), `field_width`
   (what its own hint needs), or a measurement taken above and handed

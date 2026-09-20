@@ -5,6 +5,74 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Une case de saisie était plus courte que son propre texte.** Sa
+  hauteur venait de `interact_size.y` — ce qu'egui demande pour un
+  widget nu : vingt pixels à l'échelle 1, pour un texte qui en occupe
+  dix-sept et un `TextEdit` qui ajoute quatre de marge. Mesuré sur une
+  capture du dossier : le jambage du « p » de « Dupont » tombait *sur*
+  le biseau du bas, et la lettre haute touchait celui du haut.
+
+  **Et il y avait cinq hauteurs de champ.** Vingt-et-un appels
+  demandaient 22, 24 ou 26 pixels, les autres prenaient
+  `interact_size.y` ou la hauteur d'un bouton — deux d'entre elles sur
+  le formulaire du dossier, l'une sous l'autre. Ce fichier écrivait
+  pourquoi un littéral de hauteur était permis : egui relève un champ à
+  `interact_size.y`, donc le nombre était un **plancher** que le style
+  dépassait. `motif::field_sized` alloue exactement ce qu'on lui donne :
+  la même écriture est devenue un **plafond**, et l'exception est
+  devenue le défaut. Il n'y a plus qu'une hauteur de rangée,
+  `motif::button_height`, écrite là où le bouton est dessiné — un champ
+  et un bouton partagent une rangée vingt fois ici, et deux hauteurs sur
+  une rangée se lisent comme un défaut d'alignement.
+  `no_field_height_is_written_in_pixels` refuse la suivante.
+
+- **Et les colonnes d'intitulés suivaient l'échelle du texte à
+  contretemps** : quatre grilles de formulaire réservaient 90 ou 110
+  pixels pour une colonne de prose, ce qui est large à l'échelle 1 et
+  court à 1,6.
+
+- **La barre du haut mesurait ses boutons sans leurs pictogrammes.**
+  `icon_button` réserve la place de la marque *dans le libellé* ; la
+  mesure lisait le libellé nu. Le défaut dormait tant que les
+  pictogrammes étaient éteints.
+
+### Added
+- **Les puces du compagnon portent une forme, et pas seulement une
+  couleur.** Un cercle barré, un triangle, une coche, trois points :
+  les quatre tons d'un signal se reconnaissent avant d'être lus — et
+  ils se reconnaissent aussi quand on ne voit pas la couleur, ou quand
+  l'écran ne la rend plus. C'est la raison même pour laquelle trois des
+  dix peaux existent. Le mot reste à côté de la marque, parce qu'une
+  marque seule ne dit pas *quelle table* parle, et c'est ce que la puce
+  est là pour dire.
+
+- **Les cinq gestes du bas ont chacun leur marque** — la gélule, la
+  croix du croisement, la plume de l'acte, la feuille d'une pièce, le
+  registre. Cinq boutons du même gris et du même poids, dont deux
+  agissent sur le dossier et trois sur la fiche : rien ne les
+  distinguait qu'un mot, et au comptoir on ne lit pas cinq mots, on
+  cherche une forme.
+
+- **L'onglet « Signaux » porte la couleur de ce qui presse le plus.**
+  Les quatre autres pages n'ont pas de puces : en lisant « Conseils »,
+  rien ne disait qu'une page plus loin il y avait une
+  contre-indication. Rien quand il n'y a rien à dire — un bandeau gris
+  permanent ne distingue plus rien.
+
+- **Le menu qui place la barre montre ce qu'il ouvre** : un cadre et
+  son coin plein, au lieu d'une case vide surmontée d'un triangle. Une
+  infobulle se lit après avoir cherché ; un pictogramme se lit avant.
+
+- **Les pictogrammes de la barre du haut sont allumés par défaut**, et
+  **ils cèdent avant la rangée** : la barre donne ses formes de la plus
+  riche à la plus pauvre — marques et libellés entiers, marques et
+  libellés courts, libellés courts seuls — et prend la première qui
+  tient. Une seconde rangée coûte quarante-six pixels au volet central,
+  un pictogramme n'en vaut pas le prix.
+
 ## [0.236.0] - 2026-09-20
 
 ### Fixed

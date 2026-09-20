@@ -42,8 +42,9 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # autour). Aucune des trois ne change la taille des lettres : c'est
 # text_scale qui en décide, une fois, pour toute l'application.
 # monograph = "feuille"
-# Pictogrammes dans la barre d'outils.
-# icons = false
+# Pictogrammes dans la barre d'outils. Vrai par défaut : sept mots du
+# même gris ne disent pas ce que chacun fait, une forme se reconnaît.
+# icons = true
 # Police de l'interface (fichier .ttf ou .otf ; vide = police intégrée).
 # font_path = "C:/Windows/Fonts/segoeui.ttf"
 # Contenu du panneau de droite au démarrage : "docs", "carnet" ou "notes".
@@ -1243,6 +1244,14 @@ pub struct UiConfig {
     /// colours. An unknown name falls back to the classic one.
     pub theme: String,
     /// Draw the small pictograms next to the toolbar labels.
+    ///
+    /// **Vrai par défaut.** Une barre de sept mots du même gris ne dit
+    /// pas ce que chacun fait : on la lit la première fois et on la
+    /// reconnaît ensuite *à la forme*, ce qu'une ligne de texte ne
+    /// donne pas. Les marques sont peintes, donc elles suivent le
+    /// thème et l'échelle du texte comme le reste — et `toolbar_shape`
+    /// mesure la place qu'elles prennent, sans quoi la rangée passe à
+    /// deux sans rien annoncer.
     pub icons: bool,
     /// A TrueType file to use for the whole interface. Empty keeps the
     /// embedded family; a bad path falls back to it too.
@@ -1292,7 +1301,7 @@ impl Default for UiConfig {
             text_scale: 1.0,
             density: "confortable".to_owned(),
             theme: motif::THEMES[0].key.to_owned(),
-            icons: false,
+            icons: true,
             font_path: None,
             side_pane: "docs".to_owned(),
             day_start_hour: 8,

@@ -215,6 +215,14 @@ qu'une douchette — qui est un clavier — tape dedans sans rien installer.
 barre se conduit alors entièrement au clavier, ce qui est la façon dont
 on s'en sert pendant qu'on tient une boîte de l'autre main.
 
+**Les puces portent une forme autant qu'une couleur** : un cercle barré
+pour ce qu'on ne fait pas, un triangle pour ce sur quoi on s'arrête, une
+coche pour ce que la table autorise, trois points quand il manque un
+chiffre pour conclure. On les reconnaît sans les lire, et sans voir la
+couleur. L'onglet « Signaux » porte, lui, la couleur de ce qui presse le
+plus : depuis « Conseils » ou « Posologie », on voit qu'il y a quelque
+chose à lire une page plus loin.
+
 **Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
 bas parcourent les fiches qui répondent, gauche et droite ce que la
 fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
