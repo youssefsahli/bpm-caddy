@@ -922,8 +922,34 @@ pub fn apply(ctx: &egui::Context) {
     }
     v.widgets.hovered.bg_fill = crate::bg_hover();
     v.widgets.hovered.weak_bg_fill = crate::bg_hover();
-    v.widgets.active.bg_fill = crate::trough();
+    // **Ce qui est pressé s'éclaire, il ne s'enfonce pas dans sa
+    // propre gorge.** `bg_fill` à l'état actif ne sert ici qu'à deux
+    // choses : le curseur d'une barre de défilement qu'on traîne, et
+    // la case d'une case à cocher sous le doigt. Mis au creux, le
+    // premier *disparaissait dans son rail* — qui est peint de cette
+    // même couleur — c'est-à-dire exactement au moment où l'on a
+    // besoin de le voir. Le relief enfoncé des boutons de cette maison
+    // est dessiné par `button` et `toggle`, et `weak_bg_fill` — ce que
+    // les boutons d'egui lisent — garde le creux.
+    v.widgets.active.bg_fill = crate::bg_hover();
     v.widgets.active.weak_bg_fill = crate::trough();
+
+    // **La barre de défilement est un objet de ce chrome aussi.**
+    // egui la peint par défaut dans la *couleur du texte* — c'est ce
+    // que dit `foreground_color` —, ce qui donnait une barre **noire**
+    // posée sur un panneau gris : le seul aplat d'encre pure de
+    // l'écran, sur l'objet qui n'a rien à dire. Elle prend le rail
+    // creusé et le curseur couleur de panneau, comme tout le reste
+    // d'ici.
+    //
+    // Le reste du réglage ne change pas : la barre **flotte** toujours
+    // par défaut — une trentaine de régions l'éteignent chacune pour
+    // leur raison, et leur largeur est comptée par
+    // `App::scrolled_width`, qui lit ces deux nombres-là.
+    style.spacing.scroll = egui::style::ScrollStyle {
+        foreground_color: false,
+        ..egui::style::ScrollStyle::floating()
+    };
 
     style.spacing.button_padding = Vec2::new(14.0, 6.0);
     style.spacing.item_spacing = Vec2::new(10.0, 10.0);
@@ -1700,6 +1726,166 @@ pub fn list_row_job(
         ui.painter()
             .with_clip_rect(rect.shrink2(Vec2::new(4.0, 0.0)))
             .galley(pos, galley, crate::text());
+    }
+    response
+}
+
+/// Une case à cocher Motif : un carré **levé** quand elle est vide,
+/// **creusé et marqué** quand elle est cochée.
+///
+/// C'est la règle de la maison appliquée au seul endroit qui y avait
+/// échappé — ce qu'on remplit descend, ce qu'on presse monte. Celle
+/// d'egui est un carré plat cerné d'un trait d'un pixel : à côté d'un
+/// bouton biseauté et d'un champ creusé, elle se lit comme une bordure
+/// oubliée, et surtout **vide et cochée se ressemblent** de loin, la
+/// seule différence étant une coche fine dans la même couleur que le
+/// cadre. Le relief, lui, se voit avant qu'on ait lu.
+///
+/// Rend la réponse, marquée modifiée quand l'état a changé : l'appelant
+/// y accroche son infobulle comme sur n'importe quel widget.
+pub fn checkbox(
+    ui: &mut egui::Ui,
+    on: &mut bool,
+    label: impl Into<egui::WidgetText>,
+) -> egui::Response {
+    let row = ui.spacing().interact_size.y;
+    let gap = ui.spacing().item_spacing.x * 0.6;
+    // **Le libellé est pris tel qu'on le donne** — sa taille, son
+    // encre : c'est la leçon de `list_row`, qui prenait un `RichText`,
+    // en gardait la chaîne et jetait le reste. Le carré suit *cette*
+    // fonte-là et non une constante : une case de treize pixels à côté
+    // d'un texte de vingt-deux est une case qu'on rate.
+    let galley = label.into().into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    let box_side = (galley.size().y + 2.0).min(row);
+    let size = Vec2::new(
+        box_side + gap + galley.size().x,
+        row.max(galley.size().y).max(box_side),
+    );
+    let (rect, mut response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if response.clicked() {
+        *on = !*on;
+        response.mark_changed();
+    }
+    if ui.is_rect_visible(rect) {
+        let square = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), rect.center().y - box_side / 2.0),
+            Vec2::splat(box_side),
+        );
+        let fill = if *on {
+            crate::trough()
+        } else if response.hovered() {
+            crate::bg_hover()
+        } else {
+            crate::bg()
+        };
+        ui.painter().rect_filled(square, 0.0, fill);
+        bevel(ui.painter(), square, !*on);
+        if *on {
+            // La coche, en deux segments : deux tiers en descendant,
+            // un tiers en remontant. Dessinée et non écrite — la fonte
+            // livrée n'a pas toutes les marques, et c'est le genre de
+            // caractère qui sort en carré vide.
+            let s = square.shrink(box_side * 0.28);
+            let ink = Stroke::new((box_side * 0.14).max(1.5), crate::text());
+            ui.painter().line_segment(
+                [
+                    egui::pos2(s.left(), s.center().y),
+                    egui::pos2(s.left() + s.width() * 0.38, s.bottom()),
+                ],
+                ink,
+            );
+            ui.painter().line_segment(
+                [
+                    egui::pos2(s.left() + s.width() * 0.38, s.bottom()),
+                    egui::pos2(s.right(), s.top()),
+                ],
+                ink,
+            );
+        }
+        ui.painter().galley(
+            egui::pos2(
+                square.right() + gap,
+                rect.center().y - galley.size().y / 2.0,
+            ),
+            galley,
+            crate::text(),
+        );
+    }
+    response
+}
+
+/// Un bouton radio Motif : un **losange**, levé quand il est libre,
+/// creusé et plein quand il est choisi.
+///
+/// Le losange n'est pas une coquetterie : c'est ce qui distingue à
+/// l'œil « un seul parmi ceux-ci » de « chacun indépendamment », et
+/// c'est la forme que Motif lui donne. Deux carrés voisins dont l'un
+/// est exclusif et l'autre non ne se distinguent que par l'essai.
+pub fn radio(ui: &mut egui::Ui, on: bool, label: impl Into<egui::WidgetText>) -> egui::Response {
+    let row = ui.spacing().interact_size.y;
+    let gap = ui.spacing().item_spacing.x * 0.6;
+    let galley = label.into().into_galley(
+        ui,
+        Some(egui::TextWrapMode::Extend),
+        f32::INFINITY,
+        egui::TextStyle::Button,
+    );
+    let side = (galley.size().y + 2.0).min(row);
+    let size = Vec2::new(
+        side + gap + galley.size().x,
+        row.max(galley.size().y).max(side),
+    );
+    let (rect, response) = ui.allocate_exact_size(size, egui::Sense::click());
+    if ui.is_rect_visible(rect) {
+        let c = egui::pos2(rect.left() + side / 2.0, rect.center().y);
+        let r = side / 2.0;
+        let (top, right, bottom, left) = (
+            egui::pos2(c.x, c.y - r),
+            egui::pos2(c.x + r, c.y),
+            egui::pos2(c.x, c.y + r),
+            egui::pos2(c.x - r, c.y),
+        );
+        let fill = if on {
+            crate::accent()
+        } else if response.hovered() {
+            crate::bg_hover()
+        } else {
+            crate::bg()
+        };
+        ui.painter().add(egui::Shape::convex_polygon(
+            vec![top, right, bottom, left],
+            fill,
+            Stroke::NONE,
+        ));
+        // Les deux arêtes du haut portent la lumière quand il est
+        // libre, l'ombre quand il est pris : le même mouvement que le
+        // biseau d'un carré, sur une forme qui n'en a pas.
+        let (lit, dark) = if on {
+            (crate::bg_dark(), crate::bg_light())
+        } else {
+            (crate::bg_light(), crate::bg_dark())
+        };
+        for (a, b, ink) in [
+            (left, top, lit),
+            (top, right, lit),
+            (right, bottom, dark),
+            (bottom, left, dark),
+        ] {
+            ui.painter().line_segment([a, b], Stroke::new(1.5_f32, ink));
+        }
+        ui.painter().galley(
+            egui::pos2(
+                rect.left() + side + gap,
+                rect.center().y - galley.size().y / 2.0,
+            ),
+            galley,
+            crate::text(),
+        );
     }
     response
 }

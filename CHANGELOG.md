@@ -39,6 +39,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   — et c'est exactement là qu'étaient les treize.
 
 ### Added
+- **La barre de défilement n'est plus une barre noire.** egui prend le
+  curseur dans la *couleur du texte* quand `scroll.foreground_color` est
+  vrai — c'est son réglage d'origine —, si bien que chacune des
+  trente-six régions à barre pleine peignait un aplat **d'encre pure**
+  sur un panneau gris, sur l'objet qui n'a rien à dire. Elle prend le
+  rail creusé et le curseur couleur de panneau, comme tout le reste
+  d'ici. Et `widgets.active.bg_fill` n'est plus le creux : traîné, le
+  curseur était peint de la couleur de son propre rail et disparaissait
+  exactement au moment où on le tenait.
+
+- **Les cases à cocher ont un relief** — levées quand elles sont vides,
+  creusées et marquées quand elles sont cochées. Celle d'egui est un
+  carré plat cerné d'un trait, et surtout : vide et cochée se
+  ressemblent de loin, la seule différence étant une coche fine de la
+  couleur du cadre. Les boutons exclusifs passent au **losange**, parce
+  que « un seul parmi ceux-ci » se lit à la forme avant d'être essayé.
+
+- **Le formulaire du registre montre ses champs.** Les huit natures
+  partageaient une seule colonne défilante avec la quantité, la date et
+  le prescripteur : à 1024×700 le volet se lisait « choisir une nature,
+  puis inscrire », et le reste était sous le pli — sur le formulaire qui
+  écrit à un registre inaltérable. Les natures ont leur bande, bornée à
+  la moitié ; et quand cette moitié ne porte pas deux rangées entières,
+  les huit boutons ne valent plus leur place : la nature passe dans un
+  menu, qui tient sur une rangée et montre celle qui est choisie.
+
 - **Un séparateur gravé**, `motif::separator` et `motif::separator_v` :
   ce que `ui.separator()` d'egui ne sait pas faire ici, où il sort en
   trait d'un pixel à côté de panneaux biseautés. Les deux peintres

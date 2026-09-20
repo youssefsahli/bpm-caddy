@@ -9534,7 +9534,8 @@ fn export_window(
                 .max_height((screen.height() * 0.28).clamp(80.0, 260.0))
                 .show(ui, |ui| {
                     for (text, keep) in &mut box_.points {
-                        ui.checkbox(
+                        motif::checkbox(
+                            ui,
                             keep,
                             egui::RichText::new(text.as_str()).size(motif::pt(ui, 11.5)),
                         );
@@ -13309,7 +13310,7 @@ impl App {
                     }
 
                     ui.add_space(10.0);
-                    ui.checkbox(&mut remember, tr("lock_remember"));
+                    motif::checkbox(ui, &mut remember, tr("lock_remember"));
                     ui.add_space(6.0);
                     if (motif::button(ui, tr("lock_unlock")).clicked() || submitted)
                         && !password.is_empty()
@@ -30032,8 +30033,15 @@ impl App {
                         ui.end_row();
                         ui.label(tr("calc_sex"));
                         ui.horizontal(|ui| {
-                            ui.radio_value(&mut session.calc_female, false, tr("calc_male"));
-                            ui.radio_value(&mut session.calc_female, true, tr("calc_female"));
+                            // Un losange et non un carré : « l'un ou
+                            // l'autre » se lit à la forme, avant d'être
+                            // essayé.
+                            if motif::radio(ui, !session.calc_female, tr("calc_male")).clicked() {
+                                session.calc_female = false;
+                            }
+                            if motif::radio(ui, session.calc_female, tr("calc_female")).clicked() {
+                                session.calc_female = true;
+                            }
                         });
                         ui.end_row();
                     });
@@ -30448,7 +30456,7 @@ impl App {
                         .suffix(" UI"),
                 );
             });
-            ui.checkbox(&mut session.insulin_human, tr("insulin_human"));
+            motif::checkbox(ui, &mut session.insulin_human, tr("insulin_human"));
         });
         let Some(rules) = crate::insulin::rules(session.insulin_daily, session.insulin_human)
         else {
@@ -37343,6 +37351,78 @@ impl App {
     /// Un numéro proposé par l'écran serait un numéro que le poste d'à
     /// côté peut avoir pris entre le moment où il s'affiche et celui où
     /// l'on valide.
+    /// Ce qu'un changement de nature emporte avec lui.
+    ///
+    /// Écrit **une fois** parce que la nature se choisit de deux
+    /// façons — les boutons quand le volet est large, un menu quand il
+    /// ne l'est pas — et que deux écritures de ces effets-là
+    /// divergeraient : le prescripteur d'une délivrance survivrait au
+    /// passage à une réception par un chemin et pas par l'autre, et
+    /// partirait au registre sur la ligne suivante.
+    fn stup_kind_picked(
+        session: &mut Session,
+        k: crate::ordonnancier::Kind,
+        stock: f64,
+        to_destroy: f64,
+    ) {
+        use crate::ordonnancier::Kind;
+        session.stup_new_kind = k;
+        // Une nature ne garde que ses
+        // propres champs. Le prescripteur
+        // d'une délivrance et le grossiste
+        // d'une réception survivaient au
+        // changement de nature *et* à
+        // l'écriture, et partaient au
+        // registre sur la ligne suivante.
+        if k != Kind::Sortie {
+            session.stup_new_prescriber.clear();
+        }
+        if k != Kind::Entree {
+            session.stup_new_supplier.clear();
+        }
+        // La référence appartient à deux
+        // natures : le bon de livraison
+        // d'une réception et le numéro du
+        // procès-verbal d'une destruction —
+        // dans les deux cas, la pièce
+        // extérieure à laquelle la ligne
+        // renvoie. Elle ne passe pas de
+        // l'une à l'autre pour autant : un
+        // bon de livraison écrit en face
+        // d'une destruction serait un
+        // procès-verbal qui n'existe pas.
+        if !matches!(k, Kind::Entree | Kind::Destruction) {
+            session.stup_new_reference.clear();
+            session.stup_new_lot.clear();
+            session.stup_new_expiry.clear();
+            session.stup_new_lot.clear();
+            session.stup_new_expiry.clear();
+        }
+        // Un inventaire propose le solde du
+        // registre : le comptage confirme ou
+        // corrige, il ne repart pas de rien.
+        if k == Kind::Inventaire {
+            session.stup_new_qty = crate::codex::format_quantity(stock);
+        }
+        // Une destruction vide le coffre :
+        // ce qu'on en sort est presque
+        // toujours tout ce qu'il contient,
+        // et proposer autre chose serait
+        // proposer un reliquat que personne
+        // n'a demandé.
+        if k == Kind::Destruction && to_destroy > 0.0 {
+            session.stup_new_qty = crate::codex::format_quantity(to_destroy);
+        }
+        // Le dossier désigné appartenait à
+        // la délivrance ; il vaut aussi
+        // pour un retour, et pour rien
+        // d'autre.
+        if !k.carries_file() {
+            session.stup_file_pick = None;
+            session.stup_file_query.clear();
+        }
+    }
+
     fn stup_form(
         ui: &mut egui::Ui,
         session: &mut Session,
@@ -37476,254 +37556,273 @@ impl App {
                 // jusqu'à ce qu'une mesure le dise.
                 let gap = ui.spacing().item_spacing.y;
                 let whole = whole_rows(split[0].height(), Self::row_height(ui), gap, f32::INFINITY);
-                egui::ScrollArea::vertical()
-                    .id_salt("stup_form")
-                    .max_height(whole)
-                    .auto_shrink([false, false])
-                    .show(ui, |ui| {
+                // **Les natures ont leur bande, les champs ont la
+                // leur.** Une seule zone défilante pour les deux
+                // montrait *les natures et rien d'autre* : les huit en
+                // font deux rangées, la bande en fait trois, et la
+                // quantité, la date et le prescripteur étaient sous le
+                // pli — sur le formulaire qui écrit à un registre
+                // inaltérable. La barre pleine disait qu'il y avait
+                // quelque chose dessous ; elle ne le montrait pas.
+                //
+                // La bande des natures est donc **mesurée et bornée à
+                // la moitié** de ce que le volet donne : au-dessus, ce
+                // sont les natures qui défilent — huit boutons dont on
+                // connaît la liste — et les champs restent là où on
+                // les remplit. C'est la règle de cette maison : quand
+                // deux volets ne tiennent pas, celui où l'on tape
+                // gagne.
+                let nat_w = Self::scrolled_width(ui, split[0].width());
+                let asked = Self::wrapped_band_height(
+                    ui,
+                    nat_w,
+                    Kind::ALL
+                        .iter()
+                        .map(|k| Self::button_width(ui, tr(k.label_key()))),
+                );
+                let room = whole_rows(whole * 0.5, Self::row_height(ui), gap, f32::INFINITY);
+                // Sous deux rangées entières, les boutons ne valent
+                // plus la place qu'ils prennent : c'est là que le menu
+                // les remplace.
+                let crowded = asked > room + 0.5 && room < Self::rows_height(ui, 2.0) - 0.5;
+                let nat_h = if crowded {
+                    Self::row_height(ui)
+                } else {
+                    asked.min(room)
+                };
+                let bands = motif::split_rows(
+                    egui::Rect::from_min_size(split[0].min, egui::vec2(split[0].width(), whole)),
+                    &[nat_h, 0.0],
+                    gap,
+                );
+                // **La nature se choisit de la façon la plus riche
+                // qui tienne.** Huit boutons, quand la bande les porte
+                // : un clic, et toutes les natures sous les yeux. Sous
+                // deux rangées, ce serait trois natures sur huit
+                // derrière une barre de défilement — alors la nature
+                // passe dans un menu, qui tient sur *une* rangée et
+                // **montre celle qui est choisie**. C'est la règle de
+                // `richest_form` appliquée à une bande de contrôles :
+                // on donne les formes de la plus riche à la plus
+                // pauvre, et on prend la première qui tient.
+                let mut picked: Option<Kind> = None;
+                motif::inside(ui, bands[0], |ui| {
+                    if crowded {
+                        let options: Vec<(Kind, String)> = Kind::ALL
+                            .iter()
+                            .map(|k| (*k, tr(k.label_key()).to_owned()))
+                            .collect();
+                        let mut current = session.stup_new_kind;
+                        if motif::select(ui, "stup_kind", nat_w, &mut current, &options).changed() {
+                            picked = Some(current);
+                        }
+                    } else {
                         ui.horizontal_wrapped(|ui| {
                             for k in Kind::ALL {
                                 if motif::toggle(ui, tr(k.label_key()), session.stup_new_kind == k)
                                     .clicked()
                                 {
-                                    session.stup_new_kind = k;
-                                    // Une nature ne garde que ses
-                                    // propres champs. Le prescripteur
-                                    // d'une délivrance et le grossiste
-                                    // d'une réception survivaient au
-                                    // changement de nature *et* à
-                                    // l'écriture, et partaient au
-                                    // registre sur la ligne suivante.
-                                    if k != Kind::Sortie {
-                                        session.stup_new_prescriber.clear();
-                                    }
-                                    if k != Kind::Entree {
-                                        session.stup_new_supplier.clear();
-                                    }
-                                    // La référence appartient à deux
-                                    // natures : le bon de livraison
-                                    // d'une réception et le numéro du
-                                    // procès-verbal d'une destruction —
-                                    // dans les deux cas, la pièce
-                                    // extérieure à laquelle la ligne
-                                    // renvoie. Elle ne passe pas de
-                                    // l'une à l'autre pour autant : un
-                                    // bon de livraison écrit en face
-                                    // d'une destruction serait un
-                                    // procès-verbal qui n'existe pas.
-                                    if !matches!(k, Kind::Entree | Kind::Destruction) {
-                                        session.stup_new_reference.clear();
-                                        session.stup_new_lot.clear();
-                                        session.stup_new_expiry.clear();
-                                        session.stup_new_lot.clear();
-                                        session.stup_new_expiry.clear();
-                                    }
-                                    // Un inventaire propose le solde du
-                                    // registre : le comptage confirme ou
-                                    // corrige, il ne repart pas de rien.
-                                    if k == Kind::Inventaire {
-                                        session.stup_new_qty =
-                                            crate::codex::format_quantity(*stock);
-                                    }
-                                    // Une destruction vide le coffre :
-                                    // ce qu'on en sort est presque
-                                    // toujours tout ce qu'il contient,
-                                    // et proposer autre chose serait
-                                    // proposer un reliquat que personne
-                                    // n'a demandé.
-                                    if k == Kind::Destruction && *to_destroy > 0.0 {
-                                        session.stup_new_qty =
-                                            crate::codex::format_quantity(*to_destroy);
-                                    }
-                                    // Le dossier désigné appartenait à
-                                    // la délivrance ; il vaut aussi
-                                    // pour un retour, et pour rien
-                                    // d'autre.
-                                    if !k.carries_file() {
-                                        session.stup_file_pick = None;
-                                        session.stup_file_query.clear();
-                                    }
+                                    picked = Some(k);
                                 }
                             }
                         });
-                        let kind = session.stup_new_kind;
-                        ui.add_space(4.0);
-                        let w = ui.available_width();
-                        // La quantité : le champ, la glissière à côté
-                        // de lui, et les nombres qui reviennent en
-                        // dessous.
-                        //
-                        // Une délivrance de stupéfiant se compte en
-                        // unités du conditionnement, et presque toujours
-                        // en petits nombres : traîner le curseur va plus
-                        // vite que taper, et les pastilles vont plus
-                        // vite encore — 14 et 28 sont ce que porte une
-                        // boîte, 7 ce que porte une délivrance
-                        // fractionnée.
-                        //
-                        // Le champ reste **maître** : la glissière ne
-                        // sait pas écrire « 2,5 », et un patch se coupe
-                        // en deux moins souvent qu'on ne le croit mais
-                        // cela arrive. Elle écrit dedans, elle ne le
-                        // remplace pas. Et elle est sur *sa* rangée,
-                        // parce qu'une rangée de plus dans ce volet est
-                        // une ligne de registre en moins sur un écran de
-                        // comptoir.
-                        let typed = crate::codex::parse_amount(&session.stup_new_qty)
-                            .map_or(0.0, |(v, _)| v);
-                        // Le haut de la glissière suit ce qu'il y a :
-                        // une échelle fixe à cent serait inutilisable
-                        // pour délivrer deux gélules, et une échelle qui
-                        // s'arrêterait au stock empêcherait d'inscrire
-                        // une réception.
-                        let top = match kind {
-                            // Ce qui entre n'est borné par rien de
-                            // connu : c'est la commande qui décide, pas
-                            // le stock.
-                            Kind::Entree | Kind::Retour => (typed * 1.5).max(60.0),
-                            // Ce qu'on détruit est borné par le coffre,
-                            // qui n'est pas le stock délivrable.
-                            Kind::Destruction => to_destroy.max(typed).max(30.0),
-                            _ => stock.max(typed).max(30.0),
-                        };
-                        let mut set_qty: Option<f64> = None;
-                        // Un écart d'inventaire se motive : la base le
-                        // refuse sans motif, et le champ doit le dire
-                        // *avant* qu'on presse « Inscrire », pas après.
-                        let mut gap_needs_reason = false;
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(if kind == Kind::Inventaire {
-                                    tr("stup_counted")
-                                } else {
-                                    tr("stup_quantity")
-                                })
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                            );
-                            focus_here |= motif::field_sized(
-                                ui,
-                                egui::vec2((w * 0.28).max(56.0), Self::button_height(ui)),
-                                egui::TextEdit::singleline(&mut session.stup_new_qty)
-                                    .hint_text(motif::hint(product.unit.as_str())),
-                            )
-                            .has_focus();
-                            // Ce qui reste de la rangée, mesuré et non
-                            // deviné : la glissière ne doit pas pousser
-                            // le champ hors du volet.
-                            let room = ui.available_width() - 8.0;
-                            if room >= 60.0 {
-                                let (resp, dragged) = motif::scale(ui, room, typed, top, 1.0);
-                                if resp.dragged() || resp.clicked() {
-                                    set_qty = Some(dragged);
-                                }
-                                resp.on_hover_text(tr("stup_scale_tooltip"));
-                            }
-                        });
-                        ui.horizontal_wrapped(|ui| {
-                            // Les raccourcis de quantité viennent du
-                            // **produit** et non d'une liste fixe : la
-                            // durée maximale de sa famille est ce qu'une
-                            // ordonnance porte le plus souvent — vingt-
-                            // huit pour une morphine LP, quatorze pour
-                            // le sirop de méthadone, sept par voie
-                            // parentérale. Une liste écrite en dur
-                            // proposait 28 pour un produit qui ne peut
-                            // pas dépasser 7.
-                            let ceiling = product.max_days;
-                            let steps: Vec<f64> = if ceiling > 0 {
-                                [1.0, 2.0, 3.0, 7.0, 14.0, 28.0]
-                                    .into_iter()
-                                    .filter(|n| *n <= ceiling as f64)
-                                    .collect()
-                            } else {
-                                vec![1.0, 2.0, 3.0, 7.0, 14.0, 28.0]
+                    }
+                });
+                if let Some(k) = picked {
+                    Self::stup_kind_picked(session, k, *stock, *to_destroy);
+                }
+                // Les champs, dans ce que la bande des natures laisse :
+                // ils ne bougent plus quand on change de nature.
+                motif::inside(ui, bands[1], |ui| {
+                    ui.spacing_mut().scroll.floating = false;
+                    egui::ScrollArea::vertical()
+                        .id_salt("stup_form")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            let kind = session.stup_new_kind;
+                            let w = Self::scrolled_width(ui, bands[1].width());
+                            // La quantité : le champ, la glissière à côté
+                            // de lui, et les nombres qui reviennent en
+                            // dessous.
+                            //
+                            // Une délivrance de stupéfiant se compte en
+                            // unités du conditionnement, et presque toujours
+                            // en petits nombres : traîner le curseur va plus
+                            // vite que taper, et les pastilles vont plus
+                            // vite encore — 14 et 28 sont ce que porte une
+                            // boîte, 7 ce que porte une délivrance
+                            // fractionnée.
+                            //
+                            // Le champ reste **maître** : la glissière ne
+                            // sait pas écrire « 2,5 », et un patch se coupe
+                            // en deux moins souvent qu'on ne le croit mais
+                            // cela arrive. Elle écrit dedans, elle ne le
+                            // remplace pas. Et elle est sur *sa* rangée,
+                            // parce qu'une rangée de plus dans ce volet est
+                            // une ligne de registre en moins sur un écran de
+                            // comptoir.
+                            let typed = crate::codex::parse_amount(&session.stup_new_qty)
+                                .map_or(0.0, |(v, _)| v);
+                            // Le haut de la glissière suit ce qu'il y a :
+                            // une échelle fixe à cent serait inutilisable
+                            // pour délivrer deux gélules, et une échelle qui
+                            // s'arrêterait au stock empêcherait d'inscrire
+                            // une réception.
+                            let top = match kind {
+                                // Ce qui entre n'est borné par rien de
+                                // connu : c'est la commande qui décide, pas
+                                // le stock.
+                                Kind::Entree | Kind::Retour => (typed * 1.5).max(60.0),
+                                // Ce qu'on détruit est borné par le coffre,
+                                // qui n'est pas le stock délivrable.
+                                Kind::Destruction => to_destroy.max(typed).max(30.0),
+                                _ => stock.max(typed).max(30.0),
                             };
-                            for n in steps {
-                                if motif::toggle(
-                                    ui,
-                                    &crate::codex::format_quantity(n),
-                                    (typed - n).abs() < 1e-9,
-                                )
-                                .clicked()
-                                {
-                                    set_qty = Some(n);
-                                }
-                            }
-                        });
-                        ui.horizontal(|ui| {
-                            ui.label(
-                                egui::RichText::new(tr("stup_day"))
+                            let mut set_qty: Option<f64> = None;
+                            // Un écart d'inventaire se motive : la base le
+                            // refuse sans motif, et le champ doit le dire
+                            // *avant* qu'on presse « Inscrire », pas après.
+                            let mut gap_needs_reason = false;
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(if kind == Kind::Inventaire {
+                                        tr("stup_counted")
+                                    } else {
+                                        tr("stup_quantity")
+                                    })
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
-                            );
-                            focus_here |= motif::field_sized(
-                                ui,
-                                egui::vec2((w * 0.4).max(80.0), Self::button_height(ui)),
-                                egui::TextEdit::singleline(&mut session.stup_new_day)
-                                    .hint_text(motif::hint(tr("stup_day_hint"))),
-                            )
-                            .has_focus();
-                        });
-                        match kind {
-                            Kind::Sortie => {
-                                focus_here |= Self::stup_file_row(ui, session, w, true);
+                                );
                                 focus_here |= motif::field_sized(
                                     ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_prescriber)
-                                        .hint_text(motif::hint(tr("stup_prescriber_hint"))),
+                                    egui::vec2((w * 0.28).max(56.0), Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_qty)
+                                        .hint_text(motif::hint(product.unit.as_str())),
                                 )
                                 .has_focus();
-                                // Les derniers prescripteurs rencontrés
-                                // sur ce produit, d'un clic. Ils sont
-                                // dans le registre depuis toujours et
-                                // se retapaient à la main.
-                                let mut seen: Vec<&str> = Vec::new();
-                                for m in session.stup_moves.iter().rev() {
-                                    let p = m.prescriber.trim();
-                                    if !p.is_empty() && !seen.contains(&p) {
-                                        seen.push(p);
+                                // Ce qui reste de la rangée, mesuré et non
+                                // deviné : la glissière ne doit pas pousser
+                                // le champ hors du volet.
+                                let room = ui.available_width() - 8.0;
+                                if room >= 60.0 {
+                                    let (resp, dragged) = motif::scale(ui, room, typed, top, 1.0);
+                                    if resp.dragged() || resp.clicked() {
+                                        set_qty = Some(dragged);
                                     }
-                                    if seen.len() == 3 {
-                                        break;
+                                    resp.on_hover_text(tr("stup_scale_tooltip"));
+                                }
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                // Les raccourcis de quantité viennent du
+                                // **produit** et non d'une liste fixe : la
+                                // durée maximale de sa famille est ce qu'une
+                                // ordonnance porte le plus souvent — vingt-
+                                // huit pour une morphine LP, quatorze pour
+                                // le sirop de méthadone, sept par voie
+                                // parentérale. Une liste écrite en dur
+                                // proposait 28 pour un produit qui ne peut
+                                // pas dépasser 7.
+                                let ceiling = product.max_days;
+                                let steps: Vec<f64> = if ceiling > 0 {
+                                    [1.0, 2.0, 3.0, 7.0, 14.0, 28.0]
+                                        .into_iter()
+                                        .filter(|n| *n <= ceiling as f64)
+                                        .collect()
+                                } else {
+                                    vec![1.0, 2.0, 3.0, 7.0, 14.0, 28.0]
+                                };
+                                for n in steps {
+                                    if motif::toggle(
+                                        ui,
+                                        &crate::codex::format_quantity(n),
+                                        (typed - n).abs() < 1e-9,
+                                    )
+                                    .clicked()
+                                    {
+                                        set_qty = Some(n);
                                     }
                                 }
-                                if !seen.is_empty() {
-                                    let picked: Option<String> = ui
-                                        .horizontal_wrapped(|ui| {
-                                            let mut hit = None;
-                                            for p in seen {
-                                                if motif::toggle(
-                                                    ui,
-                                                    p,
-                                                    session.stup_new_prescriber.trim() == p,
-                                                )
-                                                .clicked()
-                                                {
-                                                    hit = Some(p.to_owned());
+                            });
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr("stup_day"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                focus_here |= motif::field_sized(
+                                    ui,
+                                    egui::vec2((w * 0.4).max(80.0), Self::button_height(ui)),
+                                    egui::TextEdit::singleline(&mut session.stup_new_day)
+                                        .hint_text(motif::hint(tr("stup_day_hint"))),
+                                )
+                                .has_focus();
+                            });
+                            match kind {
+                                Kind::Sortie => {
+                                    focus_here |= Self::stup_file_row(ui, session, w, true);
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(
+                                            &mut session.stup_new_prescriber,
+                                        )
+                                        .hint_text(motif::hint(tr("stup_prescriber_hint"))),
+                                    )
+                                    .has_focus();
+                                    // Les derniers prescripteurs rencontrés
+                                    // sur ce produit, d'un clic. Ils sont
+                                    // dans le registre depuis toujours et
+                                    // se retapaient à la main.
+                                    let mut seen: Vec<&str> = Vec::new();
+                                    for m in session.stup_moves.iter().rev() {
+                                        let p = m.prescriber.trim();
+                                        if !p.is_empty() && !seen.contains(&p) {
+                                            seen.push(p);
+                                        }
+                                        if seen.len() == 3 {
+                                            break;
+                                        }
+                                    }
+                                    if !seen.is_empty() {
+                                        let picked: Option<String> = ui
+                                            .horizontal_wrapped(|ui| {
+                                                let mut hit = None;
+                                                for p in seen {
+                                                    if motif::toggle(
+                                                        ui,
+                                                        p,
+                                                        session.stup_new_prescriber.trim() == p,
+                                                    )
+                                                    .clicked()
+                                                    {
+                                                        hit = Some(p.to_owned());
+                                                    }
                                                 }
-                                            }
-                                            hit
-                                        })
-                                        .inner;
-                                    if let Some(p) = picked {
-                                        session.stup_new_prescriber = p;
+                                                hit
+                                            })
+                                            .inner;
+                                        if let Some(p) = picked {
+                                            session.stup_new_prescriber = p;
+                                        }
                                     }
-                                }
-                                // **L'annuaire**, quand l'officine en a
-                                // importé un. Il propose, il ne décide
-                                // pas : ce qui est tapé reste ce qui
-                                // sera écrit tant que personne n'a
-                                // choisi une ligne.
-                                //
-                                // À partir de deux caractères : une
-                                // seule lettre rendrait la moitié de
-                                // l'annuaire, c'est-à-dire rien.
-                                let typed = session.stup_new_prescriber.trim().to_owned();
-                                if !session.prescribers.is_empty() && typed.chars().count() >= 2 {
-                                    let hits: Vec<(String, String)> =
-                                        crate::prescribers::search(&session.prescribers, &typed, 5)
+                                    // **L'annuaire**, quand l'officine en a
+                                    // importé un. Il propose, il ne décide
+                                    // pas : ce qui est tapé reste ce qui
+                                    // sera écrit tant que personne n'a
+                                    // choisi une ligne.
+                                    //
+                                    // À partir de deux caractères : une
+                                    // seule lettre rendrait la moitié de
+                                    // l'annuaire, c'est-à-dire rien.
+                                    let typed = session.stup_new_prescriber.trim().to_owned();
+                                    if !session.prescribers.is_empty() && typed.chars().count() >= 2
+                                    {
+                                        let hits: Vec<(String, String)> =
+                                            crate::prescribers::search(
+                                                &session.prescribers,
+                                                &typed,
+                                                5,
+                                            )
                                             .into_iter()
                                             // Ce qui s'écrit sur la ligne est
                                             // court ; ce qui s'affiche pour
@@ -37731,237 +37830,248 @@ impl App {
                                             .map(|p| (p.short(), p.label()))
                                             .filter(|(short, _)| short.trim() != typed)
                                             .collect();
-                                    for (short, label) in hits {
-                                        if motif::list_row(
-                                            ui,
-                                            egui::RichText::new(label).size(motif::pt(ui, 11.0)),
-                                            false,
-                                        )
-                                        .clicked()
-                                        {
-                                            session.stup_new_prescriber = short;
+                                        for (short, label) in hits {
+                                            if motif::list_row(
+                                                ui,
+                                                egui::RichText::new(label)
+                                                    .size(motif::pt(ui, 11.0)),
+                                                false,
+                                            )
+                                            .clicked()
+                                            {
+                                                session.stup_new_prescriber = short;
+                                            }
                                         }
                                     }
                                 }
-                            }
-                            Kind::Entree => {
-                                // Les grossistes de `[stock] suppliers`,
-                                // le premier étant celui qu'on propose.
-                                // C'est tout l'intérêt de la liste : une
-                                // réception se saisit d'un clic.
-                                ui.horizontal_wrapped(|ui| {
-                                    for s in &config.stock.suppliers {
-                                        if motif::toggle(
-                                            ui,
-                                            s,
-                                            session.stup_new_supplier.trim() == s,
-                                        )
-                                        .clicked()
-                                        {
-                                            session.stup_new_supplier.clone_from(s);
+                                Kind::Entree => {
+                                    // Les grossistes de `[stock] suppliers`,
+                                    // le premier étant celui qu'on propose.
+                                    // C'est tout l'intérêt de la liste : une
+                                    // réception se saisit d'un clic.
+                                    ui.horizontal_wrapped(|ui| {
+                                        for s in &config.stock.suppliers {
+                                            if motif::toggle(
+                                                ui,
+                                                s,
+                                                session.stup_new_supplier.trim() == s,
+                                            )
+                                            .clicked()
+                                            {
+                                                session.stup_new_supplier.clone_from(s);
+                                            }
                                         }
+                                    });
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_supplier)
+                                            .hint_text(motif::hint(tr("stup_supplier_hint"))),
+                                    )
+                                    .has_focus();
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_reference)
+                                            .hint_text(motif::hint(tr("stup_reference_hint"))),
+                                    )
+                                    .has_focus();
+                                    // **Le lot est un champ à lui.** Il
+                                    // était écrit dans la référence, qui
+                                    // est le bon de livraison : deux choses
+                                    // dans une case, et un rappel de lot
+                                    // n'avait rien de fiable à interroger.
+                                    // La douchette le remplit ; on peut
+                                    // aussi le lire sur la boîte.
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
+                                    )
+                                    .on_hover_text(tr("stup_lot_tooltip"))
+                                    .has_focus();
+                                    // **On ne reçoit pas des unités, on
+                                    // reçoit des boîtes.** Le grossiste
+                                    // livre trois boîtes d'Actiskenan, qui
+                                    // en contiennent quatorze, quand on en
+                                    // délivre seize : la multiplication
+                                    // était la dernière chose qui se
+                                    // faisait de tête avant d'écrire dans
+                                    // un registre inaltérable.
+                                    if let Some(v) =
+                                        Self::stup_boxes_row(ui, session, &mut focus_here)
+                                    {
+                                        set_qty = Some(v);
                                     }
-                                });
-                                focus_here |= motif::field_sized(
-                                    ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_supplier)
-                                        .hint_text(motif::hint(tr("stup_supplier_hint"))),
-                                )
-                                .has_focus();
-                                focus_here |= motif::field_sized(
-                                    ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                        .hint_text(motif::hint(tr("stup_reference_hint"))),
-                                )
-                                .has_focus();
-                                // **Le lot est un champ à lui.** Il
-                                // était écrit dans la référence, qui
-                                // est le bon de livraison : deux choses
-                                // dans une case, et un rappel de lot
-                                // n'avait rien de fiable à interroger.
-                                // La douchette le remplit ; on peut
-                                // aussi le lire sur la boîte.
-                                focus_here |= motif::field_sized(
-                                    ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                        .hint_text(motif::hint(tr("stup_lot_hint"))),
-                                )
-                                .on_hover_text(tr("stup_lot_tooltip"))
-                                .has_focus();
-                                // **On ne reçoit pas des unités, on
-                                // reçoit des boîtes.** Le grossiste
-                                // livre trois boîtes d'Actiskenan, qui
-                                // en contiennent quatorze, quand on en
-                                // délivre seize : la multiplication
-                                // était la dernière chose qui se
-                                // faisait de tête avant d'écrire dans
-                                // un registre inaltérable.
-                                if let Some(v) = Self::stup_boxes_row(ui, session, &mut focus_here)
-                                {
-                                    set_qty = Some(v);
                                 }
-                            }
-                            Kind::Retour => {
-                                // Ce qu'un patient rapporte vient de
-                                // quelqu'un, et c'est même la seule
-                                // chose qui comptera le jour où l'on
-                                // cherchera d'où sortent quarante
-                                // gélules de morphine. Le dossier n'est
-                                // pas exigé pour autant : une famille
-                                // qui dépose un sac après un décès
-                                // n'est pas toujours identifiable, et
-                                // refuser la ligne ferait qu'elle ne
-                                // serait pas écrite du tout.
-                                focus_here |= Self::stup_file_row(ui, session, w, false);
-                                ui.label(
-                                    egui::RichText::new(tr("stup_return_note"))
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_dim()),
-                                );
-                            }
-                            // Les deux destructions vident chacune son
-                            // coffre, et le formulaire dit lequel : ce
-                            // sont les deux comptes du registre dont
-                            // personne d'autre ne tient la contrepartie.
-                            Kind::Destruction | Kind::DestructionPerimes => {
-                                let waiting = if kind == Kind::Destruction {
-                                    *to_destroy
-                                } else {
-                                    *expired
-                                };
-                                ui.label(
-                                    egui::RichText::new(trn(
-                                        if kind == Kind::Destruction {
-                                            "stup_to_destroy_line"
-                                        } else {
-                                            "stup_expired_line"
-                                        },
-                                        &[
-                                            &crate::codex::format_quantity(waiting),
-                                            &crate::ordonnancier::agreed_unit(
-                                                waiting,
-                                                &product.unit,
-                                            ),
-                                        ],
-                                    ))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(if waiting > 0.0 {
-                                        motif::text()
+                                Kind::Retour => {
+                                    // Ce qu'un patient rapporte vient de
+                                    // quelqu'un, et c'est même la seule
+                                    // chose qui comptera le jour où l'on
+                                    // cherchera d'où sortent quarante
+                                    // gélules de morphine. Le dossier n'est
+                                    // pas exigé pour autant : une famille
+                                    // qui dépose un sac après un décès
+                                    // n'est pas toujours identifiable, et
+                                    // refuser la ligne ferait qu'elle ne
+                                    // serait pas écrite du tout.
+                                    focus_here |= Self::stup_file_row(ui, session, w, false);
+                                    ui.label(
+                                        egui::RichText::new(tr("stup_return_note"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                }
+                                // Les deux destructions vident chacune son
+                                // coffre, et le formulaire dit lequel : ce
+                                // sont les deux comptes du registre dont
+                                // personne d'autre ne tient la contrepartie.
+                                Kind::Destruction | Kind::DestructionPerimes => {
+                                    let waiting = if kind == Kind::Destruction {
+                                        *to_destroy
                                     } else {
-                                        motif::text_dim()
-                                    }),
-                                );
-                                focus_here |= motif::field_sized(
-                                    ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_reference)
-                                        .hint_text(motif::hint(tr("stup_pv_hint"))),
-                                )
-                                .on_hover_text(tr("stup_pv_tooltip"))
-                                .has_focus();
-                            }
-                            // Une péremption sort du délivrable et va
-                            // au troisième coffre : la boîte est encore
-                            // là, et elle y reste jusqu'au
-                            // procès-verbal.
-                            Kind::Peremption => {
-                                ui.label(
-                                    egui::RichText::new(tr("stup_peremption_help"))
+                                        *expired
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(trn(
+                                            if kind == Kind::Destruction {
+                                                "stup_to_destroy_line"
+                                            } else {
+                                                "stup_expired_line"
+                                            },
+                                            &[
+                                                &crate::codex::format_quantity(waiting),
+                                                &crate::ordonnancier::agreed_unit(
+                                                    waiting,
+                                                    &product.unit,
+                                                ),
+                                            ],
+                                        ))
                                         .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                );
-                                focus_here |= motif::field_sized(
-                                    ui,
-                                    egui::vec2(w, Self::button_height(ui)),
-                                    egui::TextEdit::singleline(&mut session.stup_new_lot)
-                                        .hint_text(motif::hint(tr("stup_lot_hint"))),
-                                )
-                                .on_hover_text(tr("stup_lot_tooltip"))
-                                .has_focus();
-                            }
-                            Kind::Inventaire => {
-                                // **Le comptage se fait en boîtes et en
-                                // vrac**, parce que c'est ainsi qu'on
-                                // compte devant un coffre : on aligne
-                                // les boîtes pleines et l'entamée, et on
-                                // dit « trois de quatorze, plus cinq ».
-                                // Voir `stup_boxes_row`, qui sert aussi
-                                // au déballage d'une commande.
-                                if let Some(v) = Self::stup_boxes_row(ui, session, &mut focus_here)
-                                {
-                                    set_qty = Some(v);
+                                        .color(
+                                            if waiting > 0.0 {
+                                                motif::text()
+                                            } else {
+                                                motif::text_dim()
+                                            },
+                                        ),
+                                    );
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_reference)
+                                            .hint_text(motif::hint(tr("stup_pv_hint"))),
+                                    )
+                                    .on_hover_text(tr("stup_pv_tooltip"))
+                                    .has_focus();
                                 }
-                                // Ce qu'on vient de reporter, sinon ce
-                                // qui est tapé : l'écart annoncé doit
-                                // être celui de la ligne qu'on écrira,
-                                // et le report n'atteint le champ
-                                // qu'après ce bloc.
-                                let counted = set_qty.unwrap_or_else(|| {
-                                    crate::codex::parse_amount(&session.stup_new_qty)
-                                        .map_or(0.0, |(v, _)| v)
-                                });
-                                let d = crate::ordonnancier::Discrepancy {
-                                    expected: *stock,
-                                    counted,
-                                };
-                                ui.label(
-                                    egui::RichText::new(if d.matters() {
-                                        trf("stup_will_gap", crate::codex::format_quantity(d.gap()))
-                                    } else {
-                                        tr("stup_no_gap").to_owned()
-                                    })
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(if d.matters() {
-                                        motif::alert()
-                                    } else {
-                                        motif::text_dim()
-                                    }),
-                                );
-                                gap_needs_reason = d.matters();
+                                // Une péremption sort du délivrable et va
+                                // au troisième coffre : la boîte est encore
+                                // là, et elle y reste jusqu'au
+                                // procès-verbal.
+                                Kind::Peremption => {
+                                    ui.label(
+                                        egui::RichText::new(tr("stup_peremption_help"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_lot)
+                                            .hint_text(motif::hint(tr("stup_lot_hint"))),
+                                    )
+                                    .on_hover_text(tr("stup_lot_tooltip"))
+                                    .has_focus();
+                                }
+                                Kind::Inventaire => {
+                                    // **Le comptage se fait en boîtes et en
+                                    // vrac**, parce que c'est ainsi qu'on
+                                    // compte devant un coffre : on aligne
+                                    // les boîtes pleines et l'entamée, et on
+                                    // dit « trois de quatorze, plus cinq ».
+                                    // Voir `stup_boxes_row`, qui sert aussi
+                                    // au déballage d'une commande.
+                                    if let Some(v) =
+                                        Self::stup_boxes_row(ui, session, &mut focus_here)
+                                    {
+                                        set_qty = Some(v);
+                                    }
+                                    // Ce qu'on vient de reporter, sinon ce
+                                    // qui est tapé : l'écart annoncé doit
+                                    // être celui de la ligne qu'on écrira,
+                                    // et le report n'atteint le champ
+                                    // qu'après ce bloc.
+                                    let counted = set_qty.unwrap_or_else(|| {
+                                        crate::codex::parse_amount(&session.stup_new_qty)
+                                            .map_or(0.0, |(v, _)| v)
+                                    });
+                                    let d = crate::ordonnancier::Discrepancy {
+                                        expected: *stock,
+                                        counted,
+                                    };
+                                    ui.label(
+                                        egui::RichText::new(if d.matters() {
+                                            trf(
+                                                "stup_will_gap",
+                                                crate::codex::format_quantity(d.gap()),
+                                            )
+                                        } else {
+                                            tr("stup_no_gap").to_owned()
+                                        })
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(
+                                            if d.matters() {
+                                                motif::alert()
+                                            } else {
+                                                motif::text_dim()
+                                            },
+                                        ),
+                                    );
+                                    gap_needs_reason = d.matters();
+                                }
+                                // L'annulation ne se choisit pas ici : elle
+                                // se demande sur la ligne à annuler.
+                                Kind::Perte | Kind::Annulation => {}
                             }
-                            // L'annulation ne se choisit pas ici : elle
-                            // se demande sur la ligne à annuler.
-                            Kind::Perte | Kind::Annulation => {}
-                        }
-                        // **La quantité s'écrit ici et nulle part
-                        // ailleurs**, et après le `match` et non avant.
-                        // Elle était posée avant lui, si bien que le
-                        // bouton « = 47 » du comptage en boîtes —
-                        // dessiné plus bas, dans une nature — écrivait
-                        // dans une variable déjà lue : il ne reportait
-                        // rien. Le défaut était invisible parce que
-                        // l'affectation vivait dans une fermeture, où
-                        // rustc ne peut pas la voir morte ; sorti de la
-                        // fermeture, le compilateur l'a dit tout de
-                        // suite.
-                        if let Some(v) = set_qty {
-                            session.stup_new_qty = crate::codex::format_quantity(v);
-                        }
-                        focus_here |= motif::field_sized(
-                            ui,
-                            egui::vec2(w, Self::button_height(ui)),
-                            egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
-                                motif::hint(match kind {
-                                    Kind::Perte => tr("stup_loss_hint"),
-                                    // Obligatoire, et l'invite le
-                                    // dit avant qu'on presse
-                                    // « Inscrire » plutôt qu'après :
-                                    // la base la refuse sans motif,
-                                    // et découvrir la règle par un
-                                    // refus est la découvrir une
-                                    // fois de trop.
-                                    Kind::Destruction => tr("stup_destroy_reason_hint"),
-                                    Kind::Retour => tr("stup_return_reason_hint"),
-                                    _ if gap_needs_reason => tr("stup_gap_reason_hint"),
-                                    _ => tr("stup_remark_hint"),
-                                }),
-                            ),
-                        )
-                        .has_focus();
-                    });
+                            // **La quantité s'écrit ici et nulle part
+                            // ailleurs**, et après le `match` et non avant.
+                            // Elle était posée avant lui, si bien que le
+                            // bouton « = 47 » du comptage en boîtes —
+                            // dessiné plus bas, dans une nature — écrivait
+                            // dans une variable déjà lue : il ne reportait
+                            // rien. Le défaut était invisible parce que
+                            // l'affectation vivait dans une fermeture, où
+                            // rustc ne peut pas la voir morte ; sorti de la
+                            // fermeture, le compilateur l'a dit tout de
+                            // suite.
+                            if let Some(v) = set_qty {
+                                session.stup_new_qty = crate::codex::format_quantity(v);
+                            }
+                            focus_here |= motif::field_sized(
+                                ui,
+                                egui::vec2(w, Self::button_height(ui)),
+                                egui::TextEdit::singleline(&mut session.stup_new_remark).hint_text(
+                                    motif::hint(match kind {
+                                        Kind::Perte => tr("stup_loss_hint"),
+                                        // Obligatoire, et l'invite le
+                                        // dit avant qu'on presse
+                                        // « Inscrire » plutôt qu'après :
+                                        // la base la refuse sans motif,
+                                        // et découvrir la règle par un
+                                        // refus est la découvrir une
+                                        // fois de trop.
+                                        Kind::Destruction => tr("stup_destroy_reason_hint"),
+                                        Kind::Retour => tr("stup_return_reason_hint"),
+                                        _ if gap_needs_reason => tr("stup_gap_reason_hint"),
+                                        _ => tr("stup_remark_hint"),
+                                    }),
+                                ),
+                            )
+                            .has_focus();
+                        });
+                });
             });
             motif::inside(ui, split[1], |ui| {
                 ui.horizontal(|ui| {
@@ -54213,8 +54323,12 @@ impl eframe::App for App {
                                     .wrap(),
                                 );
                                 ui.add_space(2.0);
-                                ui.checkbox(&mut editor.cfg.telemetry.enabled, tr("telem_enabled"))
-                                    .on_hover_text(tr("telem_enabled_tooltip"));
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.telemetry.enabled,
+                                    tr("telem_enabled"),
+                                )
+                                .on_hover_text(tr("telem_enabled_tooltip"));
                                 if let Some(read) = &editor.about_read {
                                     let (rows, span) = (&read.counters, &read.span);
                                     egui::Grid::new("opts_telemetry")
@@ -54381,7 +54495,8 @@ impl eframe::App for App {
                                     .wrap(),
                                 );
                                 ui.add_space(4.0);
-                                ui.checkbox(
+                                motif::checkbox(
+                                    ui,
                                     &mut editor.cfg.vitale.enabled,
                                     tr("opts_vitale_enabled"),
                                 );
@@ -54493,15 +54608,17 @@ impl eframe::App for App {
                                         );
                                         ui.end_row();
                                     });
-                                ui.checkbox(
+                                motif::checkbox(
+                                    ui,
                                     &mut editor.cfg.ui.show_docs_on_start,
                                     tr("opts_show_docs"),
                                 );
-                                ui.checkbox(
+                                motif::checkbox(
+                                    ui,
                                     &mut editor.cfg.ui.show_nav_on_start,
                                     tr("opts_show_nav"),
                                 );
-                                ui.checkbox(&mut editor.cfg.ui.icons, tr("opts_icons"));
+                                motif::checkbox(ui, &mut editor.cfg.ui.icons, tr("opts_icons"));
                                 egui::Grid::new("opts_look")
                                     .num_columns(2)
                                     .spacing([12.0, 6.0])
@@ -54703,11 +54820,13 @@ impl eframe::App for App {
                                     ui.label(dim(tr("opts_theme_preview")));
                                     Self::theme_swatches(ui, &editor.cfg.ui.theme);
                                 });
-                                ui.checkbox(
+                                motif::checkbox(
+                                    ui,
                                     &mut editor.cfg.ui.discreet_finances,
                                     tr("opts_discreet"),
                                 );
-                                ui.checkbox(
+                                motif::checkbox(
+                                    ui,
                                     &mut editor.cfg.ui.caisse_expected,
                                     tr("opts_caisse_expected"),
                                 )
@@ -55345,11 +55464,15 @@ impl eframe::App for App {
                                                 ),
                                                 (RuleEnforcement::Block, tr("opts_enforce_block")),
                                             ] {
-                                                ui.radio_value(
-                                                    &mut editor.cfg.rules.enforcement,
-                                                    level,
+                                                if motif::radio(
+                                                    ui,
+                                                    editor.cfg.rules.enforcement == level,
                                                     label,
-                                                );
+                                                )
+                                                .clicked()
+                                                {
+                                                    editor.cfg.rules.enforcement = level;
+                                                }
                                             }
                                         });
                                         ui.end_row();
@@ -57716,6 +57839,31 @@ mod tests {
         // garderait le vide sans le dire.
         assert!(SOURCE.matches(ours[0]).count() > 150);
         assert!(SOURCE.contains(concat!("motif::ar", "ea(")));
+    }
+
+    /// **Une case à cocher a un relief, comme tout le reste ici.**
+    ///
+    /// Celle d'egui est un carré plat cerné d'un trait d'un pixel, et
+    /// surtout : vide et cochée se ressemblent de loin, la seule
+    /// différence étant une coche fine de la couleur du cadre. Le
+    /// relief se voit avant qu'on ait lu — c'est la règle de cette
+    /// maison, et la case était le dernier objet à y échapper.
+    ///
+    /// `motif::checkbox` lève le carré vide et creuse le carré coché ;
+    /// `motif::radio` fait de même sur un losange, parce que « un seul
+    /// parmi ceux-ci » se lit à la forme.
+    #[test]
+    fn no_egui_checkbox_is_drawn_flat_beside_a_bevelled_button() {
+        const SOURCE: &str = include_str!("app.rs");
+        for bare in [
+            concat!("ui.check", "box("),
+            concat!("ui.radio_va", "lue("),
+            concat!("egui::Check", "box::"),
+        ] {
+            assert!(!SOURCE.contains(bare), "une case plate : {bare}");
+        }
+        assert!(SOURCE.contains(concat!("motif::check", "box(")));
+        assert!(SOURCE.contains(concat!("motif::ra", "dio(")));
     }
 
     /// Un menu d'options ne se peint pas dans `weak_bg_fill`.

@@ -1133,7 +1133,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 35 regions now set
+  fold is the control you came to use. 36 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -1181,7 +1181,29 @@ add clicking and typing; it is not the price of entry.
   the cytochromes. It is also where a companion chip lands — see
   `DdiSection` — and a chip that opens a screen whose answer is four
   thousand pixels down, behind a bar nobody can see, has answered
-  nothing.
+  nothing. The thirty-sixth is the register's **natures**, which came
+  with the split that gave the write form two bands: the natures shared
+  one scrolling column with the quantity, the date and the prescriber,
+  so at 1024x700 the pane read « pick a nature, then Inscrire » and the
+  fields were under the fold — on the form that writes to an inalterable
+  register. They have their own band now, capped at half; and when half
+  is less than two whole rows the eight buttons are not worth their room
+  — the nature moves into a `motif::select`, which takes **one** row and
+  shows the one chosen. That is `richest_form`'s rule applied to a band
+  of controls, and the side effects of a change of nature are written
+  once (`App::stup_kind_picked`) because there are now two ways to pick
+  one.
+
+  **And the scroll handle is no longer painted in ink.** egui takes it
+  from `fg_stroke` when `scroll.foreground_color` is true — its own
+  default — so every one of these solid bars was a **black** bar on a
+  grey panel: the only patch of pure ink on the screen, on the object
+  that has nothing to say. `motif::apply` turns that off, and the handle
+  takes the panel's grey on the sunken rail, like everything else here.
+  Which is also why `widgets.active.bg_fill` is no longer the trough:
+  dragged, the handle was painted in the colour of its own rail and
+  vanished exactly when it was being held.
+
   A solid bar **takes twelve pixels off the content**, so a region that
   measures its own rows does it with `App::scrolled_width`; converting
   one without that is how a row that used to fit starts wrapping. A
