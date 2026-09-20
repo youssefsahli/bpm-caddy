@@ -538,16 +538,30 @@ pub fn colour(source: &str) -> Vec<(usize, usize, Ink)> {
             i += 1;
             while i < b.len() {
                 if b[i] == b'\\' {
+                    // **Et la borne retombe sur une frontière de
+                    // caractère.** Un échappement suivi d'une lettre
+                    // accentuée — `"\\é"` — fait sauter deux *octets*,
+                    // c'est-à-dire au milieu du « é » : la portion
+                    // découpée là fait paniquer le tranchage d'une
+                    // chaîne, dans un chemin de dessin, sur ce que
+                    // quelqu'un est en train de taper.
                     i = (i + 2).min(b.len());
+                    while i < b.len() && !source.is_char_boundary(i) {
+                        i += 1;
+                    }
                     continue;
                 }
                 if b[i] == quote {
                     i += 1;
                     break;
                 }
-                // Une chaîne entre guillemets ne passe pas la ligne :
-                // sans cela un guillemet oublié colore tout le script.
-                if quote == b'"' && b[i] == b'\n' {
+                // Une chaîne entre guillemets ne passe pas la ligne, et
+                // un caractère entre apostrophes non plus : sans cela un
+                // guillemet oublié — ou une apostrophe égarée — colore
+                // tout le reste du script. Seul l'accent grave le fait,
+                // parce qu'une chaîne interpolée de Rhai s'écrit
+                // réellement sur plusieurs lignes.
+                if quote != b'`' && b[i] == b'\n' {
                     break;
                 }
                 i += 1;
@@ -923,6 +937,10 @@ mod tests {
                 "\"un guillemet oublié",
                 "let p2 = 12; let x3 = 0.5;",
                 "print(\"éàü\"); // et après",
+                "let n = 0; // l'apostrophe égarée",
+                // Un échappement devant une lettre accentuée : deux
+                // octets sautés tombent au milieu du « é ».
+                "print(\"\\é\"); let n = 1;",
             ]
             .iter()
             .map(|s| (*s).to_owned()),
@@ -941,6 +959,32 @@ mod tests {
             assert_eq!(at, src.len(), "la fin manque dans « {src} »");
             assert_eq!(&rebuilt, src);
         }
+    }
+
+    /// **Une apostrophe égarée ne colore pas la suite du script.**
+    ///
+    /// Un caractère entre apostrophes ne passe pas la ligne, pas plus
+    /// qu'une chaîne entre guillemets : sans cette borne, le « l' » d'un
+    /// commentaire mal placé ou d'une chaîne mal fermée peignait tout ce
+    /// qui suit en couleur de chaîne — et le reste du script devenait
+    /// illisible pour une apostrophe. Seul l'accent grave franchit la
+    /// ligne, parce qu'une chaîne interpolée de Rhai s'écrit réellement
+    /// sur plusieurs.
+    #[test]
+    fn a_stray_quote_stops_at_the_end_of_its_line() {
+        let src = "let s = \"pas fermée\nlet n = 1;\n";
+        let spans = colour(src);
+        // La ligne suivante retrouve ses couleurs : « let » y est un
+        // mot-clé et « 1 » un nombre.
+        assert!(spans
+            .iter()
+            .any(|(f, t, ink)| *ink == Ink::Keyword && &src[*f..*t] == "let" && *f > 10));
+        assert!(spans.iter().any(|(_, _, ink)| *ink == Ink::Number));
+        // L'accent grave, lui, tient sur plusieurs lignes.
+        let multi = "let s = `une\nchaîne`;\n";
+        assert!(colour(multi)
+            .iter()
+            .any(|(f, t, ink)| *ink == Ink::Text && multi[*f..*t].chars().count() > 10));
     }
 
     /// **On ne colore en appel que ce que le moteur connaît.** Un nom

@@ -2415,11 +2415,11 @@ fn sunken_with<R>(
 /// Elle défile dans les deux sens : une ligne de code ne se replie pas
 /// — un repli change les numéros de ligne que la console rapporte dans
 /// ses erreurs, et c'est par eux qu'on retrouve la faute.
-pub fn code_area<'t>(
+pub fn code_area(
     ui: &mut egui::Ui,
     id: impl std::hash::Hash,
     size: Vec2,
-    edit: egui::TextEdit<'t>,
+    edit: egui::TextEdit<'_>,
 ) -> (egui::Response, egui::text_edit::TextEditOutput) {
     sunken_with(ui, size, None, |ui| {
         // **Le réglage se pose sur le `Ui` qui ouvre la zone**, pas
@@ -2871,6 +2871,153 @@ mod tests {
             "le bouton est levé"
         );
         assert_ne!(sunk, raised, "les deux reliefs ne se ressemblent pas");
+    }
+
+    /// **Une zone de plusieurs lignes est creusée comme une case d'une
+    /// ligne, et un filet sépare sans prendre plus qu'une gouttière.**
+    ///
+    /// Les treize zones de texte de l'application étaient restées
+    /// peintes par egui, c'est-à-dire plates, au milieu de cent
+    /// soixante-dix cases creusées : une case plate entourée de cases
+    /// creusées ne se lit pas comme « il en reste une » mais comme un
+    /// défaut de rendu, puisqu'elle est devenue la seule de l'écran.
+    #[test]
+    fn an_area_is_sunken_like_a_field_and_a_separator_costs_a_gutter() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("motif");
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+
+        let mut text = String::from("Consignes du jour\nRappels");
+        let mut rect = egui::Rect::NOTHING;
+        let out = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                rect = super::area(
+                    ui,
+                    egui::vec2(240.0, 80.0),
+                    egui::TextEdit::multiline(&mut text),
+                )
+                .rect;
+            });
+        });
+        assert!(
+            (rect.width() - 240.0).abs() < 0.5 && (rect.height() - 80.0).abs() < 0.5,
+            "la zone rend le cadre qu'elle a dessiné : {rect:?}"
+        );
+        // Le fond du creux est peint, et de la couleur du creux.
+        assert!(
+            out.shapes.iter().any(|s| matches!(
+                &s.shape,
+                egui::Shape::Rect(r) if r.fill == super::trough()
+            )),
+            "la zone n'a pas de fond creusé"
+        );
+
+        // Le filet : il prend une gouttière de haut, filet compris —
+        // une bande qui mesure ses rangées ne lui ajoute rien d'autre.
+        let mut before = 0.0;
+        let mut after = 0.0;
+        let mut gap = 0.0;
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                gap = ui.spacing().item_spacing.y;
+                before = ui.cursor().top();
+                super::separator(ui);
+                after = ui.cursor().top();
+            });
+        });
+        assert!(
+            (after - before - gap.max(6.0) - gap).abs() < 0.5,
+            "un filet coûte sa rangée et la gouttière d'après : {}",
+            after - before
+        );
+    }
+
+    /// **Une case vide monte, une case cochée descend.**
+    ///
+    /// C'est la règle de cette maison appliquée au dernier objet qui y
+    /// échappait. Celle d'egui est un carré plat cerné d'un trait, et
+    /// surtout : vide et cochée se ressemblent de loin, la seule
+    /// différence étant une coche fine de la couleur du cadre. Le
+    /// relief se voit avant qu'on ait lu — c'est ce qu'on vérifie ici,
+    /// sur le biseau et non sur l'existence d'un trait.
+    #[test]
+    fn a_checkbox_rises_when_it_is_empty_and_sinks_when_it_is_ticked() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("motif");
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.0, super::Density::Comfortable);
+
+        // La teinte du segment qui part du coin haut-gauche : claire
+        // quand l'objet est levé, sombre quand il est creusé.
+        let top_left_ink = |shapes: &[egui::epaint::ClippedShape]| {
+            let mut found = None;
+            for s in shapes {
+                if let egui::Shape::LineSegment { points, stroke } = &s.shape {
+                    let going_up = points[0].y > points[1].y;
+                    let going_right = points[1].x > points[0].x;
+                    if going_up || going_right {
+                        found.get_or_insert(stroke.color.clone());
+                    }
+                }
+            }
+            found
+        };
+
+        let draw = |on: bool| {
+            let mut value = on;
+            ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    super::checkbox(ui, &mut value, "Documentation ouverte au démarrage");
+                });
+            })
+            .shapes
+        };
+        let empty = top_left_ink(&draw(false)).expect("un biseau");
+        let ticked = top_left_ink(&draw(true)).expect("un biseau");
+        assert_eq!(
+            empty,
+            egui::epaint::ColorMode::Solid(super::bg_light()),
+            "une case vide est levée"
+        );
+        assert_eq!(
+            ticked,
+            egui::epaint::ColorMode::Solid(super::bg_dark()),
+            "une case cochée est creusée"
+        );
+        assert_ne!(empty, ticked, "les deux états ne se ressemblent pas");
+
+        // Et le clic bascule : c'est la réponse qui le dit, marquée
+        // modifiée, pour que l'appelant sache qu'il a quelque chose à
+        // enregistrer.
+        let mut value = false;
+        let mut changed = None;
+        let _ = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                changed = Some(super::checkbox(ui, &mut value, "Compact").changed());
+            });
+        });
+        assert_eq!(changed, Some(false), "rien n'a été cliqué");
+        assert!(!value);
+
+        // Le losange d'un bouton exclusif se dessine aussi, et il n'est
+        // pas un carré : quatre segments et un polygone, pas un
+        // rectangle.
+        let out = ctx.run(Default::default(), |ctx| {
+            egui::CentralPanel::default().show(ctx, |ui| {
+                super::radio(ui, true, "Confortable");
+            });
+        });
+        assert!(
+            out.shapes
+                .iter()
+                .any(|s| matches!(&s.shape, egui::Shape::Path(_))),
+            "un losange, et non un carré"
+        );
     }
 
     /// **Un champ rend le cadre qu'il a dessiné, et prend la place

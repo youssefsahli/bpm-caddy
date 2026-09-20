@@ -152,6 +152,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   calculé sur la hauteur demandée sortirait par le bas de l'écran, qui
   est l'endroit où l'on ne peut plus le rattraper.
 
+  Les quatre ordres — niveau, bordure, plancher, taille — partent à la
+  **première image dessinée** et non au basculement : c'est là qu'un
+  `Ui` existe pour mesurer le plancher, et c'est aussi le seul chemin
+  que prend une barre ouverte par sa clé de vue, qui ne passe jamais
+  par F9.
+
 ## [0.235.0] - 2026-09-20
 
 ### Added

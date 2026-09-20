@@ -49316,22 +49316,14 @@ impl App {
         if self.companion {
             self.companion_was = Some(ctx.screen_rect().size());
             self.companion_query.clear();
-            // La taille et le plancher sont posés à la première image
-            // dessinée, où un `Ui` existe : le plancher est **mesuré**
-            // (voir `companion_floor`), et il n'y a pas d'autre endroit
-            // d'où le mesurer. C'est le même chemin que la clé de vue.
+            // La taille, le plancher, le niveau et la bordure sont
+            // posés à la première image dessinée, où un `Ui` existe :
+            // le plancher est **mesuré** (voir `companion_floor`), et
+            // il n'y a pas d'autre endroit d'où le mesurer. C'est aussi
+            // **le seul chemin que prend une barre ouverte par sa clé
+            // de vue**, qui ne passe jamais par ici : les quatre ordres
+            // écrits ici lui auraient manqué.
             self.companion_sized = false;
-            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
-                egui::WindowLevel::AlwaysOnTop,
-            ));
-            // **Et sans bordure.** Une barre de titre de trente pixels
-            // au-dessus d'une fenêtre qui en fait cinq cents, c'est six
-            // pour cent de la barre pour un nom qu'elle écrit déjà dans
-            // sa tête — et un bouton de fermeture qui ferait *quitter
-            // l'application* là où F9 et « Agrandir » rendent la
-            // fenêtre. Ce qui la déplaçait est repris par sa tête, qui
-            // est devenue la poignée.
-            ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
         } else {
             ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
                 egui::WindowLevel::Normal,
@@ -51059,6 +51051,18 @@ impl App {
                     ctx.request_repaint();
                 } else {
                     self.companion_sized = true;
+                    ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(
+                        egui::WindowLevel::AlwaysOnTop,
+                    ));
+                    // **Et sans bordure.** Une barre de titre de trente
+                    // pixels au-dessus d'une fenêtre qui en fait cinq
+                    // cents, c'est six pour cent de la barre pour un nom
+                    // qu'elle écrit déjà dans sa tête — et un bouton de
+                    // fermeture qui ferait *quitter l'application* là où
+                    // F9 et « Agrandir » rendent la fenêtre. Ce qui la
+                    // déplaçait est repris par sa tête, qui est devenue
+                    // la poignée.
+                    ctx.send_viewport_cmd(egui::ViewportCommand::Decorations(false));
                     // **La prose complète, une fois.** La recherche de
                     // secours lit les treize champs *et* les lignes de
                     // posologie — c'est là que vivent « à jeun », « à
