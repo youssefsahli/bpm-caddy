@@ -2538,7 +2538,31 @@ pub fn field_sized(ui: &mut egui::Ui, size: Vec2, edit: egui::TextEdit<'_>) -> e
     // Toute la largeur, et le texte au milieu de la hauteur : une
     // ligne se centre dans sa case.
     let layout = egui::Layout::left_to_right(egui::Align::Center).with_main_justify(true);
-    sunken(ui, size, edit, layout)
+    // **Et jamais plus courte que ce qu'elle contient.** Trois bandes
+    // trop serrées pour une rangée entière demandent encore
+    // `interact_size.y`, et chacune y perdait les jambages de son
+    // texte. Une bande peut refuser une rangée à un champ ; elle ne
+    // peut pas lui refuser sa propre hauteur de texte, parce que ce
+    // qu'on tape dedans est ce qu'on relit.
+    sunken(
+        ui,
+        Vec2::new(size.x, size.y.max(field_floor(ui))),
+        edit,
+        layout,
+    )
+}
+
+/// Ce qu'une case d'une ligne demande **au minimum** : son texte, la
+/// marge propre du `TextEdit` et le creux autour.
+///
+/// La hauteur ordinaire d'un champ est celle d'une rangée
+/// ([`button_height`]) ; celle-ci est le plancher sous lequel la case
+/// devient plus courte que ce qu'elle contient — ce qui était le cas
+/// partout où `interact_size.y` servait de hauteur.
+pub fn field_floor(ui: &egui::Ui) -> f32 {
+    let font = egui::TextStyle::Body.resolve(ui.style());
+    // 4 : la marge propre du `TextEdit` ; 6 : le creux de [`sunken`].
+    ui.fonts(|f| f.row_height(&font)) + 4.0 + 6.0
 }
 
 /// Une **zone** de saisie : le même creux, pour plusieurs lignes.
@@ -3154,6 +3178,58 @@ mod tests {
             "le bouton est levé"
         );
         assert_ne!(sunk, raised, "les deux reliefs ne se ressemblent pas");
+    }
+
+    /// **Une case n'est jamais plus courte que son texte.**
+    ///
+    /// Sa hauteur venait d'`interact_size.y` — ce qu'egui demande pour
+    /// un widget nu : vingt pixels à l'échelle 1, pour un texte qui en
+    /// occupe dix-sept et un `TextEdit` qui ajoute quatre de marge.
+    /// Mesuré sur une capture du dossier, le jambage du « p » de
+    /// « Dupont » tombait *sur* le biseau du bas. Trois bandes trop
+    /// serrées pour une rangée entière demandent encore cette
+    /// hauteur-là : le plancher les relève sans qu'elles aient à le
+    /// savoir.
+    #[test]
+    fn a_field_is_never_shorter_than_the_text_it_holds() {
+        use eframe::egui;
+        let _guard = theme_lock();
+        super::set_theme("motif");
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            super::apply(&ctx);
+            super::apply_scale(&ctx, scale, super::Density::Comfortable);
+            let mut text = String::from("Dupont");
+            let (mut asked, mut drawn, mut row, mut floor) = (0.0, 0.0, 0.0, 0.0);
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    asked = ui.spacing().interact_size.y;
+                    row = super::button_height(ui);
+                    floor = super::field_floor(ui);
+                    drawn = super::field_sized(
+                        ui,
+                        egui::Vec2::new(160.0, asked),
+                        egui::TextEdit::singleline(&mut text),
+                    )
+                    .rect
+                    .height();
+                });
+            });
+            assert!(
+                drawn >= floor - 0.5,
+                "à {scale}, une case de {drawn} px pour un plancher de {floor}"
+            );
+            // Et le plancher est bien **sous** la rangée ordinaire : le
+            // jour où il la dépasse, c'est la rangée qu'il faut revoir,
+            // pas le plancher.
+            assert!(
+                floor <= row + 0.5,
+                "à {scale}, le plancher dépasse la rangée"
+            );
+            // Le défaut qu'il corrige existait : ce qu'egui demande pour
+            // un widget nu est plus court que ce qu'un texte occupe.
+            assert!(asked < floor, "à {scale}, interact_size suffisait déjà");
+        }
     }
 
     /// **Une zone de plusieurs lignes est creusée comme une case d'une
