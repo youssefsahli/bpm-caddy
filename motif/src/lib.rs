@@ -2085,6 +2085,40 @@ pub fn scale(
     scale_range(ui, width, value, 0.0, max, step)
 }
 
+/// Le relief d'une boîte de dialogue : un biseau levé sur son bord.
+///
+/// Une fenêtre flotte au-dessus du plan de travail, et dans ce chrome
+/// cela se dit par un relief — c'est la même phrase que pour une liste
+/// déroulée, et c'est le même objet : quelque chose posé par-dessus.
+/// egui l'encadre d'un trait d'un pixel, qui se lit comme une bordure
+/// oubliée à côté d'un panneau biseauté.
+///
+/// Peint sur **la couche de la fenêtre** et non sur celle qui l'appelle
+/// : peint sur l'appelante, le biseau passerait sous le fond de la
+/// fenêtre, c'est-à-dire nulle part. Et après son contenu, donc par
+/// dessus — ce qui est juste, puisqu'il est sur le bord.
+pub fn dialog_relief<R>(ctx: &egui::Context, shown: &Option<egui::InnerResponse<R>>) {
+    let Some(out) = shown else { return };
+    let painter = ctx.layer_painter(out.response.layer_id);
+    bevel(&painter, out.response.rect, true);
+}
+
+/// Le relief d'une liste déroulée : un biseau levé autour d'elle.
+///
+/// Le panneau d'un menu ouvert est une chose qui **flotte au-dessus**
+/// du reste, et dans ce chrome cela se dit d'une façon et d'une seule :
+/// par un relief. egui l'encadre d'un trait d'un pixel, ce qui est la
+/// même faute que partout ailleurs ici — le trait se lit comme une
+/// bordure oubliée, et la liste comme une tache de la couleur du
+/// panneau posée sur le panneau.
+///
+/// Posé **après** les lignes, et c'est voulu : le biseau tombe dans la
+/// marge du cadre, où rien n'est peint, donc l'ordre ne coûte rien et
+/// on n'a pas à connaître la hauteur avant de l'avoir remplie.
+fn popup_relief(ui: &egui::Ui) {
+    bevel(ui.painter(), ui.min_rect().expand(4.0), true);
+}
+
 /// Le contrôle fermé d'un menu : relief levé, libellé, marque.
 ///
 /// Écrit une fois et partagé par [`select`] et [`menu`] : deux dessins
@@ -2180,6 +2214,7 @@ pub fn menu<T: Clone>(
                     picked = Some(value.clone());
                 }
             }
+            popup_relief(ui);
         },
     );
     egui::InnerResponse::new(picked, response)
@@ -2271,15 +2306,16 @@ pub fn area_scrolled(
     }
     let inner = rect.shrink2(Vec2::new(6.0, 3.0));
     let mut child = ui.new_child(egui::UiBuilder::new().max_rect(inner));
+    // La barre de défilement flotte : ce qui passe dessous ne se voit
+    // pas, et ici ce qui passe dessous est ce qu'on vient d'écrire. Le
+    // réglage se pose sur le `Ui` **avant** d'ouvrir la zone : écrit
+    // dans son contenu, il n'atteint que les zones imbriquées.
+    child.spacing_mut().scroll.floating = false;
     let response = egui::ScrollArea::vertical()
         .id_salt(id)
         .max_height(inner.height())
         .auto_shrink([false, false])
         .show(&mut child, |ui| {
-            // La barre de défilement flotte : ce qui passe dessous ne
-            // se voit pas, et ici ce qui passe dessous est ce qu'on
-            // vient d'écrire.
-            ui.spacing_mut().scroll.floating = false;
             let w = ui.available_width();
             ui.add(edit.desired_width(w).frame(false))
         })
@@ -2386,11 +2422,18 @@ pub fn code_area<'t>(
     edit: egui::TextEdit<'t>,
 ) -> (egui::Response, egui::text_edit::TextEditOutput) {
     sunken_with(ui, size, None, |ui| {
+        // **Le réglage se pose sur le `Ui` qui ouvre la zone**, pas
+        // dans son contenu : `ScrollArea` lit l'espacement au moment
+        // où on l'ouvre, et une ligne écrite à l'intérieur n'atteint
+        // que les zones imbriquées. Posée là, elle ne faisait rien —
+        // et une barre flottante sur un éditeur de code est une barre
+        // invisible sur ce qui dépasse à droite, c'est-à-dire sur la
+        // moitié d'une ligne longue.
+        ui.spacing_mut().scroll.floating = false;
         egui::ScrollArea::both()
             .id_salt(id)
             .auto_shrink([false, false])
             .show(ui, |ui| {
-                ui.spacing_mut().scroll.floating = false;
                 let out = edit.frame(false).show(ui);
                 (out.response.clone(), out)
             })
@@ -2481,6 +2524,7 @@ pub fn select_hinted<T: PartialEq + Clone>(
                     changed = true;
                 }
             }
+            popup_relief(ui);
         },
     );
     let mut response = response;

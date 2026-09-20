@@ -102,6 +102,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   existaient déjà pour les mises en page découpées ; ce qui manquait
   était la forme qui prend sa place dans une rangée.
 
+- **Les boîtes de dialogue et les listes déroulées ont un relief.** Une
+  fenêtre et un menu ouvert sont la même chose : quelque chose de posé
+  **par-dessus** le plan de travail, et dans ce chrome cela se dit par
+  un biseau. egui les encadre d'un trait d'un pixel, qui se lit comme
+  une bordure oubliée à côté d'un panneau biseauté. Le biseau d'une
+  fenêtre est peint **sur sa propre couche** : peint sur celle qui
+  l'appelle, il passerait sous son fond, c'est-à-dire nulle part.
+
 - **Deux peaux claires de plus, pour un écran qu'on lit mal.**
   « Papier » abandonne la teinte — un gris neutre et des cases blanches,
   parce qu'un écran dont les couleurs ont dérivé rend un bleu-gris

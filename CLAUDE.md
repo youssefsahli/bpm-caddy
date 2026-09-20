@@ -850,6 +850,14 @@ add clicking and typing; it is not the price of entry.
   geometry — which is what the union of two responses is.
   `a_field_hands_back_the_frame_it_drew_and_takes_the_room_it_asked_for`
   draws two fields in a row, headless, and holds all three at once.
+- **What floats above the workspace says so with a bevel.** A window
+  and an open drop-down are the same object — something laid over the
+  rest — and egui frames both with a one-pixel line, which beside a
+  bevelled panel reads as a forgotten border. `motif::dialog_relief`
+  (called with what `Window::show` returned) and the popup's own relief
+  put a raised bevel on the edge. The dialog's is painted on **the
+  window's own layer**, from `response.layer_id`: painted on the
+  calling layer it would go under the window's fill, which is nowhere.
 - **A separator has relief too.** `ui.separator()` is a one-pixel line
   off `widgets.noninteractive.bg_stroke`: beside a bevelled panel it
   reads as a forgotten border. The two-tone painters existed

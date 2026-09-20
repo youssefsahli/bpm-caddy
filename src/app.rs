@@ -9471,7 +9471,7 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
         session.goto_selected = session.goto_selected.min(hits.len() - 1);
     }
     let mut chosen: Option<Goto> = None;
-    egui::Window::new(tr("goto_title"))
+    let shown = egui::Window::new(tr("goto_title"))
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_TOP, [0.0, 90.0])
@@ -9564,6 +9564,7 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                 }
             }
         });
+    motif::dialog_relief(ctx, &shown);
     if enter {
         if let Some(hit) = hits.get(session.goto_selected) {
             chosen = Some(hit.dest.clone());
@@ -9606,7 +9607,7 @@ fn export_window(
     };
     let mut go = false;
     let mut close = false;
-    egui::Window::new(match box_.target {
+    let shown = egui::Window::new(match box_.target {
         ExportTarget::Fiche => tr("export_title_fiche"),
         ExportTarget::Cr => tr("export_title_cr"),
         ExportTarget::Liasse => tr("export_title_bundle"),
@@ -9698,6 +9699,7 @@ fn export_window(
             }
         });
     });
+    motif::dialog_relief(ctx, &shown);
     if go {
         let chosen = box_.chosen();
         let b = session.export_box.take()?;
@@ -9728,7 +9730,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
     ];
     let mut chosen: Option<InterviewKind> = None;
     let mut close = false;
-    egui::Window::new(tr("act_picker_title"))
+    let shown = egui::Window::new(tr("act_picker_title"))
         .collapsible(false)
         .resizable(false)
         .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -9801,6 +9803,7 @@ fn act_picker_window(ctx: &egui::Context, session: &mut Session) -> Option<Inter
                 close = true;
             }
         });
+    motif::dialog_relief(ctx, &shown);
     // The picker is not modal — the table behind it still takes text.
     // Only claim the digits when nothing else wants the keyboard, or
     // typing a duration would create acts behind the dialog.
@@ -13275,7 +13278,7 @@ impl App {
         let rows = key_rows();
         let mut open = true;
         let mut print_guide = false;
-        egui::Window::new(tr("keys_title"))
+        let shown = egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
             .open(&mut open)
@@ -13350,6 +13353,7 @@ impl App {
                             });
                     });
             });
+        motif::dialog_relief(ctx, &shown);
         if print_guide {
             if let Err(e) = crate::pdf::open_guide(
                 &self.config.pharmacy,
@@ -14418,7 +14422,7 @@ impl App {
         // large que l'écran à `text_scale = 1,6`, et la barre de titre
         // d'une fenêtre egui ne se replie pas — elle élargit la fenêtre.
         // L'indication se lit à l'intérieur, où elle peut s'enrouler.
-        egui::Window::new(tr("ord_title"))
+        let shown = egui::Window::new(tr("ord_title"))
             .collapsible(false)
             .resizable(false)
             .fixed_size(dialog_size(screen.size(), egui::vec2(720.0, 700.0)))
@@ -14672,6 +14676,7 @@ impl App {
                     }
                 });
             });
+        motif::dialog_relief(ctx, &shown);
         // Lent to the window, which needs the session mutably at the
         // same time, and handed straight back: nothing between the two
         // lines returns.
@@ -28808,7 +28813,7 @@ impl App {
         let mut copy_week = false;
         let mut spread: Option<usize> = None;
         let mut clear = false;
-        egui::Window::new(tr("frame_title"))
+        let shown = egui::Window::new(tr("frame_title"))
             .collapsible(false)
             .resizable(true)
             .max_height((screen.y - 40.0).max(240.0))
@@ -29299,6 +29304,7 @@ impl App {
                     }
                 });
             });
+        motif::dialog_relief(ctx, &shown);
         // Les commandes sont appliquées **hors du dessin** : modifier la
         // grille pendant qu'on la parcourt est le genre de chose qui
         // marche jusqu'au jour où elle ne marche plus.
@@ -34922,7 +34928,7 @@ impl App {
         // sous le même libellé ferait mentir tout ce qui la cite.
         if let Some((edited, _)) = &mut session.scan_edit {
             let mut kind = crate::scans::DocKind::from_key(&edited.doc_kind);
-            egui::Window::new(tr("scan_edit_title"))
+            let shown = egui::Window::new(tr("scan_edit_title"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
@@ -34970,6 +34976,7 @@ impl App {
                         }
                     });
                 });
+            motif::dialog_relief(ui.ctx(), &shown);
             edited.doc_kind = kind.as_key().to_owned();
         }
         if let Some(sc) = edit {
@@ -35223,6 +35230,12 @@ impl App {
         if session.stup_open.is_some() {
             widths.push(Self::button_width(ui, tr("stup_print_register")));
         }
+        // Le filet qui sépare ce qui sort — un catalogue, une liste,
+        // le registre imprimé — de ce qui entre : la douchette. Sa
+        // largeur est **lue** là où elle est décidée, gouttière
+        // comprise, et non recopiée ici : une bande qui mesure une
+        // largeur et en dessine une autre est une bande qui ment.
+        widths.push(motif::separator_v_width(ui));
         widths.push(Self::field_width(ui, [tr("stup_scan_hint")].into_iter()).max(140.0));
         if session.stup_scan_unknown.is_some() && session.stup_open.is_some() {
             widths.push(Self::button_width(ui, &trf("stup_scan_teach", "…")));
@@ -35346,7 +35359,9 @@ impl App {
                         // La douchette. Un lecteur USB est un clavier : il tape
                         // la ligne et valide, donc c'est un champ de texte comme
                         // un autre. Tout ce qui le distingue est ce qu'on fait
-                        // de son contenu.
+                        // de son contenu — et c'est le sens inverse des trois
+                        // boutons d'avant, d'où le filet.
+                        motif::separator_v(ui, Self::button_height(ui));
                         let scan = motif::field_sized(
                             ui,
                             egui::vec2(
@@ -44359,7 +44374,7 @@ impl App {
                     .unwrap_or_default();
                 let mut buffer = text;
                 let (mut save_note, mut close_note) = (false, false);
-                egui::Window::new(trf("drug_class_note", &class))
+                let shown = egui::Window::new(trf("drug_class_note", &class))
                     .collapsible(false)
                     .resizable(true)
                     .default_size([520.0, 240.0])
@@ -44386,6 +44401,7 @@ impl App {
                             }
                         });
                     });
+                motif::dialog_relief(ctx, &shown);
                 if save_note {
                     let expected = session.class_note.clone();
                     match session.db.set_class_note(&class, &buffer, &expected) {
@@ -53547,7 +53563,7 @@ impl eframe::App for App {
         }
         let mut close_pw = false;
         if let (State::Unlocked(session), Some(form)) = (&mut self.state, &mut self.pw_change) {
-            egui::Window::new(tr("pw_title"))
+            let shown = egui::Window::new(tr("pw_title"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, -60.0])
@@ -53610,6 +53626,7 @@ impl eframe::App for App {
                         ui.colored_label(motif::alert(), err.as_str());
                     }
                 });
+            motif::dialog_relief(ctx, &shown);
         }
         if close_pw {
             self.pw_change = None;
@@ -53630,7 +53647,7 @@ impl eframe::App for App {
             // 680x540 box meant scrolling a page-long template through
             // a porthole on a monitor with room for all of it.
             let screen = ctx.screen_rect().size();
-            egui::Window::new(tr("tpl_title"))
+            let shown = egui::Window::new(tr("tpl_title"))
                 .collapsible(false)
                 .resizable(true)
                 // La fenêtre ne peut pas être plus haute que l'écran :
@@ -53802,6 +53819,7 @@ impl eframe::App for App {
                         ui.colored_label(color, msg.as_str());
                     }
                 });
+            motif::dialog_relief(ctx, &shown);
         }
         if close_tpl {
             self.tpl_editor = None;
@@ -54005,7 +54023,7 @@ impl eframe::App for App {
             // puisqu'elle est centrée.
             let avail = ctx.screen_rect().height();
             let across = ctx.screen_rect().width();
-            egui::Window::new(tr("opts_title"))
+            let shown = egui::Window::new(tr("opts_title"))
                 .collapsible(false)
                 // Plus redimensionnable : la taille vient de l'écran, et
                 // c'est précisément parce qu'elle en venait pas que la
@@ -55854,6 +55872,7 @@ impl eframe::App for App {
                         ui.colored_label(color, msg.as_str());
                     }
                 });
+            motif::dialog_relief(ctx, &shown);
         }
         if check_update {
             self.update_note = None;
