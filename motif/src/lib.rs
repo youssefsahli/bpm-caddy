@@ -2082,8 +2082,12 @@ pub fn badge(
     let font = badge_font(ui);
     let galley = ui.fonts(|f| f.layout_no_wrap(text.to_owned(), font, ink));
     let pad = ui.spacing().button_padding * 0.6 + Vec2::splat(2.0);
+    // **Elle écoute le clic**, parce que certaines se cliquent — les
+    // puces du compagnon ouvrent l'écran qui répond en entier — et
+    // qu'une seconde écriture de la même pastille finirait par ne plus
+    // lui ressembler. Celles qu'on ne clique pas ignorent la réponse.
     let (rect, resp) =
-        ui.allocate_exact_size(badge_size(ui, text, mark.is_some()), egui::Sense::hover());
+        ui.allocate_exact_size(badge_size(ui, text, mark.is_some()), egui::Sense::click());
     if !ui.is_rect_visible(rect) {
         return resp;
     }

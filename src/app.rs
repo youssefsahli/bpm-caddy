@@ -49949,49 +49949,30 @@ impl App {
     /// Le rembourrage est celui des boutons — l'unité de la maison, qui
     /// suit la densité —, plus les deux pixels de biseau de chaque côté.
     /// Écrit une fois : la mesure et le dessin lisent cette taille-là.
-    /// Le côté de la marque d'une puce, et l'air après elle.
+    /// Ce qu'une puce occupe — **la pastille de la maison**, mesurée
+    /// là où elle est dessinée.
     ///
-    /// Écrit une fois : la mesure et le dessin le lisent, sinon la
-    /// pastille est mesurée sans sa marque et son dernier mot sort du
-    /// rectangle.
-    fn companion_mark_room(ui: &egui::Ui) -> (f32, f32) {
-        let side = motif::pt(ui, 10.5);
-        (side, side + motif::pt(ui, 4.0))
-    }
-
+    /// Elle avait sa propre arithmétique ici, et la même chose existe
+    /// dans `motif` pour les pastilles cliniques : deux écritures d'un
+    /// même objet finissent par ne plus se ressembler, et c'est ce que
+    /// ce dépôt refuse partout ailleurs.
     fn companion_chip_size(ui: &egui::Ui, text: &str, marked: bool) -> egui::Vec2 {
-        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
-        let w = ui.fonts(|f| {
-            f.layout_no_wrap(text.to_owned(), font, motif::text())
-                .size()
-        });
-        let room = if marked {
-            Self::companion_mark_room(ui).1
-        } else {
-            0.0
-        };
-        w + ui.spacing().button_padding * 2.0 + egui::vec2(4.0 + room, 4.0)
+        motif::badge_size(ui, text, marked)
     }
 
-    /// Une pastille : un aplat, **son relief**, et son mot.
+    /// Une puce : un aplat, **son relief**, sa marque et son mot.
     ///
-    /// Elle était une étiquette à fond coloré, c'est-à-dire le seul objet
-    /// de cette interface sans biseau : dans un décor où tout est gravé —
-    /// les boutons saillent, les champs se creusent, les onglets se
-    /// détachent —, un rectangle plat ne se lit pas comme un objet, il se
-    /// lit comme une surbrillance. Or on la clique.
+    /// Le relief dit ce que la couleur dit : ce qui arrête **saille**,
+    /// ce qui rassure est **enfoncé**, du même mouvement que le ton le
+    /// plus calme prend le creux du thème. La règle tient même sur les
+    /// deux peaux de nuit, parce qu'un objet Motif est éclairé d'en
+    /// haut à gauche quelle que soit l'heure.
     ///
-    /// Le relief dit aussi ce que la couleur dit : ce qui arrête
-    /// **saille**, ce qui rassure est **enfoncé**, du même mouvement que
-    /// le ton le plus calme prend le creux du thème. La règle tient
-    /// même sur les deux peaux de nuit, parce qu'un objet Motif est
-    /// éclairé d'en haut à gauche quelle que soit l'heure.
-    ///
-    /// Et **elle est allouée**, non écrite : une étiquette peut se couper
-    /// en deux au milieu d'une rangée qui enveloppe, et laisser deux
-    /// fonds colorés là où il y en a un. Un rectangle alloué ne le peut
-    /// pas — la rangée passe à la ligne entre deux pastilles, ce qu'elle
-    /// sait faire.
+    /// Et **elle est allouée**, non écrite : une étiquette peut se
+    /// couper en deux au milieu d'une rangée qui enveloppe, et laisser
+    /// deux fonds colorés là où il y en a un. Un rectangle alloué ne le
+    /// peut pas — la rangée passe à la ligne entre deux puces, ce
+    /// qu'elle sait faire.
     fn companion_chip(
         ui: &mut egui::Ui,
         text: &str,
@@ -49999,39 +49980,7 @@ impl App {
         fill: egui::Color32,
         raised: bool,
     ) -> egui::Response {
-        let font = egui::FontId::proportional(motif::pt(ui, 10.5));
-        let ink = motif::on_fill(fill);
-        let galley = ui.fonts(|f| f.layout_no_wrap(text.to_owned(), font, ink));
-        let pad = ui.spacing().button_padding + egui::vec2(2.0, 2.0);
-        // **La taille vient de la fonction qui l'annonce**, et non d'un
-        // second calcul : deux écritures d'une même taille finissent par
-        // se contredire, et c'est alors la promesse qui ment.
-        let (rect, resp) = ui.allocate_exact_size(
-            Self::companion_chip_size(ui, text, mark.is_some()),
-            egui::Sense::click(),
-        );
-        let painter = ui.painter();
-        painter.rect_filled(rect, 0.0, fill);
-        motif::bevel(painter, rect, raised);
-        // **La marque d'abord** : c'est elle qu'on lit avant le mot, et
-        // c'est elle qui reste lisible quand la couleur ne dit plus
-        // rien. Elle est peinte de l'encre de la puce, comme le texte :
-        // une marque d'une autre couleur serait une troisième chose à
-        // interpréter.
-        let room = match mark {
-            Some(mark) => {
-                let (side, room) = Self::companion_mark_room(ui);
-                let square = egui::Rect::from_min_size(
-                    egui::pos2(rect.left() + pad.x, rect.center().y - side / 2.0),
-                    egui::vec2(side, side),
-                );
-                motif::pictogram(painter, square, mark, ink);
-                room
-            }
-            None => 0.0,
-        };
-        painter.galley(rect.min + pad + egui::vec2(room, 0.0), galley, ink);
-        resp
+        motif::badge(ui, text, mark, fill, raised)
     }
 
     /// Le liseré du bord gauche de la réponse : **ce qui presse le
