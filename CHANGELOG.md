@@ -65,6 +65,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   les huit boutons ne valent plus leur place : la nature passe dans un
   menu, qui tient sur une rangée et montre celle qui est choisie.
 
+- **Une monographie se lit de trois façons** — « Feuille » (posée sur du
+  papier, au milieu du volet : ce qu'on imprimerait), « Dense » (sans
+  feuille ni marge, deux fois plus de fiche d'un coup d'œil),
+  « Lecture » (colonne resserrée et de l'air autour). Une fiche se
+  consulte au comptoir pour une ligne, se lit en entier quand on prépare
+  un entretien, et se compare à ce qu'on a sous les yeux : la même page
+  servait les trois et servait bien la deuxième.
+
+  **Aucune des trois ne change la taille des lettres.** Celle-là se
+  règle une fois, dans `[ui] text_scale`, pour toute l'application : un
+  second réglage qui la contredirait sur un écran seulement donnerait
+  une page dense que personne ne peut lire, et rien à l'écran ne dirait
+  laquelle des deux commande. Ce qu'une façon de lire donne est de la
+  **place** — les marges, la largeur de la colonne, l'air entre les
+  sections. Le type lui-même ne porte aucun champ de taille, et un test
+  le lit.
+
+- **La vignette des tuiles du tableau de bord existe enfin.** Le champ
+  était dans la tuile depuis le premier jour et aucune des quatre ne lui
+  donnait de série : du code que rien n'exécutait, sur l'écran qu'on
+  ouvre le matin. Les douze derniers mois se comptent sur ce que la
+  session tient déjà — aucune requête de plus —, et **un mois sans rien
+  est un zéro, jamais un trou** : une courbe qui saute les mois vides
+  raconte un plateau là où il y a deux pics.
+
+  Au passage, la tuile faisait « 72 » et son chiffre « 24 », deux
+  nombres de pixels sous un texte qui grandit : à `text_scale = 1,6` le
+  chiffre sortait par le bas de son propre biseau, et à l'échelle 1 la
+  vignette passait par-dessus lui. Les deux se mesurent au même endroit
+  maintenant, et un test les confronte à trois échelles.
+
 - **Un séparateur gravé**, `motif::separator` et `motif::separator_v` :
   ce que `ui.separator()` d'egui ne sait pas faire ici, où il sort en
   trait d'un pixel à côté de panneaux biseautés. Les deux peintres

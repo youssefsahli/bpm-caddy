@@ -14,7 +14,13 @@
 # C'est le défaut que ce dépôt nomme partout ailleurs : deux
 # constructions d'une même chose finissent toujours par diverger.
 #
-# Usage : `demo_config <fichier> <échelle> <thème>`.
+# Usage : `demo_config <fichier> <échelle> <thème> [monographie]`.
+#
+# La quatrième est la façon de lire une monographie — « feuille »,
+# « dense » ou « lecture ». Elle est là pour la même raison que le
+# thème : rien d'autre qu'une capture ne dit ce que change une mise en
+# page, et une façon de lire qu'aucun script ne sait produire est une
+# façon de lire que personne ne regardera jamais.
 #
 # `demo_vitale_card <fichier>` écrit la carte Vitale rejouée : le chemin
 # du lecteur s'exécute alors en entier sans matériel, sans carte réelle
@@ -29,6 +35,7 @@ demo_config() {
 discreet_finances = false
 text_scale = $2
 theme = "$3"
+monograph = "${4:-feuille}"
 [pharmacy]
 # L'identité, parce qu'une capture d'Options › Officine sur cinq champs
 # vides ne montre rien de ce que l'écran fait, et que les documents

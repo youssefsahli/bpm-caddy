@@ -41,6 +41,9 @@ set -euo pipefail
 # scripts regardent les mêmes vues, ils doivent en montrer le même état.
 . "$(dirname "$0")/demo-config.sh"
 
+# `mono=` : la façon de lire une monographie, comme dans `shot.sh` — la
+# seconde clé qui va dans config.toml et non dans `layout.toml`.
+MONO=feuille
 out=${1:-/tmp/bpm-caddy-eyeball}
 SIZE=${2:-1024x700}
 SCALE=${3:-1.25}
@@ -73,13 +76,15 @@ layout() {
         # `layout.toml`, comme `theme=` l'est dans `shot.sh`.
         if [ "${kv%%=*}" = vierge ]; then
             fresh=${kv#*=}
+        elif [ "${kv%%=*}" = mono ]; then
+            MONO=${kv#*=}
         else
             printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
         fi
     done
 }
 layout "$@"
-demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME"
+demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$THEME" "$MONO"
 demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 

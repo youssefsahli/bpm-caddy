@@ -690,6 +690,109 @@ fn mono_linked_body(ui: &mut egui::Ui, width: f32, segments: &[MonoSeg]) -> Opti
     clicked
 }
 
+/// Les trois façons de lire une monographie.
+///
+/// Une fiche se lit de trois manières qui n'ont rien à voir : on la
+/// **consulte** au comptoir, vingt fois par jour, pour une ligne ; on
+/// la **lit** en entier quand on prépare un entretien ; on la
+/// **compare** à ce qu'on a sous les yeux. La même page servait les
+/// trois, et servait bien la deuxième.
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Default)]
+pub enum MonoStyle {
+    /// La feuille : une colonne posée sur du papier, au milieu du
+    /// panneau. Ce qu'on imprimerait.
+    #[default]
+    Feuille,
+    /// Sans feuille et sans marge : la fiche prend le volet entier, et
+    /// on en voit deux fois plus d'un coup d'œil.
+    Dense,
+    /// La colonne resserrée et l'air autour : une mesure de lecture,
+    /// pour une monographie qu'on lit d'un bout à l'autre.
+    Lecture,
+}
+
+impl MonoStyle {
+    /// Les trois, dans l'ordre où Options les propose, avec la clé de
+    /// leur intitulé.
+    const ALL: [(Self, &'static str, &'static str); 3] = [
+        (Self::Feuille, "opts_mono_sheet", "opts_mono_sheet_hint"),
+        (Self::Dense, "opts_mono_dense", "opts_mono_dense_hint"),
+        (Self::Lecture, "opts_mono_read", "opts_mono_read_hint"),
+    ];
+
+    /// La clé écrite dans `config.toml`. Stable : elle est sur disque.
+    fn key(self) -> &'static str {
+        match self {
+            Self::Feuille => "feuille",
+            Self::Dense => "dense",
+            Self::Lecture => "lecture",
+        }
+    }
+
+    /// Ce que le fichier dit, ou la feuille : un nom que cette version
+    /// ne connaît pas retombe sur celui qui est livré, comme une peau.
+    fn from_key(key: &str) -> Self {
+        Self::ALL
+            .into_iter()
+            .map(|(s, _, _)| s)
+            .find(|s| s.key().eq_ignore_ascii_case(key.trim()))
+            .unwrap_or_default()
+    }
+}
+
+/// Ce qu'une façon de lire décide : de la **place**, et rien d'autre.
+///
+/// **Aucune ne change la taille des lettres.** Celle-là se règle une
+/// fois pour toute l'application, dans `[ui] text_scale`, et un second
+/// réglage qui la contredirait sur un écran seulement serait un piège :
+/// celui qui veut voir plus d'un coup n'est pas celui qui veut des
+/// lettres plus petites, et les confondre donne une page dense que
+/// personne ne peut lire. Ce qui change est la marge, la largeur de la
+/// colonne, l'air entre les sections — et si la page est posée sur du
+/// papier ou sur le panneau.
+#[derive(Clone, Copy, PartialEq, Debug)]
+struct MonoLook {
+    /// La feuille est peinte, avec son encre et son ombre.
+    paper: bool,
+    /// Le plafond de largeur de la colonne. Une mesure de lecture n'est
+    /// pas une largeur d'écran : au-delà d'une certaine longueur de
+    /// ligne, l'œil perd le début de la suivante.
+    measure: f32,
+    /// La marge entre le bord de la feuille et le texte.
+    pad: f32,
+    /// L'air entre deux sections, en multiples de la gouttière.
+    lead: f32,
+}
+
+/// La place que chaque façon de lire donne.
+///
+/// Pure : rien qu'une table, pour que la règle ci-dessus se vérifie
+/// sans ouvrir de fenêtre.
+fn mono_look(style: MonoStyle) -> MonoLook {
+    match style {
+        MonoStyle::Feuille => MonoLook {
+            paper: true,
+            measure: 860.0,
+            pad: 34.0,
+            lead: 1.0,
+        },
+        // Pas de feuille, presque pas de marge : tout ce qu'on gagne
+        // est de la place, jamais de la finesse de caractère.
+        MonoStyle::Dense => MonoLook {
+            paper: false,
+            measure: f32::INFINITY,
+            pad: 8.0,
+            lead: 0.5,
+        },
+        MonoStyle::Lecture => MonoLook {
+            paper: true,
+            measure: 680.0,
+            pad: 52.0,
+            lead: 1.6,
+        },
+    }
+}
+
 /// The drug card as a printed monograph on a sheet of paper: identity,
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
@@ -699,16 +802,27 @@ fn drug_monograph(
     class_note: &str,
     posologies: &[db::Posologie],
     links: &MonoLinks,
+    style: MonoStyle,
 ) -> Option<i64> {
     // The other card the reader asked for, by clicking a name in the
     // prose. Opened by the caller once the sheet is drawn.
     let mut follow: Option<i64> = None;
+    let look = mono_look(style);
+    // **L'encre d'une feuille n'est pas celle d'un panneau.** Sans
+    // feuille, la page est posée sur le fond du volet, et `ink` —
+    // l'encre d'un papier — n'y est plus la bonne distance : c'est
+    // `text` qu'on lit sur ce fond-là, sur les dix peaux.
+    let (ink, ink_light) = if look.paper {
+        (motif::ink(), motif::ink_light())
+    } else {
+        (motif::text(), motif::text_dim())
+    };
     // Measured against the visible slice: a sheet centred on a width
     // the panel claimed but does not have loses its right margin — and
     // with it the right-hand column of the posology table.
     let avail = motif::visible_rect(ui);
-    let sheet_w = avail.width().min(860.0);
-    let pad = 34.0;
+    let sheet_w = avail.width().min(look.measure);
+    let pad = look.pad;
     let width = sheet_w - 2.0 * pad;
     let bg = ui.painter().add(egui::Shape::Noop);
     let content = egui::Rect::from_min_size(
@@ -717,12 +831,17 @@ fn drug_monograph(
     );
     let used = ui
         .allocate_new_ui(egui::UiBuilder::new().max_rect(content), |ui| {
+            // **L'air, et jamais la taille des lettres.** Une façon de
+            // lire donne ou retire de la place ; la taille du texte se
+            // règle une fois, dans `[ui] text_scale`, et un second
+            // réglage qui la contredirait ici serait un piège.
+            ui.spacing_mut().item_spacing.y = (ui.spacing().item_spacing.y * look.lead).max(1.0);
             ui.vertical_centered(|ui| {
                 ui.label(
                     egui::RichText::new(d.name.trim().to_uppercase())
                         .size(motif::pt(ui, 19.0))
                         .strong()
-                        .color(motif::ink()),
+                        .color(ink),
                 );
                 let mut sub = d.dci.trim().to_owned();
                 if !d.class.trim().is_empty() {
@@ -736,7 +855,7 @@ fn drug_monograph(
                         egui::RichText::new(sub)
                             .size(motif::pt(ui, 13.0))
                             .italics()
-                            .color(motif::ink_light()),
+                            .color(ink_light),
                     );
                 }
                 if !d.antidote.trim().is_empty() {
@@ -769,7 +888,7 @@ fn drug_monograph(
                     ui.label(
                         egui::RichText::new(tags.join("  ·  "))
                             .size(motif::pt(ui, 10.0))
-                            .color(motif::ink_light()),
+                            .color(ink_light),
                     );
                 }
             });
@@ -778,7 +897,7 @@ fn drug_monograph(
             ui.painter().hline(
                 content.left()..=content.right(),
                 top,
-                egui::Stroke::new(1.2_f32, motif::ink()),
+                egui::Stroke::new(1.2_f32, ink),
             );
             for (field, title, body) in [
                 (
@@ -828,7 +947,7 @@ fn drug_monograph(
                                         egui::RichText::new(&p.indication)
                                             .size(motif::pt(ui, 12.5))
                                             .strong()
-                                            .color(motif::ink()),
+                                            .color(ink),
                                     )
                                     .wrap(),
                                 );
@@ -839,7 +958,7 @@ fn drug_monograph(
                                     egui::Label::new(
                                         egui::RichText::new(&p.posologie)
                                             .size(motif::pt(ui, 12.5))
-                                            .color(motif::ink()),
+                                            .color(ink),
                                     )
                                     .wrap(),
                                 );
@@ -849,7 +968,7 @@ fn drug_monograph(
                                             egui::RichText::new(&p.remarque)
                                                 .size(motif::pt(ui, 11.0))
                                                 .italics()
-                                                .color(motif::ink_light()),
+                                                .color(ink_light),
                                         )
                                         .wrap(),
                                     );
@@ -898,11 +1017,8 @@ fn drug_monograph(
                             egui::Sense::hover(),
                         );
                         motif::chart::sparkline(ui, rect.shrink(2.0), &curve, motif::accent());
-                        ui.painter().rect_stroke(
-                            rect,
-                            0.0,
-                            egui::Stroke::new(0.8_f32, motif::ink_light()),
-                        );
+                        ui.painter()
+                            .rect_stroke(rect, 0.0, egui::Stroke::new(0.8_f32, ink_light));
                         let caption = trn(
                             "drug_decay_caption",
                             &[
@@ -913,7 +1029,7 @@ fn drug_monograph(
                         ui.label(
                             egui::RichText::new(caption)
                                 .size(motif::pt(ui, 10.0))
-                                .color(motif::ink_light()),
+                                .color(ink_light),
                         );
                         resp.on_hover_text(trf(
                             "drug_decay_tooltip",
@@ -936,7 +1052,7 @@ fn drug_monograph(
                                     egui::Label::new(
                                         egui::RichText::new(label)
                                             .size(motif::pt(ui, 12.0))
-                                            .color(motif::ink_light()),
+                                            .color(ink_light),
                                     )
                                     .wrap(),
                                 );
@@ -947,7 +1063,7 @@ fn drug_monograph(
                                     egui::Label::new(
                                         egui::RichText::new(value.trim())
                                             .size(motif::pt(ui, 13.0))
-                                            .color(motif::ink()),
+                                            .color(ink),
                                     )
                                     .wrap(),
                                 );
@@ -979,8 +1095,8 @@ fn drug_monograph(
                             for im in sorted {
                                 let tint = match im.grade {
                                     crate::facets::Grade::Majeur => motif::alert(),
-                                    crate::facets::Grade::Notable => motif::ink(),
-                                    crate::facets::Grade::Mineur => motif::ink_light(),
+                                    crate::facets::Grade::Notable => ink,
+                                    crate::facets::Grade::Mineur => ink_light,
                                 };
                                 let sense = if matches!(im.effect, crate::facets::Effect::Altere) {
                                     tr("facet_harms")
@@ -1007,7 +1123,7 @@ fn drug_monograph(
                                         egui::Label::new(
                                             egui::RichText::new(im.why)
                                                 .size(motif::pt(ui, 13.0))
-                                                .color(motif::ink()),
+                                                .color(ink),
                                         )
                                         .wrap(),
                                     );
@@ -1047,14 +1163,14 @@ fn drug_monograph(
                 ui.painter().hline(
                     content.left()..=content.right(),
                     y,
-                    egui::Stroke::new(0.8_f32, motif::ink_light()),
+                    egui::Stroke::new(0.8_f32, ink_light),
                 );
                 ui.add_space(5.0);
                 ui.label(
                     egui::RichText::new(tr("tables_sources"))
                         .size(motif::pt(ui, 11.0))
                         .strong()
-                        .color(motif::ink_light()),
+                        .color(ink_light),
                 );
                 for (i, src) in sources.iter().enumerate() {
                     ui.scope(|ui| {
@@ -1063,7 +1179,7 @@ fn drug_monograph(
                             egui::Label::new(
                                 egui::RichText::new(format!("{}. {}", i + 1, src))
                                     .size(motif::pt(ui, 11.0))
-                                    .color(motif::ink_light()),
+                                    .color(ink_light),
                             )
                             .wrap(),
                         );
@@ -1078,22 +1194,23 @@ fn drug_monograph(
         egui::pos2(avail.center().x - sheet_w / 2.0, avail.top()),
         egui::vec2(sheet_w, used.height() + 2.0 * pad),
     );
-    // The sheet is painted behind the text, once its height is known.
+    // The sheet is painted behind the text, once its height is known —
+    // et seulement si cette façon de lire en veut une.
     ui.painter().set(
         bg,
-        egui::Shape::Vec(vec![
-            egui::Shape::rect_filled(
-                sheet_rect.translate(egui::vec2(4.0, 4.0)),
-                0.0,
-                motif::bg_dark(),
-            ),
-            egui::Shape::rect_filled(sheet_rect, 0.0, motif::paper()),
-            egui::Shape::rect_stroke(
-                sheet_rect,
-                0.0,
-                egui::Stroke::new(1.0_f32, motif::ink_light()),
-            ),
-        ]),
+        if !look.paper {
+            egui::Shape::Noop
+        } else {
+            egui::Shape::Vec(vec![
+                egui::Shape::rect_filled(
+                    sheet_rect.translate(egui::vec2(4.0, 4.0)),
+                    0.0,
+                    motif::bg_dark(),
+                ),
+                egui::Shape::rect_filled(sheet_rect, 0.0, motif::paper()),
+                egui::Shape::rect_stroke(sheet_rect, 0.0, egui::Stroke::new(1.0_f32, ink_light)),
+            ])
+        },
     );
     let below = (sheet_rect.bottom() - ui.cursor().top()).max(0.0) + 12.0;
     ui.add_space(below);
@@ -10116,6 +10233,16 @@ pub fn key_rows() -> [(&'static str, &'static str); 27] {
 /// et `the_documentation_counts_what_the_code_holds` le confronte à
 /// celui-ci.
 pub const BIO_SIDE_TABS: usize = 6;
+
+/// Les repères d'une tuile de tableau de bord, comptés depuis son haut.
+struct KpiRows {
+    cap_y: f32,
+    rule_y: f32,
+    figure_y: f32,
+    /// Le haut de la vignette et sa hauteur.
+    strip: (f32, f32),
+    height: f32,
+}
 
 impl App {
     pub fn new() -> Self {
@@ -43927,6 +44054,7 @@ impl App {
                                     &session.class_note,
                                     &session.posologies,
                                     &session.mono_links,
+                                    MonoStyle::from_key(&config.ui.monograph),
                                 );
                             }
                             if !reading {
@@ -44608,6 +44736,85 @@ impl App {
     /// A raised KPI tile: caption, big figure, and an optional trend
     /// sparkline under it. `rect` is carved by the caller, so a row of
     /// tiles shares the width evenly instead of each guessing at it.
+    /// Les douze derniers mois d'une suite d'actes, du plus ancien au
+    /// plus récent.
+    ///
+    /// **Un mois sans rien est un zéro, jamais un trou.** Une courbe
+    /// qui saute les mois vides raconte une autre forme que celle des
+    /// faits : trois actes en janvier et trois en juin se lisent comme
+    /// un plateau, alors que ce sont deux pics avec quatre mois de
+    /// silence entre eux — et c'est précisément la forme qu'on regarde
+    /// une courbe pour voir.
+    ///
+    /// Pure : le mois d'aujourd'hui est passé, rien ici ne lit
+    /// d'horloge, comme partout ailleurs dans ce dépôt.
+    fn monthly_counts(months: &[&str], today_month: &str, span: usize) -> Vec<f64> {
+        let Some((y, m)) = today_month
+            .split_once('-')
+            .and_then(|(y, m)| Some((y.parse::<i64>().ok()?, m.parse::<i64>().ok()?)))
+        else {
+            return Vec::new();
+        };
+        let wanted: Vec<String> = (0..span)
+            .rev()
+            .map(|back| {
+                let total = y * 12 + (m - 1) - back as i64;
+                format!(
+                    "{:04}-{:02}",
+                    total.div_euclid(12),
+                    total.rem_euclid(12) + 1
+                )
+            })
+            .collect();
+        wanted
+            .iter()
+            .map(|key| months.iter().filter(|s| *s == key).count() as f64)
+            .collect()
+    }
+
+    /// Les repères d'une tuile, **mesurés une fois** : où passe la
+    /// légende, le filet, le chiffre, la vignette — et ce que tout cela
+    /// demande de hauteur.
+    ///
+    /// Une seule écriture, parce que les deux qu'il y avait ont
+    /// divergé : la tuile faisait « 72 » et le chiffre « 24 », deux
+    /// nombres de pixels sous un texte qui grandit. À
+    /// `text_scale = 1,6` le chiffre en demandait trente-huit et la
+    /// tuile n'avait pas bougé — le nombre que cet écran existe pour
+    /// montrer sortait par le bas de son propre biseau —, tandis que la
+    /// vignette, posée à une distance fixe du bas, passait **par-dessus
+    /// lui** à l'échelle 1. C'est le défaut que ce fichier nomme
+    /// partout ailleurs, sur la première chose qu'on regarde le matin.
+    ///
+    /// Les repères sont comptés depuis le haut de la tuile.
+    fn kpi_rows(ui: &egui::Ui, with_trend: bool) -> KpiRows {
+        let pad = 8.0;
+        let caption = motif::pt(ui, 10.0);
+        // La hauteur d'une ligne de chiffre : la fonte, plus ce que les
+        // jambages demandent sous la ligne de base.
+        let figure = motif::pt(ui, 24.0) * 1.35;
+        let strip_h = if with_trend { motif::pt(ui, 16.0) } else { 0.0 };
+        let cap_y = pad + caption / 2.0;
+        let rule_y = (pad + caption + 4.0).round();
+        let figure_top = rule_y + 4.0;
+        let strip_top = figure_top + figure + 4.0;
+        KpiRows {
+            cap_y,
+            rule_y,
+            figure_y: figure_top + figure / 2.0,
+            strip: (strip_top, strip_h),
+            height: if with_trend {
+                strip_top + strip_h + pad
+            } else {
+                figure_top + figure + pad
+            },
+        }
+    }
+
+    fn kpi_tile_height(ui: &egui::Ui, with_trend: bool) -> f32 {
+        Self::kpi_rows(ui, with_trend).height
+    }
+
     fn kpi_tile(
         ui: &mut egui::Ui,
         rect: egui::Rect,
@@ -44625,22 +44832,30 @@ impl App {
             .chars()
             .flat_map(|c| [c, '\u{2009}'])
             .collect();
+        let rows = Self::kpi_rows(ui, trend.len() >= 2);
+        let cap_h = motif::pt(ui, 10.0);
+        let cap_y = rect.top() + rows.cap_y;
         ui.painter().text(
-            egui::pos2(rect.left() + 12.0, rect.top() + 13.0),
+            egui::pos2(rect.left() + 12.0, cap_y),
             egui::Align2::LEFT_CENTER,
             caption.trim_end(),
-            egui::FontId::proportional(motif::pt(ui, 10.0)),
+            egui::FontId::proportional(cap_h),
             motif::text_dim(),
         );
+        let rule_y = rect.top() + rows.rule_y;
         motif::rule(
             ui.painter(),
             rect.left() + 12.0,
             rect.right() - 12.0,
-            rect.top() + 22.0,
+            rule_y,
         );
         // The figure shrinks rather than overflowing its tile: a five
-        // figure revenue must stay inside the bevel.
-        let mut size = 24.0_f32;
+        // figure revenue must stay inside the bevel. **Et il part de la
+        // taille du texte en cours**, non d'un nombre de pixels : à
+        // 1,6, vingt-quatre pixels étaient la seule chose de cet écran
+        // qui n'avait pas grandi.
+        let mut size = motif::pt(ui, 24.0);
+        let floor = motif::pt(ui, 12.0);
         let fits = |size: f32| {
             ui.fonts(|f| {
                 f.layout_no_wrap(
@@ -44652,11 +44867,12 @@ impl App {
                 .x
             }) <= rect.width() - 24.0
         };
-        while size > 12.0 && !fits(size) {
+        while size > floor && !fits(size) {
             size -= 1.0;
         }
+        let figure_y = rect.top() + rows.figure_y;
         ui.painter().text(
-            egui::pos2(rect.left() + 12.0, rect.top() + 44.0),
+            egui::pos2(rect.left() + 12.0, figure_y),
             egui::Align2::LEFT_CENTER,
             value,
             egui::FontId::proportional(size),
@@ -44680,7 +44896,7 @@ impl App {
             });
             let room = (rect.width() - value_w - 36.0).max(rect.width() * 0.3);
             ui.painter().text(
-                egui::pos2(rect.right() - 12.0, rect.top() + 46.0),
+                egui::pos2(rect.right() - 12.0, figure_y),
                 egui::Align2::RIGHT_CENTER,
                 elide(ui, note, room, 10.5),
                 egui::FontId::proportional(motif::pt(ui, 10.5)),
@@ -44688,13 +44904,24 @@ impl App {
             );
         }
         // The trend says whether the figure is going anywhere — the one
-        // thing a bare number can never say.
-        if trend.len() >= 2 && rect.height() > 70.0 {
+        // thing a bare number can never say. Elle se pose **sous** le
+        // chiffre, dans la place que la tuile a mesurée pour elle : la
+        // hauteur écrite à la main la faisait passer par-dessus lui.
+        if trend.len() >= 2 {
             let strip = egui::Rect::from_min_max(
-                egui::pos2(rect.left() + 12.0, rect.bottom() - 26.0),
-                egui::pos2(rect.right() - 12.0, rect.bottom() - 8.0),
+                egui::pos2(rect.left() + 12.0, rect.top() + rows.strip.0),
+                egui::pos2(
+                    rect.right() - 12.0,
+                    (rect.top() + rows.strip.0 + rows.strip.1).min(rect.bottom() - 4.0),
+                ),
             );
-            motif::chart::sparkline(ui, strip, trend, motif::accent());
+            // Une tuile plus courte que ce qu'elle a mesuré — un volet
+            // qui a rendu moins — n'écrase pas son chiffre avec la
+            // vignette : c'est la garniture qui saute, jamais le
+            // chiffre. C'est la règle des graphiques de ce dépôt.
+            if strip.height() > 4.0 {
+                motif::chart::sparkline(ui, strip, trend, motif::accent());
+            }
         }
     }
 
@@ -46762,7 +46989,11 @@ impl App {
                 // La rangée de tuiles : les quatre nombres qui répondent
                 // avant qu'on lise un graphique.
                 let per_row = if w >= 720.0 { 4 } else { 2 };
-                let tile_h = 72.0;
+                // Mesurée, jamais écrite : voir `kpi_rows`. Sans
+                // vignette : les quatre nombres de cette page-ci n'ont
+                // pas de série derrière eux, et une bande gardée pour
+                // rien est du blanc, qui se lit comme une intention.
+                let tile_h = Self::kpi_tile_height(ui, false);
                 let rows = 4_usize.div_ceil(per_row);
                 let kpi_rect = egui::Rect::from_min_size(
                     full.min,
@@ -47147,7 +47378,7 @@ impl App {
                 let gutter = 8.0;
 
                 let per_row = if w >= 720.0 { 4 } else { 2 };
-                let tile_h = if trend.len() >= 2 { 96.0 } else { 72.0 };
+                let tile_h = Self::kpi_tile_height(ui, trend.len() >= 2);
                 let rows = 4_usize.div_ceil(per_row);
                 let kpi_rect = egui::Rect::from_min_size(
                     full.min,
@@ -47365,7 +47596,11 @@ impl App {
                 Self::call_list_control(ui, session, config, true);
             });
         }
-        ui.add_space(6.0);
+        // Un filet gravé sous le titre : il sépare la page de son en-
+        // tête, et il prend exactement la place qu'une gouttière
+        // prenait — ce qui est la raison pour laquelle il remplace un
+        // `add_space` plutôt que de s'ajouter à lui.
+        motif::separator(ui);
 
         // ---- Ce que la journée compte, et pas un euro ----
         let acts = session.summaries.len();
@@ -47398,7 +47633,8 @@ impl App {
 
                 // ---- KPI row: four across, two-up on a narrow window ----
                 let per_row = if w >= 720.0 { 4 } else { 2 };
-                let tile_h = 72.0;
+                // Mesurée, jamais écrite : voir `kpi_rows`.
+                let tile_h = Self::kpi_tile_height(ui, true);
                 let rows = 4_usize.div_ceil(per_row);
                 let kpi_rect = egui::Rect::from_min_size(
                     full.min,
@@ -47411,14 +47647,41 @@ impl App {
                 // disent la même chose que lui : ce qui a été fait, ce
                 // qui attend, le temps que cela a pris, et pour combien
                 // de dossiers.
+                // **La courbe sous le chiffre dit s'il va quelque
+                // part**, ce qu'un nombre seul ne sait pas dire. Elle
+                // existait dans la tuile depuis le premier jour et
+                // aucune des quatre ne lui donnait de série : du code
+                // que rien n'exécutait, sur l'écran qu'on ouvre le
+                // matin. Les mois se comptent sur ce que la session
+                // tient déjà — aucune requête de plus pour une
+                // vignette de dix-huit pixels.
+                let month = if session.today.len() >= 7 {
+                    session.today[..7].to_owned()
+                } else {
+                    String::new()
+                };
+                let billed_months: Vec<&str> = session
+                    .summaries
+                    .iter()
+                    .filter(|s| s.state == InterviewState::Billed)
+                    .map(|s| s.updated_month.as_str())
+                    .collect();
+                let opened_months: Vec<&str> = session
+                    .summaries
+                    .iter()
+                    .filter(|s| s.state != InterviewState::Billed)
+                    .map(|s| s.created_month.as_str())
+                    .collect();
+                let billed_trend = Self::monthly_counts(&billed_months, &month, 12);
+                let open_trend = Self::monthly_counts(&opened_months, &month, 12);
                 let tiles: [(&str, String, &[f64], Option<String>); 4] = [
                     (
                         tr("dash_billed_count"),
                         billed_count.to_string(),
-                        &[],
+                        &billed_trend,
                         Some(trf("dash_of_n", acts)),
                     ),
-                    (tr("dash_to_bill"), to_bill.to_string(), &[], None),
+                    (tr("dash_to_bill"), to_bill.to_string(), &open_trend, None),
                     (
                         tr("dash_time_spent"),
                         // Une décimale : « 3,4 h » se lit, « 3,417 h »
@@ -54782,6 +55045,42 @@ impl eframe::App for App {
                                             }
                                         });
                                         ui.end_row();
+                                        // **Comment une monographie se
+                                        // lit** : une feuille, une
+                                        // colonne dense, ou une mesure
+                                        // de lecture. Aucune des trois
+                                        // ne touche à la taille des
+                                        // lettres — c'est la glissière
+                                        // au-dessus qui en décide, et
+                                        // un second réglage qui la
+                                        // contredirait sur un écran
+                                        // seulement serait un piège.
+                                        ui.label(dim(tr("opts_mono")));
+                                        let looks: Vec<(MonoStyle, String, String)> =
+                                            MonoStyle::ALL
+                                                .iter()
+                                                .map(|(style, label, hint)| {
+                                                    (
+                                                        *style,
+                                                        tr(label).to_owned(),
+                                                        tr(hint).to_owned(),
+                                                    )
+                                                })
+                                                .collect();
+                                        let mut chosen =
+                                            MonoStyle::from_key(&editor.cfg.ui.monograph);
+                                        if motif::select_hinted(
+                                            ui,
+                                            "opts_mono",
+                                            chars_wide(ui, 22.0),
+                                            &mut chosen,
+                                            &looks,
+                                        )
+                                        .changed()
+                                        {
+                                            editor.cfg.ui.monograph = chosen.key().to_owned();
+                                        }
+                                        ui.end_row();
                                     });
                                 // The palette. The shape never moves —
                                 // square corners, two-pixel bevels — so
@@ -54799,7 +55098,7 @@ impl eframe::App for App {
                                 // screenshot did. In the dialog's own
                                 // vertical flow the band grows as it
                                 // should.
-                                ui.add_space(6.0);
+                                motif::separator(ui);
                                 ui.label(dim(tr("opts_theme")));
                                 ui.horizontal_wrapped(|ui| {
                                     for t in motif::THEMES.iter() {
@@ -57839,6 +58138,132 @@ mod tests {
         // garderait le vide sans le dire.
         assert!(SOURCE.matches(ours[0]).count() > 150);
         assert!(SOURCE.contains(concat!("motif::ar", "ea(")));
+    }
+
+    /// **Un mois sans rien est un zéro, jamais un trou.**
+    ///
+    /// Une courbe qui saute les mois vides raconte une autre forme que
+    /// celle des faits : trois actes en janvier et trois en juin se
+    /// lisent comme un plateau, alors que ce sont deux pics avec quatre
+    /// mois de silence entre eux — et c'est précisément cette forme-là
+    /// qu'on regarde une vignette pour voir.
+    #[test]
+    fn a_month_with_nothing_is_a_zero_and_not_a_gap() {
+        let months = ["2026-01", "2026-01", "2026-06"];
+        let got = App::monthly_counts(&months, "2026-06", 6);
+        assert_eq!(got, vec![2.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+        // Le passage d'une année : décembre précède janvier, et la
+        // série reste dans l'ordre du calendrier.
+        let turn = ["2025-12", "2026-01"];
+        assert_eq!(
+            App::monthly_counts(&turn, "2026-01", 3),
+            vec![0.0, 1.0, 1.0]
+        );
+        // Un mois illisible ne fait pas une série fausse : il n'en fait
+        // aucune, et la tuile ne dessine rien.
+        assert!(App::monthly_counts(&months, "", 6).is_empty());
+        assert!(App::monthly_counts(&months, "pas un mois", 6).is_empty());
+    }
+
+    /// **Une tuile tient son chiffre et sa vignette à toutes les
+    /// échelles.**
+    ///
+    /// Elle faisait « 72 » et son chiffre « 24 », deux nombres de
+    /// pixels sous un texte qui grandit : à `text_scale = 1,6` le
+    /// chiffre sortait par le bas de son propre biseau, et à l'échelle
+    /// 1 la vignette — posée à distance fixe du bas — passait par-dessus
+    /// lui. Les deux se mesurent au même endroit maintenant, et c'est
+    /// cela qu'on vérifie : la vignette commence **sous** le chiffre, et
+    /// la tuile est assez haute pour les deux.
+    #[test]
+    fn a_tile_holds_its_figure_and_its_trend_at_every_scale() {
+        use eframe::egui;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply(&ctx);
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let mut rows = None;
+            let mut figure = 0.0_f32;
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    rows = Some(App::kpi_rows(ui, true));
+                    figure = motif::pt(ui, 24.0);
+                });
+            });
+            let r = rows.expect("une tuile se mesure");
+            let bottom = r.figure_y + figure * 0.7;
+            assert!(
+                r.strip.0 >= bottom - 0.5,
+                "à {scale} la vignette passe sur le chiffre : {} contre {bottom}",
+                r.strip.0
+            );
+            assert!(
+                r.height >= r.strip.0 + r.strip.1,
+                "à {scale} la tuile est plus courte que ce qu'elle porte"
+            );
+            // Et sans vignette elle ne garde pas sa place : une bande
+            // blanche se lit comme une intention.
+            let ctx2 = egui::Context::default();
+            motif::apply(&ctx2);
+            motif::apply_scale(&ctx2, scale, motif::Density::Comfortable);
+            let mut bare = None;
+            let _ = ctx2.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    bare = Some(App::kpi_rows(ui, false));
+                });
+            });
+            assert!(bare.expect("mesurée").height < r.height);
+        }
+    }
+
+    /// **Une façon de lire donne de la place, jamais des lettres.**
+    ///
+    /// C'est la règle de `MonoLook`, et elle tient à ce que le réglage
+    /// existe : celui qui veut voir plus d'un coup d'œil n'est pas
+    /// celui qui veut des lettres plus petites. La taille se décide une
+    /// fois, dans `[ui] text_scale`, pour toute l'application ; un
+    /// second réglage qui la contredirait sur un écran seulement
+    /// donnerait une page dense que personne ne peut lire, et il n'y
+    /// aurait rien à l'écran pour dire laquelle des deux commande.
+    ///
+    /// Vérifié sur le type lui-même — il ne porte aucun champ de
+    /// taille — et sur le texte de la fonction, qui ne parle pas de
+    /// points.
+    #[test]
+    fn no_way_of_reading_a_monograph_decides_the_size_of_its_letters() {
+        const SOURCE: &str = include_str!("app.rs");
+        let from = SOURCE.find("struct MonoLook").expect("le type existe");
+        let to = SOURCE[from..].find("\n}").expect("il se ferme") + from;
+        let decl = &SOURCE[from..to];
+        for forbidden in ["size", "pt(", "font", "scale"] {
+            assert!(
+                !decl.contains(forbidden),
+                "une façon de lire décide « {forbidden} » : la taille du \
+                 texte se règle une fois, dans [ui] text_scale"
+            );
+        }
+        // Et les trois se distinguent par la place, chacune dans son
+        // sens : la dense gagne sur les marges, la lecture resserre la
+        // colonne et donne de l'air.
+        let sheet = super::mono_look(super::MonoStyle::Feuille);
+        let dense = super::mono_look(super::MonoStyle::Dense);
+        let read = super::mono_look(super::MonoStyle::Lecture);
+        assert!(dense.pad < sheet.pad && dense.measure > sheet.measure);
+        assert!(dense.lead < sheet.lead);
+        assert!(read.measure < sheet.measure && read.lead > sheet.lead);
+        assert!(!dense.paper && sheet.paper && read.paper);
+        for look in [sheet, dense, read] {
+            assert!(look.pad >= 0.0 && look.measure > 100.0 && look.lead > 0.0);
+        }
+        // Une clé que cette version ne connaît pas retombe sur la
+        // feuille, comme une peau inconnue retombe sur la première.
+        assert_eq!(
+            super::MonoStyle::from_key("papier-mâché"),
+            super::MonoStyle::Feuille
+        );
+        for (style, _, _) in super::MonoStyle::ALL {
+            assert_eq!(super::MonoStyle::from_key(style.key()), style);
+        }
     }
 
     /// **Une case à cocher a un relief, comme tout le reste ici.**

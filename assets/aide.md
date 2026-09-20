@@ -45,6 +45,14 @@ Dans les monographies, « Dans le texte… » cherche les **mots** des
 fiches et non leur titre : il rend chaque fiche qui dit le mot, avec la
 phrase qui le porte.
 
+**Une monographie se lit de trois façons**, au choix dans Options ›
+Interface : « Feuille » la pose sur du papier au milieu du volet — ce
+qu'on imprimerait ; « Dense » enlève la feuille et les marges, et on en
+voit deux fois plus d'un coup d'œil ; « Lecture » resserre la colonne et
+met de l'air autour, pour une fiche qu'on lit d'un bout à l'autre.
+Aucune des trois ne change la taille des lettres : celle-là se règle une
+fois, à « Taille du texte », pour toute l'application.
+
 # Le dossier
 
 Le bandeau porte l'identité et les traitements ; en dessous, les actes,

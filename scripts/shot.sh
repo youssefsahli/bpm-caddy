@@ -28,17 +28,21 @@ export BPM_CADDY_NO_KEYRING=1
 mkdir -p "$tmp/config/bpm-caddy"
 : > "$tmp/config/bpm-caddy/layout.toml"
 theme=motif
+mono=feuille
 for kv in "$@"; do
-    # `theme=` est la seule clé qui vit dans config.toml et non dans la
-    # forme du plan de travail — et c'est celle qu'on veut faire varier
-    # vingt fois de suite quand on regarde une peau.
+    # `theme=` et `mono=` sont les deux clés qui vivent dans config.toml
+    # et non dans la forme du plan de travail — ce sont celles qu'on veut
+    # faire varier vingt fois de suite quand on regarde une peau ou une
+    # façon de lire une monographie.
     if [ "${kv%%=*}" = theme ]; then
         theme=${kv#*=}
+    elif [ "${kv%%=*}" = mono ]; then
+        mono=${kv#*=}
     else
         printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
     fi
 done
-demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$theme"
+demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$theme" "$mono"
 demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 

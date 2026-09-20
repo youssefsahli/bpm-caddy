@@ -1081,8 +1081,8 @@ add clicking and typing; it is not the price of entry.
   keeps a sentence's own colour on a highlight unless the highlight has
   swallowed it.
 - `./scripts/shot.sh <vue> <fichier> <taille> <échelle> theme=nuit`
-  captures a view under a chosen skin — `theme=` is the one key that
-  goes into `config.toml` rather than into `layout.toml`.
+  captures a view under a chosen skin — `theme=` and `mono=` are the two
+  keys that go into `config.toml` rather than into `layout.toml`.
 - **Layout is carved, not stacked.** A view computes rectangles with
   `motif::split_rows` / `split_columns` and fills them with
   `motif::panel` / `well` / `inside`; it does not centre a fixed-width
@@ -1249,6 +1249,21 @@ add clicking and typing; it is not the price of entry.
   gained a ninth drug so its age section has something to say — which
   is also what exposed the vanishing chip above. When you seed a state,
   seed its neighbours too.
+- **A reading style gives room, never letters.** The monograph reads
+  three ways (`MonoStyle` / `mono_look`, `[ui] monograph`): a sheet, a
+  dense column, a reading measure. **None of them touches the type
+  size** — that is decided once, in `[ui] text_scale`, for the whole
+  application, and a second setting contradicting it on one screen would
+  give a dense page nobody can read with nothing on screen to say which
+  of the two commands. What a style changes is the margin, the column's
+  measure, the air between sections, and whether the page sits on paper
+  or on the panel — which is also why the ink follows: `ink` is a
+  paper's ink, and off the sheet it is `text` that reads on that ground.
+  `no_way_of_reading_a_monograph_decides_the_size_of_its_letters` reads
+  the struct's own fields and refuses a size among them.
+  `mono=` is the second key `shot.sh`/`eyeball.sh` put into
+  `config.toml` rather than into `layout.toml` — a look no script can
+  produce is a look nobody will ever check.
 - **A chart counts what does not fit instead of painting it outside.**
   `motif::chart::hbars` laid its rows one under the next without looking
   at the rectangle's height: past it they painted outside the frame and

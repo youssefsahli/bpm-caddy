@@ -36,6 +36,12 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # éblouit. La forme ne change pas — angles droits, biseaux de deux
 # pixels — seules les couleurs changent.
 # theme = "motif"
+# Comment une monographie se lit : "feuille" (posée sur du papier, au
+# milieu du volet), "dense" (sans feuille ni marge, deux fois plus de
+# fiche d'un coup d'œil) ou "lecture" (colonne resserrée, de l'air
+# autour). Aucune des trois ne change la taille des lettres : c'est
+# text_scale qui en décide, une fois, pour toute l'application.
+# monograph = "feuille"
 # Pictogrammes dans la barre d'outils.
 # icons = false
 # Police de l'interface (fichier .ttf ou .otf ; vide = police intégrée).
@@ -1266,6 +1272,16 @@ pub struct UiConfig {
     /// soirs passés restent en base, et le jour où la case est
     /// recochée ils reviennent avec leurs écarts.
     pub caisse_expected: bool,
+    /// Comment la monographie se lit : `"feuille"` (par défaut),
+    /// `"dense"` ou `"lecture"`. Voir `App::mono_look`.
+    ///
+    /// Trois façons de lire une même page, et **aucune ne change la
+    /// taille des lettres** : celle-là se règle une fois pour toute
+    /// l'application, dans `text_scale`. Ce qui change est la place —
+    /// les marges, la largeur de la colonne, l'air entre les sections
+    /// — parce que celui qui veut voir plus d'un coup n'est pas celui
+    /// qui veut des lettres plus petites.
+    pub monograph: String,
 }
 
 impl Default for UiConfig {
@@ -1284,6 +1300,7 @@ impl Default for UiConfig {
             discreet_finances: true,
             operator: String::new(),
             caisse_expected: true,
+            monograph: "feuille".to_owned(),
         }
     }
 }
