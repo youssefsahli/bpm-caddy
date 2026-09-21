@@ -638,14 +638,28 @@ The one that was missing — « combien de fois un autre poste avait
   **names** the two groups it keys (« même classe · antiépileptique »):
   the canonical name is what the ring groups on, and nothing else on
   that screen said what the twelve boxes had in common.
-  A ring also takes only what the figure can **write**, `Caps::for_room`:
-  twelve was a number, and a number does not know the pane it is drawn
-  in. At 1024x700 with `text_scale = 1,6` six of the twelve class names
+  A ring also takes only what the figure can **write**, `Caps::for_room`,
+  and the three rings **share** that room rather than each having it —
+  three caps held separately do not see each other, and the names of all
+  three rings are written in the same rows: the Durogesic map was laying
+  twenty-two names in the room for twelve. The fullest ring gives way
+  first, and no non-empty ring falls to zero — a note about a ring you
+  cannot see says nothing to anybody. A card a cap cuts is **still of
+  that ring**: marking only the kept ones let a class-mate reappear
+  further out, painted in the ochre of a tie it does not have, while the
+  foot still counted it among the class-mates not drawn.
+  Twelve was a number, and a number does not know the pane it is drawn
+  in: at 1024x700 with `text_scale = 1,6` six of the twelve class names
   were not painted at all, each refused by the neighbour that had taken
-  its place — and the caps follow the drawn half-height now, the rest
-  said under the figure. They are three integers in the memo key rather
-  than a height, so dragging a dock relays the base only where the count
-  really changes),
+  its place. The caps follow the drawn half-height now, and the `Caps`
+  itself sits in the memo key rather than a height, so dragging a dock
+  relays the base only where the count really changes. **What the model
+  still does not know** is written where one would look: a ring's labels
+  must fit the *gap to the next ring outward* — about fifty-five pixels
+  against the ninety a brand name wants — so on a short pane only the
+  outer ring really carries labels, and a gap-based bound would have to
+  account for occupancy, since Lamictal's class labels read only because
+  its interaction ring is nearly empty),
   `src/facets.rs` (what each card says about itself, **as data rather
   than sentences**: the plasma half-life in hours, and what the card
   *treats* or *alters*, by organ and by grade. The monographs answer
@@ -1129,6 +1143,16 @@ add clicking and typing; it is not the price of entry.
   `no_colour_is_written_in_hex_outside_a_named_ramp` reads the text of
   `app.rs` and refuses the next literal — like the two that refuse a
   pixel size and a pixel-measured layout switch.
+- **A mark inside a trough takes `chart::grid_color`, never a bevel.**
+  Same rule as the line below, met from the other side: the
+  neighbourhood map stroked its three rings in `bg_dark()` at
+  forty-five per cent — *darker than the trough* — and on the two night
+  skins, where the trough is already the darkest surface on the screen,
+  the rings that say « here are three distances » were **not visible at
+  all**. What was left was squares and spokes, i.e. a cloud. The fault
+  shows on no capture taken under the default skin, and that is always
+  the one taken. `motif::chart::grid_color` mixes toward whichever bevel
+  is *away* from the trough and reads both ways.
 - **Two of the eight are dark, and that is a palette and nothing else:**
   no branch anywhere draws differently for a night skin. What it does
   change is that **every rule about colour is a distance, never a
@@ -1458,6 +1482,19 @@ add clicking and typing; it is not the price of entry.
   27.5 px where a button is 38, so a band reserving rows with it and
   then drawing buttons is **ten pixels short per row**.
   `Self::row_height` is the number every band that carves rows uses.
+- **What is painted is what is reserved — and a mark's own trimmings
+  count.** A figure that keeps a list of taken rectangles so labels do
+  not collide has to put in it *everything the drawing will put on the
+  screen*, not the nominal shape. The neighbourhood map reserved each
+  node's square and the hub's *name*, but not the hub's **square**: an
+  inner-ring label was written across the middle, and the hub — painted
+  last, so as to pass over the spokes — cut it in half, « Pecfent »
+  coming out « Pec■t ». Read the paint order and reserve what each pass
+  lays down. And reserve what **that** item paints, not the worst case
+  of the set: only the cards documenting a toxicity carry the alert ring
+  at `expand(3)`, and reserving it for everybody cost three names —
+  information — for two pixels on the cards without one. A name that is
+  not painted is a loss; a name grazing a bevel still reads.
 - **A `Painter` paints where it is told — nothing clips it.**
   `motif::panel` laid its caption out with `layout_no_wrap` and no width
   limit, so « PATIENTS SOUS CE TRAITEMENT » on a narrow pane painted
