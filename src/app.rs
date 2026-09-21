@@ -4124,7 +4124,7 @@ struct Session {
     show_graph: bool,
     graph_centre: Option<i64>,
     graph_map: Option<crate::graph::Map>,
-    graph_key: Option<(i64, u64, (usize, usize, usize))>,
+    graph_key: Option<(i64, u64, crate::graph::Caps)>,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -6509,11 +6509,7 @@ impl Session {
             self.graph_key = None;
             return;
         };
-        let key = (
-            centre,
-            self.drugs_rev,
-            (caps.molecule, caps.class, caps.interaction),
-        );
+        let key = (centre, self.drugs_rev, caps);
         // The key alone, and not « the key and there is a map ». A
         // centre the base no longer holds — a fiche deleted on the other
         // post — answers `None`, and asking again for it would be a pass
@@ -48615,6 +48611,25 @@ impl App {
         keys
     }
 
+    /// La phrase la plus longue que le pied puisse porter : les trois
+    /// anneaux coupés, chacun nommé et compté.
+    ///
+    /// Ce qu'on mesure pour savoir quelle place le cercle aura, avant de
+    /// savoir ce que le cercle laissera de côté. Une ligne en dur ne
+    /// suffit pas — deux anneaux coupés s'enveloppent déjà sur deux
+    /// lignes dans un volet de comptoir — et réserver deux lignes au
+    /// jugé serait remettre un nombre là où on vient d'en retirer un.
+    /// Le sens de l'approximation reste le seul sûr : le pied réel est
+    /// plus court ou égal, donc la figure plus haute ou égale, donc les
+    /// plafonds ne promettent jamais plus que ce qui tiendra.
+    fn graph_widest_note() -> String {
+        crate::graph::Tie::ALL
+            .iter()
+            .map(|t| trn("graph_omitted", &[&99, &tr(t.label_key())]))
+            .collect::<Vec<_>>()
+            .join(" · ")
+    }
+
     /// La phrase sous la légende, s'il y en a une — **écrite une fois**,
     /// pour la même raison.
     ///
@@ -48817,7 +48832,13 @@ impl App {
                 .map(|(l, c)| (l.as_str(), *c))
                 .collect::<Vec<_>>(),
             work.width() - 32.0,
-        ) + line
+        ) + Self::prose_height(
+            ui,
+            &Self::graph_widest_note(),
+            motif::pt(ui, 11.0),
+            Self::scrolled_width(ui, work.width() - 32.0),
+        )
+        .max(line)
             + 12.0;
         let node_line = ui.fonts(|f| f.row_height(&Self::graph_node_font(ui)));
         // La demi-hauteur que le cercle aura : le volet moins la bande,
@@ -48845,10 +48866,21 @@ impl App {
         // La ligne d'en dessous n'est réservée que lorsqu'il y en a une :
         // une ligne gardée pour rien est un blanc, et un blanc se lit
         // comme une intention.
-        let note_h = if Self::graph_note_line(session).is_some() {
-            line
-        } else {
-            0.0
+        //
+        // **Et c'est de la prose, pas une ligne.** Deux anneaux coupés
+        // font « 2 de plus en « même classe » non dessinés · 1 de plus
+        // en « interaction citée » non dessinés », qui s'enveloppe sur
+        // deux lignes dans un volet de comptoir — et la seconde sortait
+        // du pied. La phrase qui dit ce qui manque manquait à son tour.
+        let note_h = match Self::graph_note_line(session) {
+            Some((note, _)) => Self::prose_height(
+                ui,
+                &note,
+                motif::pt(ui, 11.0),
+                Self::scrolled_width(ui, work.width() - 32.0),
+            )
+            .max(line),
+            None => 0.0,
         };
         let foot = legend_h + note_h + 12.0;
         let rows = motif::split_rows(work, &[band, 0.0, foot], 8.0);
@@ -49028,10 +49060,19 @@ impl App {
             // propre carré le *touche*, et deux rectangles qui se
             // touchent se croisent au sens d'egui — les trois quarts des
             // noms se refusaient eux-mêmes.
+            // **Ce qu'on réserve est ce qui est peint** — et ce qui est
+            // peint n'est pas le même pour tous. Le carré fait `half` ;
+            // une fiche qui documente une toxicité porte en plus son
+            // cerclage à `expand(3)`, trait compris. Réserver le
+            // cerclage pour tout le monde coûtait trois noms sur la
+            // carte du Lamictal — c'est-à-dire de l'information — pour
+            // deux pixels sur les fiches qui n'en portent pas : un nom
+            // qu'on ne peint plus est une perte sèche, un nom qui
+            // effleure un biseau se lit encore.
             let boxes: Vec<egui::Rect> = map
                 .nodes
                 .iter()
-                .map(|n| box_of(at(n), half + 1.0))
+                .map(|n| box_of(at(n), half + if n.toxicity_noted { 4.0 } else { 1.0 }))
                 .collect();
             // **Le nom du centre ne peut pas être abandonné, donc il se
             // déplace.** Les voisins se refusent les uns les autres et
@@ -49064,7 +49105,16 @@ impl App {
                     !boxes.iter().any(|b| b.intersects(r))
                 })
                 .unwrap_or(hub_places[0]);
-            let mut taken: Vec<egui::Rect> = vec![hub_anchor.anchor_size(hub_at, hub_size)];
+            // **Et le moyeu lui-même.** Sa plaque et son nom étaient
+            // réservés, son carré ne l'était pas : un voisin de l'anneau
+            // du dedans écrivait donc son nom en travers du milieu, et
+            // le carré du moyeu, peint en dernier, le coupait en deux —
+            // « Pecfent » sortait « Pec■t ». Ce qui est peint est
+            // réservé, moyeu compris.
+            let mut taken: Vec<egui::Rect> = vec![
+                hub_anchor.anchor_size(hub_at, hub_size),
+                box_of(mid, 11.0 + 4.0),
+            ];
             taken.extend(boxes);
             for n in &map.nodes {
                 let p = at(n);

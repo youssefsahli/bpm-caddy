@@ -5,6 +5,44 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.241.0] - 2026-09-21
+
+### Fixed
+- **Une fiche que le plafond d'un anneau coupait ressortait sur
+  l'anneau d'à côté.** Une fiche appartient à l'anneau le plus proche
+  pour lequel elle se qualifie — que cet anneau ait de la place pour
+  elle ou non. Seules les gardées étaient marquées, si bien qu'un voisin
+  de classe coupé réapparaissait plus loin, peint dans l'ocre des
+  interactions, un lien qu'il n'a pas, pendant que le pied le comptait
+  toujours parmi les voisins de classe non dessinés. Il n'apparaissait
+  qu'une fois : rien dans l'image ne le montrait, sinon une réponse
+  fausse à la question « à quel titre ».
+
+- **Les trois anneaux se partagent la place au lieu de l'avoir
+  chacun.** Trois plafonds tenus séparément ne se voient pas les uns les
+  autres, et les noms des trois anneaux s'écrivent dans les mêmes
+  rangées : la carte du Durogesic posait vingt-deux noms dans la place
+  de douze — cinq fentanyls, les opioïdes forts et les interactions,
+  écrits les uns par-dessus les autres et à travers les rayons. Le plus
+  fourni cède le premier, et aucun anneau non vide ne tombe à zéro : une
+  note qui parle d'un anneau qu'on ne voit pas ne dit rien à personne.
+
+- **Le carré du moyeu est réservé comme le reste.** Sa plaque et son nom
+  l'étaient, son carré non : un voisin de l'anneau du dedans écrivait
+  son nom en travers du milieu, et le moyeu, peint en dernier, le
+  coupait en deux — « Pecfent » sortait « Pec■t ». Et ce qu'un nœud
+  réserve est ce que **ce nœud-là** peint : le cerclage rouge d'une
+  fiche qui documente une toxicité, et rien de plus pour celles qui n'en
+  portent pas — le réserver pour tout le monde coûtait trois noms, donc
+  de l'information, pour deux pixels.
+
+- **La phrase du pied est de la prose, pas une ligne.** Deux anneaux
+  coupés s'enveloppent sur deux lignes dans un volet de comptoir, et la
+  seconde sortait du pied : la phrase qui dit ce qui manque manquait à
+  son tour. Elle est mesurée, et la place du cercle se calcule contre la
+  plus longue qu'il puisse y avoir — les trois anneaux nommés et
+  comptés —, parce que c'est le seul sens où l'approximation est sûre.
+
 ## [0.240.0] - 2026-09-21
 
 ### Fixed

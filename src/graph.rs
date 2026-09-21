@@ -161,11 +161,18 @@ impl Map {
 /// forty overlapping labels tells you less than the number twelve and a
 /// note saying twenty-eight more. The class ring is the one that
 /// overflows — a DCI rarely has more than a handful of brands.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Caps {
     pub molecule: usize,
     pub class: usize,
     pub interaction: usize,
+    /// Ce que les trois anneaux peuvent écrire **ensemble**.
+    ///
+    /// Les trois plafonds ne se voient pas les uns les autres, et les
+    /// noms des trois anneaux s'écrivent dans les mêmes rangées : tenus
+    /// séparément, ils laissaient la carte du Durogesic poser vingt-deux
+    /// noms dans la place de douze. Voir [`share`].
+    pub total: usize,
 }
 
 impl Default for Caps {
@@ -174,6 +181,9 @@ impl Default for Caps {
             molecule: 8,
             class: 12,
             interaction: 8,
+            // La somme des trois : par défaut le partage ne décide rien,
+            // et ce sont les plafonds de lecture qui parlent seuls.
+            total: 28,
         }
     }
 }
@@ -221,15 +231,40 @@ impl Caps {
             if !r.is_finite() || !line_h.is_finite() || r <= 0.0 || line_h <= 0.0 {
                 return self.of(tie);
             }
-            let n = std::f32::consts::TAU * (r / line_h).sqrt();
+            // Deux bornes, et c'est la plus serrée qui vaut.
+            //
+            // **L'écartement** : l'écart vertical le plus serré de
+            // l'anneau, celui du haut et du bas.
+            let crowd = std::f32::consts::TAU * (r / line_h).sqrt();
+            // **Les rangées** : un anneau de demi-hauteur `r` couvre
+            // `2r` de haut, donc `2r / ligne` rangées de chaque côté.
+            // C'est cette borne-là qui décide sur l'anneau du dedans, où
+            // le rayon est petit — l'écartement seul y autorisait sept
+            // noms dans la hauteur de quatre, et ils s'écrivaient sur le
+            // moyeu.
+            let rows = 4.0 * r / line_h;
             // `as usize` tronque, et tronquer est le bon sens ici : un
             // nom de plus que la place est un nom qui n'est pas peint.
-            (n as usize).clamp(3, self.of(tie))
+            (crowd.min(rows) as usize).clamp(3, self.of(tie))
+        };
+        // Et la place **commune** : les noms s'écrivent vers l'extérieur,
+        // donc en rangées, et une rangée sert les trois anneaux. La
+        // figure a `2·ry / hauteur de ligne` rangées de chaque côté.
+        //
+        // Moins deux : le haut et le bas de la figure n'ont pas de côté.
+        // Un nœud posé là écrit son nom au-dessus ou au-dessous de
+        // lui-même, et cette rangée-là, les deux côtés se la partagent
+        // au lieu de l'avoir chacun.
+        let rows = if ry.is_finite() && line_h.is_finite() && ry > 0.0 && line_h > 0.0 {
+            ((4.0 * ry / line_h) as usize).saturating_sub(2).max(6)
+        } else {
+            self.total
         };
         Caps {
             molecule: fit(Tie::Molecule),
             class: fit(Tie::Class),
             interaction: fit(Tie::Interaction),
+            total: rows.min(self.total),
         }
     }
 }
@@ -249,22 +284,48 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
     // asks its question of every card in the base.
     let hay = interaction_haystack(centre.ddi);
 
-    for tie in Tie::ALL {
-        let mut ring: Vec<&Known> = base
-            .iter()
-            .filter(|k| !taken.contains(&k.id) && ties(centre, k, &hay, tie))
-            .collect();
-        // A stable order, so the same card always draws the same map:
-        // a ring whose members swapped places between two openings
-        // would be a picture nobody could learn.
-        ring.sort_by_key(|k| fuzzy::sort_key(k.name));
-        let cap = caps.of(tie);
-        if ring.len() > cap {
-            omitted.push((tie, ring.len() - cap));
-            ring.truncate(cap);
-        }
-        for k in &ring {
-            taken.push(k.id);
+    // **On rassemble les trois anneaux d'abord, on taille ensuite.**
+    // Deux raisons, et la première est une correction.
+    //
+    // Une fiche appartient à l'anneau le plus proche pour lequel elle
+    // se qualifie — **que cet anneau ait de la place pour elle ou
+    // non**. Ne marquer que celles qu'on garde laissait un voisin de
+    // classe que le plafond avait coupé ressortir sur l'anneau des
+    // interactions, peint dans l'ocre d'un lien qu'il n'a pas, pendant
+    // que le pied le comptait toujours parmi les voisins de classe non
+    // dessinés. Il n'apparaissait qu'une fois, donc rien ne le montrait
+    // — sinon une réponse fausse à la question « à quel titre ».
+    //
+    // Et la place se partage : voir [`Caps::total`].
+    let rings: Vec<Vec<&Known>> = Tie::ALL
+        .iter()
+        .map(|tie| {
+            let mut ring: Vec<&Known> = base
+                .iter()
+                .filter(|k| !taken.contains(&k.id) && ties(centre, k, &hay, *tie))
+                .collect();
+            // A stable order, so the same card always draws the same
+            // map: a ring whose members swapped places between two
+            // openings would be a picture nobody could learn.
+            ring.sort_by_key(|k| fuzzy::sort_key(k.name));
+            for k in &ring {
+                taken.push(k.id);
+            }
+            ring
+        })
+        .collect();
+
+    let want = [
+        rings[0].len().min(caps.of(Tie::Molecule)),
+        rings[1].len().min(caps.of(Tie::Class)),
+        rings[2].len().min(caps.of(Tie::Interaction)),
+    ];
+    let allow = share(want, caps.total);
+    for (i, tie) in Tie::ALL.into_iter().enumerate() {
+        let mut ring = rings[i].clone();
+        if ring.len() > allow[i] {
+            omitted.push((tie, ring.len() - allow[i]));
+            ring.truncate(allow[i]);
         }
         place(&ring, tie, &mut nodes);
     }
@@ -278,6 +339,40 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
         nodes,
         omitted,
     }
+}
+
+/// Partager `total` places entre les trois anneaux qui en demandent
+/// `want`.
+///
+/// Les plafonds par anneau ne suffisent pas, parce qu'ils ne se voient
+/// pas les uns les autres : les noms des trois anneaux s'écrivent dans
+/// **les mêmes rangées**, et trois plafonds tenus séparément laissaient
+/// la carte du Durogesic poser vingt-deux noms dans la place de douze —
+/// cinq fentanyls, les opioïdes forts et les interactions, tous écrits
+/// les uns par-dessus les autres et à travers les rayons. C'est ce que
+/// le plafond de lecture refuse depuis toujours, une rangée plus haut :
+/// un cercle de quarante noms ne se lit pas.
+///
+/// **Le plus fourni cède le premier.** Un nom de moins sur l'anneau qui
+/// en a douze se remarque moins qu'un nom de moins sur celui qui en a
+/// deux, et deux anneaux finissent à égalité plutôt que l'un plein et
+/// l'autre vide.
+///
+/// **Et aucun anneau non vide ne tombe à zéro.** Un anneau qui
+/// disparaît de l'image laisse sous elle une note qui parle de ce qu'on
+/// ne voit pas — « 9 de plus en même classe » sans une seule classe
+/// dessinée ne dit rien à personne.
+fn share(want: [usize; 3], total: usize) -> [usize; 3] {
+    let mut allow = want;
+    let mut sum: usize = allow.iter().sum();
+    while sum > total {
+        let Some(i) = (0..3).filter(|&i| allow[i] > 1).max_by_key(|&i| allow[i]) else {
+            break;
+        };
+        allow[i] -= 1;
+        sum -= 1;
+    }
+    allow
 }
 
 /// Is `other` tied to `centre` in this particular way? `folded_ddi` is
@@ -594,6 +689,7 @@ mod tests {
             molecule: 8,
             class: 12,
             interaction: 8,
+            total: 28,
         };
         let map = around(&centre, &b, caps);
         assert_eq!(map.count(Tie::Class), 12);
@@ -662,6 +758,107 @@ mod tests {
         let map = around(&b[2], &b, Caps::default());
         assert!(map.is_empty(), "{map:?}");
     }
+    /// **Une fiche coupée par un plafond ne réapparaît pas sur l'anneau
+    /// d'à côté.**
+    ///
+    /// Une fiche appartient à l'anneau le plus proche pour lequel elle
+    /// se qualifie, que cet anneau ait de la place pour elle ou non.
+    /// `taken` n'était rempli qu'avec les gardées : un voisin de classe
+    /// que le plafond avait coupé ressortait donc sur l'anneau des
+    /// interactions, peint dans l'ocre d'un lien qu'il n'a pas, pendant
+    /// que le pied le comptait toujours parmi les voisins de classe non
+    /// dessinés. Il n'apparaissait qu'une fois, si bien que rien dans
+    /// l'image ne le montrait — sinon une réponse fausse à la question
+    /// « à quel titre ».
+    #[test]
+    fn a_card_the_cap_cut_does_not_come_back_on_the_next_ring() {
+        // Trois de la même classe, tous les trois nommés dans les
+        // interactions du centre, et un plafond de classe de un.
+        let names: Vec<String> = (0..3).map(|i| format!("Voisine {i}")).collect();
+        let dcis: Vec<String> = (0..3).map(|i| format!("molécule {i}")).collect();
+        let b: Vec<Known> = (0..3)
+            .map(|i| card(i as i64 + 1, &names[i], &dcis[i], "AINS"))
+            .collect();
+        let centre = Known {
+            id: 99,
+            name: "Advil",
+            dci: "ibuprofène",
+            class: "AINS",
+            ddi: "Éviter Voisine 0, Voisine 1 et Voisine 2.",
+            toxicity_noted: false,
+        };
+        let map = around(
+            &centre,
+            &b,
+            Caps {
+                molecule: 8,
+                class: 1,
+                interaction: 8,
+                total: 28,
+            },
+        );
+        assert_eq!(map.count(Tie::Class), 1);
+        // Les deux coupées ne sont **pas** redessinées en interaction :
+        // elles sont de la même classe, et c'est ce que le pied dit.
+        assert_eq!(map.count(Tie::Interaction), 0, "{:?}", map.nodes);
+        assert_eq!(map.omitted_for(Tie::Class), 2);
+        assert_eq!(map.omitted_for(Tie::Interaction), 0);
+    }
+
+    /// **Les trois anneaux se partagent la place, ils ne l'ont pas
+    /// chacun.**
+    ///
+    /// Trois plafonds tenus séparément ne se voient pas les uns les
+    /// autres, et les noms des trois anneaux s'écrivent dans les mêmes
+    /// rangées : la carte du Durogesic posait vingt-deux noms dans la
+    /// place de douze — cinq fentanyls, les opioïdes forts et les
+    /// interactions, écrits les uns par-dessus les autres et à travers
+    /// les rayons.
+    #[test]
+    fn the_three_rings_share_the_room_rather_than_each_having_it() {
+        // Le partage seul, d'abord : c'est lui qui décide.
+        assert_eq!(super::share([2, 3, 4], 28), [2, 3, 4], "rien à tailler");
+        // Le plus fourni cède le premier, et on finit à égalité plutôt
+        // qu'avec un anneau plein et un vide.
+        assert_eq!(super::share([5, 9, 8], 12), [4, 4, 4]);
+        assert_eq!(super::share([1, 11, 1], 6), [1, 4, 1]);
+        // Aucun anneau non vide ne tombe à zéro, même quand la place
+        // manque : une note qui parle d'un anneau qu'on ne voit pas ne
+        // dit rien à personne.
+        assert_eq!(super::share([4, 4, 4], 2), [1, 1, 1]);
+        // Un anneau vide reste vide et ne se voit rien attribuer.
+        assert_eq!(super::share([0, 9, 0], 4), [0, 4, 0]);
+
+        // Et de bout en bout : trente voisins de classe, cinq de
+        // molécule, une place de douze.
+        let names: Vec<String> = (0..30).map(|i| format!("AINS {i:02}")).collect();
+        let dcis: Vec<String> = (0..30).map(|i| format!("molécule {i:02}")).collect();
+        let mut b: Vec<Known> = (0..30)
+            .map(|i| card(i as i64 + 1, &names[i], &dcis[i], "AINS"))
+            .collect();
+        for k in b.iter_mut().take(5) {
+            k.dci = "ibuprofène";
+        }
+        let centre = Known {
+            id: 99,
+            name: "Advil",
+            dci: "ibuprofène",
+            class: "AINS",
+            ddi: "",
+            toxicity_noted: false,
+        };
+        let caps = Caps {
+            total: 12,
+            ..Caps::default()
+        };
+        let map = around(&centre, &b, caps);
+        assert_eq!(map.nodes.len(), 12, "{:?}", map.nodes.len());
+        // Et ce qui n'est pas dessiné est dit, anneau par anneau : la
+        // somme des deux comptes est ce qui manque.
+        assert_eq!(map.count(Tie::Molecule) + map.omitted_for(Tie::Molecule), 5);
+        assert_eq!(map.count(Tie::Class) + map.omitted_for(Tie::Class), 25);
+    }
+
     /// **Un anneau ne prend que ce que la place permet d'écrire.**
     ///
     /// Douze est un nombre, et un nombre ne connaît pas le volet où il
@@ -695,6 +892,7 @@ mod tests {
             molecule: 40,
             class: 40,
             interaction: 40,
+            total: 120,
         }
         .for_room(85.0, 27.0);
         assert!(
