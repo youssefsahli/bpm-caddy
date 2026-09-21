@@ -48978,10 +48978,19 @@ impl App {
                 // ici : les trois nombres vivaient aux deux endroits, et
                 // deux écritures d'une distance divergent.
                 let f = tie.ring_radius();
+                // **La couleur d'un repère dans un creux est une
+                // distance, jamais une direction.** Les anneaux étaient
+                // tracés en `bg_dark()` — plus sombre que le creux — et
+                // sur les deux peaux de nuit, où le creux est déjà la
+                // surface la plus sombre de l'écran, ils ne se voyaient
+                // pas du tout : il restait des carrés et des rayons,
+                // c'est-à-dire un nuage. `chart::grid_color` est la
+                // réponse que ce dépôt donne déjà à cette
+                // question-là, pour les grilles des graphiques.
                 ui.painter().add(egui::Shape::ellipse_stroke(
                     mid,
                     egui::vec2(rx * f, ry * f),
-                    egui::Stroke::new(1.0_f32, motif::bg_dark().gamma_multiply(0.45)),
+                    egui::Stroke::new(1.0_f32, motif::chart::grid_color()),
                 ));
             }
             // Then the spokes, each in its tie's colour: the line is
@@ -62329,6 +62338,59 @@ mod tests {
     /// mise en garde sont deux cris, et lequel crie le plus fort est une
     /// affaire de peau. Il tient la seule chose qui compte, et il la
     /// tient partout : **ce qui rassure ne crie pas**.
+    /// **Les quatre clés de la carte se distinguent sur les dix peaux.**
+    ///
+    /// La légende du voisinage porte quatre pastilles côte à côte — trois
+    /// liens et l'anneau rouge —, et rien ne les tenait à l'écart les
+    /// unes des autres. `the_data_colours_read_on_every_palette_and_none_repeats_another`
+    /// tient la rampe de `motif`, mais **en excluant la série 0**, qui
+    /// est l'accent de la peau : or c'est précisément celle que le lien
+    /// « même molécule » emploie. Le trou était donc exactement là où
+    /// cette vue-ci se sert.
+    ///
+    /// Le plancher est celui de la rampe elle-même, trente-cinq. Mesuré,
+    /// la paire la plus serrée des dix peaux en est à soixante-cinq —
+    /// « ambre », où l'accent ambré et l'ocre de l'interaction sont de la
+    /// même famille chaude. L'œil les rapproche, la mesure les sépare, et
+    /// c'est la mesure qui décide : c'est la règle de ce dépôt, et ce
+    /// test est ce qui l'écrit.
+    #[test]
+    fn the_map_keys_stay_apart_on_every_palette() {
+        use crate::graph::Tie;
+        // Distance en RVB, comme `motif` la mesure pour sa rampe : deux
+        // écritures d'une distance divergent.
+        fn apart(a: egui::Color32, b: egui::Color32) -> f32 {
+            let d = |x: u8, y: u8| (x as f32 - y as f32).powi(2);
+            (d(a.r(), b.r()) + d(a.g(), b.g()) + d(a.b(), b.b())).sqrt()
+        }
+        for theme in motif::THEMES.iter() {
+            motif::set_theme(theme.key);
+            // L'anneau rouge est une clé de cette légende comme les
+            // trois autres : il est dessiné, donc il se confond ou non.
+            let mut keys: Vec<(String, egui::Color32)> = Tie::ALL
+                .iter()
+                .map(|t| {
+                    (
+                        tr(t.label_key()).to_owned(),
+                        motif::chart::series_color(t.series()),
+                    )
+                })
+                .collect();
+            keys.push((tr("graph_toxicity").to_owned(), motif::alert()));
+            for (i, (an, a)) in keys.iter().enumerate() {
+                for (bn, b) in keys.iter().skip(i + 1) {
+                    assert!(
+                        apart(*a, *b) > 35.0,
+                        "peau « {} » : « {an} » et « {bn} » sont à {} l'un de l'autre",
+                        theme.key,
+                        crate::strings::decimal(apart(*a, *b) as f64, 1)
+                    );
+                }
+            }
+        }
+        motif::set_theme(motif::THEMES[0].key);
+    }
+
     #[test]
     fn the_calmest_companion_chip_is_the_closest_to_the_ground() {
         use super::CompanionTone;

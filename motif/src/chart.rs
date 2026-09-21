@@ -10,13 +10,6 @@ use eframe::egui::{self, Color32, Stroke, Vec2};
 
 use crate::bevel;
 
-/// Gridlines inside a trough: light enough to read numbers through.
-///
-/// Mixed from the theme rather than fixed — a blue-grey grid drawn on
-/// the HP VUE green reads as a stain, not as a rule — and mixed toward
-/// whichever bevel is *away* from the trough: on a night skin the
-/// trough is already the darkest surface there is, and a rule drawn
-/// darker again is a rule nobody reads a number through.
 /// The five-per-cent film that marks the column the pointer is over.
 ///
 /// A *veil* and not a colour: it dims a daylight palette and lifts a
@@ -41,7 +34,24 @@ fn axis_color() -> Color32 {
     }
 }
 
-fn grid_color() -> Color32 {
+/// Gridlines inside a trough: light enough to read numbers through.
+///
+/// Mixed from the theme rather than fixed — a blue-grey grid drawn on
+/// the HP VUE green reads as a stain, not as a rule — and mixed toward
+/// whichever bevel is *away* from the trough: on a night skin the
+/// trough is already the darkest surface there is, and a rule drawn
+/// darker again is a rule nobody reads a number through.
+///
+/// **Publique, parce qu'un repère dans un creux n'est pas l'affaire de
+/// ce seul module.** La carte du voisinage traçait ses trois anneaux en
+/// `bg_dark()` à quarante-cinq pour cent — c'est-à-dire *plus sombre
+/// que le creux*, une direction et non une distance, ce que ce dépôt
+/// refuse depuis qu'il a deux peaux de nuit. Sur « nuit » et sur
+/// « ambre », les trois anneaux qui disent « voici trois distances » ne
+/// se voyaient **pas du tout** : restaient des carrés et des rayons,
+/// c'est-à-dire un nuage. Le défaut ne se voit sur aucune capture prise
+/// sous la peau par défaut, et c'est toujours celle qu'on prend.
+pub fn grid_color() -> Color32 {
     let toward = if crate::is_dark() {
         crate::bg_light()
     } else {

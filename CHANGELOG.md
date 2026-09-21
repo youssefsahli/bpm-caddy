@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.240.0] - 2026-09-21
+
+### Fixed
+- **Sur les deux peaux de nuit, les anneaux de la carte ne se voyaient
+  pas.** Ils étaient tracés en `bg_dark()` à quarante-cinq pour cent,
+  c'est-à-dire *plus sombre que le creux* — une direction et non une
+  distance, ce que ce dépôt refuse depuis qu'il a des peaux de nuit, où
+  le creux est déjà la surface la plus sombre de l'écran. Il restait des
+  carrés et des rayons : un nuage, là où la figure dit « voici trois
+  distances ». Les anneaux prennent la couleur que `motif::chart` donne
+  déjà aux grilles de ses graphiques, qui se lit dans les deux sens.
+  Le défaut ne se voit sur aucune capture prise sous la peau par
+  défaut, et c'est toujours celle qu'on prend.
+
+### Added
+- Les quatre pastilles de la légende du voisinage sont tenues à l'écart
+  les unes des autres **sur les dix peaux**. La rampe de `motif` a bien
+  ce test, mais il exclut la série 0 — l'accent de la peau —, et c'est
+  précisément celle que « même molécule » emploie : le trou était là où
+  cette vue se sert. Mesurée, la paire la plus serrée est à soixante-cinq
+  quand la rampe en demande trente-cinq ; ce que le test empêche est
+  écrit depuis toujours en commentaire — « un cerclage rouge autour
+  d'un rouge n'est pas un cerclage » — sans que rien ne le tienne.
+
 ## [0.239.0] - 2026-09-21
 
 ### Fixed
