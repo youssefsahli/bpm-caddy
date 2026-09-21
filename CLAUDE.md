@@ -271,12 +271,12 @@ license with free public releases. Spec: `docs/SPECIFICATIONS.txt`.
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be 34 chances to forget one.
+  `pdf::open_*` call sites would be 35 chances to forget one.
 The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  56 of them, and counting at all but one would be a counter quietly
+  57 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
@@ -419,6 +419,76 @@ The one that was missing — « combien de fois un autre poste avait
   take for theirs; and **nothing that replaces the prescriber** — no
   sheet adjusts a dose, every sheet says whom to telephone and when.
   Pure, tested, no clock),
+  `src/intake.rs` (**quand** se prend un traitement — la posologie du
+  dossier lue en *grille* de quatre moments, pour la fiche que le
+  patient emporte. Une ordonnance se lit en prose ; personne ne lit de
+  la prose à huit heures du matin avec sa boîte à la main. Il ne
+  remplace jamais la phrase : la ligne imprimée porte les deux, et une
+  aide à la lecture qui chasse ce qu'elle aide à lire est une perte
+  sèche. Six rules, one test each, and the third is the one that kills:
+  **silence is not an empty box** (an unreadable posology draws no grid
+  at all — four blank cells read « nothing to take », the opposite of
+  « I could not read it »), **« si besoin » never enters the grid** (the
+  application's own reference table says it about the pilulier: putting
+  an as-needed analgesic in one turns it into a schedule), **a weekly
+  dose is never drawn as a daily one** (methotrexate is weekly and its
+  daily intake is lethal; a tick in the « matin » column of a grid
+  headed by a *day* reads « every morning » — confronted with every
+  shipped posology that names a weekly rhythm), **a dose whose moment is
+  not said is not placed** (« 1 comprimé par jour » does not say the
+  morning, and the sheet leaves a blank to agree on), **a milligram is
+  not a tablet** (« 5 mg matin et soir » carries two takings, not five —
+  the shape every demo posology has), and **a taking with no quantity is
+  still a taking** (the cell gets a mark, never an invented « 1 »).
+  Four traps found by confronting the 1 736 shipped posology lines
+  rather than the six written in the test, and the module would have
+  been perfectly consistent with itself without them. Two are one word
+  inside another: « petit déjeuner » contains « déjeuner », which is the
+  noon, and « en début d'après-midi » contains « midi ». The other two
+  are a word meaning two different things, which is the harder kind and
+  the one this file already names for `needs` fragments. **A duration is
+  not a rhythm**: « cure de » was in the rhythm table and named nothing
+  but two *daily* treatments described by how long their course
+  runs — a guard now reads the table itself and refuses a word that does
+  not name a repetition. And **a demand governs a taking, never a
+  dose**: « si besoin » is the condition of a taking in « à renouveler
+  si besoin toutes les 6 heures » and the condition of a *dose* in
+  « 5 mg une fois par jour, portés si besoin à 10 mg » — fifteen shipped
+  antihypertensives were leaving the grid with « à la demande » written
+  in front of them, on the sheet of the treatment one must take without
+  feeling it. What settles it is what comes **before** the word (a daily
+  rhythm already stated, or a titration verb), because a « maximum
+  1 200 mg par jour » stated *after* it is a ceiling and says nothing
+  about the rhythm. The bare « en cas de » left the vocabulary in the
+  same pass: it catches thirty-two shipped lines and almost none is a
+  posology — « arrêt immédiat en cas de douleur tendineuse », « ne pas
+  délivrer en cas de varicelle ». Pure, tested, no clock, no egui),
+  `src/renewal.rs` (**où en est cette ordonnance** — « il m'en reste
+  combien », « c'est la dernière ? », « je retourne voir le médecin
+  quand ? ». The file already carried the treatments; it carried nothing
+  about the prescription behind them, so `patient_drugs` gained four
+  columns — the day it was written, what one dispensing covers, how many
+  renewals, how many have been made — and this module turns them into a
+  state. Six rules, one test each: **no date, no stage** (`renal.rs`'s
+  rule — the module names what is missing and concludes nothing), **the
+  last box is not the end** (what is announced is the day one must have
+  *seen* the prescriber, `[ordonnance] notice_days` before the run-out,
+  because an appointment is not made the morning for the evening), **a
+  stage is counted, never deduced from the calendar** (a patient three
+  weeks late is on their second dispensing, late — not their fourth;
+  dividing elapsed time by the duration would say otherwise), **zero is
+  not one** (an unrecorded dispensing does not read « first » — the
+  register's rule, an empty box is not a zero), **a prescription that is
+  not renewable has no steps** (seven days of antibiotic has an end
+  date, not a gauge at a hundred per cent), and **a visualisation
+  changes the drawing, never the reading** — the four ways of showing
+  the progress (`pastilles`, `jauge`, `dates`, `phrase`, chosen in
+  Options › Règles) all read one `Stand::pips`, because there are not
+  two calculations of one progress in this application. `group` gathers
+  the lines that share an ordonnance: six lines are **one** ordonnance,
+  and writing « délivrance 2 sur 3 » six times on a patient's sheet is
+  how none of them gets read. Pure, tested, no clock: the day is passed
+  in),
   `src/caisse.rs` (counting the till: what is in the drawer at closing,
   what is left for tomorrow, and the gap against what the day should
   have taken. Three rules, one test each. **Money is counted in whole
@@ -1568,6 +1638,29 @@ add clicking and typing; it is not the price of entry.
   followed `[ui] text_scale`, though the caption does. At scale 1 the
   first reserved six pixels for nothing; from 1.4 it was short, which on
   a band already capped is one row of lenses gone.
+- **And the height a helper announces is the height the drawing takes —
+  held by a test now, because three of them lied at once.** Each by a
+  few pixels, all in the same direction, the one that cuts; stacked on
+  the patient band — the most-looked-at view of the application — they
+  made a whole row of buttons, and « Étiquettes… » and « Écraser ? »
+  came out sliced by the bottom on every file and at every text size.
+  `motif::button_height` announced 37,68 for a button that occupies 38,
+  because **egui rounds what it allocates to the pixel grid** and the
+  helper did not; `motif::field_sized` raises anything shorter than
+  `motif::field_floor` — its text, the `TextEdit`'s own margin, the
+  hollow — so a field asked for `interact_size.y` occupies three pixels
+  more than it was asked for, and it is `field_floor` that must be
+  consulted; and `motif::panel_chrome` is what `panel` takes off the
+  rectangle it is handed, sixteen pixels the band never counted, since
+  it returned a height of **content** where the caller makes a
+  **panel's** rectangle. `what_these_heights_announce_is_what_the_drawing_takes`
+  draws each of the three at three scales and asserts both directions —
+  announcing less cuts, announcing much more is grey nobody asked for
+  (verified by putting the rounding back). The way to find the next one
+  is written in the memory of the session that found these: an
+  `eprintln!` of the model inside the measuring function, and one on
+  `ui.min_rect().height()` inside the region that draws — the
+  difference names the term.
 - **And a margin you did not measure is a margin that does not exist.**
   The planning's entry band was « whole rows **plus fourteen pixels** »,
   a padding believed to be `motif::inside`'s — which takes none: it
@@ -1967,14 +2060,14 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
-  tables_search|calc|carnet|vaccins|bio|watch|revue|conciliation|
+  tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
   trame|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
-  patient_scans|fil|explorer|explorer_organ|classes|classes_outside|export|
+  patient_scans|patient_dose|fil|explorer|explorer_organ|classes|classes_outside|export|
   finances|stats|companion|companion_poso|companion_conseils|companion_soins|companion_dossier|companion_vide|companion_doublon|companion_boite|script|carnets|caisse|caisses|peaux|aide`
   — land on a specific view (screenshots, e2e). `aide` is not a view at
   all: it opens the right-hand dock on its « Aide » tab, which is in no

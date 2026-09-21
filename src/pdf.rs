@@ -1389,6 +1389,532 @@ fn plan_values(data: &PlanData, pharmacy: &PharmacyConfig) -> Vec<(&'static str,
     ]
 }
 
+// ---------------------------------------------------------------------
+// La fiche de nouveau traitement
+// ---------------------------------------------------------------------
+
+/// Un médicament de l'ordonnance, tel que la fiche le porte.
+///
+/// **La grille et la phrase voyagent ensemble.** `reading` est la
+/// lecture de `posology` par `intake.rs`, et `posology` reste le texte
+/// du dossier, mot pour mot : la grille est une aide à la lecture, et
+/// une aide à la lecture qui chasse ce qu'elle aide à lire est une
+/// perte sèche. Un test le tient.
+pub struct FicheLine {
+    /// Le nom avec son dosage — « Amlor 5 mg ». Sur la feuille qui part
+    /// à la maison, c'est ce qui est écrit sur la boîte.
+    pub name: String,
+    /// À quoi ça sert, dans les mots du dossier.
+    pub what: String,
+    /// La posologie de *ce* patient, telle qu'elle est au dossier.
+    pub posology: String,
+    /// Ce que `intake.rs` en a lu.
+    pub reading: crate::intake::Reading,
+    /// Ce qu'il faut savoir — le paragraphe d'information patient de la
+    /// fiche.
+    pub know: String,
+    /// Ce qu'on fait quand une prise a été oubliée.
+    pub missed: String,
+    /// Les signes qui doivent faire consulter sans attendre.
+    pub watch: String,
+}
+
+/// Une ordonnance du dossier et ce qu'elle couvre.
+pub struct FicheStand {
+    pub stand: crate::renewal::Stand,
+    pub prescription: crate::renewal::Prescription,
+    /// Les traitements que cette ordonnance porte.
+    pub treatments: Vec<String>,
+}
+
+/// La fiche remise au patient pour une nouvelle ordonnance.
+///
+/// Quatre questions, dans l'ordre où elles se posent en sortant de la
+/// pharmacie : *quand est-ce que je prends quoi* (la grille), *j'en ai
+/// pour combien de temps et quand est-ce que je retourne voir le
+/// médecin* (le renouvellement), *à quoi sert chacun et qu'est-ce que
+/// je dois surveiller* (les blocs), *qui j'appelle* (le pied).
+pub struct FicheData<'a> {
+    pub patient: &'a Patient,
+    /// Déjà en français.
+    pub today: &'a str,
+    /// Le prescripteur, s'il est connu. Vide = la ligne ne s'imprime
+    /// pas : un « Dr — » se lit comme un défaut d'impression.
+    pub prescriber: &'a str,
+    pub lines: Vec<FicheLine>,
+    pub stands: Vec<FicheStand>,
+    pub viz: crate::renewal::Viz,
+    /// La mention de l'officine, vide tant qu'elle n'en a pas écrit.
+    pub mention: &'a str,
+    pub signature: &'a str,
+}
+
+const MARKERS_TRAITEMENT: &[&str] = &[
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{DATE}}",
+    "{{PRESCRIBER}}",
+    "{{GRID}}",
+    "{{RENEWAL}}",
+    "{{PRODUCTS}}",
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{SIGNATURE}}",
+    "{{MENTION}}",
+];
+
+/// Le cadre est ce que l'officine réécrit ; les trois corps sont
+/// calculés à partir du dossier et ne se recolonnent pas depuis un
+/// modèle. C'est le partage honnête, celui de la monographie et du
+/// bilan.
+const DEFAULT_TRAITEMENT_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.4cm)
+#set text(size: 10.5pt, lang: "fr", hyphenate: true)
+
+#align(center)[#text(18pt, weight: "bold")[Fiche de traitement]]
+#v(1.5mm)
+#align(center)[#text(10pt)[{{PATIENT_NAME}} — né(e) le {{BIRTH_DATE}} — {{DATE}}]]
+{{PRESCRIBER}}
+#v(5mm)
+
+#text(12.5pt, weight: "bold")[Prises de la journée]
+#v(2mm)
+{{GRID}}
+
+{{RENEWAL}}
+
+#v(5mm)
+#text(12.5pt, weight: "bold")[Détail par médicament]
+#v(2.5mm)
+{{PRODUCTS}}
+
+#v(3mm)
+#text(11pt, weight: "bold")[Vos questions]
+#v(1.5mm)
+#box(width: 100%, height: 2.4cm, stroke: 0.7pt)
+
+#v(4mm)
+#line(length: 100%, stroke: 0.5pt)
+#v(2mm)
+#text(10pt)[Votre pharmacie : {{PHARMACY_NAME}} — {{PHARMACY_PHONE}}]
+{{SIGNATURE}}
+{{MENTION}}
+"##;
+
+/// La fiche, remplie mais pas encore compilée.
+pub fn traitement_source(
+    data: &FicheData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("traitement", template_path),
+        &traitement_values(data, pharmacy),
+    )
+}
+
+/// La fiche de nouveau traitement, compilée et ouverte.
+pub fn open_traitement(
+    data: &FicheData,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        traitement_source(data, pharmacy, template_path),
+        &format!("traitement_{}", data.patient.id),
+    )
+}
+
+/// Ce qu'une case de la grille porte.
+///
+/// Une quantité quand la posologie la donne, une pastille quand elle
+/// donne le moment sans le nombre, rien sinon. **Jamais un « 1 »
+/// inventé** : la règle est celle d'`intake.rs`, et elle s'applique au
+/// dessin autant qu'à la lecture.
+fn grid_cell(take: Option<crate::intake::Take>) -> String {
+    match take {
+        None => "[]".to_owned(),
+        Some(t) => match t.label() {
+            Some(n) => format!("[#text(weight: \"bold\")[#{}]]", typst_str(&n)),
+            None => "[#circle(radius: 2.4pt, fill: rgb(\"#222222\"))]".to_owned(),
+        },
+    }
+}
+
+/// La grille du jour : une ligne par traitement, quatre colonnes de
+/// moments.
+///
+/// Les lignes que la grille ne sait pas placer — à la demande, un
+/// rythme qui n'est pas quotidien, une posologie illisible — occupent
+/// les quatre colonnes d'un bloc et disent leur phrase. Quatre cases
+/// blanches se liraient « rien à prendre », et c'est exactement le
+/// contraire de ce qu'elles veulent dire.
+fn grid_body(lines: &[FicheLine]) -> String {
+    use crate::intake::Moment;
+    let mut rows = String::new();
+    for l in lines {
+        let mut name = format!("[*#{}*", typst_str(&l.name));
+        if !l.reading.meal.trim().is_empty() {
+            name.push_str(&format!(
+                " \\\n   #text(8.5pt, fill: rgb(\"#555555\"))[#{}]",
+                typst_str(l.reading.meal.trim())
+            ));
+        }
+        name.push(']');
+        let what = format!("[#text(9pt)[#{}]]", typst_str(l.what.trim()));
+        if l.reading.has_grid() {
+            let cells: Vec<String> = Moment::ALL
+                .iter()
+                .map(|m| grid_cell(l.reading.doses[m.index()]))
+                .collect();
+            rows.push_str(&format!("  {name}, {}, {what},\n", cells.join(", ")));
+        } else {
+            rows.push_str(&format!(
+                "  {name}, table.cell(colspan: 4)[#text(9.5pt)[#{}]], {what},\n",
+                typst_str(&off_grid(l))
+            ));
+        }
+    }
+    if rows.is_empty() {
+        rows.push_str("  [], [], [], [], [], [],\n");
+    }
+    // **La légende n'existe que si la pastille est dessinée.**
+    // Expliquer un signe que la page ne porte pas est du bruit, et une
+    // feuille de comptoir en a déjà assez.
+    let legend = if lines.iter().any(|l| {
+        l.reading.has_grid()
+            && l.reading
+                .doses
+                .iter()
+                .any(|d| d.is_some_and(|t| t.quarters.is_none()))
+    }) {
+        format!(
+            "\n#v(1.5mm)\n#text(8.5pt, fill: rgb(\"#555555\"))[#{}]",
+            typst_str(crate::strings::tr("fiche_grid_legend"))
+        )
+    } else {
+        String::new()
+    };
+    // **Les quatre colonnes de moments ont une largeur fixe.** En
+    // `auto`, c'est la cellule à cheval sur quatre — celle d'un « si
+    // besoin » — qui décide de leur taille : « Coucher » prenait la
+    // moitié de la feuille et « Médicament » sortait coupé en deux
+    // syllabes. Une colonne qui ne porte qu'un chiffre ou une pastille
+    // n'a pas à se mesurer sur une phrase.
+    format!(
+        "#table(\n  columns: (1fr, 1.85cm, 1.85cm, 1.85cm, 1.85cm, 1fr),\n  \
+         align: (left + horizon, center + horizon, center + horizon, center + horizon, \
+         center + horizon, left + horizon),\n  inset: 6pt, stroke: 0.5pt,\n  \
+         fill: (_, row) => if row == 0 {{ rgb(\"#e4e4e4\") }},\n  \
+         table.header([*Médicament*], [*{}*], [*{}*], [*{}*], [*{}*], [*Indication*]),\n{rows}){legend}",
+        Moment::Matin.label(),
+        Moment::Midi.label(),
+        Moment::Soir.label(),
+        Moment::Coucher.label(),
+    )
+}
+
+/// Ce qu'écrit une ligne que la grille ne place pas.
+///
+/// **La posologie du dossier passe en entier, et une seule fois.** Un
+/// « à la demande » et un rythme hebdomadaire la portent déjà — la
+/// phrase les préface, elle ne les résume pas : « à la demande : si
+/// besoin » suivi de « 1 comprimé si besoin » écrivait deux fois la
+/// même condition et perdait la quantité, qui n'était que dans la
+/// seconde moitié. Les deux autres cas — une quantité par jour dont le
+/// moment n'est pas dit, une phrase illisible — ont un intitulé qui
+/// n'est pas dans la posologie, et celle-ci les suit.
+fn off_grid(l: &FicheLine) -> String {
+    use crate::intake::Kind;
+    let poso = l.posology.trim();
+    match l.reading.kind {
+        Kind::OnDemand => crate::strings::trf("fiche_on_demand", poso),
+        Kind::Cyclic => crate::strings::trf("fiche_cyclic", poso),
+        Kind::Daily if !poso.is_empty() => {
+            format!("{poso} — {}", crate::strings::tr("fiche_daily_hour"))
+        }
+        Kind::Daily => crate::strings::trf("fiche_daily", l.reading.times),
+        // Illisible : la phrase du dossier, mot pour mot. Y ajouter
+        // « voir la posologie sur l'ordonnance » juste après l'avoir
+        // écrite renvoie le lecteur à ce qu'il vient de lire ; la
+        // phrase n'a de sens que lorsqu'il n'y a rien à écrire.
+        _ if !poso.is_empty() => poso.to_owned(),
+        _ => crate::strings::tr("fiche_unread").to_owned(),
+    }
+}
+
+/// Le renouvellement, dessiné de la façon que l'officine a choisie.
+///
+/// Les quatre lisent le même état : `Stand::pips` est calculé une fois
+/// et chacune le met en image. Il n'y a pas deux calculs de
+/// l'avancement dans cette application.
+fn renewal_body(data: &FicheData) -> String {
+    use crate::renewal::{State, Step, Viz};
+    if data.stands.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from(
+        "#v(5mm)\n#text(12.5pt, weight: \"bold\")[Renouvellement de l'ordonnance]\n#v(2.5mm)\n",
+    );
+    for block in &data.stands {
+        let s = &block.stand;
+        out.push_str(&format!(
+            "#block(width: 100%, inset: 7pt, stroke: 0.5pt, radius: 2pt)[\n  \
+             #text(10pt, weight: \"bold\")[#{}]\n  #v(1.5mm)\n",
+            typst_str(&block.treatments.join(", "))
+        ));
+        if s.state == State::Unknown {
+            out.push_str(&format!(
+                "  #text(9.5pt)[#{}]\n]\n#v(2.5mm)\n",
+                typst_str(&crate::strings::trf("fiche_renewal_missing", s.missing))
+            ));
+            continue;
+        }
+        let pips = s.pips(&block.prescription);
+        // Le dessin, quand il y a un avancement à montrer. Une
+        // ordonnance non renouvelable n'en a pas : elle a une date de
+        // fin, et une jauge à cent pour cent fabriquerait une question
+        // là où il n'y en a pas.
+        if s.has_progress() {
+            match data.viz {
+                Viz::Pastilles => {
+                    let marks: Vec<String> = pips
+                        .iter()
+                        // Sans dièse : les arguments de `#stack` sont
+                        // lus en mode code, où un `#` n'est pas valide.
+                        .map(|p| match p.step {
+                            // Faite et courante ne se distinguaient
+                            // que par un filet : sur le papier, deux
+                            // disques noirs à six points d'écart se
+                            // comptent mais ne se lisent pas. La faite
+                            // s'efface d'un ton, la courante garde
+                            // l'encre pleine et son anneau.
+                            Step::Done => {
+                                "circle(radius: 5pt, fill: rgb(\"#999999\"), stroke: none)".to_owned()
+                            }
+                            Step::Current => {
+                                "circle(radius: 5pt, fill: rgb(\"#111111\"), stroke: 1.6pt + rgb(\"#111111\"))"
+                                    .to_owned()
+                            }
+                            Step::Todo => {
+                                "circle(radius: 5pt, stroke: 0.8pt + rgb(\"#777777\"))".to_owned()
+                            }
+                        })
+                        .collect();
+                    out.push_str(&format!(
+                        "  #stack(dir: ltr, spacing: 6pt, {})\n  #v(1.5mm)\n",
+                        marks.join(", ")
+                    ));
+                }
+                Viz::Jauge => {
+                    let share = f64::from(s.step) / f64::from(s.steps.max(1));
+                    out.push_str(&format!(
+                        "  #box(width: 100%, height: 9pt, stroke: 0.6pt)[#place(left + horizon)[#rect(width: {:.0}%, height: 9pt, fill: rgb(\"#555555\"), stroke: none)]]\n  #v(1.5mm)\n",
+                        share * 100.0
+                    ));
+                }
+                Viz::Dates => {
+                    let cells: Vec<String> = pips
+                        .iter()
+                        .map(|p| {
+                            let day = p
+                                .due
+                                .as_deref()
+                                .map(crate::db::format_french_date)
+                                .unwrap_or_default();
+                            let mark = match p.step {
+                                Step::Done => "✓",
+                                Step::Current => "→",
+                                Step::Todo => "·",
+                            };
+                            format!(
+                                "[#text(9pt)[{mark} #{} — #{}]]",
+                                typst_str(&crate::strings::trf("fiche_renewal_step", p.n)),
+                                typst_str(&day)
+                            )
+                        })
+                        .collect();
+                    out.push_str(&format!(
+                        "  #table(columns: {}, inset: 4pt, stroke: none, {})\n  #v(1mm)\n",
+                        cells.len().max(1),
+                        cells.join(", ")
+                    ));
+                }
+                Viz::Phrase => {}
+            }
+        }
+        out.push_str(&format!(
+            "  #text(9.5pt)[#{}]\n]\n#v(2.5mm)\n",
+            typst_str(&renewal_sentence(s))
+        ));
+    }
+    out
+}
+
+/// Ce que le renouvellement dit en toutes lettres — et il le dit même
+/// quand un dessin l'accompagne : une pastille sans phrase se compte
+/// mais ne se lit pas, et c'est la phrase qui porte la date du
+/// rendez-vous.
+fn renewal_sentence(s: &crate::renewal::Stand) -> String {
+    use crate::renewal::State;
+    use crate::strings::{tr, trf, trn};
+    let day = |iso: &Option<String>| {
+        iso.as_deref()
+            .map(crate::db::format_french_date)
+            .unwrap_or_default()
+    };
+    let mut out = String::new();
+    if s.has_progress() {
+        out.push_str(&trn("fiche_renewal_of", &[&s.step, &s.steps]));
+    } else if s.steps == 1 {
+        out.push_str(tr("fiche_renewal_single"));
+    } else {
+        out.push_str(tr("fiche_renewal_unrecorded"));
+    }
+    if let Some(covered) = &s.covered_to {
+        out.push(' ');
+        out.push_str(&trf(
+            "fiche_renewal_covered",
+            crate::db::format_french_date(covered),
+        ));
+    }
+    match s.state {
+        State::Over => {
+            out.push(' ');
+            out.push_str(&trf("fiche_renewal_over", day(&s.ends_on)));
+        }
+        _ => {
+            out.push(' ');
+            out.push_str(&trf("fiche_renewal_valid", day(&s.ends_on)));
+            if s.see_by != s.ends_on {
+                out.push(' ');
+                out.push_str(&trf("fiche_renewal_see_by", day(&s.see_by)));
+            }
+        }
+    }
+    out
+}
+
+/// Un bloc par médicament : ce que c'est, comment le prendre, ce qu'il
+/// faut savoir, l'oubli, et ce qui doit faire appeler.
+///
+/// Une section vide ne s'imprime pas. Un intitulé suivi de rien se lit
+/// comme un défaut d'impression, et sur une feuille qui porte
+/// « Ce qui doit vous faire appeler » c'est la pire des lectures.
+fn products_body(lines: &[FicheLine]) -> String {
+    let mut out = String::new();
+    for l in lines {
+        out.push_str("#block(width: 100%, breakable: false)[\n");
+        out.push_str(&format!(
+            "  #text(11.5pt, weight: \"bold\")[#{}]\n",
+            typst_str(&l.name)
+        ));
+        if !l.what.trim().is_empty() {
+            out.push_str(&format!(
+                "  #h(5pt) #text(9.5pt, fill: rgb(\"#555555\"))[#{}]\n",
+                typst_str(l.what.trim())
+            ));
+        }
+        out.push_str("  #v(1.5mm)\n");
+        let mut section = |key: &'static str, body: &str| {
+            let body = body.trim();
+            if body.is_empty() {
+                return;
+            }
+            out.push_str(&format!(
+                "  #text(9.5pt)[*#{}* #{}]\\\n",
+                typst_str(crate::strings::tr(key)),
+                typst_str(body)
+            ));
+        };
+        let how = match (l.posology.trim(), l.reading.meal.trim()) {
+            ("", meal) => meal.to_owned(),
+            (poso, "") => poso.to_owned(),
+            (poso, meal) => format!("{poso} — {meal}"),
+        };
+        section("fiche_sec_how", &how);
+        section("fiche_sec_know", &l.know);
+        section("fiche_sec_missed", &l.missed);
+        out.push_str("]\n");
+        // Ce qui doit faire appeler sort du bloc et prend un cadre : il
+        // est lu en diagonale, et la diagonale saute ce qui ressemble à
+        // ce qu'elle vient de lire.
+        if !l.watch.trim().is_empty() {
+            out.push_str(&format!(
+                "#block(width: 100%, inset: 5pt, stroke: 0.6pt, radius: 2pt)[#text(9.5pt)[*#{}* #{}]]\n",
+                typst_str(crate::strings::tr("fiche_sec_watch")),
+                typst_str(l.watch.trim())
+            ));
+        }
+        out.push_str("#v(3mm)\n");
+    }
+    if out.is_empty() {
+        out.push_str(&format!(
+            "#text(10pt, style: \"italic\")[#{}]\n",
+            typst_str(crate::strings::tr("fiche_no_treatment"))
+        ));
+    }
+    out
+}
+
+fn traitement_values(data: &FicheData, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let prescriber = if data.prescriber.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#align(center)[#text(10pt)[#{}]]",
+            typst_str(&crate::strings::trf(
+                "fiche_prescriber",
+                data.prescriber.trim()
+            ))
+        )
+    };
+    let signature = if data.signature.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "\\\n#text(10pt)[Préparé par #{}]",
+            typst_str(data.signature.trim())
+        )
+    };
+    let mention = if data.mention.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(3mm)\n#text(8.5pt, style: \"italic\")[#{}]",
+            typst_str(data.mention.trim())
+        )
+    };
+    vec![
+        (
+            "{{PATIENT_NAME}}",
+            format!("#{}", typst_str(&data.patient.full_name())),
+        ),
+        (
+            "{{BIRTH_DATE}}",
+            format!(
+                "#{}",
+                typst_str(&crate::db::format_french_date(&data.patient.birth_date))
+            ),
+        ),
+        ("{{DATE}}", format!("#{}", typst_str(data.today))),
+        ("{{PRESCRIBER}}", prescriber),
+        ("{{GRID}}", grid_body(&data.lines)),
+        ("{{RENEWAL}}", renewal_body(data)),
+        ("{{PRODUCTS}}", products_body(&data.lines)),
+        (
+            "{{PHARMACY_NAME}}",
+            format!("#{}", typst_str(&pharmacy.name)),
+        ),
+        (
+            "{{PHARMACY_PHONE}}",
+            format!("#{}", typst_str(&pharmacy.phone)),
+        ),
+        ("{{SIGNATURE}}", signature),
+        ("{{MENTION}}", mention),
+    ]
+}
+
 /// Un carnet de suivi, tel que le patient l'emporte.
 ///
 /// **Le protocole d'abord, la grille ensuite.** Une grille se photocopie
@@ -3691,6 +4217,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_PLAN_TEMPLATE,
     },
     Doc {
+        key: "traitement",
+        label: "tpl_target_traitement",
+        markers: MARKERS_TRAITEMENT,
+        default: DEFAULT_TRAITEMENT_TEMPLATE,
+    },
+    Doc {
         key: "controle",
         label: "tpl_target_controle",
         markers: MARKERS_CONTROLE,
@@ -4111,6 +4643,98 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // **La fiche de traitement montre ce qu'elle sait faire.** Les
+        // cinq lignes ne sont pas cinq exemples de la même chose : une
+        // prise placée avec sa quantité, une prise placée sans quantité
+        // (« 20 mg le soir » — la pastille), une prise à la demande,
+        // une prise hebdomadaire et une posologie que la grille ne sait
+        // pas lire. Ce sont les cinq cas d'`intake.rs`, et un aperçu
+        // qui n'en montre qu'un ne dit pas comment le tableau se
+        // comporte quand il rencontre les autres.
+        "traitement" => {
+            let line = |name: &str, what: &str, poso: &str, know: &str, missed: &str, watch: &str| {
+                FicheLine {
+                    name: name.to_owned(),
+                    what: what.to_owned(),
+                    posology: poso.to_owned(),
+                    reading: crate::intake::read(poso),
+                    know: know.to_owned(),
+                    missed: missed.to_owned(),
+                    watch: watch.to_owned(),
+                }
+            };
+            let ordonnance = crate::renewal::Prescription {
+                prescribed_on: "2026-08-24".to_owned(),
+                duration_days: 30,
+                renewals: 2,
+                dispensed: 2,
+            };
+            traitement_values(
+                &FicheData {
+                    patient: &patient,
+                    today: "24/08/2026",
+                    prescriber: "Docteur Martin",
+                    lines: vec![
+                        line(
+                            "Amlor 5 mg",
+                            "Tension artérielle",
+                            "1 comprimé le matin",
+                            "Des chevilles qui gonflent en fin de journée sont l'effet le \
+                             plus courant : surélever les jambes aide, et si la gêne \
+                             persiste, la dose peut être revue. Évitez le jus de \
+                             pamplemousse.",
+                            "Prenez-le dès que vous y pensez dans la journée ; passez la \
+                             dose si le lendemain est déjà là.",
+                            "",
+                        ),
+                        line(
+                            "Tahor 20 mg",
+                            "Cholestérol",
+                            "20 mg le soir",
+                            "Les douleurs musculaires diffuses se signalent : elles ne sont \
+                             pas une fatalité du traitement.",
+                            "",
+                            "Douleurs musculaires intenses, faiblesse, urines foncées.",
+                        ),
+                        line(
+                            "Doliprane 1 g",
+                            "Douleur ou fièvre",
+                            "1 comprimé si besoin, 6 heures entre deux prises",
+                            "Jamais plus de 3 g par jour, et une seule boîte de paracétamol \
+                             à la fois.",
+                            "",
+                            "",
+                        ),
+                        line(
+                            "Méthotrexate 10 mg",
+                            "Polyarthrite",
+                            "1 comprimé par semaine, le lundi matin",
+                            "Une seule prise par semaine, le même jour. L'acide folique se \
+                             prend le lendemain ou le surlendemain.",
+                            "",
+                            "Fièvre, angine, aphtes dans la bouche, toux ou essoufflement.",
+                        ),
+                        line(
+                            "Coumadine",
+                            "Anticoagulant",
+                            "Dose adaptée à l'INR",
+                            "",
+                            "",
+                            "",
+                        ),
+                    ],
+                    stands: vec![FicheStand {
+                        stand: crate::renewal::read(&ordonnance, "2026-09-23", 7),
+                        prescription: ordonnance.clone(),
+                        treatments: vec!["Amlor 5 mg".to_owned(), "Tahor 20 mg".to_owned()],
+                    }],
+                    viz: crate::renewal::Viz::default(),
+                    mention: "Document remis à titre informatif.",
+                    signature: &pharmacy.pharmacist,
+                },
+                &pharmacy,
+            )
+        }
         // **Une liste d'appels montre une liste.** Sur une seule ligne,
         // rien ne dit comment les colonnes se partagent, ni ce que
         // devient un dossier sans téléphone — qui est précisément le
@@ -7986,6 +8610,117 @@ mod tests {
             DEFAULT_PLAN_TEMPLATE,
             &plan_values(&empty, &sample_pharmacy()),
         ));
+        assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// **La grille ne remplace jamais la phrase**, et une prise
+    /// hebdomadaire n'entre pas dans la journée.
+    ///
+    /// Les deux règles d'`intake.rs` vérifiées là où elles comptent :
+    /// sur la feuille. Le module peut être parfait et la mise en page
+    /// jeter ce qu'il a lu — c'est ce qui est arrivé à la première
+    /// version, où « à la demande : si besoin » chassait « 1 comprimé »
+    /// de la ligne.
+    #[test]
+    fn the_treatment_sheet_keeps_the_posology_it_reads() {
+        let patient = sample_patient();
+        let line = |name: &str, poso: &str| FicheLine {
+            name: name.to_owned(),
+            what: "Pour l'exemple".to_owned(),
+            posology: poso.to_owned(),
+            reading: crate::intake::read(poso),
+            know: String::new(),
+            missed: String::new(),
+            watch: String::new(),
+        };
+        let posologies = [
+            "1 comprimé matin et soir",
+            "1 comprimé si besoin, 6 heures entre deux prises",
+            "1 comprimé par semaine, le lundi matin",
+            "1 comprimé par jour",
+            "Dose adaptée à l'INR",
+        ];
+        let ordonnance = crate::renewal::Prescription {
+            prescribed_on: "2026-08-24".to_owned(),
+            duration_days: 30,
+            renewals: 2,
+            dispensed: 2,
+        };
+        // **Les quatre visualisations rendent la même lecture.** Le
+        // dessin change, les chiffres et les dates ne bougent pas —
+        // c'est la règle de `renewal.rs`, vérifiée ici sur le papier
+        // plutôt que sur le type.
+        for viz in crate::renewal::Viz::ALL {
+            let data = FicheData {
+                patient: &patient,
+                today: "23/09/2026",
+                prescriber: "Docteur Martin #eval \"x\"",
+                lines: posologies
+                    .iter()
+                    .map(|p| line("Médicament #eval \"x\"", p))
+                    .collect(),
+                stands: vec![FicheStand {
+                    stand: crate::renewal::read(&ordonnance, "2026-09-23", 7),
+                    prescription: ordonnance.clone(),
+                    treatments: vec!["Médicament".to_owned()],
+                }],
+                viz,
+                mention: "Ce document ne remplace pas votre ordonnance.",
+                signature: "Claire Leroy",
+            };
+            let source = traitement_source(&data, &sample_pharmacy(), std::path::Path::new(""));
+            // Chaque posologie du dossier passe en entier, quelle que
+            // soit la façon dont la grille l'a lue.
+            for p in posologies {
+                assert!(
+                    source.contains(p),
+                    "« {p} » a disparu de la feuille ({viz:?})"
+                );
+            }
+            // La prise hebdomadaire est hors grille : sa phrase occupe
+            // les quatre colonnes de la journée.
+            assert!(
+                source.contains("ne se prend pas tous les jours"),
+                "la prise hebdomadaire doit sortir de la grille ({viz:?})"
+            );
+            // Et le rendez-vous est annoncé avant l'épuisement.
+            assert!(
+                source.contains("22/11/2026") && source.contains("15/11/2026"),
+                "la date de fin et celle du rendez-vous ({viz:?})"
+            );
+            // Le balisage d'un nom hostile n'est jamais interprété.
+            assert!(!source.contains("#eval \"x\"]"));
+            let world = PdfWorld::new(source);
+            let document: PagedDocument = typst::compile(&world)
+                .output
+                .unwrap_or_else(|_| panic!("la fiche doit compiler en {viz:?}"));
+            let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
+                .expect("l'export PDF doit réussir");
+            assert!(pdf.starts_with(b"%PDF-"));
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join(format!("traitement_{}.pdf", viz.key())),
+                    &pdf,
+                );
+            }
+        }
+
+        // Un dossier sans traitement imprime quand même la feuille : le
+        // vide est écrit en toutes lettres, et jamais un tableau vide
+        // qui se lirait « rien à prendre ».
+        let empty = FicheData {
+            patient: &patient,
+            today: "23/09/2026",
+            prescriber: "",
+            lines: Vec::new(),
+            stands: Vec::new(),
+            viz: crate::renewal::Viz::default(),
+            mention: "",
+            signature: "",
+        };
+        let source = traitement_source(&empty, &sample_pharmacy(), std::path::Path::new(""));
+        assert!(source.contains("Aucun traitement"));
+        let world = PdfWorld::new(source);
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }
 

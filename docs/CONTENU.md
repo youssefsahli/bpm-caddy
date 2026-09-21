@@ -306,6 +306,46 @@ Deux règles valent partout :
   pas.
 - **Test** : chaque mot-clé doit atteindre au moins une fiche de départ.
 
+## La fiche de traitement remise au patient
+
+Elle ne livre **aucun contenu propre** : c'est le point. Tout ce qu'elle
+imprime est déjà dans la base, et la corriger, c'est corriger la fiche
+du médicament ou la ligne du dossier — jamais une seconde table de
+conseils à tenir à jour deux fois.
+
+- **Ce qu'elle lit** : la posologie que le dossier retient pour *ce*
+  patient (`patient_drugs.posology`), son dosage
+  (`patient_drugs.dosage`), l'indication de la première ligne de
+  posologie de la fiche, et trois champs de la fiche elle-même — `iup`
+  (« ce qu'il faut savoir », écrit pour le patient), `missed_dose`
+  (« si vous oubliez une prise ») et `red_flags` (« ce qui doit vous
+  faire appeler »), ces deux derniers semés par `STARTER_CONDUITE`
+  ci-dessus.
+- **La grille** : `src/intake.rs` lit la posologie en quatre moments.
+  Statique, pure, testée, sans catalogue — c'est une lecture de la
+  langue, pas une table de médicaments. Ajouter un mot de vocabulaire
+  (un moment, une unité de comptage, un rythme non quotidien) est
+  ajouter une entrée à la constante qui le porte **et** vérifier ce
+  qu'elle attrape sur les 1 736 posologies livrées : le test
+  `no_moment_is_ticked_that_the_sentence_does_not_name` les parcourt
+  toutes, et c'est lui qui a trouvé « après-midi », qui contient
+  « midi ».
+- **L'avancement des renouvellements** : `src/renewal.rs`, à partir des
+  quatre colonnes que l'officine note sur la puce du traitement — le
+  jour de l'ordonnance, ce qu'une délivrance couvre, le nombre de
+  renouvellements, le rang de la délivrance. Rien n'est livré et rien
+  n'est deviné : une ligne dont rien n'est noté imprime qu'elle ne l'est
+  pas.
+- **Ses propres phrases** — les intitulés de sections, la phrase du
+  renouvellement, la légende de la grille — vivent dans
+  `assets/strings.fr.toml` sous le préfixe `fiche_`, où l'officine les
+  remplace comme n'importe quelle chaîne (`strings.toml` à côté de
+  `config.toml`). Le **cadre** de la page, lui, est un modèle Typst
+  (`traitement`, dans Options › Modèles) ; les trois corps — la grille,
+  le renouvellement, les blocs par médicament — sont calculés à partir
+  du dossier et ne se recolonnent pas depuis un modèle, comme la
+  monographie et le bilan.
+
 ## Les tables de référence
 
 - **Où** : `src/tables.rs`, `TABLES` : nom court, titre, date de

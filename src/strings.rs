@@ -1532,6 +1532,19 @@ livre = "Une phrase qui n'est plus livrée"
                     thousands(crate::db::STARTER_POSOLOGIES.len())
                 ),
             ),
+            // Le même nombre, affirmé une troisième fois : `intake.rs`
+            // dit avoir été confronté à *toutes* les posologies
+            // livrées, et c'est ce qui donne du poids à sa
+            // confrontation. Un chiffre qui reste en arrière ferait
+            // croire que le balayage était plus court qu'il ne l'est.
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "confronting the {} shipped posology lines",
+                    thousands(crate::db::STARTER_POSOLOGIES.len())
+                ),
+            ),
             (
                 "README.md",
                 README,
@@ -1635,8 +1648,10 @@ livre = "Une phrase qui n'est plus livrée"
             ("cyp.rs", include_str!("cyp.rs")),
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
+            ("intake.rs", include_str!("intake.rs")),
             ("ordonnancier.rs", include_str!("ordonnancier.rs")),
             ("renal.rs", include_str!("renal.rs")),
+            ("renewal.rs", include_str!("renewal.rs")),
             ("revue.rs", include_str!("revue.rs")),
             ("strings.rs", include_str!("strings.rs")),
             ("surveillance.rs", include_str!("surveillance.rs")),
@@ -1775,9 +1790,11 @@ livre = "Une phrase qui n'est plus livrée"
             ("gravidity.rs", include_str!("gravidity.rs")),
             ("hepatic.rs", include_str!("hepatic.rs")),
             ("insulin.rs", include_str!("insulin.rs")),
+            ("intake.rs", include_str!("intake.rs")),
             ("ordonnance.rs", include_str!("ordonnance.rs")),
             ("ordonnancier.rs", include_str!("ordonnancier.rs")),
             ("renal.rs", include_str!("renal.rs")),
+            ("renewal.rs", include_str!("renewal.rs")),
             ("revue.rs", include_str!("revue.rs")),
             ("selfcheck.rs", include_str!("selfcheck.rs")),
             ("surveillance.rs", include_str!("surveillance.rs")),

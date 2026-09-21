@@ -1389,7 +1389,15 @@ pub fn bevel(painter: &egui::Painter, rect: egui::Rect, raised: bool) {
 /// biseau du bas.
 pub fn button_height(ui: &egui::Ui) -> f32 {
     let font = egui::TextStyle::Button.resolve(ui.style());
-    ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0
+    let h = ui.fonts(|f| f.row_height(&font)) + (ui.spacing().button_padding.y + 1.0) * 2.0;
+    // **Arrondi à la grille de pixels, comme egui arrondit ce qu'il
+    // alloue.** Sans cela cette fonction annonce 37,68 là où le bouton
+    // en occupe 38, et une bande qui empile dix rangées est courte de
+    // trois pixels — assez pour trancher la dernière. Le sens de
+    // l'arrondi est celui qui protège : on réserve le pixel, on ne le
+    // gratte pas.
+    let ppp = ui.ctx().pixels_per_point();
+    (h * ppp).ceil() / ppp
 }
 
 /// A Motif push button: raised bevel, sinks (and nudges its label) while
@@ -2958,6 +2966,8 @@ pub fn progress_marquee(ui: &mut egui::Ui, width: f32, t: f64) {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
     /// **Une taille de texte passe par `pt`, y compris ici.**
     ///
     /// `app.rs` a son test qui refuse la prochaine taille écrite en
@@ -2979,6 +2989,92 @@ mod tests {
     ///
     /// Un filet, non une preuve : une variable peut toujours porter une
     /// constante. Vérifié en remettant les bornes de `hbar_metrics`.
+    /// **Ce que ces fonctions annoncent est ce que le dessin occupe.**
+    ///
+    /// Elles sont le modèle sur lequel toute bande carrée de cette
+    /// application réserve sa place, et trois d'entre elles mentaient
+    /// — chacune de quelques pixels, toutes dans le même sens, celui
+    /// qui coupe. Mises bout à bout sur le bandeau du dossier, la vue
+    /// la plus regardée de l'application, elles faisaient une rangée de
+    /// boutons entière : « Étiquettes… » et « Écraser ? » sortaient
+    /// tranchées par le bas, sur tous les dossiers et à toutes les
+    /// tailles de texte.
+    ///
+    /// * **`button_height`** annonçait 37,68 pour un bouton qui en
+    ///   occupe 38 : egui arrondit ce qu'il alloue à la grille de
+    ///   pixels, et une pile de dix rangées perdait trois pixels.
+    /// * **`field_sized`** relève toute case sous `field_floor` — son
+    ///   texte, la marge propre du `TextEdit`, le creux —, donc une
+    ///   case demandée à `interact_size.y` en occupe trois de plus que
+    ///   ce qu'on lui a demandé. C'est `field_floor` qu'il faut
+    ///   interroger, et il est public pour cela.
+    /// * **`panel_chrome`** est ce que `panel` prend sur le rectangle
+    ///   qu'on lui donne. Seize pixels, que le bandeau du dossier ne
+    ///   comptait pas : il rendait une hauteur de *contenu* là où
+    ///   l'appelant en fait un rectangle de *panneau*.
+    ///
+    /// Mesuré dans le dessin, aux trois échelles qui comptent, et dans
+    /// le sens qui protège : annoncer trop remet du gris, annoncer trop
+    /// peu tranche.
+    #[test]
+    fn what_these_heights_announce_is_what_the_drawing_takes() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            apply_scale(&ctx, scale, Density::Comfortable);
+            let seen: std::cell::RefCell<Vec<(String, f32, f32)>> =
+                std::cell::RefCell::new(Vec::new());
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let drawn = button(ui, "Étiquettes…").rect.height();
+                    seen.borrow_mut()
+                        .push(("button".to_owned(), button_height(ui), drawn));
+
+                    // Une case demandée plus courte que son plancher :
+                    // c'est ce que font les bandes trop serrées pour
+                    // une rangée entière, et c'est là que l'écart se
+                    // paie.
+                    let mut buf = String::new();
+                    let drawn = ui
+                        .horizontal(|ui| {
+                            field_sized(
+                                ui,
+                                Vec2::new(140.0, ui.spacing().interact_size.y),
+                                egui::TextEdit::singleline(&mut buf),
+                            );
+                        })
+                        .response
+                        .rect
+                        .height();
+                    seen.borrow_mut()
+                        .push(("field".to_owned(), field_floor(ui), drawn));
+
+                    // Et ce qu'un panneau prend sur le rectangle qu'on
+                    // lui donne.
+                    let rect =
+                        egui::Rect::from_min_size(ui.max_rect().min, Vec2::new(400.0, 300.0));
+                    let inner = panel(ui, rect, None, |ui| ui.max_rect().height());
+                    seen.borrow_mut().push((
+                        "panel".to_owned(),
+                        panel_chrome(ui, false),
+                        rect.height() - inner,
+                    ));
+                });
+            });
+            for (what, announced, drawn) in seen.into_inner() {
+                assert!(
+                    announced >= drawn - 0.01,
+                    "à l'échelle {scale}, {what} annonce {announced:.2} et occupe {drawn:.2} : \
+                     annoncer moins que ce qu'on dessine, c'est trancher"
+                );
+                assert!(
+                    announced <= drawn + 1.0,
+                    "à l'échelle {scale}, {what} annonce {announced:.2} pour {drawn:.2} : \
+                     réserver du vide se lit comme une intention"
+                );
+            }
+        }
+    }
+
     #[test]
     fn no_text_size_in_this_crate_is_written_in_pixels() {
         // Assemblés, sinon le test se trouve lui-même.

@@ -3052,6 +3052,13 @@ struct BandNeeds<'a> {
     strengths: &'a [(i64, String)],
     /// Une fiche dont on a ouvert les posologies.
     dosing: bool,
+    /// Les deux phrases que la rangée « ordonnance » relit sous
+    /// elle-même, quand elle est ouverte — voir [`App::script_notes`].
+    /// Passées plutôt que devinées : elles sont longues, elles
+    /// enveloppent sur un volet étroit, et la bande doit réserver ce
+    /// qui sera **dessiné**, pas la plus courte des cinq lectures
+    /// possibles.
+    dosing_notes: [String; 2],
     /// Quelque chose est tapé dans le champ qui ajoute un traitement,
     /// donc les propositions sont affichées.
     typing: bool,
@@ -3062,8 +3069,12 @@ struct BandNeeds<'a> {
     blocked: bool,
     /// Moins de traitements que le BPM n'en demande : la bande le dit.
     under_minimum: bool,
-    has_address: bool,
-    has_notes: bool,
+    /// La ligne de contexte **telle qu'elle sera dessinée** — voir
+    /// [`App::patient_context_line`]. Elle enveloppe, donc sa hauteur
+    /// se mesure sur son texte : deux booléens à dix-huit et vingt
+    /// pixels forfaitaires réservaient deux lignes pour une adresse et
+    /// une remarque qui tiennent sur celle qui est déjà là.
+    context: &'a str,
     /// L'onglet ouvert décide de la part que la bande peut prendre.
     acts_tab: bool,
     /// Le nom et les quatre actions ne tiennent pas sur une rangée :
@@ -3685,6 +3696,23 @@ struct Session {
     /// « ½ de 0,25 mg ». Séparé de la posologie parce que ce n'est pas
     /// la même question : l'une dit quand et combien, l'autre de quoi.
     patient_strengths: Vec<(i64, String)>,
+    /// Où en est l'ordonnance de chaque traitement — voir
+    /// [`crate::renewal`]. Lue d'un coup pour tout le dossier, comme la
+    /// posologie et le dosage, et pour la même raison : une requête par
+    /// traitement serait huit requêtes sur le chemin d'une fiche qu'on
+    /// ouvre entre deux clients.
+    patient_scripts: Vec<(i64, crate::renewal::Prescription)>,
+    /// Le jour de prescription en cours de saisie, tel qu'il est tapé,
+    /// **et la ligne à laquelle il appartient**.
+    ///
+    /// Un champ de date vit entre deux images — la saisie compacte le
+    /// veut —, donc il a son tampon, comme la posologie. Et le tampon
+    /// porte l'identifiant de sa ligne : sans lui, un tampon vide se
+    /// confond avec « la date a été effacée », et le champ affichait
+    /// son invite au-dessus d'une ordonnance datée du 21 juillet —
+    /// c'est-à-dire le contraire de ce que la base tient. Changer de
+    /// ligne le recharge depuis la base.
+    script_date_edit: Option<(i64, String)>,
     /// Voir [`Stats`] : calculé à l'ouverture de la vue, jamais par
     /// image.
     stats: Stats,
@@ -4591,6 +4619,8 @@ impl Session {
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
             patient_strengths: Vec::new(),
+            patient_scripts: Vec::new(),
+            script_date_edit: None,
             stats: Stats::default(),
             show_carnets: false,
             carnet_open: None,
@@ -7177,6 +7207,10 @@ impl Session {
         // posologie : une requête par traitement serait huit requêtes
         // sur le chemin d'une fiche qu'on ouvre entre deux clients.
         self.patient_strengths = self.db.patient_dosages(patient_id).unwrap_or_default();
+        self.patient_scripts = self
+            .db
+            .patient_prescriptions(patient_id)
+            .unwrap_or_default();
         // The biology is read against the treatments: change the second
         // and the first has a different answer — et c'est elle qui
         // avance le numéro de révision, pour les deux.
@@ -7203,6 +7237,20 @@ impl Session {
             .iter()
             .find(|(id, _)| *id == drug_id)
             .map(|(_, d)| d.as_str())
+            .unwrap_or_default()
+    }
+
+    /// Où en est l'ordonnance de ce traitement, ou rien de noté.
+    ///
+    /// **Rien de noté n'est pas une absence d'ordonnance** : la valeur
+    /// par défaut est une prescription vide, que `renewal::read` lit
+    /// comme « il manque le jour de la prescription ». Rendre `None`
+    /// aurait obligé chaque appelant à réinventer cette phrase.
+    fn script_of(&self, drug_id: i64) -> crate::renewal::Prescription {
+        self.patient_scripts
+            .iter()
+            .find(|(id, _)| *id == drug_id)
+            .map(|(_, p)| p.clone())
             .unwrap_or_default()
     }
 
@@ -9184,6 +9232,31 @@ fn planned_shift(s: &db::PlannedShift) -> Option<planning::Shift> {
 /// matched by its position in a list.
 type StatsPanel<'a> = (&'a str, f32, &'a [(String, f64)], &'a dyn Fn(f64) -> String);
 
+/// Ce que le dossier dit d'un traitement, pour les trois feuilles qui
+/// partent avec le patient : le plan de prise, les étiquettes et la
+/// fiche de traitement.
+///
+/// **Une seule lecture du dossier.** Les trois disent la même chose sur
+/// trois papiers différents ; construites séparément, les trois listes
+/// finiraient par diverger, et rien ne dirait laquelle a raison — la
+/// boîte, la feuille ou la fiche.
+struct TakeHome {
+    /// Le nom **avec son dosage** : « Amlor » ne dit pas si c'est le 5
+    /// ou le 10, et la personne qui lit a la boîte en main.
+    name: String,
+    what: String,
+    when: String,
+    /// Ce qu'on fait quand une prise a été oubliée, ou la remarque de
+    /// la posologie quand la fiche n'en dit rien.
+    missed: String,
+    /// Le paragraphe écrit pour le patient — ce qui se dit au comptoir,
+    /// et où se trouve par exemple la phrase des chevilles qui gonflent
+    /// sous amlodipine.
+    know: String,
+    /// Les signes qui doivent faire consulter sans attendre.
+    watch: String,
+}
+
 /// Ce qu'un des boutons du dossier vient de demander. Un seul peut
 /// l'être par image, ce qui est exactement ce qu'un `Option` dit et que
 /// six drapeaux ne disaient pas.
@@ -9193,6 +9266,8 @@ enum PatientAction {
     Delete,
     Bilan,
     Plan,
+    /// La fiche de nouveau traitement, celle que le patient emporte.
+    Fiche,
     Labels,
     Crush,
 }
@@ -10324,6 +10399,49 @@ impl App {
                             session.refresh_dashboard();
                             session.view = MainView::Dashboard;
                         }
+                        // La rangée où se saisit l'ordonnance d'un
+                        // traitement : le jour, la durée, les
+                        // renouvellements, le rang de la délivrance —
+                        // plus ce que la grille en a lu. Elle ne
+                        // s'ouvre que sur une puce cliquée, donc sans
+                        // clé de vue aucune capture ne l'aurait jamais
+                        // montrée : quatre champs, deux phrases et une
+                        // rangée qui enveloppe, dans un bandeau
+                        // plafonné.
+                        Ok("patient_dose") => {
+                            // Le dossier le plus fourni, et sa première
+                            // ligne : un dossier sans traitement
+                            // n'ouvre rien du tout.
+                            // **Le dossier dont l'ordonnance est
+                            // notée**, et non le plus fourni : ouverte
+                            // sur une ligne dont rien n'est noté, la
+                            // rangée dit « il manque le jour de la
+                            // prescription » et ne montre ni
+                            // l'avancement, ni la relecture de la
+                            // grille — c'est-à-dire rien de ce qu'elle
+                            // existe pour montrer.
+                            let with = session
+                                .patients
+                                .iter()
+                                .find(|p| {
+                                    session
+                                        .db
+                                        .patient_prescriptions(p.id)
+                                        .is_ok_and(|l| l.iter().any(|(_, s)| s.is_dated()))
+                                })
+                                .or_else(|| session.patients.first())
+                                .cloned();
+                            if let Some(p) = with {
+                                session.open_patient(p);
+                            }
+                            session.treat_dosing = session
+                                .patient_treats
+                                .iter()
+                                .find(|d| session.script_of(d.id).is_dated())
+                                .or_else(|| session.patient_treats.first())
+                                .map(|d| d.id);
+                            session.view = MainView::Search;
+                        }
                         // Landing on the quick picker needs the patient
                         // under it: same branch, one flag more.
                         Ok("patient_scans") => {
@@ -11395,6 +11513,7 @@ impl App {
             || start_view == "about"
             || start_view == "base"
             || start_view == "peaux"
+            || start_view == "regles"
         {
             Some(OptionsEditor {
                 page: match start_view.as_str() {
@@ -11408,6 +11527,12 @@ impl App {
                     // run need a way in, and it is the page that reads
                     // the disk.
                     "base" => OptionsPage::Database,
+                    // Les quotas d'actes, et sous eux les deux
+                    // réglages de la fiche de traitement : le délai de
+                    // prévenance et laquelle des quatre visualisations
+                    // s'imprime. Une page qu'aucune clé de vue
+                    // n'atteint est une page que personne ne regarde.
+                    "regles" => OptionsPage::Rules,
                     _ => OptionsPage::Pharmacy,
                 },
                 loc_fee_text: config
@@ -14127,6 +14252,8 @@ impl App {
         let body = motif::visible_rect(ui).shrink(6.0);
         // The band is as tall as its content: the act buttons wrap, and
         // an open correction form is much taller than a header.
+        // Écrite une fois, lue par la mesure et par le dessin.
+        let context_line = Self::patient_context_line(patient, Some(""));
         let band_h = Self::patient_band_height(
             ui,
             &BandNeeds {
@@ -14137,13 +14264,16 @@ impl App {
                 treats: &session.patient_treats,
                 strengths: &session.patient_strengths,
                 dosing: session.treat_dosing.is_some(),
+                dosing_notes: session
+                    .treat_dosing
+                    .map(|id| Self::script_notes(session, config, id))
+                    .unwrap_or_default(),
                 typing: !session.treat_query.trim().is_empty(),
                 interactions: !session.patient_interactions.is_empty(),
                 review: &session.patient_review,
                 blocked: session.rule_block.is_some(),
                 under_minimum: session.patient_treats.len() < db::BPM_MIN_TREATMENTS,
-                has_address: !patient.address.is_empty(),
-                has_notes: !patient.notes.is_empty(),
+                context: &context_line,
                 acts_tab: session.patient_tab == PatientTab::Acts,
                 cramped: !Self::patient_header_fits(ui, session, patient),
                 confirming_delete: session.confirm_delete,
@@ -19280,6 +19410,12 @@ impl App {
         {
             hit = Some(PatientAction::Plan);
         }
+        if motif::button(ui, tr("fiche_print"))
+            .on_hover_text(tr("fiche_print_tooltip"))
+            .clicked()
+        {
+            hit = Some(PatientAction::Fiche);
+        }
         if motif::button(ui, tr("labels_print"))
             .on_hover_text(tr("labels_print_tooltip"))
             .clicked()
@@ -19315,15 +19451,10 @@ impl App {
         }
     }
 
-    /// Ce que le dossier dit de chaque traitement, pour les feuilles qui
-    /// partent avec le patient : (nom et dosage, à quoi ça sert, quand,
-    /// que faire en cas d'oubli).
+    /// Ce que le dossier dit d'un traitement, pour les feuilles qui
+    /// partent avec le patient.
     ///
-    /// **Écrit une fois.** Le plan de prise et les étiquettes disent la
-    /// même chose sur deux papiers différents ; construites séparément,
-    /// les deux listes finiraient par diverger, et rien ne dirait
-    /// laquelle a raison — la boîte ou la feuille.
-    fn treatment_lines(session: &Session) -> Vec<(String, String, String, String)> {
+    fn treatment_take_home(session: &Session) -> Vec<TakeHome> {
         session
             .patient_treats
             .iter()
@@ -19355,7 +19486,7 @@ impl App {
                 };
                 // What matters most to the person holding the sheet is
                 // what to do when a dose is missed.
-                let know = if d.missed_dose.trim().is_empty() {
+                let missed = if d.missed_dose.trim().is_empty() {
                     first
                         .map(|p| p.remarque.clone())
                         .filter(|r| !r.trim().is_empty())
@@ -19374,8 +19505,155 @@ impl App {
                 } else {
                     format!("{} {}", d.name.trim(), strength)
                 };
-                (name, what, when, know)
+                TakeHome {
+                    name,
+                    what,
+                    when,
+                    missed,
+                    // **Rien n'est réécrit ici** : le paragraphe
+                    // d'information patient et les signes d'alerte sont
+                    // ceux de la fiche, que l'équipe corrige sur la
+                    // fiche. Une seconde table de conseils patients
+                    // serait une table à tenir à jour deux fois.
+                    know: d.iup.trim().to_owned(),
+                    watch: d.red_flags.trim().to_owned(),
+                }
             })
+            .collect()
+    }
+
+    /// Ce que la bande écrit sous le nom : contact, médecin traitant,
+    /// situation, adresse, remarque — une seule ligne qui enveloppe.
+    ///
+    /// **Écrite une fois.** La bande mesure sa hauteur et le dessin la
+    /// pose : deux écritures d'une même ligne divergent, et c'est la
+    /// mesure qui ment. Elle mentait — l'adresse et la remarque y
+    /// valaient dix-huit et vingt pixels forfaitaires, c'est-à-dire une
+    /// ligne chacune, alors qu'elles tiennent le plus souvent sur celle
+    /// qui est déjà là. La bande réservait donc pour deux lignes de
+    /// plus qu'elle n'en dessine, et se croyait quitte.
+    fn patient_context_line(patient: &Patient, born_below: Option<&str>) -> String {
+        let mut bits: Vec<String> = Vec::new();
+        // La date de naissance en tête, quand le nom lui a pris sa place
+        // sur la rangée du dessus. Elle est du contexte, et c'est la
+        // ligne du contexte.
+        if let Some(born) = born_below {
+            bits.push(born.to_owned());
+        }
+        if !patient.phone.is_empty() {
+            bits.push(trf("patient_phone", &patient.phone));
+        }
+        if !patient.physician.is_empty() {
+            bits.push(trf("patient_physician", &patient.physician));
+        }
+        if !patient.email.is_empty() {
+            bits.push(patient.email.clone());
+        }
+        // The memo requires the situation to be carried onto the
+        // billing, so it belongs on the header.
+        if let Some(key) = db::situation_label(&patient.situation) {
+            if !patient.situation.is_empty() {
+                bits.push(trf("patient_situation", tr(key)));
+            }
+        }
+        if !patient.address.is_empty() {
+            bits.push(patient.address.clone());
+        }
+        if !patient.notes.is_empty() {
+            bits.push(patient.notes.clone());
+        }
+        bits.join("   ·   ")
+    }
+
+    /// Les largeurs des quatre groupes de la rangée « ordonnance » du
+    /// bandeau, dans l'ordre où elle les pose.
+    ///
+    /// **La mesure de la bande et le dessin lisent la même liste.** Un
+    /// contrôle ajouté à la rangée et oublié dans la mesure fait
+    /// annoncer deux rangées là où trois se dessinent, et la dernière
+    /// tombe hors du bandeau — ce que trois bandes de cette application
+    /// avaient fini par faire.
+    fn script_row_widths(ui: &egui::Ui) -> [f32; 4] {
+        let field = chars_wide(ui, 5.0);
+        let group = |label: &'static str, w: f32| {
+            Self::group_width(
+                ui,
+                [Self::widest(ui, 11.0, [tr(label)].into_iter()), w].into_iter(),
+            )
+        };
+        [
+            group("renew_on", Self::date_field_width(ui)),
+            group("renew_days", field),
+            group("renew_count", field),
+            group("renew_dispensed", field),
+        ]
+    }
+
+    /// Les deux phrases que la rangée « ordonnance » relit sous
+    /// elle-même : ce que la grille a lu de la posologie, et où en est
+    /// l'ordonnance.
+    ///
+    /// Écrites une fois, lues par le dessin **et** par la mesure de la
+    /// bande : ce sont des phrases longues, elles enveloppent sur un
+    /// volet étroit, et une bande qui en réserve une ligne là où il en
+    /// faut trois coupe ce qui suit.
+    fn script_notes(session: &Session, config: &Config, drug_id: i64) -> [String; 2] {
+        let reading = crate::intake::read(session.dose_of(drug_id));
+        let stand = crate::renewal::read(
+            &session.script_of(drug_id),
+            &session.today,
+            config.ordonnance.notice_days,
+        );
+        let stand_say = if stand.state == crate::renewal::State::Unknown {
+            trf("renew_missing", stand.missing)
+        } else if stand.has_progress() {
+            trn("renew_stand", &[&stand.step, &stand.steps])
+        } else {
+            tr("renew_stand_none").to_owned()
+        };
+        [Self::intake_summary(&reading), stand_say]
+    }
+
+    /// Ce que la grille a lu d'une posologie, en une ligne.
+    ///
+    /// Montré au comptoir, au moment où la posologie se saisit : une
+    /// saisie dont on ne voit pas l'effet est une saisie que personne
+    /// ne vérifie, et celle-ci part sur une feuille que le patient
+    /// suivra chez lui. Les cinq lectures d'`intake.rs` se disent
+    /// chacune à sa façon — « rien compris » n'est pas « rien à
+    /// prendre ».
+    fn intake_summary(reading: &crate::intake::Reading) -> String {
+        use crate::intake::{Kind, Moment};
+        match reading.kind {
+            Kind::Placed => {
+                let cells: Vec<String> = Moment::ALL
+                    .iter()
+                    .filter_map(|m| {
+                        let take = reading.doses[m.index()]?;
+                        Some(match take.label() {
+                            Some(n) => format!("{} {n}", m.label().to_lowercase()),
+                            None => m.label().to_lowercase(),
+                        })
+                    })
+                    .collect();
+                trn(
+                    "intake_placed",
+                    &[&reading.takes_a_day(), &cells.join(", ")],
+                )
+            }
+            Kind::Daily => trf("intake_daily", reading.takes_a_day()),
+            Kind::OnDemand => tr("intake_on_demand").to_owned(),
+            Kind::Cyclic => tr("intake_cyclic").to_owned(),
+            Kind::Unread => tr("intake_unread").to_owned(),
+        }
+    }
+
+    /// Les quatre colonnes du plan de prise et des étiquettes, qui n'en
+    /// lisent que la moitié.
+    fn treatment_lines(session: &Session) -> Vec<(String, String, String, String)> {
+        Self::treatment_take_home(session)
+            .into_iter()
+            .map(|t| (t.name, t.what, t.when, t.missed))
             .collect()
     }
 
@@ -19423,6 +19701,79 @@ impl App {
             session.error = None;
         }
         String::new()
+    }
+
+    /// La fiche que le patient emporte pour une nouvelle ordonnance.
+    ///
+    /// Elle répond à quatre questions, dans l'ordre où elles se posent
+    /// en sortant de la pharmacie : quand prendre quoi, où en est le
+    /// renouvellement, à quoi sert chaque médicament et ce qu'il faut
+    /// surveiller, qui appeler. Le plan de prise dit la première en
+    /// prose ; celle-ci la dessine, et ajoute les trois autres.
+    ///
+    /// **Elle lit le dossier par la même fonction que le plan de prise
+    /// et les étiquettes** — trois papiers, une lecture. Et elle
+    /// n'écrit rien : imprimer une fiche n'est pas délivrer, et le rang
+    /// de la délivrance se note à la main, dans le dossier, par
+    /// quelqu'un qui a la boîte devant lui.
+    fn print_fiche(session: &mut Session, patient: &Patient, config: &Config, operator: &str) {
+        let today = session
+            .db
+            .today_french()
+            .unwrap_or_else(|_| tr("itv_date_fallback").to_owned());
+        let lines: Vec<crate::pdf::FicheLine> = Self::treatment_take_home(session)
+            .into_iter()
+            .zip(session.patient_treats.iter().map(|d| d.id))
+            .map(|(t, _id)| crate::pdf::FicheLine {
+                name: t.name,
+                what: t.what,
+                reading: crate::intake::read(&t.when),
+                posology: t.when,
+                know: t.know,
+                missed: t.missed,
+                watch: t.watch,
+            })
+            .collect();
+        // **Une ordonnance de six lignes est une ordonnance** : les
+        // lignes qui portent les mêmes quatre champs font un bloc, et
+        // l'ordre est celui du dossier.
+        let scripts: Vec<(String, crate::renewal::Prescription)> = session
+            .patient_treats
+            .iter()
+            .zip(lines.iter())
+            .map(|(d, l)| (l.name.clone(), session.script_of(d.id)))
+            .collect();
+        let stands: Vec<crate::pdf::FicheStand> = crate::renewal::group(&scripts)
+            .into_iter()
+            .map(|(p, treatments)| crate::pdf::FicheStand {
+                stand: crate::renewal::read(&p, &session.today, config.ordonnance.notice_days),
+                prescription: p,
+                treatments,
+            })
+            .collect();
+        let signature = config.pharmacy.signature_for(operator);
+        let data = crate::pdf::FicheData {
+            patient,
+            today: &today,
+            prescriber: patient.physician.trim(),
+            lines,
+            stands,
+            viz: crate::renewal::Viz::from_key(&config.ordonnance.renewal_viz),
+            // La mention est celle du plan de prise : c'est la même
+            // feuille, remise à la même personne, et il n'y a pas lieu
+            // d'en écrire une seconde.
+            mention: &config.disclaimers.plan,
+            signature: &signature,
+        };
+        if let Err(e) = crate::pdf::open_traitement(
+            &data,
+            &config.pharmacy,
+            &config.doc_template_path("traitement"),
+        ) {
+            session.error = Some(e);
+        } else {
+            session.error = None;
+        }
     }
 
     /// Le même plan de prise, découpé en étiquettes : ce qui se colle
@@ -19717,9 +20068,10 @@ impl App {
     /// les met à droite du nom, et leur nombre de rangées décide de la
     /// hauteur de la bande quand elles passent dessous. Deux listes
     /// auraient divergé, et c'est la hauteur qui aurait perdu.
-    fn patient_action_labels(confirm: bool) -> [&'static str; 6] {
+    fn patient_action_labels(confirm: bool) -> [&'static str; 7] {
         [
             tr("plan_print"),
+            tr("fiche_print"),
             tr("labels_print"),
             tr("crush_print"),
             tr("bilan_print"),
@@ -20330,7 +20682,14 @@ impl App {
     /// « 07/09/202 » dans le tableau des entretiens : la date qu'on
     /// vient de taper, coupée dans le champ où on l'a tapée.
     fn date_field_width(ui: &egui::Ui) -> f32 {
-        Self::field_width(ui, [tr("itv_rdv_hint"), "00/00/0000"].into_iter())
+        // Les deux invites que ces champs portent, et le gabarit d'une
+        // date écrite : une invite coupée n'invite à rien, et
+        // « JJ/MM/AAAA » n'a pas la largeur de « 00/00/0000 » dans une
+        // fonte proportionnelle.
+        Self::field_width(
+            ui,
+            [tr("itv_rdv_hint"), tr("renew_on_hint"), "00/00/0000"].into_iter(),
+        )
     }
 
     /// Les largeurs de la rangée où l'on écrit une dose, dans l'ordre où
@@ -20753,8 +21112,17 @@ impl App {
         // Replié : le nom, la date de naissance, et de quoi le rouvrir.
         // Une correction en cours le déplie d'office — on ne cache pas
         // le formulaire dans lequel on est en train de taper.
+        // **Ce que la bande rend est le rectangle du panneau, pas son
+        // contenu.** `motif::panel` prend son cadre et ses marges
+        // dessus — seize pixels à l'échelle 1,25 —, et la somme
+        // ci-dessous les ignorait : le volet qui défile était donc plus
+        // court de seize pixels que ce qu'il annonce, et la dernière
+        // rangée sortait tranchée sur tous les dossiers. C'est la
+        // fonction qui dessine le panneau qu'on interroge, et non un
+        // nombre recopié.
+        let chrome = motif::panel_chrome(ui, false);
         if n.folded && !n.correcting {
-            return Self::row_height(ui) + ui.spacing().item_spacing.y + 20.0;
+            return chrome + Self::row_height(ui) + ui.spacing().item_spacing.y + 20.0;
         }
         // The act buttons are the part that wraps.
         let lines = Self::wrapped_rows(ui, w, InterviewKind::ALL.iter().map(|k| k.label()));
@@ -20774,11 +21142,18 @@ impl App {
         // L'en-tête mesuré : la rangée du nom, la ligne de contexte sous
         // elle, et les marges de la bande — et non un nombre qui ne suit
         // ni la fonte ni `[ui] text_scale`.
-        let head = 2.0
-            + Self::row_height(ui)
-            + ui.spacing().item_spacing.y
-            + ui.text_style_height(&egui::TextStyle::Body)
-            + 10.0;
+        // L'en-tête, **mesuré sur ce qui est dessiné** : deux pixels
+        // d'air, la rangée du nom, la ligne de contexte telle qu'elle
+        // enveloppera, et l'air que le dessin pose avant les
+        // traitements. Les dix pixels qui traînaient ici sont ceux de
+        // l'`add_space` posé avant « Nouvel entretien » ; ils sont
+        // comptés là où ils sont dépensés.
+        let context = if n.context.is_empty() {
+            0.0
+        } else {
+            Self::prose_height(ui, n.context, 12.0, w) + ui.spacing().item_spacing.y
+        };
+        let head = chrome + 2.0 + Self::row_height(ui) + ui.spacing().item_spacing.y + context;
         // **La rangée des traitements enveloppe, et elle se mesure.**
         // Chaque puce porte son nom, sa posologie et sa croix ; la
         // posologie est arrivée avec la sélection rapide, et sans la
@@ -20828,7 +21203,28 @@ impl App {
         // réservait vingt-cinq pixels de gris par rangée et faisait
         // entrer un dossier de six traitements en deux.
         let treat_row = Self::treat_row_height(ui) + ui.spacing().item_spacing.y;
-        let mut h = head + treat_row * treat_lines + row * (1.0 + lines);
+        // **L'air avant les traitements était dépensé et pas compté.**
+        // Vingt pixels que le plafond connaissait — il les ajoute à son
+        // propre en-tête — et que la somme ignorait : la bande en était
+        // courte de vingt pixels sur tous les dossiers, et il n'y a
+        // qu'une constante, celle que le dessin dépense.
+        //
+        // Les dix pixels de l'`add_space` posé avant « Nouvel
+        // entretien », de même.
+        // **Et le champ qui ajoute le traitement suivant est plus haut
+        // qu'une puce.** `motif::field_sized` relève toute case sous
+        // `motif::field_floor` — son texte, la marge propre du
+        // `TextEdit` et le creux —, donc la rangée qui le porte coûte
+        // ce plancher-là et non la hauteur d'une puce. Trois pixels par
+        // dossier, et ils manquaient : c'est la fonction qui dessine
+        // qu'on interroge, jamais un nombre recopié.
+        let field_surplus = (motif::field_floor(ui) - Self::treat_row_height(ui)).max(0.0);
+        let mut h = head
+            + Self::BAND_TREAT_GAP
+            + treat_row * treat_lines
+            + field_surplus
+            + 10.0
+            + row * (1.0 + lines);
         // **Et les actions, quand elles sont passées sous le nom.**
         // Elles enveloppent comme le reste, donc elles se comptent comme
         // le reste : sans cela la bande gardait la hauteur d'une rangée
@@ -20844,15 +21240,18 @@ impl App {
                         .map(|l| Self::button_width(ui, l)),
                 );
         }
-        // Les lignes de posologie proposées, quand on en ouvre une.
+        // Les lignes de posologie proposées, quand on en ouvre une —
+        // plus la rangée qui saisit l'ordonnance, qui **enveloppe**
+        // comme les autres, et les deux phrases qui la relisent, qui
+        // enveloppent aussi. Mesurées par les mêmes fonctions que le
+        // dessin : `script_row_widths` pour la rangée,
+        // `App::prose_height` pour les phrases.
         if n.dosing {
             h += row * (2.0 + TREAT_DOSE_ROWS as f32);
-        }
-        if n.has_address {
-            h += 18.0;
-        }
-        if n.has_notes {
-            h += 20.0;
+            h += row * Self::wrapped_rows_of(ui, w, Self::script_row_widths(ui).into_iter());
+            for note in &n.dosing_notes {
+                h += Self::prose_height(ui, note, 11.0, w).max(Self::label_line(ui));
+            }
         }
         if n.correcting {
             // **Dix rangées et le geste qui enregistre**, mesurés dans
@@ -20883,7 +21282,12 @@ impl App {
         // The two readings the band carries under the treatments: the
         // interactions on one line, the revue as chips that wrap.
         if n.interactions {
-            h += 20.0;
+            // **Une rangée de libellé, mesurée.** Vingt pixels en dur
+            // pour une ligne qui en occupe quarante-quatre : c'est
+            // `App::label_line` qui dit ce qu'une rangée de texte coûte
+            // — au moins `interact_size.y`, gouttière comprise —, et
+            // les quatre pixels sont l'air que le dessin pose avant.
+            h += 4.0 + Self::label_line(ui);
         }
         if !n.review.is_empty() {
             // **Trois mesures devinées, et elles se cumulaient toutes
@@ -20918,7 +21322,14 @@ impl App {
             // déjà nommé à côté du dessin, sous une autre couleur : une
             // ligne de texte coupée se lit « ça continue », un fond
             // coloré coupé se lit « c'est cassé ».
-            h += 4.0 + Self::rows_height(ui, rows);
+            // **Et la gouttière qui suit la dernière rangée.**
+            // `rows_height` compte celles qui séparent les rangées entre
+            // elles — *n* rangées, *n−1* gouttières —, ce qui est juste
+            // pour une bande qui finit la vue et faux au milieu d'une
+            // pile : la rangée suivante en pose une de plus. Le reste de
+            // cette somme compte déjà chaque bloc `n × row`, gouttière
+            // de queue comprise ; celui-ci ne le faisait pas.
+            h += 4.0 + rows * row;
         }
         // Whatever the band would like, the acts and the journal keep
         // their half of the file: the band scrolls instead.
@@ -20965,6 +21376,19 @@ impl App {
             // `h <= cap` rend `h` : à 1400x900 il tient en entier,
             // « Enregistrer » compris.
             (avail - motif::tab_strip_height(ui) - Self::row_height(ui) * 4.0).max(avail * 0.45)
+        } else if n.dosing {
+            // **La posologie ouverte est un formulaire**, et c'est la
+            // règle de la maison : des deux volets, celui où l'on tape
+            // gagne. Elle portait quatre lignes de propositions ; elle
+            // porte maintenant le jour de l'ordonnance, sa durée, ses
+            // renouvellements et le rang de la délivrance — et à
+            // 1024x700 tout cela tombait sous le pli d'une bande
+            // plafonnée à 45 %, sur une puce qu'on vient de cliquer
+            // pour cela. Moins généreux que la correction d'identité,
+            // qui est plus haute ; et le tableau garde sa bande
+            // d'onglets et cinq rangées. « Fermer » est dans la bande :
+            // la part se rend d'un clic.
+            (avail - motif::tab_strip_height(ui) - Self::row_height(ui) * 5.0).max(avail * 0.45)
         } else if n.acts_tab {
             (avail * 0.45).max(avail - 340.0)
         } else {
@@ -20989,42 +21413,24 @@ impl App {
         // — les boutons du dossier, les puces des traitements, le choix
         // rapide des actes. On coupe donc entre deux d'entre elles.
         //
-        // L'en-tête est compté avec les mêmes nombres que la somme
-        // ci-dessus, et non avec les siens : deux mesures d'une même
-        // chose divergent toujours, et ici la divergence rendrait la
-        // bande *plus haute* que son plafond. C'est aussi pourquoi le
-        // compte de rangées peut tomber à zéro — `whole_rows` en impose
-        // une, ce qui est juste pour une bande de portes où la première
-        // rangée *est* le contenu, et faux ici où l'en-tête porte déjà
-        // le nom : forcée à une rangée de plus, la bande dépassait son
-        // plafond de dix-sept pixels et mangeait la seule ligne du
-        // tableau de biologie.
-        let head =
-            // **L'en-tête du plafond se surestime, celui de la hauteur
-            // se mesure juste.** Les deux ne servent pas à la même
-            // chose : `h` dit ce que la bande *veut*, et se tromper en
-            // plus y remet du gris vide ; celui-ci dit ce qui est
-            // dessiné *au-dessus de la première rangée qu'on puisse
-            // couper*, et se tromper en moins coupe une rangée par le
-            // milieu — c'est ce qui est arrivé à l'échelle 1,25, où la
-            // ligne de contexte enveloppe sur deux lignes et où la
-            // rangée des traitements s'est retrouvée tranchée sous ses
-            // puces. On lui accorde donc la seconde ligne de contexte,
-            // qu'on ne peut pas compter ici sans réassembler ce que le
-            // dessin assemble — et deux mesures d'une même chose
-            // divergent toujours.
-            head
-                + ui.text_style_height(&egui::TextStyle::Body)
-                + if n.has_address { 18.0 } else { 0.0 }
-                + if n.has_notes { 20.0 } else { 0.0 }
-                // **Et l'air au-dessus de la première rangée qu'on
-                // puisse couper.** Vingt pixels, oubliés ici, coupaient
-                // la deuxième rangée de puces par le milieu : le
-                // plafond croyait la rangée des traitements vingt
-                // pixels plus haut qu'elle n'est. C'est la même
-                // constante que le dessin emploie, et non un nombre
-                // recopié — deux mesures d'une même chose divergent.
-                + Self::BAND_TREAT_GAP;
+        // **L'en-tête du plafond et celui de la hauteur sont maintenant
+        // le même.** Ils ne l'étaient pas : la somme comptait une ligne
+        // de contexte forfaitaire, plus dix-huit pixels d'adresse et
+        // vingt de remarque, et le plafond ajoutait par-dessus une
+        // seconde ligne de corps pour rattraper ce que l'approximation
+        // lui coûtait quand la ligne enveloppe. Deux approximations qui
+        // se corrigent l'une l'autre sont deux occasions de se tromper ;
+        // la ligne est mesurée sur son texte, une fois, et les deux la
+        // lisent. L'air au-dessus de la première rangée qu'on puisse
+        // couper y est aussi, puisque le dessin le dépense.
+        //
+        // Le compte de rangées peut tomber à zéro — `whole_rows` en
+        // impose une, ce qui est juste pour une bande de portes où la
+        // première rangée *est* le contenu, et faux ici où l'en-tête
+        // porte déjà le nom : forcée à une rangée de plus, la bande
+        // dépassait son plafond de dix-sept pixels et mangeait la seule
+        // ligne du tableau de biologie.
+        //
         // **Ce qui suit l'en-tête n'est pas d'une seule hauteur, et le
         // plafond le sait.** Les premières rangées sont celles des
         // puces — plus courtes qu'une rangée de boutons —, et tout ce
@@ -21175,6 +21581,9 @@ impl App {
             match act {
                 Some(PatientAction::Bilan) => Self::print_bilan(session, patient, config, operator),
                 Some(PatientAction::Plan) => Self::print_plan(session, patient, config, operator),
+                Some(PatientAction::Fiche) => {
+                    Self::print_fiche(session, patient, config, operator);
+                }
                 Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
                 Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
                 Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
@@ -21184,42 +21593,17 @@ impl App {
             return;
         }
         {
-            // Everything else about the patient on one quiet line under
-            // the name: contact, situation, address, comment. Wrapped,
-            // so a long address pushes a line instead of being cut.
-            let mut bits: Vec<String> = Vec::new();
-            // La date de naissance en tête, quand le nom lui a pris sa
-            // place sur la rangée du dessus. Elle est du contexte, et
-            // c'est la ligne du contexte.
-            if let Some(born) = born_below {
-                bits.push(born);
-            }
-            if !patient.phone.is_empty() {
-                bits.push(trf("patient_phone", &patient.phone));
-            }
-            if !patient.physician.is_empty() {
-                bits.push(trf("patient_physician", &patient.physician));
-            }
-            if !patient.email.is_empty() {
-                bits.push(patient.email.clone());
-            }
-            // The memo requires the situation to be carried onto the
-            // billing, so it belongs on the header.
-            if let Some(key) = db::situation_label(&patient.situation) {
-                if !patient.situation.is_empty() {
-                    bits.push(trf("patient_situation", tr(key)));
-                }
-            }
-            if !patient.address.is_empty() {
-                bits.push(patient.address.clone());
-            }
-            if !patient.notes.is_empty() {
-                bits.push(patient.notes.clone());
-            }
-            if !bits.is_empty() {
+            // La ligne de contexte est **écrite une fois** : la mesure de
+            // la bande lit la même que le dessin. Elle enveloppe, donc sa
+            // hauteur dépend de ce qu'elle porte — une adresse et une
+            // remarque ne coûtent pas dix-huit et vingt pixels, elles
+            // coûtent les lignes qu'elles ajoutent, ou rien du tout
+            // quand elles tiennent sur celle qui est déjà là.
+            let line = Self::patient_context_line(patient, born_below.as_deref());
+            if !line.is_empty() {
                 ui.add(
                     egui::Label::new(
-                        egui::RichText::new(bits.join("   ·   "))
+                        egui::RichText::new(line)
                             .size(motif::pt(ui, 12.0))
                             .color(motif::text_dim()),
                     )
@@ -21397,6 +21781,24 @@ impl App {
             // relue.
             let mut set_strength: Option<(i64, String)> = None;
             let mut strength_edit = session.strength_edit.clone();
+            // L'ordonnance de la ligne ouverte : ce qu'on vient
+            // d'écrire, et ce que l'écran montrait — le compare-and-set
+            // se mesure contre le second, jamais contre le tampon de
+            // frappe.
+            let mut set_script: Option<(
+                i64,
+                crate::renewal::Prescription,
+                crate::renewal::Prescription,
+            )> = None;
+            // Le tampon de la date, rechargé depuis la base dès qu'il
+            // ne parle plus de la ligne ouverte : un champ qui montre
+            // son invite au-dessus d'une ordonnance datée dit le
+            // contraire de ce que la base tient.
+            let mut script_date = match (session.treat_dosing, &session.script_date_edit) {
+                (Some(id), Some((seen, text))) if *seen == id => text.clone(),
+                (Some(id), _) => db::format_french_date(&session.script_of(id).prescribed_on),
+                (None, _) => String::new(),
+            };
             // Wrapped: a file with five treatments ran the picker off
             // the right of the band at a counter width, and the field
             // that adds the sixth was the part that disappeared.
@@ -21721,6 +22123,90 @@ impl App {
                             set_strength = Some((id, strength_edit.trim().to_owned()));
                         }
                     });
+                    // --- L'ordonnance : où en est cette ligne
+                    //
+                    // Les quatre champs de `renewal.rs`, là où la
+                    // posologie et le dosage se saisissent déjà : c'est
+                    // la même main et le même moment — la boîte est
+                    // dans la main, l'ordonnance sous les yeux. Les
+                    // ranger dans un écran à part en aurait fait un
+                    // écran que personne n'ouvre.
+                    //
+                    // Rien n'est obligatoire : une ligne dont rien
+                    // n'est noté imprime « où en est cette ordonnance
+                    // n'a pas été noté », ce qui est une information.
+                    let script = session.script_of(id);
+                    let mut next = script.clone();
+                    ui.horizontal_wrapped(|ui| {
+                        // Chaque intitulé reste avec son champ : un mot
+                        // qui nomme un champ posé sur la ligne du
+                        // dessus ne nomme rien, et cette rangée en
+                        // porte quatre. Les largeurs viennent de la
+                        // fonction que la mesure de la bande lit aussi.
+                        let row_h = Self::button_height(ui);
+                        let widths = Self::script_row_widths(ui);
+                        let field = chars_wide(ui, 5.0);
+                        Self::keep_together(ui, egui::vec2(widths[0], row_h), |ui| {
+                            ui.label(
+                                egui::RichText::new(tr("renew_on"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            let resp = motif::field_sized(
+                                ui,
+                                egui::vec2(Self::date_field_width(ui), row_h),
+                                egui::TextEdit::singleline(&mut script_date)
+                                    .hint_text(motif::hint(tr("renew_on_hint"))),
+                            );
+                            if resp.lost_focus() {
+                                let typed = script_date.trim().to_owned();
+                                if typed.is_empty() {
+                                    next.prescribed_on.clear();
+                                } else if let Ok(iso) = db::parse_french_date(
+                                    &typed,
+                                    session.db.current_year(),
+                                    db::YearHint::Past,
+                                ) {
+                                    next.prescribed_on = iso;
+                                }
+                            }
+                        });
+                        let number = |ui: &mut egui::Ui,
+                                      key: &'static str,
+                                      width: f32,
+                                      v: &mut u32,
+                                      max: u32| {
+                            Self::keep_together(ui, egui::vec2(width, row_h), |ui| {
+                                ui.label(
+                                    egui::RichText::new(tr(key))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                                ui.add_sized(
+                                    egui::vec2(field, row_h),
+                                    egui::DragValue::new(v).range(0..=max).speed(0.2),
+                                );
+                            });
+                        };
+                        number(ui, "renew_days", widths[1], &mut next.duration_days, 3650);
+                        number(ui, "renew_count", widths[2], &mut next.renewals, 60);
+                        number(ui, "renew_dispensed", widths[3], &mut next.dispensed, 60);
+                    });
+                    // **Ce que la grille a lu, et où en est
+                    // l'ordonnance**, relus ici plutôt que découverts
+                    // sur la feuille du patient : une saisie dont on ne
+                    // voit pas l'effet est une saisie que personne ne
+                    // vérifie, et celle-ci part à la maison.
+                    for note in Self::script_notes(session, config, id) {
+                        ui.label(
+                            egui::RichText::new(note)
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_faint()),
+                        );
+                    }
+                    if next != script {
+                        set_script = Some((id, next, script));
+                    }
                     if lines.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("treat_dose_none"))
@@ -21766,6 +22252,26 @@ impl App {
                 }
             }
             session.strength_edit = strength_edit;
+            session.script_date_edit = session.treat_dosing.map(|id| (id, script_date));
+            if let Some((id, next, was)) = set_script {
+                match session
+                    .db
+                    .set_patient_prescription(patient.id, id, &next, &was)
+                {
+                    Ok(true) => {
+                        // Le tampon est rendu à la base : ce qui a été
+                        // écrit est ce qui sera relu, et une date
+                        // normalisée à l'écriture doit se voir.
+                        session.script_date_edit = None;
+                        session.reload_treatments(patient.id);
+                    }
+                    Ok(false) => {
+                        session.reload_treatments(patient.id);
+                        session.stale("concil_stale");
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
             if let Some((id, dosage)) = set_strength {
                 let expected = session.strength_of(id).to_owned();
                 match session
@@ -22202,6 +22708,7 @@ impl App {
         match act {
             Some(PatientAction::Bilan) => Self::print_bilan(session, patient, config, operator),
             Some(PatientAction::Plan) => Self::print_plan(session, patient, config, operator),
+            Some(PatientAction::Fiche) => Self::print_fiche(session, patient, config, operator),
             Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
             Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
             Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
@@ -55959,6 +56466,64 @@ impl eframe::App for App {
                                             }
                                         }
                                     });
+                                // La fiche de traitement remise au
+                                // patient : de combien de jours le
+                                // rendez-vous doit précéder
+                                // l'épuisement, et comment
+                                // l'avancement se dessine. Ici plutôt
+                                // que dans un onglet à part : c'est
+                                // une règle de conduite de l'officine,
+                                // comme le quota d'actes au-dessus, et
+                                // un onglet portant deux réglages est
+                                // un onglet que personne n'ouvre.
+                                ui.add_space(8.0);
+                                motif::section(ui, tr("opts_fiche"));
+                                egui::Grid::new("opts_fiche")
+                                    .num_columns(2)
+                                    .spacing([12.0, 6.0])
+                                    .show(ui, |ui| {
+                                        Self::form_label(ui, tr("opts_notice_days"));
+                                        ui.add(
+                                            egui::DragValue::new(
+                                                &mut editor.cfg.ordonnance.notice_days,
+                                            )
+                                            .range(0..=90),
+                                        );
+                                        ui.end_row();
+                                        Self::form_label(ui, tr("opts_renewal_viz"));
+                                        // Une **visualisation**, donc
+                                        // un `select` lié à sa valeur
+                                        // et non un menu d'actions : il
+                                        // y a un réglage courant, et
+                                        // c'est lui que la boîte
+                                        // montre.
+                                        let mut current = crate::renewal::Viz::from_key(
+                                            &editor.cfg.ordonnance.renewal_viz,
+                                        );
+                                        let options: Vec<(crate::renewal::Viz, String)> =
+                                            crate::renewal::Viz::ALL
+                                                .into_iter()
+                                                .map(|v| (v, v.label().to_owned()))
+                                                .collect();
+                                        let width = Self::widest(
+                                            ui,
+                                            12.0,
+                                            crate::renewal::Viz::ALL.iter().map(|v| v.label()),
+                                        ) + Self::button_height(ui);
+                                        if motif::select(
+                                            ui,
+                                            "opts_renewal_viz",
+                                            width,
+                                            &mut current,
+                                            &options,
+                                        )
+                                        .changed()
+                                        {
+                                            editor.cfg.ordonnance.renewal_viz =
+                                                current.key().to_owned();
+                                        }
+                                        ui.end_row();
+                                    });
                             }
                             if page == OptionsPage::Database {
                                 ui.add_space(8.0);
@@ -57925,6 +58490,81 @@ mod tests {
         let (pos, size) = App::companion_place(super::CompanionPlace::Free, wide, floor, opening);
         assert_eq!(pos, None);
         assert_eq!(size, opening);
+    }
+    /// **La bande compte la rangée de l'ordonnance comme elle la
+    /// dessine.**
+    ///
+    /// Quatre groupes intitulé-plus-champ qui enveloppent : la mesure
+    /// de la bande les compte par `script_row_widths`, et le dessin
+    /// pose les mêmes largeurs. Un contrôle ajouté à l'une et oublié
+    /// dans l'autre fait annoncer deux rangées là où trois se
+    /// dessinent, et la dernière — « délivrance n° » — tombe hors du
+    /// bandeau. Le test dessine, compte les rangées réellement
+    /// occupées et les confronte au modèle, **aux deux largeurs qui
+    /// comptent** : un dossier au comptoir et un volet étroit.
+    #[test]
+    fn the_prescription_row_is_counted_as_it_is_drawn() {
+        let mut wrapped_somewhere = false;
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [320.0_f32, 480.0, 640.0, 900.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let tops: std::cell::RefCell<Vec<f32>> = std::cell::RefCell::new(Vec::new());
+                let model = std::cell::Cell::new(0.0_f32);
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let widths = App::script_row_widths(ui);
+                        model.set(App::wrapped_rows_of(ui, width, widths.into_iter()));
+                        ui.scope(|ui| {
+                            ui.set_max_width(width);
+                            ui.horizontal_wrapped(|ui| {
+                                for w in widths {
+                                    let top = App::keep_together(
+                                        ui,
+                                        egui::vec2(w, App::row_height(ui)),
+                                        |ui| {
+                                            // Le groupe est rempli :
+                                            // `allocate_ui` n'avance le
+                                            // curseur que de ce que son
+                                            // contenu occupe, et un
+                                            // groupe vide ne dirait
+                                            // rien de la rangée que le
+                                            // vrai dessin prend.
+                                            let room = ui.available_width();
+                                            ui.allocate_space(egui::vec2(
+                                                room,
+                                                App::row_height(ui),
+                                            ));
+                                            ui.min_rect().top()
+                                        },
+                                    );
+                                    tops.borrow_mut().push(top);
+                                }
+                            });
+                        });
+                    });
+                });
+                let mut rows: Vec<f32> = tops.into_inner();
+                rows.sort_by(f32::total_cmp);
+                rows.dedup_by(|a, b| (*a - *b).abs() < 1.0);
+                if rows.len() > 1 {
+                    wrapped_somewhere = true;
+                }
+                assert_eq!(
+                    rows.len() as f32,
+                    model.get(),
+                    "à l'échelle {scale} sur {width} px : {} rangées dessinées, {} annoncées",
+                    rows.len(),
+                    model.get()
+                );
+            }
+        }
+        // Et le balayage mord : une largeur qui ne fait jamais
+        // envelopper ne prouverait rien du modèle.
+        assert!(
+            wrapped_somewhere,
+            "aucune des largeurs balayées ne fait envelopper la rangée"
+        );
     }
 
     /// **Un groupe tenu ensemble ne se coupe jamais entre ses pièces.**
@@ -62311,13 +62951,13 @@ mod tests {
                         treats: &treats[..k],
                         strengths: &[],
                         dosing: false,
+                        dosing_notes: Default::default(),
                         typing: false,
                         interactions: false,
                         review: &[],
                         blocked: false,
                         under_minimum: false,
-                        has_address: false,
-                        has_notes: false,
+                        context: "",
                         acts_tab,
                         cramped: false,
                         confirming_delete: false,

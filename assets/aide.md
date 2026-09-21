@@ -112,6 +112,48 @@ suivies, ce qui est la réponse qu'on cherche en se demandant par quoi
 remplacer un traitement —, ou être **inconnue de la table**, ce qui
 n'est pas la même chose et ne l'innocente pas.
 
+## La fiche de traitement
+
+« Fiche traitement… », en haut du dossier, imprime la feuille que le
+patient emporte quand son ordonnance change. Elle répond dans l'ordre
+aux quatre questions qu'on se pose sur le trottoir en sortant.
+
+**Les prises de la journée.** Une grille de quatre moments — matin, midi,
+soir, coucher — lue sur la posologie que le dossier retient pour **ce**
+patient. Un chiffre quand l'ordonnance donne la quantité, une pastille
+quand elle donne le moment sans le nombre : la feuille n'invente pas un
+comprimé que personne n'a prescrit.
+
+Une posologie que la grille ne sait pas lire garde ses quatre colonnes
+en une seule case et dit sa phrase : quatre cases blanches se liraient
+« rien à prendre ». Un « si besoin » sort de la grille avec sa
+condition — un pilulier dit **quand** prendre, et y déposer un antalgique
+à la demande le transforme en prise systématique. Une prise
+hebdomadaire en sort aussi, en toutes lettres : une croix dans la
+colonne « matin » d'une grille dont l'en-tête est une journée se lit
+« tous les matins », et le méthotrexate est hebdomadaire.
+
+**Le renouvellement.** La délivrance en cours sur le total, la période
+que couvre la boîte du jour, le jour où l'ordonnance est épuisée, et la
+ligne qui compte : le jour avant lequel il faut avoir **vu** le
+prescripteur — quelques jours plus tôt, parce qu'un rendez-vous ne se
+prend pas le matin pour le soir. Le délai et la façon de dessiner
+l'avancement — pastilles, jauge, dates, ou la phrase seule — se règlent
+dans Options › Règles.
+
+Le rang de la délivrance se **compte**, il ne se déduit pas du
+calendrier : un patient qui revient trois semaines en retard en est à sa
+deuxième délivrance, tard, et non à sa quatrième. Il se note dans le
+dossier, sur la puce du traitement, avec le jour de l'ordonnance, la
+durée qu'une délivrance couvre et le nombre de renouvellements. Rien
+n'est obligatoire : une ligne dont rien n'est noté imprime qu'elle ne
+l'est pas, ce qui est une information.
+
+**Le détail par médicament.** Indication, posologie, conseils, conduite
+en cas d'oubli, et dans un cadre à part les signes d'alerte. Tout vient
+des fiches du référentiel, que l'équipe corrige là où elles sont : il
+n'y a pas de seconde table de conseils à tenir à jour.
+
 ## Peut-on écraser ?
 
 Le bouton « Écraser ? » du dossier imprime une feuille pour l'EHPAD ou

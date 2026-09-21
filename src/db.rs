@@ -398,6 +398,27 @@ CREATE TABLE IF NOT EXISTS patient_drugs (
     -- le quart qu'un patient prend réellement. Une liste fermée dirait
     -- que ce quart n'existe pas ; il est dans la boîte à pilules.
     dosage      TEXT NOT NULL DEFAULT '',
+    -- Où en est l'ordonnance de cette ligne — voir `src/renewal.rs`.
+    --
+    -- Quatre colonnes, et chacune répond à une question que les autres
+    -- ne posent pas : le jour où elle a été écrite, ce qu'une
+    -- délivrance couvre, combien de fois elle se renouvelle, et combien
+    -- de fois elle l'a déjà été.
+    --
+    -- **Par traitement et non par ordonnance**, parce que c'est ainsi
+    -- que le dossier est fait : les traitements se rattachent un par un
+    -- et rien ne les groupe. C'est aussi la réalité du comptoir — un
+    -- antibiotique de sept jours ne se renouvelle pas, et il arrive au
+    -- milieu d'une ordonnance de fond qui, elle, court sur trois mois.
+    --
+    -- Zéro n'est jamais « un » : une délivrance non notée laisse
+    -- `dispensed` à zéro, et la feuille dit ce que l'ordonnance permet
+    -- plutôt que d'annoncer une première délivrance que personne n'a
+    -- constatée.
+    prescribed_on TEXT NOT NULL DEFAULT '',
+    duration_days INTEGER NOT NULL DEFAULT 0,
+    renewals      INTEGER NOT NULL DEFAULT 0,
+    dispensed     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (patient_id, drug_id)
 );
 CREATE TABLE IF NOT EXISTS notes (
@@ -803,6 +824,10 @@ const MIGRATIONS: &[&str] = &[
     )",
     "ALTER TABLE patient_drugs ADD COLUMN posology TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patient_drugs ADD COLUMN dosage TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patient_drugs ADD COLUMN prescribed_on TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patient_drugs ADD COLUMN duration_days INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE patient_drugs ADD COLUMN renewals INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE patient_drugs ADD COLUMN dispensed INTEGER NOT NULL DEFAULT 0",
     // Les postes de l'équipe — voir le commentaire au-dessus de la
     // table dans `SCHEMA`. Une base d'avant 0.175.0 n'en a pas, et un
     // `CREATE TABLE IF NOT EXISTS` ici est ce qui l'y met sans rien
@@ -30401,6 +30426,81 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Où en est l'ordonnance de chaque traitement de ce dossier.
+    ///
+    /// Une seule requête pour tout le dossier, comme les posologies et
+    /// les dosages juste au-dessus : la vue est redessinée soixante
+    /// fois par seconde, et une question par traitement serait dix
+    /// questions par image.
+    ///
+    /// Les lignes muettes — rien de noté — sont rendues elles aussi :
+    /// c'est `renewal::read` qui dit qu'il manque la date, et une ligne
+    /// absente se lirait « pas d'ordonnance », ce qui n'est pas la même
+    /// chose.
+    pub fn patient_prescriptions(
+        &self,
+        patient_id: i64,
+    ) -> Result<Vec<(i64, crate::renewal::Prescription)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT drug_id, prescribed_on, duration_days, renewals, dispensed
+                   FROM patient_drugs WHERE patient_id = ?1",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok((
+                    r.get(0)?,
+                    crate::renewal::Prescription {
+                        prescribed_on: r.get(1)?,
+                        duration_days: r.get::<_, i64>(2)?.clamp(0, 3650) as u32,
+                        renewals: r.get::<_, i64>(3)?.clamp(0, 60) as u32,
+                        dispensed: r.get::<_, i64>(4)?.clamp(0, 60) as u32,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire l'ordonnance d'une ligne, compare-and-set contre ce que
+    /// l'écran montrait — les quatre champs d'un bloc, parce qu'ils se
+    /// saisissent d'un bloc et qu'une ordonnance à moitié écrite par un
+    /// poste et à moitié par l'autre ne décrit aucune ordonnance.
+    pub fn set_patient_prescription(
+        &self,
+        patient_id: i64,
+        drug_id: i64,
+        new: &crate::renewal::Prescription,
+        expected: &crate::renewal::Prescription,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patient_drugs
+                    SET prescribed_on = ?3, duration_days = ?4,
+                        renewals = ?5, dispensed = ?6
+                  WHERE patient_id = ?1 AND drug_id = ?2
+                    AND prescribed_on = ?7 AND duration_days = ?8
+                    AND renewals = ?9 AND dispensed = ?10",
+                (
+                    patient_id,
+                    drug_id,
+                    new.prescribed_on.trim(),
+                    i64::from(new.duration_days),
+                    i64::from(new.renewals),
+                    i64::from(new.dispensed),
+                    expected.prescribed_on.trim(),
+                    i64::from(expected.duration_days),
+                    i64::from(expected.renewals),
+                    i64::from(expected.dispensed),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Écrire le dosage, compare-and-set comme la posologie.
     pub fn set_patient_dosage(
         &self,
@@ -37784,6 +37884,30 @@ mod tests {
             vec![(did, "5 mg".to_owned())]
         );
         assert_eq!(db.dosages_used(did).unwrap(), vec!["5 mg".to_owned()]);
+        // L'état de l'ordonnance : quatre colonnes ajoutées à
+        // `patient_drugs`, donc quatre `ALTER` dans `MIGRATIONS`.
+        // Oubliés, une base d'avant répond « no such column » ici et
+        // nulle part ailleurs.
+        db.patient_prescriptions(pid)
+            .expect("patient_prescriptions");
+        let ordonnance = crate::renewal::Prescription {
+            prescribed_on: "2026-09-21".to_owned(),
+            duration_days: 30,
+            renewals: 2,
+            dispensed: 1,
+        };
+        assert!(db
+            .set_patient_prescription(
+                pid,
+                did,
+                &ordonnance,
+                &crate::renewal::Prescription::default()
+            )
+            .unwrap());
+        assert_eq!(
+            db.patient_prescriptions(pid).unwrap(),
+            vec![(did, ordonnance)]
+        );
         // Le comptage de caisse : sa table est arrivée après cette
         // photographie du schéma, donc c'est exactement le cas que ce
         // test existe pour attraper — l'`ALTER`/`CREATE` oublié dans
@@ -42828,9 +42952,47 @@ mod tests {
                     // montre aussi que les croisements se classent.
                     ("Zeclar", "500 mg matin et soir, 7 jours"),
                 ] {
+                    let today = db.today_iso().unwrap();
                     if let Some(d) = db.drugs().unwrap().into_iter().find(|d| d.name == name) {
                         db.add_patient_drug(pid, d.id).unwrap();
                         db.set_patient_posology(pid, d.id, poso, "").unwrap();
+                        // **Où en est l'ordonnance**, sans quoi la
+                        // fiche de traitement s'ouvre sur « cela n'a
+                        // pas été noté » et aucune capture ne montre
+                        // jamais l'avancement, qui est la moitié de ce
+                        // que cette feuille existe pour dire.
+                        //
+                        // Deux formes, parce que ce sont les deux que
+                        // le module distingue : le fond, trois mois
+                        // renouvelables deux fois, à sa deuxième
+                        // délivrance ; et le macrolide, sept jours non
+                        // renouvelables — qui n'a pas de jauge mais une
+                        // date de fin. Les cinq du fond partagent les
+                        // mêmes quatre champs, donc la feuille les
+                        // rassemble en un bloc, ce qu'une ordonnance
+                        // seule n'aurait pas montré.
+                        let script = if name == "Zeclar" {
+                            crate::renewal::Prescription {
+                                prescribed_on: add_days(&today, -2).unwrap_or_default(),
+                                duration_days: 7,
+                                renewals: 0,
+                                dispensed: 1,
+                            }
+                        } else {
+                            crate::renewal::Prescription {
+                                prescribed_on: add_days(&today, -62).unwrap_or_default(),
+                                duration_days: 30,
+                                renewals: 2,
+                                dispensed: 2,
+                            }
+                        };
+                        db.set_patient_prescription(
+                            pid,
+                            d.id,
+                            &script,
+                            &crate::renewal::Prescription::default(),
+                        )
+                        .unwrap();
                         if name == "Eliquis" {
                             db.add_note(
                                 NoteSubject::Drug,

@@ -5,6 +5,178 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Une fiche de traitement pour le patient, et elle répond à quatre
+  questions plutôt qu'à une.** Le plan de prise existait : une ligne par
+  traitement, en prose. Personne ne lit de la prose à huit heures du
+  matin avec sa boîte à la main. « Fiche traitement… », en haut du
+  dossier, imprime la feuille qu'on donne avec une **nouvelle**
+  ordonnance, dans l'ordre où les questions se posent sur le trottoir en
+  sortant.
+
+  **Quand prendre quoi** : une grille de quatre moments — matin, midi,
+  soir, coucher — lue sur la posologie que le dossier retient pour *ce*
+  patient. Un chiffre quand l'ordonnance donne la quantité, une pastille
+  quand elle donne le moment sans le nombre.
+
+  **Où en est l'ordonnance** : la délivrance en cours sur le total, ce
+  que la boîte du jour couvre, la fin de validité, et le jour avant
+  lequel il faut avoir **vu** le prescripteur. Quatre dessins au choix —
+  pastilles, jauge, calendrier des délivrances, ou la phrase seule — qui
+  lisent tous le même calcul.
+
+  **Médicament par médicament** : à quoi il sert, comment le prendre, ce
+  qu'il faut savoir, l'oubli, et dans un cadre à part ce qui doit faire
+  appeler. Tout cela vient des fiches du référentiel : il n'y a pas de
+  seconde table de conseils à tenir à jour.
+
+  Puis un blanc pour les questions du patient et le numéro de
+  l'officine. Le cadre de la page est un modèle Typst comme les autres
+  (Options › Modèles), et la feuille lit le dossier par la **même**
+  fonction que le plan de prise et les étiquettes — trois papiers, une
+  lecture.
+
+- **`src/intake.rs` — la posologie lue en grille.** Six règles, un test
+  chacune, et la troisième est celle qui tue. **Le silence n'est pas une
+  case vide** : une posologie illisible ne dessine aucune grille, parce
+  que quatre cases blanches se lisent « rien à prendre ». **« Si
+  besoin » n'entre jamais dans la grille** — c'est écrit dans les tables
+  de cette application, à propos du pilulier. **Une prise hebdomadaire
+  n'est jamais dessinée comme une prise quotidienne** : le méthotrexate
+  est hebdomadaire et sa prise quotidienne est mortelle ; une croix dans
+  la colonne « matin » d'une grille dont l'en-tête est une journée se
+  lit « tous les matins ». **Une prise dont le moment n'est pas dit ne
+  se place pas** — « 1 comprimé par jour » ne dit pas le matin. **Un
+  milligramme n'est pas un comprimé** : « 5 mg matin et soir » porte
+  deux prises et pas cinq. **Une prise sans quantité reste une prise** :
+  la case porte une marque, jamais un « 1 » inventé.
+
+  **Quatre pièges trouvés en confrontant les 1 736 posologies livrées**
+  plutôt que les six écrites dans le test — le module était parfaitement
+  cohérent avec lui-même sans eux. Deux sont un mot dans un autre :
+  « petit déjeuner » contient « déjeuner », qui est le midi, et « en
+  début d'après-midi » contient « midi ».
+
+  Les deux autres sont un mot qui dit deux choses, ce qui est le genre
+  difficile. **Une durée n'est pas un rythme** : « cure de » était dans
+  la table des rythmes et n'y nommait que deux traitements *quotidiens*
+  décrits par la durée de leur cure — un filet lit désormais la table
+  elle-même et refuse un mot qui ne nomme aucune répétition. Et **une
+  demande gouverne une prise, jamais une dose** : « si besoin » est la
+  condition d'une prise dans « à renouveler si besoin toutes les 6
+  heures », et la condition d'une *dose* dans « 5 mg une fois par jour,
+  portés si besoin à 10 mg ». Quinze antihypertenseurs livrés sortaient
+  de la grille avec « à la demande » écrit devant, sur la feuille du
+  traitement qu'il faut justement prendre sans le sentir. Ce qui
+  départage est ce qui vient **avant** le mot, car un « maximum 1 200 mg
+  par jour » énoncé *après* est un plafond et ne dit rien du rythme. Le
+  « en cas de » nu a quitté le vocabulaire dans la même passe : il
+  attrape trente-deux lignes livrées et presque aucune n'est une
+  posologie — « arrêt immédiat en cas de douleur tendineuse », « ne pas
+  délivrer en cas de varicelle ».
+
+- **`src/renewal.rs` — où en est cette ordonnance.** Le dossier portait
+  les traitements et rien de l'ordonnance derrière eux ;
+  `patient_drugs` gagne quatre colonnes — le jour de la prescription, ce
+  qu'une délivrance couvre, le nombre de renouvellements, le rang de la
+  délivrance — qui se saisissent sur la puce du traitement, là où la
+  posologie et le dosage se saisissent déjà. Six règles, un test
+  chacune : **pas de date, pas d'étape** (la règle de `renal.rs`), **la
+  dernière boîte n'est pas la fin** (ce qu'on annonce est le jour du
+  rendez-vous, pas celui de la fin), **une étape se compte et ne se
+  déduit pas du calendrier** (un patient en retard de trois semaines en
+  est à sa deuxième délivrance, tard, et non à sa quatrième), **zéro
+  n'est pas un**, **une ordonnance non renouvelable n'a pas d'étapes**,
+  et **une visualisation change le dessin, jamais la lecture**.
+
+- **La rangée de saisie relit ce qu'elle donne.** Sous les quatre
+  champs, deux lignes disent ce que la grille a lu de la posologie et où
+  en est l'ordonnance : une saisie dont on ne voit pas l'effet est une
+  saisie que personne ne vérifie, et celle-ci part à la maison. La clé
+  de vue `patient_dose` ouvre cet état, sans quoi aucune capture ne
+  l'aurait jamais montré — il ne s'ouvre que sur une puce cliquée.
+
+- **`[ordonnance] notice_days` et `renewal_viz`** (Options › Règles) :
+  de combien de jours le rendez-vous précède l'épuisement — zéro
+  supprime la phrase —, et laquelle des quatre visualisations
+  s'imprime.
+
+### Changed
+- **Passe de registre sur les libellés, comme après chaque bloc de
+  travail.** Le travail neuf retombe droit dans les tournures que ce
+  dépôt refuse, et celui-ci n'y a pas échappé : « Ce qu'il faut
+  savoir », « Ce qui doit vous faire appeler », « Comment le prendre »,
+  « Où en est votre ordonnance », « Quand prendre quoi », « Une question
+  sur ce traitement ? ». Les intitulés reprennent le vocabulaire
+  clinique que le reste de l'application emploie déjà — « Posologie »,
+  « Conseils », « En cas d'oubli », « Signes d'alerte », « Indication »,
+  « Renouvellement de l'ordonnance », « Détail par médicament » —, et
+  les deux derniers sont exactement les termes sous lesquels ces champs
+  sont semés dans la base.
+
+- **Quatre libellés plus anciens tombaient sous la même règle** : le
+  « on » impersonnel des trois façons de lire une monographie et du
+  refus d'import d'un annuaire, et « Compter ce que fait ce poste » dans
+  les compteurs d'usage.
+
+- **Et les treize clés de la rangée d'ordonnance ne squattent plus le
+  préfixe de la console.** `script_*` est la console ; les champs de
+  renouvellement sont `renew_*` et la lecture de la posologie
+  `intake_*`, comme les modules qui les portent. Deux fonctions sans
+  rapport sous un même préfixe se cherchent l'une l'autre dans un
+  fichier de deux mille lignes.
+
+### Fixed
+- **Un champ de date montrait son invite au-dessus d'une date écrite.**
+  Le tampon de frappe ne portait pas l'identifiant de sa ligne, donc un
+  tampon vide se confondait avec « la date a été effacée » ; il se
+  recharge depuis la base dès qu'il ne parle plus de la ligne ouverte.
+  Et `date_field_width` ne mesurait que l'une des deux invites que ces
+  champs portent.
+
+- **La posologie ouverte est un formulaire, et le bandeau ne lui
+  laissait pas sa part.** C'est la règle de la maison — des deux volets,
+  celui où l'on tape gagne — et elle manquait là : à 1024x700 la rangée
+  de l'ordonnance tombait sous le pli d'une bande plafonnée à 45 %, sur
+  une puce qu'on venait justement de cliquer pour cela.
+
+- **Le bandeau du dossier était plus court d'une rangée que ce qu'il
+  dessine, et il l'était depuis toujours.** Mesuré : 443,3 demandés
+  pour 488,9 dessinés à 1400x1100 en `text_scale` 1,25. Tant que le
+  débordement valait une rangée entière, il passait pour une rangée
+  cachée sous le pli ; il a suffi d'un septième bouton pour déplacer la
+  frontière et faire sortir « Étiquettes… » et « Écraser ? » tranchées
+  par le bas — ce que ce fichier tient pour pire qu'une rangée
+  abandonnée.
+
+  **Trois fonctions de hauteur mentaient, chacune de quelques pixels et
+  toutes dans le même sens.** `motif::button_height` annonçait 37,68
+  pour un bouton qui en occupe 38, parce qu'egui arrondit ce qu'il
+  alloue à la grille de pixels et que la fonction ne le faisait pas.
+  `motif::field_sized` relève toute case sous `motif::field_floor`,
+  donc le champ « + médicament », demandé à `interact_size.y`, en
+  occupe trois de plus que ce qu'on lui demande. Et `motif::panel_chrome`
+  — seize pixels — n'était compté nulle part : la bande rendait une
+  hauteur de *contenu* là où l'appelant en fait le rectangle d'un
+  *panneau*. `what_these_heights_announce_is_what_the_drawing_takes`
+  dessine les trois à trois échelles et refuse la prochaine, dans les
+  deux sens.
+
+  **Et deux approximations qui se corrigeaient l'une l'autre ont
+  disparu ensemble.** La ligne de contexte sous le nom valait « une
+  ligne de corps, plus dix-huit pixels s'il y a une adresse et vingt
+  s'il y a une remarque » — c'est-à-dire deux lignes réservées pour ce
+  qui tient le plus souvent sur celle qui est déjà là — et le plafond
+  ajoutait par-dessus une seconde ligne de corps pour rattraper ce que
+  cette approximation lui coûtait quand la ligne enveloppe. La ligne est
+  maintenant écrite une fois (`App::patient_context_line`), mesurée sur
+  son texte, et la somme comme le plafond la lisent. Au passage, l'air
+  posé avant les traitements et celui posé avant « Nouvel entretien »
+  sont comptés là où ils sont dépensés, et la ligne des interactions
+  vaut la rangée qu'elle occupe plutôt que vingt pixels.
+
 ## [0.237.0] - 2026-09-20
 
 ### Fixed

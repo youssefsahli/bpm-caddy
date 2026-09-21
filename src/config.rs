@@ -175,6 +175,14 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # Ajoutez une fiche, étiquetez-la, écrivez-y ses posologies : elle
 # apparaît dans la liste.
 # adjuvant_tag = "probiotique"
+#
+# La fiche de traitement remise au patient (« Fiche traitement… » en
+# haut du dossier) : de combien de jours le rendez-vous chez le
+# prescripteur doit précéder l'épuisement de l'ordonnance, et comment
+# l'avancement des renouvellements se dessine — "pastilles", "jauge",
+# "dates" ou "phrase". Zéro jour supprime la phrase du rendez-vous.
+# notice_days = 7
+# renewal_viz = "pastilles"
 
 [rules]
 # Nombre maximal d'actes par année d'accompagnement (cycle glissant à
@@ -1179,12 +1187,26 @@ pub struct OrdonnanceConfig {
     /// at whatever tag the officine actually uses; every card so tagged
     /// joins the list, with its own posology lines.
     pub adjuvant_tag: String,
+    /// De combien de jours le rendez-vous chez le prescripteur doit
+    /// précéder l'épuisement de l'ordonnance, sur la fiche remise au
+    /// patient. **La dernière boîte n'est pas la fin** : ce qu'il faut
+    /// annoncer est le jour où il faut avoir vu le médecin, et un
+    /// rendez-vous ne se prend pas le matin pour le soir. Zéro supprime
+    /// la phrase, et c'est un réglage plutôt qu'un défaut à contourner.
+    pub notice_days: u32,
+    /// Comment l'avancement des renouvellements se dessine — la clé de
+    /// [`crate::renewal::Viz`]. Une clé inconnue rend le défaut plutôt
+    /// qu'une erreur : un réglage mal tapé ne doit pas empêcher
+    /// d'imprimer.
+    pub renewal_viz: String,
 }
 
 impl Default for OrdonnanceConfig {
     fn default() -> Self {
         Self {
             adjuvant_tag: "probiotique".to_owned(),
+            notice_days: 7,
+            renewal_viz: crate::renewal::Viz::default().key().to_owned(),
         }
     }
 }
