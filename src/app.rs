@@ -48560,12 +48560,28 @@ impl App {
     /// qui ont dérivé. L'interaction, elle, n'a rien à nommer : ce n'est
     /// pas un groupe, c'est ce que cette fiche-ci cite.
     fn graph_legend_keys(session: &Session) -> Vec<(String, egui::Color32)> {
+        let map = session.graph_map.as_ref();
+        // **Un lien n'a sa clé que lorsque la carte en porte un.** La
+        // règle était déjà écrite pour l'anneau rouge — keyer une
+        // couleur absente de l'image est le défaut inverse de celui
+        // qu'une légende corrige — et les trois liens s'en dispensaient.
+        // Elle se voit depuis que les clés se nomment : la carte de la
+        // Biafine, qui n'a qu'un voisin de classe, annonçait « même
+        // molécule · trolamine » et « interaction citée » sous une
+        // figure où ni l'un ni l'autre n'est dessiné.
+        //
+        // Un anneau **coupé** garde la sienne : ses membres ne sont pas
+        // dessinés mais la phrase du pied les compte, et une phrase qui
+        // nomme une couleur que la légende ne donne plus ne dit rien.
+        let speaks =
+            |t: crate::graph::Tie| map.is_some_and(|m| m.count(t) > 0 || m.omitted_for(t) > 0);
         Self::graph_legend_keys_of(
             session,
-            session
-                .graph_map
-                .as_ref()
-                .is_some_and(|m| m.nodes.iter().any(|n| n.toxicity_noted)),
+            &crate::graph::Tie::ALL
+                .into_iter()
+                .filter(|t| speaks(*t))
+                .collect::<Vec<_>>(),
+            map.is_some_and(|m| m.nodes.iter().any(|n| n.toxicity_noted)),
         )
     }
 
@@ -48574,10 +48590,14 @@ impl App {
     /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
     /// la fiche du centre et non de la carte : ils sont connus avant.
     fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
-        Self::graph_legend_keys_of(session, true)
+        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true)
     }
 
-    fn graph_legend_keys_of(session: &Session, toxicity: bool) -> Vec<(String, egui::Color32)> {
+    fn graph_legend_keys_of(
+        session: &Session,
+        ties: &[crate::graph::Tie],
+        toxicity: bool,
+    ) -> Vec<(String, egui::Color32)> {
         let centre = session
             .graph_centre
             .and_then(|id| session.drugs.iter().find(|d| d.id == id));
@@ -48601,7 +48621,7 @@ impl App {
                 trf(of_key, what)
             }
         };
-        let mut keys: Vec<(String, egui::Color32)> = crate::graph::Tie::ALL
+        let mut keys: Vec<(String, egui::Color32)> = ties
             .iter()
             .map(|t| (named(*t), motif::chart::series_color(t.series())))
             .collect();

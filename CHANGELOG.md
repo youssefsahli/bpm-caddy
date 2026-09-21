@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.242.0] - 2026-09-21
+
+### Fixed
+- **La légende de la carte ne nomme plus une couleur que la figure ne
+  porte pas.** La règle était écrite pour l'anneau rouge — keyer une
+  couleur absente de l'image est le défaut inverse de celui qu'une
+  légende corrige — et les trois liens s'en dispensaient. Elle se voit
+  depuis que les clés se nomment : la carte de la Biafine, qui n'a qu'un
+  voisin de classe, annonçait « même molécule · trolamine » et
+  « interaction citée » sous une figure où ni l'un ni l'autre n'est
+  dessiné. Un anneau **coupé** garde la sienne, lui : ses membres ne
+  sont pas dessinés mais la phrase du pied les compte, et une phrase qui
+  nomme une couleur que la légende ne donne plus ne dit rien. La légende
+  tient d'autant plus souvent sur une rangée, et ce que le pied rend, la
+  figure le prend.
+
 ## [0.241.0] - 2026-09-21
 
 ### Fixed
