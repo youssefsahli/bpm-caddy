@@ -1258,7 +1258,44 @@ livre = "Une phrase qui n'est plus livrée"
             .iter()
             .map(|d| d.phrases.len())
             .sum();
+        // **Ce que la dérive des classes coûtait à la carte**, et que
+        // CLAUDE.md énonce comme un fait : deux fiches que le
+        // référentiel dit de la même classe et que leurs libellés
+        // séparent. Le jour où un libellé est corrigé sur une fiche, ce
+        // chiffre bouge — et une prose qui affirme un compte vieillit
+        // sans que personne la relise, ce que ce test existe pour
+        // refuser.
+        let (drifted_pairs, drifted_cards) = {
+            let classes: Vec<&str> = crate::db::STARTER_DRUGS
+                .iter()
+                .map(|(_, _, class, _)| *class)
+                .collect();
+            let mut pairs = 0usize;
+            let mut touched = 0usize;
+            for (i, a) in classes.iter().enumerate() {
+                if a.trim().is_empty() {
+                    continue;
+                }
+                let mut here = 0usize;
+                for (j, b) in classes.iter().enumerate() {
+                    if i != j && crate::classes::same(a, b) && !crate::fuzzy::eq_folded(a, b) {
+                        here += 1;
+                    }
+                }
+                pairs += here;
+                touched += usize::from(here > 0);
+            }
+            (pairs, touched)
+        };
         let expected: &[(&str, &str, String)] = &[
+            (
+                "CLAUDE.md",
+                CLAUDE,
+                format!(
+                    "**{drifted_pairs} pairs of neighbours over {drifted_cards} of the \
+                     {cards} cards**"
+                ),
+            ),
             (
                 "CLAUDE.md",
                 CLAUDE,

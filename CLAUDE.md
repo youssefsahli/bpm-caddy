@@ -624,7 +624,28 @@ The one that was missing — « combien de fois un autre poste avait
   genuinely the same molecule whatever the route, and a local centre
   still cites the local forms it names. Finding it showed a hole in the
   filter: the fiches say « local » as often as « topique », and
-  nineteen boxes escaped on that one word),
+  nineteen boxes escaped on that one word.
+  **And the class ring reads `classes::same`, never the label.** That is
+  the house rule — « `same()` is what the neighbourhood and the chip
+  compare on » — and the one view whose whole subject is
+  « qu'est-ce qu'il y a autour » was comparing raw strings. Confronted
+  with the shipped base it cost
+  **706 pairs of neighbours over 331 of the 862 cards**: Fosamax was
+  not of Actonel's ring for a letter
+  (« bisphosphonate » / « biphosphonate »), Cimzia not of Amgevita's for
+  a word (« anti-TNF » / « anti-TNF alpha »), and nothing looked broken
+  — the ring was drawn, merely shorter. Which is also why the legend now
+  **names** the two groups it keys (« même classe · antiépileptique »):
+  the canonical name is what the ring groups on, and nothing else on
+  that screen said what the twelve boxes had in common.
+  A ring also takes only what the figure can **write**, `Caps::for_room`:
+  twelve was a number, and a number does not know the pane it is drawn
+  in. At 1024x700 with `text_scale = 1,6` six of the twelve class names
+  were not painted at all, each refused by the neighbour that had taken
+  its place — and the caps follow the drawn half-height now, the rest
+  said under the figure. They are three integers in the memo key rather
+  than a height, so dragging a dock relays the base only where the count
+  really changes),
   `src/facets.rs` (what each card says about itself, **as data rather
   than sentences**: the plasma half-life in hours, and what the card
   *treats* or *alters*, by organ and by grade. The monographs answer

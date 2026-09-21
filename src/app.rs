@@ -4124,7 +4124,7 @@ struct Session {
     show_graph: bool,
     graph_centre: Option<i64>,
     graph_map: Option<crate::graph::Map>,
-    graph_key: Option<(i64, u64)>,
+    graph_key: Option<(i64, u64, (usize, usize, usize))>,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -6496,13 +6496,24 @@ impl Session {
     /// the centre and the revision [`Self::set_drugs`] moves, so it
     /// happens when the centre is moved and not on the fifty-nine
     /// frames that follow.
-    fn refresh_graph(&mut self) {
+    ///
+    /// **Et sur les plafonds**, depuis qu'ils suivent la place : un
+    /// volet qu'on étire change ce que les anneaux peuvent prendre. Ce
+    /// sont trois entiers et non une hauteur, si bien qu'un glissement
+    /// de volet ne relaie la base qu'aux quelques pixels où le compte
+    /// change vraiment, et non à chacun des soixante que la seconde
+    /// porte.
+    fn refresh_graph(&mut self, caps: crate::graph::Caps) {
         let Some(centre) = self.graph_centre else {
             self.graph_map = None;
             self.graph_key = None;
             return;
         };
-        let key = (centre, self.drugs_rev);
+        let key = (
+            centre,
+            self.drugs_rev,
+            (caps.molecule, caps.class, caps.interaction),
+        );
         // The key alone, and not « the key and there is a map ». A
         // centre the base no longer holds — a fiche deleted on the other
         // post — answers `None`, and asking again for it would be a pass
@@ -6526,7 +6537,7 @@ impl Session {
         self.graph_map = known
             .iter()
             .find(|k| k.id == centre)
-            .map(|k| crate::graph::around(k, &known, crate::graph::Caps::default()));
+            .map(|k| crate::graph::around(k, &known, caps));
         self.graph_key = Some(key);
     }
 
@@ -48536,16 +48547,210 @@ impl App {
         open
     }
 
-    /// The rows of every table that answer what is being typed, with
-    /// the table they come from. The team's own corrections are what is
-    /// searched and shown: paper and screen never disagree.
-    /// The full-text search of the monographs.
+    /// Les clés de la légende de la carte — **écrites une fois**, lues
+    /// par la bande qui réserve la place et par le dessin qui la prend.
     ///
-    /// The name search answers « where is Eliquis » ; this one answers
-    /// the other half of the counter's questions — « which of these
-    /// fiches say pamplemousse », « which ones mention le QT », « which
-    /// ones are photosensibilisants ». Each hit is the sentence as the
-    /// card has it, and the card's name opens it.
+    /// L'anneau rouge n'y figure que lorsqu'il est dessiné : keyer une
+    /// couleur absente de l'image est le défaut inverse de celui qu'une
+    /// légende corrige.
+    ///
+    /// **Et deux des trois liens se nomment.** La légende disait « même
+    /// classe » sans dire laquelle, et rien d'autre sur cet écran ne le
+    /// disait non plus : on regardait un anneau de douze boîtes sans
+    /// savoir ce qui les rassemble. C'est d'autant plus dû depuis que
+    /// l'anneau lit le **référentiel** — le nom canonique est ce sur
+    /// quoi il groupe, et c'est donc celui-là qui s'écrit, et non le
+    /// libellé de la fiche du centre, qui peut être l'une des graphies
+    /// qui ont dérivé. L'interaction, elle, n'a rien à nommer : ce n'est
+    /// pas un groupe, c'est ce que cette fiche-ci cite.
+    fn graph_legend_keys(session: &Session) -> Vec<(String, egui::Color32)> {
+        Self::graph_legend_keys_of(
+            session,
+            session
+                .graph_map
+                .as_ref()
+                .is_some_and(|m| m.nodes.iter().any(|n| n.toxicity_noted)),
+        )
+    }
+
+    /// La légende la plus large qu'il puisse y avoir — les quatre clés.
+    /// Ce qu'on mesure pour savoir quelle place le cercle aura, avant de
+    /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
+    /// la fiche du centre et non de la carte : ils sont connus avant.
+    fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
+        Self::graph_legend_keys_of(session, true)
+    }
+
+    fn graph_legend_keys_of(session: &Session, toxicity: bool) -> Vec<(String, egui::Color32)> {
+        let centre = session
+            .graph_centre
+            .and_then(|id| session.drugs.iter().find(|d| d.id == id));
+        let named = |tie: crate::graph::Tie| -> String {
+            let (of_key, what) = match tie {
+                crate::graph::Tie::Molecule => (
+                    "graph_tie_molecule_of",
+                    centre.map(|d| d.dci.trim()).unwrap_or_default(),
+                ),
+                crate::graph::Tie::Class => (
+                    "graph_tie_class_of",
+                    centre
+                        .map(|d| crate::classes::display_name(&d.class))
+                        .unwrap_or_default(),
+                ),
+                crate::graph::Tie::Interaction => ("", ""),
+            };
+            if what.is_empty() {
+                tr(tie.label_key()).to_owned()
+            } else {
+                trf(of_key, what)
+            }
+        };
+        let mut keys: Vec<(String, egui::Color32)> = crate::graph::Tie::ALL
+            .iter()
+            .map(|t| (named(*t), motif::chart::series_color(t.series())))
+            .collect();
+        if toxicity {
+            keys.push((tr("graph_toxicity").to_owned(), motif::alert()));
+        }
+        keys
+    }
+
+    /// La phrase sous la légende, s'il y en a une — **écrite une fois**,
+    /// pour la même raison.
+    ///
+    /// Trois choses peuvent s'y dire et jamais deux à la fois : ce que
+    /// les anneaux n'ont pas pu prendre, ce qu'on vient d'ajouter à
+    /// l'ordonnance, ou qu'une fiche n'a aucun voisin. Le premier passe
+    /// devant : c'est le seul des trois qui corrige une lecture fausse
+    /// de l'image.
+    fn graph_note_line(session: &Session) -> Option<(String, egui::Color32)> {
+        let map = session.graph_map.as_ref()?;
+        let dropped: Vec<String> = crate::graph::Tie::ALL
+            .iter()
+            .filter(|t| map.omitted_for(**t) > 0)
+            .map(|t| trn("graph_omitted", &[&map.omitted_for(*t), &tr(t.label_key())]))
+            .collect();
+        if !dropped.is_empty() {
+            return Some((dropped.join(" · "), motif::text_dim()));
+        }
+        if let Some(note) = &session.graph_note {
+            return Some((note.clone(), motif::accent()));
+        }
+        if map.is_empty() && session.graph_centre.is_some() {
+            return Some((trf("graph_alone", &map.centre.1), motif::text_dim()));
+        }
+        None
+    }
+
+    /// La fonte des noms de la carte, et la hauteur d'une de ses
+    /// lignes — **écrites une fois** : c'est sur cette hauteur que les
+    /// plafonds des anneaux sont calculés, et c'est elle que le dessin
+    /// pose. Deux écritures d'une hauteur divergent, et c'est la mesure
+    /// qui ment.
+    fn graph_node_font(ui: &egui::Ui) -> egui::FontId {
+        egui::FontId::proportional(motif::pt(ui, 11.5))
+    }
+
+    /// Le demi-côté d'un carré de voisin sur la carte.
+    const GRAPH_NODE_HALF: f32 = 7.0;
+
+    /// La marge que la figure laisse en haut et en bas.
+    ///
+    /// Un nœud posé tout en haut écrit son nom **au-dessus de son
+    /// carré** : il faut donc la hauteur d'une ligne, plus le carré,
+    /// plus l'air entre les deux. Réservée à une ligne seule, « Zeclar »
+    /// sortait par le haut du cadre et « Rifadine » par le bas, coupés
+    /// tous les deux en leur milieu. Écrite une fois : le calcul des
+    /// plafonds et le dessin la lisent tous les deux, et deux écritures
+    /// d'une marge divergent.
+    fn graph_margin_y(ui: &egui::Ui) -> f32 {
+        ui.fonts(|f| f.row_height(&Self::graph_node_font(ui))) + Self::GRAPH_NODE_HALF + 3.0
+    }
+
+    /// Les quatre places qu'un nom de voisin peut prendre autour de son
+    /// carré, de la meilleure à la dernière.
+    ///
+    /// Il n'en avait **qu'une** — dehors, à droite ou à gauche — et le
+    /// nom qui ne l'avait pas n'était pas peint du tout. Deux voisins
+    /// d'angle proche du même côté écrivent au même endroit, si bien
+    /// que la carte de Lamictal rendait quatre carrés muets. Le moyeu,
+    /// lui, cherchait déjà sa place parmi quatre : c'est la même règle,
+    /// descendue d'un cran.
+    ///
+    /// L'ordre dit la lecture : **dehors d'abord**, pour que le nom
+    /// s'éloigne de la figure au lieu de la traverser ; dehors
+    /// verticalement ensuite ; et seulement après, vers le dedans. Un
+    /// nœud posé près du haut ou du bas préfère la verticale — c'est
+    /// là que ses voisins le serrent, et c'est de ce côté que la place
+    /// est libre.
+    ///
+    /// `away` est le décalage **dessiné** depuis le milieu, et non le
+    /// point du cercle unité : la figure est une ellipse, et sa
+    /// direction visible n'est pas celle du module.
+    fn graph_label_spots(
+        p: egui::Pos2,
+        half: f32,
+        away: egui::Vec2,
+    ) -> [(egui::Align2, egui::Pos2); 4] {
+        let right = (egui::Align2::LEFT_CENTER, egui::pos2(p.x + half + 5.0, p.y));
+        let left = (
+            egui::Align2::RIGHT_CENTER,
+            egui::pos2(p.x - half - 5.0, p.y),
+        );
+        let above = (
+            egui::Align2::CENTER_BOTTOM,
+            egui::pos2(p.x, p.y - half - 3.0),
+        );
+        let below = (egui::Align2::CENTER_TOP, egui::pos2(p.x, p.y + half + 3.0));
+        let (h_out, h_in) = if away.x >= 0.0 {
+            (right, left)
+        } else {
+            (left, right)
+        };
+        let (v_out, v_in) = if away.y >= 0.0 {
+            (below, above)
+        } else {
+            (above, below)
+        };
+        // Assez près de la verticale pour que ses voisins immédiats
+        // soient au-dessus et au-dessous de lui, et non à côté.
+        if away.x.abs() < away.y.abs() * 0.4 {
+            [v_out, h_out, h_in, v_in]
+        } else {
+            [h_out, v_out, h_in, v_in]
+        }
+    }
+
+    /// La place libre parmi les quatre, s'il y en a une.
+    ///
+    /// Aucune : le nom n'est **pas peint**, et il n'est pas perdu pour
+    /// autant — l'infobulle du nœud le porte, en tête. C'est la règle
+    /// de la légende d'à côté, plutôt rien qu'une moitié.
+    ///
+    /// `field` est le creux où la figure est peinte : un nom qui en
+    /// sortirait n'est pas peint non plus. Un `Painter` peint où on lui
+    /// dit et rien ne le rogne — « Millepertuis » posé à droite du nœud
+    /// le plus à droite s'écrivait dans le cadre du panneau, et un nom
+    /// à cheval sur un biseau se lit plus mal qu'une infobulle.
+    fn graph_label_spot(
+        p: egui::Pos2,
+        half: f32,
+        away: egui::Vec2,
+        size: egui::Vec2,
+        field: egui::Rect,
+        taken: &[egui::Rect],
+    ) -> Option<(egui::Align2, egui::Pos2)> {
+        Self::graph_label_spots(p, half, away)
+            .into_iter()
+            .find(|(anchor, at)| {
+                let r = anchor.anchor_size(*at, size);
+                // Rétréci d'un pixel : deux rectangles qui se *touchent*
+                // se croisent au sens d'egui, et un nom posé contre son
+                // propre carré se refusait lui-même.
+                field.contains_rect(r) && !taken.iter().any(|t| t.intersects(r.shrink(1.0)))
+            })
+    }
+
     /// The base as a map: one card in the middle, its neighbourhood
     /// around it, and one click to move the middle.
     ///
@@ -48556,7 +48761,6 @@ impl App {
     /// and not a pass over eight hundred and fifty fiches.
     fn graph_view(ui: &mut egui::Ui, session: &mut Session) {
         use crate::graph::Tie;
-        session.refresh_graph();
         let work = motif::visible_rect(ui);
         // The command band's height is measured, never a constant: a
         // button row that wrapped into two on a narrow window would draw
@@ -48587,10 +48791,66 @@ impl App {
                 .chain(std::iter::once(search_w)),
         );
         let band = rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 10.0;
-        // The legend is one line of chips and says what the colours are;
-        // under it, what the rings could not take.
-        let line = ui.text_style_height(&egui::TextStyle::Body);
-        let foot = line * 2.0 + 12.0;
+        // The legend says what the colours are; under it, what the rings
+        // could not take, or what has just been added to the file.
+        //
+        // **Et la légende est mesurée, elle n'est pas d'une ligne.** Le
+        // pied valait deux lignes en dur : à `text_scale = 1,6` sur un
+        // volet de mille vingt-quatre, les quatre pastilles se replient
+        // sur deux rangées, prennent les deux lignes, et la phrase
+        // d'en dessous — « 1 de la même classe non dessiné(e) » — était
+        // rognée par `motif::inside` sans rien laisser paraître. C'est
+        // précisément ce que ce module refuse : un anneau coupé se dit.
+        let line = Self::label_line(ui);
+        // **Les anneaux ne prennent que ce que la figure saura nommer**,
+        // et pour le savoir il faut d'abord connaître la place — que le
+        // pied décide, et que le pied ne dira qu'une fois la carte
+        // posée. Le nœud se dénoue par le pied **le plus large** : les
+        // quatre clés et une phrase. Le pied réel est plus court ou
+        // égal, donc la figure plus haute ou égale, donc les plafonds ne
+        // promettent jamais plus que ce qui tiendra. C'est le seul sens
+        // où l'approximation est sûre.
+        let widest_foot = motif::chart::legend_height(
+            ui,
+            &Self::graph_legend_keys_all(session)
+                .iter()
+                .map(|(l, c)| (l.as_str(), *c))
+                .collect::<Vec<_>>(),
+            work.width() - 32.0,
+        ) + line
+            + 12.0;
+        let node_line = ui.fonts(|f| f.row_height(&Self::graph_node_font(ui)));
+        // La demi-hauteur que le cercle aura : le volet moins la bande,
+        // le pied, les deux gouttières, le chrome du panneau **et les
+        // deux marges du creux** — `motif::well` rend un rectangle
+        // rétréci de quatre pixels de chaque côté, et une marge qu'on
+        // n'a pas mesurée est une marge qui n'existe pas. Puis ce que
+        // les noms du haut et du bas demandent, qui est une ligne plus
+        // le carré et non trente pixels.
+        let room =
+            (work.height() - band - widest_foot - 16.0 - motif::panel_chrome(ui, true) - 8.0)
+                .max(0.0)
+                / 2.0
+                - Self::graph_margin_y(ui);
+        session.refresh_graph(crate::graph::Caps::default().for_room(room, node_line));
+        let keys = Self::graph_legend_keys(session);
+        let legend_h = motif::chart::legend_height(
+            ui,
+            &keys
+                .iter()
+                .map(|(l, c)| (l.as_str(), *c))
+                .collect::<Vec<_>>(),
+            work.width() - 32.0,
+        );
+        // La ligne d'en dessous n'est réservée que lorsqu'il y en a une :
+        // une ligne gardée pour rien est un blanc, et un blanc se lit
+        // comme une intention.
+        let note_h = if Self::graph_note_line(session).is_some() {
+            line
+        } else {
+            0.0
+        };
+        let foot = legend_h + note_h + 12.0;
         let rows = motif::split_rows(work, &[band, 0.0, foot], 8.0);
         let (head, plot_rect, foot_rect) = (rows[0], rows[1], rows[2]);
 
@@ -48683,36 +48943,46 @@ impl App {
                 return;
             };
             let field = motif::well(ui, body);
-            // Labels are written beside their node, so the circle has to
+            // Labels are written beside their node, so the figure has to
             // stop well short of the edges or a name on the right would
             // be drawn into the frame. A quarter of the width each side
             // is what a brand name takes at this size.
-            let radius = (field.width() * 0.30).min(field.height() / 2.0 - 30.0);
-            if radius < 24.0 {
-                // A pane too short to draw a circle in draws nothing
+            //
+            // **Une ellipse, et non un cercle.** Le rayon valait
+            // `min(largeur, hauteur)` : un volet est large et court —
+            // celui-ci fait six cent quinze sur deux cent trente —, si
+            // bien que la hauteur décidait de tout et que deux cents
+            // pixels de largeur restaient gris de chaque côté pendant
+            // que les noms se refusaient les uns les autres faute de
+            // place. Les deux demi-axes se lisent maintenant chacun sur
+            // sa dimension. Le module rend des points du cercle unité
+            // sans rien savoir de tout cela : c'est exactement ce que ce
+            // partage permet.
+            let rx = field.width() * 0.30;
+            let ry = field.height() / 2.0 - Self::graph_margin_y(ui);
+            if rx < 24.0 || ry < 24.0 {
+                // A pane too short to draw the figure in draws nothing
                 // rather than a tangle: the caption still says what the
                 // centre is, and the panel scrolls.
                 return;
             }
             let mid = field.center();
-            let at =
-                |n: &crate::graph::Node| egui::pos2(mid.x + n.x * radius, mid.y + n.y * radius);
+            let at = |n: &crate::graph::Node| egui::pos2(mid.x + n.x * rx, mid.y + n.y * ry);
             // The rings first, faint, so the three distances read as
             // three distances and not as scatter.
             for tie in Tie::ALL {
                 if map.count(tie) == 0 {
                     continue;
                 }
-                let r = match tie {
-                    Tie::Molecule => 0.38,
-                    Tie::Class => 0.70,
-                    Tie::Interaction => 1.0,
-                } * radius;
-                ui.painter().circle_stroke(
+                // Le rayon de l'anneau vient du module, jamais recopié
+                // ici : les trois nombres vivaient aux deux endroits, et
+                // deux écritures d'une distance divergent.
+                let f = tie.ring_radius();
+                ui.painter().add(egui::Shape::ellipse_stroke(
                     mid,
-                    r,
+                    egui::vec2(rx * f, ry * f),
                     egui::Stroke::new(1.0_f32, motif::bg_dark().gamma_multiply(0.45)),
-                );
+                ));
             }
             // Then the spokes, each in its tie's colour: the line is
             // what says « ceci tient à cela », and its colour says how.
@@ -48724,7 +48994,7 @@ impl App {
             }
             // The centre last of the frame's own furniture, so nothing
             // is drawn over it.
-            let half = 7.0;
+            let half = Self::GRAPH_NODE_HALF;
             // Les places déjà prises par un nom, pour qu'aucun second
             // ne s'écrive dedans. **Le nom du centre en premier**, bien
             // qu'il soit peint en dernier : il est peint en dernier
@@ -48816,23 +49086,8 @@ impl App {
                         egui::Stroke::new(1.5_f32, motif::alert()),
                     );
                 }
-                // The label goes outward — left of a node on the left,
-                // right of one on the right — so it never crosses the
-                // middle of the picture.
-                let (anchor, x) = if n.x < -0.05 {
-                    (egui::Align2::RIGHT_CENTER, p.x - half - 5.0)
-                } else if n.x > 0.05 {
-                    (egui::Align2::LEFT_CENTER, p.x + half + 5.0)
-                } else {
-                    (egui::Align2::CENTER_BOTTOM, p.x)
-                };
-                let y = if anchor == egui::Align2::CENTER_BOTTOM {
-                    p.y - half - 3.0
-                } else {
-                    p.y
-                };
                 // **Deux noms superposés n'en font aucun.** Les nœuds
-                // sont posés sur un cercle, et deux voisins d'angle
+                // sont posés sur une ellipse, et deux voisins d'angle
                 // proche du même côté écrivaient leur nom au même
                 // endroit : « Lixiana » et « Di-Hydan » se peignaient
                 // l'un dans l'autre et ni l'un ni l'autre ne se lisait.
@@ -48840,19 +49095,20 @@ impl App {
                 // il n'est pas perdu, l'infobulle du nœud le porte.
                 // C'est la règle de la légende d'à côté : plutôt rien
                 // qu'une moitié.
-                let font = egui::FontId::proportional(motif::pt(ui, 11.5));
+                //
+                // Mais il a **quatre places** avant d'y renoncer, comme
+                // le moyeu : avec une seule, la carte de Lamictal
+                // rendait quatre carrés muets sur douze.
+                let font = Self::graph_node_font(ui);
                 let size = ui.fonts(|f| {
                     f.layout_no_wrap(n.name.clone(), font.clone(), motif::text())
                         .size()
                 });
-                let where_ = anchor.anchor_size(egui::pos2(x, y), size);
-                let clear = !taken
-                    .iter()
-                    .any(|r: &egui::Rect| r.intersects(where_.shrink(1.0)));
-                if clear {
-                    taken.push(where_);
+                let spot = Self::graph_label_spot(p, half, p - mid, size, field, &taken);
+                if let Some((anchor, at)) = spot {
+                    taken.push(anchor.anchor_size(at, size));
                     ui.painter().text(
-                        egui::pos2(x, y),
+                        at,
                         anchor,
                         &n.name,
                         font,
@@ -48863,6 +49119,7 @@ impl App {
                         },
                     );
                 }
+                let clear = spot.is_some();
                 // Le nom en tête de l'infobulle quand il n'a pas pu
                 // s'écrire : sans lui, un nœud muet n'est qu'un carré.
                 let head = if clear {
@@ -48918,14 +49175,6 @@ impl App {
         });
 
         motif::inside(ui, foot_rect, |ui| {
-            let map = session
-                .graph_map
-                .clone()
-                .unwrap_or_else(|| crate::graph::Map {
-                    centre: (0, String::new(), false),
-                    nodes: Vec::new(),
-                    omitted: Vec::new(),
-                });
             // **L'anneau rouge a sa clé, et seulement quand il est
             // dessiné.** Il n'était expliqué nulle part : ni dans la
             // légende, qui ne portait que les trois liens, ni dans
@@ -48933,42 +49182,21 @@ impl App {
             // renseignée » — plutôt que ce qu'on aimerait qu'elle dise. Sept nœuds sur neuf le
             // portaient sur la carte d'Eliquis, dans la couleur la plus
             // alarmante de la palette, sans clé.
-            //
-            // Keyer une couleur absente de l'image serait le défaut
-            // inverse, d'où la condition.
-            let mut keys: Vec<(&str, egui::Color32)> = Tie::ALL
-                .iter()
-                .map(|t| (tr(t.label_key()), motif::chart::series_color(t.series())))
-                .collect();
-            if map.nodes.iter().any(|n| n.toxicity_noted) {
-                keys.push((tr("graph_toxicity"), motif::alert()));
-            }
-            motif::chart::legend(ui, &keys);
+            motif::chart::legend(
+                ui,
+                &keys
+                    .iter()
+                    .map(|(l, c)| (l.as_str(), *c))
+                    .collect::<Vec<_>>(),
+            );
             // What the rings could not take, never in silence: twelve of
             // forty drawn with nothing said would read as « il y en a
             // douze », a wrong answer that looks complete.
-            let dropped: Vec<String> = Tie::ALL
-                .iter()
-                .filter(|t| map.omitted_for(**t) > 0)
-                .map(|t| trn("graph_omitted", &[&map.omitted_for(*t), &tr(t.label_key())]))
-                .collect();
-            if !dropped.is_empty() {
+            if let Some((note, colour)) = Self::graph_note_line(session) {
                 ui.label(
-                    egui::RichText::new(dropped.join(" · "))
+                    egui::RichText::new(note)
                         .size(motif::pt(ui, 11.0))
-                        .color(motif::text_dim()),
-                );
-            } else if let Some(note) = &session.graph_note {
-                ui.label(
-                    egui::RichText::new(note.as_str())
-                        .size(motif::pt(ui, 11.0))
-                        .color(motif::accent()),
-                );
-            } else if map.is_empty() && session.graph_centre.is_some() {
-                ui.label(
-                    egui::RichText::new(trf("graph_alone", &centre_name))
-                        .size(motif::pt(ui, 11.0))
-                        .color(motif::text_dim()),
+                        .color(colour),
                 );
             }
         });
@@ -59628,6 +59856,141 @@ mod tests {
             assert!(
                 counted <= drawn_rows + 1.0,
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
+            );
+        }
+    }
+
+    /// **Un nom de la carte se lit entier, ou pas du tout.**
+    ///
+    /// Trois règles d'un coup, sur la vraie figure et dans la fonte qui
+    /// la dessine — la seule façon de mesurer un texte est de le faire
+    /// poser par un `egui::Context`, fût-il sans écran.
+    ///
+    /// 1. **Deux noms ne se peignent pas l'un dans l'autre.** C'est ce
+    ///    que la place refusée garantit, et rien ne le tenait.
+    /// 2. **Aucun nom ne sort du creux.** Un `Painter` peint où on lui
+    ///    dit : « Zeclar » sortait par le haut du cadre et
+    ///    « Rifadine » par le bas, coupés en leur milieu, parce que la
+    ///    marge verticale valait une ligne là où il en faut une plus le
+    ///    carré.
+    /// 3. **Quatre places valent mieux qu'une**, et il faut que cela se
+    ///    voie : avec la seule place d'autrefois, cette même figure perd
+    ///    des noms. Sans cette moitié-là, le test passerait aussi sur un
+    ///    code qui n'en placerait aucun.
+    #[test]
+    fn a_name_on_the_map_is_read_whole_or_not_at_all() {
+        // Les douze antiépileptiques de la fiche livrée, l'anneau qui a
+        // montré le défaut.
+        let names = [
+            "Tégrétol",
+            "Dépakine",
+            "Keppra",
+            "Trileptal",
+            "Epitomax",
+            "Sabril",
+            "Di-Hydan",
+            "Gardénal",
+            "Briviact",
+            "Fycompa",
+            "Epidyolex",
+            "Ontozry",
+            "Rifadine",
+            "Millepertuis",
+        ];
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0usize, 0usize));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    // Le creux du comptoir : mille vingt-quatre moins
+                    // les deux volets, et ce qui reste en hauteur une
+                    // fois la bande et le pied pris.
+                    let field =
+                        egui::Rect::from_min_size(egui::pos2(40.0, 40.0), egui::vec2(615.0, 240.0));
+                    let mid = field.center();
+                    let rx = field.width() * 0.30;
+                    let ry = field.height() / 2.0 - App::graph_margin_y(ui);
+                    let half = App::GRAPH_NODE_HALF;
+                    let ring = crate::graph::circle(names.len());
+                    let spots: Vec<egui::Pos2> = ring
+                        .iter()
+                        .map(|(x, y)| egui::pos2(mid.x + x * rx, mid.y + y * ry))
+                        .collect();
+                    let font = App::graph_node_font(ui);
+                    let sizes: Vec<egui::Vec2> = names
+                        .iter()
+                        .map(|n| {
+                            ui.fonts(|f| {
+                                f.layout_no_wrap((*n).to_owned(), font.clone(), motif::text())
+                                    .size()
+                            })
+                        })
+                        .collect();
+                    // Les carrés d'abord, tous, comme la vue les pose.
+                    let boxes: Vec<egui::Rect> = spots
+                        .iter()
+                        .map(|p| {
+                            egui::Rect::from_center_size(*p, egui::Vec2::splat(half * 2.0 + 2.0))
+                        })
+                        .collect();
+                    // Une place, celle d'autrefois — la morsure.
+                    let mut taken = boxes.clone();
+                    let mut with_one = 0usize;
+                    for (i, p) in spots.iter().enumerate() {
+                        let (anchor, at) = App::graph_label_spots(*p, half, *p - mid)[0];
+                        let r = anchor.anchor_size(at, sizes[i]);
+                        if field.contains_rect(r)
+                            && !taken.iter().any(|t| t.intersects(r.shrink(1.0)))
+                        {
+                            taken.push(r);
+                            with_one += 1;
+                        }
+                    }
+                    // Et les quatre.
+                    let mut taken = boxes.clone();
+                    let mut painted: Vec<egui::Rect> = Vec::new();
+                    for (i, p) in spots.iter().enumerate() {
+                        if let Some((anchor, at)) =
+                            App::graph_label_spot(*p, half, *p - mid, sizes[i], field, &taken)
+                        {
+                            let r = anchor.anchor_size(at, sizes[i]);
+                            // (1) et (2), dites au moment où le nom est
+                            // posé, donc sur le nom fautif.
+                            assert!(
+                                field.contains_rect(r),
+                                "échelle {scale} : « {} » sort du creux",
+                                names[i]
+                            );
+                            for (j, q) in painted.iter().enumerate() {
+                                assert!(
+                                    !q.shrink(1.0).intersects(r.shrink(1.0)),
+                                    "échelle {scale} : « {} » s'écrit dans « {} »",
+                                    names[i],
+                                    names[j]
+                                );
+                            }
+                            painted.push(r);
+                            taken.push(r);
+                        }
+                    }
+                    *seen.borrow_mut() = (with_one, painted.len());
+                });
+            });
+            let (with_one, with_four) = seen.into_inner();
+            // (3) La morsure, dans les deux sens. **Tous** les noms
+            // s'écrivent à la forme du comptoir, et aux trois échelles.
+            assert_eq!(
+                with_four,
+                names.len(),
+                "échelle {scale} : {with_four} noms écrits sur {}",
+                names.len()
+            );
+            // Et qu'une seule place n'y suffisait pas, sans quoi ce test
+            // passerait tout autant sur le code d'avant.
+            assert!(
+                with_one < names.len(),
+                "échelle {scale} : une seule place suffisait déjà, ce test ne garde rien"
             );
         }
     }

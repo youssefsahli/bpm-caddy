@@ -863,6 +863,8 @@ graph_alone = "{} : aucune autre spécialité, aucun voisin de classe, aucune in
 graph_tie_molecule = "même molécule"
 graph_tie_class = "même classe"
 graph_tie_interaction = "interaction citée"
+graph_tie_molecule_of = "même molécule · {}"
+graph_tie_class_of = "même classe · {}"
 graph_omitted = "{} de plus en « {} » non dessinés"
 # Clé de l'anneau rouge de la carte de voisinage, et ce que son
 # infobulle ajoute.

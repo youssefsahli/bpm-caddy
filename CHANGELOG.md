@@ -5,6 +5,62 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.239.0] - 2026-09-21
+
+### Fixed
+- **La carte du voisinage comparait les libellés de classe, pas les
+  classes.** C'est la règle de la maison depuis que `classes.rs`
+  existe — deux fiches sont de la même classe quand le *référentiel* le
+  dit, jamais quand leurs chaînes se ressemblent — et la seule vue dont
+  c'est le sujet même ne la suivait pas. Confrontée à la base livrée,
+  la comparaison de chaînes coûtait **706 paires de voisins sur 331 des
+  862 fiches** : Fosamax n'était pas de l'anneau d'Actonel pour une
+  lettre (« bisphosphonate » contre « biphosphonate »), Cimzia pas de
+  celui d'Amgevita pour un mot (« anti-TNF » contre « anti-TNF
+  alpha »), Relpax pas de celui du Frovatriptan. Et rien n'avait l'air
+  cassé : l'anneau était dessiné, simplement plus court — ce qui est
+  pire qu'une carte vide, puisque c'est une réponse fausse qui a l'air
+  complète. Le module n'avait aucune confrontation avec les fiches
+  livrées ; il en a une, et elle tient la règle dans les deux sens.
+
+- **Un anneau ne prend plus que ce que la figure saura nommer.** Douze
+  était un nombre, et un nombre ne connaît pas le volet où il se
+  dessine : au comptoir — 1024x700, `text_scale = 1,6` — **six des
+  douze noms de classe n'étaient pas peints du tout**, chacun refusé
+  par le voisin qui avait pris sa place. Le plafond suit maintenant la
+  demi-hauteur dessinée et la hauteur d'une ligne, et ce qu'il laisse
+  se dit sous la figure, comme avant.
+
+- **Et la phrase qui le dit ne se faisait plus voir.** Le pied valait
+  deux lignes en dur ; à 1,6 la légende s'y replie sur deux rangées,
+  les prend toutes les deux, et « 1 de plus en « même classe » non
+  dessiné » était rogné en silence — c'est-à-dire exactement ce que ce
+  module refuse. Le pied est mesuré : la légende demande sa hauteur,
+  et la ligne d'en dessous n'est réservée que lorsqu'il y en a une.
+
+- **Un nom de voisin a quatre places avant d'être abandonné**, comme le
+  moyeu en avait déjà quatre : dehors, dehors en hauteur, puis vers le
+  dedans. Il n'en avait qu'une, et le nom qui ne l'avait pas
+  disparaissait. Un nom qui sortirait du creux n'est pas peint non
+  plus — un `Painter` peint où on lui dit, et « Millepertuis » s'écrivait
+  dans le cadre du panneau.
+
+### Changed
+- **La figure est une ellipse et non un cercle.** Le rayon valait
+  `min(largeur, hauteur)` dans un volet qui fait six cent quinze sur
+  deux cent trente : deux cents pixels de largeur restaient gris de
+  chaque côté pendant que les noms se refusaient les uns les autres
+  faute de place. Les deux demi-axes se lisent chacun sur sa dimension.
+  Le module, lui, rend toujours des points du cercle unité et ne sait
+  rien de tout cela.
+
+- **La légende nomme les deux groupes qu'elle repère** — « même
+  classe · antiépileptique », « même molécule · lamotrigine ». Rien sur
+  cet écran ne disait ce que les douze boîtes avaient en commun, et
+  c'est d'autant plus dû depuis que l'anneau groupe sur la classe
+  **canonique** : c'est ce nom-là qui s'écrit, et non le libellé de la
+  fiche du centre, qui peut être l'une des graphies qui ont dérivé.
+
 ## [0.238.0] - 2026-09-21
 
 ### Added

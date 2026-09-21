@@ -691,20 +691,55 @@ pub fn legend_row_height(ui: &egui::Ui) -> f32 {
     crate::pt(ui, 14.0)
 }
 
-pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
-    // **Peinte rangée par rangée contre le rectangle qu'on lui donne.**
-    // `horizontal_wrapped` dessine autant de rangées qu'il en faut et
-    // `motif::inside` coupe la dernière en deux : une demi-pastille de
-    // couleur ne dit rien de plus qu'une pastille absente. Ici la bande
-    // s'arrête d'elle-même sur une rangée entière et compte ce qu'elle
-    // laisse — « +4 » dit ce que la demi-rangée cachait.
+/// Le repli de la légende, écrit **une fois** : où chaque pastille se
+/// pose pour une largeur donnée, et la hauteur que l'ensemble prend.
+///
+/// La bande qui réserve la place et le dessin qui la prend lisent la
+/// même disposition. C'est la règle de la maison — deux écritures d'une
+/// largeur divergent, et c'est la mesure qui ment —, et elle se payait
+/// ici : la carte du voisinage réservait deux lignes en dur sous son
+/// cercle, la légende en demandait deux à l'échelle 1,6, et la phrase
+/// qui dit ce que les anneaux n'ont pas pu prendre — « 1 de la même
+/// classe non dessiné » — était rognée en silence. Un anneau coupé sans
+/// rien dire, c'est exactement ce que ce module refuse.
+fn legend_layout(widths: &[f32], gap_x: f32, row: f32, gap_y: f32, width: f32) -> Vec<(f32, f32)> {
+    let (mut x, mut y) = (0.0_f32, 0.0_f32);
+    let mut out = Vec::with_capacity(widths.len());
+    for w in widths {
+        if x + w > width && x > 0.0 {
+            x = 0.0;
+            y += row + gap_y;
+        }
+        out.push((x, y));
+        x += w + gap_x;
+    }
+    out
+}
+
+/// Ce que [`legend`] prendra en hauteur pour cette largeur.
+///
+/// À demander **avant** de découper la bande qui la portera : une
+/// légende qui se replie sur deux rangées dans une bande d'une ligne
+/// mange la ligne d'après, et la ligne d'après est celle qui parle.
+pub fn legend_height(ui: &egui::Ui, items: &[(&str, Color32)], width: f32) -> f32 {
+    if items.is_empty() {
+        return 0.0;
+    }
     let row = legend_row_height(ui);
-    let gap_x = crate::pt(ui, 10.0);
-    let gap_y = 2.0;
+    let (widths, _) = legend_widths(ui, items);
+    let places = legend_layout(&widths, crate::pt(ui, 10.0), row, LEGEND_GAP_Y, width);
+    places.last().map_or(row, |(_, y)| y + row)
+}
+
+/// L'espacement vertical entre deux rangées de légende. Nommé parce que
+/// la mesure et le dessin le lisent tous les deux.
+const LEGEND_GAP_Y: f32 = 2.0;
+
+/// La largeur de chaque pastille, et celle du compte « +99 ».
+fn legend_widths(ui: &egui::Ui, items: &[(&str, Color32)]) -> (Vec<f32>, f32) {
     let pad = crate::pt(ui, 18.0);
-    let swatch_w = crate::pt(ui, 10.0);
     let font = egui::FontId::proportional(crate::pt(ui, 11.0));
-    let (widths, marker_w) = ui.fonts(|f| {
+    ui.fonts(|f| {
         let w = |s: &str| {
             f.layout_no_wrap(s.to_owned(), font.clone(), crate::text())
                 .size()
@@ -714,7 +749,22 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
             items.iter().map(|(l, _)| w(l) + pad).collect::<Vec<f32>>(),
             w("+99") + pad,
         )
-    });
+    })
+}
+
+pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
+    // **Peinte rangée par rangée contre le rectangle qu'on lui donne.**
+    // `horizontal_wrapped` dessine autant de rangées qu'il en faut et
+    // `motif::inside` coupe la dernière en deux : une demi-pastille de
+    // couleur ne dit rien de plus qu'une pastille absente. Ici la bande
+    // s'arrête d'elle-même sur une rangée entière et compte ce qu'elle
+    // laisse — « +4 » dit ce que la demi-rangée cachait.
+    let row = legend_row_height(ui);
+    let gap_x = crate::pt(ui, 10.0);
+    let gap_y = LEGEND_GAP_Y;
+    let swatch_w = crate::pt(ui, 10.0);
+    let font = egui::FontId::proportional(crate::pt(ui, 11.0));
+    let (widths, marker_w) = legend_widths(ui, items);
     // Depuis le curseur, pas depuis le haut du panneau : la légende
     // s'écrit *sous* la courbe qu'elle explique, et `max_rect` commence
     // là où le panneau commence.
@@ -722,18 +772,16 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
         ui.cursor().min,
         egui::pos2(ui.max_rect().right(), ui.max_rect().bottom()),
     );
-    let (mut x, mut y) = (area.left(), area.top());
+    // Le repli vient de `legend_layout`, que la mesure lit aussi.
+    let places = legend_layout(&widths, gap_x, row, gap_y, area.width());
     let mut drawn = 0usize;
     let mut bottom = area.top();
     // Où le compte s'écrira : au bout de la dernière pastille dessinée,
     // et non là où la boucle s'est arrêtée — elle peut s'être arrêtée
     // sur une rangée qui n'existe pas.
     let mut mark = egui::pos2(area.left(), area.top());
-    for (i, ((label, color), w)) in items.iter().zip(&widths).enumerate() {
-        if x + w > area.right() && x > area.left() {
-            x = area.left();
-            y += row + gap_y;
-        }
+    for (i, (((label, color), w), (dx, dy))) in items.iter().zip(&widths).zip(&places).enumerate() {
+        let (x, y) = (area.left() + dx, area.top() + dy);
         // La rangée suivante ne tient pas : ce qui reste se compte.
         if y + row > area.bottom() + 0.5 {
             break;
@@ -758,9 +806,8 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
             font.clone(),
             crate::text_dim(),
         );
-        x += w + gap_x;
         bottom = rect.bottom();
-        mark = egui::pos2(x, y);
+        mark = egui::pos2(x + w + gap_x, y);
         drawn += 1;
     }
     let hidden = items.len() - drawn;
@@ -784,6 +831,57 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
 #[cfg(test)]
 mod tests {
     use super::nice_max;
+
+    /// **Ce qu'une légende annonce est ce que son dessin prend.**
+    ///
+    /// C'est la règle que `what_these_heights_announce_is_what_the_drawing_takes`
+    /// tient dans l'application, et `legend_height` est une mesure de
+    /// plus : annoncer moins coupe la ligne d'en dessous — celle qui,
+    /// sur la carte du voisinage, dit ce que les anneaux n'ont pas pu
+    /// prendre —, annoncer beaucoup plus laisse un gris que personne n'a
+    /// demandé. Mesuré dans la fonte qui peindra, à quatre largeurs et
+    /// trois échelles : le repli ne bascule que sur quelques pixels, et
+    /// des largeurs rondes passent par-dessus la fenêtre où il bascule.
+    #[test]
+    fn a_legend_announces_the_height_it_takes() {
+        use super::egui;
+        let items: [(&str, egui::Color32); 4] = [
+            ("même molécule · lamotrigine", egui::Color32::RED),
+            ("même classe · antiépileptique", egui::Color32::GREEN),
+            ("interaction citée", egui::Color32::BLUE),
+            ("toxicité renseignée", egui::Color32::YELLOW),
+        ];
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [300.0_f32, 420.0, 615.0, 640.0, 900.0] {
+                let ctx = egui::Context::default();
+                crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+                let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let announced = super::legend_height(ui, &items, width);
+                        let taken = ui
+                            .allocate_ui(egui::vec2(width, 600.0), |ui| {
+                                ui.set_max_width(width);
+                                super::legend(ui, &items);
+                            })
+                            .response
+                            .rect
+                            .height();
+                        *seen.borrow_mut() = (announced, taken);
+                    });
+                });
+                let (announced, taken) = seen.into_inner();
+                assert!(
+                    announced + 0.5 >= taken,
+                    "échelle {scale}, {width} px : annoncé {announced}, pris {taken}"
+                );
+                assert!(
+                    announced <= taken + 0.5,
+                    "échelle {scale}, {width} px : annoncé {announced} pour {taken} pris"
+                );
+            }
+        }
+    }
 
     /// **La légende d'une barre grandit avec `[ui] text_scale`**, et
     /// elle tient toujours dans sa rangée.

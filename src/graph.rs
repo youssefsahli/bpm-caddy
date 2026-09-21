@@ -88,7 +88,12 @@ impl Tie {
     /// How far out its ring sits, as a fraction of the drawn radius.
     /// Closest first: same molecule is nearer than same class, which is
     /// nearer than a card merely named in the prose.
-    fn radius(self) -> f32 {
+    ///
+    /// **Publique, et lue par la vue.** Les trois nombres étaient écrits
+    /// deux fois — ici, et dans le `match` qui trace les anneaux : deux
+    /// écritures d'une distance divergent, et celle qu'on corrigerait
+    /// n'est pas celle qui place les nœuds.
+    pub fn ring_radius(self) -> f32 {
         match self {
             Tie::Molecule => 0.38,
             Tie::Class => 0.70,
@@ -181,6 +186,52 @@ impl Caps {
             Tie::Interaction => self.interaction,
         }
     }
+
+    /// Ce que la **place** permet d'écrire, anneau par anneau.
+    ///
+    /// Douze était un nombre, et un nombre ne connaît pas le volet où il
+    /// se dessine. Mesuré sur la vue livrée à 1024x700 et
+    /// `text_scale = 1,6`, l'anneau de la classe avait quatre-vingts
+    /// pixels de demi-hauteur pour douze noms : six d'entre eux
+    /// n'étaient **pas peints du tout**, chacun refusé par le voisin qui
+    /// avait pris sa place. Douze carrés dont la moitié sont muets en
+    /// disent moins que huit nommés et « quatre de plus » écrit dessous —
+    /// c'est la règle de ce dépôt, un graphique compte ce qui ne tient
+    /// pas plutôt que de le peindre par-dessus.
+    ///
+    /// L'arithmétique : sur un anneau de demi-hauteur `r`, les noms
+    /// s'écrivent vers l'extérieur, donc en rangées. Pour `n` nœuds
+    /// répartis régulièrement, l'écart vertical le plus serré est celui
+    /// du haut et du bas, et il vaut environ `r · (2π/n)²`. Le demander
+    /// plus grand qu'une ligne donne `n ≤ 2π·√(r / hauteur de ligne)`.
+    /// Ce n'est pas une estimation prudente d'un cas moyen : c'est la
+    /// paire la plus serrée, celle qui décide.
+    ///
+    /// Jamais moins de trois par anneau : un anneau réduit à un point
+    /// n'est plus un anneau, et ce qu'il ne montre pas se dit dessous.
+    /// Jamais plus que le plafond de lecture — un cercle de quarante
+    /// noms ne se lit pas, quelle que soit la place.
+    pub fn for_room(self, ry: f32, line_h: f32) -> Caps {
+        let fit = |tie: Tie| -> usize {
+            let r = ry * tie.ring_radius();
+            // Une place ou une ligne qui n'en est pas une — zéro,
+            // négative, ou pas un nombre — ne fait pas plier le
+            // plafond : la vue n'a alors rien mesuré, et rogner sur une
+            // mesure absente serait décider à sa place.
+            if !r.is_finite() || !line_h.is_finite() || r <= 0.0 || line_h <= 0.0 {
+                return self.of(tie);
+            }
+            let n = std::f32::consts::TAU * (r / line_h).sqrt();
+            // `as usize` tronque, et tronquer est le bon sens ici : un
+            // nom de plus que la place est un nom qui n'est pas peint.
+            (n as usize).clamp(3, self.of(tie))
+        };
+        Caps {
+            molecule: fit(Tie::Molecule),
+            class: fit(Tie::Class),
+            interaction: fit(Tie::Interaction),
+        }
+    }
 }
 
 /// Read `centre`'s neighbourhood out of `base` and place it.
@@ -237,8 +288,21 @@ fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
         // is a card the team has not finished. Matching on it would
         // make every unfilled fiche everybody's neighbour.
         Tie::Molecule => !centre.dci.trim().is_empty() && fuzzy::eq_folded(centre.dci, other.dci),
+        // **La classe canonique, jamais la chaîne.** C'est la règle de
+        // la maison — « `same()` est ce sur quoi le voisinage et la
+        // pastille comparent » — et cette carte-ci, dont c'est le sujet
+        // même, comparait les libellés bruts. Le champ `class` d'une
+        // fiche est du texte libre et il a dérivé : 495 libellés pour
+        // 862 fiches. Mesuré sur la base livrée, comparer les chaînes
+        // coûtait **706 paires de voisins sur 331 fiches** — Fosamax
+        // n'était pas du même anneau qu'Actonel pour une lettre
+        // (« bisphosphonate » / « biphosphonate »), Cimzia pas du même
+        // qu'Amgevita pour un mot (« anti-TNF » / « anti-TNF alpha »),
+        // et rien n'avait l'air cassé : l'anneau était dessiné, simplement
+        // plus court. Une carte qui répond « voici la classe » en en
+        // montrant la moitié est pire qu'une carte vide.
         Tie::Class => {
-            !centre.class.trim().is_empty() && fuzzy::eq_folded(centre.class, other.class)
+            !centre.class.trim().is_empty() && crate::classes::same(centre.class, other.class)
         }
         // Named in the centre's own interactions, by brand or by DCI.
         //
@@ -320,7 +384,7 @@ fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
     if n == 0 {
         return;
     }
-    let r = tie.radius();
+    let r = tie.ring_radius();
     let offset = match tie {
         Tie::Molecule => 0.0,
         Tie::Class => std::f32::consts::PI / 7.0,
@@ -458,7 +522,11 @@ mod tests {
         for n in &map.nodes {
             let r = radius(n);
             assert!(r <= 1.0001, "{} sort du cercle : {r}", n.name);
-            assert!((r - n.tie.radius()).abs() < 0.001, "{} hors anneau", n.name);
+            assert!(
+                (r - n.tie.ring_radius()).abs() < 0.001,
+                "{} hors anneau",
+                n.name
+            );
         }
         let ring = |t: Tie| map.nodes.iter().find(|n| n.tie == t).map(radius).unwrap();
         assert!(ring(Tie::Molecule) < ring(Tie::Class));
@@ -594,6 +662,129 @@ mod tests {
         let map = around(&b[2], &b, Caps::default());
         assert!(map.is_empty(), "{map:?}");
     }
+    /// **Un anneau ne prend que ce que la place permet d'écrire.**
+    ///
+    /// Douze est un nombre, et un nombre ne connaît pas le volet où il
+    /// se dessine : à 1024x700 et `text_scale = 1,6`, six des douze noms
+    /// de l'anneau de classe n'étaient pas peints du tout. Le plafond
+    /// suit donc la demi-hauteur de la figure et la hauteur d'une ligne.
+    #[test]
+    fn a_ring_takes_only_what_there_is_room_to_name() {
+        let full = Caps::default();
+        // Un grand volet : rien n'est rogné, le plafond de lecture tient.
+        let roomy = full.for_room(300.0, 16.0);
+        assert_eq!(roomy.class, full.class);
+        assert_eq!(roomy.interaction, full.interaction);
+        assert_eq!(roomy.molecule, full.molecule);
+        // Le volet mesuré, celui qui a montré le défaut.
+        let tight = full.for_room(85.0, 27.0);
+        assert!(
+            tight.class < full.class,
+            "douze noms sur un anneau de soixante pixels : {tight:?}"
+        );
+        // Jamais rien en dessous de trois : un anneau réduit à un point
+        // n'est plus un anneau, et ce qu'il ne prend pas se dit dessous.
+        let crushed = full.for_room(4.0, 40.0);
+        assert_eq!((crushed.molecule, crushed.class), (3, 3));
+        // À plafond de lecture égal, l'anneau le plus large en prend le
+        // plus : c'est lui qui a le plus de hauteur à répartir. Dit avec
+        // des plafonds égaux, sinon ce sont eux qu'on mesure — celui de
+        // l'interaction vaut huit et celui de la classe douze, si bien
+        // que le plus large peut légitimement en porter moins.
+        let even = Caps {
+            molecule: 40,
+            class: 40,
+            interaction: 40,
+        }
+        .for_room(85.0, 27.0);
+        assert!(
+            even.interaction > even.class && even.class > even.molecule,
+            "{even:?}"
+        );
+        assert!(tight.class >= tight.molecule);
+        // Et cela ne recule jamais quand la place grandit.
+        let mut last = 0;
+        for h in 1..40 {
+            let n = full.for_room(h as f32 * 10.0, 20.0).class;
+            assert!(n >= last, "h={h} : {n} après {last}");
+            last = n;
+        }
+        // Une place ou une ligne absurde ne fait pas plier le plafond.
+        assert_eq!(full.for_room(0.0, 20.0).class, full.class);
+        assert_eq!(full.for_room(200.0, 0.0).class, full.class);
+    }
+
+    /// **L'anneau de la classe lit le référentiel, jamais le libellé.**
+    ///
+    /// Le champ `class` d'une fiche est du texte libre, et il a dérivé :
+    /// c'est toute la raison d'être de `classes.rs`. Cette carte-ci
+    /// comparait les chaînes, si bien que Fosamax et Actonel n'étaient
+    /// pas du même anneau — une lettre, « bisphosphonate » contre
+    /// « biphosphonate » — et Cimzia n'était pas de celui d'Amgevita —
+    /// un mot, « anti-TNF » contre « anti-TNF alpha ».
+    ///
+    /// Le confronter à la base livrée est ce qui donne le chiffre :
+    /// 706 paires de voisins sur 331 fiches. Le test tient les trois
+    /// dérives que `classes.rs` mesure déjà, et en plus le **sens
+    /// inverse** — deux classes que le référentiel sépare ne se
+    /// rejoignent pas sur la carte.
+    #[test]
+    fn the_class_ring_reads_the_referential_and_not_the_label() {
+        let known: Vec<Known> = crate::db::STARTER_DRUGS
+            .iter()
+            .enumerate()
+            .map(|(i, (name, dci, class, _antidote))| Known {
+                id: i as i64 + 1,
+                name,
+                dci,
+                class,
+                ddi: "",
+                toxicity_noted: false,
+            })
+            .collect();
+        let ring_of = |name: &str| -> Vec<String> {
+            let centre = known
+                .iter()
+                .find(|k| k.name == name)
+                .unwrap_or_else(|| panic!("fiche absente de la base livrée : {name}"));
+            around(centre, &known, Caps::default())
+                .nodes
+                .into_iter()
+                .filter(|n| n.tie == Tie::Class)
+                .map(|n| n.name)
+                .collect()
+        };
+        // Une lettre, un mot, un trait d'union : les trois dérives que
+        // `classes.rs` a mesurées, vues d'ici.
+        assert!(ring_of("Fosamax").contains(&"Actonel".to_owned()));
+        assert!(ring_of("Cimzia").contains(&"Amgevita".to_owned()));
+        assert!(ring_of("Cardensiel").contains(&"Avlocardyl".to_owned()));
+        // Et l'inverse : une classe voisine n'est pas la même classe.
+        // Sans lui, ce test passerait aussi avec un anneau qui prend
+        // tout le monde.
+        assert!(!ring_of("Fosamax").contains(&"Coversyl".to_owned()));
+        // Enfin, la règle elle-même sur toute la base : deux fiches sont
+        // du même anneau exactement quand le référentiel les dit de la
+        // même classe.
+        for centre in &known {
+            if centre.class.trim().is_empty() {
+                continue;
+            }
+            let map = around(centre, &known, Caps::default());
+            for n in map.nodes.iter().filter(|n| n.tie == Tie::Class) {
+                let other = known.iter().find(|k| k.id == n.id).unwrap();
+                assert!(
+                    crate::classes::same(centre.class, other.class),
+                    "{} [{}] n'est pas de la classe de {} [{}]",
+                    other.name,
+                    other.class,
+                    centre.name,
+                    centre.class
+                );
+            }
+        }
+    }
+
     /// **Un kétoconazole local n'est pas un kétoconazole**, et la carte
     /// ne le met pas face à un anticoagulant.
     ///
