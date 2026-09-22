@@ -248,11 +248,32 @@ fn set_need_appearances(doc: &mut Document) {
     }
 }
 
-/// Encode to Latin-1 for `/Helv`. A character outside it is replaced
-/// rather than dropped, so a name never silently loses a letter.
+/// Encode for `/Helv`, whose `/Encoding` in the five forms is
+/// **PDFDocEncoding**, not Latin-1. The two agree from 0xA1 up; below,
+/// PDFDocEncoding puts the typographic characters French actually
+/// writes — « œ » in « Sacré-Cœur », the curly apostrophe of « rue de
+/// l’Église », the dashes — and 0xA0 is the euro sign, so a no-break
+/// space sent as its Latin-1 byte printed « 34000€Montpellier ». A
+/// character the encoding does not carry is replaced rather than
+/// dropped, so a name never silently loses a letter.
 fn latin1(text: &str) -> Vec<u8> {
     text.chars()
-        .map(|c| if (c as u32) < 256 { c as u8 } else { b'?' })
+        .map(|c| match c {
+            '\u{a0}' | '\u{202f}' | '\u{2009}' => b' ',
+            '•' => 0x80,
+            '…' => 0x83,
+            '—' => 0x84,
+            '–' => 0x85,
+            '“' => 0x8D,
+            '”' => 0x8E,
+            '‘' => 0x8F,
+            '’' => 0x90,
+            'Œ' => 0x96,
+            'œ' => 0x9C,
+            '€' => 0xA0,
+            c if (0xA1..256).contains(&(c as u32)) || (c as u32) < 0x80 => c as u8,
+            _ => b'?',
+        })
         .collect()
 }
 
@@ -478,6 +499,14 @@ mod tests {
         assert_eq!(
             latin1("Hélène Lefèvre"),
             b"H\xe9l\xe8ne Lef\xe8vre".to_vec()
+        );
+        // PDFDocEncoding, not Latin-1: « œ », the curly apostrophe and a
+        // no-break space are the three a French address carries.
+        assert_eq!(latin1("Sacré-Cœur"), b"Sacr\xe9-C\x9cur".to_vec());
+        assert_eq!(latin1("l’Église"), b"l\x90\xc9glise".to_vec());
+        assert_eq!(
+            latin1("34000\u{a0}Montpellier"),
+            b"34000 Montpellier".to_vec()
         );
         // Parentheses and backslashes cannot break out of the string.
         assert_eq!(pdf_literal(b"a(b)c\\d"), b"(a\\(b\\)c\\\\d)".to_vec());

@@ -330,6 +330,12 @@ pub fn bundle_source(parts: &[String]) -> Result<String, String> {
         .iter()
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
+        // **Chaque partie dans son bloc** : un `#set` de la fiche
+        // d'entretien (l'espacement de ses blocs, ou ce qu'une officine
+        // ajoute à son propre modèle) s'appliquait au bilan et au plan
+        // qui la suivent, mis en page plus serrés dans la liasse que
+        // seuls. Un bloc de contenu borne les règles à sa partie.
+        .map(|p| format!("#[\n{p}\n]"))
         .collect::<Vec<_>>()
         .join("\n#pagebreak()\n");
     if joined.is_empty() {
@@ -404,57 +410,61 @@ fn fill_cr_template(
     } else {
         patient.physician.trim()
     };
-    template
-        .replace(
-            "{{PHARMACY_NAME}}",
-            &format!("#{}", typst_str(&pharmacy.name)),
-        )
-        .replace(
-            "{{PHARMACY_ADDRESS}}",
-            &format!("#{}", typst_str(&pharmacy.address)),
-        )
-        .replace(
-            "{{PHARMACY_PHONE}}",
-            &format!("#{}", typst_str(&pharmacy.phone)),
-        )
-        // Signed by whoever held the entretien, when the team list
-        // knows those initials; by the officine's own line otherwise.
-        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
-        .replace("{{PHYSICIAN}}", &format!("#{}", typst_str(physician)))
-        .replace(
-            "{{PATIENT_NAME}}",
-            &format!("#{}", typst_str(&patient.full_name())),
-        )
-        .replace(
-            "{{BIRTH_DATE}}",
-            &format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&patient.birth_date))
+    fill(
+        template,
+        &[
+            (
+                "{{PHARMACY_NAME}}",
+                format!("#{}", typst_str(&pharmacy.name)),
             ),
-        )
-        .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
-        .replace("{{DATE}}", &format!("#{}", typst_str(date)))
-        .replace(
-            "{{THEME}}",
+            (
+                "{{PHARMACY_ADDRESS}}",
+                format!("#{}", typst_str(&pharmacy.address)),
+            ),
+            (
+                "{{PHARMACY_PHONE}}",
+                format!("#{}", typst_str(&pharmacy.phone)),
+            ),
+            // Signed by whoever held the entretien, when the team list
+            // knows those initials; by the officine's own line otherwise.
+            ("{{PHARMACIST}}", format!("#{}", typst_str(signature))),
+            ("{{PHYSICIAN}}", format!("#{}", typst_str(physician))),
+            (
+                "{{PATIENT_NAME}}",
+                format!("#{}", typst_str(&patient.full_name())),
+            ),
+            (
+                "{{BIRTH_DATE}}",
+                format!(
+                    "#{}",
+                    typst_str(&crate::db::format_french_date(&patient.birth_date))
+                ),
+            ),
+            ("{{KIND}}", format!("#{}", typst_str(kind.label()))),
+            ("{{DATE}}", format!("#{}", typst_str(date))),
             // Un acte qui ne porte pas de thème n'en imprime pas, même
             // si la base en garde un : jusqu'à la 0.145 le thème armé
             // par le choix rapide était écrit sur les actes qui n'en ont
             // pas, et il ressortait ici. La source est corrigée ; ceci
             // couvre les lignes déjà écrites, sans réécrire la base.
-            &format!(
-                "#{}",
-                typst_str(theme_or_dash(if kind.has_theme() { theme } else { "" }))
+            (
+                "{{THEME}}",
+                format!(
+                    "#{}",
+                    typst_str(theme_or_dash(if kind.has_theme() { theme } else { "" }))
+                ),
             ),
-        )
-        .replace("{{TREATMENTS}}", &treatments_markup(treats))
-        // Ce qui a été retenu à l'export, ou le cadre vide.
-        //
-        // Vide veut dire vide : un courrier dont personne n'a coché de
-        // point garde l'encadré qu'on remplit à la main, qui est ce que
-        // le modèle portait avant que ce marqueur existe. Imprimer une
-        // liste de points qu'on n'a pas choisis serait faire dire au
-        // pharmacien ce qu'il n'a pas dit.
-        .replace("{{POINTS}}", &cr_points_markup(points))
+            ("{{TREATMENTS}}", treatments_markup(treats)),
+            // Ce qui a été retenu à l'export, ou le cadre vide.
+            //
+            // Vide veut dire vide : un courrier dont personne n'a coché de
+            // point garde l'encadré qu'on remplit à la main, qui est ce que
+            // le modèle portait avant que ce marqueur existe. Imprimer une
+            // liste de points qu'on n'a pas choisis serait faire dire au
+            // pharmacien ce qu'il n'a pas dit.
+            ("{{POINTS}}", cr_points_markup(points)),
+        ],
+    )
 }
 
 /// Les points retenus, ou l'encadré à remplir quand il n'y en a pas.
@@ -2476,9 +2486,15 @@ fn stup_register_values(
         ),
         ("{{ROWS}}", body),
         ("{{COUNT}}", rows.len().to_string()),
+        // **Échappée comme tout texte venu de l'officine** : l'unité
+        // s'écrit à la main au registre, et « ampoule [1 mL] » fermait le
+        // bloc du modèle — le registre d'inspection ne s'imprimait plus.
         (
             "{{UNIT}}",
-            if unit.is_empty() { "unités" } else { unit }.to_owned(),
+            format!(
+                "#{}",
+                typst_str(if unit.is_empty() { "unités" } else { unit })
+            ),
         ),
     ]
 }
@@ -3694,6 +3710,34 @@ fn ordonnance_advice_markup(advice: &[String]) -> String {
     out
 }
 
+/// Les deux mentions de l'ordonnance, écrites **une fois** : par
+/// l'impression et par l'aperçu de l'éditeur. L'aperçu les écrivait
+/// nues et centrées nulle part, si bien que ce qu'on réglait dans
+/// l'éditeur n'était pas ce qui s'imprimait. Une mention vide ne laisse
+/// pas de ligne, pas une ligne italique vide.
+fn mention_header(text: &str) -> String {
+    if text.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#align(center)[#text(9pt, style: \"italic\")[#{}]]",
+            typst_str(text.trim())
+        )
+    }
+}
+
+/// Voir [`mention_header`].
+fn mention_footer(text: &str) -> String {
+    if text.trim().is_empty() {
+        String::new()
+    } else {
+        format!(
+            "#v(2mm)\n#text(8pt, style: \"italic\")[#{}]",
+            typst_str(text.trim())
+        )
+    }
+}
+
 /// Substitute the ordonnance placeholders. Every value is spliced as a
 /// Typst string literal, so a patient name or a hand-written posology
 /// containing markup can neither break compilation nor restyle the page.
@@ -3709,63 +3753,45 @@ fn fill_ordonnance_template(
     signature: &str,
     mentions: (&str, &str),
 ) -> String {
-    // Both mentions are the officine's own: an empty one leaves no
-    // line, not an empty italic line.
-    let centered = |text: &str, size: &str| {
-        if text.trim().is_empty() {
-            String::new()
-        } else {
-            format!(
-                "#align(center)[#text({size}, style: \"italic\")[#{}]]",
-                typst_str(text.trim())
-            )
-        }
-    };
-    let footer = |text: &str| {
-        if text.trim().is_empty() {
-            String::new()
-        } else {
-            format!(
-                "#v(2mm)\n#text(8pt, style: \"italic\")[#{}]",
-                typst_str(text.trim())
-            )
-        }
-    };
-    template
-        .replace(
-            "{{PHARMACY_NAME}}",
-            &format!("#{}", typst_str(&pharmacy.name)),
-        )
-        .replace(
-            "{{PHARMACY_ADDRESS}}",
-            &format!("#{}", typst_str(&pharmacy.address)),
-        )
-        .replace(
-            "{{PHARMACY_PHONE}}",
-            &format!("#{}", typst_str(&pharmacy.phone)),
-        )
-        .replace(
-            "{{PHARMACY_AM}}",
-            &format!("#{}", typst_str(&pharmacy.am_number)),
-        )
-        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
-        .replace(
-            "{{PATIENT_NAME}}",
-            &format!("#{}", typst_str(&patient.full_name())),
-        )
-        .replace(
-            "{{BIRTH_DATE}}",
-            &format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&patient.birth_date))
+    fill(
+        template,
+        &[
+            (
+                "{{PHARMACY_NAME}}",
+                format!("#{}", typst_str(&pharmacy.name)),
             ),
-        )
-        .replace("{{INDICATION}}", &format!("#{}", typst_str(indication)))
-        .replace("{{DATE}}", &format!("#{}", typst_str(today)))
-        .replace("{{LINES}}", &ordonnance_lines_markup(lines))
-        .replace("{{ADVICE}}", &ordonnance_advice_markup(advice))
-        .replace("{{MENTION_HEADER}}", &centered(mentions.0, "9pt"))
-        .replace("{{MENTION_FOOTER}}", &footer(mentions.1))
+            (
+                "{{PHARMACY_ADDRESS}}",
+                format!("#{}", typst_str(&pharmacy.address)),
+            ),
+            (
+                "{{PHARMACY_PHONE}}",
+                format!("#{}", typst_str(&pharmacy.phone)),
+            ),
+            (
+                "{{PHARMACY_AM}}",
+                format!("#{}", typst_str(&pharmacy.am_number)),
+            ),
+            ("{{PHARMACIST}}", format!("#{}", typst_str(signature))),
+            (
+                "{{PATIENT_NAME}}",
+                format!("#{}", typst_str(&patient.full_name())),
+            ),
+            (
+                "{{BIRTH_DATE}}",
+                format!(
+                    "#{}",
+                    typst_str(&crate::db::format_french_date(&patient.birth_date))
+                ),
+            ),
+            ("{{INDICATION}}", format!("#{}", typst_str(indication))),
+            ("{{DATE}}", format!("#{}", typst_str(today))),
+            ("{{LINES}}", ordonnance_lines_markup(lines)),
+            ("{{ADVICE}}", ordonnance_advice_markup(advice)),
+            ("{{MENTION_HEADER}}", mention_header(mentions.0)),
+            ("{{MENTION_FOOTER}}", mention_footer(mentions.1)),
+        ],
+    )
 }
 
 /// Typeset the ordonnance and hand it to the OS viewer.
@@ -4031,8 +4057,10 @@ fn billing_recap_values(
         );
     }
     vec![
-        ("{{PERIOD}}", period.to_owned()),
-        ("{{DATE}}", today_french.to_owned()),
+        // Des libellés que l'officine peut réécrire dans `strings.toml` :
+        // échappés comme le reste.
+        ("{{PERIOD}}", format!("#{}", typst_str(period))),
+        ("{{DATE}}", format!("#{}", typst_str(today_french))),
         ("{{ROWS}}", rows),
         ("{{COUNT}}", count.to_string()),
         ("{{TOTAL}}", total),
@@ -4460,11 +4488,30 @@ pub fn doc(key: &str) -> Option<&'static Doc> {
 /// sorte qu'un nom contenant `#` ou `*` ne peut ni casser la
 /// compilation ni redessiner la page.
 #[must_use]
+///
+/// **En une seule passe, de gauche à droite.** Remplacés l'un après
+/// l'autre, un marqueur tapé *dans* une valeur déjà posée était
+/// substitué à son tour : une remarque de caisse « {{OPERATOR}} »
+/// s'imprimait avec les initiales de l'opérateur. Ce qui a été posé ne
+/// se relit plus.
 pub fn fill(template: &str, values: &[(&str, String)]) -> String {
-    let mut out = template.to_owned();
-    for (marker, value) in values {
-        out = out.replace(marker, value);
+    let mut out = String::with_capacity(template.len());
+    let mut rest = template;
+    while let Some(at) = rest.find("{{") {
+        out.push_str(&rest[..at]);
+        let tail = &rest[at..];
+        match values.iter().find(|(m, _)| tail.starts_with(m)) {
+            Some((marker, value)) => {
+                out.push_str(value);
+                rest = &tail[marker.len()..];
+            }
+            None => {
+                out.push_str("{{");
+                rest = &tail[2..];
+            }
+        }
     }
+    out.push_str(rest);
     out
 }
 
@@ -4530,14 +4577,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ("{{DATE}}", s("24/08/2026")),
             ("{{KIND}}", s(InterviewKind::Bpm.label())),
             ("{{THEME}}", s("Observance")),
-            (
-                "{{TREATMENTS}}",
-                sample_treatments()
-                    .iter()
-                    .map(|d| format!("- #{}", typst_str(&d.name)))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            ("{{TREATMENTS}}", treatments_markup(&sample_treatments())),
             (
                 "{{CHECKLIST}}",
                 crate::entretien::checklist("Observance")
@@ -4556,7 +4596,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         "cr" => vec![
             (
                 "{{POINTS}}",
-                "- #\"Observance satisfaisante sur les trois derniers mois.\"".to_owned(),
+                cr_points_markup(&["Observance satisfaisante sur les trois derniers mois."]),
             ),
             ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
             ("{{PHARMACY_ADDRESS}}", s(&pharmacy.address)),
@@ -4570,14 +4610,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ("{{KIND}}", s(InterviewKind::Bpm.label())),
             ("{{DATE}}", s("24/08/2026")),
             ("{{THEME}}", s("Observance")),
-            (
-                "{{TREATMENTS}}",
-                sample_treatments()
-                    .iter()
-                    .map(|d| format!("- #{}", typst_str(&d.name)))
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
+            ("{{TREATMENTS}}", treatments_markup(&sample_treatments())),
             ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
         ],
         // Le carnet : les mêmes transmissions d'exemple que le test du
@@ -5808,27 +5841,46 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             // la façon dont une posologie longue enveloppe sous son
             // produit ne s'y voyaient — et c'est précisément la mise en
             // page qu'on vient régler ici.
+            // Par les fonctions qui impriment, sur des données d'exemple :
+            // deux écritures d'une même page divergent, et c'est l'aperçu
+            // qui ment.
             (
                 "{{LINES}}",
-                "+ #\"Amoxicilline 1 g\" \\\n  #\"1 g deux fois par jour pendant 6 jours\"\n\
-                 + #\"Ultra-levure 200 mg\" \\\n  #\"1 gélule par jour pendant la durée de \
-                 l'antibiotique, à distance d'au moins deux heures de la prise\""
-                    .to_owned(),
+                ordonnance_lines_markup(&[
+                    crate::ordonnance::Line {
+                        name: "Amoxicilline 1 g".to_owned(),
+                        posology: "1 g deux fois par jour pendant 6 jours".to_owned(),
+                        caution: String::new(),
+                    },
+                    crate::ordonnance::Line {
+                        name: "Ultra-levure 200 mg".to_owned(),
+                        posology: "1 gélule par jour pendant la durée de l'antibiotique, à \
+                                   distance d'au moins deux heures de la prise"
+                            .to_owned(),
+                        caution: String::new(),
+                    },
+                ]),
             ),
             (
                 "{{ADVICE}}",
-                "- #\"Boire fréquemment, par petites quantités.\"\n\
-                 - #\"La fièvre tombe en deux à trois jours ; l'antibiotique se termine \
-                 quand même.\"\n\
-                 - #\"Consulter sans attendre devant une difficulté à avaler la salive, \
-                 une voix étouffée ou un gonflement du cou.\""
-                    .to_owned(),
+                ordonnance_advice_markup(&[
+                    "Boire fréquemment, par petites quantités.".to_owned(),
+                    "La fièvre tombe en deux à trois jours ; l'antibiotique se termine \
+                     quand même."
+                        .to_owned(),
+                    "Consulter sans attendre devant une difficulté à avaler la salive, \
+                     une voix étouffée ou un gonflement du cou."
+                        .to_owned(),
+                ]),
             ),
             (
                 "{{MENTION_HEADER}}",
-                s("Mention d'en-tête (facultative, [disclaimers] du config.toml)"),
+                mention_header("Mention d'en-tête (facultative, [disclaimers] du config.toml)"),
             ),
-            ("{{MENTION_FOOTER}}", s("Mention de pied (facultative)")),
+            (
+                "{{MENTION_FOOTER}}",
+                mention_footer("Mention de pied (facultative)"),
+            ),
             ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
         ],
     }

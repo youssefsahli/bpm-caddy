@@ -9165,6 +9165,16 @@ struct FrameForm {
     /// le cas qui mord — une que la fenêtre n'a pas su afficher et pour
     /// laquelle elle a précisément dit qu'elle ne toucherait à rien.
     replacing: Vec<i64>,
+    /// Les lignes rangées elles-mêmes, dans l'ordre de `replacing`.
+    ///
+    /// **Poser sans rien changer ne réécrit rien.** Supprimer puis
+    /// réinsérer toute la trame la réancrait sur la semaine affichée —
+    /// les semaines d'avant perdaient leurs postes, la phase d'« une
+    /// semaine sur deux » se retournait —, effaçait sa date de fin et
+    /// emportait ses exceptions. Une ligne que la grille décrit encore à
+    /// l'identique est donc gardée telle quelle ; seules celles qui ont
+    /// changé partent et arrivent.
+    loaded: Vec<db::NewShift>,
     /// Retirer d'abord les trames déjà posées pour cette personne.
     ///
     /// **Décoché par défaut, et c'est délibéré** : une case qui efface
@@ -9187,6 +9197,7 @@ impl Default for FrameForm {
             loaded_for: String::new(),
             notice: None,
             replacing: Vec::new(),
+            loaded: Vec::new(),
             page: 0,
             weeks: Default::default(),
             replace: false,
@@ -22597,8 +22608,29 @@ impl App {
                 }
             }
             if let Some(id) = remove_treat {
-                if let Err(e) = session.db.remove_patient_drug(patient.id, id) {
-                    session.error = Some(e);
+                // Ce que l'écran montre de la ligne : sa posologie telle
+                // qu'elle a été lue, son dosage, son ordonnance.
+                let pick = |v: &[(i64, String)]| {
+                    v.iter()
+                        .find(|(d, _)| *d == id)
+                        .map(|(_, t)| t.clone())
+                        .unwrap_or_default()
+                };
+                let posology = pick(&session.patient_doses_base);
+                let dosage = pick(&session.patient_strengths);
+                let script = session
+                    .patient_scripts
+                    .iter()
+                    .find(|(d, _)| *d == id)
+                    .map(|(_, p)| p.clone())
+                    .unwrap_or_default();
+                match session
+                    .db
+                    .remove_patient_drug(patient.id, id, &posology, &dosage, &script)
+                {
+                    Ok(true) => {}
+                    Ok(false) => session.stale("concil_stale"),
+                    Err(e) => session.error = Some(e),
                 }
                 session.reload_treatments(patient.id);
             }
@@ -23105,8 +23137,18 @@ impl App {
             session.confirm_delete = true;
             return;
         }
-        match session.db.delete_patient(patient.id) {
-            Ok(()) => {
+        match session.db.delete_patient(patient) {
+            // Un autre poste a corrigé ce dossier depuis qu'il est
+            // affiché : on ne supprime pas ce qu'on n'a pas vu.
+            Ok(false) => {
+                session.confirm_delete = false;
+                let said = session.stale_note("patient_stale");
+                session.error = Some(said);
+                if let Ok(list) = session.db.patients() {
+                    session.set_patients(list);
+                }
+            }
+            Ok(true) => {
                 session.confirm_delete = false;
                 session.edit_patient = None;
                 session.viewing = None;
@@ -27675,7 +27717,15 @@ impl App {
                 // de la bande : une infobulle qui nommerait deux
                 // personnes sous trois carrés serait la pire des deux
                 // réponses.
-                let who = planning::who_is_in(&shifts, agenda::Slot::point(at));
+                // **La même question que la bande** : la tranche entière,
+                // et non son premier instant. Un poste qui commence à
+                // 14 h 10 peint une tête dans la tranche de 14 h, et la
+                // bulle, qui ne regardait que 14 h 00, n'y nommait
+                // personne.
+                let who = planning::who_is_in(
+                    &shifts,
+                    agenda::Slot::new(at, at.saturating_add(STEP).min(to)),
+                );
                 // **Un pharmacien est-il là ?** C'est la question que
                 // l'officine se pose en premier, et « deux personnes au
                 // comptoir » n'y répond pas.
@@ -29510,7 +29560,13 @@ impl App {
     ) -> Vec<db::NewShift> {
         source
             .iter()
-            .filter(|s| s.repeat_days == 0)
+            // Une exception n'est pas un poste ponctuel : c'est un jour
+            // d'une trame, réécrit. Son `repeat_days` vaut zéro comme
+            // celui d'un poste isolé, et « Recopier la semaine » la
+            // posait donc sur la semaine suivante — un samedi de
+            // semaine impaire que la personne ne travaille pas. Un poste
+            // isolé est sa propre source ; une exception ne l'est pas.
+            .filter(|s| s.repeat_days == 0 && s.id == s.source_id)
             .filter_map(|s| {
                 let day = crate::date::add_days(&s.day, 7)?;
                 if target
@@ -30352,7 +30408,10 @@ impl App {
     fn frame_load(session: &mut Session) {
         let who = session.frame.operator.trim().to_owned();
         session.frame.loaded_for = who.clone();
-        let ids = session.db.shift_patterns(&who).unwrap_or_default();
+        let ids = session
+            .db
+            .shift_patterns(&who, &session.today)
+            .unwrap_or_default();
         let mut rows: Vec<db::NewShift> = Vec::new();
         for id in &ids {
             if let Some(first) = session
@@ -30367,6 +30426,7 @@ impl App {
         }
         session.frame.page = 0;
         session.frame.replacing = Vec::new();
+        session.frame.loaded = Vec::new();
         match frame_from_patterns(&rows) {
             FrameLoad::Vide => {
                 session.frame.weeks = Default::default();
@@ -30378,6 +30438,21 @@ impl App {
                 // la liste est retenue ici, et non redemandée au moment
                 // d'écrire.
                 session.frame.replacing = ids;
+                // La fin qu'elles portent, quand elles la partagent :
+                // sans cela la grille la montrait vide, et reposer
+                // faisait courir la trame pour toujours.
+                let ends: Vec<&str> = rows.iter().map(|r| r.repeat_until.as_str()).collect();
+                if let Some(first) = ends.first() {
+                    if ends.iter().all(|e| e == first) {
+                        session.frame.until = (*first).to_owned();
+                        session.frame.until_text = if first.is_empty() {
+                            String::new()
+                        } else {
+                            db::format_french_date(first)
+                        };
+                    }
+                }
+                session.frame.loaded = rows.clone();
                 session.frame.cadence = cadence;
                 session.frame.weeks = *weeks;
                 // **On édite ce qui existe**, donc la case se coche.
@@ -30466,9 +30541,50 @@ impl App {
         // après, il n'y a plus rien à lire, et un retour arrière qui ne
         // rendrait que la ligne rangée aurait perdu les exceptions qui
         // la corrigeaient.
+        // Ce que la grille décrit encore à l'identique reste en place :
+        // voir `FrameForm::loaded`. Même jour de la semaine, mêmes
+        // heures, même nature, même rythme, même fin.
+        let same = |a: &db::NewShift, b: &db::NewShift| {
+            crate::date::weekday(&a.day) == crate::date::weekday(&b.day)
+                && a.start_time == b.start_time
+                && a.end_time == b.end_time
+                && a.pause_minutes == b.pause_minutes
+                && a.kind == b.kind
+                && a.cadence == b.cadence
+                && a.repeat_until == b.repeat_until
+        };
+        let mut kept: Vec<i64> = Vec::new();
+        let mut rows = rows;
+        if form.replace {
+            rows.retain(|new| {
+                let hit = form
+                    .replacing
+                    .iter()
+                    .zip(form.loaded.iter())
+                    .find(|(id, old)| !kept.contains(id) && same(new, old));
+                match hit {
+                    Some((id, _)) => {
+                        kept.push(*id);
+                        false
+                    }
+                    None => true,
+                }
+            });
+            if rows.is_empty() && kept.len() == form.replacing.len() {
+                session.planning_notice = Some(tr("frame_unchanged").to_owned());
+                session.frame.open = false;
+                return;
+            }
+        }
         let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
         if form.replace {
-            for id in form.replacing.clone() {
+            for id in form
+                .replacing
+                .iter()
+                .copied()
+                .filter(|id| !kept.contains(id))
+                .collect::<Vec<_>>()
+            {
                 let family = session.db.shift_family(id).unwrap_or_default();
                 match session.db.delete_shift(id, &who) {
                     Ok(true) => removed.push(family),
@@ -62004,6 +62120,13 @@ mod tests {
         let copies = App::planning_copies(&source, &[]);
         assert_eq!(copies.len(), 2);
         assert!(copies.iter().all(|c| c.repeat_days == 0));
+        // **Et une exception n'est pas un poste isolé** : c'est un jour
+        // d'une trame, réécrit, dont la source est la trame. Recopiée,
+        // elle posait un samedi que la personne ne travaille pas.
+        let mut exception = shift(4, "CL", "2026-09-12", 0);
+        exception.source_id = 2;
+        let copies = App::planning_copies(&[exception], &[]);
+        assert!(copies.is_empty(), "{:?}", copies.len());
     }
 
     /// **Les trois comptes de l'aperçu d'une trame se partagent ses
@@ -66598,6 +66721,44 @@ mod tests {
         assert_eq!(session.officine_fresh, None);
     }
 
+    /// **Ouvrir la trame et la reposer sans rien changer ne réécrit
+    /// rien** : ni son premier jour, ni sa fin, ni sa ligne. Supprimée
+    /// puis réinsérée, elle se réancrait sur la semaine affichée — les
+    /// semaines d'avant perdaient leurs postes — et courait pour
+    /// toujours.
+    #[test]
+    fn reposing_an_unchanged_trame_rewrites_nothing() {
+        let (mut s, _swept) = scratch_session("trame");
+        let id =
+            s.db.add_shift(&crate::db::NewShift {
+                operator: "ZZ".to_owned(),
+                day: "2026-01-05".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "12:30".to_owned(),
+                kind: "JOURNEE".to_owned(),
+                repeat_days: 7,
+                repeat_until: "2027-06-30".to_owned(),
+                cadence: "HEBDO".to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+        s.today = "2026-09-23".to_owned();
+        s.frame.operator = "ZZ".to_owned();
+        s.frame.from = "2026-09-21".to_owned();
+        super::App::frame_load(&mut s);
+        assert_eq!(s.frame.until, "2027-06-30", "la fin chargée");
+        super::App::frame_apply(&mut s);
+        let family = s.db.shift_family(id).unwrap();
+        assert_eq!(family.len(), 1, "la ligne rangée est toujours là");
+        assert_eq!(family[0].day, "2026-01-05");
+        assert_eq!(family[0].repeat_until, "2027-06-30");
+        assert_eq!(
+            s.db.shift_patterns("ZZ", "2026-09-23").unwrap(),
+            vec![id],
+            "aucune seconde trame"
+        );
+    }
+
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-tab-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
@@ -67199,7 +67360,7 @@ mod tests {
         s.note_tab();
         // Another post deletes the patient; the tab survives in the
         // strip until it is next activated, and then removes itself.
-        s.db.delete_patient(p.id).unwrap();
+        assert!(s.db.delete_patient(&p).unwrap());
         s.set_patients(s.db.patients().unwrap());
         s.activate_tab(&super::WorkTab::Patient(p.id));
         assert!(!s.tabs.contains(&super::WorkTab::Patient(p.id)));

@@ -5,6 +5,45 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.250.0] - 2026-09-23
+
+### Fixed
+- **Supprimer un dossier supprime tout le dossier, et seulement celui
+  qu'on voit.** Les vaccinations, les locations, les voyages et les
+  pièces scannées restaient derrière ; et le numéro du dossier supprimé
+  se réutilisait, si bien que le suivant héritait de ses orphelins — et
+  des lignes du registre des stupéfiants et du journal des accès qui le
+  citent. Le plus haut numéro jamais donné est désormais retenu, la
+  suppression se compare à l'identité affichée (un autre poste qui l'a
+  corrigée entre-temps l'arrête), et un dossier cité au registre ne se
+  supprime pas.
+- **Retirer un traitement d'un dossier ne défait plus ce qu'un autre
+  poste vient d'y écrire** — posologie, dosage ou délivrance : la croix
+  se compare à la ligne affichée.
+- **Poser la trame d'une personne sans la changer ne la réécrit plus.**
+  Elle était supprimée puis réinsérée sur la semaine affichée : les
+  semaines d'avant perdaient leurs postes, « une semaine sur deux »
+  changeait de phase, la date de fin disparaissait et les exceptions
+  partaient. Ce qui n'a pas changé reste en place ; seul ce qui a
+  changé est réécrit. Une trame terminée n'est plus chargée — donc plus
+  remplacée.
+- « Recopier la semaine » ne recopie plus une exception comme un poste
+  isolé, et la bulle de la bande de présence nomme les personnes de la
+  même tranche que celle qu'elle compte.
+- **Un produit du registre et une préparation** comparent toutes les
+  colonnes qu'ils écrivent : le conditionnement appris par un autre
+  poste n'est plus remis à l'ancien par une note enregistrée ici. La
+  fiche d'un médicament et ses verrous s'écrivent dans une même
+  transaction.
+- **Impression** : l'unité du registre des stupéfiants est échappée
+  (« ampoule [1 mL] » empêchait l'impression), les marqueurs se
+  remplissent en une passe (un marqueur tapé dans une remarque n'est
+  plus substitué), les documents d'une liasse ne se prêtent plus leurs
+  réglages, et l'aperçu de l'ordonnance et du compte rendu est composé
+  par les fonctions qui impriment. Les bulletins d'adhésion écrivent
+  « Sacré-Cœur », l'apostrophe typographique et l'espace insécable
+  comme il faut.
+
 ## [0.249.0] - 2026-09-23
 
 ### Fixed

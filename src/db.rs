@@ -29783,10 +29783,20 @@ impl Db {
         first_name: &str,
         birth_date: &str,
     ) -> Result<i64, String> {
+        // **Jamais un numéro déjà donné** — voir [`Db::delete_patient`] :
+        // le suivant du plus haut, qu'il soit encore là ou supprimé. Lu
+        // et écrit dans une même instruction, pour que deux postes qui
+        // créent en même temps ne tirent pas le même.
         self.conn
             .execute(
-                "INSERT INTO patients (last_name, first_name, birth_date, created_at)
-                 VALUES (?1, ?2, ?3, datetime('now', 'localtime'))",
+                "INSERT INTO patients (id, last_name, first_name, birth_date, created_at)
+                 VALUES (
+                     MAX(
+                         COALESCE((SELECT MAX(id) FROM patients), 0),
+                         COALESCE((SELECT CAST(value AS INTEGER) FROM settings
+                                   WHERE key = 'patient_id_high'), 0)
+                     ) + 1,
+                     ?1, ?2, ?3, datetime('now', 'localtime'))",
                 (last_name, first_name, birth_date),
             )
             .map_err(|e| e.to_string())?;
@@ -30552,36 +30562,131 @@ impl Db {
         Ok(())
     }
 
-    pub fn remove_patient_drug(&self, patient_id: i64, drug_id: i64) -> Result<(), String> {
-        self.conn
+    /// Retirer un traitement du dossier, **tel que l'écran le montrait**.
+    ///
+    /// Aveugle, la croix effaçait ce qu'un autre poste venait d'écrire
+    /// sur la ligne — une posologie corrigée, une délivrance notée —
+    /// sans que personne le sache. Comparée à la posologie, au dosage et
+    /// à l'état de l'ordonnance affichés, comme les écritures qui les
+    /// posent ; `false` quand la ligne a changé.
+    pub fn remove_patient_drug(
+        &self,
+        patient_id: i64,
+        drug_id: i64,
+        shown_posology: &str,
+        shown_dosage: &str,
+        shown_script: &crate::renewal::Prescription,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
             .execute(
-                "DELETE FROM patient_drugs WHERE patient_id = ?1 AND drug_id = ?2",
-                (patient_id, drug_id),
+                "DELETE FROM patient_drugs WHERE patient_id = ?1 AND drug_id = ?2
+                   AND posology = ?3 AND dosage = ?4 AND prescribed_on = ?5
+                   AND duration_days = ?6 AND renewals = ?7 AND dispensed = ?8",
+                rusqlite::params![
+                    patient_id,
+                    drug_id,
+                    shown_posology,
+                    shown_dosage,
+                    shown_script.prescribed_on,
+                    shown_script.duration_days,
+                    shown_script.renewals,
+                    shown_script.dispensed
+                ],
             )
             .map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(changed == 1)
     }
 
     /// Remove a patient and everything attached to them, atomically.
-    pub fn delete_patient(&self, id: i64) -> Result<(), String> {
+    /// Supprimer un dossier, **tout le dossier**, et seulement celui
+    /// qu'on a sous les yeux.
+    ///
+    /// Trois fautes à la fois, et la troisième était la grave :
+    ///
+    /// * **aveugle** — un autre poste pouvait avoir corrigé l'identité
+    ///   entre l'affichage et le clic : la suppression se compare
+    ///   maintenant à ce que l'écran montrait, comme toute écriture sur
+    ///   une ligne partagée, et rend `false` quand ce n'est plus lui ;
+    /// * **incomplète** — les vaccinations, les locations, les voyages
+    ///   et les pièces scannées restaient derrière ;
+    /// * **et le numéro se réutilisait.** `patients.id` n'est pas en
+    ///   `AUTOINCREMENT` (et ne peut pas le devenir par un `ALTER`) :
+    ///   supprimer le dernier dossier rendait son numéro au suivant, qui
+    ///   héritait des orphelins — et des lignes du registre des
+    ///   stupéfiants et du journal des accès qui le citent. Le plus haut
+    ///   numéro jamais donné est donc retenu dans `settings`, et
+    ///   [`Db::add_patient`] ne descend jamais dessous.
+    ///
+    /// Un dossier que le registre des stupéfiants cite ne se supprime
+    /// pas : le registre se garde dix ans et doit ramener au patient.
+    pub fn delete_patient(&self, shown: &Patient) -> Result<bool, String> {
+        let id = shown.id;
+        let cited: i64 = self
+            .stups
+            .query_row(
+                "SELECT COUNT(*) FROM stup_moves WHERE patient_id = ?1",
+                [id],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        if cited > 0 {
+            return Err(crate::strings::tr("patient_delete_in_register").to_owned());
+        }
         let tx = self
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM interviews WHERE patient_id = ?1", [id])
+        let same: i64 = tx
+            .query_row(
+                "SELECT COUNT(*) FROM patients
+                 WHERE id = ?1 AND last_name = ?2 AND first_name = ?3 AND birth_date = ?4",
+                (id, &shown.last_name, &shown.first_name, &shown.birth_date),
+                |r| r.get(0),
+            )
             .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM patient_drugs WHERE patient_id = ?1", [id])
-            .map_err(|e| e.to_string())?;
-        tx.execute("DELETE FROM biology WHERE patient_id = ?1", [id])
-            .map_err(|e| e.to_string())?;
-        tx.execute(
+        if same == 0 {
+            return Ok(false);
+        }
+        let scans: Vec<i64> = {
+            let mut stmt = tx
+                .prepare("SELECT id FROM scans WHERE subject_kind = 'PATIENT' AND subject_id = ?1")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([id], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        for sql in [
+            "DELETE FROM interviews WHERE patient_id = ?1",
+            "DELETE FROM patient_drugs WHERE patient_id = ?1",
+            "DELETE FROM biology WHERE patient_id = ?1",
+            "DELETE FROM vaccinations WHERE patient_id = ?1",
+            "DELETE FROM locations WHERE patient_id = ?1",
+            "DELETE FROM patient_travel WHERE patient_id = ?1",
+            "DELETE FROM scans WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
             "DELETE FROM notes WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
-            [id],
+        ] {
+            tx.execute(sql, [id]).map_err(|e| e.to_string())?;
+        }
+        tx.execute(
+            "INSERT INTO settings (key, value) VALUES ('patient_id_high', ?1)
+             ON CONFLICT(key) DO UPDATE SET value = CAST(MAX(CAST(value AS INTEGER), ?1) AS TEXT)",
+            [id.to_string()],
         )
         .map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM patients WHERE id = ?1", [id])
             .map_err(|e| e.to_string())?;
-        tx.commit().map_err(|e| e.to_string())
+        tx.commit().map_err(|e| e.to_string())?;
+        // Les octets suivent les fiches, comme dans `delete_scan` : un
+        // orphelin au fichier des pièces ne se voit nulle part et le
+        // prochain compactage l'emporte.
+        for scan in scans {
+            let _ = self
+                .scans
+                .execute("DELETE FROM scan_blobs WHERE scan_id = ?1", [scan]);
+        }
+        Ok(true)
     }
 
     pub fn interviews_for(&self, patient_id: i64) -> Result<Vec<Interview>, String> {
@@ -30990,6 +31095,16 @@ impl Db {
     /// Update a drug card. Compare-and-set against the card as loaded,
     /// like every other shared-row write. Returns `false` when stale.
     pub fn update_drug(&self, new: &Drug, expected: &Drug) -> Result<bool, String> {
+        // **La fiche et ses verrous en une transaction.** Écrits l'un
+        // après l'autre, un champ vidé exprès pouvait se retrouver sans
+        // son verrou — un partage qui tombe entre les deux, ou le
+        // « Compléter » d'un autre poste passé au milieu —, et le texte
+        // de référence revenait dedans. Les deux écritures passent par
+        // la même connexion, donc dans la même transaction.
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
         let changed = self
             .conn
             .execute(
@@ -31068,6 +31183,7 @@ impl Db {
         if changed == 1 {
             self.lock_edited_fields(new, expected)?;
         }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(changed == 1)
     }
 
@@ -32620,8 +32736,14 @@ impl Db {
                     name = ?1, form = ?2, indication = ?3, formula = ?4,
                     yield_amount = ?5, method = ?6, conservation = ?7,
                     caution = ?8, tags = ?9, sources = ?10
-                 WHERE id = ?11 AND name = ?12 AND formula = ?13",
-                (
+                 WHERE id = ?11 AND name = ?12 AND formula = ?13
+                   AND form = ?14 AND indication = ?15 AND yield_amount = ?16
+                   AND method = ?17 AND conservation = ?18 AND caution = ?19
+                   AND tags = ?20 AND sources = ?21",
+                // Toutes les colonnes écrites sont comparées : un mode
+                // opératoire corrigé ailleurs n'est pas remis à l'ancien
+                // par la conservation qu'on corrige ici.
+                rusqlite::params![
                     &new.name,
                     &new.form,
                     &new.indication,
@@ -32635,7 +32757,15 @@ impl Db {
                     new.id,
                     &expected.name,
                     &expected.formula,
-                ),
+                    &expected.form,
+                    &expected.indication,
+                    &expected.yield_amount,
+                    &expected.method,
+                    &expected.conservation,
+                    &expected.caution,
+                    &expected.tags,
+                    &expected.sources,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -33906,7 +34036,9 @@ impl Db {
                         family = ?11, status = ?12, max_days = ?13, note = ?14,
                         per_box = ?15
                   WHERE id = ?1 AND label = ?7 AND unit = ?8
-                    AND threshold = ?9 AND archived = ?10",
+                    AND threshold = ?9 AND archived = ?10
+                    AND family = ?16 AND status = ?17 AND max_days = ?18
+                    AND note = ?19 AND per_box = ?20 AND drug_id = ?21",
                 rusqlite::params![
                     new.id,
                     label,
@@ -33923,6 +34055,17 @@ impl Db {
                     new.max_days.max(0),
                     new.note.trim(),
                     new.per_box.max(0.0),
+                    // **Toutes les colonnes écrites sont comparées.** Le
+                    // conditionnement d'une boîte, appris par un autre
+                    // poste la boîte en main, était remis à l'ancien par
+                    // la note qu'on enregistrait ici — et c'est lui qui
+                    // multiplie le prochain comptage.
+                    expected.family,
+                    expected.status,
+                    expected.max_days,
+                    expected.note,
+                    expected.per_box,
+                    expected.drug_id,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -35397,17 +35540,22 @@ impl Db {
     /// l'aurait emportée en réécrivant les horaires de quelqu'un. On ne
     /// supprime pas les congés d'une personne parce qu'on lui change ses
     /// heures du mercredi.
-    pub fn shift_patterns(&self, operator: &str) -> Result<Vec<i64>, String> {
+    ///
+    /// **Et une trame terminée n'en est plus une.** Sa ligne reste — elle
+    /// dit qui travaillait l'an dernier —, mais la charger la faisait
+    /// remplacer, donc supprimer, au prochain « Poser ».
+    pub fn shift_patterns(&self, operator: &str, today: &str) -> Result<Vec<i64>, String> {
         let mut stmt = self
             .conn
             .prepare(
                 "SELECT id, cadence, repeat_days, kind FROM shifts
                  WHERE operator = ?1 AND supersedes = 0
+                   AND (repeat_until = '' OR repeat_until >= ?2)
                  ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
         let rows: Vec<(i64, String, i64, String)> = stmt
-            .query_map([operator], |r| {
+            .query_map([operator, today], |r| {
                 Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
             })
             .map_err(|e| e.to_string())?
@@ -37762,7 +37910,13 @@ mod tests {
         assert!(db.delete_bio_result(id, 4.9).unwrap());
         assert_eq!(db.bio_results(pid).unwrap().len(), 1);
         // Deleting the patient takes the biology with it.
-        db.delete_patient(pid).unwrap();
+        let shown = db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == pid)
+            .unwrap();
+        assert!(db.delete_patient(&shown).unwrap());
         assert!(db.bio_results(pid).unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);
@@ -38794,13 +38948,16 @@ mod tests {
         // avec sa ligne rangée, dans la transaction de `delete_shift` —
         // et effacer le congé de quelqu'un parce qu'on lui réécrit ses
         // horaires serait le contraire de ce qu'on a demandé.
-        assert_eq!(db.shift_patterns("CL").unwrap(), vec![paire]);
+        assert_eq!(db.shift_patterns("CL", "2026-01-01").unwrap(), vec![paire]);
         assert!(
-            db.shift_patterns("MB").unwrap().is_empty(),
+            db.shift_patterns("MB", "2026-01-01").unwrap().is_empty(),
             "« ce jour-là » n'est pas une trame, quoi que porte repeat_days"
         );
-        assert_eq!(db.shift_patterns("YS").unwrap().len(), 1);
-        assert!(db.shift_patterns("Personne").unwrap().is_empty());
+        assert_eq!(db.shift_patterns("YS", "2026-01-01").unwrap().len(), 1);
+        assert!(db
+            .shift_patterns("Personne", "2026-01-01")
+            .unwrap()
+            .is_empty());
         // **Une absence n'est pas une trame.** Un congé posé en plage
         // revient tous les jours jusqu'à sa fin : il répète, donc il
         // passerait le premier filtre — et « Remplacer la trame »
@@ -38817,7 +38974,7 @@ mod tests {
         })
         .unwrap();
         assert_eq!(
-            db.shift_patterns("CL").unwrap(),
+            db.shift_patterns("CL", "2026-01-01").unwrap(),
             vec![paire],
             "le congé en plage n'entre pas dans les trames"
         );
@@ -40735,7 +40892,20 @@ mod tests {
         // The treatment leaves the file and takes its posology with it:
         // re-adding it does not resurrect yesterday's dose.
         assert!(db.set_patient_posology(jean, drug, "5 mg", "").unwrap());
-        db.remove_patient_drug(jean, drug).unwrap();
+        // Retirée **telle qu'elle est montrée** : vue sans sa posologie,
+        // la ligne ne part pas — un autre poste venait de l'écrire.
+        assert!(!db
+            .remove_patient_drug(jean, drug, "", "", &crate::renewal::Prescription::default())
+            .unwrap());
+        assert!(db
+            .remove_patient_drug(
+                jean,
+                drug,
+                "5 mg",
+                "",
+                &crate::renewal::Prescription::default()
+            )
+            .unwrap());
         db.add_patient_drug(jean, drug).unwrap();
         assert!(db.patient_posologies(jean).unwrap().is_empty());
 
@@ -42366,7 +42536,13 @@ mod tests {
         assert!(!db.delete_note(n2, "Allergie pénicilline ?").unwrap());
 
         // Deleting the patient / drug removes their journals.
-        db.delete_patient(pid).unwrap();
+        let shown = db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == pid)
+            .unwrap();
+        assert!(db.delete_patient(&shown).unwrap());
         assert!(db.notes_for(NoteSubject::Patient, pid).unwrap().is_empty());
         assert!(db.delete_drug(did, "Eliquis").unwrap());
         assert!(db.notes_for(NoteSubject::Drug, did).unwrap().is_empty());
@@ -42464,6 +42640,47 @@ mod tests {
         let _ = std::fs::remove_file(&bak);
     }
 
+    /// **Supprimer un dossier supprime tout le dossier, seulement celui
+    /// qu'on voit, et son numéro ne resert jamais.** Supprimé le dernier
+    /// créé, le suivant reprenait son numéro et héritait de ses
+    /// vaccinations, de ses voyages — et des lignes du registre qui le
+    /// citent.
+    #[test]
+    fn a_deleted_file_takes_everything_and_its_number_is_never_reused() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-delfile-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("delfile.db");
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Martin", "Claire", "1970-01-01").unwrap();
+        db.add_vaccination(
+            pid,
+            &Vaccination {
+                code: "GRIPPE".to_owned(),
+                label: "Grippe".to_owned(),
+                given_on: "2025-10-01".to_owned(),
+                ..Vaccination::default()
+            },
+        )
+        .unwrap();
+        db.add_travel(pid, "ML", "").unwrap();
+        let shown = db.patients().unwrap()[0].clone();
+        // Vu avant une correction d'un autre poste : refusé.
+        let mut moved = shown.clone();
+        moved.last_name = "Martine".to_owned();
+        assert!(db.update_patient(&moved, &shown).unwrap());
+        assert!(
+            !db.delete_patient(&shown).unwrap(),
+            "pas celui qu'on voyait"
+        );
+        let shown = db.patients().unwrap()[0].clone();
+        assert!(db.delete_patient(&shown).unwrap());
+        let next = db.add_patient("Moreau", "Lucie", "1980-02-02").unwrap();
+        assert!(next > pid, "le numéro {pid} ne resert pas ({next})");
+        assert!(db.vaccinations(next).unwrap().is_empty());
+        assert!(db.vaccinations(pid).unwrap().is_empty());
+    }
+
     #[test]
     fn patients_can_be_corrected_and_deleted() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-edit-{}", std::process::id()));
@@ -42519,7 +42736,9 @@ mod tests {
         let on_drug = db.patients_for_drug(did).unwrap();
         assert_eq!(on_drug.len(), 1);
         assert_eq!(on_drug[0].full_name(), "Jean Dupont");
-        db.remove_patient_drug(pid, did).unwrap();
+        assert!(db
+            .remove_patient_drug(pid, did, "", "", &crate::renewal::Prescription::default())
+            .unwrap());
         assert!(db.drugs_for_patient(pid).unwrap().is_empty());
         db.add_patient_drug(pid, did).unwrap();
 
@@ -42537,7 +42756,13 @@ mod tests {
         // Deletion removes the patient, their interviews and their
         // treatment links atomically (the drug card itself stays).
         db.add_interview(pid, InterviewKind::Bpm).unwrap();
-        db.delete_patient(pid).unwrap();
+        let shown = db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == pid)
+            .unwrap();
+        assert!(db.delete_patient(&shown).unwrap());
         assert!(db.patients().unwrap().is_empty());
         assert!(db.interviews_for(pid).unwrap().is_empty());
         assert!(db.drugs_for_patient(pid).unwrap().is_empty());
