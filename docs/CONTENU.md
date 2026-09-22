@@ -994,7 +994,7 @@ conseils à tenir à jour deux fois.
   traitements du dossier, la feuille collée, et la base de fiches.
 - **Ce qui s'ajuste quand même** : la lecture d'une ligne
   (`split_line`), qui doit survivre aux vingt façons dont une ordonnance
-  de sortie est écrite, et le rapprochement (`match_name`), qui refuse
+  de sortie est écrite, et le rapprochement (`scored_match`), qui refuse
   de deviner sur moins de trois lettres. Une feuille d'un format que le
   module lit mal se corrige **là**, avec un cas de plus dans
   `a_line_gives_up_its_product_and_its_dose` — jamais par une liste de

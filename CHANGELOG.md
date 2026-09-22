@@ -5,6 +5,48 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.248.0] - 2026-09-23
+
+### Fixed
+- **La grille de prise n'imprime plus un intervalle comme une
+  quantité.** Un nombre suivi de « heures », « minutes », « à » ou « en
+  N prises » était lu comme un nombre de comprimés : la feuille du
+  Skenan portait « 12 » au matin et au soir — « toutes les 12 heures » —,
+  celle des statines « 20 » au soir, celle du Mopral « 30 » au matin, et
+  en gras. Un nombre n'est plus une quantité que si une unité de
+  comptage ou le moment qu'il précède le dit ; une fourchette (« 1 à 2
+  comprimés ») porte une marque, jamais un des deux bouts.
+- **Un triptan, une interdose ne se lisent plus « 1 prise par jour ».**
+  « Dès le début de la céphalée », « dès les premiers signes » et
+  « interdose » disent une prise à la demande ; un plafond (« sans
+  dépasser 300 mg par jour ») ne dit plus un rythme, un intervalle en
+  heures ou « en 2 ou 3 prises » non plus. Le pas d'une titration
+  (« doublés toutes les deux semaines ») reste un traitement quotidien,
+  et « cinq fois par jour » se compte.
+- « Au cours ou en dehors des repas » n'imprime plus « En dehors des
+  repas », et « une nuit sur deux » n'est plus dessinée chaque soir.
+- **Un rendez-vous n'est plus annoncé dans le passé** sur la feuille de
+  traitement : sept jours de prévenance sur cinq jours d'antibiotique
+  donnaient une date antérieure à l'ordonnance. Et « couvert jusqu'au »
+  ne se dit plus d'une délivrance non notée ni d'une ordonnance
+  terminée.
+- **Le plan de surveillance** ne réclame plus d'INR pour la vitamine K1
+  ni de numération pour la Lederfoline (un antidote n'hérite pas du
+  suivi de ce qu'il corrige), plus de phosphore pour le Lokelma ni
+  d'hématocrite pour le Casodex ; il ne dit plus que l'amiloride
+  « descend le potassium », et huit antidiabétiques — Daonil, Novonorm,
+  Galvus, Glucor, Victoza… — ont retrouvé leur HbA1c et leur
+  microalbuminurie.
+- **La conciliation** ne cache plus un arrêt derrière un rapprochement
+  partiel : le Codoliprane du dossier ne prend plus « Paracétamol » à la
+  place du Doliprane, si bien que l'arrêt de la codéine se lit. Un
+  remplacement se reconnaît par le référentiel des classes (l'Humira
+  remplacé par le Remicade n'est plus un arrêt et un ajout), et
+  « 1 - Kardegic » se lit Kardegic.
+- **La trame de la semaine** ne coupe plus sa colonne des durées en
+  « 8 h 3 » à l'échelle 1,6 : quand la rangée ne tient pas, la durée du
+  jour cède, le total de la semaine restant écrit sous la grille.
+
 ## [0.247.0] - 2026-09-23
 
 ### Fixed

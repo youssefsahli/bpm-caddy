@@ -29827,7 +29827,26 @@ impl App {
                         // rendait « 19h3 ». Une invite est un exemple, jamais un
                         // gabarit.
                         let hour_w = Self::field_width(ui, ["19h30", "12h30"].into_iter());
-                        let name_w = chars_wide(ui, 10.0);
+                        // **Les colonnes de texte se mesurent sur ce
+                        // qu'elles portent** — le nom du jour le plus
+                        // long, la durée la plus longue qu'un jour puisse
+                        // écrire —, et non sur dix et neuf caractères de
+                        // gabarit.
+                        let name_w = Self::widest(ui, 11.0, WEEKDAYS_FR.into_iter());
+                        let sum_w = Self::widest(ui, 11.0, ["23 h 59", "—"].into_iter());
+                        let kind_w = chars_wide(ui, 14.0);
+                        // **Et la durée du jour cède la première.** À
+                        // `text_scale = 1,6` la rangée dépassait la fenêtre
+                        // de quelques dizaines de pixels : la colonne des
+                        // durées sortait « 8 h 3 », coupée par le bord —
+                        // un chiffre tronqué qui se lit comme un autre
+                        // chiffre. C'est la garniture de la rangée : le
+                        // total de la page est écrit sous la grille, et
+                        // les champs sont ce qu'on remplit.
+                        let gutter = ui.spacing().item_spacing.x;
+                        let row_w =
+                            name_w + kind_w + 4.0 * hour_w + chars_wide(ui, 5.0) + 6.0 * gutter;
+                        let show_sum = row_w + gutter + sum_w <= ui.clip_rect().width();
                         let mut total = 0_u16;
                         let mut unknown = 0_usize;
                         egui::Grid::new("frame_grid")
@@ -29861,7 +29880,7 @@ impl App {
                                     motif::select(
                                         ui,
                                         ("frame_kind", page, i),
-                                        chars_wide(ui, 14.0),
+                                        kind_w,
                                         &mut day.kind,
                                         &kinds,
                                     );
@@ -29940,17 +29959,21 @@ impl App {
                                             total = total.saturating_add(day_minutes);
                                         }
                                     }
-                                    Self::grid_cell(
-                                        ui,
-                                        chars_wide(ui, 9.0),
-                                        egui::RichText::new(match (day.written(), day_unknown) {
-                                            (false, _) => String::new(),
-                                            (true, true) => "—".to_owned(),
-                                            (true, false) => planning::hhmm(day_minutes),
-                                        })
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
-                                    );
+                                    if show_sum {
+                                        Self::grid_cell(
+                                            ui,
+                                            sum_w,
+                                            egui::RichText::new(
+                                                match (day.written(), day_unknown) {
+                                                    (false, _) => String::new(),
+                                                    (true, true) => "—".to_owned(),
+                                                    (true, false) => planning::hhmm(day_minutes),
+                                                },
+                                            )
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                        );
+                                    }
                                     ui.end_row();
                                 }
                             });

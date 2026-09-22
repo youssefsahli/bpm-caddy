@@ -158,10 +158,15 @@ pub fn split_line(raw: &str) -> (&str, &str) {
             .take_while(|(_, c)| c.is_ascii_digit())
             .count();
         let rest = &line[digits..];
-        if digits > 0 && rest.starts_with([')', '.', '-', '/']) {
-            rest[1..].trim_start()
-        } else {
-            line
+        // Un espace entre le numéro et son séparateur ne l'en détache
+        // pas : « 1 - Kardegic » se lisait « 1 - Kardegic » et ne
+        // rapprochait rien.
+        let spaced = rest.trim_start();
+        match spaced.chars().next() {
+            Some(c @ (')' | '.' | '-' | '/' | '–' | '—')) if digits > 0 => {
+                spaced[c.len_utf8()..].trim_start()
+            }
+            _ => line,
         }
     };
     let cut = |at: usize| {
@@ -226,7 +231,10 @@ fn word_starts(line: &str) -> Vec<(usize, &str)> {
 /// trois lettres : « AS » rapproché de tout n'aide personne. Un score et
 /// non un premier trouvé, parce que « Kardegic » doit gagner contre
 /// « Kardegic 75 » aussi bien que l'inverse.
-pub fn match_name(name: &str, base: &[Known]) -> Option<usize> {
+///
+/// Rend l'index **et la qualité** du rapprochement : `compare` en a
+/// besoin pour préférer un exact de la base à un partiel du dossier.
+fn scored_match(name: &str, base: &[Known]) -> Option<(i32, usize)> {
     let needle = crate::fuzzy::sort_key(name.trim());
     if needle.chars().filter(|c| c.is_alphanumeric()).count() < 3 {
         return None;
@@ -261,7 +269,7 @@ pub fn match_name(name: &str, base: &[Known]) -> Option<usize> {
             }
         }
     }
-    best.map(|(_, i)| i)
+    best
 }
 
 /// Comparer l'ordonnance du dossier à une liste tapée ou collée.
@@ -305,9 +313,19 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
         if name.is_empty() {
             continue;
         }
-        let found = match_name(name, &from_file)
-            .map(|i| &from_file[i])
-            .or_else(|| match_name(name, base).map(|i| &base[i]));
+        // **Le dossier d'abord, mais pas un rapprochement partiel contre
+        // un exact.** Le Codoliprane du dossier (« paracétamol +
+        // codéine ») prenait « Paracétamol 1 g » par préfixe, sans que
+        // la base soit consultée alors que le Doliprane y répond
+        // exactement : la ligne se lisait « dose changée » et l'arrêt
+        // de la codéine n'était dit nulle part. À égalité, le dossier
+        // garde la main — c'est la raison de le lire en premier.
+        let found = match (scored_match(name, &from_file), scored_match(name, base)) {
+            (Some((f, i)), Some((b, _))) if f >= b => Some(&from_file[i]),
+            (Some((_, i)), None) => Some(&from_file[i]),
+            (_, Some((_, j))) => Some(&base[j]),
+            (None, None) => None,
+        };
         match found {
             Some(k) => {
                 entries.push(Entry {
@@ -425,13 +443,16 @@ fn fold_switches(list: &mut Vec<Divergence>) {
             .enumerate()
             .filter(|(_, d)| d.kind == Change::Stopped && !d.note.trim().is_empty())
             .find_map(|(si, s)| {
-                let key = crate::fuzzy::sort_key(s.note.trim());
+                // **La classe se compare par le référentiel**, jamais
+                // par son libellé : « anti-TNF alpha » et « anti-TNF »
+                // sont une classe, et l'Humira remplacé par le Remicade
+                // se lisait arrêté puis ajouté.
                 list.iter()
                     .enumerate()
                     .find(|(_, a)| {
                         a.kind == Change::Added
-                            && crate::fuzzy::sort_key(a.note.trim()) == key
                             && !a.note.trim().is_empty()
+                            && crate::classes::same(s.note.trim(), a.note.trim())
                     })
                     .map(|(ai, _)| (si, ai))
             });
@@ -575,7 +596,7 @@ mod tests {
     #[test]
     fn a_line_finds_its_fiche_by_brand_or_by_molecule() {
         let base = base();
-        let by = |n: &str| match_name(n, &base).map(|i| base[i].name);
+        let by = |n: &str| scored_match(n, &base).map(|(_, i)| base[i].name);
         assert_eq!(by("Kardegic"), Some("Kardegic 75"));
         assert_eq!(by("KARDEGIC 75"), Some("Kardegic 75"));
         // Par la DCI, que la feuille de l'hôpital écrit plus volontiers
@@ -792,5 +813,56 @@ Vogalène lyoc si nausées
         for _ in 0..20 {
             assert_eq!(compare(&held, list, &base), first);
         }
+    }
+
+    /// **Trois lectures qu'une feuille d'hôpital défaisait** : un
+    /// rapprochement partiel sur le dossier préféré à un exact dans la
+    /// base, une classe comparée sur son libellé, un numéro de ligne
+    /// suivi d'un espace.
+    #[test]
+    fn a_partial_match_on_the_file_does_not_hide_an_exact_one() {
+        let base = vec![
+            Known {
+                name: "Doliprane",
+                dci: "paracétamol",
+                class: "antalgique",
+            },
+            Known {
+                name: "Remicade",
+                dci: "infliximab",
+                class: "anti-TNF",
+            },
+            Known {
+                name: "Kardegic",
+                dci: "acétylsalicylate de lysine",
+                class: "antiagrégant",
+            },
+        ];
+        let held = vec![Held {
+            name: "Codoliprane",
+            dci: "paracétamol + codéine",
+            class: "antalgique palier 2",
+            posology: "2 cp 3 fois par jour",
+        }];
+        let out = compare(&held, "Paracétamol 1 g 1-0-1", &base);
+        assert!(
+            out.iter()
+                .any(|d| d.label == "Codoliprane" && d.kind == Change::Stopped),
+            "l'arrêt de la codéine doit se lire : {out:?}"
+        );
+        // Une classe, deux libellés.
+        let held = vec![Held {
+            name: "Humira",
+            dci: "adalimumab",
+            class: "anti-TNF alpha",
+            posology: "40 mg tous les 14 jours",
+        }];
+        let out = compare(&held, "Remicade 5 mg/kg toutes les 8 semaines", &base);
+        assert_eq!(out.len(), 1, "{out:?}");
+        assert_eq!(out[0].kind, Change::Switched);
+        // Un numéro, un espace, un tiret.
+        let out = compare(&[], "1 - Kardegic 75 mg : 1 sachet", &base);
+        assert_eq!(out[0].label, "Kardegic", "{out:?}");
+        assert_eq!(out[0].kind, Change::Added);
     }
 }

@@ -197,15 +197,21 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
     let from = p.prescribed_on.trim();
     let duration = i64::from(p.duration_days);
     let ends_on = add_days(from, duration * i64::from(steps));
+    // **Un rendez-vous ne se prend pas dans le passé.** Quand le délai
+    // de prévenance dépasse ce qui reste — sept jours de prévenance sur
+    // un antibiotique de cinq —, la date tombait avant aujourd'hui, et
+    // parfois avant la prescription elle-même : la feuille remise le
+    // jour même disait « avant le 20/09 » d'une ordonnance du 22. Il
+    // n'y a alors plus de date à annoncer, seulement la fin.
     let see_by = ends_on
         .as_deref()
-        .and_then(|e| add_days(e, -i64::from(notice_days)));
+        .and_then(|e| add_days(e, -i64::from(notice_days)))
+        .filter(|d| d.as_str() >= today);
     // **La boîte du jour couvre à partir d'aujourd'hui**, et non à
     // partir d'un rang multiplié par une durée : c'est le jour de la
     // délivrance qui commande, et il est passé en argument. Un patient
     // venu avec huit jours de retard n'est pas couvert huit jours de
     // plus.
-    let covered_to = add_days(today, duration);
     let days_left = ends_on.as_deref().and_then(|e| days_between(today, e));
     let expired = days_left.is_some_and(|d| d < 0);
     let step = p.dispensed.min(steps);
@@ -215,6 +221,12 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
         () if step >= steps => State::Last,
         () => State::Running,
     };
+    // Et « couvert jusqu'au » ne se dit que d'une délivrance notée, sur
+    // une ordonnance qui court : la feuille écrivait « délivrance non
+    // notée » puis la date qu'elle couvrait.
+    let covered_to = (step > 0 && state != State::Over)
+        .then(|| add_days(today, duration))
+        .flatten();
     Stand {
         state,
         step,
@@ -494,5 +506,26 @@ mod tests {
         }
         assert_eq!(Viz::from_key("histogramme"), Viz::default());
         assert_eq!(Viz::from_key(""), Viz::default());
+    }
+
+    /// **Un rendez-vous ne se prend pas dans le passé**, et une
+    /// délivrance non notée ne couvre rien. Cinq jours d'antibiotique
+    /// prescrits et délivrés le 22 : la feuille disait « prenez
+    /// rendez-vous avant le 20 », deux jours avant l'ordonnance.
+    #[test]
+    fn an_appointment_is_never_announced_in_the_past() {
+        let s = read(&p("2026-09-22", 5, 0, 1), "2026-09-22", 7);
+        assert_eq!(s.see_by, None, "{s:?}");
+        assert_eq!(s.ends_on.as_deref(), Some("2026-09-27"));
+        // En retard sur la dernière délivrance : plus de date à tenir.
+        let s = read(&p("2026-06-01", 30, 2, 3), "2026-08-28", 7);
+        assert_eq!(s.see_by, None, "{s:?}");
+        // Rien de délivré : rien de couvert.
+        let s = read(&p("2026-09-22", 30, 2, 0), "2026-09-22", 7);
+        assert_eq!(s.covered_to, None, "{s:?}");
+        // Terminée : rien de couvert non plus.
+        let s = read(&p("2026-01-01", 30, 0, 1), "2026-09-22", 7);
+        assert_eq!(s.state, State::Over);
+        assert_eq!(s.covered_to, None);
     }
 }

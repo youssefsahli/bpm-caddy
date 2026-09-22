@@ -1786,7 +1786,7 @@ fn renewal_sentence(s: &crate::renewal::Stand) -> String {
         _ => {
             out.push(' ');
             out.push_str(&trf("fiche_renewal_valid", day(&s.ends_on)));
-            if s.see_by != s.ends_on {
+            if s.see_by.is_some() && s.see_by != s.ends_on {
                 out.push(' ');
                 out.push_str(&trf("fiche_renewal_see_by", day(&s.see_by)));
             }

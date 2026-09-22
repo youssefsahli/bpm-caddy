@@ -26,6 +26,12 @@ pub struct Watch {
     pub every_months: u32,
     /// Pourquoi on le demande, en une phrase de comptoir.
     pub why: &'static str,
+    /// Ce que la règle ne vise **pas**, bien que ses mots l'attrapent —
+    /// le veto de `renal.rs` et de `gravidity.rs`, pour la même raison :
+    /// un mot court vit dans un autre (« androgène » dans
+    /// « anti-androgène »), et un mot de classe nomme plus d'une chose
+    /// (« chélateur » du phosphore, du potassium, des acides biliaires).
+    pub never: &'static [&'static str],
 }
 
 /// Où en est le dossier pour un analyte.
@@ -201,6 +207,19 @@ pub fn due(
     let folded: Vec<(String, String)> = treatments
         .iter()
         .filter(|t| !crate::classes::is_local_form(t.class))
+        // **Un antidote ne réclame pas la surveillance de ce qu'il
+        // corrige.** Les suivis sont indexés sur la molécule, et la
+        // classe d'un antidote la nomme : la vitamine K1 (« antidote des
+        // AVK ») recevait un INR mensuel « sous AVK », la Lederfoline
+        // (« antidote du méthotrexate ») des transaminases et une
+        // numération trimestrielles « pour toxicité médullaire ». C'est
+        // le piège que le `Without` de `revue.rs` a dû se donner un veto
+        // pour éviter, écarté ici une fois.
+        .filter(|t| {
+            !crate::fuzzy::sort_key(t.class)
+                .trim_start()
+                .starts_with("antidote")
+        })
         .map(|t| {
             (
                 t.name.trim().to_owned(),
@@ -232,6 +251,10 @@ pub fn due(
                     .needs
                     .iter()
                     .any(|n| crate::fuzzy::contains_folded(hay, n))
+                    && !watch
+                        .never
+                        .iter()
+                        .any(|n| crate::fuzzy::contains_folded(hay, n))
             })
             .map(|(name, _)| name.clone())
             .collect();
@@ -332,12 +355,14 @@ pub const WATCHES: &[Watch] = &[
         code: "INR",
         every_months: 1,
         why: "Sous AVK l'INR se contrôle au moins une fois par mois une fois la dose stable, et à chaque changement de traitement, de régime ou d'état.",
+        never: &[],
     },
     Watch {
         needs: &["AOD", "apixaban", "rivaroxaban", "dabigatran", "édoxaban"],
         code: "DFG",
         every_months: 12,
         why: "La dose d'un AOD se décide sur la clairance : au moins une fois par an, tous les six mois au-delà de 75 ans, en cas de poids faible ou de clairance sous 60, et à chaque épisode aigu — fièvre, diarrhée, canicule.",
+        never: &[],
     },
     Watch {
         // **Sans le fondaparinux.** Sa fiche écrit que « la surveillance
@@ -353,6 +378,7 @@ pub const WATCHES: &[Watch] = &[
         code: "PLQ",
         every_months: 1,
         why: "La thrombopénie induite par l'héparine survient entre le cinquième et le vingt et unième jour : la numération plaquettaire la trouve, et elle se surveille pendant tout le traitement.",
+        never: &[],
     },
     Watch {
         // The unfractionated one only: under a low-molecular-weight
@@ -361,12 +387,14 @@ pub const WATCHES: &[Watch] = &[
         code: "TCA",
         every_months: 1,
         why: "Sous héparine non fractionnée, c'est le TCA qui règle la dose : rapport de 1,5 à 2,5 fois le témoin, contrôlé 4 à 6 h après le début ou tout changement, puis chaque jour. Sous HBPM il n'est pas interprétable.",
+        never: &[],
     },
     Watch {
         needs: &["HBPM", "énoxaparine", "tinzaparine", "daltéparine"],
         code: "DFG",
         every_months: 12,
         why: "Les héparines de bas poids moléculaire s'accumulent quand le rein filtre mal : au-dessous de 30 mL/min les doses curatives sont contre-indiquées.",
+        never: &[],
     },
     // --- Rein, tension, cœur ---
     Watch {
@@ -374,54 +402,67 @@ pub const WATCHES: &[Watch] = &[
         code: "K",
         every_months: 12,
         why: "Un bloqueur du système rénine-angiotensine monte le potassium : kaliémie et créatinine une à deux semaines après l'instauration ou toute majoration, puis au moins une fois par an.",
+        never: &[],
     },
     Watch {
         needs: &["pril", "IEC", "sartan"],
         code: "DFG",
         every_months: 12,
         why: "La fonction rénale se contrôle après l'instauration puis annuellement : une hausse de la créatinine de plus de 30 % fait rediscuter le traitement.",
+        never: &[],
     },
     Watch {
-        needs: &["spironolactone", "éplérénone", "anti-aldostérone"],
+        // L'amiloride monte le potassium comme eux : sans elle ici, le
+        // Modamide tombait dans la règle des diurétiques, qui dit
+        // qu'ils le **descendent**. Ce suivi-ci vient avant et a le même
+        // rythme, si bien que sa raison l'emporte.
+        needs: &["spironolactone", "éplérénone", "anti-aldostérone", "amiloride"],
         code: "K",
         every_months: 6,
         why: "L'anti-aldostérone est le médicament qui fait le plus d'hyperkaliémies graves : kaliémie et créatinine à une semaine, à un mois, puis tous les trois à six mois.",
+        never: &[],
     },
     Watch {
         needs: &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide", "bumétanide"],
         code: "NA",
         every_months: 6,
         why: "Le thiazidique fait l'hyponatrémie du sujet âgé, et elle est silencieuse jusqu'à la chute ou la confusion. Natrémie, kaliémie et créatinine ensemble.",
+        never: &[],
     },
     Watch {
         needs: &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide", "bumétanide"],
         code: "K",
         every_months: 6,
         why: "Les diurétiques de l'anse et thiazidiques descendent le potassium, et l'hypokaliémie fait le trouble du rythme — d'autant plus sous digoxine ou sous allongeur du QT.",
+        never: &[],
     },
     Watch {
         needs: &["digoxine", "digitalique"],
         code: "DIGOX",
         every_months: 6,
         why: "Marge thérapeutique étroite : la digoxinémie se prélève au moins six heures après la prise, et se lit avec la kaliémie et la fonction rénale.",
+        never: &[],
     },
     Watch {
         needs: &["amiodarone"],
         code: "TSH",
         every_months: 6,
         why: "L'amiodarone contient de l'iode et dérègle la thyroïde dans les deux sens, parfois des mois après l'arrêt : TSH avant l'instauration puis tous les six mois, et six mois après l'arrêt.",
+        never: &[],
     },
     Watch {
         needs: &["amiodarone"],
         code: "ALAT",
         every_months: 6,
         why: "Hépatotoxicité de l'amiodarone : transaminases avant l'instauration puis tous les six mois.",
+        never: &[],
     },
     Watch {
         needs: &["sacubitril", "valsartan sacubitril", "Entresto"],
         code: "K",
         every_months: 6,
         why: "Même surveillance qu'un bloqueur du système rénine-angiotensine, et le passage depuis un IEC demande trente-six heures d'arrêt.",
+        never: &[],
     },
     // --- Lipides, diabète ---
     Watch {
@@ -429,30 +470,40 @@ pub const WATCHES: &[Watch] = &[
         code: "LDL",
         every_months: 12,
         why: "Le LDL est la cible du traitement : bilan lipidique deux à trois mois après l'instauration ou tout changement de dose, puis une fois par an quand la cible est atteinte.",
+        never: &[],
     },
     Watch {
         needs: &["vastatine", "fibrate", "fénofibrate", "ézétimibe"],
         code: "ALAT",
         every_months: 12,
         why: "Transaminases avant l'instauration et à trois mois ; ensuite seulement si la dose change ou si un symptôme apparaît. Un dosage systématique de CPK n'a d'intérêt que devant des douleurs musculaires.",
+        never: &[],
     },
     Watch {
         needs: &["metformine"],
         code: "DFG",
         every_months: 12,
         why: "La metformine se contre-indique sous 30 mL/min et se réduit de moitié entre 30 et 45 : la clairance au moins une fois par an, plus souvent chez le sujet âgé.",
+        never: &[],
     },
     Watch {
-        needs: &["antidiabétique", "metformine", "insuline", "gliclazide", "glimépiride", "sitagliptine", "dapagliflozine", "empagliflozine", "sémaglutide", "dulaglutide"],
+        // « antidiabétique » ne nomme aucune classe livrée : les
+        // sulfamides, glinides, gliptines, GLP-1 et inhibiteurs des
+        // alpha-glucosidases se nomment par leur classe, et huit fiches
+        // — Daonil, Glipizide, Novonorm, Galvus, Onglyza, Glucor,
+        // Victoza, Mounjaro — n'avaient pas d'HbA1c.
+        needs: &["antidiabétique", "metformine", "insuline", "gliclazide", "glimépiride", "sitagliptine", "dapagliflozine", "empagliflozine", "sémaglutide", "dulaglutide", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "alpha-glucosidase", "tirzépatide"],
         code: "HBA1C",
         every_months: 3,
         why: "L'HbA1c reflète les trois derniers mois : tous les trois mois tant que la cible n'est pas tenue, tous les six mois ensuite. La cible se personnalise — 7 % n'est pas la cible de tout le monde.",
+        never: &[],
     },
     Watch {
         needs: &["dapagliflozine", "empagliflozine", "canagliflozine", "gliflozine"],
         code: "DFG",
         every_months: 12,
         why: "Une baisse de la filtration dans les premières semaines est attendue et réversible ; c'est ensuite que la clairance se surveille, et le traitement se suspend en cas de déshydratation.",
+        never: &[],
     },
     // --- Thyroïde ---
     Watch {
@@ -460,18 +511,21 @@ pub const WATCHES: &[Watch] = &[
         code: "TSH",
         every_months: 12,
         why: "TSH six à huit semaines après toute modification de dose ou tout changement de spécialité, puis une fois par an quand l'équilibre tient.",
+        never: &[],
     },
     Watch {
         needs: &["carbimazole", "thiamazole", "propylthiouracile", "antithyroïdien"],
         code: "GB",
         every_months: 3,
         why: "Agranulocytose : toute fièvre ou angine sous antithyroïdien impose une numération en urgence et l'arrêt en attendant. La surveillance programmée ne remplace pas cette consigne, elle l'accompagne.",
+        never: &[],
     },
     Watch {
         needs: &["carbimazole", "thiamazole", "propylthiouracile", "antithyroïdien"],
         code: "TSH",
         every_months: 3,
         why: "L'équilibre se cherche : TSH et T4 libre toutes les quatre à six semaines au début, puis tous les trois mois.",
+        never: &[],
     },
     // --- Psychiatrie, neurologie ---
     Watch {
@@ -479,48 +533,56 @@ pub const WATCHES: &[Watch] = &[
         code: "LITH",
         every_months: 3,
         why: "Marge thérapeutique étroite : lithémie douze heures après la dernière prise, tous les trois mois une fois la dose stable, et à chaque changement — déshydratation, AINS, diurétique, IEC.",
+        never: &[],
     },
     Watch {
         needs: &["lithium"],
         code: "TSH",
         every_months: 12,
         why: "Le lithium fait l'hypothyroïdie et l'hyperparathyroïdie : TSH et calcémie une fois par an.",
+        never: &[],
     },
     Watch {
         needs: &["lithium"],
         code: "DFG",
         every_months: 12,
         why: "Le lithium s'élimine par le rein et l'abîme à long terme : la clairance une fois par an, et toute baisse fait remonter la lithémie sans changement de dose.",
+        never: &[],
     },
     Watch {
         needs: &["clozapine"],
         code: "PNN",
         every_months: 1,
         why: "Agranulocytose : numération hebdomadaire pendant dix-huit semaines, puis mensuelle pendant toute la durée du traitement et quatre semaines après l'arrêt. C'est une condition de délivrance.",
+        never: &[],
     },
     Watch {
         needs: &["antipsychotique", "neuroleptique", "olanzapine", "rispéridone", "quétiapine", "aripiprazole", "clozapine"],
         code: "GLY",
         every_months: 12,
         why: "Syndrome métabolique : glycémie à jeun et bilan lipidique à trois mois de l'instauration puis une fois par an, avec le poids et le tour de taille.",
+        never: &[],
     },
     Watch {
         needs: &["valproate", "valproïque", "Dépakine"],
         code: "ALAT",
         every_months: 12,
         why: "Hépatotoxicité, surtout dans les six premiers mois : transaminases et numération avant l'instauration, puis à six mois et une fois par an.",
+        never: &[],
     },
     Watch {
         needs: &["carbamazépine", "oxcarbazépine"],
         code: "NA",
         every_months: 12,
         why: "Hyponatrémie par SIADH, fréquente et silencieuse chez le sujet âgé : natrémie à l'instauration puis une fois par an.",
+        never: &[],
     },
     Watch {
         needs: &["ISRS", "sertraline", "escitalopram", "citalopram", "fluoxétine", "paroxétine", "venlafaxine", "duloxétine"],
         code: "NA",
         every_months: 12,
         why: "L'hyponatrémie sous antidépresseur sérotoninergique apparaît dans les premières semaines et se voit surtout chez le sujet âgé sous diurétique : natrémie à un mois de l'instauration.",
+        never: &[],
     },
     // --- Immunosuppresseurs et anti-inflammatoires ---
     Watch {
@@ -528,36 +590,42 @@ pub const WATCHES: &[Watch] = &[
         code: "ALAT",
         every_months: 3,
         why: "Numération, transaminases et créatinine tous les mois pendant trois mois, puis tous les trois mois. L'acide folique se prend à distance de la prise hebdomadaire, jamais le même jour.",
+        never: &[],
     },
     Watch {
         needs: &["méthotrexate", "azathioprine", "mycophénolate", "léflunomide"],
         code: "GB",
         every_months: 3,
         why: "Toxicité médullaire : numération formule sanguine tous les trois mois, et sans attendre devant une fièvre, une angine ou un saignement.",
+        never: &[],
     },
     Watch {
         needs: &["ciclosporine", "tacrolimus", "évérolimus", "sirolimus"],
         code: "DFG",
         every_months: 3,
         why: "Néphrotoxicité de la classe : créatinine, clairance, kaliémie et magnésémie régulièrement, et le taux résiduel décide de la dose.",
+        never: &[],
     },
     Watch {
         needs: &["anti-TNF", "adalimumab", "étanercept", "infliximab", "tocilizumab", "sécukinumab"],
         code: "ALAT",
         every_months: 6,
         why: "Numération et transaminases tous les trois à six mois. Toute fièvre sous biothérapie fait suspendre l'injection et consulter.",
+        never: &[],
     },
     Watch {
         needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "corticothérapie"],
         code: "GLY",
         every_months: 6,
         why: "Une corticothérapie prolongée déséquilibre le diabète et en révèle : glycémie et kaliémie tous les trois à six mois, avec la tension et le poids.",
+        never: &[],
     },
     Watch {
         needs: &["AINS", "ibuprofène", "diclofénac", "naproxène", "kétoprofène"],
         code: "DFG",
         every_months: 6,
         why: "Un AINS au long cours abîme le rein, d'autant plus avec un IEC et un diurétique : la clairance tous les six mois, et pas d'AINS sous 60 mL/min sans avis.",
+        never: &[],
     },
     // --- Métabolisme, os, digestif ---
     Watch {
@@ -565,42 +633,52 @@ pub const WATCHES: &[Watch] = &[
         code: "URIC",
         every_months: 6,
         why: "La cible est une uricémie sous 60 mg/L (360 µmol/L), sous 50 en cas de tophus : c'est elle qui dit si la dose suffit, et un traitement à dose fixe sans dosage ne sert à rien.",
+        never: &[],
     },
     Watch {
         needs: &["bisphosphonate", "alendronate", "risédronate", "zolédronique", "dénosumab"],
         code: "CA",
         every_months: 12,
         why: "La calcémie et la vitamine D se corrigent avant l'injection, jamais après : sous dénosumab l'hypocalcémie peut être sévère, surtout si la clairance est basse.",
+        never: &[],
     },
     Watch {
         needs: &["bisphosphonate", "dénosumab", "vitamine D", "cholécalciférol", "calcifédiol"],
         code: "VITD",
         every_months: 12,
         why: "Une carence en vitamine D entretient l'hyperparathyroïdie et fait échouer le traitement de l'os : elle se corrige avant, et se recontrôle une fois par an.",
+        never: &[],
     },
     Watch {
         needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         code: "MG",
         every_months: 12,
         why: "Hypomagnésémie des IPP au long cours, après un an ou plus : elle empêche de corriger une hypokaliémie et donne crampes, tremblements et troubles du rythme. Elle justifie surtout de rediscuter l'indication.",
+        never: &[],
     },
     Watch {
         needs: &["metformine", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         code: "B12",
         every_months: 24,
         why: "Metformine et IPP au long cours font la carence en vitamine B12, qui se voit d'abord sur le VGM et donne une neuropathie que l'on met sur le compte du diabète.",
+        never: &[],
     },
     Watch {
         needs: &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         code: "FERR",
         every_months: 3,
         why: "Un traitement martial se juge sur la ferritine et l'hémoglobine à trois mois : reconstituer la réserve demande trois à six mois après la normalisation de l'hémoglobine.",
+        never: &[],
     },
     Watch {
         needs: &["chélateur", "sévélamer", "carbonate de lanthane", "acétate de calcium"],
         code: "PHOS",
         every_months: 3,
         why: "Phosphore, calcium et parathormone se lisent ensemble, jamais séparément — et le chélateur se prend au milieu du repas : à jeun, il ne chélate rien.",
+        // « chélateur » prenait aussi le Questran et le Lokelma : un
+        // phosphore trimestriel « au milieu du repas » pour un chélateur
+        // du potassium.
+        never: &["acides biliaires", "potassium"],
     },
     // --- Divers ---
     Watch {
@@ -608,132 +686,158 @@ pub const WATCHES: &[Watch] = &[
         code: "HTE",
         every_months: 6,
         why: "La testostérone monte l'hématocrite et avec lui le risque thrombotique : hématocrite et PSA avant l'instauration, à trois et six mois, puis une fois par an.",
+        // Le Casodex est un anti-androgène : il recevait un hématocrite
+        // parce que « la testostérone le monte ».
+        never: &["anti-androgène"],
     },
     Watch {
         needs: &["érythropoïétine", "époétine", "darbépoétine", "agent stimulant l'érythropoïèse"],
         code: "HB",
         every_months: 3,
         why: "La cible d'hémoglobine ne se dépasse pas : au-delà de 12 g/dL le risque thrombotique augmente sans bénéfice. Hémoglobine et statut martial régulièrement.",
+        never: &[],
     },
     Watch {
         needs: &["isotrétinoïne", "acitrétine", "rétinoïde"],
         code: "TG",
         every_months: 1,
         why: "Triglycérides et transaminases avant le traitement, à un mois, puis tous les trois mois — et le test de grossesse mensuel, qui est une condition de délivrance.",
+        never: &[],
     },
     Watch {
         needs: &["colchicine"],
         code: "DFG",
         every_months: 12,
         why: "La colchicine s'accumule quand le rein filtre mal, et sa marge est étroite : la dose se réduit selon la clairance et l'association aux inhibiteurs du CYP3A4 est à vérifier.",
+        never: &[],
     },
     Watch {
         needs: &["hypolipémiant", "vastatine", "ézétimibe", "fibrate", "bempédoïque", "évolocumab", "alirocumab"],
         code: "CT",
         every_months: 12,
         why: "Le bilan lipidique complet une fois par an quand la cible est tenue : c'est aussi ce qui dit si le traitement est pris.",
+        never: &[],
     },
     Watch {
-        needs: &["néphroprotection", "diabète", "metformine", "pril", "IEC", "sartan"],
+        // Le diabète se nomme par ses classes, comme pour l'HbA1c :
+        // « diabète » ne nommait aucune fiche.
+        needs: &["néphroprotection", "diabète", "metformine", "pril", "IEC", "sartan", "insuline", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "gliflozine", "iSGLT2"],
         code: "RAC",
         every_months: 12,
         why: "L'albuminurie bouge des années avant le DFG chez le diabétique et l'hypertendu : c'est le marqueur qui permet d'agir tant qu'il reste quelque chose à protéger.",
+        never: &[],
     },
     Watch {
         needs: &["mésalazine", "aminosalicylé", "Pentasa", "Fivasa"],
         code: "CREAT",
         every_months: 12,
         why: "La mésalazine expose à une néphrite interstitielle qui n'a aucun signe d'appel et qui laisse une insuffisance rénale chronique : le traitement se prend pendant des années et c'est la surveillance qu'on oublie parce que la molécule passe pour anodine.",
+        never: &[],
     },
     Watch {
         needs: &["agomélatine", "Valdoxan"],
         code: "ALAT",
         every_months: 3,
         why: "Les atteintes hépatiques graves sous agomélatine ont fait imposer un calendrier précis — avant, puis à trois, six, douze et vingt-quatre semaines, et après chaque augmentation de dose — que le suivi de routine perd de vue au bout de quelques mois.",
+        never: &[],
     },
     Watch {
         needs: &["vildagliptine", "Galvus", "Eucreas"],
         code: "ALAT",
         every_months: 3,
         why: "La vildagliptine est la seule gliptine à imposer un contrôle des transaminases, trimestriel la première année : cela la distingue des autres, et personne ne le demande.",
+        never: &[],
     },
     Watch {
         needs: &["tériflunomide", "Aubagio", "léflunomide"],
         code: "ALAT",
         every_months: 3,
         why: "Hépatotoxicité imposant des transaminases mensuelles les six premiers mois puis régulières : la molécule persiste jusqu'à deux ans dans l'organisme, et une atteinte découverte tard ne se règle pas en arrêtant.",
+        never: &[],
     },
     Watch {
         needs: &["diméthyl fumarate", "Tecfidera", "fingolimod", "Gilenya"],
         code: "LYMPHO",
         every_months: 3,
         why: "Une lymphopénie profonde et prolongée expose à la leucoencéphalopathie multifocale progressive : le chiffre décide de la poursuite du traitement, et c'est le seul moyen de voir venir la complication.",
+        never: &[],
     },
     Watch {
         needs: &["finérénone", "Kerendia"],
         code: "K",
         every_months: 6,
         why: "L'hyperkaliémie est le facteur limitant, contrôlée quatre semaines après l'instauration puis régulièrement : ces patients reçoivent presque tous un IEC ou un sartan, et les deux tirent dans le même sens.",
+        never: &[],
     },
     Watch {
         needs: &["cinacalcet", "Mimpara", "ételcalcétide"],
         code: "CA",
         every_months: 3,
         why: "Le calcimimétique abaisse la calcémie, et c'est à la fois son effet et sa toxicité : l'hypocalcémie peut aller jusqu'aux convulsions et à l'allongement du QT, et elle se voit sur un chiffre avant de se voir sur le patient.",
+        never: &[],
     },
     Watch {
         needs: &["sunitinib", "Sutent"],
         code: "TSH",
         every_months: 6,
         why: "L'hypothyroïdie sous sunitinib est fréquente, souvent tardive, et elle se confond avec la fatigue de la maladie : la doser permet de la traiter au lieu de l'attribuer au cancer.",
+        never: &[],
     },
     Watch {
         needs: &["terbinafine", "Lamisil"],
         code: "ALAT",
         every_months: 3,
         why: "Le traitement d'un ongle dure des mois, et c'est cette durée qui donne à l'hépatotoxicité le temps de s'exprimer : les transaminases se contrôlent avant et pendant, pas seulement au début.",
+        never: &[],
     },
     Watch {
         needs: &["hydroxycarbamide", "Hydréa"],
         code: "GB",
         every_months: 3,
         why: "La myélosuppression est l'effet attendu et c'est la numération qui règle la dose : une macrocytose sous hydroxycarbamide est normale et ne doit pas être prise pour une carence, mais une leucopénie est un chiffre à corriger.",
+        never: &[],
     },
     Watch {
         needs: &["sotalol", "Sotalex"],
         code: "K",
         every_months: 6,
         why: "Le sotalol allonge le QT et l'hypokaliémie transforme cet allongement en torsade de pointes : la kaliémie compte ici autant que l'électrocardiogramme, en particulier sous diurétique.",
+        never: &[],
     },
     Watch {
         needs: &["pazopanib", "Votrient"],
         code: "ALAT",
         every_months: 3,
         why: "Des insuffisances hépatiques mortelles ont imposé un contrôle toutes les deux semaines les deux premiers mois puis régulier : c'est la surveillance qui conditionne la poursuite du traitement.",
+        never: &[],
     },
     Watch {
         needs: &["carbimazole", "thiamazole", "propylthiouracile", "benzylthiouracile", "antithyroïdien"],
         code: "T4L",
         every_months: 3,
         why: "Sous antithyroïdien la TSH reste freinée des mois après que l'hormone est revenue à sa place : lue seule elle fait surdoser. C'est la T4 libre qui dit l'équilibre, et c'est elle qu'on demande.",
+        never: &[],
     },
     Watch {
         needs: &["dronédarone", "Multaq"],
         code: "ALAT",
         every_months: 1,
         why: "Des atteintes hépatiques sévères ont imposé un dosage avant l'instauration puis tous les mois les six premiers mois : c'est la seule surveillance qui prévienne, l'ictère arrivant après.",
+        never: &[],
     },
     Watch {
         needs: &["tofacitinib", "baricitinib", "upadacitinib", "inhibiteur JAK", "Xeljanz", "Olumiant", "Rinvoq"],
         code: "ALAT",
         every_months: 3,
         why: "L'inhibiteur de JAK demande la numération, les transaminases et le bilan lipidique en cours de traitement : la cytolyse est silencieuse et c'est le chiffre qui décide de la poursuite.",
+        never: &[],
     },
     Watch {
         needs: &["interféron bêta", "Rebif", "Avonex", "Betaferon", "Plegridy"],
         code: "ALAT",
         every_months: 6,
         why: "Cytolyse hépatique parfois sévère sous interféron bêta, sans aucun signe d'appel : le dosage la trouve, et le patient l'oublie entre deux consultations de neurologie.",
+        never: &[],
     },
 ];
 
@@ -1030,5 +1134,53 @@ mod tests {
             "une forme locale réclame un examen :\n{}",
             wrong.join("\n")
         );
+    }
+
+    /// **Ce qu'une règle attrape n'est pas toujours ce qu'elle vise** —
+    /// confronté aux fiches livrées, cinq fautes d'un même soir : un
+    /// antidote qui recevait la surveillance de ce qu'il corrige, un
+    /// épargneur potassique dit « descendre le potassium », un chélateur
+    /// du potassium qui recevait un phosphore, un anti-androgène un
+    /// hématocrite, et huit antidiabétiques sans HbA1c.
+    #[test]
+    fn a_rule_is_judged_on_the_cards_its_words_catch() {
+        let shipped = |name: &str| {
+            let (n, d, c, _) = crate::db::STARTER_DRUGS
+                .iter()
+                .find(|(n, ..)| *n == name)
+                .unwrap_or_else(|| panic!("fiche absente : {name}"));
+            crate::revue::Treatment {
+                name: n,
+                dci: d,
+                class: c,
+                tags: "",
+            }
+        };
+        let codes = |name: &str| -> Vec<&'static str> {
+            due(&[shipped(name)], &[], "2026-09-23")
+                .iter()
+                .map(|d| d.code)
+                .collect()
+        };
+        assert!(
+            codes("Vitamine K1").is_empty(),
+            "{:?}",
+            codes("Vitamine K1")
+        );
+        assert!(
+            codes("Lederfoline").is_empty(),
+            "{:?}",
+            codes("Lederfoline")
+        );
+        assert!(!codes("Lokelma").contains(&"PHOS"));
+        assert!(!codes("Questran").contains(&"PHOS"));
+        assert!(codes("Renvela").contains(&"PHOS"));
+        assert!(!codes("Casodex").contains(&"HTE"));
+        for name in ["Daonil", "Novonorm", "Galvus", "Glucor", "Victoza"] {
+            assert!(codes(name).contains(&"HBA1C"), "{name} : {:?}", codes(name));
+        }
+        let modamide = due(&[shipped("Modamide")], &[], "2026-09-23");
+        let k = modamide.iter().find(|d| d.code == "K").expect("kaliémie");
+        assert!(!k.why.contains("descendent"), "{}", k.why);
     }
 }

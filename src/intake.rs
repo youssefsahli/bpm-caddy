@@ -218,6 +218,15 @@ const ON_DEMAND: &[&str] = &[
     "si fievre",
     "si crise",
     "ponctuel",
+    // Le début d'une crise est une demande : « 50 mg dès le début de
+    // la céphalée » est un triptan, et la fiche lui demandait une heure
+    // fixe (« horaire à noter »). Pas « renouvelable » seul : « à
+    // renouveler 15 à 21 jours plus tard » (le Vermox) est une seconde
+    // prise datée, pas une demande.
+    "des le debut",
+    "des les premier",
+    "au moment des",
+    "interdose",
 ];
 
 /// **Une demande gouverne une prise, jamais une dose.**
@@ -279,6 +288,10 @@ const CYCLIC: &[&str] = &[
     "tous les samedis",
     "tous les dimanches",
     "un jour sur deux",
+    // L'Imovane « en espaçant les prises une nuit sur deux » se
+    // dessinait chaque soir au coucher.
+    "nuit sur deux",
+    "1 jour sur 2",
     "jour sur deux",
     "tous les deux jours",
     "toutes les semaines",
@@ -500,6 +513,19 @@ fn rhythm(raw: &str, _marker: &str) -> String {
 
 /// Le rapport au repas, ou rien.
 fn meal_of(folded: &str) -> String {
+    // « au cours ou en dehors des repas » dit que le repas n'importe
+    // pas, et la fiche imprimait « En dehors des repas » sous le nom.
+    if [
+        "ou en dehors",
+        "avec ou sans",
+        "ou pendant",
+        "independamment des repas",
+    ]
+    .iter()
+    .any(|w| folded.contains(w))
+    {
+        return String::new();
+    }
     // Le plus précis d'abord : « avant le petit dejeuner » est devenu
     // « avant le matin » à la normalisation, et « a distance des
     // repas » contient « repas » comme les autres.
@@ -565,33 +591,68 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
     // moment. Deux variables et non une : « 2 le matin et le soir » doit
     // donner 2 aux deux, tandis que « 1 comprimé le matin et 2 le soir »
     // ne doit pas donner 1 au soir.
-    let mut pending: Option<u32> = None;
-    let mut last: Option<u32> = None;
+    //
+    // `Some(None)` est une prise dont la quantité est une fourchette —
+    // « 1 à 2 comprimés le soir » : la case porte une marque, jamais un
+    // des deux bouts.
+    let mut pending: Option<Option<u32>> = None;
+    let mut last: Option<Option<u32>> = None;
+    let word = |i: usize| -> Option<String> {
+        tokens.get(i).map(|n| {
+            n.trim_matches(|c: char| !c.is_alphanumeric() && c != '%')
+                .to_owned()
+        })
+    };
+    let is = |i: usize, set: &[&str]| word(i).as_deref().is_some_and(|n| set.contains(&n));
+    let number = |i: usize| {
+        tokens
+            .get(i)
+            .and_then(|t| quarters(t.trim_matches(|c: char| c == ',' || c == '.')))
+    };
+    let moment_at = |i: usize| tokens.get(i).and_then(|t| moment_of(t)).is_some();
     let mut i = 0;
     while i < tokens.len() {
         let t = tokens[i].trim_matches(|c: char| c == ',' || c == '.');
-        // Un nombre : quantité, ou dosage si une unité de masse suit.
+        // **Un nombre n'est une quantité que si quelque chose le dit** :
+        // une unité de comptage juste après, ou le moment qu'il
+        // précède (« 2 le matin »). Tout autre nombre est autre chose —
+        // « toutes les **12** heures », « **30** minutes avant »,
+        // « **20** à 40 mg », « en **3** prises » —, et la grille du
+        // Skenan imprimait « 12 » au matin et au soir d'une morphine.
         if let Some(q) = quarters(t) {
-            let next = tokens.get(i + 1).map(|n| {
-                n.trim_matches(|c: char| !c.is_alphanumeric() && c != '%')
-                    .to_owned()
-            });
-            let is_strength = next.as_deref().is_some_and(|n| STRENGTHS.contains(&n));
-            if !is_strength && q > 0 {
-                pending = Some(q);
-                last = Some(q);
-                // Une unité de comptage juste après confirme, et n'est
-                // pas un moment : on la saute.
-                if next.as_deref().is_some_and(|n| UNITS.contains(&n)) {
-                    i += 2;
-                    continue;
+            // Une fourchette : « 1 à 2 comprimés », « 20 à 40 mg ». Ce
+            // qui suit le second nombre décide des deux.
+            if is(i + 1, &["a", "ou"]) && number(i + 2).is_some() {
+                if is(i + 3, UNITS) {
+                    pending = Some(None);
+                    last = Some(None);
+                    i += 4;
+                } else {
+                    i += 3;
                 }
+                continue;
+            }
+            if is(i + 1, STRENGTHS) {
+                i += 2;
+                continue;
+            }
+            if q > 0 && is(i + 1, UNITS) {
+                pending = Some(Some(q));
+                last = Some(Some(q));
+                // L'unité confirme, et n'est pas un moment : on la saute.
+                i += 2;
+                continue;
+            }
+            let article = is(i + 1, &["le", "la", "l", "au", "aux", "a"]);
+            if q > 0 && (moment_at(i + 1) || (article && moment_at(i + 2))) {
+                pending = Some(Some(q));
+                last = Some(Some(q));
             }
             i += 1;
             continue;
         }
         if let Some(m) = moment_of(t) {
-            let q = pending.take().or(last);
+            let q = pending.take().or(last).flatten();
             doses[m.index()] = Some(Take { quarters: q });
         }
         i += 1;
@@ -599,7 +660,9 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
     // Les locutions en deux mots — « au lit » — que le passage par
     // jeton ne voit pas.
     if doses[3].is_none() && (folded.contains("au lit") || folded.contains("avant de dormir")) {
-        doses[3] = Some(Take { quarters: last });
+        doses[3] = Some(Take {
+            quarters: last.flatten(),
+        });
     }
     doses
 }
@@ -622,7 +685,78 @@ fn moment_of(token: &str) -> Option<Moment> {
 
 /// Combien de prises par jour, quand la phrase le dit sans dire quand.
 fn per_day(folded: &str) -> Option<u32> {
+    // **Un plafond ne dit pas un rythme.** « sans dépasser 300 mg par
+    // jour » borne ce qu'on prend, il ne dit pas qu'on le prend une fois
+    // par jour — et la grille lisait « 1 prise par jour » pour un
+    // triptan. Ce qui suit le premier plafond ne compte pas.
+    let head = [
+        "sans depasser",
+        "maximum",
+        "dans la limite",
+        "ne pas depasser",
+        "au plus",
+    ]
+    .iter()
+    .filter_map(|w| folded.find(w))
+    .min()
+    .map_or(folded, |at| &folded[..at]);
+    // Une dose **exprimée** par jour n'est pas un rythme non plus :
+    // « un dixième de la dose quotidienne » est une interdose.
+    let head = head
+        .replace("dose quotidienne", "")
+        .replace("dose journaliere", "")
+        .replace("morphinique quotidien", "");
+    // Et un intervalle dit un nombre de prises que la phrase ne donne
+    // pas : « toutes les 6 heures », « au bout de 4 heures » — une prise
+    // par jour serait faux, et rien d'autre n'est écrit.
+    //
+    // Seulement un intervalle **en heures** : « doublés toutes les
+    // 2 semaines » est le pas d'une titration, et le traitement se
+    // prend bien chaque jour. Et seulement quand la phrase ne dit pas
+    // elle-même combien de fois : « 200 mg cinq fois par jour, toutes
+    // les 4 heures » le dit.
+    let hourly = |w: &str| {
+        head.match_indices(w)
+            .find(|(at, _)| {
+                head[*at..]
+                    .chars()
+                    .take(w.chars().count() + 24)
+                    .collect::<String>()
+                    .contains("heure")
+            })
+            .map(|(at, _)| at)
+    };
+    // Le premier des deux dit le rythme : une fiche entière écrit
+    // « 30 mg toutes les 12 heures » et, trois phrases plus loin, le
+    // « quatre fois par jour » d'une autre forme.
+    let interval = [hourly("toutes les"), hourly("au bout de")]
+        .into_iter()
+        .flatten()
+        .min();
+    let counted = head.find("fois par jour");
+    if let Some(at) = interval {
+        if counted.is_none_or(|c| at < c) {
+            return None;
+        }
+    }
+    // « en 2 ou 3 prises », « en 2 a 3 prises » : le prescripteur a
+    // laissé le choix, et « 1 » n'est aucun des deux.
+    let words: Vec<&str> = head.split_whitespace().collect();
+    if words.windows(5).any(|w| {
+        w[0] == "en"
+            && quarters(w[1]).is_some()
+            && (w[2] == "ou" || w[2] == "a")
+            && quarters(w[3]).is_some()
+            && w[4].starts_with("prise")
+    }) {
+        return None;
+    }
+    let folded = head.as_str();
     for (needle, times) in [
+        ("6 fois par jour", 6),
+        ("six fois par jour", 6),
+        ("5 fois par jour", 5),
+        ("cinq fois par jour", 5),
         ("4 fois par jour", 4),
         ("quatre fois par jour", 4),
         ("3 fois par jour", 3),
@@ -1058,6 +1192,7 @@ mod tests {
                     || m.contains("mois")
                     || m.contains("mensuel")
                     || m.contains("jour sur")
+                    || m.contains("nuit sur")
                     || m.starts_with("tous les")
                     || m.starts_with("toutes les"),
                 "« {m} » ne nomme pas une répétition : une durée n'est pas un rythme"
@@ -1090,5 +1225,96 @@ mod tests {
             assert_eq!(r.kind, Kind::Placed, "« {text} »");
             assert!(r.has_grid(), "« {text} »");
         }
+    }
+
+    /// **Un nombre n'est une quantité que si quelque chose le dit.**
+    ///
+    /// Confronté aux 1 719 lignes livrées : la grille du Skenan
+    /// imprimait « 12 » au matin et au soir — « toutes les **12**
+    /// heures » —, celle des statines « 20 » au soir — « **20** à 40 mg
+    /// par jour » —, celle du Mopral « 30 » au matin — « **30** minutes
+    /// avant ». Trente-huit fiches l'avaient en première ligne, donc sur
+    /// la feuille par défaut, et en gras.
+    #[test]
+    fn a_number_is_a_quantity_only_when_something_says_so() {
+        let r =
+            read("Débuter à 30 mg toutes les 12 heures, dose initiale usuelle 30 mg matin et soir");
+        assert_eq!(q(&r, Moment::Matin), Some(None), "{r:?}");
+        assert_eq!(q(&r, Moment::Soir), Some(None));
+        let r = read("20 à 40 mg par jour en une prise le soir");
+        assert_eq!(q(&r, Moment::Soir), Some(None), "{r:?}");
+        let r = read("20 mg par jour, 30 minutes avant le petit-déjeuner");
+        assert_eq!(q(&r, Moment::Matin), Some(None), "{r:?}");
+        let r = read("50 mg par jour en 3 prises réparties (12,5 mg matin et midi, 25 mg le soir)");
+        assert_eq!(q(&r, Moment::Matin), Some(None), "{r:?}");
+        // Une fourchette de comptage est une marque, jamais un des bouts.
+        let r = read("1 à 2 comprimés le soir");
+        assert_eq!(q(&r, Moment::Soir), Some(None));
+        // Et ce qui se lisait déjà se lit toujours.
+        let r = read("2 le matin et le soir");
+        assert_eq!(q(&r, Moment::Matin), Some(Some(8)));
+        assert_eq!(q(&r, Moment::Soir), Some(Some(8)));
+        let r = read("1 comprimé le matin et 2 le soir");
+        assert_eq!(q(&r, Moment::Matin), Some(Some(4)));
+        assert_eq!(q(&r, Moment::Soir), Some(Some(8)));
+        let r = read("½ comprimé le soir");
+        assert_eq!(q(&r, Moment::Soir), Some(Some(2)));
+        // Sur toute la base livrée, aucune case ne porte plus de quatre
+        // unités : au-delà, c'est un dosage ou un intervalle qu'on a
+        // pris pour un compte.
+        for (name, indication, poso, _) in crate::db::STARTER_POSOLOGIES {
+            for take in read(poso).doses.iter().flatten() {
+                assert!(
+                    take.quarters.is_none_or(|q| q <= 16),
+                    "{name} / {indication} : {:?} — {poso}",
+                    take.quarters
+                );
+            }
+        }
+    }
+
+    /// **Un plafond ne dit pas un rythme, et le début d'une crise est
+    /// une demande.** « 50 mg dès le début de la céphalée … sans
+    /// dépasser 300 mg par jour » se lisait « 1 prise par jour », et la
+    /// fiche demandait une heure fixe pour un triptan.
+    #[test]
+    fn a_ceiling_is_not_a_rhythm_and_an_attack_is_a_demand() {
+        let r = read("50 mg dès le début de la céphalée, renouvelable une fois, sans dépasser 300 mg par jour");
+        assert_eq!(r.kind, Kind::OnDemand, "{r:?}");
+        let r = read("Interdose de morphine égale à un dixième de la dose quotidienne totale");
+        assert_eq!(r.kind, Kind::OnDemand, "{r:?}");
+        let r = read("500 mg à 1 g par prise, à renouveler au bout de 4 à 6 heures, sans dépasser 3 g par jour");
+        assert_eq!(r.kind, Kind::Unread, "{r:?}");
+        let r = read("Ne pas dépasser 10 mg par jour");
+        assert_eq!(r.kind, Kind::Unread, "{r:?}");
+        let r = read("150 mg par jour en 2 ou 3 prises");
+        assert_eq!(r.kind, Kind::Unread, "{r:?}");
+        // Un pas de titration n'est pas un intervalle de prise.
+        let r = read("1,25 mg deux fois par jour, doublés toutes les 1 à 2 semaines");
+        assert_eq!((r.kind, r.times), (Kind::Daily, 2), "{r:?}");
+        let r = read("25 mg par jour, augmentation toutes les 2 semaines");
+        assert_eq!((r.kind, r.times), (Kind::Daily, 1), "{r:?}");
+        let r = read("200 mg cinq fois par jour, toutes les 4 heures");
+        assert_eq!((r.kind, r.times), (Kind::Daily, 5), "{r:?}");
+        // Le premier des deux décide.
+        let r = read("30 mg toutes les 12 heures. Autre forme : quatre fois par jour.");
+        assert_eq!(r.kind, Kind::Unread, "{r:?}");
+        // Une consigne d'arrêt n'est pas une demande.
+        let r = read("Arrêt immédiat du traitement dès l'apparition d'une diarrhée");
+        assert_ne!(r.kind, Kind::OnDemand);
+    }
+
+    /// **« Au cours ou en dehors des repas » dit que le repas
+    /// n'importe pas**, et « une nuit sur deux » n'est pas chaque nuit.
+    #[test]
+    fn an_alternative_says_no_meal_and_every_other_night_is_a_rhythm() {
+        assert_eq!(read("Prise au cours ou en dehors des repas").meal, "");
+        assert_eq!(read("1 comprimé pendant ou en dehors des repas").meal, "");
+        assert_eq!(
+            read("1 comprimé en dehors des repas").meal,
+            "En dehors des repas"
+        );
+        let r = read("Diminution progressive, en espaçant les prises une nuit sur deux");
+        assert_eq!(r.kind, Kind::Cyclic, "{r:?}");
     }
 }
