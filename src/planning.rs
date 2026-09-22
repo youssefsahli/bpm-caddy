@@ -437,6 +437,31 @@ pub struct Shift {
     pub kind: ShiftKind,
 }
 
+/// Ce qu'une nuit laisse au lendemain : la partie d'un poste qui passe
+/// minuit, ramenée sur l'horloge du jour suivant.
+///
+/// Une garde de 20 h à 9 h se range au jour qui la commence (1200 →
+/// 1980), et c'est juste pour ses heures — comptées une fois. Mais le
+/// lendemain, la tranche de 8 h 30 à 9 h s'affichait **vide**, alors que
+/// le gardiste est là. Ce qui sort d'ici entre dans la présence et les
+/// creux du lendemain, **jamais dans son total**, qui reste au jour de
+/// la garde.
+pub fn spill(previous: &[Shift]) -> Vec<Shift> {
+    previous
+        .iter()
+        .filter(|s| s.kind.worked())
+        .filter_map(|s| {
+            let end = s.end?;
+            (end > 1440).then(|| Shift {
+                start: 0,
+                end: Some(end - 1440),
+                pause: 0,
+                ..s.clone()
+            })
+        })
+        .collect()
+}
+
 impl Shift {
     /// Les minutes de présence, pause déduite — ou `None`.
     ///
@@ -1195,5 +1220,18 @@ mod tests {
             assert!(!k.at_counter() || k.worked());
         }
         assert_eq!(ShiftKind::parse("PLAGE"), None);
+    }
+
+    /// **Une garde qui passe minuit couvre le matin du lendemain**, et
+    /// ne compte ses heures qu'une fois.
+    #[test]
+    fn a_night_shift_covers_the_next_morning() {
+        let garde = shift(1, "CL", 20 * 60, Some(33 * 60), ShiftKind::Garde);
+        let day = shift(2, "YS", 14 * 60, Some(19 * 60), ShiftKind::Journee);
+        let next = spill(&[garde, day]);
+        assert_eq!(next.len(), 1);
+        assert_eq!((next[0].start, next[0].end), (0, Some(9 * 60)));
+        assert_eq!(next[0].operator, "CL");
+        assert!(spill(&[shift(3, "MB", 9 * 60, Some(19 * 60), ShiftKind::Journee)]).is_empty());
     }
 }

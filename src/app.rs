@@ -3516,7 +3516,9 @@ struct Session {
     /// displayed with — the compare-and-set baseline.
     vacc_edit: Option<db::Vaccination>,
     vacc_edit_date: String,
-    vacc_edit_base: (String, String),
+    /// La dose telle qu'elle était affichée quand on a ouvert sa
+    /// correction : la comparaison porte sur **toutes** ses colonnes.
+    vacc_edit_base: db::Vaccination,
     /// Two-step delete confirmation for one carnet line.
     vacc_confirm: Option<i64>,
     /// Two-step confirmation on filling the carnet with the doses the
@@ -3578,7 +3580,9 @@ struct Session {
     bio_edit: Option<db::BioResult>,
     bio_edit_value: String,
     bio_edit_date: String,
-    bio_edit_base: (f64, String),
+    /// Le résultat tel qu'il était affiché à l'ouverture de sa
+    /// correction.
+    bio_edit_base: db::BioResult,
     /// The analyte whose trend the right-hand panel is showing.
     bio_focus: Option<String>,
     /// What the biology says about the open file's treatments, and what
@@ -4622,7 +4626,7 @@ impl Session {
             focus_vacc_name: false,
             vacc_edit: None,
             vacc_edit_date: String::new(),
-            vacc_edit_base: (String::new(), String::new()),
+            vacc_edit_base: db::Vaccination::default(),
             vacc_confirm: None,
             vacc_fill_confirm: false,
             bio_watch: Vec::new(),
@@ -4644,7 +4648,7 @@ impl Session {
             bio_edit: None,
             bio_edit_value: String::new(),
             bio_edit_date: String::new(),
-            bio_edit_base: (0.0, String::new()),
+            bio_edit_base: db::BioResult::default(),
             bio_focus: None,
             bio_findings: Vec::new(),
             renal: Vec::new(),
@@ -16002,7 +16006,7 @@ impl App {
 
         // --- What the buttons asked for -------------------------------
         if let Some(line) = start_edit {
-            session.vacc_edit_base = (line.label.clone(), line.given_on.clone());
+            session.vacc_edit_base = line.clone();
             session.vacc_edit_date = if line.given_on.is_empty() {
                 String::new()
             } else {
@@ -16025,8 +16029,8 @@ impl App {
                 match parsed {
                     Ok(iso) => {
                         line.given_on = iso;
-                        let (label, date) = session.vacc_edit_base.clone();
-                        match session.db.update_vaccination(line.id, &line, &label, &date) {
+                        let base = session.vacc_edit_base.clone();
+                        match session.db.update_vaccination(line.id, &line, &base) {
                             Ok(true) => {
                                 session.error = None;
                                 // La rangée du bas redevient celle où
@@ -19046,7 +19050,7 @@ impl App {
             } else {
                 db::format_french_date(&r.taken_on)
             };
-            session.bio_edit_base = (r.value, r.taken_on.clone());
+            session.bio_edit_base = r.clone();
             session.bio_edit = Some(r);
         }
         if save_edit {
@@ -19164,7 +19168,7 @@ impl App {
         edited.value = value;
         edited.taken_on = taken_on;
         let base = session.bio_edit_base.clone();
-        match session.db.update_bio_result(&edited, (base.0, &base.1)) {
+        match session.db.update_bio_result(&edited, &base) {
             Ok(true) => {
                 session.error = None;
                 session.bio_edit = None;
@@ -25203,6 +25207,13 @@ impl App {
             let Some(shifts) = by_day.get(day.as_str()) else {
                 continue;
             };
+            // La nuit d'avant couvre le début de celle-ci — voir
+            // `planning::spill` ; pour les creux seulement.
+            let mut present = shifts.clone();
+            if let Some(prev) = crate::date::add_days(day, -1).and_then(|p| by_day.get(p.as_str()))
+            {
+                present.extend(planning::spill(prev));
+            }
             // L'ordre est celui de l'équipe déclarée, puis les autres :
             // « CL YS » et « YS CL » sont la même journée, et une
             // en-tête qui change d'ordre d'un jour à l'autre se relit à
@@ -25231,7 +25242,7 @@ impl App {
                     // et c'est `App::planning_day_sum` qui le dit, pour
                     // cette vue comme pour le pied de la semaine.
                     minutes: day_minutes,
-                    uncovered: !planning::gaps(shifts, &opening).is_empty(),
+                    uncovered: !planning::gaps(&present, &opening).is_empty(),
                 },
             );
         }
@@ -27654,7 +27665,7 @@ impl App {
         end: u16,
         row_h: f32,
     ) -> f32 {
-        let shifts: Vec<planning::Shift> = session
+        let mut shifts: Vec<planning::Shift> = session
             .shifts
             .iter()
             .filter(|s| s.day == day)
@@ -27662,6 +27673,16 @@ impl App {
             .collect();
         if shifts.is_empty() {
             return 0.0;
+        }
+        // Et la garde de la veille, sur le matin — voir `planning::spill`.
+        if let Some(prev) = crate::date::add_days(day, -1) {
+            let yesterday: Vec<planning::Shift> = session
+                .shifts
+                .iter()
+                .filter(|s| s.day == prev)
+                .filter_map(planned_shift)
+                .collect();
+            shifts.extend(planning::spill(&yesterday));
         }
         const STEP: u16 = 15;
         // `agenda::span` borne les deux à 23 et 24.
@@ -45813,7 +45834,7 @@ impl App {
                         .posologies
                         .iter()
                         .find(|p| p.id == edited.id)
-                        .map(|p| p.indication.clone())
+                        .cloned()
                         .unwrap_or_default();
                     let drug_id = session.drug_form.as_ref().map(|d| d.id).unwrap_or(0);
                     match session.db.update_posologie(edited.id, &edited, &expected) {

@@ -1570,7 +1570,7 @@ pub struct ProtocolNode {
 
 /// One line of a drug's posology table: what it is prescribed for,
 /// the dose for that indication, and what changes it.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct Posologie {
     pub id: i64,
     pub indication: String,
@@ -33163,19 +33163,23 @@ impl Db {
         &self,
         id: i64,
         new: &Posologie,
-        expected_indication: &str,
+        expected: &Posologie,
     ) -> Result<bool, String> {
+        // Toutes les colonnes écrites sont comparées : deux personnes
+        // qui corrigent la même ligne ne s'écrasent plus en silence.
         let changed = self
             .conn
             .execute(
                 "UPDATE posologies SET indication = ?1, posologie = ?2, remarque = ?3
-                 WHERE id = ?4 AND indication = ?5",
+                 WHERE id = ?4 AND indication = ?5 AND posologie = ?6 AND remarque = ?7",
                 (
                     &new.indication,
                     &new.posologie,
                     &new.remarque,
                     id,
-                    expected_indication,
+                    &expected.indication,
+                    &expected.posologie,
+                    &expected.remarque,
                 ),
             )
             .map_err(|e| e.to_string())?;
@@ -33353,18 +33357,15 @@ impl Db {
 
     /// Correct a result. Compare-and-set on the value and the date this
     /// PC displayed. Returns `false` when stale.
-    pub fn update_bio_result(
-        &self,
-        new: &BioResult,
-        expected: (f64, &str),
-    ) -> Result<bool, String> {
+    pub fn update_bio_result(&self, new: &BioResult, expected: &BioResult) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
                 "UPDATE biology SET code = ?1, label = ?2, value = ?3, unit = ?4,
                                     taken_on = ?5, remark = ?6
-                 WHERE id = ?7 AND value = ?8 AND taken_on = ?9",
-                (
+                 WHERE id = ?7 AND value = ?8 AND taken_on = ?9 AND code = ?10
+                   AND label = ?11 AND unit = ?12 AND remark = ?13",
+                rusqlite::params![
                     &new.code,
                     &new.label,
                     new.value,
@@ -33372,9 +33373,13 @@ impl Db {
                     &new.taken_on,
                     &new.remark,
                     new.id,
-                    expected.0,
-                    expected.1,
-                ),
+                    expected.value,
+                    &expected.taken_on,
+                    &expected.code,
+                    &expected.label,
+                    &expected.unit,
+                    &expected.remark,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -33423,16 +33428,21 @@ impl Db {
         &self,
         id: i64,
         v: &Vaccination,
-        expected_label: &str,
-        expected_given_on: &str,
+        expected: &Vaccination,
     ) -> Result<bool, String> {
+        // **Toutes les colonnes écrites sont comparées** : le lot est ce
+        // qu'un rappel de lot vient chercher, et un lot corrigé sur un
+        // autre poste était remis à l'ancien par une correction de date
+        // faite ici.
         let changed = self
             .conn
             .execute(
                 "UPDATE vaccinations SET code = ?1, label = ?2, dose = ?3, given_on = ?4,
                      lot = ?5, site = ?6, operator = ?7, next_due = ?8, remark = ?9
-                 WHERE id = ?10 AND label = ?11 AND given_on = ?12",
-                (
+                 WHERE id = ?10 AND label = ?11 AND given_on = ?12 AND code = ?13
+                   AND dose = ?14 AND lot = ?15 AND site = ?16 AND operator = ?17
+                   AND next_due = ?18 AND remark = ?19",
+                rusqlite::params![
                     &v.code,
                     &v.label,
                     &v.dose,
@@ -33443,9 +33453,16 @@ impl Db {
                     &v.next_due,
                     &v.remark,
                     id,
-                    expected_label,
-                    expected_given_on,
-                ),
+                    &expected.label,
+                    &expected.given_on,
+                    &expected.code,
+                    &expected.dose,
+                    &expected.lot,
+                    &expected.site,
+                    &expected.operator,
+                    &expected.next_due,
+                    &expected.remark,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -34977,7 +34994,21 @@ impl Db {
     /// Write (or clear) the note of a therapeutic class. Compare-and-set
     /// on the note this PC displayed: a colleague's paragraph written
     /// meanwhile is never overwritten. Returns `false` when stale.
+    /// **La comparaison et l'écriture dans une même transaction** :
+    /// lues et écrites en deux temps, deux postes qui enregistraient au
+    /// même instant passaient tous deux la comparaison, et le dernier
+    /// écrasait l'autre sans rien dire.
     pub fn set_class_note(&self, class: &str, body: &str, expected: &str) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let done = self.set_class_note_in(class, body, expected)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(done)
+    }
+
+    fn set_class_note_in(&self, class: &str, body: &str, expected: &str) -> Result<bool, String> {
         let key = class.trim().to_lowercase();
         if key.is_empty() {
             return Ok(true);
@@ -35045,7 +35076,26 @@ impl Db {
 
     /// Override one cell of a reference table, or drop the override
     /// when `value` matches the shipped text.
+    /// Voir [`Db::set_class_note`] : comparaison et écriture ensemble.
     pub fn set_table_cell(
+        &self,
+        table_key: &str,
+        row: usize,
+        col: usize,
+        value: &str,
+        shipped: &str,
+        expected: &str,
+    ) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let done = self.set_table_cell_in(table_key, row, col, value, shipped, expected)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(done)
+    }
+
+    fn set_table_cell_in(
         &self,
         table_key: &str,
         row: usize,
@@ -35126,7 +35176,26 @@ impl Db {
     /// différences, et la phrase recommence à suivre les corrections des
     /// versions suivantes. Sans cela, une officine qui annule sa
     /// modification en retapant l'original resterait figée dessus.
+    /// Voir [`Db::set_class_note`] : comparaison et écriture ensemble.
     pub fn set_content(
+        &self,
+        key: &str,
+        value: &str,
+        shipped: &str,
+        expected: &str,
+        day: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let done = self.set_content_in(key, value, shipped, expected, day, who)?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(done)
+    }
+
+    fn set_content_in(
         &self,
         key: &str,
         value: &str,
@@ -35294,7 +35363,7 @@ impl Db {
             }
             // Walk the repeat forward onto every day of the range it
             // actually falls on; the stored row stays a single one.
-            let mut current = day.clone();
+            let mut current = walk_from(&day, from, step);
             let mut guard = 0;
             while current.as_str() <= to && guard < 1000 {
                 guard += 1;
@@ -35415,7 +35484,7 @@ impl Db {
             // le bon résultat cinq ans puis le mauvais pour toujours.
             let cadence = crate::planning::Cadence::parse(&base.cadence);
             let step = stored_step(&base.cadence, base.repeat_days);
-            let mut current = base.day.clone();
+            let mut current = walk_from(&base.day, from, step);
             let mut guard = 0;
             loop {
                 if current.as_str() > to || guard >= 1000 {
@@ -36548,6 +36617,26 @@ pub fn add_days(iso: &str, days: i64) -> Option<String> {
     Some(format!("{y:04}-{m:02}-{d:02}"))
 }
 
+/// Où commencer à dérouler une ligne répétée pour une fenêtre qui
+/// commence à `from` : le dernier pas **avant** la fenêtre, compté depuis
+/// le premier jour de la ligne — donc sur son propre rythme.
+///
+/// Le déroulé partait du premier jour et s'arrêtait au millième pas :
+/// un congé quotidien de plus de mille jours — un congé parental — ne
+/// se voyait plus après son millième jour, sans que rien le dise. La
+/// garde borne maintenant la taille de la fenêtre et non l'âge de la
+/// ligne.
+fn walk_from(anchor: &str, from: &str, step: i64) -> String {
+    if step <= 0 || anchor >= from {
+        return anchor.to_owned();
+    }
+    match crate::date::days_between(anchor, from) {
+        Some(gap) if gap > step => crate::date::add_days(anchor, (gap / step - 1) * step)
+            .unwrap_or_else(|| anchor.to_owned()),
+        _ => anchor.to_owned(),
+    }
+}
+
 /// De combien de jours une ligne rangée avance d'une occurrence à la
 /// suivante — **zéro quand elle ne revient pas**.
 ///
@@ -37463,13 +37552,16 @@ mod tests {
         // Correcting the lot succeeds against the values displayed…
         let mut fixed = lines[0].clone();
         fixed.lot = "K9999".to_owned();
-        assert!(db
-            .update_vaccination(id, &fixed, &lines[0].label, &lines[0].given_on)
-            .unwrap());
+        assert!(db.update_vaccination(id, &fixed, &lines[0]).unwrap());
         // …and fails against a date another PC has already changed.
-        assert!(!db
-            .update_vaccination(id, &fixed, &lines[0].label, "1999-01-01")
-            .unwrap());
+        let mut elsewhere = lines[0].clone();
+        elsewhere.given_on = "1999-01-01".to_owned();
+        assert!(!db.update_vaccination(id, &fixed, &elsewhere).unwrap());
+        // …and against a lot another PC has corrected, which is the
+        // column a recall reads.
+        let mut stale = fixed.clone();
+        stale.lot = "K0000".to_owned();
+        assert!(!db.update_vaccination(id, &stale, &lines[0]).unwrap());
 
         assert!(!db.delete_vaccination(id, "un autre libellé").unwrap());
         assert!(db.delete_vaccination(id, &lines[0].label).unwrap());
@@ -37902,8 +37994,10 @@ mod tests {
         // A correction from a stale view is refused.
         let mut fixed = all[0].clone();
         fixed.value = 4.9;
-        assert!(!db.update_bio_result(&fixed, (9.9, "2026-08-20")).unwrap());
-        assert!(db.update_bio_result(&fixed, (5.4, "2026-08-20")).unwrap());
+        let mut elsewhere = all[0].clone();
+        elsewhere.value = 9.9;
+        assert!(!db.update_bio_result(&fixed, &elsewhere).unwrap());
+        assert!(db.update_bio_result(&fixed, &all[0]).unwrap());
         assert_eq!(db.bio_results(pid).unwrap()[0].value, 4.9);
         // And a delete from a stale view too.
         assert!(!db.delete_bio_result(id, 5.4).unwrap());
@@ -42175,11 +42269,11 @@ mod tests {
 
         // Editing is compare-and-set on the indication displayed.
         let mut edited = db.posologies(eliquis.id).unwrap()[0].clone();
-        let expected = edited.indication.clone();
+        let expected = edited.clone();
         edited.posologie = "Protocole interne".to_owned();
-        assert!(!db
-            .update_posologie(edited.id, &edited, "autre chose")
-            .unwrap());
+        let mut elsewhere = expected.clone();
+        elsewhere.remarque = "corrigée ailleurs".to_owned();
+        assert!(!db.update_posologie(edited.id, &edited, &elsewhere).unwrap());
         assert!(db.update_posologie(edited.id, &edited, &expected).unwrap());
         assert_eq!(
             db.posologies(eliquis.id).unwrap()[0].posologie,
@@ -42679,6 +42773,32 @@ mod tests {
         assert!(next > pid, "le numéro {pid} ne resert pas ({next})");
         assert!(db.vaccinations(next).unwrap().is_empty());
         assert!(db.vaccinations(pid).unwrap().is_empty());
+    }
+
+    /// **Un long congé se voit jusqu'à son dernier jour.** Le déroulé
+    /// partait du premier jour et s'arrêtait au millième pas : un congé
+    /// parental de trois ans et demi disparaissait du planning un an
+    /// avant sa fin.
+    #[test]
+    fn a_long_daily_absence_unfolds_to_its_last_day() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-longleave-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("leave.db"), "secret").unwrap();
+        db.add_shift(&NewShift {
+            operator: "CL".to_owned(),
+            day: "2026-01-05".to_owned(),
+            start_time: "09:00".to_owned(),
+            kind: "CONGE".to_owned(),
+            repeat_days: 1,
+            repeat_until: "2029-06-30".to_owned(),
+            cadence: "QUOTIDIEN".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let june = db.shifts_between("2029-06-01", "2029-06-30").unwrap();
+        assert_eq!(june.len(), 30, "{} jours de congé en juin 2029", june.len());
+        assert_eq!(june[0].day, "2029-06-01");
     }
 
     #[test]

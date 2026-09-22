@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.251.0] - 2026-09-23
+
+### Fixed
+- **Corriger une posologie, une dose du carnet vaccinal ou un résultat
+  de biologie ne défait plus ce qu'un autre poste vient d'y écrire.**
+  La comparaison ne portait que sur deux colonnes : un lot corrigé
+  ailleurs — ce qu'un rappel de lot vient chercher — était remis à
+  l'ancien par une correction de date faite ici. Toutes les colonnes
+  écrites sont désormais comparées à ce qui était affiché.
+- Une note de classe, une cellule de table de référence et une phrase
+  réécrite se comparent et s'écrivent dans une même transaction : deux
+  postes qui enregistraient au même instant ne s'écrasent plus en
+  silence.
+- **Un long congé se voit jusqu'à son dernier jour** : le déroulé
+  s'arrêtait au millième jour, et un congé parental disparaissait du
+  planning un an avant sa fin.
+- **Une garde qui passe minuit couvre le matin du lendemain** : la
+  tranche de 8 h 30 à 9 h s'affichait comme un creux alors que le
+  gardiste est là. Ses heures restent comptées au jour qui la commence.
+
 ## [0.250.0] - 2026-09-23
 
 ### Fixed
