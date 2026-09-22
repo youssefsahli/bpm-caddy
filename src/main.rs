@@ -17,6 +17,7 @@ mod crush;
 mod cyp;
 mod date;
 mod db;
+mod dosing;
 mod elderly;
 mod entretien;
 mod facets;

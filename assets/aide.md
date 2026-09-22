@@ -35,8 +35,13 @@ non recopiée ici.
 « Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
 dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, le registre, les carnets de suivi, les
-scripts et les textes imprimés. Tapez ce dont vous vous souvenez — le
-nom, un bout du nom, ou les initiales.
+scripts, les outils de calcul et les textes imprimés. Tapez ce dont vous
+vous souvenez — le nom, un bout du nom, ou les initiales.
+
+Les outils se cherchent par **la question qu'ils répondent** et non par
+le nom de l'écran qui les porte : « enfant » ou « mg/kg » trouve la dose
+au poids, « DFG bas » ce que le rein change, « demi-vie » la
+décroissance.
 
 La recherche ignore la casse et les accents, et accepte les lettres dans
 l'ordre sans qu'elles se suivent : « jndp » retrouve Jean Dupont.
@@ -240,6 +245,46 @@ pas la même chose d'un produit dont la demi-vie est de deux heures et
 d'un autre dont elle est de cinquante jours, et un effet peut durer bien
 après le produit — l'effet antiplaquettaire du clopidogrel tient sept à
 dix jours quand sa demi-vie est de six heures.
+
+# Les calculs du comptoir
+
+Ils se trouvent en tapant ce qu'on cherche dans « Aller à… » — « enfant »,
+« mg/kg », « clairance », « DFG bas », « demi-vie » —, depuis « Calculs »
+au-dessus des tables de conversion, et depuis le bouton « Calculs… »
+d'une fiche ouverte, qui les ouvre **avec cette fiche en main**.
+
+Une fiche en main change tout : sans elle les outils restent généraux et
+il faut déjà connaître ses chiffres, c'est-à-dire ne pas avoir besoin
+d'eux. Avec elle, deux d'entre eux répondent pour ce médicament-là.
+
+**La clairance de la créatinine**, par Cockcroft et Gault, avec le stade
+qui lui correspond. C'est un estimateur sur le poids réel : chez
+l'obèse, l'œdémateux ou le dénutri il s'écarte, et le laboratoire donne
+le DFG estimé sur la formule en vigueur.
+
+**La dose par kilo.** Un poids, des milligrammes par kilo, un nombre de
+prises. Et, lorsqu'une fiche est en main, **ce que sa posologie écrit** :
+chaque dose au poids qu'elle donne, avec son rythme et avec la phrase
+d'où elle vient. Le rythme n'est pas un détail, c'est la moitié de la
+dose — « 15 mg/kg par prise toutes les 6 heures » et « 60 mg/kg par
+24 heures » sont le même traitement, et quatre fois l'un de l'autre. La
+phrase non plus : une même fiche écrit souvent cinquante par jour pour
+l'angine et quatre-vingts pour l'otite, et rien dans les nombres ne dit
+laquelle. Une fiche qui n'écrit pas de dose au poids ne s'en voit pas
+proposer : l'écran le dit, et c'est le signe qu'il y a une posologie à
+compléter.
+
+**Ce que le rein change**, pour la fiche en main et un DFG qu'on saisit —
+celui qu'on vient de calculer, d'un bouton. C'est la même table que le
+panneau « Rein » du dossier, lue sur une fiche plutôt que sur une
+ordonnance : la question « la metformine, à trente, on fait quoi » se
+pose souvent pour quelqu'un dont le dossier n'est pas ouvert. Le palier
+qui parle est le plus bas de ceux qui sont franchis, les seuils viennent
+des RCP, et la décision reste celle du prescripteur.
+
+**La décroissance et l'accumulation** : une demi-vie, un intervalle
+entre deux prises, et le temps qu'il faut pour que le produit ait quitté
+l'organisme. La demi-vie se reprend d'une fiche de la base.
 
 # La carte du voisinage
 

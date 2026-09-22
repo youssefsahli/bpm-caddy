@@ -2766,6 +2766,15 @@ enum Goto {
     Stupefiant(i64),
     /// A self-monitoring sheet, by its stable key.
     Carnet(&'static str),
+    /// Les calculs du comptoir.
+    ///
+    /// Ils vivaient derrière « Tableau → Tables de conversion →
+    /// Calculs », c'est-à-dire derrière un écran dont le nom ne dit pas
+    /// qu'il les contient : on ne cherche pas « tables de conversion »
+    /// quand on veut savoir ce que le rein change à une metformine. La
+    /// boîte les connaît maintenant **par la question qu'ils
+    /// répondent** — voir [`App::calc_tools`].
+    Calc,
     /// A saved console script, by its name.
     Script(String),
     /// Not a destination but a question: search this word in the prose
@@ -4451,6 +4460,30 @@ struct Session {
     table_undo: Option<(usize, usize, String)>,
     /// The calculation panel: which tool, and its inputs.
     calc_open: bool,
+    /// La fiche que les calculs regardent, quand on leur en donne une.
+    ///
+    /// **C'est ce qui manquait pour qu'ils servent.** « Dose par kilo »
+    /// savait multiplier un poids par des milligrammes ; d'où venaient
+    /// les milligrammes, il fallait le savoir — donc ne pas avoir besoin
+    /// de l'outil. Avec une fiche en main, la posologie répond et la
+    /// table rénale aussi.
+    calc_drug: Option<i64>,
+    calc_drug_query: String,
+    /// Le DFG contre lequel la table rénale est lue ici. Séparé de
+    /// `renal_dfg`, qui est celui du **dossier** : on vient souvent
+    /// demander « et à trente ? » pour quelqu'un qui n'est pas ouvert.
+    calc_renal_dfg: f64,
+    /// Le poids de « dose par kilo », **séparé de celui de la
+    /// clairance**.
+    ///
+    /// C'était le même champ, et cela se tenait tant que l'outil était
+    /// général : le poids d'une personne. Il ne se tient plus depuis
+    /// qu'il répond « pour seize kilos, ça fait combien » — une dose au
+    /// poids est presque toujours celle d'un enfant, une clairance de
+    /// Cockcroft presque toujours celle d'un sujet âgé, et ce ne sont
+    /// pas les deux mêmes personnes. Partagé, on calculait la dose de
+    /// l'enfant sur le poids du grand-père.
+    calc_kg_weight: f64,
     calc_weight: f64,
     calc_age: f64,
     calc_creat: f64,
@@ -4892,6 +4925,13 @@ impl Session {
             table_edit: None,
             table_undo: None,
             calc_open: false,
+            calc_drug: None,
+            calc_drug_query: String::new(),
+            calc_renal_dfg: 45.0,
+            // Un poids d'enfant : c'est la question que cet outil-là
+            // répond, et un champ ouvert sur soixante-dix kilos la pose
+            // mal.
+            calc_kg_weight: 16.0,
             calc_weight: 70.0,
             calc_age: 75.0,
             calc_creat: 90.0,
@@ -5319,6 +5359,16 @@ impl Session {
                 );
             }
         }
+        // **Les outils, par la question qu'ils répondent.** Le titre
+        // *et* le propos, comme les carnets d'à côté et pour la même
+        // raison : on cherche « enfant » ou « mg/kg », et l'outil
+        // s'appelle « Dose par kilo ».
+        for (title, purpose) in App::calc_tools() {
+            let sc = fuzzy::score(q, title).max(fuzzy::score(q, purpose));
+            if let Some(sc) = sc {
+                push(sc, Goto::Calc, title.to_owned(), tr("goto_kind_tool"));
+            }
+        }
         for sheet in crate::selfcheck::SHEETS {
             // Le titre **et** le propos : on cherche « tension » et la
             // feuille s'appelle « Automesure tensionnelle », mais on
@@ -5417,6 +5467,11 @@ impl Session {
                 self.enter_drug_panel();
                 self.show_carnets = true;
                 self.carnet_open = crate::selfcheck::by_key(key);
+            }
+            Goto::Calc => {
+                self.enter_drug_panel();
+                self.show_tables = true;
+                self.calc_open = true;
             }
             Goto::Script(name) => {
                 self.refresh_scripts();
@@ -11406,6 +11461,20 @@ impl App {
                         Ok("calc") => {
                             session.show_tables = true;
                             session.calc_open = true;
+                            // **Avec une fiche en main.** Les deux
+                            // outils que cette fiche fait parler — ce
+                            // que sa posologie écrit au poids, et ce que
+                            // le rein y change — ne se dessinent pas
+                            // sans elle : ouverts à vide, ils ne
+                            // figuraient sur aucune capture. L'Orelox
+                            // est la fiche livrée qui porte les deux.
+                            session.calc_drug = session
+                                .drugs
+                                .iter()
+                                .find(|d| d.name.eq_ignore_ascii_case("Orelox"))
+                                .map(|d| d.id);
+                            session.calc_drug_query = "Orelox".into();
+                            session.calc_renal_dfg = 35.0;
                             session.view = MainView::Drugs;
                         }
                         Ok("tables") => {
@@ -30787,10 +30856,84 @@ impl App {
     /// numbered sources, and a printable A4 with all of them.
     /// The counter's calculators: clairance de Cockcroft, dose par
     /// kilo, and the decay of a drug once the treatment stops.
+    /// Les calculs du comptoir, et **la question à laquelle chacun
+    /// répond**.
+    ///
+    /// Écrit une fois, lu par la boîte « Aller à… ». Un outil qu'on ne
+    /// trouve qu'en sachant dans quel écran il se cache est un outil que
+    /// personne n'ouvre : ceux-ci vivaient derrière « Tables de
+    /// conversion », dont le nom ne dit pas qu'il les contient.
+    ///
+    /// Le propos est écrit dans **les mots du comptoir** et non dans
+    /// ceux du titre : on tape « enfant », « mg/kg », « DFG bas », et
+    /// c'est cela qui doit trouver l'outil. C'est la règle que les
+    /// carnets suivent déjà, dont le titre dit « Automesure
+    /// tensionnelle » et le propos « tension ».
+    fn calc_tools() -> [(&'static str, &'static str); 5] {
+        [
+            (tr("tables_calc"), tr("calc_purpose_screen")),
+            (tr("calc_dfg"), tr("calc_purpose_dfg")),
+            (tr("calc_perkg"), tr("calc_purpose_perkg")),
+            (tr("calc_renal"), tr("calc_purpose_renal")),
+            (tr("calc_halflife"), tr("calc_purpose_halflife")),
+        ]
+    }
+
     fn calc_panel(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         ui.add_space(12.0);
         motif::column(ui, 940.0, |ui| {
             motif::section(ui, tr("calc_title"));
+            ui.add_space(6.0);
+            // **Une fiche en main, et les outils cessent d'être
+            // généraux.** « Dose par kilo » savait multiplier un poids
+            // par des milligrammes ; d'où venaient les milligrammes, il
+            // fallait le savoir — donc ne pas avoir besoin de l'outil.
+            // Un champ, la meilleure réponse, comme la carte du
+            // voisinage : pas de menu, il y a huit cent soixante-deux
+            // fiches.
+            ui.horizontal_wrapped(|ui| {
+                ui.label(tr("calc_fiche"));
+                let w = chars_wide(ui, 26.0);
+                let resp = motif::field_sized(
+                    ui,
+                    egui::vec2(w, Self::button_height(ui)),
+                    egui::TextEdit::singleline(&mut session.calc_drug_query).hint_text(
+                        motif::hint(Self::hint_that_fits(ui, w, tr("calc_fiche_hint"))),
+                    ),
+                );
+                if resp.changed() {
+                    let q = session.calc_drug_query.trim().to_owned();
+                    session.calc_drug = (!q.is_empty())
+                        .then(|| {
+                            session
+                                .drugs
+                                .iter()
+                                .filter_map(|d| {
+                                    let sc = fuzzy::score(&q, &d.name)
+                                        .into_iter()
+                                        .chain(fuzzy::score(&q, &d.dci))
+                                        .max()?;
+                                    Some((sc, d.id))
+                                })
+                                .max_by_key(|(sc, _)| *sc)
+                                .map(|(_, id)| id)
+                        })
+                        .flatten();
+                }
+                if let Some(d) = session
+                    .calc_drug
+                    .and_then(|id| session.drugs.iter().find(|d| d.id == id))
+                {
+                    motif::badge(ui, &d.name, None, motif::accent(), false);
+                }
+            });
+            if session.calc_drug.is_none() {
+                ui.label(
+                    egui::RichText::new(tr("calc_fiche_none"))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+            }
             ui.add_space(6.0);
             // Côte à côte **si les deux tiennent**, l'un sous l'autre
             // sinon. `ui.columns` donne à chaque colonne son rectangle et
@@ -30905,7 +31048,7 @@ impl App {
                     .show(ui, |ui| {
                         ui.label(tr("calc_weight"));
                         ui.add(
-                            egui::DragValue::new(&mut session.calc_weight)
+                            egui::DragValue::new(&mut session.calc_kg_weight)
                                 .range(2.0..=250.0)
                                 .suffix(" kg"),
                         );
@@ -30921,7 +31064,7 @@ impl App {
                         ui.add(egui::DragValue::new(&mut session.calc_takes).range(1..=6));
                         ui.end_row();
                     });
-                let per_take = session.calc_weight * session.calc_per_kg;
+                let per_take = session.calc_kg_weight * session.calc_per_kg;
                 let daily = per_take * session.calc_takes as f64;
                 ui.add_space(4.0);
                 ui.label(
@@ -30937,6 +31080,84 @@ impl App {
                         .size(motif::pt(ui, 11.0))
                         .color(motif::text_dim()),
                 );
+                // **Et ce que la fiche écrit, quand on lui en a donné
+                // une.** C'est la question du comptoir — « le Clamoxyl,
+                // pour seize kilos, ça fait combien » — et elle ne se
+                // répondait qu'en connaissant déjà le nombre de
+                // milligrammes par kilo, c'est-à-dire en n'ayant pas
+                // besoin de l'outil.
+                //
+                // Chaque ligne porte **son rythme et sa phrase** : une
+                // même fiche écrit souvent cinquante pour l'angine et
+                // quatre-vingts pour l'otite, et rien dans les nombres
+                // ne dit laquelle. Et quinze par prise n'est pas quinze
+                // par jour — un facteur quatre sur un enfant.
+                if let Some(d) = session
+                    .calc_drug
+                    .and_then(|id| session.drugs.iter().find(|d| d.id == id))
+                {
+                    ui.add_space(6.0);
+                    ui.label(
+                        egui::RichText::new(tr("calc_perkg_card"))
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    );
+                    let found = crate::dosing::read(&d.dosage);
+                    if found.is_empty() {
+                        // **Le silence n'est pas une autorisation**, et
+                        // un chiffre absent proposé à zéro se lirait
+                        // comme une réponse.
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(tr("calc_perkg_card_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    for f in &found {
+                        let w = session.calc_kg_weight;
+                        // **Une décimale seulement quand il y en a
+                        // une** : « 0,35 mg/kg » garde ses centièmes,
+                        // « 50 mg/kg » ne gagne pas un « ,00 » qui se
+                        // lit comme une précision qu'on n'a pas. Et par
+                        // `strings::decimal`, donc à la virgule : un
+                        // point décimal sur un écran français est une
+                        // faute que ce dépôt refuse par un test.
+                        let num = |v: f64| {
+                            crate::strings::decimal(v, usize::from(v.fract().abs() > 1e-9) * 2)
+                        };
+                        let span = |lo: f64, hi: Option<f64>| match hi {
+                            Some(h) => trn("calc_range", &[&num(lo), &num(h)]),
+                            None => num(lo),
+                        };
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(trn(
+                                    "calc_perkg_card_line",
+                                    &[
+                                        &span(f.low, f.high),
+                                        &tr(f.cadence.label_key()),
+                                        &num(w),
+                                        &span((f.low * w).round(), f.high.map(|h| (h * w).round())),
+                                    ],
+                                ))
+                                .size(motif::pt(ui, 12.0))
+                                .color(motif::accent()),
+                            )
+                            .wrap(),
+                        );
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(f.sentence.as_str())
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                }
             };
             if side_by_side {
                 ui.columns(2, |cols| {
@@ -30947,6 +31168,125 @@ impl App {
                 cockcroft(ui, session);
                 ui.add_space(10.0);
                 per_kilo(ui, session);
+            }
+
+            // --- Ce que le rein change, pour cette fiche-là ---
+            //
+            // **La table rénale ne se lisait que sur un dossier.** Elle
+            // répond « ce que le rein fait à cette ordonnance » depuis
+            // le panneau du dossier ouvert ; la question du comptoir est
+            // souvent l'autre — « la metformine, à trente, on fait
+            // quoi » —, pour quelqu'un qui n'est pas ouvert et parfois
+            // qui n'est pas de l'officine. C'est la même table, lue sur
+            // une fiche et un chiffre.
+            if let Some(d) = session
+                .calc_drug
+                .and_then(|id| session.drugs.iter().find(|d| d.id == id))
+                .cloned()
+            {
+                ui.add_space(10.0);
+                ui.label(
+                    egui::RichText::new(tr("calc_renal"))
+                        .strong()
+                        .size(motif::pt(ui, 13.0)),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(tr("calc_renal_dfg"));
+                    ui.add(
+                        egui::DragValue::new(&mut session.calc_renal_dfg)
+                            .range(3.0..=140.0)
+                            .suffix(" mL/min"),
+                    );
+                    // Les deux outils sont côte à côte : calculer une
+                    // clairance puis retaper le chiffre trois lignes
+                    // plus bas serait la seule chose que l'écran
+                    // demanderait de faire deux fois.
+                    if motif::button(ui, tr("calc_renal_take")).clicked() {
+                        let k = if session.calc_female { 1.04 } else { 1.23 };
+                        if session.calc_creat > 0.0 {
+                            session.calc_renal_dfg =
+                                ((140.0 - session.calc_age) * session.calc_weight * k
+                                    / session.calc_creat)
+                                    .clamp(3.0, 140.0);
+                        }
+                    }
+                });
+                let found = crate::renal::read(
+                    &ordonnance_terms(std::slice::from_ref(&d)),
+                    Some(session.calc_renal_dfg),
+                );
+                if found.is_empty() {
+                    // **Rien d'écrit n'est pas « rien à faire »** : la
+                    // table nomme ce qu'elle connaît, et son silence
+                    // dit qu'elle ne connaît pas cette molécule-là.
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("calc_renal_none"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
+                for f in &found {
+                    ui.horizontal_wrapped(|ui| {
+                        match f.level {
+                            Some(l) => {
+                                let (fill, mark) = match l {
+                                    crate::renal::Level::Contraindicated => {
+                                        (motif::alert(), motif::Pict::Stop)
+                                    }
+                                    _ => (motif::warn(), motif::Pict::Warn),
+                                };
+                                motif::badge(ui, l.label(), Some(mark), fill, true);
+                            }
+                            // **Sans chiffre, pas de verdict** : c'est
+                            // la règle de `renal.rs`, et son `Option`
+                            // est ce qui l'empêche d'en devenir un.
+                            None => {
+                                motif::badge(
+                                    ui,
+                                    tr("calc_renal_nodfg"),
+                                    Some(motif::Pict::Pending),
+                                    motif::bg_light(),
+                                    false,
+                                );
+                            }
+                        }
+                        ui.label(
+                            egui::RichText::new(f.label)
+                                .size(motif::pt(ui, 12.0))
+                                .strong(),
+                        );
+                    });
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(f.conduct)
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text()),
+                        )
+                        .wrap(),
+                    );
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(f.source)
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
+                // La portée de la table, **avant** ce qu'elle dit
+                // ailleurs, et ici avec le reste : la conduite est celle
+                // du RCP, la décision est celle du prescripteur.
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("renal_scope"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
             }
 
             // --- Décroissance et accumulation ---
@@ -44538,6 +44878,7 @@ impl App {
             let mut poso_start_edit: Option<db::Posologie> = None;
             let mut poso_delete: Option<(i64, String)> = None;
             let mut print_mono = false;
+            let mut open_calc = false;
             let mut open_patient_id: Option<i64> = None;
             // A molecule clicked inside the monograph: the card it
             // names is opened once the sheet has been drawn.
@@ -44643,6 +44984,20 @@ impl App {
                                     if motif::button(ui, label).on_hover_text(tooltip).clicked() {
                                         lookup = Some(source);
                                     }
+                                }
+                                // **Les calculs, avec cette fiche en
+                                // main.** C'est le chemin le plus court
+                                // vers « ce médicament-là, pour seize
+                                // kilos, ça fait combien » : on est déjà
+                                // sur la fiche qui écrit la réponse.
+                                // Sans ce bouton il fallait retenir que
+                                // les calculs vivent derrière « Tables
+                                // de conversion », puis y retaper le nom.
+                                if motif::button(ui, tr("drug_calc"))
+                                    .on_hover_text(tr("drug_calc_tooltip"))
+                                    .clicked()
+                                {
+                                    open_calc = true;
                                 }
                                 if motif::button(ui, tr("drug_print"))
                                     .on_hover_text(tr("drug_print_tooltip"))
@@ -45186,6 +45541,21 @@ impl App {
                         session.error = Some(trf("drug_lookup_error", e));
                     }
                 }
+            }
+            if open_calc {
+                // La fiche ouverte passe **dans** l'outil : le champ
+                // porte son nom, et les deux lectures qui en dépendent
+                // — la dose au poids et le rein — répondent aussitôt.
+                // Relue depuis la session comme le fait l'impression
+                // d'à côté : la fiche en cours d'édition est empruntée
+                // ici, et ce sont ses valeurs enregistrées qu'on veut.
+                if let Some(card) = session.drug_form.as_ref() {
+                    let (id, name) = (card.id, card.name.clone());
+                    session.calc_drug = Some(id);
+                    session.calc_drug_query = name;
+                }
+                session.show_tables = true;
+                session.calc_open = true;
             }
             if print_mono {
                 if let Some(card) = session.drug_form.clone() {

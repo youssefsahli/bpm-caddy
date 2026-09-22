@@ -764,6 +764,30 @@ The one that was missing — « combien de fois un autre poste avait
   register in — three lines of five went through, nothing says which,
   and nothing there erases. Pure, tested, no clock: the day is passed
   in),
+  `src/dosing.rs` (ce qu'une posologie écrite dit d'une dose **au
+  poids** — la question du comptoir, « ce médicament-là, pour seize
+  kilos, ça fait combien ». Les calculs savaient multiplier un poids par
+  des milligrammes ; d'où venaient les milligrammes, il fallait le
+  savoir, donc ne pas avoir besoin de l'outil. Or les fiches l'écrivent,
+  une cinquantaine de fois dans les posologies livrées. Quatre règles,
+  un test chacune. **La cadence est la moitié de la dose** : une même
+  fiche écrit « 15 mg/kg par prise toutes les 6 heures, soit 60 mg/kg
+  par 24 heures » — même enfant, même médicament, facteur quatre — donc
+  le type porte la cadence et l'écran ne montre jamais un chiffre sans
+  elle ; et **trois cas et non deux**, parce qu'une phrase qui ne dit
+  pas le rythme ne dit pas « par jour » (« 1 mg/kg » sur une héparine
+  est une dose par injection). **Une fourchette reste une fourchette** —
+  « 80 à 90 » ne se moyenne pas en 85, laquelle vaut dépend de
+  l'indication, que cette lecture ne connaît pas. **Ce que la fiche
+  n'écrit pas n'est pas inventé** : la fiche du Bactrim rend une liste
+  vide et l'écran le dit, ce qui est la règle de `crush.rs` appliquée à
+  un chiffre — une dose absente proposée à zéro se lirait comme une
+  réponse — et dit du même coup quelle fiche compléter. Et **la phrase
+  voyage avec le chiffre**, parce qu'une même fiche donne cinquante pour
+  l'angine et quatre-vingts pour l'otite et que rien dans les nombres ne
+  départage. La **posologie** et rien d'autre : « mg/kg » se lit aussi
+  dans les conseils au patient, où il raconte plutôt qu'il ne prescrit.
+  Pur, testé, confronté aux fiches livrées, aucune écriture),
   `src/date.rs` (the calendar, written **once** — day arithmetic, the
   end of a month, the ISO weekday and the ISO week number, whose rule
   is one sentence: **a week belongs to the year of its Thursday**. It

@@ -276,6 +276,9 @@ mod tests {
             // Le registre des textes imprimés y nomme ses
             // documents : une source de clés comme les autres.
             include_str!("content.rs"),
+            // Et la lecture des doses au poids, dont la cadence nomme
+            // son libellé : « par prise » n'est pas « par jour ».
+            include_str!("dosing.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");
@@ -1033,6 +1036,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("goto_kind_stup", "le registre"),
             ("goto_kind_carnet", "les carnets de suivi"),
             ("goto_kind_script", "les scripts"),
+            ("goto_kind_tool", "les outils de calcul"),
             ("goto_kind_text", "les textes imprimés"),
         ];
         let sentence = AIDE

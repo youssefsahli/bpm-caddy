@@ -5,6 +5,54 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.246.0] - 2026-09-22
+
+### Added
+- **Les calculs du comptoir se trouvent, et répondent pour un
+  médicament donné.** Ils vivaient derrière « Tableau → Tables de
+  conversion → Calculs », c'est-à-dire derrière un écran dont le nom ne
+  dit pas qu'il les contient : personne ne cherche « tables de
+  conversion » pour savoir ce que le rein change à une metformine. Trois
+  chemins y mènent maintenant — « Aller à… », qui les connaît **par la
+  question qu'ils répondent** (« enfant », « mg/kg », « clairance »,
+  « DFG bas », « demi-vie »), le bouton « Calculs… » d'une fiche
+  ouverte, qui les ouvre **avec cette fiche en main**, et l'ancien.
+
+- **La dose au poids qu'écrit la fiche.** « Dose par kilo » savait
+  multiplier un poids par des milligrammes ; d'où venaient les
+  milligrammes, il fallait le savoir — donc ne pas avoir besoin de
+  l'outil. Or les fiches l'écrivent, une cinquantaine de fois dans les
+  posologies livrées : chaque dose au poids est donnée avec **son
+  rythme** et avec **la phrase d'où elle vient**. Le rythme n'est pas un
+  détail, c'est la moitié de la dose — « 15 mg/kg par prise toutes les
+  6 heures » et « 60 mg/kg par 24 heures » sont le même traitement et
+  quatre fois l'un de l'autre. La phrase non plus : une même fiche écrit
+  cinquante par jour pour l'angine et quatre-vingts pour l'otite, et
+  rien dans les nombres ne départage. Une fourchette reste une
+  fourchette. Et **ce que la fiche n'écrit pas n'est pas inventé** : la
+  fiche du Bactrim n'en porte aucune, l'écran le dit au lieu de proposer
+  un chiffre qui n'est pas le sien — et dit du même coup quelle
+  posologie compléter.
+
+- **Ce que le rein change, pour une fiche et un DFG.** La table rénale
+  ne se lisait que sur un dossier ouvert ; la question du comptoir est
+  souvent l'autre — « la metformine, à trente, on fait quoi » —, pour
+  quelqu'un qui n'est pas ouvert. Même table, lue sur une fiche et un
+  chiffre, qu'un bouton reprend de la clairance qu'on vient d'estimer.
+  Le palier qui parle est le plus bas des paliers franchis, les seuils
+  viennent des RCP, et la décision reste celle du prescripteur.
+
+- Un chapitre du manuel pour ces outils, qui n'en avaient aucun.
+
+### Fixed
+- **La clairance et la dose par kilo partageaient un seul champ de
+  poids.** Cela se tenait tant que l'outil était général ; cela ne se
+  tient plus depuis qu'il répond « pour seize kilos, ça fait combien ».
+  Une dose au poids est presque toujours celle d'un enfant, une
+  clairance de Cockcroft presque toujours celle d'un sujet âgé, et ce ne
+  sont pas les deux mêmes personnes : partagé, on calculait la dose de
+  l'enfant sur le poids du grand-père.
+
 ## [0.245.0] - 2026-09-22
 
 ### Fixed
