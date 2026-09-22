@@ -1062,7 +1062,7 @@ audit_by_operator = "Par opérateur"
 # ne monte, et aucune adresse n'est livrée.
 annuaire_empty = "Le serveur n'a rien rendu : zéro octet. Ce n'est pas un annuaire vide, c'est une requête qui a échoué sans le dire."
 annuaire_archive = "Ce fichier est une archive (zip, gzip) et non du texte. Dézippez-le, puis importez-le avec « Importer un annuaire… »."
-annuaire_too_big = "Fichier trop gros pour être chargé d'un bloc. Téléchargez-le à part et importez-le."
+annuaire_too_big = "Fichier trop gros pour être chargé d'un bloc (plus de 40 Mo) : l'extraction nationale complète en fait près de huit cents. Filtrez-la à votre département, puis importez l'extrait."
 annuaire_not_https = "L'adresse doit commencer par « https:// » : un annuaire de noms propres ne traverse pas le réseau en clair."
 opts_presc_fetch = "Mettre à jour depuis l'adresse…"
 opts_presc_fetch_tooltip = "Aller chercher l'annuaire à l'adresse écrite dans [prescribers] source_url de config.toml. Rien ne part tant que vous n'appuyez pas."

@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.252.0] - 2026-09-23
+
+### Fixed
+- **Une base d'avant la séparation du registre s'ouvre de nouveau.** Le
+  déménagement du registre relisait des colonnes que l'ancienne table
+  n'avait pas : la base refusait de s'ouvrir à chaque déverrouillage. Et
+  « Réinitialiser » ne fait plus rejouer ce déménagement, ce qui
+  verrouillait de la même façon une base qui l'avait déjà fait.
+- **Changer le mot de passe est tout ou rien.** Les trois fichiers se
+  rechiffraient l'un après l'autre : quand la base, tenue par un autre
+  poste, refusait, les pièces et le registre étaient déjà sous la
+  nouvelle clé et plus rien ne s'ouvrait. Ce qui a changé est remis à
+  l'ancienne clé au premier échec.
+- **Le compactage n'efface plus une pièce qu'un autre poste ajoute au
+  même instant.**
+- **Une phrase réécrite que la mise à jour a rendue périmée se
+  réenregistre** : chaque essai se disait « écrit par un autre poste »,
+  et la seule issue était de rétablir tout le document.
+- **La carte Vitale** ne fait plus tomber l'application quand un « à »
+  se glisse dans la commande APDU d'Options, et reconnaît un dossier
+  dont le NIR est écrit avec ses espaces au lieu d'en ouvrir un second.
+- **L'annuaire des prescripteurs** lit l'extraction publique telle
+  qu'elle est publiée : champs entre guillemets, ville et FINESS sous
+  leurs vrais intitulés, numéros ADELI rangés comme tels et non comptés
+  comme des RPPS faux, fichiers Windows-1252 avec leur apostrophe
+  typographique. L'import d'un fichier passe par les mêmes gardes que la
+  recherche en ligne.
+- Lier une pièce au registre dit quand la pièce a été retirée entre-temps,
+  et réordonner une liste de contrôle ne laisse plus deux points au même
+  rang quand deux postes le font ensemble.
+
 ## [0.251.0] - 2026-09-23
 
 ### Fixed

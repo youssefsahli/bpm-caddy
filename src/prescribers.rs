@@ -191,7 +191,11 @@ const COLUMNS: &[(&str, &[&str])] = &[
             "numero finess etablissement",
             "finess",
             "numero finess",
-            "identifiant technique de la structure",
+            // Les deux de l'extraction publique : le site d'abord. Pas
+            // « identifiant technique de la structure », qui est un
+            // numéro interne à l'annuaire et non un FINESS.
+            "numero finess site",
+            "numero finess etablissement juridique",
         ],
     ),
     (
@@ -211,8 +215,15 @@ const COLUMNS: &[(&str, &[&str])] = &[
             "commune",
             "ville",
             "libelle commune coordonnees structure",
+            // L'en-tête réel de l'extraction : « Libellé commune
+            // (coord. structure) ». Sans lui, aucun prescripteur de
+            // l'annuaire national n'avait de ville.
+            "libelle commune coord structure",
         ],
     ),
+    // Ce que l'identifiant est : 8 pour un RPPS, 0 pour un ADELI —
+    // l'extraction range les deux dans « Identifiant PP ».
+    ("kind", &["type d identifiant pp", "type identifiant pp"]),
 ];
 
 /// Le séparateur du fichier, lu dans son en-tête.
@@ -225,6 +236,49 @@ fn separator(header: &str) -> char {
         .into_iter()
         .max_by_key(|c| header.matches(*c).count())
         .unwrap_or(';')
+}
+
+/// Les cellules d'une ligne, **guillemets compris**.
+///
+/// Le fichier « RPPS autorisés à exercer » met chaque champ entre
+/// guillemets : découpé au séparateur seul, un numéro se lisait
+/// `"10001234565"` — guillemets gardés, donc jamais vérifié —, et un
+/// séparateur dans un nom entre guillemets décalait toute la suite de la
+/// ligne. Un champ qui **commence** par un guillemet est lu jusqu'au
+/// guillemet qui le ferme, `""` valant un guillemet ; les autres sont
+/// lus tels quels — l'extraction à barres verticales garde des
+/// guillemets littéraux dans ses données, et ils y restent.
+fn cells_of(line: &str, sep: char) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cell = String::new();
+    let mut quoted = false;
+    let mut at_start = true;
+    let mut chars = line.chars().peekable();
+    while let Some(c) = chars.next() {
+        if quoted {
+            if c == '"' {
+                if chars.peek() == Some(&'"') {
+                    chars.next();
+                    cell.push('"');
+                } else {
+                    quoted = false;
+                }
+            } else {
+                cell.push(c);
+            }
+        } else if c == sep {
+            out.push(std::mem::take(&mut cell));
+            at_start = true;
+            continue;
+        } else if c == '"' && at_start {
+            quoted = true;
+        } else {
+            cell.push(c);
+        }
+        at_start = false;
+    }
+    out.push(cell);
+    out
 }
 
 /// Replie un en-tête de colonne pour le comparer.
@@ -248,7 +302,7 @@ pub fn import(text: &str) -> Result<Imported, String> {
         return Err(crate::strings::tr("presc_import_empty").to_owned());
     };
     let sep = separator(header);
-    let heads: Vec<String> = header.split(sep).map(fold).collect();
+    let heads: Vec<String> = cells_of(header, sep).iter().map(|h| fold(h)).collect();
 
     // Où chaque champ se trouve, **par son nom**.
     let mut at: std::collections::BTreeMap<&str, usize> = std::collections::BTreeMap::new();
@@ -273,7 +327,7 @@ pub fn import(text: &str) -> Result<Imported, String> {
         ));
     }
 
-    let take = |cells: &[&str], field: &str| -> String {
+    let take = |cells: &[String], field: &str| -> String {
         at.get(field)
             .and_then(|i| cells.get(*i))
             .map(|s| s.trim().to_owned())
@@ -284,8 +338,8 @@ pub fn import(text: &str) -> Result<Imported, String> {
         ..Imported::default()
     };
     for line in lines {
-        let cells: Vec<&str> = line.split(sep).collect();
-        let who = Prescriber {
+        let cells = cells_of(line, sep);
+        let mut who = Prescriber {
             rpps: take(&cells, "rpps"),
             last: take(&cells, "last"),
             first: take(&cells, "first"),
@@ -297,6 +351,18 @@ pub fn import(text: &str) -> Result<Imported, String> {
         if who.last.trim().is_empty() {
             out.skipped += 1;
             continue;
+        }
+        // **Un numéro ADELI n'est pas un RPPS qui ne se prouve pas** :
+        // l'extraction range les deux dans la même colonne, et les neuf
+        // chiffres d'un ADELI se comptaient comme autant de RPPS faux.
+        // Rangé à sa place, il ne se vérifie pas par une clé qu'il n'a
+        // pas.
+        if take(&cells, "kind").trim() == "0" {
+            if who.am.trim().is_empty() {
+                who.am = std::mem::take(&mut who.rpps);
+            } else {
+                who.rpps.clear();
+            }
         }
         if !who.rpps.trim().is_empty() && !who.rpps_checks() {
             out.unverified += 1;
@@ -513,5 +579,31 @@ mod tests {
         for reaching in ["std::fs", "File::open", "read_to_string"] {
             assert!(!code.contains(reaching), "« {reaching} »");
         }
+    }
+
+    /// **Le fichier réel, tel qu'il est publié** : champs entre
+    /// guillemets, séparateur dans un nom, ville sous son libellé de
+    /// l'extraction, et un ADELI rangé dans la colonne des RPPS.
+    #[test]
+    fn the_public_extract_is_read_as_it_is_published() {
+        let text = "\"Type d'identifiant PP\";\"Identifiant PP\";\"Nom d'exercice\";\"Prénom d'exercice\";\"Libellé commune (coord. structure)\"\n\
+                    \"8\";\"10001234565\";\"Morel\";\"Jean\";\"Montpellier\"\n\
+                    \"0\";\"341234567\";\"Dupont; Martin\";\"Anne\";\"Sète\"\n";
+        let read = import(text).expect("lu");
+        assert_eq!(read.found.len(), 2);
+        assert_eq!(read.found[0].rpps, "10001234565");
+        assert_eq!(read.found[0].last, "Morel");
+        assert_eq!(read.found[0].city, "Montpellier");
+        // Le point-virgule entre guillemets ne décale rien.
+        assert_eq!(read.found[1].last, "Dupont; Martin");
+        assert_eq!(read.found[1].city, "Sète");
+        // L'ADELI est rangé comme tel, et ne compte pas comme un RPPS
+        // qui ne se prouve pas.
+        assert_eq!(read.found[1].rpps, "");
+        assert_eq!(read.found[1].am, "341234567");
+        assert_eq!(read.unverified, 0);
+        // Et une ligne sans guillemets se lit comme avant.
+        assert_eq!(cells_of("a|b||c", '|'), vec!["a", "b", "", "c"]);
+        assert_eq!(cells_of("\"x \"\"y\"\"\";z", ';'), vec!["x \"y\"", "z"]);
     }
 }

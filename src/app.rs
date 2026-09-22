@@ -6843,7 +6843,7 @@ impl Session {
         if let Some(p) = self
             .patients
             .iter()
-            .find(|p| !p.nir.trim().is_empty() && p.nir.trim() == who.nir)
+            .find(|p| crate::vitale::same_nir(&p.nir, &who.nir))
             .cloned()
         {
             self.vitale_found.clear();
@@ -36327,10 +36327,18 @@ impl App {
         }
         if let Some((scan_id, move_id)) = link {
             match session.db.link_scan_to_move(scan_id, move_id) {
-                Ok(_) => {
+                Ok(true) => {
                     session.scan_linking = None;
                     session.reload_stup();
                     session.refresh_scans(subject, subject_id);
+                }
+                // La pièce a été retirée depuis un autre poste : dire
+                // qu'elle est liée serait faux, et c'est ce que le
+                // silence laissait croire.
+                Ok(false) => {
+                    session.scan_linking = None;
+                    session.refresh_scans(subject, subject_id);
+                    session.stale("scan_stale");
                 }
                 Err(e) => session.error = Some(e),
             }
@@ -56088,7 +56096,7 @@ impl eframe::App for App {
                             } else if form.new1 != form.new2 {
                                 form.error = Some(tr("pw_mismatch").to_owned());
                             } else {
-                                match session.db.change_password(&form.new1) {
+                                match session.db.change_password(&session.password, &form.new1) {
                                     Ok(()) => {
                                         // The session's own copy — the one a
                                         // background pass opens its connection
@@ -58470,8 +58478,21 @@ impl eframe::App for App {
             self.presc_fetch = Some(crate::annuaire::fetch_async(url));
         }
         if let (Some(path), State::Unlocked(session)) = (&presc_file, &mut self.state) {
-            let said = std::fs::read_to_string(path)
+            // **Les mêmes gardes que la recherche en ligne** : la taille
+            // d'abord, puis l'archive et l'encodage par `read_body`. Lu
+            // en UTF-8 seul, un fichier Windows-1252 — le cas même pour
+            // lequel `read_body` existe — était refusé, et un fichier de
+            // huit cents mégaoctets se chargeait entier.
+            let said = std::fs::metadata(path)
                 .map_err(|e| e.to_string())
+                .and_then(|m| {
+                    if m.len() > crate::annuaire::MAX_BYTES as u64 {
+                        Err(tr("annuaire_too_big").to_owned())
+                    } else {
+                        std::fs::read(path).map_err(|e| e.to_string())
+                    }
+                })
+                .and_then(crate::annuaire::read_body)
                 .and_then(|text| crate::prescribers::import(&text))
                 .and_then(|read| {
                     session

@@ -80,6 +80,26 @@ pub fn nir_key(body: &str) -> Option<u8> {
     Some((97 - (n % 97)) as u8)
 }
 
+/// Deux NIR désignent-ils la même personne ?
+///
+/// Le NIR d'un dossier est tapé à la main — « 1 55 08 75 116 001 25 »,
+/// comme la carte l'imprime, ou ses treize chiffres sans la clé — et
+/// celui de la carte n'a pas d'espace. Comparés tels quels, ils ne se
+/// reconnaissaient pas, et la carte ouvrait un **second dossier** pour
+/// quelqu'un qui en avait déjà un. Les treize chiffres de corps
+/// décident, sans espaces ni casse (2A, 2B).
+pub fn same_nir(a: &str, b: &str) -> bool {
+    let body = |s: &str| -> String {
+        s.chars()
+            .filter(|c| !c.is_whitespace())
+            .map(|c| c.to_ascii_uppercase())
+            .take(13)
+            .collect()
+    };
+    let (a, b) = (body(a), body(b));
+    a.len() == 13 && a == b
+}
+
 /// Is this a whole NIR — thirteen digits of body and two of key, and the
 /// key is the one the body implies?
 pub fn nir_is_valid(nir: &str) -> bool {
@@ -88,6 +108,10 @@ pub fn nir_is_valid(nir: &str) -> bool {
         return false;
     }
     let (body, key) = nir.split_at(13);
+    // Deux chiffres, et rien d'autre : `parse` accepterait « +5 ».
+    if !key.chars().all(|c| c.is_ascii_digit()) {
+        return false;
+    }
     match (nir_key(body), key.parse::<u8>()) {
         (Some(expected), Ok(given)) => expected == given,
         _ => false,
@@ -278,7 +302,10 @@ fn birth_around(chars: &[char], at: usize, nir: &str, this_year: u32) -> String 
             else {
                 continue;
             };
-            if y == year && m == month && (1..=31).contains(&d) {
+            // Le jour borné par le mois lui-même : un « 31 février »
+            // s'écrivait dans le dossier.
+            let last = crate::date::end_of_month(i64::from(y), i64::from(m)).unwrap_or(31);
+            if y == year && m == month && d >= 1 && i64::from(d) <= last {
                 let mut out = String::new();
                 let _ = write!(out, "{y:04}-{m:02}-{d:02}");
                 return out;
@@ -373,7 +400,11 @@ pub fn parse_hex(text: &str) -> Result<Vec<u8>, String> {
         .chars()
         .filter(|c| !c.is_whitespace() && *c != ':')
         .collect();
-    if clean.is_empty() || !clean.len().is_multiple_of(2) {
+    // **ASCII d'abord** : le découpage se fait par octets, et un « à »
+    // tapé sans majuscule sur un clavier AZERTY — ou une apostrophe
+    // collée depuis un PDF — tombait au milieu d'un caractère et faisait
+    // tomber l'application, à chaque image, pendant qu'on tapait.
+    if clean.is_empty() || !clean.is_ascii() || !clean.len().is_multiple_of(2) {
         return Err(format!("commande APDU illisible : « {text} »"));
     }
     (0..clean.len())
@@ -531,5 +562,24 @@ mod tests {
         assert!(parse_hex("zz").is_err());
         assert_eq!(hex(&[0x00, 0xA4, 0xFF]), "00 A4 FF");
         assert_eq!(hex(&[]), "");
+    }
+
+    /// **Une saisie qui n'est pas de l'ASCII est refusée, jamais
+    /// découpée** — le découpage par octets tombait au milieu d'un « à ».
+    #[test]
+    fn a_command_with_a_non_ascii_character_is_refused_not_sliced() {
+        assert!(parse_hex("A4 0à0").is_err());
+        assert!(parse_hex("00’0").is_err());
+        assert_eq!(parse_hex("00 A4").unwrap(), vec![0x00, 0xA4]);
+        assert!(!nir_is_valid("1550875116001+5"));
+    }
+
+    #[test]
+    fn a_nir_typed_with_spaces_is_the_same_nir() {
+        assert!(same_nir("1 55 08 75 116 001 25", "155087511600125"));
+        assert!(same_nir("1550875116001", "155087511600125"));
+        assert!(same_nir("2 69 05 2a 012 345 67", "269052A01234567"));
+        assert!(!same_nir("", ""));
+        assert!(!same_nir("1550875116002", "155087511600125"));
     }
 }

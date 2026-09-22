@@ -100,7 +100,24 @@ pub fn read_body(bytes: Vec<u8>) -> Result<String, String> {
     }
     match String::from_utf8(bytes) {
         Ok(text) => Ok(text),
-        Err(e) => Ok(e.into_bytes().into_iter().map(char::from).collect()),
+        Err(e) => Ok(e.into_bytes().into_iter().map(cp1252).collect()),
+    }
+}
+
+/// Un octet de Windows-1252. Le latin-1 et lui s'accordent partout sauf
+/// de 0x80 à 0x9F, où le latin-1 met des caractères de contrôle et
+/// Windows-1252 l'apostrophe typographique de « D’ALMEIDA », le « œ »,
+/// les tirets, l'euro : lus en latin-1, ils entraient dans l'annuaire
+/// comme des caractères invisibles.
+fn cp1252(b: u8) -> char {
+    const HIGH: [char; 32] = [
+        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8d}', 'Ž',
+        '\u{8f}', '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9d}',
+        'ž', 'Ÿ',
+    ];
+    match b {
+        0x80..=0x9F => HIGH[usize::from(b - 0x80)],
+        _ => char::from(b),
     }
 }
 
@@ -265,5 +282,13 @@ mod tests {
                 Fetched::Got(_) => panic!("{refused} est parti"),
             }
         }
+    }
+
+    /// **Windows-1252, et non latin-1** : l'apostrophe de « D’ALMEIDA »
+    /// et le « œ » vivent entre 0x80 et 0x9F.
+    #[test]
+    fn a_windows_file_keeps_its_apostrophes() {
+        let text = read_body(b"D\x92ALMEIDA;C\x9cur;Lef\xe8vre".to_vec()).unwrap();
+        assert_eq!(text, "D’ALMEIDA;Cœur;Lefèvre");
     }
 }

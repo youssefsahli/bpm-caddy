@@ -877,6 +877,14 @@ const MIGRATIONS: &[&str] = &[
         remark       TEXT NOT NULL DEFAULT '',
         created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
+    // **Et les colonnes que le déménagement du registre relit.** Le
+    // registre d'avant sa séparation vit encore dans la base, et
+    // `move_register_beside_the_base` y lit `lot` et `expiry` — que seul
+    // `STUP_MIGRATIONS` ajoutait, au fichier du registre. Une base
+    // d'avant la séparation ne s'ouvrait donc plus du tout : « no such
+    // column: lot », à chaque déverrouillage.
+    "ALTER TABLE stup_moves ADD COLUMN lot TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE stup_moves ADD COLUMN expiry TEXT NOT NULL DEFAULT ''",
     "CREATE TABLE IF NOT EXISTS scans (
         id           INTEGER PRIMARY KEY,
         subject_kind TEXT NOT NULL,
@@ -29805,7 +29813,7 @@ impl Db {
 
     /// Re-encrypt the database under a new master password (SQLCipher
     /// `PRAGMA rekey`). Do this while no other PC has the file open.
-    pub fn change_password(&self, new_password: &str) -> Result<(), String> {
+    pub fn change_password(&self, old_password: &str, new_password: &str) -> Result<(), String> {
         if new_password.is_empty() {
             return Err("Le mot de passe ne peut pas être vide.".to_owned());
         }
@@ -29815,18 +29823,39 @@ impl Db {
         // rien pour dire pourquoi. Le registre est pire encore : il ne
         // s'ouvrirait plus du tout, et c'est une pièce comptable.
         //
-        // Les fichiers à côté d'abord : s'ils échouent, la base garde
-        // son mot de passe et les trois restent d'accord, alors que dans
-        // l'autre ordre un échec les sépare.
-        self.scans
-            .pragma_update(None, "rekey", new_password)
-            .map_err(|e| format!("changement du mot de passe des pièces impossible : {e}"))?;
-        self.stups
-            .pragma_update(None, "rekey", new_password)
-            .map_err(|e| format!("changement du mot de passe du registre impossible : {e}"))?;
-        self.conn
-            .pragma_update(None, "rekey", new_password)
-            .map_err(|e| format!("changement du mot de passe impossible : {e}"))
+        // **Et tout ou rien.** Les trois changements sont indépendants :
+        // les pièces et le registre passaient, puis la base échouait —
+        // le plus souvent parce qu'un autre poste la tenait ouverte, ce
+        // qui est le cas ordinaire d'un fichier partagé. Les trois
+        // fichiers restaient alors sous deux clés, et ni l'ancien ni le
+        // nouveau mot de passe n'ouvrait plus rien. Ce qui a changé est
+        // donc remis à l'ancienne clé au premier échec, et l'erreur dit
+        // que rien n'a changé.
+        let files: [(&rusqlite::Connection, &str); 3] = [
+            (
+                &self.scans,
+                "changement du mot de passe des pièces impossible",
+            ),
+            (
+                &self.stups,
+                "changement du mot de passe du registre impossible",
+            ),
+            (&self.conn, "changement du mot de passe impossible"),
+        ];
+        for (done, (conn, what)) in files.iter().enumerate() {
+            if let Err(e) = conn.pragma_update(None, "rekey", new_password) {
+                let mut back = true;
+                for (undo, _) in files.iter().take(done) {
+                    back &= undo.pragma_update(None, "rekey", old_password).is_ok();
+                }
+                return Err(if back {
+                    format!("{what} : {e}. Rien n'a changé : les trois fichiers gardent l'ancien mot de passe.")
+                } else {
+                    format!("{what} : {e}. Le retour à l'ancien mot de passe a lui aussi échoué : ne fermez pas cette session, et faites une copie de la base avant tout autre essai.")
+                });
+            }
+        }
+        Ok(())
     }
 
     /// Write a consistent snapshot of the database to `path` (encrypted
@@ -31079,7 +31108,11 @@ impl Db {
         // meant to bring the shipped content back, so they go too —
         // otherwise the dispositifs, which will not re-seed into a base
         // that emptied them on purpose, would stay gone.
-        tx.execute("DELETE FROM seed_state", [])
+        // **Sauf la marque du registre déménagé** : elle ne dit pas qu'un
+        // contenu a été semé mais qu'un registre a changé de fichier, et
+        // la retirer faisait rejouer ce déménagement au prochain
+        // déverrouillage, sur les lignes d'origine que la base garde.
+        tx.execute("DELETE FROM seed_state WHERE key <> 'registre_deplace'", [])
             .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(0)
@@ -31663,6 +31696,13 @@ impl Db {
     /// écrite laisse deux lignes au même rang, et l'ordre devient celui
     /// des identifiants — c'est-à-dire un ordre que personne n'a choisi.
     pub fn move_checklist_item(&self, list: i64, id: i64, up: bool) -> Result<bool, String> {
+        // Lues **dans** la transaction qui les échange, et échangées
+        // seulement si elles n'ont pas bougé : deux postes qui déplaçaient
+        // en même temps laissaient deux points au même rang.
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
         let items = self.checklist_items(list)?;
         let Some(at) = items.iter().position(|i| i.id == id) else {
             return Ok(false);
@@ -31673,19 +31713,20 @@ impl Db {
             (at + 1 < items.len()).then_some(at + 1)
         };
         let Some(other) = other else { return Ok(false) };
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
         for (row, pos) in [
             (&items[at], items[other].position),
             (&items[other], items[at].position),
         ] {
-            tx.execute(
-                "UPDATE checklist_items SET position = ?2 WHERE id = ?1",
-                (row.id, pos),
-            )
-            .map_err(|e| e.to_string())?;
+            let changed = tx
+                .execute(
+                    "UPDATE checklist_items SET position = ?2 WHERE id = ?1 AND position = ?3",
+                    (row.id, pos, row.position),
+                )
+                .map_err(|e| e.to_string())?;
+            if changed != 1 {
+                // La transaction tombe avec son `tx` : rien d'écrit.
+                return Ok(false);
+            }
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(true)
@@ -33781,20 +33822,26 @@ impl Db {
     /// laisse ; deux postes qui suppriment en même temps aussi. Passé
     /// avec le compactage, qui est le moment où l'on reprend la place.
     pub fn sweep_orphan_scans(&self) -> Result<usize, String> {
-        let kept: Vec<i64> = {
+        // **Les octets d'abord, les fiches ensuite.** Un ajout écrit la
+        // fiche puis ses octets : lus dans l'autre ordre, une pièce
+        // ajoutée par un autre poste entre les deux lectures avait ses
+        // octets dans la seconde liste et pas sa fiche dans la première,
+        // et le compactage l'effaçait comme orpheline. Dans cet ordre-ci,
+        // tout octet lu a déjà sa fiche.
+        let all: Vec<i64> = {
             let mut stmt = self
-                .conn
-                .prepare("SELECT id FROM scans")
+                .scans
+                .prepare("SELECT scan_id FROM scan_blobs")
                 .map_err(|e| e.to_string())?;
             let rows = stmt
                 .query_map([], |r| r.get::<_, i64>(0))
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
         };
-        let all: Vec<i64> = {
+        let kept: Vec<i64> = {
             let mut stmt = self
-                .scans
-                .prepare("SELECT scan_id FROM scan_blobs")
+                .conn
+                .prepare("SELECT id FROM scans")
                 .map_err(|e| e.to_string())?;
             let rows = stmt
                 .query_map([], |r| r.get::<_, i64>(0))
@@ -35204,15 +35251,25 @@ impl Db {
         day: &str,
         who: &str,
     ) -> Result<bool, String> {
-        let current: Option<String> = self
+        let current: Option<(String, String)> = self
             .conn
             .query_row(
-                "SELECT value FROM content_overrides WHERE key = ?1",
+                "SELECT value, shipped_seen FROM content_overrides WHERE key = ?1",
                 [key],
-                |r| r.get(0),
+                |r| Ok((r.get(0)?, r.get(1)?)),
             )
             .ok();
-        let seen = current.as_deref().unwrap_or(shipped);
+        // **Une réécriture périmée s'affiche comme la phrase livrée** —
+        // c'est ce que fait `content::Overrides::get`, parce qu'on ne
+        // pose pas une réécriture sur une phrase qui a changé. La
+        // comparaison doit donc se faire contre ce qui était affiché :
+        // contre la valeur rangée, elle ne tombait jamais juste, chaque
+        // enregistrement se disait « écrit ailleurs », et la seule
+        // issue était de rétablir tout le document.
+        let seen = match current.as_ref() {
+            Some((value, seen_shipped)) if seen_shipped.as_str() == shipped => value.as_str(),
+            _ => shipped,
+        };
         if seen != expected {
             return Ok(false);
         }
@@ -40320,6 +40377,30 @@ mod tests {
         assert_eq!(db.content_overrides().unwrap().len(), 3);
         assert_eq!(db.reset_content("carnet.glycemie").unwrap(), 3);
         assert!(db.content_overrides().unwrap().is_empty());
+
+        // **Une réécriture que la mise à jour a rendue périmée se
+        // réenregistre** : l'écran montre la phrase livrée, et c'est
+        // contre elle qu'on compare.
+        assert!(db
+            .set_content(
+                "x.y",
+                "Réécrite.",
+                "Livrée v1.",
+                "Livrée v1.",
+                "2026-09-11",
+                "CL"
+            )
+            .unwrap());
+        assert!(db
+            .set_content(
+                "x.y",
+                "Réécrite v2.",
+                "Livrée v2.",
+                "Livrée v2.",
+                "2026-09-23",
+                "CL"
+            )
+            .unwrap());
     }
 
     /// **Une phrase réécrite au comptoir atteint le papier.**
@@ -40591,6 +40672,30 @@ mod tests {
         // principale, écrites à la main comme la 0.141 les écrivait.
         {
             let db = Db::open(&path, "secret").unwrap();
+            // **La table telle que la 0.141 l'avait**, sans `lot` ni
+            // `expiry` : bâtie sur le `SCHEMA` d'aujourd'hui, elle les
+            // portait, et ce test ne voyait pas qu'une base d'avant la
+            // séparation ne s'ouvrait plus du tout.
+            db.conn
+                .execute_batch(
+                    "DROP TABLE stup_moves;
+                     CREATE TABLE stup_moves (
+                         id INTEGER PRIMARY KEY, stup_id INTEGER NOT NULL,
+                         kind TEXT NOT NULL, happened_on TEXT NOT NULL,
+                         quantity REAL NOT NULL DEFAULT 0,
+                         ordo_year INTEGER NOT NULL DEFAULT 0,
+                         ordo_no INTEGER NOT NULL DEFAULT 0,
+                         patient_id INTEGER NOT NULL DEFAULT 0,
+                         prescriber TEXT NOT NULL DEFAULT '',
+                         supplier TEXT NOT NULL DEFAULT '',
+                         reference TEXT NOT NULL DEFAULT '',
+                         expected REAL NOT NULL DEFAULT 0,
+                         operator TEXT NOT NULL DEFAULT '',
+                         remark TEXT NOT NULL DEFAULT '',
+                         created_at TEXT NOT NULL DEFAULT ''
+                     );",
+                )
+                .unwrap();
             db.conn
                 .execute(
                     "INSERT INTO stupefiants (id, drug_id, label, unit, threshold, archived)
@@ -40635,11 +40740,18 @@ mod tests {
         drop(db);
         let db = Db::open(&path, "secret").unwrap();
         assert_eq!(db.stup_moves(7).unwrap().len(), 1);
+        // Et une réinitialisation ne fait pas rejouer le déménagement :
+        // sa marque survit à celles des contenus semés.
+        db.wipe_all_data().unwrap();
+        assert!(db.seed_mark("registre_deplace").unwrap().is_some());
+        drop(db);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.stup_moves(7).unwrap().len(), 1);
 
         // Le mot de passe change sur les **trois** fichiers : oublier
         // celui-là laisserait le registre illisible, et c'est une pièce
         // comptable.
-        db.change_password("nouveau").unwrap();
+        db.change_password("secret", "nouveau").unwrap();
         drop(db);
         assert!(Db::open(&path, "secret").is_err());
         let db = Db::open(&path, "nouveau").unwrap();
@@ -42701,8 +42813,8 @@ mod tests {
         {
             let db = Db::open(&path, "ancien").unwrap();
             db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
-            db.change_password("nouveau").unwrap();
-            assert!(db.change_password("").is_err());
+            db.change_password("ancien", "nouveau").unwrap();
+            assert!(db.change_password("nouveau", "").is_err());
         }
         assert!(Db::open(&path, "ancien").is_err());
         let db = Db::open(&path, "nouveau").unwrap();
