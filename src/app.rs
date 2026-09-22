@@ -60227,7 +60227,7 @@ mod tests {
     ///
     /// La forme juste est `constante.max(plancher)`, qui ne coûte rien
     /// et ne dépend d'aucune arithmétique qu'il faudrait tenir à jour.
-    /// C'est déjà ce que dit CLAUDE.md ; ceci le tient.
+    /// C'est déjà ce que dit docs/ARCHITECTURE.md ; ceci le tient.
     #[test]
     fn no_constant_ceiling_trusts_a_computed_floor() {
         const SOURCE: &str = include_str!("app.rs");
@@ -62414,7 +62414,7 @@ mod tests {
     /// `horizontal` coûte ce que son plus grand élément coûte, et
     /// personne ne devine ce nombre : on le dessine et on le compare.
     ///
-    /// C'est la forme qu'appelle CLAUDE.md pour toute mesure : un
+    /// C'est la forme qu'appelle docs/ARCHITECTURE.md pour toute mesure : un
     /// helper qui mesure, un dessin sans écran, et une assertion dans
     /// les deux sens.
     #[test]

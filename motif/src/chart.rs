@@ -1,6 +1,6 @@
 //! Hand-painted charts in the Motif idiom.
 //!
-//! No plotting library (see `CLAUDE.md`): a chart here is a sunken
+//! No plotting library (see `docs/ARCHITECTURE.md`): a chart here is a sunken
 //! trough with flat rectangles in it, gridded like a paper form. Every
 //! chart takes the rectangle it must fill — the caller carves the
 //! layout — and returns which element the pointer is over, so the view

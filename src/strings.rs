@@ -780,21 +780,21 @@ livre = "Une phrase qui n'est plus livrée"
     /// que **rien** n'ouvre jamais, ni la main ni la garde.
     ///
     /// Deux l'étaient : « search » et « planning_mois », toutes deux
-    /// vraies clés du code, décrites en prose plus bas dans CLAUDE.md et
+    /// vraies clés du code, décrites en prose plus bas dans docs/ARCHITECTURE.md et
     /// absentes de la liste qu'on lit pour savoir ce qui existe.
     #[test]
     fn every_documented_view_is_swept_by_the_smoke_pass() {
-        const CLAUDE: &str = include_str!("../CLAUDE.md");
+        const ARCH: &str = include_str!("../docs/ARCHITECTURE.md");
         const SMOKE: &str = include_str!("../scripts/smoke.sh");
         // `smoke.sh` nomme aussi ses **formes** dans ce tableau —
         // « drug_edit » et « drug_kin » ne sont pas des vues mais des
         // variables d'environnement posées par-dessus `drug_card`, et
-        // CLAUDE.md les documente à leur place, avec elles.
+        // docs/ARCHITECTURE.md les documente à leur place, avec elles.
         const SHAPES_NOT_VIEWS: &[&str] = &["drug_edit", "drug_kin"];
 
-        let list = CLAUDE
+        let list = ARCH
             .split_once("BPM_CADDY_START_VIEW=")
-            .expect("la liste des vues dans CLAUDE.md")
+            .expect("la liste des vues dans docs/ARCHITECTURE.md")
             .1
             .split_once('`')
             .expect("la liste se ferme par une apostrophe inverse")
@@ -806,7 +806,7 @@ livre = "Une phrase qui n'est plus livrée"
             .collect();
         assert!(
             documented.len() > 60,
-            "seulement {} vues lues dans CLAUDE.md : le format de la liste \
+            "seulement {} vues lues dans docs/ARCHITECTURE.md : le format de la liste \
              a changé, et ce test ne lit plus rien",
             documented.len()
         );
@@ -874,7 +874,7 @@ livre = "Une phrase qui n'est plus livrée"
         undocumented.dedup();
         assert!(
             undocumented.is_empty(),
-            "vues ouvertes par `smoke.sh` que CLAUDE.md ne liste pas : \
+            "vues ouvertes par `smoke.sh` que docs/ARCHITECTURE.md ne liste pas : \
              {undocumented:?}"
         );
     }
@@ -1194,7 +1194,8 @@ livre = "Une phrase qui n'est plus livrée"
 
     /// **Les chiffres que la documentation affirme, le code les tient.**
     ///
-    /// `CLAUDE.md` et `docs/CONTENU.md` sont lus avant chaque décision,
+    /// `CLAUDE.md`, `docs/ARCHITECTURE.md` et `docs/CONTENU.md` sont lus
+    /// avant chaque décision,
     /// et ils donnent des comptes pour vrais : tant de fiches livrées,
     /// tant de présentations au catalogue, tant de phrases imprimables.
     /// Ce sont des phrases et non des assertions, si bien qu'ils
@@ -1216,7 +1217,7 @@ livre = "Une phrase qui n'est plus livrée"
     /// un test sans son attribut.
     #[test]
     fn the_documentation_counts_what_the_code_holds() {
-        const CLAUDE: &str = include_str!("../CLAUDE.md");
+        const ARCH: &str = include_str!("../docs/ARCHITECTURE.md");
         const CONTENU: &str = include_str!("../docs/CONTENU.md");
         // Le manuel aussi : celui-là, l'officine le lit à l'écran.
         const AIDE: &str = include_str!("../assets/aide.md");
@@ -1263,7 +1264,7 @@ livre = "Une phrase qui n'est plus livrée"
             .map(|d| d.phrases.len())
             .sum();
         // **Ce que la dérive des classes coûtait à la carte**, et que
-        // CLAUDE.md énonce comme un fait : deux fiches que le
+        // docs/ARCHITECTURE.md énonce comme un fait : deux fiches que le
         // référentiel dit de la même classe et que leurs libellés
         // séparent. Le jour où un libellé est corrigé sur une fiche, ce
         // chiffre bouge — et une prose qui affirme un compte vieillit
@@ -1293,43 +1294,43 @@ livre = "Une phrase qui n'est plus livrée"
         };
         let expected: &[(&str, &str, String)] = &[
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "**{drifted_pairs} pairs of neighbours over {drifted_cards} of the \
                      {cards} cards**"
                 ),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!("{labels} distinct labels over {cards} cards"),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!("the {printed} printed phrases the officine may rewrite"),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!("{presentations} presentations of the French market"),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!("in {families} families, each with its dosage"),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "pregnancy and breastfeeding as a level: {}",
                     match crate::gravidity::TABLE.len() {
                         36 => "thirty-six",
                         n => panic!(
                             "la table de grossesse porte {n} molécules : écrire le \
-                             nombre en toutes lettres dans CLAUDE.md et ici"
+                             nombre en toutes lettres dans docs/ARCHITECTURE.md et ici"
                         ),
                     }
                 ),
@@ -1341,8 +1342,8 @@ livre = "Une phrase qui n'est plus livrée"
             // fichier refuse partout ailleurs. Le compte se lit
             // maintenant dans le texte d'`app.rs`, comme les autres.
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "{} regions now set",
                     APP.matches("ui.spacing_mut().scroll.floating = false;")
@@ -1358,16 +1359,16 @@ livre = "Une phrase qui n'est plus livrée"
             // de la prose qui énonce un fait et qui vieillit sans que
             // personne la relise.
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "`pdf::open_*` call sites would be {} chances to forget one.",
                     APP.matches("crate::pdf::open_").count()
                 ),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "{} of them, and counting at all but one would be a counter quietly",
                     // Le chemin unique vers un avis « rechargez », moins
@@ -1484,19 +1485,19 @@ livre = "Une phrase qui n'est plus livrée"
                         10 => "Ten",
                         n => panic!(
                             "il y a {n} peaux : l'écrire en toutes lettres dans le \
-                             README, dans CLAUDE.md et ici"
+                             README, dans docs/ARCHITECTURE.md et ici"
                         ),
                     }
                 ),
             ),
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "« Interface », where the {} skins are picked",
                     match motif::THEMES.len() {
                         10 => "ten",
-                        n => panic!("il y a {n} peaux : l'écrire dans CLAUDE.md et ici"),
+                        n => panic!("il y a {n} peaux : l'écrire dans docs/ARCHITECTURE.md et ici"),
                     }
                 ),
             ),
@@ -1579,8 +1580,8 @@ livre = "Une phrase qui n'est plus livrée"
             // confrontation. Un chiffre qui reste en arrière ferait
             // croire que le balayage était plus court qu'il ne l'est.
             (
-                "CLAUDE.md",
-                CLAUDE,
+                "docs/ARCHITECTURE.md",
+                ARCH,
                 format!(
                     "confronting the {} shipped posology lines",
                     thousands(crate::db::STARTER_POSOLOGIES.len())

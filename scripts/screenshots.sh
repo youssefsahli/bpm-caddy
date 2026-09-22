@@ -36,7 +36,7 @@ shot() { # $1 = view, $2 = output file, $3.. = extra VAR=value env
     local view=$1 out=$2
     shift 2
     # WAYLAND_DISPLAY must be unset inside the xvfb shell or the window
-    # opens on the real desktop instead (see CLAUDE.md).
+    # opens on the real desktop instead (see docs/ARCHITECTURE.md).
     # The virtual screen is three times the window wide, and the window
     # sits at its left edge. Xvfb parks the pointer in the middle of the
     # screen, which — on a screen the size of the window — is inside it:

@@ -37716,7 +37716,7 @@ mod tests {
     ///
     /// `SCHEMA` creates what a *new* base needs; `MIGRATIONS` is the
     /// only thing that turns an old one into it. The rule — a schema
-    /// change goes in both — is written in CLAUDE.md and nothing
+    /// change goes in both — is written in docs/ARCHITECTURE.md and nothing
     /// enforced it: add a column to `SCHEMA`, read it in a query, forget
     /// the `ALTER`, and every test passes. They all run on bases this
     /// version created, where `SCHEMA` put the column there anyway. The

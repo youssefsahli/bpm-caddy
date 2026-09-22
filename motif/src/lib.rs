@@ -405,7 +405,7 @@ pub fn text_faint() -> Color32 {
 /// posé étaient tous deux en (1, 1, 1) sur le même fond. La colonne des
 /// totaux disait 3 h 30 et les champs semblaient dire huit heures et
 /// demie ; c'est le total qui avait raison. C'est le piège que
-/// `CLAUDE.md` nomme déjà pour la grille du planning — deux choses
+/// `docs/ARCHITECTURE.md` nomme déjà pour la grille du planning — deux choses
 /// différentes sous une même apparence —, un cran plus haut.
 ///
 /// Une couleur explicite, elle, passe devant l'override (egui la lit en

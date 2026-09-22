@@ -309,7 +309,7 @@ fichier en clair, un par PC. Concrètement : une table `sync_keys` dans
 liste des postes appairés (`sync_peers` : `DeviceId`, empreinte, nom
 donné par l'officine, date).
 
-Conséquences à ne pas oublier, chacune déjà nommée dans `CLAUDE.md` :
+Conséquences à ne pas oublier, chacune déjà nommée dans `docs/ARCHITECTURE.md` :
 `change_password` re-clé **trois** fichiers aujourd'hui ; « Copier la
 base… » en copie trois ; et une base d'une version antérieure doit
 continuer de répondre à toutes les requêtes

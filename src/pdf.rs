@@ -4184,7 +4184,7 @@ pub struct Doc {
 /// Le bulletin d'adhésion n'y est pas et ne doit pas y être : ce n'est
 /// pas un Typst mais le PDF de l'Assurance Maladie, rempli champ par
 /// champ (voir `bulletin.rs`). Le rendre « éditable » serait le
-/// redessiner, ce que le CLAUDE.md interdit explicitement.
+/// redessiner, ce que docs/ARCHITECTURE.md interdit explicitement.
 pub const DOCS: &[Doc] = &[
     Doc {
         key: "fiche",
