@@ -241,6 +241,50 @@ d'un autre dont elle est de cinquante jours, et un effet peut durer bien
 après le produit — l'effet antiplaquettaire du clopidogrel tient sept à
 dix jours quand sa demi-vie est de six heures.
 
+# La carte du voisinage
+
+Depuis une fiche, « Voisinage… » ouvre la base **en image** : la fiche au
+milieu, ce qu'il y a autour, et un clic pour déplacer le milieu. La liste
+et la recherche répondent à « où est telle fiche » ; celle-ci répond à
+« qu'est-ce qu'il y a autour », qui est la question d'une rupture de
+stock, d'une contre-indication trouvée au comptoir, et de qui apprend une
+classe.
+
+Trois anneaux, du plus proche au plus lointain, et ce ne sont pas trois
+fois la même chose. **La molécule** : une autre spécialité de la même
+DCI — la question de la substitution, et le seul lien où les deux boîtes
+contiennent le même médicament. **La classe** : une autre molécule du
+même groupe, ce que demandent une rupture ou une intolérance ; le groupe
+est celui du référentiel et non le libellé écrit sur la fiche, si bien
+que « bisphosphonate » et « biphosphonate » sont bien le même anneau.
+**L'interaction** : une fiche que la monographie du centre nomme
+elle-même — le lien qui ne découle pas du classement, et le seul qui
+traverse toute la base.
+
+Un cerclage rouge dit que la fiche documente une toxicité ou une marge
+thérapeutique ; c'est ce qui fait rouvrir la fiche d'un voisin qu'on
+allait proposer. Une coche dit que le dossier ouvert **prend déjà** ce
+médicament — la réponse à la question qu'on se pose en cherchant une
+substitution. Sous la figure, la légende nomme chaque couleur, et une
+phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
+dit, il ne se devine pas.
+
+**Se déplacer et grossir.** La figure se glisse à la souris et se
+grossit à la molette — autour du pointeur, si bien que ce qu'on regarde
+reste où on le regarde. Au clavier, `+` et `−` font la même chose et `0`
+remet la carte à sa taille et à sa place ; deux boutons dans un coin de
+la figure les doublent, et le titre du cadre porte le grossissement dès
+qu'il n'est plus de cent pour cent. Grossir **ne va pas rechercher de
+nouveaux voisins** : ce qu'on y gagne, ce sont les noms que la place
+refusait — un nom qui ne tient pas n'est pas écrit à moitié, il n'est pas
+écrit, et la petite fiche le porte.
+
+**Passer sur un nœud** ouvre cette petite fiche : le nom, la DCI, la
+classe, à quoi le médicament sert, ce que sa fiche écrit d'une toxicité,
+et son statut lorsqu'il dit autre chose que « commercialisé » — une
+rupture arrête une substitution avant tout le reste. Le rayon du nœud
+qu'on désigne se lit seul, les autres s'estompent sans disparaître.
+
 # La barre au-dessus des autres fenêtres
 
 `F9` réduit la fenêtre à une barre de quelques centaines de pixels,

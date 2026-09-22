@@ -5,6 +5,59 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.243.0] - 2026-09-22
+
+### Added
+- **La carte du voisinage se déplace et se grossit.** Elle était posée
+  dans son rectangle et on la regardait d'un seul endroit : un anneau
+  serré ne se lisait qu'en agrandissant la fenêtre, et les noms que la
+  place refusait n'avaient d'autre recours que l'infobulle. Elle se
+  glisse à la souris, se grossit à la molette — **autour du pointeur**,
+  si bien que ce qu'on regarde reste où on le regarde —, et `+`, `−`,
+  `0` font la même chose au clavier, doublés par deux boutons posés
+  dans un coin de la figure. Le titre du cadre porte le grossissement
+  dès qu'il n'est plus de cent pour cent, et le bouton qui y ramène
+  n'apparaît que lorsqu'il a quelque chose à faire.
+
+  **Grossir ne relit pas la base**, et c'est délibéré : les plafonds
+  restent ceux du volet, si bien qu'aucun nœud n'apparaît, ne disparaît
+  ni ne change de place sous les doigts — un anneau se répartit
+  régulièrement, et un membre de plus les ferait tous tourner. Ce qu'on
+  gagne en grossissant, ce sont les **noms** que la place refusait,
+  c'est-à-dire exactement ce qui manquait.
+
+- **Une petite fiche au survol, à la place d'une ligne.** L'infobulle
+  disait la DCI et le lien ; la carte s'explore en sautant de fiche en
+  fiche, et on ouvrait donc la monographie pour lire une phrase avant de
+  revenir. Elle porte maintenant les trois questions qu'on se pose d'un
+  voisin : à quoi il sert, ce que sa fiche écrit d'une toxicité, et
+  **s'il est encore au marché** — cette dernière étant la question même
+  d'une rupture, qui est l'une des deux raisons d'ouvrir cette vue. Rien
+  n'y est déduit : ce sont les phrases de la fiche, coupées à la
+  première. Composée pour le seul nœud survolé.
+
+- **Une coche sur ce que le dossier ouvert prend déjà.** C'est la
+  réponse à la question qu'on se pose en cherchant une substitution : le
+  voisin qu'on allait proposer, ce patient-là l'a peut-être devant lui.
+  Une marque et non une teinte — la couleur d'un carré dit son anneau,
+  elle est prise —, et sa clé entre dans la légende dès qu'elle est
+  dessinée.
+
+- **Un chapitre du manuel pour cette vue**, qui n'en avait aucun.
+
+### Changed
+- Le dessin de la carte sait ce qu'on désigne **avant** de tracer : le
+  rayon du nœud survolé se lit seul, les autres s'estompent sans
+  disparaître — un filtre n'efface pas —, et le nom que la place avait
+  refusé s'écrit sur une plaque tant qu'on le montre du doigt. Chaque
+  anneau porte enfin la teinte de son lien, si bien que « l'anneau gris,
+  c'est la classe » se lit sans aller chercher la légende.
+- La carte de démonstration ouvre un **dossier** derrière elle et se
+  centre sur une fiche de la classe d'un de ses traitements : sans cela
+  « + à l'ordonnance » était gris sur toutes les captures jamais prises
+  et la coche ne se dessinait sur aucune. `graph_zoom` est la même vue
+  grossie et déplacée — un cliché ne glisse pas et ne molette pas.
+
 ## [0.242.0] - 2026-09-21
 
 ### Fixed

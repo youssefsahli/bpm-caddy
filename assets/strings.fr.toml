@@ -874,6 +874,7 @@ graph_zoom_reset_tip = "Remettre la carte à sa taille et à sa place"
 graph_title_zoomed = "{} — {} %"
 graph_mini_click = "Cliquer pour mettre au centre"
 graph_mini_toxicity = "Toxicité / marge thérapeutique"
+graph_on_file = "déjà sur l'ordonnance"
 graph_omitted = "{} de plus en « {} » non dessinés"
 # Clé de l'anneau rouge de la carte de voisinage, et ce que son
 # infobulle ajoute.

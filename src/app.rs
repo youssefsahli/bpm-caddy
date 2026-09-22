@@ -10357,6 +10357,8 @@ struct GraphMini {
     /// Le statut, et seulement lorsqu'il dit autre chose que
     /// « commercialisé ».
     status: String,
+    /// Cette fiche est-elle déjà sur l'ordonnance du dossier ouvert ?
+    on_file: bool,
 }
 
 impl App {
@@ -11184,14 +11186,83 @@ impl App {
                         // capture pas autrement — un cliché ne glisse
                         // pas et ne molette pas.
                         Ok(v @ ("graph" | "graph_zoom")) => {
-                            let want = std::env::var("BPM_CADDY_DRUG")
-                                .unwrap_or_else(|_| "Eliquis".into());
-                            let start = session
-                                .drugs
+                            // **Un dossier ouvert derrière la carte.**
+                            // Sans lui, « + à l'ordonnance » est gris
+                            // sur toutes les captures jamais prises, et
+                            // la coche de ce que le patient prend déjà
+                            // — la réponse même d'une substitution — ne
+                            // se dessine sur aucune. C'est la règle de
+                            // ce fichier : quand on sème un état, on
+                            // sème ses voisins.
+                            let pick = session
+                                .patients
                                 .iter()
-                                .find(|d| d.name.eq_ignore_ascii_case(want.trim()))
-                                .or(session.drugs.first())
-                                .map(|d| d.id);
+                                .max_by_key(|p| {
+                                    session
+                                        .db
+                                        .drugs_for_patient(p.id)
+                                        .map(|d| d.len())
+                                        .unwrap_or(0)
+                                })
+                                .cloned();
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                            // Et le centre est choisi **pour que la
+                            // coche existe** : une fiche de la classe
+                            // d'un des traitements du dossier, sans
+                            // être ce traitement. Ouverte au hasard, la
+                            // carte n'avait aucun voisin sur
+                            // l'ordonnance et la marque ne se dessinait
+                            // sur aucune capture — c'est-à-dire qu'elle
+                            // n'était regardée nulle part.
+                            let want = std::env::var("BPM_CADDY_DRUG").ok();
+                            let neighbour_of_the_file = || {
+                                let mine = &session.patient_treats;
+                                // La classe la plus fournie parmi les
+                                // candidates : une carte à deux nœuds
+                                // montre la coche et rien de la figure,
+                                // et c'est la figure qu'on vient
+                                // regarder. Comptée une fois, par
+                                // classe canonique.
+                                let mut sizes: std::collections::HashMap<&str, usize> =
+                                    std::collections::HashMap::new();
+                                for d in &session.drugs {
+                                    if !d.class.trim().is_empty() {
+                                        *sizes
+                                            .entry(crate::classes::display_name(&d.class))
+                                            .or_default() += 1;
+                                    }
+                                }
+                                session
+                                    .drugs
+                                    .iter()
+                                    .filter(|d| {
+                                        !d.class.trim().is_empty()
+                                            && mine.iter().any(|t| {
+                                                t.id != d.id
+                                                    && crate::classes::same(&t.class, &d.class)
+                                            })
+                                            && !mine.iter().any(|t| t.id == d.id)
+                                    })
+                                    .max_by_key(|d| {
+                                        sizes
+                                            .get(crate::classes::display_name(&d.class))
+                                            .copied()
+                                            .unwrap_or(0)
+                                    })
+                                    .map(|d| d.id)
+                            };
+                            let start = match want.as_deref().map(str::trim) {
+                                Some(name) if !name.is_empty() => session
+                                    .drugs
+                                    .iter()
+                                    .find(|d| d.name.eq_ignore_ascii_case(name))
+                                    .or(session.drugs.first())
+                                    .map(|d| d.id),
+                                _ => neighbour_of_the_file()
+                                    .or_else(|| session.drugs.first().map(|d| d.id)),
+                            };
                             if let Some(id) = start {
                                 session.open_graph(id);
                             }
@@ -48604,6 +48675,15 @@ impl App {
     /// pas un groupe, c'est ce que cette fiche-ci cite.
     fn graph_legend_keys(session: &Session) -> Vec<(String, egui::Color32)> {
         let map = session.graph_map.as_ref();
+        // **La coche a sa clé, et seulement quand elle est dessinée.**
+        // Une marque qu'aucune légende ne nomme est une marque qu'on
+        // finit par prendre pour un défaut de rendu : c'est ce que
+        // l'anneau rouge a été pendant deux versions.
+        let ticked = map.is_some_and(|m| {
+            m.nodes
+                .iter()
+                .any(|n| session.patient_treats.iter().any(|d| d.id == n.id))
+        });
         // **Un lien n'a sa clé que lorsque la carte en porte un.** La
         // règle était déjà écrite pour l'anneau rouge — keyer une
         // couleur absente de l'image est le défaut inverse de celui
@@ -48625,6 +48705,7 @@ impl App {
                 .filter(|t| speaks(*t))
                 .collect::<Vec<_>>(),
             map.is_some_and(|m| m.nodes.iter().any(|n| n.toxicity_noted)),
+            ticked,
         )
     }
 
@@ -48633,13 +48714,14 @@ impl App {
     /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
     /// la fiche du centre et non de la carte : ils sont connus avant.
     fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
-        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true)
+        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true, true)
     }
 
     fn graph_legend_keys_of(
         session: &Session,
         ties: &[crate::graph::Tie],
         toxicity: bool,
+        ticked: bool,
     ) -> Vec<(String, egui::Color32)> {
         let centre = session
             .graph_centre
@@ -48670,6 +48752,9 @@ impl App {
             .collect();
         if toxicity {
             keys.push((tr("graph_toxicity").to_owned(), motif::alert()));
+        }
+        if ticked {
+            keys.push((tr("graph_on_file").to_owned(), motif::accent()));
         }
         keys
     }
@@ -48768,8 +48853,9 @@ impl App {
     /// frontière que tient chaque module clinique d'ici, et ici elle a
     /// une raison de plus — sans elle, la composition ne se teste
     /// qu'en montant une session entière, c'est-à-dire pas du tout.
-    fn graph_mini(card: Option<&db::Drug>, node: &crate::graph::Node) -> GraphMini {
+    fn graph_mini(card: Option<&db::Drug>, node: &crate::graph::Node, on_file: bool) -> GraphMini {
         GraphMini {
+            on_file,
             name: node.name.clone(),
             dci: node.dci.clone(),
             class: card
@@ -48845,6 +48931,19 @@ impl App {
                 egui::RichText::new(under.join(" · "))
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
+            );
+        }
+        // **Ce que le dossier ouvert prend déjà.** C'est la réponse à
+        // la question qu'on se pose en cherchant une substitution : le
+        // voisin qu'on allait proposer, ce patient-là l'a peut-être
+        // devant lui.
+        if mini.on_file {
+            motif::badge(
+                ui,
+                tr("graph_on_file"),
+                Some(motif::Pict::Check),
+                motif::accent(),
+                false,
             );
         }
         if !mini.status.is_empty() {
@@ -49253,6 +49352,28 @@ impl App {
                     look = look.zoom_about((wheel * 0.0025).exp(), (d.x, d.y));
                 }
             }
+            // **Et au clavier**, parce qu'un poste de comptoir n'a pas
+            // toujours une molette sous la main et que « + » et « − »
+            // sont ce que tout le monde essaie. Seulement quand aucun
+            // champ n'a le curseur : cette vue-ci en porte un, et un
+            // « + » tapé dans « Mettre au centre… » est un « + » dans
+            // le nom qu'on cherche, pas un grossissement.
+            if ui.memory(|m| m.focused()).is_none() {
+                let (plus, minus, home) = ui.input(|i| {
+                    (
+                        i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                        i.key_pressed(egui::Key::Minus),
+                        i.key_pressed(egui::Key::Num0),
+                    )
+                });
+                if home {
+                    look = crate::graph::Look::default();
+                } else if plus {
+                    look = look.zoom_about(crate::graph::Look::STEP, (0.0, 0.0));
+                } else if minus {
+                    look = look.zoom_about(1.0 / crate::graph::Look::STEP, (0.0, 0.0));
+                }
+            }
             look = look.clamp_pan(
                 (field.width() / 2.0, field.height() / 2.0),
                 (plain_rx, plain_ry),
@@ -49270,6 +49391,11 @@ impl App {
             let (rx, ry) = (plain_rx * look.zoom, plain_ry * look.zoom);
             let mid = field.center() + egui::vec2(look.pan.0, look.pan.1);
             let at = |n: &crate::graph::Node| egui::pos2(mid.x + n.x * rx, mid.y + n.y * ry);
+            // Ce que le dossier ouvert porte déjà, lu **une fois** :
+            // l'ordonnance d'un patient tient en quelques lignes, mais
+            // la chercher par nœud et par image serait douze parcours
+            // soixante fois par seconde.
+            let on_file: Vec<i64> = session.patient_treats.iter().map(|d| d.id).collect();
             let half = Self::GRAPH_NODE_HALF;
             let box_of = |p: egui::Pos2, h: f32| {
                 egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
@@ -49489,6 +49615,21 @@ impl App {
                         egui::Stroke::new(1.5_f32, motif::alert()),
                     );
                 }
+                // **Une coche pour ce que le dossier ouvert prend
+                // déjà.** Une marque et non une teinte : la couleur d'un
+                // carré dit son anneau, elle est prise, et une seconde
+                // chose dite par la même couleur n'est dite par aucune.
+                // C'est aussi la règle de la maison — ce qui porte un
+                // sens porte une forme, pour qui ne voit pas la nuance
+                // et pour un écran fatigué.
+                if on_file.contains(&n.id) {
+                    motif::pictogram(
+                        ui.painter(),
+                        node.shrink(2.0),
+                        motif::Pict::Check,
+                        motif::on_fill(color),
+                    );
+                }
                 // **Deux noms superposés n'en font aucun.** Les nœuds
                 // sont posés sur une ellipse, et deux voisins d'angle
                 // proche du même côté écrivaient leur nom au même
@@ -49657,7 +49798,11 @@ impl App {
             // résultats jetés.
             if let Some(i) = hot {
                 let node = &map.nodes[i];
-                let mini = Self::graph_mini(session.drugs.iter().find(|d| d.id == node.id), node);
+                let mini = Self::graph_mini(
+                    session.drugs.iter().find(|d| d.id == node.id),
+                    node,
+                    on_file.contains(&node.id),
+                );
                 responses[i]
                     .clone()
                     .on_hover_ui(|ui| Self::graph_mini_ui(ui, &mini));
@@ -60403,7 +60548,7 @@ mod tests {
             "",
             "",
         );
-        let m = App::graph_mini(Some(&c), &node(false));
+        let m = App::graph_mini(Some(&c), &node(false), false);
         assert_eq!(m.status, "");
         assert_eq!(m.what, "Fibrillation atriale");
         assert_eq!(m.toxicity, "");
@@ -60416,35 +60561,41 @@ mod tests {
             "",
         );
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false)).status,
+            App::graph_mini(Some(&c), &node(false), false).status,
             "Rupture d'approvisionnement"
         );
         // Sans indication, le mécanisme répond à sa place.
         let c = card("", "", "Inhibiteur direct du facteur Xa.", "");
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false)).what,
+            App::graph_mini(Some(&c), &node(false), false).what,
             "Inhibiteur direct du facteur Xa."
         );
         // La toxicité ne se cite que pour un nœud qui porte l'anneau :
         // la carte ne parle pas d'un cerclage qu'elle ne dessine pas.
         let c = card("", "", "", "Pas d'antidote en ville.");
-        assert_eq!(App::graph_mini(Some(&c), &node(false)).toxicity, "");
+        assert_eq!(App::graph_mini(Some(&c), &node(false), false).toxicity, "");
         assert_eq!(
-            App::graph_mini(Some(&c), &node(true)).toxicity,
+            App::graph_mini(Some(&c), &node(true), false).toxicity,
             "Pas d'antidote en ville."
         );
         // Une fiche que la base ne tient plus — supprimée sur l'autre
         // poste — ne fait pas tomber la carte : il reste le nœud.
-        let m = App::graph_mini(None, &node(true));
+        let m = App::graph_mini(None, &node(true), false);
         assert_eq!(m.name, "Xarelto");
         assert_eq!(m.dci, "rivaroxaban");
         assert!(m.what.is_empty() && m.status.is_empty() && m.class.is_empty());
+        // Et ce que le dossier ouvert prend déjà : c'est le seul des
+        // cinq que la fiche ne dit pas — il vient de l'ordonnance, et
+        // la petite fiche le porte tel qu'on le lui donne.
+        let c = card("", "", "", "");
+        assert!(!App::graph_mini(Some(&c), &node(false), false).on_file);
+        assert!(App::graph_mini(Some(&c), &node(false), true).on_file);
         // La classe est la **canonique**, celle sur laquelle l'anneau
         // groupe, et non le libellé de la fiche.
         let mut c = card("", "", "", "");
         c.class = "anti-TNF".into();
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false)).class,
+            App::graph_mini(Some(&c), &node(false), false).class,
             crate::classes::display_name("anti-TNF alpha")
         );
     }
@@ -60459,6 +60610,7 @@ mod tests {
     #[test]
     fn the_mini_card_stays_inside_its_bubble() {
         let mini = super::GraphMini {
+            on_file: true,
             name: "Ultibro Breezhaler".into(),
             dci: "indacatérol + glycopyrronium".into(),
             class: "BDLA + AMLA inhalés".into(),
