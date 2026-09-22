@@ -3091,6 +3091,10 @@ struct BandNeeds<'a> {
     cramped: bool,
     /// « Supprimer… » devient « Confirmer ? », qui est plus large.
     confirming_delete: bool,
+    /// Où les blocs de la bande **se sont terminés** à l'image
+    /// précédente, en pixels depuis le haut de son contenu — voir
+    /// `Session::band_marks`. Vide la première fois.
+    marks: &'a [f32],
 }
 
 /// Ce qu'une rangée du tableau des entretiens a besoin de lire.
@@ -3885,6 +3889,13 @@ struct Session {
     /// partage. Replié, le bandeau rend deux cents pixels d'un clic, et
     /// `layout.toml` s'en souvient.
     patient_band_folded: bool,
+    /// Où chaque bloc de la bande du dossier s'est terminé, relevé
+    /// **pendant le dessin** : les traitements, la ligne des
+    /// interactions, la revue, la rangée des actes. Le plafond coupe
+    /// sur ces marques plutôt que sur un modèle de leurs hauteurs —
+    /// le modèle tombait cinq pixels trop court sur la revue, et c'est
+    /// assez pour trancher une rangée de pastilles.
+    band_marks: Vec<f32>,
     view: MainView,
     summaries: Vec<InterviewSummary>,
     /// Planned interviews for the dashboard's "RDV à venir" list.
@@ -4727,6 +4738,7 @@ impl Session {
             // Ce que le poste a laissé la dernière fois : `App` le
             // repose depuis `layout.toml` dès qu'il a la session.
             patient_band_folded: false,
+            band_marks: Vec::new(),
             view: MainView::Search,
             summaries: Vec::new(),
             appointments: Vec::new(),
@@ -7511,8 +7523,6 @@ impl Session {
             self.vacc_due.clear();
             return;
         };
-        let age = db::age_on(&patient.birth_date, &self.today);
-        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
         let doses: Vec<vaccines::Dose> = self
             .vaccinations
             .iter()
@@ -7521,7 +7531,7 @@ impl Session {
                 date: v.given_on.as_str(),
             })
             .collect();
-        self.vacc_due = vaccines::due_lines(age, birth_year, &self.today, &doses);
+        self.vacc_due = vaccines::due_lines(&patient.birth_date, &self.today, &doses);
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -14479,6 +14489,7 @@ impl App {
         // an open correction form is much taller than a header.
         // Écrite une fois, lue par la mesure et par le dessin.
         let context_line = Self::patient_context_line(patient, Some(""));
+        let marks = session.band_marks.clone();
         let band_h = Self::patient_band_height(
             ui,
             &BandNeeds {
@@ -14502,6 +14513,7 @@ impl App {
                 acts_tab: session.patient_tab == PatientTab::Acts,
                 cramped: !Self::patient_header_fits(ui, session, patient),
                 confirming_delete: session.confirm_delete,
+                marks: &marks,
             },
         );
         let rows = motif::split_rows(body, &[band_h, 0.0], 8.0);
@@ -19494,12 +19506,20 @@ impl App {
         rect: egui::Rect,
     ) {
         let travels = session.travels.clone();
-        let held: std::collections::HashSet<String> = session
+        // Ce que le carnet couvre **aujourd'hui** — voir
+        // `vaccines::covers` : une dose de 1998 ne coche pas la polio
+        // d'un départ au Pakistan.
+        let doses: Vec<vaccines::Dose> = session
             .vaccinations
             .iter()
             .filter(|v| !v.code.is_empty())
-            .map(|v| v.code.clone())
+            .map(|v| vaccines::Dose {
+                code: v.code.as_str(),
+                date: v.given_on.as_str(),
+            })
             .collect();
+        let today = session.today.clone();
+        let held = |code: &str| vaccines::covers(code, &doses, &today);
         let mut remove: Option<String> = None;
         let mut add: Option<&'static str> = None;
         motif::panel(ui, rect, Some(tr("vacc_travel_section")), |ui| {
@@ -19579,10 +19599,10 @@ impl App {
                         // be done in an approved centre, and the one a
                         // border can turn a traveller back for.
                         if country.yf.needed() {
-                            row(ui, tr("map_reco_yf"), held.contains("FJ"));
+                            row(ui, tr("map_reco_yf"), held("FJ"));
                         }
                         for reco in country.recos() {
-                            row(ui, reco.label, held.contains(reco.code));
+                            row(ui, reco.label, held(reco.code));
                         }
                         ui.add_space(6.0);
                     }
@@ -20170,10 +20190,8 @@ impl App {
                 date: v.given_on.as_str(),
             })
             .collect();
-        let age = db::age_on(&patient.birth_date, &session.today);
-        let birth_year = patient.birth_date.get(..4).and_then(|y| y.parse().ok());
         let vaccines: Vec<String> =
-            crate::vaccines::due_lines(age, birth_year, &session.today, &doses)
+            crate::vaccines::due_lines(&patient.birth_date, &session.today, &doses)
                 .into_iter()
                 .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
                 .map(|l| format!("{} — {}", l.label, l.detail))
@@ -21679,7 +21697,45 @@ impl App {
         // d'identité est une `Grid`, dont les rangées ne font ni l'une
         // ni l'autre de ces hauteurs — c'est là qu'il faudra regarder,
         // avec une mesure et non avec une histoire plausible.
+        //
+        // **Et sous les puces, chaque rangée à sa hauteur.** Arrondir
+        // tout ce qui suit en rangées de boutons tombait au milieu de la
+        // revue — la ligne des interactions est une ligne de texte, la
+        // revue ses pastilles, et aucune ne fait une rangée de bouton :
+        // à 1280x800 avec les deux volets tirés larges, sur tous les
+        // onglets sauf « Entretiens », les pastilles de la revue
+        // sortaient tranchées. Quand la bande porte ce qu'elle porte
+        // d'ordinaire, on coupe donc sur la liste de ses rangées dans
+        // l'ordre où elles se dessinent, chacune au prix que la somme
+        // plus haut lui compte ; un formulaire ouvert garde l'ancienne
+        // coupe, parce que ses rangées sont une `Grid`.
         let room = (cap - head).max(0.0);
+        let plain = !(n.dosing || n.correcting || n.typing);
+        if plain && !n.marks.is_empty() {
+            // Les marques relevées au dessin, depuis le haut du contenu ;
+            // entre elles, les rangées de puces du premier bloc au prix
+            // du modèle — une rangée qui enveloppe ne se relève pas de
+            // l'extérieur —, et de même les rangées d'actes du dernier.
+            let content_cap = cap - chrome;
+            let mut cuts: Vec<f32> = n.marks.to_vec();
+            let chips_end = n.marks[0];
+            for k in 1..(treat_lines as usize) {
+                cuts.push(chips_end - field_surplus - treat_row * (treat_lines - k as f32));
+            }
+            if n.marks.len() >= 2 {
+                let mut y = n.marks[n.marks.len() - 2] + 10.0;
+                for _ in 0..((1.0 + lines) as usize) {
+                    y += row;
+                    cuts.push(y);
+                }
+            }
+            let fits = cuts
+                .iter()
+                .copied()
+                .filter(|c| *c <= content_cap + 0.5)
+                .fold(head - chrome, f32::max);
+            return (chrome + fits).max(Self::row_height(ui) + 2.0);
+        }
         let chips = (room / treat_row).floor().clamp(0.0, treat_lines);
         let after = ((room - chips * treat_row) / row).floor().max(0.0);
         (head + chips * treat_row + after * row).max(Self::row_height(ui) + 2.0)
@@ -21702,6 +21758,8 @@ impl App {
         let mut save_edit = false;
         let mut cancel_edit = false;
         let mut back = false;
+        let band_top = ui.cursor().top();
+        let mut marks: Vec<f32> = Vec::new();
         let cramped = !Self::patient_header_fits(ui, session, patient);
         // Une correction en cours déplie le bandeau : on ne replie pas le
         // formulaire dans lequel on tape.
@@ -22672,6 +22730,9 @@ impl App {
         // What the file sees between those treatments. It says how many
         // and shows them on hover: the whole list belongs to the bilan,
         // not to the header of a file being read at the counter.
+        // **Où chaque bloc s'arrête, relevé au dessin** — voir
+        // `Session::band_marks` : le plafond de la bande coupe dessus.
+        marks.push(ui.cursor().top() - band_top);
         if !session.patient_interactions.is_empty() {
             let details = session
                 .patient_interactions
@@ -22697,6 +22758,7 @@ impl App {
         // point, coloured by how loudly it asks, the sentence on hover.
         // Both rows wrap: the band is the scarcest space of the file,
         // and it scrolls rather than pushing the acts off the screen.
+        marks.push(ui.cursor().top() - band_top);
         if !session.patient_review.is_empty() {
             ui.add_space(4.0);
             ui.horizontal_wrapped(|ui| {
@@ -22764,6 +22826,7 @@ impl App {
                 }
             });
         }
+        marks.push(ui.cursor().top() - band_top);
         ui.add_space(10.0);
 
         // Ctrl+N opens the quick picker; the buttons below start an
@@ -23007,6 +23070,9 @@ impl App {
                 }
             }
         }
+        // La dernière marque : le bas de tout ce qui a été dessiné.
+        marks.push(ui.min_rect().bottom() - band_top);
+        session.band_marks = marks;
     }
 
     /// « Modifier » : le dossier recopié dans le formulaire.
@@ -39401,8 +39467,8 @@ impl App {
         let quantity = if typed.is_empty() {
             0.0
         } else {
-            match crate::codex::parse_amount(typed) {
-                Some((v, _)) => v,
+            match crate::ordonnancier::read_count(typed) {
+                Some(v) => v,
                 None => {
                     session.stup_note = Some((true, trf("stup_err_unreadable", typed.to_owned())));
                     return;
@@ -47067,8 +47133,13 @@ impl App {
             // centimes existe — sur l'écran dont c'est toute la
             // fonction.
             ui.spacing_mut().scroll.floating = false;
+            // **Et elle est au bord du panneau.** Rétrécie à la largeur
+            // de sa grille — le défaut d'egui —, la région posait sa
+            // barre au milieu du tiroir, à l'endroit où la grille
+            // s'arrête, ce qui se lit comme une colonne de plus.
             egui::ScrollArea::vertical()
                 .id_salt("caisse_count")
+                .auto_shrink([false, true])
                 .show(ui, |ui| {
                     // Chaque colonne est aussi large que le plus large
                     // de ce qu'elle porte — son en-tête compris. « Combien »
@@ -47413,7 +47484,30 @@ impl App {
                 Err(e) => session.caisse_note = Some((true, e)),
             }
         }
-        if save {
+        // **Une saisie illisible n'est pas un zéro** — la règle du
+        // registre, pour la même raison : « 1O » ou « 450;75 » valaient
+        // zéro sans rien dire, et s'enregistraient comme un manque. Le
+        // champ garde ce qui est tapé (voir `caisse_reading`) ; c'est
+        // l'enregistrement qui refuse, et il nomme la ligne.
+        let refused: Option<String> = session
+            .caisse_qty
+            .iter()
+            .zip(crate::caisse::DENOMINATIONS.iter())
+            .find(|(t, _)| {
+                let t = t.trim();
+                !t.is_empty() && !t.parse::<i64>().is_ok_and(|n| (0..=1_000_000).contains(&n))
+            })
+            .map(|(t, d)| format!("{} : « {} »", d.label, t.trim()))
+            .or_else(|| {
+                session
+                    .caisse_others
+                    .iter()
+                    .find(|(_, v)| !v.trim().is_empty() && crate::caisse::parse_euros(v).is_none())
+                    .map(|(l, v)| format!("{} : « {} »", l.trim(), v.trim()))
+            });
+        if let Some(what) = refused.filter(|_| save) {
+            session.caisse_note = Some((true, trf("caisse_unreadable", what)));
+        } else if save {
             let count = db::CaisseCount {
                 // La base le donne à l'insertion : ce qu'on écrit ici
                 // ne serait lu par personne.
@@ -65120,6 +65214,7 @@ mod tests {
                         acts_tab,
                         cramped: false,
                         confirming_delete: false,
+                        marks: &[],
                     };
                     let mut v = Vec::new();
                     // Ce que la bande demande, sur une vue assez haute
@@ -66649,11 +66744,7 @@ mod tests {
         let other = s.patients[1].clone();
         s.open_patient(other.clone());
         assert_eq!(s.viewing.as_ref().map(|v| v.id), Some(other.id));
-        let by_hand = {
-            let age = crate::db::age_on(&other.birth_date, &s.today);
-            let year = other.birth_date.get(..4).and_then(|y| y.parse().ok());
-            crate::vaccines::due_lines(age, year, &s.today, &[])
-        };
+        let by_hand = { crate::vaccines::due_lines(&other.birth_date, &s.today, &[]) };
         assert_eq!(
             s.vacc_due
                 .iter()

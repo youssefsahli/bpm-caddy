@@ -34389,6 +34389,48 @@ impl Db {
     /// et un jeu de règles recopié pour le second chemin serait un jeu
     /// de règles qui diverge. La transaction est celle de l'appelant :
     /// c'est lui qui décide de ce qui retombe ensemble.
+    /// Le solde délivrable d'un produit au soir de `day`, lu dans la
+    /// transaction qui écrit : toutes ses lignes jusqu'à ce jour
+    /// compris, dans l'ordre du registre, par `ordonnancier::balance` —
+    /// la seule écriture de cette règle.
+    fn stup_balance_on(tx: &rusqlite::Transaction, stup_id: i64, day: &str) -> Result<f64, String> {
+        let mut stmt = tx
+            .prepare(
+                "SELECT kind, happened_on, quantity, id, cancels, expected
+                 FROM stup_moves WHERE stup_id = ?1 AND happened_on <= ?2
+                 ORDER BY happened_on ASC, id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        let lines: Vec<(String, String, f64, i64, i64, f64)> = stmt
+            .query_map(rusqlite::params![stup_id, day], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        let moves: Vec<crate::ordonnancier::Move> = lines
+            .iter()
+            .map(
+                |(kind, day, quantity, id, cancels, expected)| crate::ordonnancier::Move {
+                    kind: crate::ordonnancier::Kind::from_key(kind),
+                    quantity: *quantity,
+                    day,
+                    seq: *id,
+                    cancels: *cancels,
+                    expected: *expected,
+                },
+            )
+            .collect();
+        Ok(crate::ordonnancier::balance(&moves).stock)
+    }
+
     fn insert_stup_move(tx: &rusqlite::Transaction, m: &StupMove) -> Result<i64, String> {
         let day = m.happened_on.trim();
         if day.is_empty() {
@@ -34425,9 +34467,24 @@ impl Db {
         // proposée : une règle qui ne tient que dans une vue ne tient
         // pas. C'est la même place et la même raison que le motif
         // obligatoire de l'annulation, deux lignes plus bas.
+        //
+        // **Et ce qu'un inventaire confronte se lit ici, dans la
+        // transaction** : le solde du registre au jour du comptage, et
+        // non celui que l'écran affichait. Un comptage daté de la veille
+        // se mesurait au solde d'aujourd'hui, et un autre poste qui
+        // écrivait entre l'affichage et l'enregistrement faussait
+        // l'écart — un « +4 » réclamait un motif pour un comptage juste,
+        // et c'est ce chiffre qu'une annulation relit ensuite. Le même
+        // choix que pour le numéro d'ordonnancier : ce que le registre
+        // sait, c'est lui qui le dit.
+        let expected = if kind == crate::ordonnancier::Kind::Inventaire {
+            Self::stup_balance_on(tx, m.stup_id, day)?
+        } else {
+            m.expected
+        };
         if kind == crate::ordonnancier::Kind::Inventaire {
             let gap = crate::ordonnancier::Discrepancy {
-                expected: m.expected,
+                expected,
                 counted: m.quantity,
             };
             if gap.matters() && m.remark.trim().is_empty() {
@@ -34575,7 +34632,7 @@ impl Db {
                 } else {
                     ""
                 },
-                m.expected,
+                expected,
                 m.operator.trim(),
                 m.remark.trim(),
                 if kind == crate::ordonnancier::Kind::Annulation {
@@ -39285,8 +39342,31 @@ mod tests {
                 expiry: String::new(),
             })
         };
-        // Un comptage qui tombe juste n'a rien à expliquer.
-        assert!(count(30.0, 30.0, "").is_ok());
+        // **L'attendu se lit au registre**, et non chez l'appelant : le
+        // second argument n'est plus lu. Trente entrés la veille.
+        db.add_stup_move(&StupMove {
+            id: 0,
+            stup_id: sid,
+            kind: Kind::Entree.as_key().to_owned(),
+            happened_on: "2026-02-01".to_owned(),
+            quantity: 30.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 0,
+            prescriber: String::new(),
+            supplier: "CERP".to_owned(),
+            reference: "BL 1".to_owned(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        })
+        .unwrap();
+        // Un comptage qui tombe juste n'a rien à expliquer — même quand
+        // l'écran croyait autre chose.
+        assert!(count(30.0, 12.0, "").is_ok());
         // Il en manque deux, et la ligne ne dit pas pourquoi : refusée.
         assert!(count(28.0, 30.0, "").is_err());
         // Un motif d'espaces n'est pas un motif.
@@ -39295,11 +39375,42 @@ mod tests {
         // restent deux écarts, et l'excédent est le plus suspect des
         // deux — il veut souvent dire qu'une sortie n'a pas été écrite.
         assert!(count(32.0, 30.0, "").is_err());
-        // Avec le motif, elle passe.
+        // Avec le motif, elle passe — et le registre dit vingt-huit.
         assert!(count(28.0, 30.0, "Deux gélules cassées, jetées au DASRI").is_ok());
         // Et la marge de calcul reste une marge de calcul : un centième
         // de gélule d'écart flottant n'est pas un écart.
-        assert!(count(30.0, 30.0 + 1e-9, "").is_ok());
+        assert!(count(28.0 + 1e-9, 0.0, "").is_ok());
+        // **Un comptage daté de la veille se mesure au solde de la
+        // veille** : une délivrance du lendemain ne le fausse pas.
+        let mut out = StupMove {
+            id: 0,
+            stup_id: sid,
+            kind: Kind::Sortie.as_key().to_owned(),
+            happened_on: "2026-02-10".to_owned(),
+            quantity: 4.0,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: 1,
+            prescriber: "Dr Morel".to_owned(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        };
+        db.add_stup_move(&out).unwrap();
+        out.kind = Kind::Inventaire.as_key().to_owned();
+        out.happened_on = "2026-02-09".to_owned();
+        out.quantity = 28.0;
+        out.patient_id = 0;
+        out.prescriber.clear();
+        assert!(
+            db.add_stup_move(&out).is_ok(),
+            "vingt-huit au coffre le 9, c'est ce que le registre disait le 9"
+        );
     }
 
     /// **Ce qu'un patient rapporte entre au registre sans revenir au
@@ -39650,9 +39761,12 @@ mod tests {
             .add_stup_move(&bad("ENTREE", -1.0, "2026-02-01"))
             .is_err());
         assert!(db.add_stup_move(&bad("SORTIE", 0.0, "2026-02-01")).is_err());
-        assert!(db
-            .add_stup_move(&bad("INVENTAIRE", 0.0, "2026-02-01"))
-            .is_ok());
+        // Zéro est un comptage : le coffre est vide, ce qui est une
+        // information — motivé ici, puisque le registre, lui, ne l'est
+        // peut-être pas.
+        let mut empty = bad("INVENTAIRE", 0.0, "2026-02-01");
+        empty.remark = "Coffre vide au comptage".to_owned();
+        assert!(db.add_stup_move(&empty).is_ok());
     }
 
     /// Une ligne se corrige par une annulation, et jamais autrement.

@@ -821,8 +821,23 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             // registre redit ce qu'il disait avant. C'est la seule
             // raison pour laquelle `expected` est écrit dans la base au
             // lieu d'être recalculé à la lecture.
+            //
+            // **Mais seulement l'écart qu'il avait posé**, et pas le
+            // solde d'alors. Reposer `expected` effaçait tout ce qui
+            // s'était écrit entre le comptage et son annulation : une
+            // délivrance de trois boîtes le lendemain disparaissait du
+            // solde. Et si un autre comptage est venu depuis, c'est lui
+            // qui dit ce qu'il y a au coffre : l'annulation de l'ancien
+            // n'y change rien.
             if target.kind == Kind::Inventaire {
-                b.stock = target.expected;
+                let recounted = all.iter().any(|t| {
+                    t.kind == Kind::Inventaire
+                        && (t.day, t.seq) > (target.day, target.seq)
+                        && (t.day, t.seq) < (m.day, m.seq)
+                });
+                if !recounted {
+                    b.stock += target.expected - target.quantity;
+                }
             } else {
                 shift(b, target.kind, target.quantity, -1.0);
             }
@@ -1527,6 +1542,31 @@ pub fn reason_owed(kind: Kind, expected: f64, counted: f64) -> Option<Snag> {
     kind.needs_record().then_some(Snag::RecordRequired)
 }
 
+/// Une quantité tapée au registre, **ou rien quand elle ne se lit pas**.
+///
+/// `codex::parse_amount` lit le nombre de tête et rend le reste, ce qui
+/// est juste pour « 16 gélules » et faux pour « 1O » : dix tapés avec la
+/// lettre O se lisaient un, et s'écrivaient au registre. Ce qui suit le
+/// nombre doit donc en être séparé, ou ne pas ressembler à un chiffre ;
+/// et un second nombre après un blanc (« 1 5 ») ne dit pas lequel des
+/// deux on voulait.
+pub fn read_count(typed: &str) -> Option<f64> {
+    let t = typed.trim();
+    let (value, rest) = crate::codex::parse_amount(t)?;
+    if rest.is_empty() {
+        return Some(value);
+    }
+    if rest.starts_with(|c: char| c.is_ascii_digit()) {
+        return None;
+    }
+    let head = &t[..t.len() - rest.len()];
+    let glued = !head.ends_with(char::is_whitespace);
+    if glued && rest.starts_with(['O', 'o', 'I', 'l']) {
+        return None;
+    }
+    Some(value)
+}
+
 /// **Un écart se motive case par case**, et pas une fois pour la
 /// feuille : deux produits qui manquent ne manquent pas pour la même
 /// raison, et un motif commun n'expliquerait ni l'un ni l'autre. Il en
@@ -1541,7 +1581,7 @@ pub fn plan(kind: Kind, slots: &[Slot]) -> Plan {
         if typed.is_empty() {
             continue;
         }
-        let Some((quantity, _)) = crate::codex::parse_amount(typed) else {
+        let Some(quantity) = read_count(typed) else {
             out.snags.push((slot.stup_id, Snag::Unreadable));
             continue;
         };
@@ -1899,6 +1939,38 @@ mod tests {
         assert!(is_cancelled(&fixed, 3));
         assert!(!is_cancelled(&fixed, 2));
         assert_eq!(fixed.len(), 4);
+    }
+
+    /// **Et ce qui s'est écrit entre le comptage et son annulation
+    /// reste écrit.** Reposer le solde d'avant le comptage effaçait la
+    /// délivrance du lendemain ; un second comptage, lui, dit ce qu'il y
+    /// a au coffre, et l'annulation du premier n'y touche pas.
+    #[test]
+    fn cancelling_a_count_keeps_what_was_written_after_it() {
+        let later = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            count(5.0, 16.0, "2026-01-10", 3),
+            mv(Kind::Sortie, 3.0, "2026-01-11", 4),
+            cancel(3, "2026-01-12", 5),
+        ];
+        assert!(
+            (balance(&later).stock - 13.0).abs() < 1e-9,
+            "{}",
+            balance(&later).stock
+        );
+        let recounted = [
+            mv(Kind::Entree, 30.0, "2026-01-05", 1),
+            mv(Kind::Sortie, 14.0, "2026-01-08", 2),
+            count(5.0, 16.0, "2026-01-10", 3),
+            count(12.0, 5.0, "2026-01-11", 4),
+            cancel(3, "2026-01-12", 5),
+        ];
+        assert!(
+            (balance(&recounted).stock - 12.0).abs() < 1e-9,
+            "{}",
+            balance(&recounted).stock
+        );
     }
 
     /// Une annulation dont la cible manque ne fait rien.
@@ -2814,5 +2886,18 @@ mod tests {
         // pour une remarque, et rien ne la réclame.
         assert_eq!(reason_owed(Kind::Entree, 0.0, 3.0), None);
         assert_eq!(reason_owed(Kind::Sortie, 0.0, 3.0), None);
+    }
+
+    /// **« 1O » n'est pas un** : dix tapés avec la lettre O se lisaient
+    /// un, et s'écrivaient au registre.
+    #[test]
+    fn a_count_that_does_not_read_is_refused() {
+        assert_eq!(read_count("10"), Some(10.0));
+        assert_eq!(read_count("16 gélules"), Some(16.0));
+        assert_eq!(read_count("2,5"), Some(2.5));
+        assert_eq!(read_count("1O"), None);
+        assert_eq!(read_count("15O"), None);
+        assert_eq!(read_count("1 5"), None);
+        assert_eq!(read_count("O"), None);
     }
 }

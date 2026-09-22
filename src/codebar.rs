@@ -189,20 +189,22 @@ pub fn read_with(typed: &str, today: &str, separators: &[char]) -> Option<Scanne
         raw: raw.to_owned(),
     };
     // Le cas courant : les chiffres du CIP13 tapés tels quels.
-    if body.chars().all(|c| c.is_ascii_digit()) && key_holds(body) {
-        return match body.len() {
-            13 => Some(Scanned {
-                code: body.to_owned(),
-                kind: CodeKind::Gtin13,
-                ..base
-            }),
-            14 => Some(Scanned {
-                code: body.to_owned(),
-                kind: CodeKind::Gtin14,
-                ..base
-            }),
-            _ => None,
-        };
+    //
+    // **Seulement à treize ou quatorze chiffres.** Une chaîne GS1 dont
+    // le lot est numérique n'a que des chiffres elle aussi, et une fois
+    // sur dix sa clé tombe juste par hasard : elle était alors refusée
+    // entière au lieu d'être lue comme les autres.
+    if body.chars().all(|c| c.is_ascii_digit()) && matches!(body.len(), 13 | 14) && key_holds(body)
+    {
+        return Some(Scanned {
+            code: body.to_owned(),
+            kind: if body.len() == 13 {
+                CodeKind::Gtin13
+            } else {
+                CodeKind::Gtin14
+            },
+            ..base
+        });
     }
     read_element_string(body, today, separators, base)
 }
@@ -222,7 +224,13 @@ fn read_element_string(
         if rest.is_empty() {
             break;
         }
-        let (ai, after) = rest.split_at_checked(2)?;
+        // **Une queue tronquée n'efface pas ce qui a été lu** : ce qui
+        // précède est certain, c'est la règle de ce lecteur, et un
+        // « 172705 » coupé rendait `None` pour un GTIN déjà lu.
+        let Some((ai, after)) = rest.split_at_checked(2) else {
+            out.read_to_end = false;
+            break;
+        };
         match ai {
             // Longueur fixe : aucun séparateur n'est nécessaire, et
             // c'est ce qui met l'identification du produit hors de
@@ -238,7 +246,10 @@ fn read_element_string(
                 rest = tail;
             }
             "17" => {
-                let (digits, tail) = after.split_at_checked(6)?;
+                let Some((digits, tail)) = after.split_at_checked(6) else {
+                    out.read_to_end = false;
+                    break;
+                };
                 out.expiry = read_expiry(digits, today).unwrap_or_default();
                 rest = tail;
             }
@@ -252,6 +263,17 @@ fn read_element_string(
                     out.lot_certain = closed;
                 } else {
                     out.serial = value.to_owned();
+                }
+                // **Un champ variable que rien ne ferme avale ce qui le
+                // suit.** Aucune douchette ne fait passer le séparateur
+                // GS jusqu'à un champ de texte (egui écarte les
+                // caractères de contrôle), si bien qu'un numéro de série
+                // écrit avant la péremption la mangeait : la boîte
+                // n'avait plus de date, et rien ne le disait. Quand la
+                // péremption n'a pas été lue, la lecture ne se dit plus
+                // complète.
+                if !closed && out.expiry.is_empty() {
+                    out.read_to_end = false;
                 }
                 rest = tail;
             }
@@ -546,5 +568,24 @@ mod tests {
             resolve(&s, &[(3, other.as_str())]),
             Resolved::Known { stup_id: 3 }
         );
+    }
+
+    /// **Ce qui a été lu reste lu** : une chaîne numérique dont la clé
+    /// tombe juste par hasard n'est pas refusée, une queue tronquée
+    /// n'efface pas le GTIN, et un numéro de série que rien ne ferme ne
+    /// laisse pas croire que la péremption a été lue.
+    #[test]
+    fn what_was_read_stays_read() {
+        let today = "2026-09-23";
+        // GTIN, péremption 31/05/2027, lot numérique « 105 », sans GS.
+        let s = read("01034009300000071727053110105", today).expect("lu");
+        assert_eq!(s.code, "03400930000007");
+        assert_eq!(s.expiry, "2027-05-31");
+        let s = read("0103400930000007172705", today).expect("le GTIN reste");
+        assert_eq!(s.code, "03400930000007");
+        assert!(!s.read_to_end);
+        let s = read("010340093000000721ABC1231727053110L42", today).expect("lu");
+        assert!(s.expiry.is_empty());
+        assert!(!s.read_to_end, "la péremption avalée se dit");
     }
 }

@@ -5,6 +5,43 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.249.0] - 2026-09-23
+
+### Fixed
+- **Annuler un inventaire n'efface plus ce qui a été écrit après lui.**
+  L'annulation reposait le solde d'avant le comptage : une délivrance du
+  lendemain disparaissait du stock. Elle ne défait plus que l'écart que
+  le comptage avait posé, et ne touche pas au solde quand un autre
+  comptage est venu depuis.
+- **L'attendu d'un inventaire se lit au registre, au jour du
+  comptage**, dans la transaction qui l'écrit — et non sur l'écran : un
+  comptage daté de la veille se mesurait au solde du jour, et un autre
+  poste qui écrivait entre-temps faussait l'écart.
+- **« 1O » n'est plus un** au registre, ni en saisie ni sur la feuille
+  groupée ; « 1 5 » non plus. Et au comptage de caisse, une saisie
+  illisible n'est plus enregistrée comme un zéro.
+- **La douchette** : une chaîne GS1 entièrement numérique n'est plus
+  refusée quand sa longueur tombe par hasard sur une clé juste, une
+  queue tronquée n'efface plus le code déjà lu, et quand un numéro de
+  série a pu avaler la péremption, la barre le dit.
+- **Le calendrier vaccinal** compte l'âge à un rappel sur la date de
+  naissance (un rappel de 25 ans fait après l'anniversaire se disait
+  attendu), le schéma HPV sur l'âge de la première dose (commencé à
+  15 ans, il en compte trois), et pose la question du VRS dès 65 ans en
+  cas de maladie respiratoire ou cardiaque chronique.
+- **Le voyage** ne coche plus la polio sur une dose de 1998 : la dose
+  supplémentaire doit dater de moins d'un an (un dTcaP compte), la
+  typhoïde de moins de trois. Sept pays certifiés exempts de paludisme
+  par l'OMS depuis 2021 ne l'affichent plus, et la Gambie et la
+  Mauritanie recommandent la fièvre jaune.
+- **Le carnet d'INR n'imprime plus « entre 2 et 3 »** comme objectif :
+  c'est la zone d'une fibrillation atriale, pas celle d'une valve
+  mécanique.
+- **La bande du dossier ne tranche plus les pastilles de la revue** :
+  elle coupe désormais sur l'endroit où chaque bloc s'est réellement
+  terminé au dessin. Et la barre du tiroir de caisse est au bord du
+  panneau, non plus au milieu.
+
 ## [0.248.0] - 2026-09-23
 
 ### Fixed

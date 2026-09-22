@@ -131,6 +131,27 @@ pub const RECOS: &[Reco] = &[
     },
 ];
 
+/// Does the carnet cover this travel recommendation **today**?
+///
+/// A code on the carnet was enough, whatever its date: a DTP from 1998
+/// ticked the polio row for a trip to Pakistan, whose own detail says
+/// the dose must be given four weeks to twelve months before leaving.
+/// Two rows carry a validity the carnet can check — polio (the extra
+/// dose of the RSI, a dTcaP counting as well) and typhoid (three years);
+/// the others keep « a dose is recorded », which is what the row claims.
+pub fn covers(code: &str, doses: &[Dose], today: &str) -> bool {
+    let within = |d: &Dose, days: i64| {
+        crate::date::days_between(d.date, today).is_some_and(|n| (0..=days).contains(&n))
+    };
+    match code {
+        "DTP" => doses
+            .iter()
+            .any(|d| (d.code == "DTP" || d.code == "DTCAP") && within(d, 365)),
+        "TYPH" => doses.iter().any(|d| d.code == "TYPH" && within(d, 3 * 365)),
+        _ => doses.iter().any(|d| d.code == code),
+    }
+}
+
 /// What the country asks of a traveller for yellow fever.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Yf {
@@ -506,14 +527,17 @@ pub struct Dose<'a> {
 
 /// Read the calendar against a patient's carnet.
 ///
-/// `age` is in years, `birth_year` decides the ROR cohort, and `today`
-/// is ISO so the whole thing stays pure and testable — no clock inside.
-pub fn due_lines(
-    age: Option<u32>,
-    birth_year: Option<u32>,
-    today: &str,
-    doses: &[Dose],
-) -> Vec<DueLine> {
+/// `birth` and `today` are ISO, so the whole thing stays pure and
+/// testable — no clock inside. The age comes from the birth date, and
+/// so does the age at each dose; the birth year decides the ROR cohort.
+pub fn due_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
+    let age = crate::db::age_on(birth, today);
+    let birth_year: Option<u32> = birth.get(..4).and_then(|y| y.parse().ok());
+    // **L'âge à une dose se compte à la date de naissance**, et non par
+    // différence de millésimes : un rappel fait après l'anniversaire
+    // d'une année mais avant la date du jour se lisait un an trop
+    // jeune, et le rappel de vingt-cinq ans — fait — se disait attendu.
+    let age_at = |iso: &str| crate::db::age_on(birth, iso);
     let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
     let last = |code: &str| -> Option<&str> {
         doses
@@ -552,7 +576,8 @@ pub fn due_lines(
                 format!("Aucun rappel au carnet ; le rappel de {m} ans est attendu."),
             ),
             (Some(date), Some(m)) => {
-                let age_at_dose = age.saturating_sub(years_since(date).unwrap_or(0));
+                let age_at_dose = age_at(date)
+                    .unwrap_or_else(|| age.saturating_sub(years_since(date).unwrap_or(0)));
                 if age_at_dose < m {
                     (
                         DueLevel::Due,
@@ -643,7 +668,20 @@ pub fn due_lines(
         });
     }
 
-    // --- VRS: one dose from 75 ---
+    // --- VRS: one dose from 75, and a question from 65 ---
+    //
+    // La HAS (2024) le recommande aussi dès 65 ans en cas de maladie
+    // respiratoire ou cardiaque chronique : le logiciel ne sait pas si
+    // la personne en a une, donc c'est une question et non un dû.
+    if age.is_some_and(|a| (65..75).contains(&a)) && count("VRS") == 0 {
+        out.push(DueLine {
+            code: "VRS",
+            label: "VRS",
+            level: DueLevel::Ask,
+            detail: "Recommandé dès 65 ans en cas de maladie respiratoire ou cardiaque chronique."
+                .to_owned(),
+        });
+    }
     if age.is_some_and(|a| a >= 75) {
         let done = count("VRS") >= 1;
         out.push(DueLine {
@@ -685,13 +723,34 @@ pub fn due_lines(
     }
 
     // --- HPV: the 11-19 window ---
+    //
+    // **Le nombre de doses dépend de l'âge à la première**, et non du
+    // nombre qu'on en a : commencé à quinze ans ou plus, le schéma en
+    // compte trois, et deux doses se lisaient « complet ».
     if age.is_some_and(|a| (11..=19).contains(&a)) {
         let n = count("HPV");
+        let first = doses
+            .iter()
+            .filter(|d| d.code == "HPV" && !d.date.is_empty())
+            .map(|d| d.date)
+            .min();
+        let needed = match first.and_then(age_at) {
+            Some(a) if a >= 15 => 3,
+            Some(_) => 2,
+            // Sans date, on ne sait pas : on demande le schéma long
+            // quand la personne a déjà quinze ans.
+            None if age.is_some_and(|a| a >= 15) => 3,
+            None => 2,
+        };
         out.push(DueLine {
             code: "HPV",
             label: "Papillomavirus",
-            level: if n >= 2 { DueLevel::Ok } else { DueLevel::Due },
-            detail: format!("{n} dose(s) ; 2 doses avant 15 ans, 3 doses ensuite."),
+            level: if n >= needed {
+                DueLevel::Ok
+            } else {
+                DueLevel::Due
+            },
+            detail: format!("{n} dose(s) sur {needed} ; 2 doses avant 15 ans, 3 doses ensuite."),
         });
     }
 
@@ -1042,11 +1101,12 @@ pub const COUNTRIES: &[Country] = &[
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
     // --- Afrique de l'Ouest ---
+    // Zone d'endémie amarile au sud du Sahara (liste OMS).
     c(
         "MR",
         "Mauritanie",
         AfriqueOuest,
-        Yf::RequiredFromEndemic,
+        Yf::Recommended,
         Palu::Present,
         HEP_A | HEP_B | TYPHOIDE | RAGE | MENINGO,
     ),
@@ -1058,11 +1118,13 @@ pub const COUNTRIES: &[Country] = &[
         Palu::Present,
         HEP_A | HEP_B | TYPHOIDE | RAGE | MENINGO,
     ),
+    // Zone d'endémie amarile (liste OMS) : vaccination recommandée,
+    // et pas seulement exigée des voyageurs venant d'un pays à risque.
     c(
         "GM",
         "Gambie",
         AfriqueOuest,
-        Yf::RequiredFromEndemic,
+        Yf::Recommended,
         Palu::High,
         HEP_A | HEP_B | TYPHOIDE | RAGE | MENINGO,
     ),
@@ -1162,12 +1224,13 @@ pub const COUNTRIES: &[Country] = &[
         Palu::High,
         HEP_A | HEP_B | TYPHOIDE | RAGE | MENINGO,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2024.
     c(
         "CV",
         "Cap-Vert",
         AfriqueOuest,
         Yf::RequiredFromEndemic,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE,
     ),
     // --- Afrique centrale ---
@@ -1575,12 +1638,13 @@ pub const COUNTRIES: &[Country] = &[
         Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2023.
     c(
         "TJ",
         "Tadjikistan",
         AsieCentrale,
         Yf::No,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE | POLIO,
     ),
     c(
@@ -1657,12 +1721,13 @@ pub const COUNTRIES: &[Country] = &[
         HEP_A | HEP_B | TYPHOIDE,
     ),
     // --- Asie de l'Est ---
+    // Certifié exempt de paludisme par l'OMS en 2021.
     c(
         "CN",
         "Chine",
         AsieEst,
         Yf::RequiredFromEndemic,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE | ENCEPH_JAP | ENCEPH_TIQUES,
     ),
     c(
@@ -1778,12 +1843,13 @@ pub const COUNTRIES: &[Country] = &[
         Palu::Present,
         HEP_A | HEP_B | TYPHOIDE | RAGE | ENCEPH_JAP,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2025.
     c(
         "TL",
         "Timor oriental",
         AsieSudEst,
         Yf::RequiredFromEndemic,
-        Palu::Present,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE | ENCEPH_JAP,
     ),
     c(
@@ -1934,20 +2000,22 @@ pub const COUNTRIES: &[Country] = &[
         Palu::Limited,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2023.
     c(
         "BZ",
         "Belize",
         AmeriqueCentrale,
         Yf::RequiredFromEndemic,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2021.
     c(
         "SV",
         "Salvador",
         AmeriqueCentrale,
         Yf::RequiredFromEndemic,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
     c(
@@ -2146,12 +2214,13 @@ pub const COUNTRIES: &[Country] = &[
         Palu::Present,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
+    // Certifié exempt de paludisme par l'OMS en 2025.
     c(
         "SR",
         "Suriname",
         AmeriqueSud,
         Yf::Recommended,
-        Palu::Limited,
+        Palu::No,
         HEP_A | HEP_B | TYPHOIDE | RAGE,
     ),
     c(
@@ -2336,7 +2405,7 @@ mod tests {
             code: "DTP",
             date: "2015-05-04",
         }];
-        let lines = due_lines(Some(36), Some(1990), "2026-08-26", &doses);
+        let lines = due_lines("1990-01-01", "2026-08-26", &doses);
         let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
         assert_eq!(dtp.level, DueLevel::Ok);
         assert!(dtp.detail.contains("45 ans"), "{}", dtp.detail);
@@ -2349,7 +2418,7 @@ mod tests {
             code: "DTP",
             date: "2005-03-01",
         }];
-        let lines = due_lines(Some(66), Some(1960), "2026-08-26", &doses);
+        let lines = due_lines("1960-01-01", "2026-08-26", &doses);
         let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         assert!(dtp.detail.contains("65 ans"), "{}", dtp.detail);
@@ -2364,7 +2433,7 @@ mod tests {
 
     #[test]
     fn an_empty_carnet_owes_the_milestone_already_reached() {
-        let lines = due_lines(Some(52), Some(1974), "2026-08-26", &[]);
+        let lines = due_lines("1974-01-01", "2026-08-26", &[]);
         let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         // At 52 the booster owed is the one for 45, not a future one.
@@ -2385,17 +2454,20 @@ mod tests {
                 date: "2025-10-03",
             },
         ];
-        let lines = due_lines(Some(70), Some(1956), "2026-01-15", &doses);
+        let lines = due_lines("1956-01-01", "2026-01-15", &doses);
         let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
         assert_eq!(dtp.level, DueLevel::Ok);
         let flu = lines.iter().find(|l| l.code == "GRIPPE").unwrap();
         assert_eq!(flu.level, DueLevel::Ok);
-        // 70 ans : le zona est dû, le VRS ne l'est pas encore.
+        // 70 ans : le zona est dû, le VRS ne l'est pas encore — il est
+        // une question, qui dépend d'une maladie chronique.
         assert_eq!(
             lines.iter().find(|l| l.code == "ZONA").unwrap().level,
             DueLevel::Due
         );
-        assert!(!lines.iter().any(|l| l.code == "VRS"));
+        assert!(!lines
+            .iter()
+            .any(|l| l.code == "VRS" && l.level == DueLevel::Due));
     }
 
     #[test]
@@ -2405,7 +2477,7 @@ mod tests {
             code: "DTCAP",
             date: "2010-06-01",
         }];
-        let lines = due_lines(Some(48), Some(1978), "2026-08-26", &doses);
+        let lines = due_lines("1978-01-01", "2026-08-26", &doses);
         let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         assert!(dtp.detail.contains("32 ans"), "{}", dtp.detail);
@@ -2525,5 +2597,66 @@ mod tests {
             listed.len(),
             "toute phrase listée doit être atteinte par la résolution"
         );
+    }
+
+    /// **L'âge à une dose se compte à la date de naissance**, et le
+    /// schéma HPV à l'âge de la première dose.
+    #[test]
+    fn a_dose_is_dated_by_the_birthday_and_hpv_by_its_first_dose() {
+        // Né le 1er octobre 2000, rappel le 15 octobre 2025 — à 25 ans.
+        let doses = [Dose {
+            code: "DTCAP",
+            date: "2025-10-15",
+        }];
+        let lines = due_lines("2000-10-01", "2026-09-23", &doses);
+        let dtp = lines.iter().find(|l| l.code == "DTP").expect("dTP");
+        assert_eq!(dtp.level, DueLevel::Ok, "{}", dtp.detail);
+        // Commencé à 15 ans : deux doses ne font pas le schéma.
+        let doses = [
+            Dose {
+                code: "HPV",
+                date: "2024-03-01",
+            },
+            Dose {
+                code: "HPV",
+                date: "2024-09-01",
+            },
+        ];
+        let lines = due_lines("2009-01-01", "2026-09-23", &doses);
+        let hpv = lines.iter().find(|l| l.code == "HPV").expect("HPV");
+        assert_eq!(hpv.level, DueLevel::Due, "{}", hpv.detail);
+        // Commencé à 12 ans : deux suffisent.
+        let lines = due_lines("2012-01-01", "2026-09-23", &doses);
+        let hpv = lines.iter().find(|l| l.code == "HPV").expect("HPV");
+        assert_eq!(hpv.level, DueLevel::Ok, "{}", hpv.detail);
+        // VRS : une question entre 65 et 74 ans.
+        let lines = due_lines("1956-01-01", "2026-09-23", &[]);
+        let vrs = lines.iter().find(|l| l.code == "VRS").expect("VRS");
+        assert_eq!(vrs.level, DueLevel::Ask);
+    }
+
+    /// **Une dose ne couvre un voyage que si elle est encore valable.**
+    #[test]
+    fn a_travel_dose_covers_only_while_it_holds() {
+        let old = [Dose {
+            code: "DTP",
+            date: "1998-05-01",
+        }];
+        assert!(!covers("DTP", &old, "2026-09-23"));
+        let recent = [Dose {
+            code: "DTCAP",
+            date: "2026-08-20",
+        }];
+        assert!(covers("DTP", &recent, "2026-09-23"), "un dTcaP compte");
+        let typh = [Dose {
+            code: "TYPH",
+            date: "2022-01-10",
+        }];
+        assert!(!covers("TYPH", &typh, "2026-09-23"));
+        let hepa = [Dose {
+            code: "HEPA",
+            date: "2010-01-10",
+        }];
+        assert!(covers("HEPA", &hepa, "2026-09-23"));
     }
 }

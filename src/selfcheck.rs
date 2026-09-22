@@ -170,7 +170,11 @@ pub const SHEETS: &[Sheet] = &[
             "Signalez aussi une diarrhée, une fièvre, des vomissements ou un changement d'alimentation : ils le déplacent également.",
             "Ne changez jamais la dose de vous-même, même si l'INR vous paraît trop haut ou trop bas.",
         ],
-        target: "Votre zone cible est fixée par le médecin — le plus souvent entre 2 et 3. Notez la vôtre ici :",
+        // **Pas de chiffre** : « le plus souvent entre 2 et 3 » est la
+        // zone d'une fibrillation atriale et non celle d'une valve
+        // mécanique, et un patient qui la lit sur sa feuille la prend
+        // pour la sienne.
+        target: "Votre zone cible est fixée par le médecin, et elle dépend de la raison du traitement. Notez la vôtre ici :",
         columns: &["INR", "Dose fixée", "Prochain contrôle", "Remarque"],
         rows: 14,
         alert: "INR supérieur à 5, saignement qui ne s'arrête pas, selles noires, urines rouges, hématome important, ou chute avec choc à la tête même sans douleur : appelez sans attendre le prochain contrôle.",
@@ -404,11 +408,14 @@ mod tests {
             assert!(!s.target.trim().is_empty(), "{} sans cible", s.key);
             // Une cible chiffrée n'est admise que si elle vient d'une
             // recommandation publique et non d'un dossier : c'est le cas
-            // de l'automesure tensionnelle, et d'elle seule.
+            // de l'automesure tensionnelle — et des zones du débit de
+            // pointe, qui sont des **parts** du meilleur souffle du
+            // patient et non un chiffre à atteindre. La zone d'INR n'en
+            // est pas une : elle dépend de l'indication.
             let numeric = s.target.chars().any(|c| c.is_ascii_digit());
             if numeric {
                 assert!(
-                    matches!(s.key, "tension" | "inr" | "souffle"),
+                    matches!(s.key, "tension" | "souffle"),
                     "{} : un chiffre imprimé comme objectif",
                     s.key
                 );
