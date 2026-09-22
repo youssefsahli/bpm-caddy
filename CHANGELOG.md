@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.244.0] - 2026-09-22
+
+### Fixed
+- **La molette ne grossissait pas au-dessus d'un nœud**, c'est-à-dire
+  précisément là où l'on regarde sur une carte serrée : les carrés sont
+  posés après ce qui écoute le glissement et lui prenaient le pointeur.
+  Elle se lit maintenant sur le creux tout entier ; le glissement, lui,
+  reste au vide, puisque sur un nœud on clique.
+
+### Added
+- **Le moyeu a sa petite fiche.** C'est la fiche qu'on regarde, et
+  c'était la seule de la figure sans survol : on savait son nom, écrit
+  dessous, et rien d'autre sans quitter la carte, alors que chacun de
+  ses voisins se lit d'un geste. La même petite fiche, sans pastille de
+  lien — une fiche n'est pas liée à elle-même, et lui en prêter un pour
+  avoir une pastille à dessiner serait écrire une réponse qu'on n'a pas.
+- Un **double-clic dans le vide** remet la carte à plat : c'est le geste
+  qu'on essaie quand on s'est perdu en la déplaçant, et il n'y a rien
+  d'autre à cet endroit.
+
 ## [0.243.0] - 2026-09-22
 
 ### Added

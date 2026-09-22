@@ -10349,7 +10349,9 @@ struct GraphMini {
     dci: String,
     /// La classe **canonique** — celle sur laquelle l'anneau groupe.
     class: String,
-    tie: crate::graph::Tie,
+    /// Le lien par lequel cette fiche est sur la carte — absent pour
+    /// le moyeu, qui n'est lié à rien : il *est* la question.
+    tie: Option<crate::graph::Tie>,
     /// À quoi ça sert : l'indication, ou à défaut le mécanisme.
     what: String,
     /// Ce que la fiche écrit d'une toxicité, quand elle en écrit.
@@ -48853,15 +48855,26 @@ impl App {
     /// frontière que tient chaque module clinique d'ici, et ici elle a
     /// une raison de plus — sans elle, la composition ne se teste
     /// qu'en montant une session entière, c'est-à-dire pas du tout.
-    fn graph_mini(card: Option<&db::Drug>, node: &crate::graph::Node, on_file: bool) -> GraphMini {
+    /// `tie` est **optionnel** parce que le moyeu n'en a pas : une
+    /// fiche n'est pas liée à elle-même, et lui prêter un lien pour
+    /// avoir une pastille à dessiner serait écrire une réponse qu'on
+    /// n'a pas.
+    fn graph_mini(
+        card: Option<&db::Drug>,
+        name: &str,
+        dci: &str,
+        tie: Option<crate::graph::Tie>,
+        toxicity_noted: bool,
+        on_file: bool,
+    ) -> GraphMini {
         GraphMini {
             on_file,
-            name: node.name.clone(),
-            dci: node.dci.clone(),
+            tie,
+            name: name.trim().to_owned(),
+            dci: dci.trim().to_owned(),
             class: card
                 .map(|d| crate::classes::display_name(&d.class).to_owned())
                 .unwrap_or_default(),
-            tie: node.tie,
             // L'indication d'abord, le mécanisme à défaut : c'est
             // l'ordre du compagnon, et pour la même raison — « à quoi ça
             // sert » se répond par ce qu'on traite, et seulement sinon
@@ -48873,7 +48886,7 @@ impl App {
                 })
                 .unwrap_or_default(),
             toxicity: card
-                .filter(|_| node.toxicity_noted)
+                .filter(|_| toxicity_noted)
                 .and_then(|d| Self::first_sentence(&d.toxicity))
                 .unwrap_or_default(),
             // Le statut n'est montré que lorsqu'il **dit quelque
@@ -48908,17 +48921,21 @@ impl App {
             );
             // La pastille du lien, à la couleur de son anneau : c'est le
             // même repère que la légende, et il dit à quel titre cette
-            // fiche est là.
+            // fiche est là. Le moyeu n'en porte pas : il n'est lié à
+            // rien, il est la question.
+            //
             // Enfoncée : elle nomme, elle n'arrête pas. C'est le
             // mouvement de la maison — ce qui rassure est creusé, ce
             // qui arrête se lève.
-            motif::badge(
-                ui,
-                tr(mini.tie.label_key()),
-                None,
-                motif::chart::series_color(mini.tie.series()),
-                false,
-            );
+            if let Some(tie) = mini.tie {
+                motif::badge(
+                    ui,
+                    tr(tie.label_key()),
+                    None,
+                    motif::chart::series_color(tie.series()),
+                    false,
+                );
+            }
         });
         // La DCI et la classe **canonique** : celle sur laquelle
         // l'anneau groupe, et non le libellé de la fiche.
@@ -49341,13 +49358,26 @@ impl App {
                 let d = canvas.drag_delta();
                 look.pan = (look.pan.0 + d.x, look.pan.1 + d.y);
             }
+            // Le double-clic dans le vide remet la carte à plat : c'est
+            // le geste qu'on essaie quand on s'est perdu en la
+            // déplaçant, et il n'y a rien d'autre à cet endroit — un
+            // clic sur un nœud, lui, déplace le centre.
+            if canvas.double_clicked() {
+                look = crate::graph::Look::default();
+            }
             // La molette grossit **autour du pointeur** : ce qu'on
             // regarde reste où on le regarde. Exponentielle, donc un cran
             // en avant et un cran en arrière rendent au même endroit.
-            if canvas.hovered() {
-                let (wheel, over) = ui.input(|i| (i.raw_scroll_delta.y, i.pointer.hover_pos()));
+            //
+            // Sur **le creux tout entier**, et non sur ce qui écoute le
+            // glissement : les nœuds sont posés après lui et lui prennent
+            // le pointeur, si bien que molettant au-dessus d'un carré —
+            // c'est-à-dire précisément là où l'on regarde sur une carte
+            // serrée — il ne se passait rien. Le glissement, lui, reste
+            // au vide : sur un nœud on clique.
+            let (wheel, over) = ui.input(|i| (i.raw_scroll_delta.y, i.pointer.hover_pos()));
+            if let Some(p) = over.filter(|p| field.contains(*p)) {
                 if wheel.abs() > 0.5 {
-                    let p = over.unwrap_or(field.center());
                     let d = p - field.center();
                     look = look.zoom_about((wheel * 0.0025).exp(), (d.x, d.y));
                 }
@@ -49800,13 +49830,36 @@ impl App {
                 let node = &map.nodes[i];
                 let mini = Self::graph_mini(
                     session.drugs.iter().find(|d| d.id == node.id),
-                    node,
+                    &node.name,
+                    &node.dci,
+                    Some(node.tie),
+                    node.toxicity_noted,
                     on_file.contains(&node.id),
                 );
                 responses[i]
                     .clone()
                     .on_hover_ui(|ui| Self::graph_mini_ui(ui, &mini));
             }
+            // **Et le moyeu, qui n'avait pas d'infobulle du tout.**
+            // C'est pourtant la fiche qu'on regarde : on savait son nom,
+            // puisqu'il est écrit dessous, et rien d'autre sans quitter
+            // la carte — alors que ses voisins, eux, se lisent d'un
+            // survol. La même petite fiche, sans pastille de lien.
+            let hub_card = session.drugs.iter().find(|d| d.id == map.centre.0);
+            let hub_mini = Self::graph_mini(
+                hub_card,
+                &map.centre.1,
+                hub_card.map(|d| d.dci.as_str()).unwrap_or_default(),
+                None,
+                map.centre.2,
+                on_file.contains(&map.centre.0),
+            );
+            ui.interact(
+                hub.expand(4.0),
+                ui.id().with(("graph_hub", map.centre.0)),
+                egui::Sense::hover(),
+            )
+            .on_hover_ui(|ui| Self::graph_mini_ui(ui, &hub_mini));
         });
 
         motif::inside(ui, foot_rect, |ui| {
@@ -60521,15 +60574,6 @@ mod tests {
     /// ne dessine pas.
     #[test]
     fn the_mini_card_says_what_the_card_says_and_no_more() {
-        let node = |tox: bool| crate::graph::Node {
-            id: 1,
-            name: "Xarelto".into(),
-            dci: "rivaroxaban".into(),
-            tie: crate::graph::Tie::Class,
-            toxicity_noted: tox,
-            x: 0.0,
-            y: -1.0,
-        };
         let card = |status: &str, ind: &str, mech: &str, tox: &str| db::Drug {
             id: 1,
             name: "Xarelto".into(),
@@ -60548,7 +60592,14 @@ mod tests {
             "",
             "",
         );
-        let m = App::graph_mini(Some(&c), &node(false), false);
+        let m = App::graph_mini(
+            Some(&c),
+            "Xarelto",
+            "rivaroxaban",
+            Some(crate::graph::Tie::Class),
+            false,
+            false,
+        );
         assert_eq!(m.status, "");
         assert_eq!(m.what, "Fibrillation atriale");
         assert_eq!(m.toxicity, "");
@@ -60561,26 +60612,68 @@ mod tests {
             "",
         );
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false), false).status,
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                false
+            )
+            .status,
             "Rupture d'approvisionnement"
         );
         // Sans indication, le mécanisme répond à sa place.
         let c = card("", "", "Inhibiteur direct du facteur Xa.", "");
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false), false).what,
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                false
+            )
+            .what,
             "Inhibiteur direct du facteur Xa."
         );
         // La toxicité ne se cite que pour un nœud qui porte l'anneau :
         // la carte ne parle pas d'un cerclage qu'elle ne dessine pas.
         let c = card("", "", "", "Pas d'antidote en ville.");
-        assert_eq!(App::graph_mini(Some(&c), &node(false), false).toxicity, "");
         assert_eq!(
-            App::graph_mini(Some(&c), &node(true), false).toxicity,
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                false
+            )
+            .toxicity,
+            ""
+        );
+        assert_eq!(
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                true,
+                false
+            )
+            .toxicity,
             "Pas d'antidote en ville."
         );
         // Une fiche que la base ne tient plus — supprimée sur l'autre
         // poste — ne fait pas tomber la carte : il reste le nœud.
-        let m = App::graph_mini(None, &node(true), false);
+        let m = App::graph_mini(
+            None,
+            "Xarelto",
+            "rivaroxaban",
+            Some(crate::graph::Tie::Class),
+            true,
+            false,
+        );
         assert_eq!(m.name, "Xarelto");
         assert_eq!(m.dci, "rivaroxaban");
         assert!(m.what.is_empty() && m.status.is_empty() && m.class.is_empty());
@@ -60588,14 +60681,42 @@ mod tests {
         // cinq que la fiche ne dit pas — il vient de l'ordonnance, et
         // la petite fiche le porte tel qu'on le lui donne.
         let c = card("", "", "", "");
-        assert!(!App::graph_mini(Some(&c), &node(false), false).on_file);
-        assert!(App::graph_mini(Some(&c), &node(false), true).on_file);
+        assert!(
+            !App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                false
+            )
+            .on_file
+        );
+        assert!(
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                true
+            )
+            .on_file
+        );
         // La classe est la **canonique**, celle sur laquelle l'anneau
         // groupe, et non le libellé de la fiche.
         let mut c = card("", "", "", "");
         c.class = "anti-TNF".into();
         assert_eq!(
-            App::graph_mini(Some(&c), &node(false), false).class,
+            App::graph_mini(
+                Some(&c),
+                "Xarelto",
+                "rivaroxaban",
+                Some(crate::graph::Tie::Class),
+                false,
+                false
+            )
+            .class,
             crate::classes::display_name("anti-TNF alpha")
         );
     }
@@ -60614,7 +60735,7 @@ mod tests {
             name: "Ultibro Breezhaler".into(),
             dci: "indacatérol + glycopyrronium".into(),
             class: "BDLA + AMLA inhalés".into(),
-            tie: crate::graph::Tie::Class,
+            tie: Some(crate::graph::Tie::Class),
             what: "Traitement de fond de la bronchopneumopathie chronique \
                    obstructive chez l'adulte, en une prise par jour."
                 .into(),
@@ -60643,6 +60764,27 @@ mod tests {
                 drawn <= bound + 0.5,
                 "échelle {scale} : la bulle prend {drawn} px pour {bound} permis"
             );
+            // **Et la plus maigre qu'il puisse y avoir** : le moyeu,
+            // qui n'a pas de lien, sur une fiche que la base ne tient
+            // plus. C'est le seul chemin où tout est vide, et il se
+            // dessine quand même plutôt que de tomber.
+            let bare = super::GraphMini {
+                name: "Sans fiche".into(),
+                dci: String::new(),
+                class: String::new(),
+                tie: None,
+                what: String::new(),
+                toxicity: String::new(),
+                status: String::new(),
+                on_file: false,
+            };
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    App::graph_mini_ui(ui, &bare);
+                });
+            });
             // Et elle porte quelque chose : une bulle vide se
             // « tiendrait » aussi, et ce test ne garderait rien.
             assert!(

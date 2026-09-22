@@ -659,7 +659,16 @@ The one that was missing — « combien de fois un autre poste avait
   against the ninety a brand name wants — so on a short pane only the
   outer ring really carries labels, and a gap-based bound would have to
   account for occupancy, since Lamictal's class labels read only because
-  its interaction ring is nearly empty),
+  its interaction ring is nearly empty. **What answers it in practice is
+  `Look`** — the figure drags and zooms, so a crowded ring is read by
+  magnifying it. Zoom deliberately **does not re-read the base**: the
+  caps stay the pane's, so no node appears, vanishes or *moves* under
+  the fingers — a ring spreads evenly, one more member turns them all,
+  and a picture that turns while you magnify it is one nobody can
+  follow. What magnifying buys is the **names** the room refused, which
+  is exactly what was missing. Pure and tested, because a zoom that does
+  not keep what is under the pointer where it was sends the figure off
+  at the first notch, and that shows on no screenshot),
   `src/facets.rs` (what each card says about itself, **as data rather
   than sentences**: the plasma half-life in hours, and what the card
   *treats* or *alters*, by organ and by grade. The monographs answer
