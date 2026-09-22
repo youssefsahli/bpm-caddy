@@ -665,10 +665,27 @@ The one that was missing — « combien de fois un autre poste avait
   caps stay the pane's, so no node appears, vanishes or *moves* under
   the fingers — a ring spreads evenly, one more member turns them all,
   and a picture that turns while you magnify it is one nobody can
-  follow. What magnifying buys is the **names** the room refused, which
-  is exactly what was missing. Pure and tested, because a zoom that does
-  not keep what is under the pointer where it was sends the figure off
-  at the first notch, and that shows on no screenshot),
+  follow. Pure and tested, because a zoom that does not keep what is
+  under the pointer where it was sends the figure off at the first
+  notch, and that shows on no screenshot.
+  **Zoom is the dial between seeing everything and reading
+  everything**: zoomed out a ring takes more members — up to the reading
+  ceiling, which does not move — at the price of the names; zoomed in it
+  keeps its own and finally gives them room. Nothing moves on the way,
+  and that is what makes the dial usable: a member's place on its ring
+  is counted over **all its candidates**, never over the ones drawn, so
+  opening one more sets it down *in a gap* — `place` takes the slots and
+  the total, and `spread_order` decides which slots open, in an order
+  whose every prefix is spread and contained in the next. Without it the
+  angle was `i / drawn` and one more member turned them all.
+  And the map now says what a **line** means, not only its kind: the
+  mini fiche carries `companion_signals` — the counter bar's own chips,
+  same tables, same reserves — read **against what the node is tied
+  to**: a neighbour against the centre (two NSAIDs are a doublon, two
+  molecules cross on a cytochrome, the one you were about to suggest may
+  need a renal adaptation the other did not), the hub against the open
+  file. There is not a second reading of a card in this application;
+  what changes from one place to the next is what it is read against),
   `src/facets.rs` (what each card says about itself, **as data rather
   than sentences**: the plasma half-life in hours, and what the card
   *treats* or *alters*, by organ and by grade. The monographs answer
@@ -2130,7 +2147,7 @@ add clicking and typing; it is not the price of entry.
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|registres|stup|
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|registres|stup|
   trame|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|

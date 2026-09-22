@@ -5,6 +5,49 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.245.0] - 2026-09-22
+
+### Fixed
+- **« Mettre au centre… » ne servait à rien au delà d'un caractère.**
+  Le champ était vidé par *tout* déplacement du centre — y compris celui
+  que la frappe venait de provoquer : on tapait une lettre, le centre
+  bougeait, le champ se vidait, et la deuxième lettre partait d'une case
+  vide. Un clic sur un nœud le vide toujours — on marche sur la carte,
+  la question tapée est finie ; la frappe, elle, le garde.
+
+### Added
+- **Réduire la carte montre davantage.** Le grossissement est devenu le
+  réglage entre *tout voir* et *tout lire* : réduit, un anneau prend
+  plus de monde — jusqu'au plafond de lecture, qui ne bouge pas — au
+  prix des noms ; grossi, il garde les siens et leur donne enfin de quoi
+  s'écrire. Ce n'est pas symétrique, et c'est voulu : grossir ne retire
+  personne, sans quoi on perdrait en s'approchant ce qu'on était venu
+  regarder.
+
+  **Et rien ne bouge en chemin.** La place d'un voisin sur son anneau se
+  compte sur **tous ses candidats** et non sur ceux qu'on en dessine :
+  un membre de plus vient donc se poser dans un trou au lieu de les
+  faire tous tourner. Lesquels s'ouvrent est décidé par un ordre dont
+  tout préfixe est réparti et contenu dans le suivant — garder « les
+  douze premiers par ordre alphabétique » d'une classe de trente en
+  dessinerait douze côte à côte sur un arc, et on croirait avoir vu la
+  classe.
+
+- **La petite fiche dit ce que le trait veut dire.** La couleur donnait
+  la nature du lien — molécule, classe, interaction citée — et rien de
+  ce qu'il **implique**. Or la question d'une substitution n'est pas
+  « sont-ils de la même classe », c'est « qu'est-ce que ça change » :
+  deux AINS font un doublon, deux molécules se croisent sur un
+  cytochrome, et le voisin qu'on allait proposer demande peut-être une
+  adaptation au rein que celui de départ ne demandait pas. Ce sont les
+  pastilles de la barre du comptoir, les mêmes tables et les mêmes
+  réserves au survol — il n'y a pas deux lectures d'une fiche ici. Ce
+  qui change d'un endroit à l'autre est **contre quoi** on lit : un
+  voisin contre le centre, le moyeu contre l'ordonnance du dossier.
+
+- `graph_wide`, la carte réduite : l'autre bout du réglage, que personne
+  ne verrait autrement.
+
 ## [0.244.0] - 2026-09-22
 
 ### Fixed

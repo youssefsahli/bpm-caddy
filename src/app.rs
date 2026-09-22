@@ -4125,6 +4125,13 @@ struct Session {
     graph_centre: Option<i64>,
     graph_map: Option<crate::graph::Map>,
     graph_key: Option<(i64, u64, crate::graph::Caps)>,
+    /// Ce que les tables disent du nœud survolé, contre ce à quoi il
+    /// est relié — gardé d'une image à l'autre.
+    ///
+    /// Une infobulle se dessine soixante fois par seconde et ce sont
+    /// huit tables : la clé est la paire (centre, nœud), si bien que le
+    /// travail se refait quand le doigt change de carré et pas avant.
+    graph_pair: Option<((i64, i64), Vec<CompanionSignal>)>,
     /// D'où l'on regarde la figure : grossissement et décalage.
     ///
     /// Remis à plat chaque fois que le **centre** bouge : une autre
@@ -4765,6 +4772,7 @@ impl Session {
             graph_map: None,
             graph_key: None,
             graph_look: crate::graph::Look::default(),
+            graph_pair: None,
             graph_query: String::new(),
             graph_note: None,
             scans: Vec::new(),
@@ -11187,7 +11195,7 @@ impl App {
                         // jamais vu les autres, et celui-ci ne se
                         // capture pas autrement — un cliché ne glisse
                         // pas et ne molette pas.
-                        Ok(v @ ("graph" | "graph_zoom")) => {
+                        Ok(v @ ("graph" | "graph_zoom" | "graph_wide")) => {
                             // **Un dossier ouvert derrière la carte.**
                             // Sans lui, « + à l'ordonnance » est gris
                             // sur toutes les captures jamais prises, et
@@ -11272,6 +11280,17 @@ impl App {
                                 session.graph_look = crate::graph::Look {
                                     zoom: 2.0,
                                     pan: (-90.0, 30.0),
+                                };
+                            }
+                            // Et réduite : l'autre bout du réglage, où
+                            // l'anneau prend plus de monde. C'est l'état
+                            // que personne ne verrait autrement, et
+                            // c'est celui qui dit ce que « réduire »
+                            // sert à faire.
+                            if v == "graph_wide" {
+                                session.graph_look = crate::graph::Look {
+                                    zoom: 0.55,
+                                    pan: (0.0, 0.0),
                                 };
                             }
                             session.view = MainView::Drugs;
@@ -48832,6 +48851,63 @@ impl App {
         ui.fonts(|f| f.row_height(&Self::graph_node_font(ui))) + Self::GRAPH_NODE_HALF + 3.0
     }
 
+    /// Ce que les tables disent d'un nœud **contre ce à quoi il est
+    /// relié**.
+    ///
+    /// C'est ce que le trait entre deux carrés veut dire, et la carte ne
+    /// le disait pas : elle donnait la nature du lien — molécule,
+    /// classe, interaction citée — et rien de ce qu'il **implique**. Or
+    /// la question d'une substitution n'est pas « sont-ils de la même
+    /// classe », c'est « qu'est-ce que ça change » : deux AINS font un
+    /// doublon, deux molécules se croisent sur un cytochrome, et le
+    /// voisin qu'on allait proposer demande peut-être une adaptation au
+    /// rein que celui de départ ne demandait pas.
+    ///
+    /// **Aucune lecture clinique n'est écrite ici** : c'est
+    /// `companion_signals`, la même que la barre du comptoir, avec la
+    /// même liste de tables et les mêmes réserves au survol. Il n'y a
+    /// pas deux lectures d'une fiche dans cette application ; ce qui
+    /// change d'un endroit à l'autre est **contre quoi** on lit — le
+    /// centre pour un voisin, l'ordonnance du dossier pour le moyeu.
+    ///
+    /// Rend des données possédées : sans cela l'appelant tiendrait un
+    /// emprunt sur la session pendant qu'il y range le résultat.
+    fn graph_pair_signals(session: &Session, card: i64, against: &[i64]) -> Vec<CompanionSignal> {
+        let Some(card) = session.drugs.iter().find(|d| d.id == card) else {
+            return Vec::new();
+        };
+        let list: Vec<Drug> = against
+            .iter()
+            .filter_map(|id| session.drugs.iter().find(|d| d.id == *id))
+            .cloned()
+            .collect();
+        let age = session
+            .viewing
+            .as_ref()
+            .and_then(|p| db::age_on(&p.birth_date, &session.today));
+        // Les valeurs du dossier, comme le volet de biologie les
+        // compose : celles qui portent un code du catalogue, les seules
+        // qu'une règle sache lire.
+        let bio: Vec<crate::biology::Reading> = session
+            .bio_results
+            .iter()
+            .filter(|r| !r.code.is_empty())
+            .map(|r| crate::biology::Reading {
+                code: r.code.as_str(),
+                value: r.value,
+                date: r.taken_on.as_str(),
+            })
+            .collect();
+        companion_signals(
+            card,
+            &list,
+            session.renal_dfg,
+            age,
+            &session.surveillance,
+            &bio,
+        )
+    }
+
     /// La petite fiche d'un nœud : ce que la carte peut dire d'un voisin
     /// sans qu'on la quitte.
     ///
@@ -48911,7 +48987,15 @@ impl App {
     ///
     /// Bornée en largeur : une infobulle qui prend la moitié de l'écran
     /// couvre la figure qu'elle explique.
-    fn graph_mini_ui(ui: &mut egui::Ui, mini: &GraphMini) {
+    /// `against` nomme ce contre quoi les puces sont lues — le centre
+    /// pour un voisin, l'ordonnance pour le moyeu. Sans ce titre, une
+    /// puce « Doublon » ne dirait pas avec quoi.
+    fn graph_mini_ui(
+        ui: &mut egui::Ui,
+        mini: &GraphMini,
+        against: Option<&str>,
+        signals: &[CompanionSignal],
+    ) {
         ui.set_max_width(chars_wide(ui, 44.0));
         ui.horizontal(|ui| {
             ui.label(
@@ -48995,6 +49079,32 @@ impl App {
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
+        }
+        // **Ce que le trait veut dire.** La nature du lien est dite par
+        // la couleur ; ce qu'il *implique* ne l'était nulle part.
+        if !signals.is_empty() {
+            ui.add_space(motif::pt(ui, 5.0));
+            if let Some(name) = against {
+                ui.label(
+                    egui::RichText::new(name)
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_dim()),
+                );
+            }
+            ui.horizontal_wrapped(|ui| {
+                for sg in signals {
+                    // Ce qui arrête saille, ce qui rassure est enfoncé —
+                    // le mouvement de la barre du comptoir, puisque ce
+                    // sont ses puces.
+                    motif::badge(
+                        ui,
+                        &sg.chip,
+                        Some(sg.tone.mark()),
+                        sg.tone.fill(),
+                        sg.tone != CompanionTone::Ok,
+                    );
+                }
+            });
         }
         ui.add_space(motif::pt(ui, 4.0));
         ui.label(
@@ -49175,7 +49285,20 @@ impl App {
                 .max(0.0)
                 / 2.0
                 - Self::graph_margin_y(ui);
-        session.refresh_graph(crate::graph::Caps::default().for_room(room, node_line));
+        // **Réduire montre davantage.** Le grossissement est le
+        // réglage entre *tout voir* et *tout lire* : réduit, l'anneau
+        // prend plus de monde — jusqu'au plafond de lecture, qui ne
+        // bouge pas — et grossi, il garde les siens et leur donne enfin
+        // la place d'écrire leur nom. Ce n'est pas symétrique, et c'est
+        // voulu : grossir ne doit **retirer** personne, sans quoi on
+        // perdrait en s'approchant ce qu'on était venu regarder.
+        //
+        // Rien ne bouge en chemin : les places d'un anneau se comptent
+        // sur ses candidats et non sur ce qu'on en dessine, si bien
+        // qu'un membre de plus vient se poser dans un trou — voir
+        // `graph::place` et `graph::spread_order`.
+        let coverage = room * (1.0 / session.graph_look.zoom).clamp(1.0, 4.0);
+        session.refresh_graph(crate::graph::Caps::default().for_room(coverage, node_line));
         let keys = Self::graph_legend_keys(session);
         let legend_h = motif::chart::legend_height(
             ui,
@@ -49209,7 +49332,13 @@ impl App {
         let (head, plot_rect, foot_rect) = (rows[0], rows[1], rows[2]);
 
         let mut open_card: Option<i64> = None;
+        // **Deux façons de déplacer le centre, et elles ne veulent pas
+        // la même chose du champ.** Un clic sur un nœud le vide — on
+        // marche sur la carte, la question tapée est finie ; la frappe,
+        // elle, doit le garder, sans quoi on ne peut pas taper un
+        // deuxième caractère.
         let mut recentre: Option<i64> = None;
+        let mut typed_centre: Option<i64> = None;
         let mut typed_changed = false;
         let mut add_treat: Option<i64> = None;
         let mut new_card = false;
@@ -49285,7 +49414,7 @@ impl App {
                 .map(|(_, id)| id);
             if let Some(id) = best {
                 if session.graph_centre != Some(id) {
-                    recentre = Some(id);
+                    typed_centre = Some(id);
                 }
             }
         }
@@ -49827,18 +49956,34 @@ impl App {
             // douze serait douze premières phrases par image pour onze
             // résultats jetés.
             if let Some(i) = hot {
-                let node = &map.nodes[i];
+                let (id, name, dci, tie, tox) = {
+                    let n = &map.nodes[i];
+                    (n.id, n.name.clone(), n.dci.clone(), n.tie, n.toxicity_noted)
+                };
+                // Un voisin se lit **contre le centre** : c'est ce que
+                // le trait entre eux veut dire.
+                let key = (map.centre.0, id);
+                if session.graph_pair.as_ref().map(|(k, _)| *k) != Some(key) {
+                    let sig = Self::graph_pair_signals(session, id, &[map.centre.0]);
+                    session.graph_pair = Some((key, sig));
+                }
                 let mini = Self::graph_mini(
-                    session.drugs.iter().find(|d| d.id == node.id),
-                    &node.name,
-                    &node.dci,
-                    Some(node.tie),
-                    node.toxicity_noted,
-                    on_file.contains(&node.id),
+                    session.drugs.iter().find(|d| d.id == id),
+                    &name,
+                    &dci,
+                    Some(tie),
+                    tox,
+                    on_file.contains(&id),
                 );
-                responses[i]
-                    .clone()
-                    .on_hover_ui(|ui| Self::graph_mini_ui(ui, &mini));
+                let against = trf("graph_pair_with", &map.centre.1);
+                let signals = session
+                    .graph_pair
+                    .as_ref()
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                responses[i].clone().on_hover_ui(|ui| {
+                    Self::graph_mini_ui(ui, &mini, Some(against.as_str()), &signals)
+                });
             }
             // **Et le moyeu, qui n'avait pas d'infobulle du tout.**
             // C'est pourtant la fiche qu'on regarde : on savait son nom,
@@ -49854,12 +49999,28 @@ impl App {
                 map.centre.2,
                 on_file.contains(&map.centre.0),
             );
-            ui.interact(
+            // Le moyeu, lui, se lit **contre l'ordonnance du dossier** :
+            // il n'est relié à rien sur la figure, et ce qu'on veut
+            // savoir de lui est ce qu'il fait chez cette personne-là.
+            let hub_resp = ui.interact(
                 hub.expand(4.0),
                 ui.id().with(("graph_hub", map.centre.0)),
                 egui::Sense::hover(),
-            )
-            .on_hover_ui(|ui| Self::graph_mini_ui(ui, &hub_mini));
+            );
+            if hub_resp.hovered() {
+                let key = (map.centre.0, map.centre.0);
+                if session.graph_pair.as_ref().map(|(k, _)| *k) != Some(key) {
+                    let sig = Self::graph_pair_signals(session, map.centre.0, &on_file);
+                    session.graph_pair = Some((key, sig));
+                }
+                let signals = session
+                    .graph_pair
+                    .as_ref()
+                    .map(|(_, v)| v.clone())
+                    .unwrap_or_default();
+                let against = (!on_file.is_empty()).then(|| tr("graph_pair_file"));
+                hub_resp.on_hover_ui(|ui| Self::graph_mini_ui(ui, &hub_mini, against, &signals));
+            }
         });
 
         motif::inside(ui, foot_rect, |ui| {
@@ -49898,15 +50059,24 @@ impl App {
         if reset_look {
             session.graph_look = crate::graph::Look::default();
         }
-        if let Some(id) = recentre {
+        if let Some(id) = recentre.or(typed_centre) {
             session.graph_centre = Some(id);
-            session.graph_query.clear();
             // Une autre fiche est une autre image : on la regarde d'où
             // le volet la pose, et non du coin où l'on avait laissé la
             // précédente.
             session.graph_look = crate::graph::Look::default();
             // The note was about the card that was in the middle.
             session.graph_note = None;
+            // **Et le champ n'est vidé que par un clic.** Il l'était
+            // par tout déplacement du centre — y compris celui que la
+            // frappe venait de provoquer : on tapait une lettre, le
+            // centre bougeait, le champ se vidait, et la deuxième
+            // lettre partait d'une case vide. « Mettre au centre… » ne
+            // servait donc à rien au delà d'un caractère, ce qui est la
+            // même chose que ne pas servir.
+            if recentre.is_some() {
+                session.graph_query.clear();
+            }
         }
         if let Some(id) = open_card {
             if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
@@ -53533,6 +53703,7 @@ impl CompanionTone {
 /// qui se tait qu'on croit. Le survol donne la phrase de portée du
 /// module — la même chaîne que le grand écran affiche en tête de son
 /// panneau — puis ce que la ligne dit au long.
+#[derive(Clone)]
 struct CompanionSignal {
     /// Ce que la puce écrit. **Écrit une fois** : la mesure et le dessin
     /// lisent cette chaîne-là, jamais deux compositions du même libellé.
@@ -60744,6 +60915,29 @@ mod tests {
                 .into(),
             status: "Rupture d'approvisionnement".into(),
         };
+        // Et **avec les puces de la paire**, qui sont ce que la bulle
+        // peut porter de plus large : c'est le cas qui déborderait.
+        let against = crate::strings::trf("graph_pair_with", "Voltarène");
+        let signals = vec![
+            super::CompanionSignal {
+                chip: "Doublon · deux AINS".into(),
+                tone: super::CompanionTone::Stop,
+                hover: String::new(),
+                goes: super::CompanionWhere::Watch,
+            },
+            super::CompanionSignal {
+                chip: "Rein · réduire sous 30".into(),
+                tone: super::CompanionTone::Watch,
+                hover: String::new(),
+                goes: super::CompanionWhere::Watch,
+            },
+            super::CompanionSignal {
+                chip: "Écraser · ne pas écraser".into(),
+                tone: super::CompanionTone::Stop,
+                hover: String::new(),
+                goes: super::CompanionWhere::Watch,
+            },
+        ];
         for scale in [1.0_f32, 1.25, 1.6] {
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
@@ -60752,7 +60946,7 @@ mod tests {
                 egui::CentralPanel::default().show(ctx, |ui| {
                     let bound = super::chars_wide(ui, 44.0);
                     let drawn = ui
-                        .scope(|ui| App::graph_mini_ui(ui, &mini))
+                        .scope(|ui| App::graph_mini_ui(ui, &mini, Some(&against), &signals))
                         .response
                         .rect
                         .width();
@@ -60782,7 +60976,7 @@ mod tests {
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
             let _ = ctx.run(Default::default(), |ctx| {
                 egui::CentralPanel::default().show(ctx, |ui| {
-                    App::graph_mini_ui(ui, &bare);
+                    App::graph_mini_ui(ui, &bare, None, &[]);
                 });
             });
             // Et elle porte quelque chose : une bulle vide se

@@ -425,12 +425,18 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
     ];
     let allow = share(want, caps.total);
     for (i, tie) in Tie::ALL.into_iter().enumerate() {
-        let mut ring = rings[i].clone();
-        if ring.len() > allow[i] {
-            omitted.push((tie, ring.len() - allow[i]));
-            ring.truncate(allow[i]);
+        let ring = &rings[i];
+        let keep = allow[i].min(ring.len());
+        if ring.len() > keep {
+            omitted.push((tie, ring.len() - keep));
         }
-        place(&ring, tie, &mut nodes);
+        // **Lesquels** : un ordre dont tout préfixe est réparti et
+        // contenu dans le suivant (voir [`spread_order`]), puis remis
+        // dans l'ordre des places pour que le dessin les parcoure comme
+        // on lit un cadran.
+        let mut slots: Vec<usize> = spread_order(ring.len()).into_iter().take(keep).collect();
+        slots.sort_unstable();
+        place(ring, &slots, ring.len(), tie, &mut nodes);
     }
 
     Map {
@@ -577,9 +583,17 @@ fn named_in(folded_hay: &str, name: &str) -> bool {
 /// Each ring starts a little further round than a plain twelve o'clock
 /// would put it, so a card with one neighbour in each ring does not draw
 /// three nodes stacked straight above the centre.
-fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
-    let n = ring.len();
-    if n == 0 {
+///
+/// **La place d'un membre se lit sur la liste entière, pas sur ce qu'on
+/// en dessine.** L'angle valait `i / dessinés` : en ouvrir un de plus
+/// les faisait donc tous tourner, et une figure qui tourne pendant
+/// qu'on la règle est une figure qu'on ne peut pas suivre. Il vaut
+/// `slot / candidats`, si bien qu'un membre gardé garde sa place et
+/// qu'un membre de plus vient **se poser dans un trou**. C'est ce qui
+/// permet de régler la carte entre « tout voir » et « tout lire » sans
+/// la perdre de vue.
+fn place(ring: &[&Known], slots: &[usize], total: usize, tie: Tie, out: &mut Vec<Node>) {
+    if total == 0 {
         return;
     }
     let r = tie.ring_radius();
@@ -588,10 +602,11 @@ fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
         Tie::Class => std::f32::consts::PI / 7.0,
         Tie::Interaction => std::f32::consts::PI / 3.5,
     };
-    for (i, k) in ring.iter().enumerate() {
+    for &j in slots {
+        let Some(k) = ring.get(j) else { continue };
         // Straight up is zero, going clockwise, which is how anyone
         // reads a dial.
-        let a = offset + std::f32::consts::TAU * i as f32 / n as f32;
+        let a = offset + std::f32::consts::TAU * j as f32 / total as f32;
         out.push(Node {
             id: k.id,
             name: k.name.trim().to_owned(),
@@ -602,6 +617,48 @@ fn place(ring: &[&Known], tie: Tie, out: &mut Vec<Node>) {
             y: -r * a.cos(),
         });
     }
+}
+
+/// L'ordre dans lequel on ouvre les places d'un anneau : **tout préfixe
+/// est réparti, et tout préfixe est contenu dans le suivant.**
+///
+/// C'est ce qui rend le réglage utilisable. Garder « les douze premiers
+/// par ordre alphabétique » d'une classe de trente en dessinerait douze
+/// côte à côte sur un arc et rien ailleurs ; garder douze *répartis*
+/// montre la classe. Et comme on ne fait qu'allonger la liste, en
+/// ouvrir un de plus ne retire jamais celui d'à côté : ce qu'on voyait,
+/// on le voit encore.
+///
+/// La construction est un demi-pas répété — d'abord midi, puis six
+/// heures, puis trois et neuf, puis les quarts — c'est-à-dire l'ordre
+/// dont on remplit un cadran quand on veut pouvoir s'arrêter n'importe
+/// quand.
+fn spread_order(n: usize) -> Vec<usize> {
+    let mut out: Vec<usize> = Vec::with_capacity(n);
+    if n == 0 {
+        return out;
+    }
+    out.push(0);
+    let mut step = n;
+    while out.len() < n {
+        step = step.div_ceil(2);
+        for i in (0..n).step_by(step.max(1)) {
+            if !out.contains(&i) {
+                out.push(i);
+            }
+        }
+        if step <= 1 {
+            // Le dernier passage prend tout ce qui reste : sans lui,
+            // un compte impair laisserait des places jamais ouvertes.
+            for i in 0..n {
+                if !out.contains(&i) {
+                    out.push(i);
+                }
+            }
+            break;
+        }
+    }
+    out
 }
 
 /// Une ordonnance disposée en cercle : chaque ligne à sa place, toutes
@@ -861,6 +918,105 @@ mod tests {
         let map = around(&b[2], &b, Caps::default());
         assert!(map.is_empty(), "{map:?}");
     }
+    /// **En ouvrir un de plus ne déplace pas les autres.**
+    ///
+    /// C'est la condition pour que le grossissement serve de réglage
+    /// entre « tout voir » et « tout lire » : l'angle valait
+    /// `i / dessinés`, si bien qu'un membre de plus les faisait tous
+    /// tourner — une figure qui tourne pendant qu'on la règle est une
+    /// figure qu'on ne peut pas suivre. Et ce qu'on voyait, on le voit
+    /// encore : les membres gardés à un plafond le sont à tous les
+    /// plafonds plus larges.
+    #[test]
+    fn opening_one_more_place_moves_none_of_the_others() {
+        let names: Vec<String> = (0..30).map(|i| format!("AINS {i:02}")).collect();
+        let dcis: Vec<String> = (0..30).map(|i| format!("molécule {i:02}")).collect();
+        let b: Vec<Known> = (0..30)
+            .map(|i| card(i as i64 + 1, &names[i], &dcis[i], "AINS"))
+            .collect();
+        let centre = Known {
+            id: 99,
+            name: "Advil",
+            dci: "ibuprofène",
+            class: "AINS",
+            ddi: "",
+            toxicity_noted: false,
+        };
+        let at = |total: usize| {
+            around(
+                &centre,
+                &b,
+                Caps {
+                    molecule: 40,
+                    class: 40,
+                    interaction: 40,
+                    total,
+                },
+            )
+        };
+        for total in 3..28 {
+            let small = at(total);
+            let big = at(total + 1);
+            assert!(
+                big.nodes.len() >= small.nodes.len(),
+                "{total} : élargir le plafond a retiré du monde"
+            );
+            for n in &small.nodes {
+                let same =
+                    big.nodes.iter().find(|m| m.id == n.id).unwrap_or_else(|| {
+                        panic!("{total} : « {} » a disparu en élargissant", n.name)
+                    });
+                assert!(
+                    (same.x - n.x).abs() < 1e-5 && (same.y - n.y).abs() < 1e-5,
+                    "{total} : « {} » s'est déplacé de ({}, {}) à ({}, {})",
+                    n.name,
+                    n.x,
+                    n.y,
+                    same.x,
+                    same.y
+                );
+            }
+        }
+    }
+
+    /// **Les places s'ouvrent réparties, et jamais l'une au détriment
+    /// de l'autre.**
+    ///
+    /// Garder « les douze premiers par ordre alphabétique » d'une classe
+    /// de trente en dessinerait douze côte à côte sur un arc et rien
+    /// ailleurs : on lirait douze noms et on croirait avoir vu la
+    /// classe.
+    #[test]
+    fn the_places_of_a_ring_open_spread_out() {
+        for n in 1..40_usize {
+            let order = super::spread_order(n);
+            // Une permutation : chaque place une fois et une seule.
+            let mut seen = order.clone();
+            seen.sort_unstable();
+            assert_eq!(seen, (0..n).collect::<Vec<_>>(), "n={n}");
+            // Tout préfixe est réparti : le plus grand trou du cadran
+            // reste de l'ordre de ce qu'on peut en attendre. Deux fois
+            // l'écart régulier, plus une place, laisse de la marge au
+            // demi-pas sans laisser passer un préfixe groupé — qui
+            // ferait, lui, un trou de presque tout le tour.
+            for k in 1..=n {
+                let mut taken: Vec<usize> = order[..k].to_vec();
+                taken.sort_unstable();
+                let gap = taken
+                    .windows(2)
+                    .map(|w| w[1] - w[0])
+                    .chain(std::iter::once(n - taken[k - 1] + taken[0]))
+                    .max()
+                    .unwrap_or(n);
+                assert!(
+                    gap <= 2 * n / k + 2,
+                    "n={n}, k={k} : un trou de {gap} places sur {n}"
+                );
+            }
+        }
+        assert!(super::spread_order(0).is_empty());
+    }
+
     /// **Grossir garde sous le pointeur ce qui y était.**
     ///
     /// C'est la seule façon dont une molette se lit : grossir autour du

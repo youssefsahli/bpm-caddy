@@ -273,17 +273,33 @@ dit, il ne se devine pas.
 grossit à la molette — autour du pointeur, si bien que ce qu'on regarde
 reste où on le regarde. Au clavier, `+` et `−` font la même chose et `0`
 remet la carte à sa taille et à sa place ; deux boutons dans un coin de
-la figure les doublent, et le titre du cadre porte le grossissement dès
-qu'il n'est plus de cent pour cent. Grossir **ne va pas rechercher de
-nouveaux voisins** : ce qu'on y gagne, ce sont les noms que la place
-refusait — un nom qui ne tient pas n'est pas écrit à moitié, il n'est pas
-écrit, et la petite fiche le porte.
+la figure les doublent, un double-clic dans le vide la remet à plat, et
+le titre du cadre porte le grossissement dès qu'il n'est plus de cent
+pour cent.
+
+Le grossissement est le réglage entre **tout voir** et **tout lire**.
+Réduite, la carte prend davantage de voisins — jusqu'au plafond de
+lecture, qui ne bouge pas — au prix des noms, que la place ne peut plus
+tous écrire ; grossie, elle garde les siens et leur donne enfin de quoi
+s'écrire. Rien ne bouge en chemin : la place d'un voisin sur son anneau
+se compte sur tous ses candidats et non sur ceux qu'on en dessine, si
+bien qu'en ouvrir un de plus le fait venir **se poser dans un trou**
+sans déplacer les autres.
 
 **Passer sur un nœud** ouvre cette petite fiche : le nom, la DCI, la
 classe, à quoi le médicament sert, ce que sa fiche écrit d'une toxicité,
 et son statut lorsqu'il dit autre chose que « commercialisé » — une
 rupture arrête une substitution avant tout le reste. Le rayon du nœud
 qu'on désigne se lit seul, les autres s'estompent sans disparaître.
+
+Elle dit aussi **ce que le trait veut dire**. La couleur donne la nature
+du lien ; ce qu'il implique se lit dessous, en pastilles : ce sont les
+mêmes que celles de la barre du comptoir, les mêmes tables et les mêmes
+réserves au survol. Un voisin se lit **contre le centre** — deux AINS
+font un doublon, deux molécules se croisent sur un cytochrome, et celui
+qu'on allait proposer demande peut-être une adaptation au rein que
+l'autre ne demandait pas. Le moyeu, lui, n'est relié à rien sur la
+figure : il se lit contre l'ordonnance du dossier ouvert.
 
 # La barre au-dessus des autres fenêtres
 
