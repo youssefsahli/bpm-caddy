@@ -71,6 +71,21 @@ pub struct PerKilo {
     /// cette lecture ne connaît pas.
     pub high: Option<f64>,
     pub cadence: Cadence,
+    /// **Un plafond n'est pas une dose.** « sans dépasser 30 mg/kg par
+    /// jour » donne la borne qu'on ne franchit pas, et l'écrire à
+    /// l'écran comme la dose à donner ferait prendre le maximum pour
+    /// l'habitude.
+    pub ceiling: bool,
+    /// La molécule que la phrase nomme derrière l'unité, quand elle en
+    /// nomme une — « 30 mg/kg par jour **de sulfaméthoxazole** et
+    /// 6 mg/kg par jour **de triméthoprime** ». Une association donne
+    /// deux chiffres pour un même médicament, et sans ce nom le second
+    /// se lit comme une seconde dose du premier.
+    pub of: Option<String>,
+    /// En combien de prises la dose du jour se répartit, quand la
+    /// phrase le dit d'un seul chiffre (« en 2 prises »). « En 2 ou 3
+    /// prises » laisse le choix au prescripteur et reste `None`.
+    pub takes: Option<u32>,
     /// La phrase d'où elle vient, telle que la fiche l'écrit.
     ///
     /// **C'est elle qui décide, pas le chiffre.** Une même fiche donne
@@ -94,24 +109,107 @@ pub fn read(dosage: &str) -> Vec<PerKilo> {
     while let Some(at) = hay[from..].find("mg/kg") {
         let start = from + at;
         let end = start + "mg/kg".len();
-        if let Some((low, high)) = figures_before(hay, start) {
-            out.push(PerKilo {
-                low,
-                high,
-                cadence: cadence_after(hay, end),
-                sentence: sentence_around(hay, start),
-            });
+        if let Some((low, high, begin)) = figures_before(hay, start) {
+            // **Une dose cumulée n'est pas une dose.** « une dose
+            // cumulée de 120 à 150 mg/kg sur l'ensemble de la cure »
+            // (l'isotrétinoïne) est le total d'un traitement de
+            // plusieurs mois ; lue comme une dose, elle donnait sept
+            // grammes à un adulte de soixante kilos.
+            if !cumulative_before(hay, start) {
+                let tail = rhythm_window(hay, end);
+                out.push(PerKilo {
+                    low,
+                    high,
+                    cadence: cadence_of(hay, end, &tail),
+                    ceiling: ceiling_around(hay, begin, &tail),
+                    of: component_after(hay, end),
+                    takes: takes_in(&tail),
+                    sentence: sentence_around(hay, start),
+                });
+            }
         }
         from = end;
     }
     out
 }
 
+/// Une dose au poids et l'indication qui la porte, quand elle vient
+/// d'une ligne par indication plutôt que de la posologie de la carte.
+#[derive(Clone, PartialEq, Debug)]
+pub struct Found {
+    pub indication: Option<String>,
+    pub dose: PerKilo,
+}
+
+/// Tout ce qu'une fiche écrit au poids : **ses lignes par indication
+/// d'abord**, parce qu'elles disent pour quoi — c'est la question que
+/// le chiffre seul ne départage pas —, puis ce que sa posologie écrit
+/// et qu'aucune ligne n'a déjà donné.
+///
+/// La carte du Bactrim ne dit rien au poids ; sa ligne « Infections de
+/// l'enfant » écrit trente milligrammes par kilo. Ne lire que la carte
+/// répondait « rien » à la question même qui a fait naître l'outil.
+pub fn gather(card: &str, lines: &[(&str, &str)]) -> Vec<Found> {
+    let mut out: Vec<Found> = lines
+        .iter()
+        .flat_map(|(indication, text)| {
+            read(text).into_iter().map(|dose| Found {
+                indication: Some((*indication).to_owned()),
+                dose,
+            })
+        })
+        .collect();
+    for dose in read(card) {
+        let same = |f: &Found| {
+            f.dose.low == dose.low
+                && f.dose.high == dose.high
+                && f.dose.cadence == dose.cadence
+                && f.dose.of == dose.of
+        };
+        if !out.iter().any(same) {
+            out.push(Found {
+                indication: None,
+                dose,
+            });
+        }
+    }
+    out
+}
+
+/// Des milligrammes calculés, écrits à la précision qu'ils ont.
+///
+/// **Jamais « 0 mg »** : 0,1 mg/kg de terbutaline pour un nourrisson de
+/// quatre kilos fait 0,4 mg, et l'arrondi à l'entier l'écrivait zéro —
+/// un chiffre calculé à zéro se lit comme une réponse, ce que ce module
+/// refuse. Une décimale sous dix, deux sous un, l'entier au-dessus : un
+/// « 480,0 » se lirait comme une précision qu'on n'a pas.
+pub fn milligrams(v: f64) -> String {
+    let places = if v >= 10.0 {
+        0
+    } else if v >= 1.0 {
+        1
+    } else {
+        2
+    };
+    let text = crate::strings::decimal(v, places);
+    // « 2,0 » s'écrit « 2 », « 0,40 » s'écrit « 0,4 ».
+    let text = if text.contains(',') {
+        text.trim_end_matches('0').trim_end_matches(',').to_owned()
+    } else {
+        text
+    };
+    if text == "0" {
+        crate::strings::decimal(v, 3)
+    } else {
+        text
+    }
+}
+
 /// Le nombre — ou les deux bornes — écrits juste avant « mg/kg ».
 ///
 /// À la virgule : les fiches écrivent « 0,35 mg/kg », et lire trente-cinq
 /// là où il y a trente-cinq centièmes est un facteur cent sur un enfant.
-fn figures_before(hay: &str, at: usize) -> Option<(f64, Option<f64>)> {
+fn figures_before(hay: &str, at: usize) -> Option<(f64, Option<f64>, usize)> {
     let head = &hay[..at];
     let (second, rest) = number_at_end(head)?;
     // Une fourchette : « 80 à 90 mg/kg ». Le « à » peut aussi s'écrire
@@ -122,9 +220,13 @@ fn figures_before(hay: &str, at: usize) -> Option<(f64, Option<f64>)> {
         .or_else(|| rest.strip_suffix('a'))
         .or_else(|| rest.strip_suffix('-'))
         .or_else(|| rest.strip_suffix('–'));
+    // Le troisième terme est l'endroit où le chiffre commence : ce qui
+    // précède est la phrase, et c'est là qu'on cherche « sans
+    // dépasser » — pas dans « 0,75 », dont la virgule coupait la
+    // phrase au milieu du nombre.
     match linked.and_then(number_at_end) {
-        Some((first, _)) if first < second => Some((first, Some(second))),
-        _ => Some((second, None)),
+        Some((first, before)) if first < second => Some((first, Some(second), before.len())),
+        _ => Some((second, None, rest.len())),
     }
 }
 
@@ -148,22 +250,51 @@ fn number_at_end(text: &str) -> Option<(f64, &str)> {
     Some((value, &trimmed[..cut]))
 }
 
+/// Ce qui suit l'unité **et appartient encore à cette dose-là**.
+///
+/// Une fenêtre courte, et bornée à ce qui ouvre la dose suivante :
+/// « 20 à 30 mg/kg et par jour, soit 7,5 à 10 mg/kg par prise » porte
+/// deux rythmes, et une fenêtre qui déborde sur le second faisait lire
+/// la dose du jour comme une dose par prise — un facteur trois ou
+/// quatre sur un enfant.
+fn rhythm_window(hay: &str, at: usize) -> String {
+    let tail: String = hay[at..]
+        .chars()
+        .take(48)
+        .collect::<String>()
+        .to_lowercase();
+    let mut cut = tail.len();
+    for stop in ["soit ", ";", ". ", "mg/kg", "sans dépasser"] {
+        // Pas au tout début : « mg/kg/jour » commence par l'unité
+        // qu'on vient de lire, et la fenêtre s'arrêterait avant son
+        // propre rythme.
+        if let Some(i) = tail.get(1..).and_then(|t| t.find(stop)) {
+            cut = cut.min(i + 1);
+        }
+    }
+    tail[..cut].to_owned()
+}
+
 /// Ce que la phrase dit du rythme, juste après l'unité.
-fn cadence_after(hay: &str, at: usize) -> Cadence {
+fn cadence_of(hay: &str, at: usize, window: &str) -> Cadence {
     let tail = &hay[at..];
     // Collé à l'unité : « 50 mg/kg/jour ».
     let glued = tail.trim_start_matches('/');
     if glued.len() < tail.len() && (glued.starts_with("jour") || glued.starts_with('j')) {
         return Cadence::Jour;
     }
-    // Sinon dans ce qui suit immédiatement. Une fenêtre courte, et
-    // volontairement : « soit 60 mg/kg par 24 heures » se trouve à
-    // trente caractères de la dose d'avant, et une fenêtre large ferait
-    // porter à la première le rythme de la seconde.
-    let window: String = tail.chars().take(40).collect::<String>().to_lowercase();
     // La prise d'abord : « par prise toutes les 6 heures » contient les
-    // deux, et c'est bien une dose par prise.
-    if window.contains("par prise") || window.contains("toutes les") {
+    // deux, et c'est bien une dose par prise. **Et « deux fois par
+    // jour » aussi** : « 10 mg/kg deux fois par jour » donne dix par
+    // prise, vingt dans la journée — le lire par jour divisait la dose
+    // par deux.
+    if window.contains("par prise")
+        || window.contains("toutes les")
+        || window.contains("fois par jour")
+        || window.contains("fois dans la journée")
+        || window.contains("par injection")
+        || window.contains("par nébulisation")
+    {
         return Cadence::Prise;
     }
     if window.contains("par jour")
@@ -173,7 +304,108 @@ fn cadence_after(hay: &str, at: usize) -> Cadence {
     {
         return Cadence::Jour;
     }
+    // « 40 mg/kg en une prise », « en dose unique » : toute la dose,
+    // prise une fois — c'est une dose par prise, et la dire « sans
+    // rythme » était la lire moins bien qu'elle n'est écrite.
+    if window.contains("en une prise")
+        || window.contains("prise unique")
+        || window.contains("dose unique")
+    {
+        return Cadence::Prise;
+    }
     Cadence::NonDite
+}
+
+/// « dose cumulée », juste avant le chiffre.
+fn cumulative_before(hay: &str, at: usize) -> bool {
+    let head: String = hay[..at]
+        .chars()
+        .rev()
+        .take(40)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>()
+        .to_lowercase();
+    head.contains("cumul")
+}
+
+/// Le chiffre est-il un plafond plutôt qu'une dose ? `at` est l'endroit
+/// où le chiffre commence.
+fn ceiling_around(hay: &str, at: usize, window: &str) -> bool {
+    let head: String = hay[..at]
+        .chars()
+        .rev()
+        .take(30)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>()
+        .to_lowercase();
+    // Seulement la fin de ce qui précède : « sans dépasser 2 g par
+    // jour. Enfant : 50 mg/kg » ne fait pas de la dose de l'enfant un
+    // plafond.
+    let head = head.rsplit(['.', ';', ',']).next().unwrap_or("");
+    // « jusqu'à environ 1 mg/kg par jour **et davantage** » n'est pas
+    // un plafond : la phrase dit elle-même qu'on le franchit.
+    if window.contains("davantage") || window.contains("et plus") {
+        return false;
+    }
+    ["dépasser", "maximum", "jusqu'à", "au plus", "inférieure à"]
+        .iter()
+        .any(|w| head.contains(w))
+        // « 60 mg/kg par jour au maximum » — collé au rythme, et pas
+        // « …, 5 jours au maximum », qui borne une durée.
+        || window.split(',').next().is_some_and(|c| c.contains("au maximum"))
+}
+
+/// La molécule nommée juste derrière l'unité et son rythme.
+fn component_after(hay: &str, at: usize) -> Option<String> {
+    let tail = hay[at..].trim_start_matches('/');
+    let mut rest = tail.trim_start();
+    for lead in [
+        "jour",
+        "et par jour",
+        "par jour",
+        "par 24 heures",
+        "par prise",
+    ] {
+        if let Some(r) = rest.strip_prefix(lead) {
+            rest = r.trim_start();
+            break;
+        }
+    }
+    let name = rest
+        .strip_prefix("exprimés en ")
+        .or_else(|| rest.strip_prefix("de "))
+        .or_else(|| rest.strip_prefix("d'"))
+        .or_else(|| rest.strip_prefix("d’"))?;
+    let word: String = name
+        .chars()
+        .take_while(|c| c.is_alphabetic() || *c == '-')
+        .collect();
+    // Un mot court, ou un mot qui ne nomme pas une molécule — « de
+    // poids », « de charge », « de traitement » — ne nomme rien ici.
+    const NOT_A_MOLECULE: &[&str] = &["poids", "charge", "traitement", "entretien", "base"];
+    (word.chars().count() >= 5 && !NOT_A_MOLECULE.contains(&word.to_lowercase().as_str()))
+        .then_some(word)
+}
+
+/// « en 2 prises », « en trois prises » — un seul chiffre.
+fn takes_in(window: &str) -> Option<u32> {
+    let (_, after) = window.split_once("en ")?;
+    let mut words = after.split_whitespace();
+    let n = match words.next()? {
+        "1" | "une" => 1,
+        "2" | "deux" => 2,
+        "3" | "trois" => 3,
+        "4" | "quatre" => 4,
+        _ => return None,
+    };
+    words
+        .next()
+        .is_some_and(|w| w.starts_with("prise"))
+        .then_some(n)
 }
 
 /// La phrase qui porte cette dose, bornée.
@@ -385,12 +617,11 @@ mod tests {
         assert!(clamoxyl[0].sentence.contains("angine"));
         assert_eq!((clamoxyl[1].low, clamoxyl[1].high), (80.0, Some(90.0)));
         assert!(clamoxyl[1].sentence.contains("otite"));
-        // Et celle qui ne répond pas : la fiche du Bactrim n'écrit pas
-        // de dose au poids. L'écran le dit au lieu de proposer un
-        // chiffre qui n'est pas le sien — c'est la même règle que
-        // « le silence n'est pas une autorisation », appliquée à un
-        // nombre, et c'est aussi ce qui dit à l'officine quelle fiche
-        // compléter.
+        // Et celle dont la carte ne répond pas : la fiche du Bactrim
+        // n'écrit pas de dose au poids **dans sa posologie**. Ses lignes
+        // par indication, elles, l'écrivent — c'est
+        // `the_indication_lines_answer_what_the_card_does_not` qui les
+        // lit.
         assert!(
             read(dosage("Bactrim")).is_empty(),
             "la fiche du Bactrim écrit maintenant une dose au poids : \
@@ -403,5 +634,160 @@ mod tests {
             "{sans_rythme} doses sur {total} sans rythme : la lecture du \
              rythme ne lit plus"
         );
+    }
+
+    /// **Un second rythme ne prête pas le sien au premier.**
+    ///
+    /// La fiche de l'Advil écrit « 20 à 30 mg/kg par jour, soit 7,5 à
+    /// 10 mg/kg par prise » : la fenêtre qui suivait la première dose
+    /// allait jusqu'au « par prise » de la seconde, et l'écran
+    /// annonçait vingt à trente milligrammes **par prise** — trois à
+    /// quatre fois la dose, sur un enfant.
+    #[test]
+    fn a_second_rhythm_does_not_lend_its_own_to_the_first() {
+        let got = read(
+            "Enfant à partir de 3 mois et 5 kg : 20 à 30 mg/kg par jour, soit 7,5 \
+             à 10 mg/kg par prise toutes les 6 à 8 heures, sans dépasser 30 mg/kg \
+             par 24 heures.",
+        );
+        assert_eq!(got.len(), 3, "{got:?}");
+        assert_eq!(got[0].cadence, Cadence::Jour, "{:?}", got[0]);
+        assert_eq!(got[1].cadence, Cadence::Prise);
+        assert_eq!(got[2].cadence, Cadence::Jour);
+        // Et « deux fois par jour » est une dose par prise : dix
+        // milligrammes deux fois, vingt dans la journée.
+        let got = read("10 mg/kg deux fois par jour, maximum 30 mg/kg deux fois par jour");
+        assert_eq!(got[0].cadence, Cadence::Prise);
+        let got = read("0,25 mg/kg jusqu'à trois fois par jour");
+        assert_eq!(got[0].cadence, Cadence::Prise);
+        let got = read("Bilharziose : 40 mg/kg en une prise.");
+        assert_eq!(got[0].cadence, Cadence::Prise);
+        let got = read("0,2 mg/kg par injection, renouvelable toutes les 4 heures");
+        assert_eq!(got[0].cadence, Cadence::Prise);
+    }
+
+    /// **Un plafond n'est pas une dose, et une dose cumulée non plus.**
+    ///
+    /// « sans dépasser 30 mg/kg par 24 heures » est la borne qu'on ne
+    /// franchit pas ; « une dose cumulée de 120 à 150 mg/kg » est le
+    /// total d'une cure de plusieurs mois — lue comme une dose, elle
+    /// donnait sept grammes à un adulte.
+    #[test]
+    fn a_ceiling_is_not_a_dose_and_a_course_total_is_not_read() {
+        let got = read("20 mg/kg par jour, sans dépasser 30 mg/kg par jour.");
+        assert!(!got[0].ceiling);
+        assert!(got[1].ceiling);
+        // La virgule du nombre ne coupe pas la phrase : « ni 0,5 » est
+        // bien précédé de « sans dépasser ».
+        let got = read("sans dépasser 30 mg par jour ni 0,5 mg/kg par jour.");
+        assert!(got[0].ceiling, "{got:?}");
+        let got = read("soit 60 mg/kg par jour au maximum ; ne pas associer.");
+        assert!(got[0].ceiling);
+        // « au maximum » qui borne une durée ne borne pas la dose.
+        let got = read("0,1 mg/kg par prise, trois fois, 5 jours au maximum");
+        assert!(!got[0].ceiling, "{got:?}");
+        // « et davantage » dit lui-même qu'on franchit le chiffre.
+        let got = read("jusqu'à environ 1 mg/kg par jour et davantage dans les formes graves");
+        assert!(!got[0].ceiling);
+        // Une phrase qui finit sur un plafond d'adulte ne fait pas de la
+        // dose de l'enfant un plafond.
+        let got = read("sans dépasser 2 g par jour. Enfant : 50 mg/kg par jour.");
+        assert!(!got[0].ceiling);
+        let got = read(
+            "souvent porté à 0,5 à 1 mg/kg et par jour, pour une dose cumulée de \
+             l'ordre de 120 à 150 mg/kg sur l'ensemble de la cure.",
+        );
+        assert_eq!(
+            got.len(),
+            1,
+            "le total de la cure n'est pas une dose : {got:?}"
+        );
+    }
+
+    /// **Une association donne un chiffre par molécule, et chacun porte
+    /// son nom** ; et la dose du jour dit en combien de prises elle se
+    /// répartit quand la phrase le dit d'un seul chiffre.
+    #[test]
+    fn a_combination_names_each_figure() {
+        let got = read(
+            "30 mg/kg par jour de sulfaméthoxazole et 6 mg/kg par jour de \
+             triméthoprime, en 2 prises",
+        );
+        assert_eq!(got[0].of.as_deref(), Some("sulfaméthoxazole"));
+        assert_eq!(got[1].of.as_deref(), Some("triméthoprime"));
+        assert_eq!(got[1].takes, Some(2));
+        let got = read("80 mg/kg par jour exprimés en amoxicilline, en 3 prises");
+        assert_eq!(got[0].of.as_deref(), Some("amoxicilline"));
+        // Ce qui n'est pas une molécule n'en devient pas une.
+        let got = read("50 mg/kg de poids corporel par jour");
+        assert_eq!(got[0].of, None);
+        // Un choix laissé au prescripteur n'est pas un chiffre.
+        let got = read("50 mg/kg par jour en 2 ou 3 prises");
+        assert_eq!(got[0].takes, None);
+        let got = read("50 mg/kg par jour en trois prises");
+        assert_eq!(got[0].takes, Some(3));
+    }
+
+    /// **Les lignes par indication répondent là où la carte se tait.**
+    ///
+    /// La question qui a fait naître l'outil était « le Bactrim, pour un
+    /// enfant » — et la posologie de la carte n'en dit rien, pendant que
+    /// sa ligne « Infections de l'enfant » écrit trente milligrammes par
+    /// kilo de sulfaméthoxazole. Confrontée à toutes les lignes livrées.
+    #[test]
+    fn the_indication_lines_answer_what_the_card_does_not() {
+        let mut total = 0usize;
+        for (name, indication, poso, _) in crate::db::STARTER_POSOLOGIES {
+            for g in read(poso) {
+                total += 1;
+                assert!(
+                    g.low > 0.0 && g.low <= 200.0,
+                    "{name} / {indication} : {} mg/kg",
+                    g.low
+                );
+                if let Some(h) = g.high {
+                    assert!(h > g.low, "{name} / {indication}");
+                }
+            }
+        }
+        assert!(
+            total >= 60,
+            "{total} doses au poids dans les lignes livrées"
+        );
+        let bactrim: Vec<PerKilo> = crate::db::STARTER_POSOLOGIES
+            .iter()
+            .filter(|(n, i, _, _)| *n == "Bactrim" && i.contains("enfant"))
+            .flat_map(|(_, _, p, _)| read(p))
+            .collect();
+        assert_eq!(bactrim.len(), 2, "{bactrim:?}");
+        assert_eq!((bactrim[0].low, bactrim[0].cadence), (30.0, Cadence::Jour));
+        assert_eq!(bactrim[0].of.as_deref(), Some("sulfaméthoxazole"));
+        assert_eq!(bactrim[1].of.as_deref(), Some("triméthoprime"));
+    }
+
+    /// **Les lignes d'abord, et ce qu'elles donnent n'est pas répété.**
+    #[test]
+    fn the_lines_come_first_and_the_card_adds_only_what_they_lack() {
+        let got = gather(
+            "Enfant : 50 mg/kg par jour. Méningite : 100 mg/kg par jour.",
+            &[("Angine de l'enfant", "50 mg/kg par jour en 2 prises")],
+        );
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert_eq!(got[0].indication.as_deref(), Some("Angine de l'enfant"));
+        assert_eq!(got[1].indication, None);
+        assert_eq!(got[1].dose.low, 100.0);
+        assert!(gather("", &[]).is_empty());
+    }
+
+    /// **Jamais zéro milligramme**, et pas de fausse précision.
+    #[test]
+    fn a_computed_dose_is_never_written_zero() {
+        assert_eq!(milligrams(480.0), "480");
+        assert_eq!(milligrams(479.6), "480");
+        assert_eq!(milligrams(3.2), "3,2");
+        assert_eq!(milligrams(2.0), "2");
+        assert_eq!(milligrams(0.4), "0,4");
+        assert_ne!(milligrams(0.004), "0");
+        assert!(milligrams(0.004).starts_with("0,00"));
     }
 }

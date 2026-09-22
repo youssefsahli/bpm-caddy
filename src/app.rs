@@ -4140,7 +4140,13 @@ struct Session {
     /// Une infobulle se dessine soixante fois par seconde et ce sont
     /// huit tables : la clé est la paire (centre, nœud), si bien que le
     /// travail se refait quand le doigt change de carré et pas avant.
-    graph_pair: Option<((i64, i64), Vec<CompanionSignal>)>,
+    ///
+    /// **Et la clé porte le dossier.** Les signaux lisent le DFG, l'âge,
+    /// la biologie et l'ordonnance du dossier ouvert : gardés sous la
+    /// seule paire, ils montraient ceux du dossier A après qu'on avait
+    /// ouvert B, la carte toujours centrée. `resync` la vide aussi, pour
+    /// ce qu'un autre poste écrit dans le dossier.
+    graph_pair: Option<(GraphPairKey, Vec<CompanionSignal>)>,
     /// D'où l'on regarde la figure : grossissement et décalage.
     ///
     /// Remis à plat chaque fois que le **centre** bouge : une autre
@@ -4469,6 +4475,8 @@ struct Session {
     /// table rénale aussi.
     calc_drug: Option<i64>,
     calc_drug_query: String,
+    /// Les lignes par indication de `calc_drug`, lues une fois par fiche.
+    calc_poso: Option<(i64, Vec<db::Posologie>)>,
     /// Le DFG contre lequel la table rénale est lue ici. Séparé de
     /// `renal_dfg`, qui est celui du **dossier** : on vient souvent
     /// demander « et à trente ? » pour quelqu'un qui n'est pas ouvert.
@@ -4927,6 +4935,7 @@ impl Session {
             calc_open: false,
             calc_drug: None,
             calc_drug_query: String::new(),
+            calc_poso: None,
             calc_renal_dfg: 45.0,
             // Un poids d'enfant : c'est la question que cet outil-là
             // répond, et un champ ouvert sur soixante-dix kilos la pose
@@ -5826,6 +5835,11 @@ impl Session {
     /// Ce que cette liste laisse dehors est aussi important que ce
     /// qu'elle contient — voir [`Self::sync_if_others_wrote`].
     fn resync(&mut self) {
+        // Deux lectures gardées d'une image à l'autre et qu'un autre
+        // poste peut rendre fausses : la biologie d'un dossier (la carte)
+        // et les lignes par indication d'une fiche (les calculs).
+        self.graph_pair = None;
+        self.calc_poso = None;
         if let Ok(list) = self.db.patients() {
             self.set_patients(list);
             // L'en-tête du dossier ouvert suit — et se **ferme** si
@@ -21362,7 +21376,12 @@ impl App {
         let context = if n.context.is_empty() {
             0.0
         } else {
-            Self::prose_height(ui, n.context, 12.0, w) + ui.spacing().item_spacing.y
+            // **À la taille que le dessin emploie**, `motif::pt(12)` :
+            // mesurée à douze pixels quand le dessin en écrit dix-neuf à
+            // l'échelle 1,6, la ligne de contexte comptait une ligne où
+            // elle en fait deux, et sur tous les onglets du dossier sauf
+            // « Entretiens » la bande la tranchait par le milieu.
+            Self::prose_height(ui, n.context, motif::pt(ui, 12.0), w) + ui.spacing().item_spacing.y
         };
         let head = chrome + 2.0 + Self::row_height(ui) + ui.spacing().item_spacing.y + context;
         // **La rangée des traitements enveloppe, et elle se mesure.**
@@ -21461,7 +21480,7 @@ impl App {
             h += row * (2.0 + TREAT_DOSE_ROWS as f32);
             h += row * Self::wrapped_rows_of(ui, w, Self::script_row_widths(ui).into_iter());
             for note in &n.dosing_notes {
-                h += Self::prose_height(ui, note, 11.0, w).max(Self::label_line(ui));
+                h += Self::prose_height(ui, note, motif::pt(ui, 11.0), w).max(Self::label_line(ui));
             }
         }
         if n.correcting {
@@ -30903,19 +30922,25 @@ impl App {
                 );
                 if resp.changed() {
                     let q = session.calc_drug_query.trim().to_owned();
+                    // À score égal, **le nom exact, puis le premier de
+                    // la liste** : `max_by_key` garde le dernier des
+                    // égaux, et la fiche retenue dépendait de l'ordre
+                    // de la base.
                     session.calc_drug = (!q.is_empty())
                         .then(|| {
                             session
                                 .drugs
                                 .iter()
-                                .filter_map(|d| {
+                                .enumerate()
+                                .filter_map(|(i, d)| {
                                     let sc = fuzzy::score(&q, &d.name)
                                         .into_iter()
                                         .chain(fuzzy::score(&q, &d.dci))
                                         .max()?;
-                                    Some((sc, d.id))
+                                    let exact = fuzzy::eq_folded(&q, &d.name);
+                                    Some(((sc, exact, std::cmp::Reverse(i)), d.id))
                                 })
-                                .max_by_key(|(sc, _)| *sc)
+                                .max_by_key(|(k, _)| *k)
                                 .map(|(_, id)| id)
                         })
                         .flatten();
@@ -31102,7 +31127,28 @@ impl App {
                             .size(motif::pt(ui, 11.5))
                             .color(motif::text_dim()),
                     );
-                    let found = crate::dosing::read(&d.dosage);
+                    // **Les lignes par indication d'abord.** La carte
+                    // du Bactrim n'écrit rien au poids ; sa ligne
+                    // « Infections de l'enfant » écrit trente
+                    // milligrammes par kilo. Lues une fois par fiche —
+                    // c'est une requête, et cette vue se redessine
+                    // soixante fois par seconde.
+                    let id = d.id;
+                    let dosage = d.dosage.clone();
+                    if session.calc_poso.as_ref().map(|(i, _)| *i) != Some(id) {
+                        let lines = session.db.posologies(id).unwrap_or_default();
+                        session.calc_poso = Some((id, lines));
+                    }
+                    let lines: Vec<(&str, &str)> = session
+                        .calc_poso
+                        .as_ref()
+                        .map(|(_, l)| {
+                            l.iter()
+                                .map(|p| (p.indication.as_str(), p.posologie.as_str()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let found = crate::dosing::gather(&dosage, &lines);
                     if found.is_empty() {
                         // **Le silence n'est pas une autorisation**, et
                         // un chiffre absent proposé à zéro se lirait
@@ -31116,35 +31162,70 @@ impl App {
                             .wrap(),
                         );
                     }
-                    for f in &found {
-                        let w = session.calc_kg_weight;
-                        // **Une décimale seulement quand il y en a
-                        // une** : « 0,35 mg/kg » garde ses centièmes,
-                        // « 50 mg/kg » ne gagne pas un « ,00 » qui se
-                        // lit comme une précision qu'on n'a pas. Et par
-                        // `strings::decimal`, donc à la virgule : un
-                        // point décimal sur un écran français est une
-                        // faute que ce dépôt refuse par un test.
-                        let num = |v: f64| {
-                            crate::strings::decimal(v, usize::from(v.fract().abs() > 1e-9) * 2)
+                    let w = session.calc_kg_weight;
+                    // Une seule écriture des nombres, à la virgule et à
+                    // la précision qu'ils ont : « 0,35 mg/kg » garde ses
+                    // centièmes, « 50 » ne gagne pas de « ,00 », et un
+                    // résultat calculé n'est jamais écrit zéro.
+                    let num = crate::dosing::milligrams;
+                    let span = |lo: f64, hi: Option<f64>| match hi {
+                        Some(h) => trn("calc_range", &[&num(lo), &num(h)]),
+                        None => num(lo),
+                    };
+                    let mut last: Option<&str> = None;
+                    for found in &found {
+                        let f = &found.dose;
+                        // L'indication, une fois pour ses lignes : deux
+                        // doses d'une même ligne (le sulfaméthoxazole et
+                        // le triméthoprime) ne la répètent pas.
+                        if let Some(ind) = found.indication.as_deref() {
+                            if last != Some(ind) {
+                                ui.add_space(2.0);
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(ind).strong().size(motif::pt(ui, 11.0)),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            last = Some(ind);
+                        } else {
+                            last = None;
+                        }
+                        let rhythm = match &f.of {
+                            Some(of) => {
+                                trn("calc_perkg_card_of", &[&tr(f.cadence.label_key()), of])
+                            }
+                            None => tr(f.cadence.label_key()).to_owned(),
                         };
-                        let span = |lo: f64, hi: Option<f64>| match hi {
-                            Some(h) => trn("calc_range", &[&num(lo), &num(h)]),
-                            None => num(lo),
+                        let result = span(f.low * w, f.high.map(|h| h * w));
+                        // **Un plafond n'est pas une dose** : il se dit
+                        // comme tel, et pas dans la couleur de ce qu'on
+                        // donne.
+                        let (key, ink) = if f.ceiling {
+                            ("calc_perkg_card_ceiling", motif::text())
+                        } else {
+                            ("calc_perkg_card_line", motif::accent())
                         };
+                        let mut text = trn(key, &[&span(f.low, f.high), &rhythm, &num(w), &result]);
+                        // La dose du jour en prises, quand la phrase dit
+                        // en combien d'un seul chiffre.
+                        if let (crate::dosing::Cadence::Jour, Some(n), false) =
+                            (f.cadence, f.takes, f.ceiling)
+                        {
+                            if n > 1 {
+                                let n = f64::from(n);
+                                text.push_str(&trn(
+                                    "calc_perkg_card_take",
+                                    &[&span(f.low * w / n, f.high.map(|h| h * w / n))],
+                                ));
+                            }
+                        }
                         ui.add(
                             egui::Label::new(
-                                egui::RichText::new(trn(
-                                    "calc_perkg_card_line",
-                                    &[
-                                        &span(f.low, f.high),
-                                        &tr(f.cadence.label_key()),
-                                        &num(w),
-                                        &span((f.low * w).round(), f.high.map(|h| (h * w).round())),
-                                    ],
-                                ))
-                                .size(motif::pt(ui, 12.0))
-                                .color(motif::accent()),
+                                egui::RichText::new(text)
+                                    .size(motif::pt(ui, 12.0))
+                                    .color(ink),
                             )
                             .wrap(),
                         );
@@ -31211,6 +31292,18 @@ impl App {
                         }
                     }
                 });
+                // La portée de la table, **avant** ce qu'elle dit — la
+                // règle de tous les volets cliniques : ce qui vient après
+                // le contenu est ce que personne ne lit. La conduite est
+                // celle du RCP, la décision celle du prescripteur.
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("renal_scope"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
                 let found = crate::renal::read(
                     &ordonnance_terms(std::slice::from_ref(&d)),
                     Some(session.calc_renal_dfg),
@@ -31276,17 +31369,6 @@ impl App {
                         .wrap(),
                     );
                 }
-                // La portée de la table, **avant** ce qu'elle dit
-                // ailleurs, et ici avec le reste : la conduite est celle
-                // du RCP, la décision est celle du prescripteur.
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(tr("renal_scope"))
-                            .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
-                    )
-                    .wrap(),
-                );
             }
 
             // --- Décroissance et accumulation ---
@@ -36531,10 +36613,28 @@ impl App {
         // fait 290 : le registre — ce pour quoi on ouvre l'écran — se
         // réduisait à une ligne coupée. Le formulaire défile dans sa
         // part ; ni lui ni le registre ne prend tout.
+        //
+        // **Et la moitié a un plancher : une rangée de champs.** À
+        // `text_scale = 1,6` la moitié du volet ne portait plus que la
+        // nature et « Inscrire » — le menu d'une rangée, le bouton sur
+        // la sienne, et entre les deux rien : ni quantité, ni date, ni
+        // prescripteur, sur le formulaire qui écrit au registre. Le
+        // registre garde ce qui reste ; il défile, et le volet où l'on
+        // tape gagne. Le cadre du panneau et la rangée du bouton sont
+        // ceux que `stup_form` dépense, lus aux fonctions qui les
+        // dessinent plutôt que les quarante-quatre pixels d'avant.
         let form_h = if wide {
             0.0
         } else {
-            (Self::row_height(ui) * 10.0 + 44.0).min(work.height() * 0.5)
+            let gap_y = ui.spacing().item_spacing.y;
+            let chrome = motif::panel_chrome(ui, true);
+            let button = Self::button_height(ui) + 6.0 + 4.0;
+            let asked = chrome + Self::rows_height(ui, 9.0) + gap_y + button;
+            let floor = chrome + Self::rows_height(ui, 2.0) + gap_y + button;
+            // Le plancher ne passe pas le volet : il laisse au registre
+            // sa tête et une ligne.
+            let floor = floor.min(work.height() - chrome - Self::rows_height(ui, 2.0) - 8.0);
+            asked.min((work.height() * 0.5).max(floor))
         };
         let gap = 8.0;
         let cut = |from: f32, w: f32| {
@@ -45494,6 +45594,7 @@ impl App {
                     Ok(_) => {
                         session.poso_new = (String::new(), String::new(), String::new());
                         session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+                        session.calc_poso = None;
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -45516,6 +45617,7 @@ impl App {
                         Err(e) => session.error = Some(e),
                     }
                     session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+                    session.calc_poso = None;
                 }
             }
             if let Some((id, indication)) = poso_delete {
@@ -45526,6 +45628,7 @@ impl App {
                     Err(e) => session.error = Some(e),
                 }
                 session.posologies = session.db.posologies(drug_id).unwrap_or_default();
+                session.calc_poso = None;
             }
             if edit_class {
                 session.class_note_edit = Some(session.class_note.clone());
@@ -50332,8 +50435,14 @@ impl App {
                 };
                 // Un voisin se lit **contre le centre** : c'est ce que
                 // le trait entre eux veut dire.
-                let key = (map.centre.0, id);
-                if session.graph_pair.as_ref().map(|(k, _)| *k) != Some(key) {
+                let key: GraphPairKey = (
+                    map.centre.0,
+                    id,
+                    session.viewing.as_ref().map(|p| p.id),
+                    session.renal_dfg.map(f64::to_bits),
+                    on_file.clone(),
+                );
+                if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, id, &[map.centre.0]);
                     session.graph_pair = Some((key, sig));
                 }
@@ -50378,8 +50487,14 @@ impl App {
                 egui::Sense::hover(),
             );
             if hub_resp.hovered() {
-                let key = (map.centre.0, map.centre.0);
-                if session.graph_pair.as_ref().map(|(k, _)| *k) != Some(key) {
+                let key: GraphPairKey = (
+                    map.centre.0,
+                    map.centre.0,
+                    session.viewing.as_ref().map(|p| p.id),
+                    session.renal_dfg.map(f64::to_bits),
+                    on_file.clone(),
+                );
+                if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, map.centre.0, &on_file);
                     session.graph_pair = Some((key, sig));
                 }
@@ -53979,6 +54094,10 @@ enum CompanionGo {
 /// `renal::read` reçoit.
 type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64, u64);
 
+/// Ce dont dépend la lecture d'un nœud de la carte : la paire (centre,
+/// nœud), le dossier ouvert, son DFG et son ordonnance.
+type GraphPairKey = (i64, i64, Option<i64>, Option<u64>, Vec<i64>);
+
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
 /// Voir `motif` : la teinte vient du thème, et deux des dix peaux sont
@@ -54395,6 +54514,19 @@ fn companion_hits(drugs: &[Drug], query: &str) -> Vec<Drug> {
         // même liste : deux fiches de même score ne doivent pas échanger
         // leur place d'une image à l'autre.
         scored.sort_by(|a, b| b.0.cmp(&a.0).then_with(|| a.1.name.cmp(&b.1.name)));
+        // **Une correspondance éparpillée ne se range pas à côté d'une
+        // vraie.** Tapé « eliq », la barre proposait l'Eliquis puis le
+        // Botox, le Celluvisc, le Delursan et la Spéciafoldine — un *e*
+        // dans « toxine », *l-i-q* dans « botulique ». Quand au moins une
+        // fiche a un mot qui commence comme ce qu'on a tapé, celles qui
+        // n'en ont pas sont des devinettes et se retirent ; quand aucune
+        // n'en a, l'indulgence de la passe floue reste tout ce qu'on a.
+        let anchored = |d: &Drug| {
+            fuzzy::starts_a_word(&d.name, query, 2) || fuzzy::starts_a_word(&d.dci, query, 2)
+        };
+        if scored.iter().any(|(_, d)| anchored(d)) {
+            scored.retain(|(_, d)| anchored(d));
+        }
         scored.truncate(COMPANION_HITS);
     }
     scored.into_iter().map(|(_, d)| d.clone()).collect()
@@ -60727,6 +60859,67 @@ mod tests {
         );
     }
 
+    /// **Et une mesure se prend à la taille du dessin.** `prose_height`
+    /// reçoit une taille en pixels, et deux mesures de la bande du
+    /// dossier lui passaient « 12.0 » et « 11.0 » quand le dessin écrit
+    /// `motif::pt(ui, 12.0)` : à l'échelle 1,6 la ligne de contexte se
+    /// mesurait sur une ligne et s'en dessinait deux, tranchée par le
+    /// bas de la bande sur six onglets sur sept. Le test précédent lit
+    /// `.size(`, pas l'argument d'une fonction qui mesure.
+    #[test]
+    fn no_measurement_is_taken_in_pixels() {
+        const SOURCE: &str = include_str!("app.rs");
+        let call = concat!("prose_", "height(");
+        let mut offenders: Vec<String> = Vec::new();
+        let mut rest = SOURCE;
+        while let Some(at) = rest.find(call) {
+            let tail = &rest[at + call.len()..];
+            // Les arguments jusqu'à la parenthèse fermante, à plat.
+            let mut depth = 1usize;
+            let args: String = tail
+                .chars()
+                .take_while(|c| {
+                    match c {
+                        '(' => depth += 1,
+                        ')' => depth -= 1,
+                        _ => {}
+                    }
+                    depth > 0
+                })
+                .collect();
+            // La troisième, au premier niveau.
+            let mut level = 0usize;
+            let mut parts = vec![String::new()];
+            for c in args.chars() {
+                match c {
+                    '(' | '[' => level += 1,
+                    ')' | ']' => level -= 1,
+                    ',' if level == 0 => {
+                        parts.push(String::new());
+                        continue;
+                    }
+                    _ => {}
+                }
+                if let Some(p) = parts.last_mut() {
+                    p.push(c);
+                }
+            }
+            if let Some(size) = parts.get(2) {
+                if size.trim().starts_with(|c: char| c.is_ascii_digit()) {
+                    let line = SOURCE[..SOURCE.len() - rest.len() + at].lines().count();
+                    offenders.push(format!("app.rs:{line} : {}", size.trim()));
+                }
+            }
+            rest = tail;
+        }
+        assert!(
+            offenders.is_empty(),
+            "une mesure prend la taille que le dessin emploie — \
+             motif::pt(ui, …) —, jamais des pixels :\n{}",
+            offenders.join("\n")
+        );
+    }
+
     /// **Et une couleur ne s'écrit pas en hexadécimal.**
     ///
     /// La maison veut que toute couleur de chrome vienne du thème
@@ -63470,6 +63663,35 @@ mod tests {
         assert!(!super::companion_hits(base, "zorglubine").is_empty());
     }
 
+    /// **Une correspondance éparpillée ne se range pas à côté d'une
+    /// vraie** — « eliq » rendait l'Eliquis puis quatre fiches dont la
+    /// DCI porte les quatre lettres dans le désordre des mots.
+    #[test]
+    fn a_scattered_match_does_not_stand_beside_a_real_one() {
+        let card = |id: i64, name: &str, dci: &str| crate::db::Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            ..crate::db::Drug::default()
+        };
+        let base = [
+            card(1, "Eliquis", "apixaban"),
+            card(2, "Botox", "toxine botulique"),
+            card(3, "Spéciafoldine", "acide folique"),
+        ];
+        let hits = super::companion_hits(&base, "eliq");
+        assert_eq!(
+            hits.len(),
+            1,
+            "{:?}",
+            hits.iter().map(|d| &d.name).collect::<Vec<_>>()
+        );
+        assert_eq!(hits[0].name, "Eliquis");
+        // Sans réponse ancrée, la passe floue garde son indulgence.
+        let hits = super::companion_hits(&base[1..], "eliq");
+        assert_eq!(hits.len(), 2);
+    }
+
     /// **Tout ce que les pages dessinent, le presse-papier le copie.**
     ///
     /// C'est la règle que `companion_clip` porte dans son nom, et elle
@@ -65586,7 +65808,7 @@ mod tests {
     fn a_class_mate_with_no_dci_is_not_dropped() {
         use super::DrugKin;
         use crate::db::Drug;
-        let card = |id: i64, name: &str, dci: &str| Drug {
+        let card = |id: i64, name: &str, dci: &str| crate::db::Drug {
             id,
             name: name.to_owned(),
             dci: dci.to_owned(),

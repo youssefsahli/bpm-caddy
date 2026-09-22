@@ -5,6 +5,56 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.247.0] - 2026-09-23
+
+### Fixed
+- **« Le Bactrim, pour un enfant » répond enfin.** La dose au poids
+  ne se lisait que dans la posologie de la carte, et celle du Bactrim
+  n'en écrit pas ; sa ligne « Infections de l'enfant » écrit trente
+  milligrammes par kilo de sulfaméthoxazole et six de triméthoprime.
+  Les calculs lisent maintenant **les lignes par indication d'abord** —
+  elles disent pour quoi, ce que le chiffre seul ne départage pas —,
+  puis ce que la carte ajoute. Plus de soixante-dix doses au poids
+  répondent, chacune sous son indication.
+- **Une dose par jour n'est plus annoncée par prise.** « 20 à 30 mg/kg
+  par jour, soit 7,5 à 10 mg/kg par prise » : la première dose prenait
+  le rythme de la seconde, et l'Advil d'un enfant de seize kilos
+  s'affichait trois à quatre fois trop fort. Chaque dose ne lit plus que
+  ce qui la suit jusqu'à la suivante. « Deux fois par jour », « par
+  injection » et « en une prise » disent aussi une dose par prise.
+- **Un plafond n'est plus écrit comme une dose**, ni dans la couleur
+  de ce qu'on donne : « sans dépasser 30 mg/kg par jour » s'affiche
+  « Plafond : … au plus ». Et **une dose cumulée n'est plus lue du
+  tout** : les cent vingt à cent cinquante milligrammes par kilo de
+  l'isotrétinoïne sont le total d'une cure de plusieurs mois, et
+  l'écran en faisait sept grammes.
+- **Une association nomme chacun de ses chiffres** (« par jour de
+  sulfaméthoxazole »), et la dose du jour dit ce qu'elle fait par prise
+  quand la fiche écrit en combien de prises.
+- **Un résultat n'est plus jamais « 0 mg »** : 0,1 mg/kg de terbutaline
+  pour un nourrisson de quatre kilos s'écrivait zéro. Les milligrammes
+  s'écrivent à la précision qu'ils ont.
+- **La barre du comptoir ne propose plus de devinettes à côté d'une
+  réponse.** Tapé « eliq », elle rendait l'Eliquis puis le Botox, le
+  Celluvisc, le Delursan et la Spéciafoldine — quatre lettres
+  éparpillées dans leur DCI. Quand un nom ou une molécule commence comme
+  ce qu'on a tapé, les correspondances éparpillées se retirent.
+- **La petite fiche d'un nœud de la carte suit le dossier ouvert.**
+  Elle gardait les signaux du dossier précédent quand on en ouvrait un
+  autre, la carte toujours centrée.
+- **La bande du dossier ne tranche plus son adresse.** Elle mesurait
+  sa ligne de contexte à douze pixels quand le dessin l'écrit à la
+  taille du texte : à l'échelle 1,6, sur six onglets sur sept, l'e-mail
+  et l'adresse sortaient coupés par le milieu. Un test refuse désormais
+  qu'une mesure se prenne en pixels.
+- **Le formulaire du registre montre ses champs.** À l'échelle 1,6 il
+  ne portait plus que la nature et « Inscrire », sans quantité ni
+  prescripteur entre les deux ; il garde maintenant au moins une rangée
+  de champs, le registre défilant dans ce qui reste.
+- Dans les calculs, la portée de la table rénale est écrite **avant**
+  ce qu'elle dit, comme sur tous les volets cliniques ; et la fiche
+  retenue à score égal ne dépend plus de l'ordre de la base.
+
 ## [0.246.0] - 2026-09-22
 
 ### Added

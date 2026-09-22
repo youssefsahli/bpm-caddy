@@ -123,6 +123,40 @@ pub fn contains_loose(hay: &str, needle: &str) -> bool {
     false
 }
 
+/// Does a word of `target` begin with the first `n` letters of
+/// `query`? Case and accents folded, nothing allocated.
+///
+/// [`score`] finds « eliq » inside « toxine botulique » — an *e* in the
+/// first word, *l-i-q* in the second — which is exactly what makes it
+/// forgiving, and exactly why a scattered match must not stand beside a
+/// real one: typed « eliq », the companion offered Eliquis and then
+/// Botox, Celluvisc, Delursan and Spéciafoldine. This is the question
+/// that separates the two: a match anchored at the start of a word is an
+/// answer, one scattered through the middle of words is a guess.
+pub fn starts_a_word(target: &str, query: &str, n: usize) -> bool {
+    let wanted = || {
+        query
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .map(fold)
+            .take(n)
+    };
+    if wanted().next().is_none() {
+        return true;
+    }
+    let mut before: Option<char> = None;
+    for (i, c) in target.char_indices() {
+        if before.is_none_or(|p| !p.is_alphanumeric()) {
+            let mut here = target[i..].chars().map(fold);
+            if wanted().all(|w| here.next() == Some(w)) {
+                return true;
+            }
+        }
+        before = Some(c);
+    }
+    false
+}
+
 /// Are these the same word, ignoring case, accents and the space
 /// around them? Without allocating a folded copy of either.
 ///
@@ -407,5 +441,16 @@ mod tests {
         // and the greedy matcher takes the first 'l' (in "Hélène").
         let (_, idx) = super::score_with_indices("hl", "Hélène Lefèvre").unwrap();
         assert_eq!(idx, vec![0, 2]);
+    }
+
+    #[test]
+    fn a_scattered_match_does_not_start_a_word() {
+        assert!(super::starts_a_word("Eliquis", "eliq", 2));
+        assert!(!super::starts_a_word("toxine botulique", "eliq", 2));
+        assert!(super::starts_a_word("acide acétylsalicylique", "acet", 2));
+        assert!(super::starts_a_word("Élugan", "elu", 2));
+        assert!(super::starts_a_word("anything", "", 2));
+        // One letter typed is anchored by any word starting with it.
+        assert!(super::starts_a_word("Doliprane", "d", 2));
     }
 }

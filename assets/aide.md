@@ -263,9 +263,12 @@ l'obèse, l'œdémateux ou le dénutri il s'écarte, et le laboratoire donne
 le DFG estimé sur la formule en vigueur.
 
 **La dose par kilo.** Un poids, des milligrammes par kilo, un nombre de
-prises. Et, lorsqu'une fiche est en main, **ce que sa posologie écrit** :
-chaque dose au poids qu'elle donne, avec son rythme et avec la phrase
-d'où elle vient. Le rythme n'est pas un détail, c'est la moitié de la
+prises. Et, lorsqu'une fiche est en main, **ce qu'elle écrit au
+poids** : ses lignes par indication d'abord, chacune sous son titre,
+puis ce que sa posologie ajoute — chaque dose avec son rythme et avec la
+phrase d'où elle vient. Un plafond (« sans dépasser… ») s'écrit comme
+tel, une association nomme la molécule de chaque chiffre, et une dose
+cumulée sur toute une cure n'est pas lue. Le rythme n'est pas un détail, c'est la moitié de la
 dose — « 15 mg/kg par prise toutes les 6 heures » et « 60 mg/kg par
 24 heures » sont le même traitement, et quatre fois l'un de l'autre. La
 phrase non plus : une même fiche écrit souvent cinquante par jour pour
