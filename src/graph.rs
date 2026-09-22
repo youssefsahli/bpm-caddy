@@ -105,6 +105,109 @@ impl Tie {
     pub const ALL: [Tie; 3] = [Tie::Molecule, Tie::Class, Tie::Interaction];
 }
 
+/// Ce que l'œil regarde : un grossissement et un décalage.
+///
+/// La figure était posée dans son rectangle et on la regardait d'un seul
+/// endroit. Un anneau serré ne se lisait alors qu'en agrandissant la
+/// fenêtre, et les noms que la place refusait n'avaient d'autre recours
+/// que l'infobulle.
+///
+/// **Grossir ne relit pas la base**, et c'est délibéré. Les plafonds
+/// restent ceux du volet : aucun nœud n'apparaît ni ne disparaît sous
+/// les doigts, et surtout aucun ne change de place — un anneau se
+/// répartit régulièrement, si bien qu'un membre de plus les ferait tous
+/// tourner, et une image qui tourne pendant qu'on la grossit est une
+/// image que personne ne peut suivre. Ce qu'on gagne en grossissant, ce
+/// sont les **noms** que la place refusait, c'est-à-dire exactement ce
+/// qui manquait.
+///
+/// Pur, et c'est ce qui permet de tenir l'arithmétique sans écran : un
+/// grossissement qui ne garde pas sous le pointeur ce qui y était fait
+/// fuir la figure au premier cran de molette, et cela ne se voit que
+/// sur une capture.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Look {
+    /// 1,0 est la figure telle que le volet la pose.
+    pub zoom: f32,
+    /// Le décalage, en pixels de l'écran, du milieu de la figure.
+    pub pan: (f32, f32),
+}
+
+impl Default for Look {
+    fn default() -> Self {
+        Self {
+            zoom: 1.0,
+            pan: (0.0, 0.0),
+        }
+    }
+}
+
+impl Look {
+    /// En deçà, la figure est un pâté ; au delà, un anneau ne tient plus
+    /// dans le creux et il n'y a plus de carte, seulement un nœud.
+    pub const MIN: f32 = 0.5;
+    pub const MAX: f32 = 4.0;
+    /// Ce que vaut un cran de bouton. Multiplicatif et non additif :
+    /// c'est la seule façon qu'un cran en avant et un cran en arrière se
+    /// rendent au même endroit.
+    pub const STEP: f32 = 1.25;
+
+    /// Est-ce la vue telle que le volet la pose ?
+    pub fn is_plain(self) -> bool {
+        (self.zoom - 1.0).abs() < 1e-3 && self.pan.0.abs() < 0.5 && self.pan.1.abs() < 0.5
+    }
+
+    /// Grossir de `factor` **autour de `at`** — un décalage en pixels
+    /// depuis le milieu du creux, celui du pointeur.
+    ///
+    /// Ce que le point sous le pointeur désigne y reste : c'est la seule
+    /// façon dont une molette se lit. Grossir autour du milieu fait
+    /// glisser sous les doigts ce qu'on regardait, et on rattrape la
+    /// figure au lieu de la lire.
+    pub fn zoom_about(self, factor: f32, at: (f32, f32)) -> Look {
+        if !factor.is_finite() || factor <= 0.0 || !self.zoom.is_finite() || self.zoom <= 0.0 {
+            return self;
+        }
+        let zoom = (self.zoom * factor).clamp(Self::MIN, Self::MAX);
+        // Le facteur **réellement** appliqué, après bornage : sans cela,
+        // molettant contre la borne, le décalage continuerait de courir
+        // alors que la taille ne bouge plus.
+        let k = zoom / self.zoom;
+        Look {
+            zoom,
+            pan: (
+                at.0 - (at.0 - self.pan.0) * k,
+                at.1 - (at.1 - self.pan.1) * k,
+            ),
+        }
+    }
+
+    /// Ramener le décalage dans ce qu'on peut atteindre.
+    ///
+    /// `half` est le demi-rectangle du creux, `radius` les deux
+    /// demi-axes de la figure **avant** grossissement. La règle tient en
+    /// une phrase : **on peut amener n'importe quel nœud au milieu, et
+    /// on ne peut pas perdre la figure.** D'où la borne, le plus grand
+    /// des deux — sans le premier terme, une figure plus petite que son
+    /// creux ne se déplacerait pas du tout ; sans le second, un anneau
+    /// grossi quatre fois aurait des nœuds qu'aucun décalage ne ramène.
+    pub fn clamp_pan(self, half: (f32, f32), radius: (f32, f32)) -> Look {
+        let lim = |h: f32, r: f32| {
+            let v = h.max(r * self.zoom);
+            if v.is_finite() {
+                v.max(0.0)
+            } else {
+                0.0
+            }
+        };
+        let (lx, ly) = (lim(half.0, radius.0), lim(half.1, radius.1));
+        Look {
+            zoom: self.zoom,
+            pan: (self.pan.0.clamp(-lx, lx), self.pan.1.clamp(-ly, ly)),
+        }
+    }
+}
+
 /// One card on the map, placed.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Node {
@@ -758,6 +861,132 @@ mod tests {
         let map = around(&b[2], &b, Caps::default());
         assert!(map.is_empty(), "{map:?}");
     }
+    /// **Grossir garde sous le pointeur ce qui y était.**
+    ///
+    /// C'est la seule façon dont une molette se lit : grossir autour du
+    /// milieu fait glisser sous les doigts ce qu'on regardait, et on
+    /// passe son temps à rattraper la figure. Le test le dit comme on le
+    /// voit — un point du monde, là où il se dessine avant et après.
+    #[test]
+    fn zooming_keeps_what_is_under_the_pointer_where_it_was() {
+        // Où un point du cercle unité se dessine, pour un regard donné.
+        let draw = |l: Look, w: (f32, f32)| {
+            (
+                l.pan.0 + w.0 * 100.0 * l.zoom,
+                l.pan.1 + w.1 * 60.0 * l.zoom,
+            )
+        };
+        let start = Look::default();
+        // Le point sous le pointeur, désigné par où il se dessine.
+        let pointer = (40.0_f32, -18.0_f32);
+        // Le point du monde qui s'y trouve, au regard de départ.
+        let world = (
+            (pointer.0 - start.pan.0) / (100.0 * start.zoom),
+            (pointer.1 - start.pan.1) / (60.0 * start.zoom),
+        );
+        for factor in [1.25_f32, 0.8, 2.0, 1.0 / 3.0] {
+            let after = start.zoom_about(factor, pointer);
+            let (x, y) = draw(after, world);
+            assert!(
+                (x - pointer.0).abs() < 0.01 && (y - pointer.1).abs() < 0.01,
+                "×{factor} : le point est parti de ({}, {}) à ({x}, {y})",
+                pointer.0,
+                pointer.1
+            );
+        }
+        // Et en enchaînant les crans, ce qui est le vrai usage.
+        let mut l = start;
+        for _ in 0..5 {
+            l = l.zoom_about(Look::STEP, pointer);
+        }
+        let (x, y) = draw(l, world);
+        assert!((x - pointer.0).abs() < 0.05 && (y - pointer.1).abs() < 0.05);
+        // Un cran en avant et un cran en arrière rendent au départ :
+        // c'est pour cela que le pas est multiplicatif.
+        let there_and_back = start
+            .zoom_about(Look::STEP, pointer)
+            .zoom_about(1.0 / Look::STEP, pointer);
+        assert!((there_and_back.zoom - 1.0).abs() < 1e-4);
+        assert!(there_and_back.pan.0.abs() < 0.01 && there_and_back.pan.1.abs() < 0.01);
+    }
+
+    /// **Le grossissement est borné, et contre la borne le décalage
+    /// s'arrête aussi.**
+    ///
+    /// Sans quoi, molettant contre la butée, la figure continuerait de
+    /// filer alors que sa taille ne bouge plus — on la perdrait sans
+    /// avoir rien grossi.
+    #[test]
+    fn zoom_stops_at_its_bounds_and_so_does_the_pan() {
+        let mut l = Look::default();
+        for _ in 0..40 {
+            l = l.zoom_about(Look::STEP, (50.0, 0.0));
+        }
+        assert!((l.zoom - Look::MAX).abs() < 1e-4, "{l:?}");
+        let against = l.zoom_about(Look::STEP, (50.0, 0.0));
+        assert_eq!(against, l, "contre la borne, rien ne bouge");
+        for _ in 0..40 {
+            l = l.zoom_about(1.0 / Look::STEP, (50.0, 0.0));
+        }
+        assert!((l.zoom - Look::MIN).abs() < 1e-4, "{l:?}");
+        // Un facteur qui n'en est pas un ne fait rien plutôt que
+        // n'importe quoi : la vue lit une molette, et une molette
+        // rend parfois zéro.
+        let l = Look::default();
+        assert_eq!(l.zoom_about(0.0, (1.0, 1.0)), l);
+        assert_eq!(l.zoom_about(f32::NAN, (1.0, 1.0)), l);
+        assert_eq!(l.zoom_about(f32::INFINITY, (1.0, 1.0)), l);
+    }
+
+    /// **On peut amener n'importe quel nœud au milieu, et on ne peut pas
+    /// perdre la figure.**
+    #[test]
+    fn the_pan_reaches_every_node_and_never_loses_the_figure() {
+        let half = (300.0_f32, 115.0_f32);
+        let radius = (184.0_f32, 78.0_f32);
+        // À taille normale la figure est plus petite que son creux : la
+        // borne est celle du creux, sans quoi on ne la déplacerait pas.
+        let l = Look {
+            zoom: 1.0,
+            pan: (10_000.0, -10_000.0),
+        }
+        .clamp_pan(half, radius);
+        assert_eq!(l.pan, (half.0, -half.1));
+        // Grossie quatre fois, le nœud le plus à droite est à
+        // `4 × 184` du milieu : il faut pouvoir le ramener.
+        let l = Look {
+            zoom: 4.0,
+            pan: (-10_000.0, 0.0),
+        }
+        .clamp_pan(half, radius);
+        assert!(
+            l.pan.0 <= -radius.0 * 4.0,
+            "on n'atteint pas le bord de la figure : {l:?}"
+        );
+        // Et jamais au delà : la figure ne sort pas de vue.
+        assert!(l.pan.0 >= -radius.0 * 4.0 - 0.01);
+        // Un creux ou un rayon qui n'en sont pas ne font pas partir le
+        // décalage à l'infini.
+        let l = Look {
+            zoom: 1.0,
+            pan: (50.0, 50.0),
+        }
+        .clamp_pan((f32::NAN, 0.0), (f32::INFINITY, 0.0));
+        assert_eq!(l.pan, (0.0, 0.0));
+        // La vue « telle que le volet la pose » se reconnaît.
+        assert!(Look::default().is_plain());
+        assert!(!Look {
+            zoom: 1.6,
+            pan: (0.0, 0.0)
+        }
+        .is_plain());
+        assert!(!Look {
+            zoom: 1.0,
+            pan: (40.0, 0.0)
+        }
+        .is_plain());
+    }
+
     /// **Une fiche coupée par un plafond ne réapparaît pas sur l'anneau
     /// d'à côté.**
     ///

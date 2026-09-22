@@ -4125,6 +4125,12 @@ struct Session {
     graph_centre: Option<i64>,
     graph_map: Option<crate::graph::Map>,
     graph_key: Option<(i64, u64, crate::graph::Caps)>,
+    /// D'où l'on regarde la figure : grossissement et décalage.
+    ///
+    /// Remis à plat chaque fois que le **centre** bouge : une autre
+    /// fiche est une autre image, et la garder grossie au coin où l'on
+    /// avait laissé la précédente ouvrirait la suivante sur du gris.
+    graph_look: crate::graph::Look,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -4758,6 +4764,7 @@ impl Session {
             graph_centre: None,
             graph_map: None,
             graph_key: None,
+            graph_look: crate::graph::Look::default(),
             graph_query: String::new(),
             graph_note: None,
             scans: Vec::new(),
@@ -6488,6 +6495,7 @@ impl Session {
         self.graph_centre = Some(id);
         self.graph_query.clear();
         self.graph_note = None;
+        self.graph_look = crate::graph::Look::default();
     }
 
     /// Lay the map out, unless the answer on hand is still the answer.
@@ -10328,6 +10336,29 @@ struct KpiRows {
     height: f32,
 }
 
+/// Ce qu'une infobulle de la carte dit d'un voisin : une petite fiche.
+///
+/// Composée, jamais dessinée depuis la base : la composition lit la
+/// fiche une fois — pour le seul nœud survolé — et le dessin ne fait
+/// que poser ce qu'elle porte. C'est le partage qui vaut partout
+/// ailleurs ici, et il a la même raison : le dessin passe soixante fois
+/// par seconde.
+#[derive(Clone, Debug, PartialEq)]
+struct GraphMini {
+    name: String,
+    dci: String,
+    /// La classe **canonique** — celle sur laquelle l'anneau groupe.
+    class: String,
+    tie: crate::graph::Tie,
+    /// À quoi ça sert : l'indication, ou à défaut le mécanisme.
+    what: String,
+    /// Ce que la fiche écrit d'une toxicité, quand elle en écrit.
+    toxicity: String,
+    /// Le statut, et seulement lorsqu'il dit autre chose que
+    /// « commercialisé ».
+    status: String,
+}
+
 impl App {
     pub fn new() -> Self {
         let mut config = Config::load();
@@ -11146,7 +11177,13 @@ impl App {
                         // actually has a neighbourhood — an empty circle
                         // would exercise none of the drawing. Eliquis by
                         // default, `BPM_CADDY_DRUG` to choose.
-                        Ok("graph") => {
+                        // La carte **grossie et déplacée** pour
+                        // `graph_zoom` : une vue qu'on ne peut regarder
+                        // que dans un seul état est une vue dont on n'a
+                        // jamais vu les autres, et celui-ci ne se
+                        // capture pas autrement — un cliché ne glisse
+                        // pas et ne molette pas.
+                        Ok(v @ ("graph" | "graph_zoom")) => {
                             let want = std::env::var("BPM_CADDY_DRUG")
                                 .unwrap_or_else(|_| "Eliquis".into());
                             let start = session
@@ -11157,6 +11194,12 @@ impl App {
                                 .map(|d| d.id);
                             if let Some(id) = start {
                                 session.open_graph(id);
+                            }
+                            if v == "graph_zoom" {
+                                session.graph_look = crate::graph::Look {
+                                    zoom: 2.0,
+                                    pan: (-90.0, 30.0),
+                                };
                             }
                             session.view = MainView::Drugs;
                         }
@@ -48702,6 +48745,149 @@ impl App {
         ui.fonts(|f| f.row_height(&Self::graph_node_font(ui))) + Self::GRAPH_NODE_HALF + 3.0
     }
 
+    /// La petite fiche d'un nœud : ce que la carte peut dire d'un voisin
+    /// sans qu'on la quitte.
+    ///
+    /// L'infobulle disait une ligne — la DCI et le lien — et la carte
+    /// s'explore en sautant de fiche en fiche : on ouvrait donc la
+    /// monographie pour lire une phrase, et on revenait. Or les trois
+    /// questions qu'on se pose d'un voisin tiennent en trois lignes : à
+    /// quoi il sert, ce qu'il a de dangereux, et **s'il est encore au
+    /// marché** — cette dernière étant précisément celle d'une rupture,
+    /// qui est l'une des deux raisons d'ouvrir cette vue.
+    ///
+    /// Composée pour **le seul nœud survolé**, jamais pour les douze :
+    /// une infobulle ne s'affiche qu'à un endroit, et douze premières
+    /// phrases par image seraient douze fois le travail pour onze
+    /// résultats jetés.
+    ///
+    /// Rien n'est déduit : ce sont les phrases de la fiche, coupées à
+    /// la première, et le statut tel que l'officine l'a écrit.
+    ///
+    /// Elle reçoit **la fiche**, et ne va pas la chercher : c'est la
+    /// frontière que tient chaque module clinique d'ici, et ici elle a
+    /// une raison de plus — sans elle, la composition ne se teste
+    /// qu'en montant une session entière, c'est-à-dire pas du tout.
+    fn graph_mini(card: Option<&db::Drug>, node: &crate::graph::Node) -> GraphMini {
+        GraphMini {
+            name: node.name.clone(),
+            dci: node.dci.clone(),
+            class: card
+                .map(|d| crate::classes::display_name(&d.class).to_owned())
+                .unwrap_or_default(),
+            tie: node.tie,
+            // L'indication d'abord, le mécanisme à défaut : c'est
+            // l'ordre du compagnon, et pour la même raison — « à quoi ça
+            // sert » se répond par ce qu'on traite, et seulement sinon
+            // par ce que la molécule fait.
+            what: card
+                .and_then(|d| {
+                    Self::first_sentence(&d.indications)
+                        .or_else(|| Self::first_sentence(&d.mechanism))
+                })
+                .unwrap_or_default(),
+            toxicity: card
+                .filter(|_| node.toxicity_noted)
+                .and_then(|d| Self::first_sentence(&d.toxicity))
+                .unwrap_or_default(),
+            // Le statut n'est montré que lorsqu'il **dit quelque
+            // chose** : « commercialisé » sur chaque fiche est une
+            // pastille qu'on cesse de voir, et c'est celle qui doit
+            // arrêter l'œil le jour où elle dit « rupture ».
+            status: card
+                .map(|d| d.status.trim())
+                .filter(|s| {
+                    !s.is_empty()
+                        && !matches!(
+                            db::DrugStatus::parse(s),
+                            Some(db::DrugStatus::Marketed) | None
+                        )
+                })
+                .unwrap_or_default()
+                .to_owned(),
+        }
+    }
+
+    /// Dessiner cette petite fiche dans l'infobulle.
+    ///
+    /// Bornée en largeur : une infobulle qui prend la moitié de l'écran
+    /// couvre la figure qu'elle explique.
+    fn graph_mini_ui(ui: &mut egui::Ui, mini: &GraphMini) {
+        ui.set_max_width(chars_wide(ui, 44.0));
+        ui.horizontal(|ui| {
+            ui.label(
+                egui::RichText::new(&mini.name)
+                    .size(motif::pt(ui, 13.0))
+                    .color(motif::text()),
+            );
+            // La pastille du lien, à la couleur de son anneau : c'est le
+            // même repère que la légende, et il dit à quel titre cette
+            // fiche est là.
+            // Enfoncée : elle nomme, elle n'arrête pas. C'est le
+            // mouvement de la maison — ce qui rassure est creusé, ce
+            // qui arrête se lève.
+            motif::badge(
+                ui,
+                tr(mini.tie.label_key()),
+                None,
+                motif::chart::series_color(mini.tie.series()),
+                false,
+            );
+        });
+        // La DCI et la classe **canonique** : celle sur laquelle
+        // l'anneau groupe, et non le libellé de la fiche.
+        let under: Vec<&str> = [mini.dci.as_str(), mini.class.as_str()]
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .collect();
+        if !under.is_empty() {
+            ui.label(
+                egui::RichText::new(under.join(" · "))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
+        if !mini.status.is_empty() {
+            // Levée, et marquée : une rupture arrête une
+            // substitution, et une couleur seule ne se lit pas sur
+            // toutes les peaux ni par tout le monde.
+            motif::badge(
+                ui,
+                &mini.status,
+                Some(motif::Pict::Warn),
+                status_color(&mini.status),
+                true,
+            );
+        }
+        if !mini.what.is_empty() {
+            ui.add_space(motif::pt(ui, 4.0));
+            ui.label(
+                egui::RichText::new(&mini.what)
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text()),
+            );
+        }
+        if !mini.toxicity.is_empty() {
+            ui.add_space(motif::pt(ui, 4.0));
+            ui.label(
+                egui::RichText::new(tr("graph_mini_toxicity"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::alert()),
+            );
+            ui.label(
+                egui::RichText::new(&mini.toxicity)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
+        ui.add_space(motif::pt(ui, 4.0));
+        ui.label(
+            egui::RichText::new(tr("graph_mini_click"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_faint()),
+        );
+    }
+
     /// Les quatre places qu'un nom de voisin peut prendre autour de son
     /// carré, de la meilleure à la dernière.
     ///
@@ -48911,6 +49097,10 @@ impl App {
         let mut typed_changed = false;
         let mut add_treat: Option<i64> = None;
         let mut new_card = false;
+        // Ce que les boutons du creux demandent : appliqué après le
+        // dessin, comme tout le reste de cette vue.
+        let mut zoom_by: Option<f32> = None;
+        let mut reset_look = false;
 
         let centre_name = session
             .graph_map
@@ -48984,7 +49174,24 @@ impl App {
             }
         }
 
-        motif::panel(ui, plot_rect, Some(tr("graph_title")), |ui| {
+        // **Le titre du panneau porte le grossissement**, et seulement
+        // quand il en porte un. C'est là qu'un état se lit — le cadre a
+        // déjà sa légende, elle est mesurée, et une pastille de plus
+        // dans le creux serait un objet qui couvre ce qu'il annonce. À
+        // cent pour cent il ne dit rien de plus : un état permanent
+        // qu'on ne peut pas ne pas avoir est du bruit.
+        let title = if session.graph_look.is_plain() {
+            tr("graph_title").to_owned()
+        } else {
+            trn(
+                "graph_title_zoomed",
+                &[
+                    &tr("graph_title"),
+                    &(session.graph_look.zoom * 100.0).round(),
+                ],
+            )
+        };
+        motif::panel(ui, plot_rect, Some(&title), |ui| {
             let body = ui.available_rect_before_wrap();
             let Some(map) = session.graph_map.clone() else {
                 ui.label(
@@ -49010,16 +49217,82 @@ impl App {
             // sa dimension. Le module rend des points du cercle unité
             // sans rien savoir de tout cela : c'est exactement ce que ce
             // partage permet.
-            let rx = field.width() * 0.30;
-            let ry = field.height() / 2.0 - Self::graph_margin_y(ui);
-            if rx < 24.0 || ry < 24.0 {
+            let plain_rx = field.width() * 0.30;
+            let plain_ry = field.height() / 2.0 - Self::graph_margin_y(ui);
+            if plain_rx < 24.0 || plain_ry < 24.0 {
                 // A pane too short to draw the figure in draws nothing
                 // rather than a tangle: the caption still says what the
                 // centre is, and the panel scrolls.
                 return;
             }
-            let mid = field.center();
+
+            // ---- D'où l'on regarde : glisser, molette ----------------
+            //
+            // **Posé avant les nœuds**, pour que les nœuds gardent leurs
+            // clics : egui donne le pointeur au dernier des deux
+            // objets qui se recouvrent. C'est l'arrangement que la barre
+            // compagnon a déjà, pour la même raison.
+            let canvas = ui.interact(
+                field,
+                ui.id().with("graph_canvas"),
+                egui::Sense::click_and_drag(),
+            );
+            let mut look = session.graph_look;
+            if canvas.dragged() {
+                let d = canvas.drag_delta();
+                look.pan = (look.pan.0 + d.x, look.pan.1 + d.y);
+            }
+            // La molette grossit **autour du pointeur** : ce qu'on
+            // regarde reste où on le regarde. Exponentielle, donc un cran
+            // en avant et un cran en arrière rendent au même endroit.
+            if canvas.hovered() {
+                let (wheel, over) = ui.input(|i| (i.raw_scroll_delta.y, i.pointer.hover_pos()));
+                if wheel.abs() > 0.5 {
+                    let p = over.unwrap_or(field.center());
+                    let d = p - field.center();
+                    look = look.zoom_about((wheel * 0.0025).exp(), (d.x, d.y));
+                }
+            }
+            look = look.clamp_pan(
+                (field.width() / 2.0, field.height() / 2.0),
+                (plain_rx, plain_ry),
+            );
+            session.graph_look = look;
+            // La main dit que ça se déplace : une carte qu'on peut
+            // glisser sans que rien ne le dise est une carte que
+            // personne ne glisse.
+            if canvas.dragged() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+            } else if canvas.hovered() {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            }
+
+            let (rx, ry) = (plain_rx * look.zoom, plain_ry * look.zoom);
+            let mid = field.center() + egui::vec2(look.pan.0, look.pan.1);
             let at = |n: &crate::graph::Node| egui::pos2(mid.x + n.x * rx, mid.y + n.y * ry);
+            let half = Self::GRAPH_NODE_HALF;
+            let box_of = |p: egui::Pos2, h: f32| {
+                egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
+            };
+            // **Les nœuds écoutent avant que rien ne soit peint.** Un
+            // dessin qui veut souligner ce qu'on survole doit savoir ce
+            // qu'on survole *avant* de tracer les rayons, et un rayon
+            // souligné après coup passerait par-dessus les carrés.
+            // `ui.interact` répond tout de suite ; c'est le dessin qui
+            // attend, pas l'écoute.
+            let responses: Vec<egui::Response> = map
+                .nodes
+                .iter()
+                .map(|n| {
+                    ui.interact(
+                        box_of(at(n), half).expand(4.0),
+                        ui.id().with(("graph_node", n.id)),
+                        egui::Sense::click(),
+                    )
+                })
+                .collect();
+            let hot = responses.iter().position(|r| r.hovered());
+
             // The rings first, faint, so the three distances read as
             // three distances and not as scatter.
             for tie in Tie::ALL {
@@ -49039,23 +49312,45 @@ impl App {
                 // c'est-à-dire un nuage. `chart::grid_color` est la
                 // réponse que ce dépôt donne déjà à cette
                 // question-là, pour les grilles des graphiques.
+                //
+                // **Et teinté de son lien.** Un anneau gris dit « voici
+                // une distance » sans dire laquelle : la teinte fait
+                // que « l'anneau gris, c'est la classe » se lit sans
+                // aller chercher la légende. Mêlé depuis la couleur de
+                // grille et non depuis la couleur du lien : c'est la
+                // première qui est lisible dans un creux sur les dix
+                // peaux, et on ne va vers la seconde que d'un tiers.
                 ui.painter().add(egui::Shape::ellipse_stroke(
                     mid,
                     egui::vec2(rx * f, ry * f),
-                    egui::Stroke::new(1.0_f32, motif::chart::grid_color()),
+                    egui::Stroke::new(
+                        1.0_f32,
+                        motif::chart::grid_color()
+                            .lerp_to_gamma(motif::chart::series_color(tie.series()), 0.35),
+                    ),
                 ));
             }
             // Then the spokes, each in its tie's colour: the line is
             // what says « ceci tient à cela », and its colour says how.
-            for n in &map.nodes {
-                ui.painter().line_segment(
-                    [mid, at(n)],
-                    egui::Stroke::new(1.2_f32, motif::chart::series_color(n.tie.series())),
-                );
+            //
+            // **Et quand un nœud est survolé, les autres rayons
+            // s'effacent.** Douze traits partant d'un point font une
+            // étoile où l'on ne suit aucun trait ; celui qu'on désigne
+            // se lit alors seul, plus épais, et les onze autres restent
+            // là — effacés, jamais retirés : ce qui disparaît sous les
+            // doigts fait perdre la figure au lieu de la montrer. C'est
+            // la règle que l'agenda écrit déjà pour ses filtres, « un
+            // filtre n'efface pas, il estompe ».
+            for (i, n) in map.nodes.iter().enumerate() {
+                let tint = motif::chart::series_color(n.tie.series());
+                let (w, c) = match hot {
+                    Some(h) if h == i => (2.4_f32, tint),
+                    Some(_) => (1.0, tint.gamma_multiply(0.35)),
+                    None => (1.2, tint),
+                };
+                ui.painter()
+                    .line_segment([mid, at(n)], egui::Stroke::new(w, c));
             }
-            // The centre last of the frame's own furniture, so nothing
-            // is drawn over it.
-            let half = Self::GRAPH_NODE_HALF;
             // Les places déjà prises par un nom, pour qu'aucun second
             // ne s'écrive dedans. **Le nom du centre en premier**, bien
             // qu'il soit peint en dernier : il est peint en dernier
@@ -49073,9 +49368,6 @@ impl App {
             // tour d'avant : « Lixiana » se lisait « Li■ana ». Le nom
             // cède devant le carré — un carré est cliquable et porte son
             // infobulle, un nom troué ne porte rien.
-            let box_of = |p: egui::Pos2, h: f32| {
-                egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
-            };
             // Serré au carré lui-même : un nom posé juste à côté de son
             // propre carré le *touche*, et deux rectangles qui se
             // touchent se croisent au sens d'egui — les trois quarts des
@@ -49136,14 +49428,46 @@ impl App {
                 box_of(mid, 11.0 + 4.0),
             ];
             taken.extend(boxes);
-            for n in &map.nodes {
+            // **Et la rangée des boutons de grossissement.** Elle est
+            // peinte en dernier, pour passer devant la figure, mais
+            // réservée ici : ce qui est peint est réservé, et un nom
+            // écrit sous un bouton est un nom perdu deux fois — illisible
+            // et par-dessus un contrôle.
+            // **Le retour à cent pour cent n'est là que lorsqu'il fait
+            // quelque chose.** Gris, il occupait quand même sa place, et
+            // à `text_scale = 1,6` les trois boutons prenaient le quart
+            // haut-droit de la figure — deux noms de moins pour un
+            // bouton qui ne pouvait rien. C'est la règle que la légende
+            // et la ligne du pied suivent déjà : ce qui ne dit rien
+            // n'est pas dessiné.
+            let mut zoom_row = vec![tr("graph_zoom_out"), tr("graph_zoom_in")];
+            if !look.is_plain() {
+                zoom_row.push(tr("graph_zoom_reset"));
+            }
+            let zoom_w = Self::group_width(ui, zoom_row.iter().map(|l| Self::button_width(ui, l)));
+            let zoom_h = Self::button_height(ui);
+            let pad = ui.spacing().item_spacing.x;
+            // Seulement si elle tient sans manger la figure : un volet
+            // trop étroit garde la carte et perd les boutons, la molette
+            // et le glissement restant.
+            let strip = (zoom_w + pad * 2.0 < field.width() * 0.75
+                && zoom_h + pad * 2.0 < field.height() * 0.5)
+                .then(|| {
+                    egui::Rect::from_min_size(
+                        egui::pos2(field.right() - zoom_w - pad, field.top() + pad),
+                        egui::vec2(zoom_w, zoom_h),
+                    )
+                });
+            if let Some(r) = strip {
+                taken.push(r.expand(pad));
+            }
+            // Le nœud survolé dont le nom n'a pas pu s'écrire : il
+            // s'écrira quand même, sur une plaque, après tout le reste.
+            let mut nameless: Option<usize> = None;
+            for (i, n) in map.nodes.iter().enumerate() {
                 let p = at(n);
                 let node = box_of(p, half);
-                let resp = ui.interact(
-                    node.expand(4.0),
-                    ui.id().with(("graph_node", n.id)),
-                    egui::Sense::click(),
-                );
+                let resp = &responses[i];
                 let color = motif::chart::series_color(n.tie.series());
                 ui.painter().rect_filled(node, 0.0, color);
                 motif::bevel(ui.painter(), node, !resp.hovered());
@@ -49198,28 +49522,13 @@ impl App {
                         },
                     );
                 }
-                let clear = spot.is_some();
-                // Le nom en tête de l'infobulle quand il n'a pas pu
-                // s'écrire : sans lui, un nœud muet n'est qu'un carré.
-                let head = if clear {
-                    String::new()
-                } else {
-                    format!("{} · ", n.name)
-                };
-                // L'infobulle dit l'anneau **exactement** — la légende
-                // ne peut le montrer que par une pastille pleine, là où
-                // la carte trace un cerclage.
-                let mut tip = head
-                    + if n.dci.is_empty() {
-                        trf("graph_node_tooltip", tr(n.tie.label_key()))
-                    } else {
-                        trn("graph_node_tooltip_dci", &[&n.dci, &tr(n.tie.label_key())])
-                    }
-                    .as_str();
-                if n.toxicity_noted {
-                    tip = format!("{tip}\n{}", tr("graph_toxicity_tip"));
+                // Le nom que la place a refusé n'est pas perdu : la
+                // petite fiche le porte en tête, et le survol le pose
+                // en clair sur la figure — voir plus bas.
+                if spot.is_none() && hot == Some(i) {
+                    nameless = Some(i);
                 }
-                if resp.on_hover_text(tip).clicked() {
+                if resp.clicked() {
                     recentre = Some(n.id);
                 }
             }
@@ -49251,6 +49560,108 @@ impl App {
             ui.painter().rect_filled(plate, 0.0, motif::trough());
             ui.painter()
                 .text(hub_at, hub_anchor, &map.centre.1, hub_font, motif::text());
+
+            // **Le nom qu'on désigne s'écrit, même quand la place le
+            // refusait.** Un carré muet reste muet tant qu'on ne le
+            // montre pas du doigt ; le montrer est précisément demander
+            // son nom. Sur une plaque et par-dessus tout le reste — la
+            // règle du moyeu, pour la même raison : un nom lu à travers
+            // trois traits et deux carrés n'est pas lu.
+            if let Some(i) = nameless {
+                let n = &map.nodes[i];
+                let font = Self::graph_node_font(ui);
+                let size = ui.fonts(|f| {
+                    f.layout_no_wrap(n.name.clone(), font.clone(), motif::text())
+                        .size()
+                });
+                let p = at(n);
+                // Au-dessus du carré, et ramené dans le creux s'il en
+                // sortait : un nom posé hors du cadre n'est pas peint,
+                // et celui-ci ne peut pas être abandonné.
+                let want = egui::Rect::from_center_size(
+                    egui::pos2(p.x, p.y - half - 3.0 - size.y / 2.0),
+                    size,
+                )
+                .expand(3.0);
+                let shift = egui::vec2(
+                    (field.left() - want.left()).max(0.0) + (field.right() - want.right()).min(0.0),
+                    (field.top() - want.top()).max(0.0) + (field.bottom() - want.bottom()).min(0.0),
+                );
+                let plate = want.translate(shift);
+                ui.painter().rect_filled(plate, 0.0, motif::trough());
+                motif::bevel(ui.painter(), plate, true);
+                ui.painter().text(
+                    plate.center(),
+                    egui::Align2::CENTER_CENTER,
+                    &n.name,
+                    font,
+                    motif::text(),
+                );
+            }
+
+            // **Les boutons de grossissement, dans le creux.** Une bande
+            // de plus en haut coûterait une rangée à toutes les tailles
+            // de texte, et c'est la figure qui la paierait ; un coin de
+            // la figure ne coûte rien et se trouve là où l'on regarde.
+            // Posés en dernier : egui donne le pointeur au dernier des
+            // objets qui se recouvrent, donc ils gagnent sur le
+            // glissement de la carte et sur les nœuds qu'ils couvrent.
+            if let Some(r) = strip {
+                // **Sur une plaque à elle.** Ce qui flotte au-dessus du
+                // plan de travail le dit par un relief — c'est la règle
+                // de la maison pour une fenêtre et pour un menu ouvert —
+                // et sans elle un nœud se voyait par le trou entre deux
+                // boutons, à moitié couvert, sans qu'on sache si c'était
+                // un objet de la carte ou une faute de dessin.
+                let plate = r.expand(pad * 0.5);
+                ui.painter().rect_filled(plate, 0.0, motif::bg());
+                motif::bevel(ui.painter(), plate, true);
+                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(r), |ui| {
+                    ui.horizontal(|ui| {
+                        if motif::button_enabled(
+                            ui,
+                            tr("graph_zoom_out"),
+                            look.zoom > crate::graph::Look::MIN + 1e-3,
+                        )
+                        .on_hover_text(tr("graph_zoom_out_tip"))
+                        .clicked()
+                        {
+                            zoom_by = Some(1.0 / crate::graph::Look::STEP);
+                        }
+                        if motif::button_enabled(
+                            ui,
+                            tr("graph_zoom_in"),
+                            look.zoom < crate::graph::Look::MAX - 1e-3,
+                        )
+                        .on_hover_text(tr("graph_zoom_in_tip"))
+                        .clicked()
+                        {
+                            zoom_by = Some(crate::graph::Look::STEP);
+                        }
+                        // Il montre l'état où il ramène, et il n'est
+                        // là que lorsqu'on n'y est pas : voir plus haut.
+                        if !look.is_plain()
+                            && motif::button(ui, tr("graph_zoom_reset"))
+                                .on_hover_text(tr("graph_zoom_reset_tip"))
+                                .clicked()
+                        {
+                            reset_look = true;
+                        }
+                    });
+                });
+            }
+
+            // **La petite fiche, et pour le seul nœud survolé.** Une
+            // infobulle ne s'affiche qu'à un endroit : composer les
+            // douze serait douze premières phrases par image pour onze
+            // résultats jetés.
+            if let Some(i) = hot {
+                let node = &map.nodes[i];
+                let mini = Self::graph_mini(session.drugs.iter().find(|d| d.id == node.id), node);
+                responses[i]
+                    .clone()
+                    .on_hover_ui(|ui| Self::graph_mini_ui(ui, &mini));
+            }
         });
 
         motif::inside(ui, foot_rect, |ui| {
@@ -49280,9 +49691,22 @@ impl App {
             }
         });
 
+        // Les boutons grossissent **autour du milieu du creux** : c'est
+        // là qu'on regarde quand on ne montre rien du doigt, et c'est ce
+        // que fait la molette quand le pointeur y est.
+        if let Some(f) = zoom_by {
+            session.graph_look = session.graph_look.zoom_about(f, (0.0, 0.0));
+        }
+        if reset_look {
+            session.graph_look = crate::graph::Look::default();
+        }
         if let Some(id) = recentre {
             session.graph_centre = Some(id);
             session.graph_query.clear();
+            // Une autre fiche est une autre image : on la regarde d'où
+            // le volet la pose, et non du coin où l'on avait laissé la
+            // précédente.
+            session.graph_look = crate::graph::Look::default();
             // The note was about the card that was in the middle.
             session.graph_note = None;
         }
@@ -59935,6 +60359,143 @@ mod tests {
             assert!(
                 counted <= drawn_rows + 1.0,
                 "échelle {scale} : {counted} comptée(s) contre {drawn_rows} dessinée(s)"
+            );
+        }
+    }
+
+    /// **La petite fiche dit ce que la fiche dit, et rien d'autre.**
+    ///
+    /// Trois règles, et chacune a coûté une ligne d'infobulle ailleurs
+    /// dans cette application : le statut ne se montre que lorsqu'il
+    /// **dit quelque chose** — « commercialisé » sur huit cent soixante
+    /// fiches est une pastille qu'on cesse de voir, et c'est celle qui
+    /// doit arrêter l'œil le jour où elle dit « rupture » ; « à quoi ça
+    /// sert » se répond par l'indication et seulement sinon par le
+    /// mécanisme ; et la toxicité ne se cite que pour un nœud qui en
+    /// porte, faute de quoi la carte annoncerait un anneau rouge qu'elle
+    /// ne dessine pas.
+    #[test]
+    fn the_mini_card_says_what_the_card_says_and_no_more() {
+        let node = |tox: bool| crate::graph::Node {
+            id: 1,
+            name: "Xarelto".into(),
+            dci: "rivaroxaban".into(),
+            tie: crate::graph::Tie::Class,
+            toxicity_noted: tox,
+            x: 0.0,
+            y: -1.0,
+        };
+        let card = |status: &str, ind: &str, mech: &str, tox: &str| db::Drug {
+            id: 1,
+            name: "Xarelto".into(),
+            dci: "rivaroxaban".into(),
+            class: "AOD".into(),
+            status: status.into(),
+            indications: ind.into(),
+            mechanism: mech.into(),
+            toxicity: tox.into(),
+            ..Default::default()
+        };
+        // Commercialisé : la pastille de statut ne se montre pas.
+        let c = card(
+            "Commercialisé",
+            "Fibrillation atriale. Et le reste.",
+            "",
+            "",
+        );
+        let m = App::graph_mini(Some(&c), &node(false));
+        assert_eq!(m.status, "");
+        assert_eq!(m.what, "Fibrillation atriale");
+        assert_eq!(m.toxicity, "");
+        // Une rupture, elle, se montre : c'est la question même d'une
+        // carte du voisinage.
+        let c = card(
+            "Rupture d'approvisionnement",
+            "Fibrillation atriale.",
+            "",
+            "",
+        );
+        assert_eq!(
+            App::graph_mini(Some(&c), &node(false)).status,
+            "Rupture d'approvisionnement"
+        );
+        // Sans indication, le mécanisme répond à sa place.
+        let c = card("", "", "Inhibiteur direct du facteur Xa.", "");
+        assert_eq!(
+            App::graph_mini(Some(&c), &node(false)).what,
+            "Inhibiteur direct du facteur Xa."
+        );
+        // La toxicité ne se cite que pour un nœud qui porte l'anneau :
+        // la carte ne parle pas d'un cerclage qu'elle ne dessine pas.
+        let c = card("", "", "", "Pas d'antidote en ville.");
+        assert_eq!(App::graph_mini(Some(&c), &node(false)).toxicity, "");
+        assert_eq!(
+            App::graph_mini(Some(&c), &node(true)).toxicity,
+            "Pas d'antidote en ville."
+        );
+        // Une fiche que la base ne tient plus — supprimée sur l'autre
+        // poste — ne fait pas tomber la carte : il reste le nœud.
+        let m = App::graph_mini(None, &node(true));
+        assert_eq!(m.name, "Xarelto");
+        assert_eq!(m.dci, "rivaroxaban");
+        assert!(m.what.is_empty() && m.status.is_empty() && m.class.is_empty());
+        // La classe est la **canonique**, celle sur laquelle l'anneau
+        // groupe, et non le libellé de la fiche.
+        let mut c = card("", "", "", "");
+        c.class = "anti-TNF".into();
+        assert_eq!(
+            App::graph_mini(Some(&c), &node(false)).class,
+            crate::classes::display_name("anti-TNF alpha")
+        );
+    }
+
+    /// **La petite fiche tient dans sa bulle.**
+    ///
+    /// Une infobulle qui prend la moitié de l'écran couvre la figure
+    /// qu'elle explique — et c'est le seul chemin de cette vue qu'aucun
+    /// balayage ne parcourt : `smoke.sh` ouvre des vues, il ne survole
+    /// rien, et une capture non plus. Dessinée sans écran, elle est au
+    /// moins ouverte une fois, et sa largeur est tenue.
+    #[test]
+    fn the_mini_card_stays_inside_its_bubble() {
+        let mini = super::GraphMini {
+            name: "Ultibro Breezhaler".into(),
+            dci: "indacatérol + glycopyrronium".into(),
+            class: "BDLA + AMLA inhalés".into(),
+            tie: crate::graph::Tie::Class,
+            what: "Traitement de fond de la bronchopneumopathie chronique \
+                   obstructive chez l'adulte, en une prise par jour."
+                .into(),
+            toxicity: "Glaucome à angle fermé et rétention urinaire : \
+                       la prudence est la même que pour tout anticholinergique."
+                .into(),
+            status: "Rupture d'approvisionnement".into(),
+        };
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32));
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let bound = super::chars_wide(ui, 44.0);
+                    let drawn = ui
+                        .scope(|ui| App::graph_mini_ui(ui, &mini))
+                        .response
+                        .rect
+                        .width();
+                    *seen.borrow_mut() = (bound, drawn);
+                });
+            });
+            let (bound, drawn) = seen.into_inner();
+            assert!(
+                drawn <= bound + 0.5,
+                "échelle {scale} : la bulle prend {drawn} px pour {bound} permis"
+            );
+            // Et elle porte quelque chose : une bulle vide se
+            // « tiendrait » aussi, et ce test ne garderait rien.
+            assert!(
+                drawn > bound * 0.5,
+                "échelle {scale} : bulle vide ({drawn} px)"
             );
         }
     }

@@ -2121,7 +2121,7 @@ add clicking and typing; it is not the price of entry.
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
-  act_picker|goto|goto_jump|mono_search|mono_patient|graph|registres|stup|
+  act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|registres|stup|
   trame|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
