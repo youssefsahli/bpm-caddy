@@ -763,6 +763,26 @@ fn legend_widths(ui: &egui::Ui, items: &[(&str, Color32)]) -> (Vec<f32>, f32) {
 }
 
 pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
+    let _ = legend_impl(ui, items, None);
+}
+
+/// La même légende, **dont chaque clé se clique** : `off` dit quelles
+/// clés sont éteintes, et la fonction rend celle qu'on vient de cliquer.
+///
+/// Une clé éteinte le dit **par une forme** autant que par une teinte :
+/// sa pastille est vide, son libellé pâli — une couleur seule ne se lit
+/// ni sur toutes les peaux ni par tout le monde. La disposition est celle
+/// de [`legend`], si bien que [`legend_height`] la mesure aussi.
+pub fn legend_toggle(ui: &mut egui::Ui, items: &[(&str, Color32)], off: &[bool]) -> Option<usize> {
+    legend_impl(ui, items, Some(off))
+}
+
+fn legend_impl(
+    ui: &mut egui::Ui,
+    items: &[(&str, Color32)],
+    off: Option<&[bool]>,
+) -> Option<usize> {
+    let mut clicked = None;
     // **Peinte rangée par rangée contre le rectangle qu'on lui donne.**
     // `horizontal_wrapped` dessine autant de rangées qu'il en faut et
     // `motif::inside` coupe la dernière en deux : une demi-pastille de
@@ -806,15 +826,38 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
             egui::pos2(rect.left(), rect.center().y - swatch_w / 2.0),
             Vec2::splat(swatch_w),
         );
-        ui.painter().rect_filled(swatch, 0.0, *color);
-        ui.painter()
-            .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
+        let is_off = off.and_then(|o| o.get(i)).copied().unwrap_or(false);
+        let mut hovered = false;
+        if off.is_some() {
+            let resp = ui.interact(rect, ui.id().with(("legend_key", i)), egui::Sense::click());
+            hovered = resp.hovered();
+            if resp.clicked() {
+                clicked = Some(i);
+            }
+            if hovered {
+                ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+            }
+        }
+        if is_off {
+            ui.painter()
+                .rect_stroke(swatch, 0.0, Stroke::new(1.5_f32, *color));
+        } else {
+            ui.painter().rect_filled(swatch, 0.0, *color);
+            ui.painter()
+                .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
+        }
         ui.painter().text(
             egui::pos2(rect.left() + swatch_w + 4.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             *label,
             font.clone(),
-            crate::text_dim(),
+            if is_off {
+                crate::text_faint()
+            } else if hovered {
+                crate::text()
+            } else {
+                crate::text_dim()
+            },
         );
         bottom = rect.bottom();
         mark = egui::pos2(x + w + gap_x, y);
@@ -836,6 +879,7 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
         egui::Rect::from_min_max(area.min, egui::pos2(area.right(), bottom)),
         egui::Sense::hover(),
     );
+    clicked
 }
 
 #[cfg(test)]

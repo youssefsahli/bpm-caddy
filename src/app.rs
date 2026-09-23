@@ -4439,6 +4439,8 @@ struct Session {
     /// Every card as the review reads it, for the base revision it was
     /// read on — see `revue::Folded`.
     graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
+    /// The rings the operator hid by clicking their key in the legend.
+    graph_hidden: Vec<crate::graph::Tie>,
     /// The map shows the open file's ordonnance instead of a card's
     /// neighbourhood.
     graph_file: bool,
@@ -5172,6 +5174,7 @@ impl Session {
             graph_unnamed: 0,
             graph_reasons: None,
             graph_folded: None,
+            graph_hidden: Vec::new(),
             graph_file: false,
             graph_file_read: None,
             graph_pair: None,
@@ -12551,7 +12554,10 @@ impl App {
                         // jamais vu les autres, et celui-ci ne se
                         // capture pas autrement — un cliché ne glisse
                         // pas et ne molette pas.
-                        Ok(v @ ("graph" | "graph_zoom" | "graph_wide" | "graph_ordonnance")) => {
+                        Ok(
+                            v @ ("graph" | "graph_zoom" | "graph_wide" | "graph_ordonnance"
+                            | "graph_filtre"),
+                        ) => {
                             // **Un dossier ouvert derrière la carte.**
                             // Sans lui, « + à l'ordonnance » est gris
                             // sur toutes les captures jamais prises, et
@@ -12654,6 +12660,12 @@ impl App {
                             // rien.
                             if v == "graph_ordonnance" {
                                 session.graph_file = true;
+                            }
+                            // L'anneau de la classe masqué d'un clic : la
+                            // légende montre sa clé vide, et l'anneau des
+                            // interactions prend la place.
+                            if v == "graph_filtre" {
+                                session.graph_hidden = vec![crate::graph::Tie::Class];
                             }
                             session.view = MainView::Drugs;
                         }
@@ -54281,6 +54293,17 @@ impl App {
     /// libellé de la fiche du centre, qui peut être l'une des graphies
     /// qui ont dérivé. L'interaction, elle, n'a rien à nommer : ce n'est
     /// pas un groupe, c'est ce que cette fiche-ci cite.
+    /// Les liens dont la légende porte la clé, dans son ordre : ceux que
+    /// la carte dessine ou compte. Écrit une fois, pour la légende et pour
+    /// savoir quelle clé on vient de cliquer.
+    fn graph_speaking_ties(session: &Session) -> Vec<crate::graph::Tie> {
+        let map = session.graph_map.as_ref();
+        crate::graph::Tie::ALL
+            .into_iter()
+            .filter(|t| map.is_some_and(|m| m.count(*t) > 0 || m.omitted_for(*t) > 0))
+            .collect()
+    }
+
     fn graph_legend_keys(session: &Session) -> Vec<(String, egui::Color32)> {
         let map = session.graph_map.as_ref();
         // **La coche a sa clé, et seulement quand elle est dessinée.**
@@ -54303,15 +54326,11 @@ impl App {
         //
         // Un anneau **coupé** garde la sienne : ses membres ne sont pas
         // dessinés mais la phrase du pied les compte, et une phrase qui
-        // nomme une couleur que la légende ne donne plus ne dit rien.
-        let speaks =
-            |t: crate::graph::Tie| map.is_some_and(|m| m.count(t) > 0 || m.omitted_for(t) > 0);
+        // nomme une couleur que la légende ne donne plus ne dit rien —
+        // voir `graph_speaking_ties`.
         Self::graph_legend_keys_of(
             session,
-            &crate::graph::Tie::ALL
-                .into_iter()
-                .filter(|t| speaks(*t))
-                .collect::<Vec<_>>(),
+            &Self::graph_speaking_ties(session),
             map.is_some_and(|m| m.nodes.iter().any(|n| n.weight >= 3)),
             ticked,
         )
@@ -54402,10 +54421,21 @@ impl App {
     /// de l'image.
     fn graph_note_line(session: &Session) -> Option<(String, egui::Color32)> {
         let map = session.graph_map.as_ref()?;
+        // A ring the operator hid is said hidden, not « non dessiné » :
+        // the room refused nothing, a click did.
         let dropped: Vec<String> = crate::graph::Tie::ALL
             .iter()
             .filter(|t| map.omitted_for(**t) > 0)
-            .map(|t| trn("graph_omitted", &[&map.omitted_for(*t), &tr(t.label_key())]))
+            .map(|t| {
+                if session.graph_hidden.contains(t) {
+                    trn(
+                        "graph_hidden_ring",
+                        &[&tr(t.label_key()), &map.omitted_for(*t)],
+                    )
+                } else {
+                    trn("graph_omitted", &[&map.omitted_for(*t), &tr(t.label_key())])
+                }
+            })
             .collect();
         if !dropped.is_empty() {
             return Some((dropped.join(" · "), motif::text_dim()));
@@ -55145,7 +55175,13 @@ impl App {
         // qu'un membre de plus vient se poser dans un trou — voir
         // `graph::place` et `graph::spread_order`.
         let coverage = room * (1.0 / session.graph_look.zoom).clamp(1.0, 4.0);
-        session.refresh_graph(crate::graph::Caps::default().for_room(coverage, node_line));
+        let mut caps = crate::graph::Caps::default()
+            .lend(&session.graph_hidden)
+            .for_room(coverage, node_line);
+        for t in &session.graph_hidden {
+            caps = caps.without(*t);
+        }
+        session.refresh_graph(caps);
         let keys = if file_mode {
             Self::graph_file_keys(session)
         } else {
@@ -55201,6 +55237,7 @@ impl App {
         // dessin, comme tout le reste de cette vue.
         let mut zoom_by: Option<f32> = None;
         let mut toggle_file = false;
+        let mut toggle_ring: Option<crate::graph::Tie> = None;
 
         let centre_name = session
             .graph_map
@@ -55888,13 +55925,29 @@ impl App {
             // renseignée » — plutôt que ce qu'on aimerait qu'elle dise. Sept nœuds sur neuf le
             // portaient sur la carte d'Eliquis, dans la couleur la plus
             // alarmante de la palette, sans clé.
-            motif::chart::legend(
-                ui,
-                &keys
-                    .iter()
-                    .map(|(l, c)| (l.as_str(), *c))
-                    .collect::<Vec<_>>(),
-            );
+            // **Un clic sur une clé masque son anneau** — et le rend au
+            // clic suivant. Les clés des liens seulement : la clé du
+            // rouge et celle de la coche disent une marque, pas un
+            // anneau. Sur la carte de l'ordonnance, rien à masquer.
+            let items: Vec<(&str, egui::Color32)> =
+                keys.iter().map(|(l, c)| (l.as_str(), *c)).collect();
+            if file_mode {
+                motif::chart::legend(ui, &items);
+            } else {
+                let ring_keys = Self::graph_speaking_ties(session);
+                let off: Vec<bool> = (0..items.len())
+                    .map(|i| {
+                        ring_keys
+                            .get(i)
+                            .is_some_and(|t| session.graph_hidden.contains(t))
+                    })
+                    .collect();
+                if let Some(i) = motif::chart::legend_toggle(ui, &items, &off) {
+                    if let Some(t) = ring_keys.get(i).copied() {
+                        toggle_ring = Some(t);
+                    }
+                }
+            }
             // What the rings could not take, never in silence: twelve of
             // forty drawn with nothing said would read as « il y en a
             // douze », a wrong answer that looks complete.
@@ -55915,6 +55968,13 @@ impl App {
         }
         if toggle_file {
             session.graph_file = !file_mode;
+        }
+        if let Some(t) = toggle_ring {
+            if let Some(at) = session.graph_hidden.iter().position(|x| *x == t) {
+                session.graph_hidden.remove(at);
+            } else {
+                session.graph_hidden.push(t);
+            }
         }
         if let Some(id) = recentre.or(typed_centre) {
             session.graph_centre = Some(id);

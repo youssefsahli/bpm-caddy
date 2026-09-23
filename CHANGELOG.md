@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.283.0] - 2026-09-24
+
+### Added
+- **Masquer un anneau d'un clic sur sa clé** : dans la légende de la
+  carte du voisinage, « même classe », « même molécule » et
+  « interaction » se cliquent. L'anneau masqué prête sa place à l'anneau
+  visible le plus extérieur — masquer la classe du Voltarène fait passer
+  l'anneau des interactions de neuf à vingt fiches. La pastille de la
+  clé se vide, le pied dit ce qui est masqué, un second clic le rend.
+
 ## [0.282.0] - 2026-09-24
 
 ### Added

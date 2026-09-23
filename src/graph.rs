@@ -417,6 +417,38 @@ impl Caps {
         }
     }
 
+    /// Les mêmes plafonds, **sans cet anneau** : l'officine l'a masqué
+    /// d'un clic dans la légende. Ses membres restent les siens — un
+    /// voisin de classe masqué ne passe pas dans l'anneau des interactions
+    /// —, et sa place revient aux autres.
+    pub fn without(self, tie: Tie) -> Caps {
+        let mut c = self;
+        match tie {
+            Tie::Molecule => c.molecule = 0,
+            Tie::Class => c.class = 0,
+            Tie::Interaction => c.interaction = 0,
+        }
+        c
+    }
+
+    /// **La place d'un anneau masqué se prête** à l'anneau visible le
+    /// plus extérieur : masquer la classe d'un AINS doit laisser l'anneau
+    /// des interactions en montrer davantage, sans quoi le clic ne
+    /// servirait qu'à effacer. À appeler **avant** [`Caps::for_room`] :
+    /// c'est la géométrie qui garde le dernier mot, et ensuite
+    /// [`Caps::without`] ferme les anneaux masqués.
+    pub fn lend(self, hidden: &[Tie]) -> Caps {
+        let mut c = self;
+        let spare: usize = hidden.iter().map(|t| self.of(*t)).sum();
+        match Tie::ALL.into_iter().rev().find(|t| !hidden.contains(t)) {
+            Some(Tie::Interaction) => c.interaction += spare,
+            Some(Tie::Class) => c.class += spare,
+            Some(Tie::Molecule) => c.molecule += spare,
+            None => {}
+        }
+        c
+    }
+
     /// Ce que la **place** permet d'écrire, anneau par anneau.
     ///
     /// Douze était un nombre, et un nombre ne connaît pas le volet où il
@@ -1851,5 +1883,26 @@ mod tests {
         let (none, all) = chords(2, &[]);
         assert!(none.is_empty());
         assert_eq!(all, vec![0, 1]);
+    }
+
+    /// **Un anneau masqué rend sa place, et garde ses membres.** Les
+    /// voisins de classe ne passent pas dans l'anneau des interactions ;
+    /// ils sont comptés comme non dessinés.
+    #[test]
+    fn a_hidden_ring_gives_its_room_and_keeps_its_members() {
+        let b = base();
+        let caps = Caps::default().without(Tie::Class);
+        let map = around(&b[0], &b, caps);
+        // And its reading cap is lent to the outermost visible ring.
+        let lent = Caps::default().lend(&[Tie::Class]);
+        assert_eq!(
+            lent.interaction,
+            Caps::default().interaction + Caps::default().class
+        );
+        assert_eq!(Caps::default().lend(&[]), Caps::default());
+        assert_eq!(map.count(Tie::Class), 0);
+        assert!(map.omitted_for(Tie::Class) >= 2);
+        assert!(map.nodes.iter().all(|n| n.tie != Tie::Class));
+        assert!(!map.nodes.iter().any(|n| n.id == 3 || n.id == 4));
     }
 }

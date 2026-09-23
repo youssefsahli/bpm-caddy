@@ -332,6 +332,12 @@ substitution. Sous la figure, la légende nomme chaque couleur, et une
 phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
 dit, il ne se devine pas.
 
+**Masquer un anneau.** Un clic sur une clé de la légende — « même
+classe », « interaction » — masque son anneau, et sa place revient aux
+autres : sur un AINS, masquer la classe laisse l'anneau des interactions
+en montrer davantage. La pastille de la clé se vide, la phrase du pied
+dit ce qui est masqué, et un second clic le rend.
+
 **La carte de l'ordonnance.** Un dossier ouvert qui porte au moins deux
 lignes, et « Ordonnance » change de carte : chaque ligne sur un cercle,
 et une corde entre celles qui se rencontrent — les mêmes trois tables,
