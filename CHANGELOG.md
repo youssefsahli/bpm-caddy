@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.288.0] - 2026-09-24
+
+### Added
+- **Le substitut qui heurterait l'ordonnance** : un dossier ouvert, la
+  carte du voisinage marque d'un petit triangle rouge le voisin de
+  molécule ou de classe qui rencontrerait une autre ligne de
+  l'ordonnance s'il y remplaçait le centre — la question d'une rupture.
+  Le survol dit avec quelle ligne et pourquoi ; une clé « heurterait
+  l'ordonnance » dans la légende.
+
 ## [0.287.0] - 2026-09-24
 
 ### Fixed

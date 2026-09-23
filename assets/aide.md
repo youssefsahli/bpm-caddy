@@ -334,6 +334,12 @@ substitution. Sous la figure, la légende nomme chaque couleur, et une
 phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
 dit, il ne se devine pas.
 
+**Le substitut qui heurterait l'ordonnance.** Un dossier ouvert, un
+petit triangle rouge marque, sur les anneaux de la molécule et de la
+classe, le voisin qui rencontrerait une autre ligne de l'ordonnance s'il
+y remplaçait le centre — la question d'une rupture. Son survol dit avec
+quelle ligne et pourquoi.
+
 **Masquer un anneau.** Un clic sur une clé de la légende — « même
 classe », « interaction » — masque son anneau, et sa place revient aux
 autres : sur un AINS, masquer la classe laisse l'anneau des interactions

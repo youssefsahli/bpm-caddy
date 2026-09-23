@@ -4441,6 +4441,9 @@ struct Session {
     graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
     /// The rings the operator hid by clicking their key in the legend.
     graph_hidden: Vec<crate::graph::Tie>,
+    /// For each card, what it would meet on the open file's ordonnance:
+    /// (line, reason) — read once per file and base revision.
+    graph_file_meet: Option<GraphFileMeet>,
     /// The map shows the open file's ordonnance instead of a card's
     /// neighbourhood.
     graph_file: bool,
@@ -5175,6 +5178,7 @@ impl Session {
             graph_reasons: None,
             graph_folded: None,
             graph_hidden: Vec::new(),
+            graph_file_meet: None,
             graph_file: false,
             graph_file_read: None,
             graph_pair: None,
@@ -7442,6 +7446,44 @@ impl Session {
         self.graph_key = Some(key);
     }
 
+    /// What each card would meet on the open file's ordonnance — its own
+    /// key, the file's lines and the base revision: a file opened under
+    /// the same centre asks again, the same file on the next frame does
+    /// not.
+    fn refresh_graph_file_meet(&mut self) {
+        // **Ce que chaque fiche rencontrerait sur l'ordonnance du dossier
+        // ouvert** — la question d'une substitution : lequel des voisins
+        // de classe se prend sans heurter le reste. Une lecture par ligne
+        // du dossier, une fois par dossier et par révision de la base.
+        let file_key = (
+            self.patient_treats.iter().map(|d| d.id).collect::<Vec<_>>(),
+            self.drugs_rev,
+        );
+        if self.graph_file_meet.as_ref().map(|(k, _)| k) != Some(&file_key) {
+            let mut meet: std::collections::HashMap<i64, Vec<(String, crate::graph::Why)>> =
+                std::collections::HashMap::new();
+            if self.viewing.is_some() {
+                if self.graph_folded.as_ref().map(|(r, _)| *r) != Some(self.drugs_rev) {
+                    let lines = ordonnance_terms(&self.drugs)
+                        .iter()
+                        .map(crate::revue::Folded::of)
+                        .collect();
+                    self.graph_folded = Some((self.drugs_rev, lines));
+                }
+                let folded = self.graph_folded.as_ref().map_or(&[][..], |(_, l)| &l[..]);
+                for line in &self.patient_treats {
+                    for (id, whys) in graph_reasons(line, &self.drugs, folded) {
+                        let slot = meet.entry(id).or_default();
+                        for w in whys {
+                            slot.push((line.name.trim().to_owned(), w));
+                        }
+                    }
+                }
+            }
+            self.graph_file_meet = Some((file_key, meet));
+        }
+    }
+
     /// What the tables find between the open file's lines — read when
     /// the lines or the base change, never per frame.
     fn refresh_graph_file(&mut self) {
@@ -9046,6 +9088,13 @@ fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
     out
 }
 
+/// What each card would meet on the open file, for the file's lines and
+/// the base revision it was read on: card → (line name, reason).
+type GraphFileMeet = (
+    (Vec<i64>, u64),
+    std::collections::HashMap<i64, Vec<(String, crate::graph::Why)>>,
+);
+
 /// What the tables find between an ordonnance's lines: the lines and the
 /// base revision it was read for, the chords, and the lines that meet
 /// nothing.
@@ -9105,6 +9154,44 @@ fn graph_file_found(list: &[Drug]) -> Vec<(Vec<usize>, crate::graph::Why)> {
         }
     }
     out
+}
+
+/// Ce qu'un voisin de molécule ou de classe rencontrerait sur
+/// l'ordonnance du dossier ouvert, **sans compter le centre** — le voisin
+/// est regardé comme ce qui le remplacerait, pas comme ce qui s'y
+/// ajouterait. Une ligne par rencontre, la plus lourde d'abord.
+fn graph_substitute_meets(
+    session: &Session,
+    node: &crate::graph::Node,
+    centre: &str,
+) -> Vec<String> {
+    if node.tie == crate::graph::Tie::Interaction {
+        return Vec::new();
+    }
+    let Some((_, meet)) = &session.graph_file_meet else {
+        return Vec::new();
+    };
+    let Some(list) = meet.get(&node.id) else {
+        return Vec::new();
+    };
+    let mut rows: Vec<&(String, crate::graph::Why)> = list
+        .iter()
+        .filter(|(line, _)| line.trim() != centre.trim())
+        .collect();
+    rows.sort_by_key(|(_, w)| std::cmp::Reverse(w.weight()));
+    rows.iter()
+        .map(|(line, w)| trn("graph_file_meet_line", &[line, &graph_why_line(w)]))
+        .collect()
+}
+
+/// La même question, **sans rien écrire** : oui ou non. C'est elle que
+/// le dessin pose à chaque image.
+fn graph_substitute_meets_any(session: &Session, node: &crate::graph::Node, centre: &str) -> bool {
+    node.tie != crate::graph::Tie::Interaction
+        && session.graph_file_meet.as_ref().is_some_and(|(_, meet)| {
+            meet.get(&node.id)
+                .is_some_and(|l| l.iter().any(|(line, _)| line.trim() != centre.trim()))
+        })
 }
 
 /// Une raison du trait, en une ligne, **sa source nommée**.
@@ -11677,6 +11764,10 @@ struct GraphMini {
     /// que les tables savent de la paire. Vide pour le moyeu et pour un
     /// voisin de molécule ou de classe.
     why: Vec<String>,
+    /// Ce qu'un voisin de molécule ou de classe **rencontrerait sur
+    /// l'ordonnance du dossier ouvert** s'il y remplaçait le centre :
+    /// « Avec la ligne : la raison ».
+    file_meet: Vec<String>,
 }
 
 impl App {
@@ -54338,6 +54429,12 @@ impl App {
             &Self::graph_speaking_ties(session),
             map.is_some_and(|m| m.nodes.iter().any(|n| n.weight >= 3)),
             ticked,
+            map.is_some_and(|m| {
+                m.nodes.iter().any(|n| {
+                    !session.patient_treats.iter().any(|d| d.id == n.id)
+                        && graph_substitute_meets_any(session, n, &m.centre.1)
+                })
+            }),
         )
     }
 
@@ -54346,7 +54443,7 @@ impl App {
     /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
     /// la fiche du centre et non de la carte : ils sont connus avant.
     fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
-        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true, true)
+        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true, true, true)
     }
 
     fn graph_legend_keys_of(
@@ -54354,6 +54451,7 @@ impl App {
         ties: &[crate::graph::Tie],
         serious: bool,
         ticked: bool,
+        meets: bool,
     ) -> Vec<(String, egui::Color32)> {
         let centre = session
             .graph_centre
@@ -54393,6 +54491,9 @@ impl App {
         // la section est dans la petite fiche du survol, où elle se lit.
         if ticked {
             keys.push((tr("graph_on_file").to_owned(), motif::accent()));
+        }
+        if meets {
+            keys.push((tr("graph_file_meet_key").to_owned(), motif::alert()));
         }
         keys
     }
@@ -54575,6 +54676,7 @@ impl App {
         GraphMini {
             on_file,
             why: why.iter().map(graph_why_line).collect(),
+            file_meet: Vec::new(),
             tie,
             name: name.trim().to_owned(),
             dci: dci.trim().to_owned(),
@@ -54730,6 +54832,30 @@ impl App {
             if mini.why.len() > 3 {
                 ui.label(
                     egui::RichText::new(trf("graph_why_more", mini.why.len() - 3))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_faint()),
+                );
+            }
+        }
+        // **Et ce qu'il rencontrerait sur l'ordonnance du dossier**, pour
+        // un voisin qu'on regarde comme substitut.
+        if !mini.file_meet.is_empty() {
+            ui.add_space(motif::pt(ui, 5.0));
+            ui.label(
+                egui::RichText::new(tr("graph_file_meet_head"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::alert()),
+            );
+            for line in mini.file_meet.iter().take(3) {
+                ui.label(
+                    egui::RichText::new(line)
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text()),
+                );
+            }
+            if mini.file_meet.len() > 3 {
+                ui.label(
+                    egui::RichText::new(trf("graph_why_more", mini.file_meet.len() - 3))
                         .size(motif::pt(ui, 10.5))
                         .color(motif::text_faint()),
                 );
@@ -55247,6 +55373,7 @@ impl App {
             caps = caps.without(*t);
         }
         session.refresh_graph(caps);
+        session.refresh_graph_file_meet();
         let keys = if file_mode {
             Self::graph_file_keys(session)
         } else {
@@ -55563,6 +55690,15 @@ impl App {
             // la chercher par nœud et par image serait douze parcours
             // soixante fois par seconde.
             let on_file: Vec<i64> = session.patient_treats.iter().map(|d| d.id).collect();
+            // The substitutes that would meet the rest of the file, read
+            // once for the frame from the file-meet memo.
+            let meets_file: Vec<i64> = map
+                .nodes
+                .iter()
+                .filter(|n| !on_file.contains(&n.id))
+                .filter(|n| graph_substitute_meets_any(session, n, &map.centre.1))
+                .map(|n| n.id)
+                .collect();
             let half = Self::GRAPH_NODE_HALF;
             let box_of = |p: egui::Pos2, h: f32| {
                 egui::Rect::from_center_size(p, egui::vec2(h * 2.0, h * 2.0))
@@ -55716,7 +55852,19 @@ impl App {
             let boxes: Vec<egui::Rect> = map
                 .nodes
                 .iter()
-                .map(|n| box_of(at(n), half + 1.0))
+                .map(|n| {
+                    let b = box_of(at(n), half + 1.0);
+                    // The warning corner sticks out up and right: what is
+                    // painted is reserved.
+                    if meets_file.contains(&n.id) {
+                        b.union(egui::Rect::from_min_size(
+                            egui::pos2(b.right() - half * 0.5, b.top() - half * 0.9),
+                            egui::vec2(half * 1.4, half * 1.4),
+                        ))
+                    } else {
+                        b
+                    }
+                })
                 .collect();
             // **Le nom du centre ne peut pas être abandonné, donc il se
             // déplace.** Les voisins se refusent les uns les autres et
@@ -55786,6 +55934,19 @@ impl App {
                         motif::Pict::Check,
                         motif::on_fill(color),
                     );
+                }
+                // **Un triangle pour le substitut qui heurterait le reste
+                // de l'ordonnance** : une forme, au coin du carré, sur une
+                // plaque — la couleur du carré dit déjà son anneau.
+                if meets_file.contains(&n.id) {
+                    let side = half * 1.3;
+                    let corner = egui::Rect::from_min_size(
+                        egui::pos2(node.right() - side * 0.35, node.top() - side * 0.65),
+                        egui::vec2(side, side),
+                    );
+                    ui.painter()
+                        .rect_filled(corner.expand(1.0), 0.0, motif::trough());
+                    motif::pictogram(ui.painter(), corner, motif::Pict::Warn, motif::alert());
                 }
                 // **Deux noms superposés n'en font aucun.** Les nœuds
                 // sont posés sur une ellipse, et deux voisins d'angle
@@ -55976,6 +56137,8 @@ impl App {
                     on_file.contains(&id),
                     &why,
                 );
+                let mut mini = mini;
+                mini.file_meet = graph_substitute_meets(session, &map.nodes[i], &map.centre.1);
                 let against = trf("graph_pair_with", &map.centre.1);
                 let signals = session
                     .graph_pair
@@ -56060,7 +56223,15 @@ impl App {
                 // the squares, not one more colour.
                 let marks: Vec<Option<motif::Pict>> = keys
                     .iter()
-                    .map(|(l, _)| (l.as_str() == tr("graph_on_file")).then_some(motif::Pict::Check))
+                    .map(|(l, _)| {
+                        if l.as_str() == tr("graph_on_file") {
+                            Some(motif::Pict::Check)
+                        } else if l.as_str() == tr("graph_file_meet_key") {
+                            Some(motif::Pict::Warn)
+                        } else {
+                            None
+                        }
+                    })
                     .collect();
                 if let Some(i) = motif::chart::legend_toggle(ui, &items, &off, &marks) {
                     if let Some(t) = ring_keys.get(i).copied() {
@@ -67259,6 +67430,7 @@ mod tests {
                  constipation, confusion chez le sujet âgé"
                     .into(),
             ],
+            file_meet: vec!["Avec Kardégic : Anticoagulant + AINS — saignement digestif".into()],
         };
         // Et **avec les puces de la paire**, qui sont ce que la bulle
         // peut porter de plus large : c'est le cas qui déborderait.
@@ -67317,6 +67489,7 @@ mod tests {
                 status: String::new(),
                 on_file: false,
                 why: Vec::new(),
+                file_meet: Vec::new(),
             };
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
@@ -72498,6 +72671,52 @@ mod tests {
         }
         let points = crate::revue::review(&super::ordonnance_terms(&[pick("Pulmicort")]));
         assert!(points.iter().any(|p| p.title == title), "Pulmicort");
+    }
+
+    /// **Le substitut qui heurterait l'ordonnance** : sur la carte d'un
+    /// AINS, un voisin de classe rencontre l'Advil que le dossier porte
+    /// déjà ; le centre, lui, n'est jamais compté contre ses propres
+    /// substituts, et l'anneau des interactions n'est pas concerné.
+    #[test]
+    fn a_substitute_that_meets_the_file_is_marked() {
+        let (mut s, _swept) = scratch_session("substitute");
+        let id = |s: &super::Session, n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .id
+        };
+        let p = s.patients[0].clone();
+        let advil = id(&s, "Advil");
+        s.db.add_patient_drug(p.id, advil).unwrap();
+        s.open_patient(p);
+        let volta = id(&s, "Voltarène");
+        s.open_graph(volta);
+        s.refresh_graph(crate::graph::Caps::default());
+        s.refresh_graph_file_meet();
+        let map = s.graph_map.clone().expect("carte");
+        let class: Vec<&crate::graph::Node> = map
+            .nodes
+            .iter()
+            .filter(|n| n.tie == crate::graph::Tie::Class && n.id != advil)
+            .collect();
+        assert!(!class.is_empty());
+        assert!(
+            class
+                .iter()
+                .any(|n| super::graph_substitute_meets_any(&s, n, &map.centre.1)),
+            "un AINS de plus heurte l'Advil"
+        );
+        let lines = super::graph_substitute_meets(&s, class[0], &map.centre.1);
+        assert!(lines.iter().all(|l| l.contains("Advil")), "{lines:?}");
+        for n in map
+            .nodes
+            .iter()
+            .filter(|n| n.tie == crate::graph::Tie::Interaction)
+        {
+            assert!(!super::graph_substitute_meets_any(&s, n, &map.centre.1));
+        }
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
