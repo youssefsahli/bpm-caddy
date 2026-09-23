@@ -16,6 +16,19 @@ reste à faire pour qu'une officine s'en serve.
 
 Il s'adresse à qui reprend le sujet, y compris à moi-même dans six mois.
 
+> **Depuis 0.273.0, un premier usage est branché : le réseau
+> d'officines** (`src/network.rs`). Il ne transporte qu'un flux,
+> `Stream::Reseau` — les ruptures et ce qu'on a donné à la place, sans
+> aucun patient —, sous un trousseau **propre au réseau** qui n'ouvre rien
+> d'autre. Les décisions du § 8 ont été prises pour lui par l'officine :
+> entre officines d'un groupement ; sur un bouton et à la fermeture ;
+> personne n'écoute en permanence (une porte s'ouvre le temps d'une
+> invitation) ; et, en plus des adresses, un **dossier d'échange** où
+> chaque officine dépose ses enregistrements scellés. La fonction `sync`
+> est donc allumée par défaut ; `--no-default-features` rend toujours un
+> binaire sans aucun code réseau. Les autres flux (dossiers, registre,
+> caisse…) restent non branchés, et le § 7 vaut toujours pour eux.
+
 ---
 
 ## 1. La règle d'entrée : optionnel veut dire absent

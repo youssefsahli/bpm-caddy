@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.273.0] - 2026-09-23
+
+### Added
+- **Le réseau d'officines.** Les officines d'un groupement partagent le
+  journal des ruptures et des substitutions : « Réseau d'officines… »,
+  dans la vue Ruptures. Une officine crée le réseau, invite les autres
+  (une porte s'ouvre le temps que l'autre compose l'adresse, et un code
+  de cinq groupes se compare au téléphone), puis on synchronise sur un
+  bouton ou à la fermeture — en composant l'adresse des officines qui ont
+  une porte ouverte, ou par un **dossier d'échange** partagé, qui traverse
+  les box sans rien ouvrir. Ce qu'une autre officine a noté s'affiche
+  avec son nom.
+- **Rien d'autre ne voyage** : ni patient, ni dossier, ni registre, ni
+  caisse. Le réseau a sa propre clé, qui ne scelle que ce flux ; tout est
+  chiffré de bout en bout et signé, et qui tient le dossier d'échange ne
+  lit rien. Personne n'écoute en permanence.
+- Options › Base : le dossier d'échange, le port d'une invitation et la
+  synchronisation à la fermeture, propres au poste.
+
+### Changed
+- La synchronisation pair-à-pair (`bpm-sync`) est compilée par défaut ;
+  `--no-default-features` rend toujours un binaire sans aucun code
+  réseau.
+
 ## [0.272.0] - 2026-09-23
 
 ### Added

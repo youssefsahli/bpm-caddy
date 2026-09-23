@@ -4263,6 +4263,9 @@ struct Session {
     drug_supply_key: Option<(i64, u64, String)>,
     /// A substitution being noted.
     subst_form: Option<SubstForm>,
+    /// The officines' network window, when open.
+    #[cfg(feature = "sync")]
+    net_window: Option<NetWindow>,
     /// Which neighbour list the operator has open, if either. Cleared
     /// when a card is opened: the answer belongs to the card that was
     /// asked, not to the next one.
@@ -5002,6 +5005,8 @@ impl Session {
             drug_supply: DrugSupply::default(),
             drug_supply_key: None,
             subst_form: None,
+            #[cfg(feature = "sync")]
+            net_window: None,
             drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
@@ -8816,6 +8821,51 @@ enum TechAction {
     NoteSubstitution,
 }
 
+/// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
+/// en cours sur son fil, et ce que l'écran a sous les doigts.
+#[cfg(feature = "sync")]
+#[derive(Default)]
+struct NetWindow {
+    summary: Option<NetSummary>,
+    job: Option<(
+        std::sync::mpsc::Receiver<crate::network::Progress>,
+        std::sync::mpsc::Sender<bool>,
+    )>,
+    /// The code both officines compare, while the thread waits for an
+    /// answer.
+    code: Option<String>,
+    waiting: Option<String>,
+    note: Option<(bool, String)>,
+    join_address: String,
+    /// A peer's name and address as typed, by device.
+    edits: std::collections::HashMap<String, (String, String)>,
+}
+
+/// What the base says about the network, read when the window opens and
+/// after each task — never on every frame.
+#[cfg(feature = "sync")]
+struct NetSummary {
+    in_network: bool,
+    groups: String,
+    network: Option<String>,
+    peers: Vec<crate::network::Peer>,
+    records: usize,
+}
+
+#[cfg(feature = "sync")]
+impl NetSummary {
+    fn read(db: &Db) -> Result<Self, String> {
+        let net = crate::network::Net::load(db)?;
+        Ok(Self {
+            in_network: net.in_network(),
+            groups: net.groups(),
+            network: net.network_groups(),
+            records: net.record_count(),
+            peers: net.peers.clone(),
+        })
+    }
+}
+
 /// What the journal of shortages says about one card.
 #[derive(Clone, Default, Debug)]
 struct DrugSupply {
@@ -11456,9 +11506,22 @@ impl App {
                             session.refresh_stats();
                             session.view = MainView::Stats;
                         }
-                        Ok("ruptures") => {
+                        Ok(key @ ("ruptures" | "reseau")) => {
                             session.reload_supply();
                             session.view = MainView::Ruptures;
+                            // With the network window open — on a base
+                            // that has created one, so its peers list and
+                            // gestures are what the capture shows.
+                            #[cfg(feature = "sync")]
+                            if key == "reseau" {
+                                let _ = crate::network::Net::create(&session.db);
+                                session.net_window = Some(NetWindow {
+                                    summary: NetSummary::read(&session.db).ok(),
+                                    ..NetWindow::default()
+                                });
+                            }
+                            #[cfg(not(feature = "sync"))]
+                            let _ = key;
                         }
                         // Les carnets, sur la feuille la plus dense —
                         // celle qui a le plus de colonnes : c'est elle
@@ -14625,7 +14688,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Ruptures {
-                Self::ruptures_view(ui, session);
+                Self::ruptures_view(ui, session, &config);
                 return;
             }
             if session.view == MainView::Script {
@@ -50239,18 +50302,35 @@ impl App {
     /// Un pharmacien arrivé la semaine dernière y lit ce que l'équipe sait
     /// depuis des mois ; c'est l'écran que la question « Diprosone est en
     /// rupture, qu'est-ce qu'on donne ? » appelle.
-    fn ruptures_view(ui: &mut egui::Ui, session: &mut Session) {
+    fn ruptures_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
             ui,
             body.width(),
-            [Self::heading_width(ui, tr("rupt_view_title"))].into_iter(),
+            [
+                Self::heading_width(ui, tr("rupt_view_title")),
+                Self::button_width(ui, tr("net_open")),
+            ]
+            .into_iter(),
             tr("rupt_view_subtitle"),
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        #[cfg(not(feature = "sync"))]
+        let _ = config;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("rupt_view_title"));
+                #[cfg(feature = "sync")]
+                if motif::button(ui, tr("net_open"))
+                    .on_hover_text(tr("net_open_tooltip"))
+                    .clicked()
+                    && session.net_window.is_none()
+                {
+                    session.net_window = Some(NetWindow {
+                        summary: NetSummary::read(&session.db).ok(),
+                        ..NetWindow::default()
+                    });
+                }
             });
             ui.add(
                 egui::Label::new(
@@ -50379,6 +50459,316 @@ impl App {
                 session.open_drug_card(card);
                 session.view = MainView::Drugs;
             }
+        }
+        #[cfg(feature = "sync")]
+        Self::net_window(ui.ctx(), session, config);
+    }
+
+    /// La fenêtre du réseau d'officines.
+    ///
+    /// **La réserve d'abord** : ce qui voyage, et ce qui ne voyage jamais.
+    /// Puis ce que l'officine est dans le réseau, les officines appairées,
+    /// et les trois gestes — inviter, rejoindre, synchroniser. Le code de
+    /// cinq groupes, quand il arrive, prend la fenêtre : c'est la seule
+    /// chose à faire à ce moment-là.
+    #[cfg(feature = "sync")]
+    fn net_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
+        use crate::network::{Job, Progress};
+        let Some(w) = &mut session.net_window else {
+            return;
+        };
+        // What the thread said since the last frame.
+        let mut finished = false;
+        if let Some((rx, _)) = &w.job {
+            loop {
+                match rx.try_recv() {
+                    Ok(Progress::Waiting(at)) => w.waiting = Some(at),
+                    Ok(Progress::Code(code)) => w.code = Some(code),
+                    Ok(Progress::Done(said)) => {
+                        w.note = Some((false, said));
+                        finished = true;
+                        break;
+                    }
+                    Ok(Progress::Failed(said)) => {
+                        w.note = Some((true, said));
+                        finished = true;
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        ctx.request_repaint_after(Duration::from_millis(150));
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        finished = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if finished {
+            w.job = None;
+            w.code = None;
+            w.waiting = None;
+            w.summary = NetSummary::read(&session.db).ok();
+            session.reload_supply();
+        }
+        let Some(w) = &mut session.net_window else {
+            return;
+        };
+        let mut start: Option<Job> = None;
+        let mut close = false;
+        let mut create = false;
+        let mut answer: Option<bool> = None;
+        // (device, what was typed, what the list showed)
+        type PeerEdit = (String, (String, String), (String, String));
+        let mut save_peer: Option<PeerEdit> = None;
+        let mut peer_stale = false;
+        let mut remove_peer: Option<String> = None;
+        let busy = w.job.is_some();
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("net_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(720.0, 600.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("net_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(6.0);
+                if let Some(code) = &w.code {
+                    ui.label(tr("net_code_intro"));
+                    ui.label(
+                        egui::RichText::new(code.as_str())
+                            .size(motif::pt(ui, 26.0))
+                            .monospace()
+                            .strong(),
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button(ui, tr("net_code_same")).clicked() {
+                            answer = Some(true);
+                        }
+                        if motif::button(ui, tr("net_code_other")).clicked() {
+                            answer = Some(false);
+                        }
+                    });
+                    return;
+                }
+                let footer = App::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("net_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        let Some(sum) = &w.summary else {
+                            ui.label(tr("net_unreadable"));
+                            return;
+                        };
+                        ui.label(trf("net_you", &sum.groups))
+                            .on_hover_text(tr("net_you_tooltip"));
+                        if !sum.in_network {
+                            ui.add_space(6.0);
+                            ui.label(tr("net_none"));
+                            ui.horizontal_wrapped(|ui| {
+                                if motif::button_enabled(ui, tr("net_create"), !busy)
+                                    .on_hover_text(tr("net_create_tooltip"))
+                                    .clicked()
+                                {
+                                    create = true;
+                                }
+                            });
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(tr("net_join_label"));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 22.0),
+                                    egui::TextEdit::singleline(&mut w.join_address)
+                                        .hint_text(motif::hint(tr("net_join_hint"))),
+                                );
+                                if motif::button_enabled(
+                                    ui,
+                                    tr("net_join"),
+                                    !busy && !w.join_address.trim().is_empty(),
+                                )
+                                .clicked()
+                                {
+                                    start = Some(Job::Join {
+                                        address: w.join_address.trim().to_owned(),
+                                    });
+                                }
+                            });
+                            return;
+                        }
+                        if let Some(n) = &sum.network {
+                            ui.label(trf("net_network", n));
+                        }
+                        ui.label(
+                            egui::RichText::new(trn("net_records", &[&sum.records]))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                        ui.add_space(6.0);
+                        motif::section(ui, tr("net_peers"));
+                        if sum.peers.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("net_peers_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for p in &sum.peers {
+                            let edit = w
+                                .edits
+                                .entry(p.device.clone())
+                                .or_insert_with(|| (p.name.clone(), p.address.clone()));
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(p.groups())
+                                        .monospace()
+                                        .size(motif::pt(ui, 11.0)),
+                                );
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 18.0),
+                                    egui::TextEdit::singleline(&mut edit.0)
+                                        .hint_text(motif::hint(tr("net_peer_name_hint"))),
+                                );
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 18.0),
+                                    egui::TextEdit::singleline(&mut edit.1)
+                                        .hint_text(motif::hint(tr("net_peer_address_hint"))),
+                                );
+                                let changed = edit.0 != p.name || edit.1 != p.address;
+                                if motif::button_enabled(ui, tr("form_save"), changed).clicked() {
+                                    save_peer = Some((
+                                        p.device.clone(),
+                                        edit.clone(),
+                                        (p.name.clone(), p.address.clone()),
+                                    ));
+                                }
+                                if motif::button(ui, "×")
+                                    .on_hover_text(tr("net_peer_remove_tooltip"))
+                                    .clicked()
+                                {
+                                    remove_peer = Some(p.device.clone());
+                                }
+                            });
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(if config.reseau.dossier.trim().is_empty() {
+                                tr("net_folder_none").to_owned()
+                            } else {
+                                trf("net_folder", config.reseau.dossier.trim())
+                            })
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                        );
+                        if let Some(at) = &w.waiting {
+                            ui.label(
+                                egui::RichText::new(trf("net_waiting", at))
+                                    .strong()
+                                    .color(motif::accent()),
+                            );
+                        }
+                    });
+                if let Some((bad, note)) = &w.note {
+                    ui.colored_label(
+                        if *bad {
+                            motif::alert()
+                        } else {
+                            motif::text_dim()
+                        },
+                        note.as_str(),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let in_network = w.summary.as_ref().is_some_and(|s| s.in_network);
+                    if in_network {
+                        if motif::button_enabled(ui, tr("net_sync"), !busy)
+                            .on_hover_text(tr("net_sync_tooltip"))
+                            .clicked()
+                        {
+                            let folder = config.reseau.dossier.trim();
+                            start = Some(Job::Sync {
+                                folder: (!folder.is_empty())
+                                    .then(|| std::path::PathBuf::from(folder)),
+                            });
+                        }
+                        if motif::button_enabled(ui, tr("net_invite"), !busy)
+                            .on_hover_text(tr("net_invite_tooltip"))
+                            .clicked()
+                        {
+                            start = Some(Job::Invite {
+                                port: config.reseau.port,
+                            });
+                        }
+                    }
+                    if motif::button(ui, tr("trod_edit_done")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some(yes) = answer {
+            if let Some((_, tx)) = &w.job {
+                let _ = tx.send(yes);
+            }
+            w.code = None;
+        }
+        if create {
+            w.note = Some(match crate::network::Net::create(&session.db) {
+                Ok(()) => (false, tr("net_created").to_owned()),
+                Err(e) => (true, e),
+            });
+            w.summary = NetSummary::read(&session.db).ok();
+        }
+        if let Some((device, (name, address), was)) = save_peer {
+            match session
+                .db
+                .set_net_peer(&device, &name, &address, (&was.0, &was.1))
+            {
+                Ok(true) => {}
+                Ok(false) => peer_stale = true,
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.edits.remove(&device);
+            w.summary = NetSummary::read(&session.db).ok();
+        }
+        if let Some(device) = remove_peer {
+            if let Err(e) = session.db.remove_net_peer(&device) {
+                w.note = Some((true, e));
+            }
+            w.edits.remove(&device);
+            w.summary = NetSummary::read(&session.db).ok();
+        }
+        if let Some(job) = start {
+            let (answers_tx, answers_rx) = std::sync::mpsc::channel();
+            let path = session.db.path().unwrap_or_default();
+            let rx = crate::network::spawn(
+                job,
+                path,
+                session.password.clone(),
+                config.pharmacy.name.clone(),
+                session.today.clone(),
+                answers_rx,
+            );
+            w.job = Some((rx, answers_tx));
+            w.note = None;
+        }
+        if close && w.job.is_none() {
+            session.net_window = None;
+        }
+        if peer_stale {
+            session.stale("net_peer_stale");
         }
     }
 
@@ -59139,6 +59529,41 @@ impl eframe::App for App {
                                 );
                             }
                             if page == OptionsPage::Database {
+                                // Le réseau d'officines, ce qui en est
+                                // propre au poste : où est le dossier
+                                // d'échange sur cette machine, le port
+                                // d'une invitation, et la fermeture.
+                                ui.add_space(10.0);
+                                motif::section(ui, tr("opts_reseau"));
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("opts_reseau_hint"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_reseau_folder")));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 34.0),
+                                        egui::TextEdit::singleline(&mut editor.cfg.reseau.dossier)
+                                            .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
+                                    );
+                                });
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(dim(tr("opts_reseau_port")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.reseau.port)
+                                            .range(1024..=65535),
+                                    );
+                                });
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.a_la_fermeture,
+                                    tr("opts_reseau_close"),
+                                );
                                 // The card reader lives on the Base page:
                                 // it is about this post's hardware, like
                                 // the database path beside it.
@@ -60695,6 +61120,38 @@ impl eframe::App for App {
         // poste qu'on ferme avant midi.
         if let State::Unlocked(s) = &mut self.state {
             s.flush_telemetry();
+        }
+        // **Le réseau à la fermeture**, quand le poste le veut et qu'il y
+        // a de quoi : le dossier d'échange, puis les officines qui ont une
+        // adresse, avec une patience courte. Rien n'est demandé à
+        // l'opérateur — une synchronisation ne montre jamais de code.
+        #[cfg(feature = "sync")]
+        if let State::Unlocked(s) = &self.state {
+            let r = &self.config.reseau;
+            if r.a_la_fermeture {
+                if let Some(path) = s.db.path() {
+                    let in_network = s.db.setting("net_trousseau").is_some();
+                    let folder = r.dossier.trim();
+                    let peers = s.db.net_peers().unwrap_or_default();
+                    let reachable = peers.iter().any(|p| !p.2.trim().is_empty());
+                    if in_network && (!folder.is_empty() || reachable) {
+                        let (tx, _rx) = std::sync::mpsc::channel();
+                        let (_ans_tx, ans_rx) = std::sync::mpsc::channel();
+                        let _ = crate::network::run(
+                            &crate::network::Job::Sync {
+                                folder: (!folder.is_empty())
+                                    .then(|| std::path::PathBuf::from(folder)),
+                            },
+                            &path,
+                            &s.password,
+                            &self.config.pharmacy.name,
+                            &s.today,
+                            &tx,
+                            &ans_rx,
+                        );
+                    }
+                }
+            }
         }
     }
 }

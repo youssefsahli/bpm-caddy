@@ -305,6 +305,68 @@ pub fn tried(events: &[Event], product: &str) -> Vec<Tried> {
     out
 }
 
+/// Ce qu'un événement devient pour voyager vers les autres officines du
+/// réseau : les champs du journal et le nom de l'officine qui l'a noté.
+/// **Rien d'autre n'existe dans ce format** — pas de patient, pas de
+/// dossier, pas de poste : c'est ce qui permet à ce flux-là de sortir.
+pub fn encode(e: &Event, officine: &str) -> Vec<u8> {
+    serde_json::json!({
+        "v": 1,
+        "uid": e.uid,
+        "day": e.day,
+        "kind": e.kind.key(),
+        "product": e.product,
+        "product_dci": e.product_dci,
+        "other": e.other,
+        "other_dci": e.other_dci,
+        "outcome": e.outcome.key(),
+        "note": e.note,
+        "operator": e.operator,
+        "officine": officine,
+        "refers": e.refers,
+    })
+    .to_string()
+    .into_bytes()
+}
+
+/// L'inverse, pour ce qu'une autre officine a envoyé : l'événement, avec
+/// pour source le nom de l'officine qu'il porte. `None` pour ce qui ne se
+/// lit pas — une version postérieure, un enregistrement abîmé : il reste
+/// au journal, il n'entre pas dans la base.
+pub fn decode(bytes: &[u8]) -> Option<Event> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    if v.get("v")?.as_u64()? != 1 {
+        return None;
+    }
+    let text = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_owned();
+    let uid = text("uid");
+    let day = text("day");
+    if uid.is_empty() || crate::date::parse_iso(&day).is_none() {
+        return None;
+    }
+    let officine = text("officine");
+    Some(Event {
+        uid,
+        day,
+        kind: Kind::from_key(&text("kind"))?,
+        product: text("product"),
+        product_dci: text("product_dci"),
+        other: text("other"),
+        other_dci: text("other_dci"),
+        outcome: Outcome::from_key(&text("outcome")),
+        note: text("note"),
+        operator: text("operator"),
+        // Une officine qui ne s'est pas nommée reste une autre officine :
+        // vide voudrait dire « celle-ci ».
+        source: if officine.trim().is_empty() {
+            crate::strings::tr("rupt_unnamed_officine").to_owned()
+        } else {
+            officine
+        },
+        refers: text("refers"),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -433,6 +495,34 @@ mod tests {
         assert_eq!(s.since, "2026-08-01");
         assert_eq!(s.sources, 1);
         assert_eq!(shortages(&lifted, "2026-08-05").len(), 1);
+    }
+
+    /// **Ce qui voyage revient tel quel**, avec pour source l'officine qui
+    /// l'a noté ; ce qui ne se lit pas n'entre pas.
+    #[test]
+    fn an_event_crosses_to_another_officine_and_comes_back_whole() {
+        let mut e = ev(
+            "ab12:7",
+            "2026-09-20",
+            Kind::Substitution,
+            "Diprosone",
+            "Locoid",
+            "",
+        );
+        e.outcome = Outcome::Failed;
+        e.note = "mal toléré « visage »".to_owned();
+        let back = decode(&encode(&e, "Pharmacie du Centre")).expect("lu");
+        assert_eq!(back.source, "Pharmacie du Centre");
+        assert_eq!(
+            Event {
+                source: String::new(),
+                ..back
+            },
+            e
+        );
+        assert!(decode(b"pas du json").is_none());
+        assert!(decode(br#"{"v":2,"uid":"x","day":"2026-09-20","kind":"RUPTURE"}"#).is_none());
+        assert!(decode(br#"{"v":1,"uid":"x","day":"hier","kind":"RUPTURE"}"#).is_none());
     }
 
     #[test]

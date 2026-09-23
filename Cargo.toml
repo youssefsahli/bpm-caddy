@@ -3,7 +3,7 @@ members = ["motif", "launcher", "sync"]
 
 [package]
 name = "bpm-caddy"
-version = "0.272.0"
+version = "0.273.0"
 edition = "2021"
 description = "Clinical pharmacy workflow & analytics — fast, local, encrypted."
 license-file = "LICENSE"
@@ -45,7 +45,8 @@ libloading = "0.8"
 # qu'un script a vers le monde est le volet où il écrit.
 rhai = { version = "1.25", default-features = false, features = ["std", "sync"] }
 # La synchronisation pair-à-pair, chiffrée de bout en bout (voir
-# `sync/` et `docs/SYNC.md`). **Optionnelle, et éteinte par défaut** :
+# `sync/` et `docs/SYNC.md`). **Optionnelle** — allumée par défaut depuis
+# le réseau d'officines, qui n'en utilise qu'un flux sans patient :
 # c'est le seul module qui ouvre un chemin réseau dans une application
 # dont toute la posture est « tout est local ». `optional = true` n'est
 # donc pas une commodité de compilation, c'est la règle — un binaire
@@ -56,7 +57,12 @@ rhai = { version = "1.25", default-features = false, features = ["std", "sync"] 
 bpm-sync = { path = "sync", optional = true }
 
 [features]
-default = []
+# Le réseau d'officines (voir `src/network.rs`) est livré : il ne
+# partage que les ruptures et les substitutions, sous sa propre clé, et
+# n'ouvre une porte que le temps d'une invitation — rien n'écoute en
+# permanence. Un binaire construit avec `--no-default-features` n'en
+# contient toujours rien.
+default = ["sync"]
 sync = ["dep:bpm-sync"]
 
 

@@ -755,6 +755,28 @@ sans nouvelle n'est plus « en cours » : quelqu'un a oublié de la lever.
 Le journal ne se réécrit pas ; une erreur se retire, et le retrait reste
 écrit.
 
+# Le réseau d'officines
+
+Les officines d'un groupement peuvent partager ce journal : « Réseau
+d'officines… », dans la vue Ruptures. **Seuls les ruptures et les
+substitutions voyagent** — jamais un patient, un dossier, le registre ou
+la caisse —, chiffrés et signés, sous une clé propre au réseau.
+
+Une officine **crée** le réseau, puis **invite** les autres : elle ouvre
+une porte le temps que l'autre compose son adresse, et les deux se
+lisent au téléphone un code de cinq groupes. S'il est le même des deux
+côtés, personne n'est entre elles.
+
+Ensuite on **synchronise** sur un bouton, et à la fermeture si le poste
+le veut (Options › Base). Deux chemins : composer l'adresse des
+officines qui ont une porte ouverte, ou un **dossier d'échange** — un
+partage réseau, un dossier synchronisé — où chacune dépose ses
+enregistrements et lit ceux des autres, ce qui traverse les box sans
+rien ouvrir. Qui tient le dossier ne lit rien.
+
+Retirer une officine arrête ce qu'elle enverra ; ce qu'elle a déjà
+envoyé reste au journal.
+
 # La caisse
 
 Le comptage se fait en centimes entiers, jamais en flottants. L'écart

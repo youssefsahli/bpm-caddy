@@ -40,8 +40,11 @@ line in that test.
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).
-- `sync/` — `bpm-sync`, optional (`--features sync`), P2P encrypted
-  journal, not wired into the app. Map: `docs/SYNC.md`.
+- `sync/` — `bpm-sync`, the P2P encrypted journal (feature `sync`, on by
+  default since 0.273.0). Only one use is wired: the officines' network
+  (`src/network.rs`), which carries `Stream::Reseau` — shortages and
+  substitutions, never a patient — under a network-only trousseau. Map:
+  `docs/SYNC.md`.
 
 ## Build and gates
 

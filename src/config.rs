@@ -319,6 +319,21 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # rangée. 0 désactive la copie des pièces.
 # backups_keep = 2
 #
+[reseau]
+# Le réseau d'officines : ce qui voyage entre les officines d'un
+# groupement — les ruptures et ce qu'on a donné à la place, jamais un
+# patient. La clé et les officines appairées sont dans la base chiffrée ;
+# ici, seulement ce qui est propre à ce poste.
+#
+# Le dossier d'échange (un partage réseau, un dossier synchronisé) où
+# chaque officine dépose ses enregistrements, chiffrés et signés.
+# dossier = "/mnt/groupement/bpm-reseau"
+# Le port d'une invitation — la porte ne reste ouverte que le temps
+# qu'une autre officine compose l'adresse.
+# port = 7742
+# Synchroniser en fermant l'application.
+# a_la_fermeture = true
+
 [telemetry]
 # Les compteurs d'usage : combien de dossiers ouverts, de fiches lues,
 # de documents imprimés, de lignes au registre.
@@ -418,6 +433,7 @@ pub struct Config {
     pub vitale: VitaleConfig,
     pub prevention: PreventionConfig,
     pub telemetry: TelemetryConfig,
+    pub reseau: ReseauConfig,
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
 }
@@ -478,6 +494,31 @@ impl Default for TelemetryConfig {
         // Opt-out, et c'est une direction choisie : un compteur éteint
         // par défaut est un compteur que personne n'allume.
         Self { enabled: true }
+    }
+}
+
+/// Le réseau d'officines, **ce qui appartient au poste** : où est le
+/// dossier d'échange sur cette machine, sur quel port ouvrir une porte le
+/// temps d'une invitation, et s'il faut synchroniser à la fermeture. La
+/// clé du réseau et les officines appairées, elles, vivent dans la base
+/// chiffrée — jamais ici, ce fichier est en clair.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct ReseauConfig {
+    /// Le dossier partagé où les officines déposent leurs enregistrements
+    /// scellés. Vide : pas de dossier, seulement les adresses.
+    pub dossier: String,
+    pub port: u16,
+    pub a_la_fermeture: bool,
+}
+
+impl Default for ReseauConfig {
+    fn default() -> Self {
+        Self {
+            dossier: String::new(),
+            port: 7742,
+            a_la_fermeture: true,
+        }
     }
 }
 

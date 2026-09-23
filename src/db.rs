@@ -253,6 +253,26 @@ CREATE TABLE IF NOT EXISTS access_log (
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS net_records (
+    -- Le réseau d'officines (`src/network.rs`) : les enregistrements
+    -- scellés du flux « Réseau », tels qu'ils ont été reçus ou écrits.
+    -- Opaques ici ; seule la clé du réseau les ouvre.
+    id     TEXT PRIMARY KEY,
+    bytes  BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS net_peers (
+    -- Les officines appairées : leur clé publique, le nom qu'on leur
+    -- donne, et l'adresse où les joindre, quand on en a une.
+    device  TEXT PRIMARY KEY,
+    name    TEXT NOT NULL DEFAULT '',
+    address TEXT NOT NULL DEFAULT '',
+    added   TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS net_published (
+    -- Les événements du journal des ruptures déjà scellés vers le
+    -- réseau : un événement ne part qu'une fois.
+    uid  TEXT PRIMARY KEY
+);
 CREATE TABLE IF NOT EXISTS supply_events (
     id          INTEGER PRIMARY KEY,
     -- `<base>:<numéro>` : global, pour qu'un événement reçu deux fois
@@ -975,6 +995,15 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
+    // Le réseau d'officines — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
+    "CREATE TABLE IF NOT EXISTS net_peers (
+        device  TEXT PRIMARY KEY,
+        name    TEXT NOT NULL DEFAULT '',
+        address TEXT NOT NULL DEFAULT '',
+        added   TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS net_published (uid TEXT PRIMARY KEY)",
     // Le journal des ruptures et des substitutions — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS supply_events (
         id          INTEGER PRIMARY KEY,
@@ -33009,6 +33038,140 @@ impl Db {
             out.push(e);
         }
         Ok(out)
+    }
+
+    /// Les enregistrements du réseau, tels que la base les garde.
+    pub fn net_records(&self) -> Result<Vec<Vec<u8>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT bytes FROM net_records")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Garder des enregistrements du réseau — ceux qu'on a déjà sont
+    /// ignorés. Rend combien étaient nouveaux.
+    pub fn keep_net_records(&self, records: &[(String, Vec<u8>)]) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut added = 0;
+        for (id, bytes) in records {
+            added += tx
+                .execute(
+                    "INSERT OR IGNORE INTO net_records (id, bytes) VALUES (?1, ?2)",
+                    rusqlite::params![id, bytes],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Les officines appairées : (clé, nom, adresse, date).
+    pub fn net_peers(&self) -> Result<Vec<(String, String, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT device, name, address, added FROM net_peers ORDER BY added, device")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ajouter une officine appairée, ou compléter son adresse.
+    pub fn add_net_peer(&self, device: &str, address: &str, day: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO net_peers (device, address, added) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(device) DO UPDATE SET address = CASE
+                     WHEN excluded.address <> '' THEN excluded.address ELSE address END",
+                (device, address.trim(), day),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Renommer une officine appairée, ou changer son adresse, contre ce
+    /// que l'écran montrait.
+    pub fn set_net_peer(
+        &self,
+        device: &str,
+        name: &str,
+        address: &str,
+        was: (&str, &str),
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE net_peers SET name = ?2, address = ?3
+                 WHERE device = ?1 AND name = ?4 AND address = ?5",
+                (device, name.trim(), address.trim(), was.0, was.1),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une officine : son avenir s'arrête — ce qu'elle a déjà
+    /// envoyé reste au journal, comme au registre.
+    pub fn remove_net_peer(&self, device: &str) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM net_peers WHERE device = ?1", [device])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Les événements locaux pas encore partis vers le réseau.
+    pub fn unpublished_supply_events(&self) -> Result<Vec<crate::ruptures::Event>, String> {
+        let done: std::collections::HashSet<String> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT uid FROM net_published")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        Ok(self
+            .supply_events()?
+            .into_iter()
+            .filter(|e| e.source.is_empty() && !done.contains(&e.uid))
+            .collect())
+    }
+
+    /// Noter qu'un événement est parti.
+    pub fn mark_published(&self, uids: &[String]) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for uid in uids {
+            tx.execute(
+                "INSERT OR IGNORE INTO net_published (uid) VALUES (?1)",
+                [uid],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Écrire une clé du réseau (en hexadécimal) si elle n'existe pas
+    /// encore, et la rendre.
+    pub fn net_key(&self, key: &str, fresh: &str) -> Result<String, String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO settings (key, value) VALUES (?1, ?2)",
+                (key, fresh),
+            )
+            .map_err(|e| e.to_string())?;
+        self.setting(key)
+            .ok_or_else(|| "clé du réseau illisible".to_owned())
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.

@@ -84,6 +84,12 @@ pub enum Stream {
     Fiches,
     /// The till.
     Caisse,
+    /// What an officine shares with the **other officines of its
+    /// network**: shortages, what was given in their place. Never a
+    /// patient — which is the only reason a stream may leave the
+    /// officine at all. Sealed under the network's own trousseau, never
+    /// the officine's: a key that opens this stream opens no other.
+    Reseau,
     /// A stream a later version named and this one does not know.
     Autre(u8),
 }
@@ -91,7 +97,7 @@ pub enum Stream {
 impl Stream {
     /// Every stream this version knows. Not `Autre`, which is not one
     /// stream but every stream that does not exist yet.
-    pub const ALL: [Stream; 7] = [
+    pub const ALL: [Stream; 8] = [
         Stream::Dossiers,
         Stream::Registre,
         Stream::Planning,
@@ -99,6 +105,7 @@ impl Stream {
         Stream::Officine,
         Stream::Fiches,
         Stream::Caisse,
+        Stream::Reseau,
     ];
 
     pub fn code(self) -> u8 {
@@ -110,6 +117,7 @@ impl Stream {
             Stream::Officine => 5,
             Stream::Fiches => 6,
             Stream::Caisse => 7,
+            Stream::Reseau => 8,
             Stream::Autre(code) => code,
         }
     }
@@ -125,6 +133,7 @@ impl Stream {
             5 => Stream::Officine,
             6 => Stream::Fiches,
             7 => Stream::Caisse,
+            8 => Stream::Reseau,
             other => Stream::Autre(other),
         }
     }
