@@ -5,6 +5,13 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.277.1] - 2026-09-23
+
+### Fixed
+- **« Réinitialiser la base… » sur un poste d'un groupe** quitte le groupe
+  avant d'effacer : l'effacement ne part plus vers les autres postes, qui
+  gardent leurs données.
+
 ## [0.277.0] - 2026-09-23
 
 ### Added

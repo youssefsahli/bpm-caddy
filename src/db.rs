@@ -31727,7 +31727,14 @@ impl Db {
     /// wait. The seed marks go because a reset is meant to bring the
     /// shipped content back: without that, the dispositifs — which will
     /// not re-seed into a base that emptied them on purpose — stay gone.
+    ///
+    /// **Un poste d'un groupe quitte le groupe d'abord.** Sans quoi chaque
+    /// suppression serait capturée et partirait vers les autres postes :
+    /// la remise à zéro d'un poste viderait l'officine entière.
     pub fn wipe_all_data(&self) -> Result<usize, String> {
+        if self.sync_post().is_some() {
+            self.leave_posts()?;
+        }
         let tx = self
             .conn
             .unchecked_transaction()
@@ -41112,6 +41119,19 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **La remise à zéro d'un poste ne vide pas l'officine** : le poste
+    /// quitte le groupe avant d'effacer, et rien de l'effacement ne part.
+    #[test]
+    fn a_reset_leaves_the_group_first_and_sends_nothing() {
+        let (_swept, a, _b) = two_posts("wipe");
+        a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        a.found_posts("aa", "", "2026-09-23").unwrap();
+        a.wipe_all_data().unwrap();
+        assert_eq!(a.sync_post(), None);
+        assert!(a.pending_ops().unwrap().0.is_empty());
+        assert!(a.patients().unwrap().is_empty());
     }
 
     #[test]
