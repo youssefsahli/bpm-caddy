@@ -5,6 +5,14 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.285.0] - 2026-09-24
+
+### Fixed
+- **La clé « déjà sur l'ordonnance » porte sa coche** : elle nomme une
+  marque sur les carrés, et sa pastille pleine se lisait comme une
+  couleur de plus — sur la peau « ambre », presque celle de
+  « interaction ».
+
 ## [0.284.0] - 2026-09-24
 
 ### Added

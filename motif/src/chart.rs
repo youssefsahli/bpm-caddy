@@ -763,7 +763,7 @@ fn legend_widths(ui: &egui::Ui, items: &[(&str, Color32)]) -> (Vec<f32>, f32) {
 }
 
 pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
-    let _ = legend_impl(ui, items, None);
+    let _ = legend_impl(ui, items, None, &[]);
 }
 
 /// La même légende, **dont chaque clé se clique** : `off` dit quelles
@@ -773,14 +773,25 @@ pub fn legend(ui: &mut egui::Ui, items: &[(&str, Color32)]) {
 /// sa pastille est vide, son libellé pâli — une couleur seule ne se lit
 /// ni sur toutes les peaux ni par tout le monde. La disposition est celle
 /// de [`legend`], si bien que [`legend_height`] la mesure aussi.
-pub fn legend_toggle(ui: &mut egui::Ui, items: &[(&str, Color32)], off: &[bool]) -> Option<usize> {
-    legend_impl(ui, items, Some(off))
+///
+/// `marks` pose une marque sur la pastille d'une clé — une clé qui nomme
+/// une **forme** dessinée sur la figure (la coche de ce que le dossier
+/// prend déjà) et non une couleur : sans elle, sa pastille pleine se
+/// lisait comme une teinte de plus, et se confondait avec l'accent.
+pub fn legend_toggle(
+    ui: &mut egui::Ui,
+    items: &[(&str, Color32)],
+    off: &[bool],
+    marks: &[Option<crate::Pict>],
+) -> Option<usize> {
+    legend_impl(ui, items, Some(off), marks)
 }
 
 fn legend_impl(
     ui: &mut egui::Ui,
     items: &[(&str, Color32)],
     off: Option<&[bool]>,
+    marks: &[Option<crate::Pict>],
 ) -> Option<usize> {
     let mut clicked = None;
     // **Peinte rangée par rangée contre le rectangle qu'on lui donne.**
@@ -845,6 +856,14 @@ fn legend_impl(
             ui.painter().rect_filled(swatch, 0.0, *color);
             ui.painter()
                 .rect_stroke(swatch, 0.0, Stroke::new(1.0_f32, crate::bg_dark()));
+        }
+        if let Some(Some(pict)) = marks.get(i) {
+            crate::pictogram(
+                ui.painter(),
+                swatch.shrink(1.5),
+                *pict,
+                crate::on_fill(*color),
+            );
         }
         ui.painter().text(
             egui::pos2(rect.left() + swatch_w + 4.0, rect.center().y),

@@ -56040,7 +56040,13 @@ impl App {
                             .is_some_and(|t| session.graph_hidden.contains(t))
                     })
                     .collect();
-                if let Some(i) = motif::chart::legend_toggle(ui, &items, &off) {
+                // The tick's key carries the tick: it names a mark on
+                // the squares, not one more colour.
+                let marks: Vec<Option<motif::Pict>> = keys
+                    .iter()
+                    .map(|(l, _)| (l.as_str() == tr("graph_on_file")).then_some(motif::Pict::Check))
+                    .collect();
+                if let Some(i) = motif::chart::legend_toggle(ui, &items, &off, &marks) {
                     if let Some(t) = ring_keys.get(i).copied() {
                         toggle_ring = Some(t);
                     }
