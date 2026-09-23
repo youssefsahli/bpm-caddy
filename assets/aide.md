@@ -305,9 +305,23 @@ contiennent le même médicament. **La classe** : une autre molécule du
 même groupe, ce que demandent une rupture ou une intolérance ; le groupe
 est celui du référentiel et non le libellé écrit sur la fiche, si bien
 que « bisphosphonate » et « biphosphonate » sont bien le même anneau.
-**L'interaction** : une fiche que la monographie du centre nomme
-elle-même — le lien qui ne découle pas du classement, et le seul qui
-traverse toute la base.
+**L'interaction** : une fiche que le centre rencontre, et le seul lien
+qui traverse toute la base. Trois sources le disent : ce que les deux
+monographies écrivent l'une de l'autre, la table des cytochromes, et la
+revue d'ordonnance — deux allongeurs du QT, deux sédatifs, un
+anticoagulant et un AINS ne se citent pas toujours et se rencontrent
+quand même.
+
+**Le trait dit ce que la paire pèse.** Épais et rouge, ce qu'on regarde
+d'abord : une association que la fiche écrit « contre-indiquée », une
+règle d'alerte de la revue. Jamais une enzyme seule — la table des
+cytochromes range ses croisements dans un ordre de lecture et refuse
+d'en faire une gravité. Quand l'anneau est trop plein, il garde **ce qui
+pèse le plus, et une place par raison avant une seconde** : dix
+anticoagulants qui rencontrent un AINS par la même règle ne cachent pas
+le lithium, qui le rencontre par une autre. Le pied compte le reste. La
+petite fiche du survol dit **pourquoi ce trait**, raison par raison, la
+source nommée.
 
 Ce que la fiche documente d'une toxicité ou d'une marge thérapeutique se
 lit dans la petite fiche qui s'ouvre au survol d'un carré — plus d'une

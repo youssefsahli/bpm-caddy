@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.281.0] - 2026-09-23
+
+### Added
+- **La carte du voisinage dit pourquoi deux fiches se rencontrent.**
+  L'anneau des interactions ne connaissait que les noms cités par la
+  monographie du centre ; il lit maintenant les trois tables de la barre
+  du comptoir — ce que les deux fiches écrivent l'une de l'autre, les
+  cytochromes, la revue d'ordonnance.
+- **Le trait porte son poids** : épais et rouge pour ce qu'on regarde
+  d'abord (une association écrite « contre-indiquée », une règle
+  d'alerte de la revue) — jamais une enzyme seule. Une clé « à regarder
+  d'abord » dans la légende.
+- **Un anneau coupé garde ce qui pèse**, et une place par raison avant
+  une seconde.
+- **« Pourquoi ce trait » dans la petite fiche du survol** : chaque
+  raison, sa source nommée.
+
+### Changed
+- La revue d'ordonnance lit chaque ligne une fois (`revue::Folded`) : la
+  carte la relit contre huit cents fiches sans la replier huit cents
+  fois. Une seule écriture des règles.
+
 ## [0.280.0] - 2026-09-23
 
 ### Fixed

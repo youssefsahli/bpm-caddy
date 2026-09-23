@@ -208,6 +208,116 @@ impl Look {
     }
 }
 
+/// **Pourquoi deux fiches se rencontrent** — ce que le trait veut dire.
+///
+/// Le troisième anneau ne savait qu'une chose : « la monographie du
+/// centre écrit ce nom ». Trois tables de la maison en savent davantage,
+/// et chacune le dit à sa façon ; aucune ne conclut à la place du
+/// prescripteur, et ce type n'a pas de champ où conclure.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub enum Why {
+    /// L'une des deux fiches nomme l'autre dans ses interactions : la
+    /// phrase, citée, et le nom de la fiche qui l'écrit.
+    Cited { by: String, sentence: String },
+    /// La table des cytochromes : qui agit, sur quelle enzyme, dans quel
+    /// sens, et si elle le range « pour mémoire ».
+    Enzyme {
+        actor: String,
+        enzyme: String,
+        shift: String,
+        minor: bool,
+    },
+    /// La revue d'ordonnance : un effet qui s'additionne sans passer par
+    /// une enzyme — deux allongeurs du QT, deux sédatifs, le saignement.
+    Effect {
+        title: String,
+        detail: String,
+        alert: bool,
+    },
+}
+
+impl Why {
+    /// Son poids de lecture : 3 ce qu'on regarde d'abord, 2 ce qu'on
+    /// regarde, 1 ce qui est noté.
+    ///
+    /// Pour une phrase citée, **le mot du thésaurus que la fiche écrit
+    /// elle-même** — « contre-indiqué » — et rien d'autre ne la fait
+    /// monter au premier rang. Ce n'est pas une gravité clinique ; c'est
+    /// l'ordre dans lequel la carte montre, comme `cyp::Weight`.
+    pub fn weight(&self) -> u8 {
+        match self {
+            Why::Cited { sentence, .. } => {
+                let s = fuzzy::sort_key(sentence);
+                // Une phrase que la fiche écrit nommément vaut au moins
+                // « à regarder » : quelqu'un l'a écrite pour cette paire,
+                // quand une règle de la revue parle d'une classe entière.
+                if ["contre-indiqu", "contre indiqu", "contreindiqu"]
+                    .iter()
+                    .any(|w| s.contains(w))
+                {
+                    3
+                } else {
+                    2
+                }
+            }
+            // **Jamais 3.** La table des cytochromes le dit elle-même : son
+            // « à regarder d'abord » est un ordre de lecture et non une
+            // gravité — elle ne sait ni la dose, ni la durée, ni le
+            // terrain. Un trait rouge sur sa seule foi dirait ce qu'elle
+            // refuse de dire.
+            Why::Enzyme { minor, .. } => {
+                if *minor {
+                    1
+                } else {
+                    2
+                }
+            }
+            Why::Effect { alert, .. } => {
+                if *alert {
+                    3
+                } else {
+                    2
+                }
+            }
+        }
+    }
+}
+
+impl Why {
+    /// À poids égal, qui passe d'abord : **ce qu'une fiche écrit** de
+    /// cette paire, puis la revue, puis les cytochromes.
+    fn source_rank(&self) -> u8 {
+        match self {
+            Why::Cited { .. } => 0,
+            Why::Effect { .. } => 1,
+            Why::Enzyme { .. } => 2,
+        }
+    }
+
+    /// Ce que la raison dit, sans la paire : deux fiches qui rencontrent
+    /// le centre par la même règle ont la même clé.
+    fn key(&self) -> String {
+        match self {
+            Why::Cited { by, sentence } => format!("c:{by}:{sentence}"),
+            Why::Effect { title, .. } => format!("e:{title}"),
+            Why::Enzyme { enzyme, shift, .. } => format!("z:{enzyme}:{shift}"),
+        }
+    }
+}
+
+/// La raison qui décide de la place d'un trait : la plus lourde, puis
+/// celle de la source qui passe d'abord.
+fn lead(why: &[Why]) -> Option<&Why> {
+    why.iter()
+        .min_by_key(|w| (std::cmp::Reverse(w.weight()), w.source_rank()))
+}
+
+/// Le poids d'un trait : celui de sa raison la plus lourde, 1 quand la
+/// carte le tient d'un nom cité sans phrase retrouvée.
+pub fn weight_of(why: &[Why]) -> u8 {
+    why.iter().map(Why::weight).max().unwrap_or(1)
+}
+
 /// One card on the map, placed.
 #[derive(Clone, PartialEq, Debug)]
 pub struct Node {
@@ -216,6 +326,13 @@ pub struct Node {
     pub dci: String,
     pub tie: Tie,
     pub toxicity_noted: bool,
+    /// Ce que le trait veut dire, quand une table le sait ; vide pour un
+    /// voisin de molécule ou de classe, qui ne se prend pas avec le
+    /// centre mais à sa place.
+    pub why: Vec<Why>,
+    /// Son poids de lecture (voir [`Why::weight`]) ; 0 hors de l'anneau
+    /// des interactions.
+    pub weight: u8,
     /// Position on the unit circle: the centre is `(0, 0)` and no node
     /// is further than 1 from it. The view multiplies by whatever half
     /// -width it has and adds its own middle.
@@ -380,6 +497,26 @@ impl Caps {
 /// to the *closest* ring it qualifies for, and to one ring only: the
 /// same name twice on one map is two answers to one question.
 pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
+    around_with(centre, base, caps, &std::collections::HashMap::new())
+}
+
+/// La même chose, avec **ce que les tables savent** de chaque paire
+/// (centre, fiche) : `reasons` donne, par fiche, pourquoi elle rencontre
+/// le centre.
+///
+/// Une fiche qui a une raison entre dans l'anneau des interactions même
+/// quand aucune monographie ne nomme l'autre — deux allongeurs du QT ne
+/// se citent pas —, sauf si elle appartient déjà à un anneau plus
+/// proche : un voisin de classe se prend **à la place** du centre, pas
+/// avec lui. Et quand l'anneau est trop plein, **ce qu'on garde est ce
+/// qui pèse le plus** : couper une contre-indication pour garder une
+/// précaution d'emploi serait l'anneau qui ment.
+pub fn around_with(
+    centre: &Known,
+    base: &[Known],
+    caps: Caps,
+    reasons: &std::collections::HashMap<i64, Vec<Why>>,
+) -> Map {
     let mut taken: Vec<i64> = vec![centre.id];
     let mut nodes: Vec<Node> = Vec::new();
     let mut omitted: Vec<(Tie, usize)> = Vec::new();
@@ -405,7 +542,13 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
         .map(|tie| {
             let mut ring: Vec<&Known> = base
                 .iter()
-                .filter(|k| !taken.contains(&k.id) && ties(centre, k, &hay, *tie))
+                .filter(|k| {
+                    !taken.contains(&k.id)
+                        && (ties(centre, k, &hay, *tie)
+                            || (*tie == Tie::Interaction
+                                && reasons.get(&k.id).is_some_and(|r| !r.is_empty())
+                                && local_may_meet(centre, k)))
+                })
                 .collect();
             // A stable order, so the same card always draws the same
             // map: a ring whose members swapped places between two
@@ -434,9 +577,58 @@ pub fn around(centre: &Known, base: &[Known], caps: Caps) -> Map {
         // contenu dans le suivant (voir [`spread_order`]), puis remis
         // dans l'ordre des places pour que le dessin les parcoure comme
         // on lit un cadran.
-        let mut slots: Vec<usize> = spread_order(ring.len()).into_iter().take(keep).collect();
+        let order = spread_order(ring.len());
+        let mut slots: Vec<usize> = if tie == Tie::Interaction {
+            // The heaviest first, and among equals the spread order —
+            // so a ring that is not cut keeps its dial, and a ring that
+            // is cut keeps what weighs.
+            //
+            // **Et une place par raison avant une seconde.** Dix
+            // anticoagulants rencontrent un AINS par la même règle : les
+            // garder tous coupait le lithium, qui la rencontre par une
+            // autre. Chaque raison distincte a sa place d'abord, puis les
+            // suivantes dans le même ordre — le pied compte le reste.
+            let mut by: Vec<(usize, u8, u8, String, usize)> = order
+                .iter()
+                .enumerate()
+                .map(|(rank, &j)| {
+                    let why = reasons
+                        .get(&ring[j].id)
+                        .map(|v| v.as_slice())
+                        .unwrap_or(&[]);
+                    let (src, key) = lead(why)
+                        .map(|w| (w.source_rank(), w.key()))
+                        .unwrap_or((0, format!("n:{}", ring[j].id)));
+                    (j, weight_of(why), src, key, rank)
+                })
+                .collect();
+            by.sort_by(|a, b| {
+                (std::cmp::Reverse(a.1), a.2, a.4).cmp(&(std::cmp::Reverse(b.1), b.2, b.4))
+            });
+            let mut seen: std::collections::HashMap<String, usize> = Default::default();
+            let mut ranked: Vec<(usize, u8, usize, u8, usize)> = by
+                .into_iter()
+                .map(|(j, w, src, key, rank)| {
+                    let n = seen.entry(key).or_insert(0);
+                    let occ = *n;
+                    *n += 1;
+                    (j, w, occ, src, rank)
+                })
+                .collect();
+            ranked.sort_by_key(|&(_, w, occ, src, rank)| (std::cmp::Reverse(w), occ, src, rank));
+            ranked.into_iter().take(keep).map(|(j, ..)| j).collect()
+        } else {
+            order.into_iter().take(keep).collect()
+        };
         slots.sort_unstable();
+        let first = nodes.len();
         place(ring, &slots, ring.len(), tie, &mut nodes);
+        if tie == Tie::Interaction {
+            for n in &mut nodes[first..] {
+                n.why = reasons.get(&n.id).cloned().unwrap_or_default();
+                n.weight = weight_of(&n.why);
+            }
+        }
     }
 
     Map {
@@ -486,6 +678,14 @@ fn share(want: [usize; 3], total: usize) -> [usize; 3] {
 
 /// Is `other` tied to `centre` in this particular way? `folded_ddi` is
 /// the centre's interactions section, already folded.
+/// Une forme locale ne rencontre pas un médicament général — la règle
+/// que l'anneau des interactions suit déjà pour les noms cités (voir
+/// [`ties`]), et que les raisons venues des tables suivent aussi.
+fn local_may_meet(centre: &Known, other: &Known) -> bool {
+    crate::classes::is_local_form(centre.class)
+        || !crate::classes::stays_local(other.dci, other.class)
+}
+
 fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
     match tie {
         // An empty DCI or class is not a molecule and not a class: it
@@ -615,6 +815,8 @@ fn place(ring: &[&Known], slots: &[usize], total: usize, tie: Tie, out: &mut Vec
             dci: k.dci.trim().to_owned(),
             tie,
             toxicity_noted: k.toxicity_noted,
+            why: Vec::new(),
+            weight: 0,
             x: r * a.sin(),
             y: -r * a.cos(),
         });
@@ -1431,5 +1633,129 @@ mod tests {
                 .any(|n| n.tie == Tie::Interaction && n.name == "Diprosone"),
             "un centre topique cite encore le topique qu'il nomme"
         );
+    }
+
+    /// **Ce que les tables savent entre dans la carte.** Une fiche que
+    /// rien ne cite mais qu'une règle relie au centre rejoint l'anneau des
+    /// interactions, avec ses raisons ; un voisin de classe qu'une règle
+    /// relie aussi reste dans son anneau, sans raison — il se prend à la
+    /// place du centre, pas avec lui.
+    #[test]
+    fn a_card_the_tables_tie_to_the_centre_joins_the_interaction_ring() {
+        let b = base();
+        let effect = Why::Effect {
+            title: "Deux anticoagulants".to_owned(),
+            detail: "saignement".to_owned(),
+            alert: true,
+        };
+        let mut reasons = std::collections::HashMap::new();
+        reasons.insert(7, vec![effect.clone()]);
+        reasons.insert(3, vec![effect.clone()]);
+        let map = around_with(&b[0], &b, Caps::default(), &reasons);
+        let previscan = map.nodes.iter().find(|n| n.id == 7).expect("sur la carte");
+        assert_eq!(previscan.tie, Tie::Interaction);
+        assert_eq!(previscan.weight, 3);
+        assert_eq!(previscan.why, vec![effect]);
+        let xarelto = map.nodes.iter().find(|n| n.id == 3).unwrap();
+        assert_eq!(xarelto.tie, Tie::Class);
+        assert!(xarelto.why.is_empty() && xarelto.weight == 0);
+        // Without the reasons, the Previscan is nobody's neighbour.
+        assert!(!around(&b[0], &b, Caps::default())
+            .nodes
+            .iter()
+            .any(|n| n.id == 7));
+    }
+
+    /// **Un anneau coupé garde ce qui pèse.** Couper une
+    /// contre-indication pour garder une précaution d'emploi serait
+    /// l'anneau qui ment.
+    #[test]
+    fn a_cut_ring_keeps_the_heaviest() {
+        let mut b = vec![card(1, "Centre", "centre", "classe a")];
+        let names: Vec<String> = (0..10).map(|i| format!("Fiche {i:02}")).collect();
+        for (i, n) in names.iter().enumerate() {
+            b.push(card(10 + i as i64, n, "", "autre"));
+        }
+        let mut reasons = std::collections::HashMap::new();
+        for i in 0..10 {
+            let why = Why::Cited {
+                by: "Centre".to_owned(),
+                sentence: if i == 7 {
+                    "Association contre-indiquée.".to_owned()
+                } else {
+                    "À prendre en compte.".to_owned()
+                },
+            };
+            reasons.insert(10 + i, vec![why]);
+        }
+        let caps = Caps {
+            interaction: 3,
+            total: 3,
+            ..Caps::default()
+        };
+        let map = around_with(&b[0], &b, caps, &reasons);
+        assert_eq!(map.count(Tie::Interaction), 3);
+        assert!(
+            map.nodes.iter().any(|n| n.id == 17),
+            "la contre-indication reste"
+        );
+        assert_eq!(map.omitted_for(Tie::Interaction), 7);
+    }
+
+    /// Le poids d'une raison : le mot du thésaurus que la fiche écrit,
+    /// la règle d'alerte de la revue — **jamais une enzyme seule**.
+    #[test]
+    fn a_reason_weighs_by_its_own_words_and_an_enzyme_never_reaches_the_top() {
+        let cited = |t: &str| Why::Cited {
+            by: "X".to_owned(),
+            sentence: t.to_owned(),
+        };
+        assert_eq!(cited("Association contre-indiquée.").weight(), 3);
+        assert_eq!(cited("Association DÉCONSEILLÉE avec l'AVK.").weight(), 2);
+        assert_eq!(cited("Précaution d'emploi.").weight(), 2);
+        assert_eq!(cited("Surveiller l'INR.").weight(), 2);
+        let enzyme = |minor| Why::Enzyme {
+            actor: "Clarithromycine".to_owned(),
+            enzyme: "CYP3A4".to_owned(),
+            shift: "exposition augmentée".to_owned(),
+            minor,
+        };
+        assert_eq!(enzyme(false).weight(), 2);
+        assert_eq!(enzyme(true).weight(), 1);
+        assert_eq!(weight_of(&[]), 1);
+        assert_eq!(weight_of(&[enzyme(false), cited("contre-indiqué")]), 3);
+    }
+
+    /// **Une place par raison avant une seconde.** Cinq fiches
+    /// rencontrent le centre par la même règle, une sixième par une
+    /// autre, et l'anneau n'a que trois places : la sixième en a une.
+    #[test]
+    fn a_cut_ring_gives_each_reason_a_place_before_a_second() {
+        let mut b = vec![card(1, "Centre", "centre", "classe a")];
+        let names: Vec<String> = (0..6).map(|i| format!("Fiche {i}")).collect();
+        for (i, n) in names.iter().enumerate() {
+            b.push(card(10 + i as i64, n, "", "autre"));
+        }
+        let rule = |title: &str| Why::Effect {
+            title: title.to_owned(),
+            detail: String::new(),
+            alert: true,
+        };
+        let mut reasons = std::collections::HashMap::new();
+        for i in 0..5 {
+            reasons.insert(10 + i, vec![rule("Anticoagulant + AINS")]);
+        }
+        reasons.insert(15, vec![rule("Lithium exposé")]);
+        let caps = Caps {
+            interaction: 3,
+            total: 3,
+            ..Caps::default()
+        };
+        let map = around_with(&b[0], &b, caps, &reasons);
+        assert!(
+            map.nodes.iter().any(|n| n.id == 15),
+            "le lithium a sa place"
+        );
+        assert_eq!(map.count(Tie::Interaction), 3);
     }
 }

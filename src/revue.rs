@@ -140,30 +140,77 @@ const LOCAL_RULES: &[&str] = &[
 /// severity, the order of the rules — which is the order a pharmacist
 /// checks them in.
 pub fn review(treatments: &[Treatment]) -> Vec<Point> {
-    // Chaque ligne repliée une fois, **sans ce que son libellé nie**
-    // (voir `classes::strip_unsaid`), et avec deux questions posées une
-    // fois : est-ce une forme locale, est-ce un antidote.
-    let folded: Vec<(String, String)> = treatments
-        .iter()
-        .map(|t| {
-            (
-                t.name.trim().to_owned(),
-                crate::classes::strip_unsaid(&t.haystack()),
-            )
-        })
-        .collect();
-    let local: Vec<bool> = treatments
-        .iter()
-        // Le miconazole buccal passe dans le sang et compte comme la voie
-        // générale — voir `classes::local_but_absorbed`.
-        .map(|t| crate::classes::stays_local(t.dci, t.class))
-        .collect();
-    let antidote: Vec<bool> = treatments
-        .iter()
-        .map(|t| crate::classes::is_antidote(t.class))
-        .collect();
+    let lines: Vec<Folded> = treatments.iter().map(Folded::of).collect();
+    review_folded(&lines.iter().collect::<Vec<_>>())
+}
+
+/// Une ligne telle que la revue la lit : son nom, **repliée sans ce que
+/// son libellé nie** (voir `classes::strip_unsaid`), les deux questions
+/// posées une fois — est-ce une forme locale, est-ce un antidote — et,
+/// règle par règle, **quels mots de la règle elle porte**.
+///
+/// À part pour qui lit beaucoup de paires : la carte du voisinage
+/// demande à la revue ce qu'une fiche fait avec chacune des huit cents
+/// autres, et relire le centre contre chaque règle huit cents fois
+/// coûtait plus que tout le reste. Lue une fois, une ligne se relit
+/// autant de fois qu'on veut — **par la même lecture** ([`review_folded`])
+/// : il n'y a qu'une écriture des règles, et c'est elle qui dit quels
+/// mots chercher.
+#[derive(Clone, Debug)]
+pub struct Folded {
+    name: String,
+    local: bool,
+    antidote: bool,
+    /// Pour chaque règle, dans l'ordre de `RULES`.
+    hits: Vec<Hits>,
+}
+
+/// Ce qu'une ligne porte des mots d'une règle : chaque groupe, les mots
+/// de l'absence, les mots du veto.
+#[derive(Clone, Debug, Default)]
+struct Hits {
+    groups: Vec<bool>,
+    absent: bool,
+    never: bool,
+}
+
+impl Folded {
+    pub fn of(t: &Treatment) -> Folded {
+        let hay = crate::classes::strip_unsaid(&t.haystack());
+        let any = |words: &[&str]| words.iter().any(|w| crate::fuzzy::contains_folded(&hay, w));
+        let hits = RULES
+            .iter()
+            .map(|rule| match &rule.kind {
+                Kind::Combination(groups) => Hits {
+                    groups: groups.iter().map(|g| any(g)).collect(),
+                    ..Hits::default()
+                },
+                Kind::Duplicate(words, _) => Hits {
+                    groups: vec![any(words)],
+                    ..Hits::default()
+                },
+                Kind::Without(groups, absent, never) => Hits {
+                    groups: groups.iter().map(|g| any(g)).collect(),
+                    absent: any(absent),
+                    never: any(never),
+                },
+            })
+            .collect();
+        Folded {
+            name: t.name.trim().to_owned(),
+            // Le miconazole buccal passe dans le sang et compte comme la
+            // voie générale — voir `classes::local_but_absorbed`.
+            local: crate::classes::stays_local(t.dci, t.class),
+            antidote: crate::classes::is_antidote(t.class),
+            hits,
+        }
+    }
+}
+
+/// [`review`] sur des lignes déjà lues.
+pub fn review_folded(lines: &[&Folded]) -> Vec<Point> {
     let mut out = Vec::new();
-    for rule in RULES {
+    for (r, rule) in RULES.iter().enumerate() {
         // **Ce qui déclenche une règle** : ni un antidote — la vitamine K1
         // recevait les règles des AVK, et « deux anticoagulants » avec le
         // Previscan qu'elle corrige —, ni une forme locale, sauf pour les
@@ -177,21 +224,20 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
         // **combler** une absence (la Lederfoline répond à « méthotrexate
         // sans acide folique »).
         let local_ok = LOCAL_RULES.contains(&rule.title);
-        let matches = |words: &[&str]| -> Vec<String> {
-            folded
+        let matches = |group: usize| -> Vec<String> {
+            lines
                 .iter()
-                .enumerate()
-                .filter(|(i, _)| !antidote[*i] && (local_ok || !local[*i]))
-                .filter(|(_, (_, hay))| words.iter().any(|w| crate::fuzzy::contains_folded(hay, w)))
-                .map(|(_, (name, _))| name.clone())
+                .filter(|l| !l.antidote && (local_ok || !l.local))
+                .filter(|l| l.hits[r].groups.get(group).copied().unwrap_or(false))
+                .map(|l| l.name.clone())
                 .collect()
         };
         let drugs = match &rule.kind {
             Kind::Combination(groups) => {
                 let mut named: Vec<String> = Vec::new();
                 let mut complete = true;
-                for group in groups.iter() {
-                    let hit = matches(group);
+                for g in 0..groups.len() {
+                    let hit = matches(g);
                     if hit.is_empty() {
                         complete = false;
                         break;
@@ -208,29 +254,24 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
                     Vec::new()
                 }
             }
-            Kind::Duplicate(words, min) => {
-                let hit = matches(words);
+            Kind::Duplicate(_, min) => {
+                let hit = matches(0);
                 if hit.len() >= *min {
                     hit
                 } else {
                     Vec::new()
                 }
             }
-            Kind::Without(groups, absent, never) => {
+            Kind::Without(groups, _, _) => {
                 let mut named: Vec<String> = Vec::new();
                 let mut complete = true;
-                for group in groups.iter() {
+                for g in 0..groups.len() {
                     // **Le veto écarte la ligne du groupe**, il ne la
                     // retire pas de l'ordonnance : elle cesse d'être
                     // déclenchante et redevient capable de fournir.
-                    let hit: Vec<String> = matches(group)
+                    let hit: Vec<String> = matches(g)
                         .into_iter()
-                        .filter(|name| {
-                            folded.iter().any(|(n, hay)| {
-                                n == name
-                                    && !never.iter().any(|w| crate::fuzzy::contains_folded(hay, w))
-                            })
-                        })
+                        .filter(|name| lines.iter().any(|l| l.name == *name && !l.hits[r].never))
                         .collect();
                     if hit.is_empty() {
                         complete = false;
@@ -252,10 +293,9 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
                 // C'est d'ailleurs ce que la phrase veut dire :
                 // « isoniazide sans vitamine B6 » parle d'une seconde
                 // ligne qui n'y est pas.
-                let provided = folded.iter().any(|(name, hay)| {
-                    !named.contains(name)
-                        && absent.iter().any(|w| crate::fuzzy::contains_folded(hay, w))
-                });
+                let provided = lines
+                    .iter()
+                    .any(|l| !named.contains(&l.name) && l.hits[r].absent);
                 if complete && !provided {
                     named
                 } else {

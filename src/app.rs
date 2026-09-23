@@ -4433,6 +4433,12 @@ struct Session {
     graph_look: crate::graph::Look,
     /// How many names the last drawing of the map had no room for.
     graph_unnamed: usize,
+    /// What the tables say of each pair (centre, card), for the centre
+    /// and base revision they were read on.
+    graph_reasons: Option<GraphReasons>,
+    /// Every card as the review reads it, for the base revision it was
+    /// read on — see `revue::Folded`.
+    graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -5158,6 +5164,8 @@ impl Session {
             graph_key: None,
             graph_look: crate::graph::Look::default(),
             graph_unnamed: 0,
+            graph_reasons: None,
+            graph_folded: None,
             graph_pair: None,
             graph_query: String::new(),
             graph_note: None,
@@ -7392,10 +7400,34 @@ impl Session {
                 toxicity_noted: !d.toxicity.trim().is_empty(),
             })
             .collect();
+        // Ce que les tables savent de chaque paire — lu **une fois par
+        // centre**, pas par grossissement : les plafonds changent avec la
+        // place, les raisons non.
+        if self.graph_reasons.as_ref().map(|(k, _)| *k) != Some((centre, self.drugs_rev)) {
+            // Each card read by the review once per base revision, not
+            // once per centre: moving the centre only reads pairs.
+            if self.graph_folded.as_ref().map(|(r, _)| *r) != Some(self.drugs_rev) {
+                let lines = ordonnance_terms(&self.drugs)
+                    .iter()
+                    .map(crate::revue::Folded::of)
+                    .collect();
+                self.graph_folded = Some((self.drugs_rev, lines));
+            }
+            let folded = self.graph_folded.as_ref().map_or(&[][..], |(_, l)| &l[..]);
+            let reasons = self
+                .drugs
+                .iter()
+                .find(|d| d.id == centre)
+                .map(|c| graph_reasons(c, &self.drugs, folded))
+                .unwrap_or_default();
+            self.graph_reasons = Some(((centre, self.drugs_rev), reasons));
+        }
+        let empty = std::collections::HashMap::new();
+        let reasons = self.graph_reasons.as_ref().map_or(&empty, |(_, r)| r);
         self.graph_map = known
             .iter()
             .find(|k| k.id == centre)
-            .map(|k| crate::graph::around(k, &known, caps));
+            .map(|k| crate::graph::around_with(k, &known, caps, reasons));
         self.graph_key = Some(key);
     }
 
@@ -8978,6 +9010,126 @@ fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
                     ));
                 }
             }
+        }
+    }
+    out
+}
+
+/// What the tables say of each pair, keyed by (centre, base revision).
+type GraphReasons = (
+    (i64, u64),
+    std::collections::HashMap<i64, Vec<crate::graph::Why>>,
+);
+
+/// Une raison du trait, en une ligne, **sa source nommée**.
+fn graph_why_line(w: &crate::graph::Why) -> String {
+    use crate::graph::Why;
+    match w {
+        Why::Cited { by, sentence } => trn("graph_why_cited", &[by, sentence]),
+        Why::Enzyme {
+            actor,
+            enzyme,
+            shift,
+            ..
+        } => trn("graph_why_enzyme", &[enzyme, actor, shift]),
+        Why::Effect { title, detail, .. } => trn("graph_why_effect", &[title, detail]),
+    }
+}
+
+/// **Pourquoi chaque fiche rencontre `centre`**, selon les trois tables
+/// que la barre du comptoir lit déjà : ce que les monographies citent
+/// l'une de l'autre, les cytochromes, et la revue d'ordonnance. Une
+/// entrée par fiche qui a au moins une raison.
+///
+/// Les mêmes lectures que [`companion_signals`], sur la paire seule : la
+/// carte montre ce que la barre dirait si l'on ajoutait ce voisin à une
+/// ordonnance qui ne porte que le centre.
+fn graph_reasons(
+    centre: &Drug,
+    drugs: &[Drug],
+    folded: &[crate::revue::Folded],
+) -> std::collections::HashMap<i64, Vec<crate::graph::Why>> {
+    use crate::graph::Why;
+    let mut out: std::collections::HashMap<i64, Vec<Why>> = std::collections::HashMap::new();
+    let centre_cyp = crate::cyp::of(&centre.name, &centre.dci, &centre.class, &centre.tags)
+        .is_some_and(|p| !p.actions.is_empty());
+    let me = centre.name.trim().to_owned();
+    // Read once per base revision by the caller, one per card and in the
+    // same order: see `revue::Folded`.
+    let Some(centre_folded) = drugs
+        .iter()
+        .position(|d| d.id == centre.id)
+        .and_then(|i| folded.get(i))
+    else {
+        return out;
+    };
+    // **Un tri sûr avant la lecture exacte.** Une fiche ne peut être
+    // liée à une autre que si son nom ou sa DCI, repliés, figurent dans
+    // le texte replié de l'autre : c'est la condition nécessaire de
+    // `link_segments`. Les paires qui la passent sont lues par
+    // `interactions_paired` — la même lecture que le dossier et la barre,
+    // pas une seconde écriture.
+    let keys = |d: &Drug| -> Vec<String> {
+        [d.name.as_str(), d.dci.as_str()]
+            .iter()
+            .map(|t| crate::fuzzy::sort_key(t.trim()))
+            .filter(|k| k.chars().count() >= 4)
+            .collect()
+    };
+    let centre_ddi = crate::fuzzy::sort_key(&centre.ddi);
+    let centre_keys = keys(centre);
+    for (i, d) in drugs.iter().enumerate().filter(|(_, d)| d.id != centre.id) {
+        let mut why: Vec<Why> = Vec::new();
+        let named_here = keys(d).iter().any(|k| centre_ddi.contains(k.as_str()));
+        let named_there = !d.ddi.trim().is_empty() && {
+            let there = crate::fuzzy::sort_key(&d.ddi);
+            centre_keys.iter().any(|k| there.contains(k.as_str()))
+        };
+        if named_here || named_there {
+            for (a, _, _, sentence) in interactions_paired(&[centre.clone(), d.clone()]) {
+                let by = if a == centre.id {
+                    &centre.name
+                } else {
+                    &d.name
+                };
+                why.push(Why::Cited {
+                    by: by.trim().to_owned(),
+                    sentence,
+                });
+            }
+        }
+        let pair = [centre.clone(), d.clone()];
+        let terms = ordonnance_terms(&pair);
+        // Only when both lines are in the table: the others cannot
+        // cross, and asking costs a fold of four fields.
+        if centre_cyp
+            && crate::cyp::of(&d.name, &d.dci, &d.class, &d.tags)
+                .is_some_and(|p| !p.actions.is_empty())
+        {
+            for c in crate::cyp::cross(&terms).crossings {
+                why.push(Why::Enzyme {
+                    actor: c.actor.clone(),
+                    enzyme: c.enzyme.label().to_owned(),
+                    shift: c.shift.label().to_owned(),
+                    minor: c.weight == crate::cyp::Weight::Minor,
+                });
+            }
+        }
+        let other = d.name.trim().to_owned();
+        let Some(line) = folded.get(i) else {
+            continue;
+        };
+        for p in crate::revue::review_folded(&[centre_folded, line]) {
+            if p.drugs.contains(&me) && p.drugs.contains(&other) {
+                why.push(Why::Effect {
+                    title: p.title.to_owned(),
+                    detail: p.detail.to_owned(),
+                    alert: p.severity == crate::biology::Severity::Alert,
+                });
+            }
+        }
+        if !why.is_empty() {
+            out.insert(d.id, why);
         }
     }
     out
@@ -11435,6 +11587,10 @@ struct GraphMini {
     status: String,
     /// Cette fiche est-elle déjà sur l'ordonnance du dossier ouvert ?
     on_file: bool,
+    /// **Pourquoi le trait**, raison par raison et source nommée — ce
+    /// que les tables savent de la paire. Vide pour le moyeu et pour un
+    /// voisin de molécule ou de classe.
+    why: Vec<String>,
 }
 
 impl App {
@@ -54072,6 +54228,7 @@ impl App {
                 .into_iter()
                 .filter(|t| speaks(*t))
                 .collect::<Vec<_>>(),
+            map.is_some_and(|m| m.nodes.iter().any(|n| n.weight >= 3)),
             ticked,
         )
     }
@@ -54081,12 +54238,13 @@ impl App {
     /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
     /// la fiche du centre et non de la carte : ils sont connus avant.
     fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
-        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true)
+        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true, true)
     }
 
     fn graph_legend_keys_of(
         session: &Session,
         ties: &[crate::graph::Tie],
+        serious: bool,
         ticked: bool,
     ) -> Vec<(String, egui::Color32)> {
         let centre = session
@@ -54116,6 +54274,10 @@ impl App {
             .iter()
             .map(|t| (named(*t), motif::chart::series_color(t.series())))
             .collect();
+        // La clé du rouge, quand un trait rouge est dessiné.
+        if serious {
+            keys.push((tr("graph_serious").to_owned(), motif::alert()));
+        }
         // **Plus de clé « toxicité ».** Le cerclage rouge marquait les
         // fiches qui ont une section toxicité — 484 sur 862 : une marque
         // sur plus d'une fiche sur deux ne désigne rien, et elle
@@ -54289,9 +54451,11 @@ impl App {
         tie: Option<crate::graph::Tie>,
         toxicity_noted: bool,
         on_file: bool,
+        why: &[crate::graph::Why],
     ) -> GraphMini {
         GraphMini {
             on_file,
+            why: why.iter().map(graph_why_line).collect(),
             tie,
             name: name.trim().to_owned(),
             dci: dci.trim().to_owned(),
@@ -54426,6 +54590,31 @@ impl App {
                     .size(motif::pt(ui, 11.0))
                     .color(motif::text_dim()),
             );
+        }
+        // **Pourquoi ce trait** : chaque raison, avec sa source — la
+        // phrase d'une fiche, la table des cytochromes, la revue. Trois
+        // au plus, les plus lourdes d'abord ; le reste se compte.
+        if !mini.why.is_empty() {
+            ui.add_space(motif::pt(ui, 5.0));
+            ui.label(
+                egui::RichText::new(tr("graph_why_head"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim()),
+            );
+            for line in mini.why.iter().take(3) {
+                ui.label(
+                    egui::RichText::new(line)
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text()),
+                );
+            }
+            if mini.why.len() > 3 {
+                ui.label(
+                    egui::RichText::new(trf("graph_why_more", mini.why.len() - 3))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::text_faint()),
+                );
+            }
         }
         // **Ce que le trait veut dire.** La nature du lien est dite par
         // la couleur ; ce qu'il *implique* ne l'était nulle part.
@@ -55015,12 +55204,26 @@ impl App {
             // doigts fait perdre la figure au lieu de la montrer. C'est
             // la règle que l'agenda écrit déjà pour ses filtres, « un
             // filtre n'efface pas, il estompe ».
+            // **Et son poids** : l'épaisseur dit ce que la paire pèse, et
+            // le rouge — libéré depuis que la toxicité n'est plus cerclée
+            // — ce qu'on regarde d'abord : une contre-indication écrite,
+            // une règle d'alerte de la revue. Jamais une enzyme seule :
+            // voir `graph::Why::weight`.
             for (i, n) in map.nodes.iter().enumerate() {
-                let tint = motif::chart::series_color(n.tie.series());
+                let tint = if n.weight >= 3 {
+                    motif::alert()
+                } else {
+                    motif::chart::series_color(n.tie.series())
+                };
+                let base = match n.weight {
+                    3 => 2.6_f32,
+                    2 => 1.7,
+                    _ => 1.2,
+                };
                 let (w, c) = match hot {
-                    Some(h) if h == i => (2.4_f32, tint),
-                    Some(_) => (1.0, tint.gamma_multiply(0.35)),
-                    None => (1.2, tint),
+                    Some(h) if h == i => (base + 1.2, tint),
+                    Some(_) => (base.min(1.2), tint.gamma_multiply(0.35)),
+                    None => (base, tint),
                 };
                 ui.painter()
                     .line_segment([mid, at(n)], egui::Stroke::new(w, c));
@@ -55261,9 +55464,16 @@ impl App {
             // douze serait douze premières phrases par image pour onze
             // résultats jetés.
             if let Some(i) = hot {
-                let (id, name, dci, tie, tox) = {
+                let (id, name, dci, tie, tox, why) = {
                     let n = &map.nodes[i];
-                    (n.id, n.name.clone(), n.dci.clone(), n.tie, n.toxicity_noted)
+                    (
+                        n.id,
+                        n.name.clone(),
+                        n.dci.clone(),
+                        n.tie,
+                        n.toxicity_noted,
+                        n.why.clone(),
+                    )
                 };
                 // Un voisin se lit **contre le centre** : c'est ce que
                 // le trait entre eux veut dire.
@@ -55285,6 +55495,7 @@ impl App {
                     Some(tie),
                     tox,
                     on_file.contains(&id),
+                    &why,
                 );
                 let against = trf("graph_pair_with", &map.centre.1);
                 let signals = session
@@ -55309,6 +55520,7 @@ impl App {
                 None,
                 map.centre.2,
                 on_file.contains(&map.centre.0),
+                &[],
             );
             // Le moyeu, lui, se lit **contre l'ordonnance du dossier** :
             // il n'est relié à rien sur la figure, et ce qu'on veut
@@ -66382,6 +66594,7 @@ mod tests {
             Some(crate::graph::Tie::Class),
             false,
             false,
+            &[],
         );
         assert_eq!(m.status, "");
         assert_eq!(m.what, "Fibrillation atriale");
@@ -66401,7 +66614,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                false
+                false,
+                &[]
             )
             .status,
             "Rupture d'approvisionnement"
@@ -66415,7 +66629,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                false
+                false,
+                &[]
             )
             .what,
             "Inhibiteur direct du facteur Xa."
@@ -66430,7 +66645,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                false
+                false,
+                &[]
             )
             .toxicity,
             ""
@@ -66442,7 +66658,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 true,
-                false
+                false,
+                &[]
             )
             .toxicity,
             "Pas d'antidote en ville."
@@ -66456,6 +66673,7 @@ mod tests {
             Some(crate::graph::Tie::Class),
             true,
             false,
+            &[],
         );
         assert_eq!(m.name, "Xarelto");
         assert_eq!(m.dci, "rivaroxaban");
@@ -66471,7 +66689,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                false
+                false,
+                &[]
             )
             .on_file
         );
@@ -66482,7 +66701,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                true
+                true,
+                &[]
             )
             .on_file
         );
@@ -66497,7 +66717,8 @@ mod tests {
                 "rivaroxaban",
                 Some(crate::graph::Tie::Class),
                 false,
-                false
+                false,
+                &[]
             )
             .class,
             crate::classes::display_name("anti-TNF alpha")
@@ -66526,6 +66747,18 @@ mod tests {
                        la prudence est la même que pour tout anticholinergique."
                 .into(),
             status: "Rupture d'approvisionnement".into(),
+            // Et les raisons du trait, trois et longues : ce que la bulle
+            // porte de plus large depuis qu'elle les dit.
+            why: vec![
+                "Fiche Ultibro Breezhaler : « L'association à d'autres \
+                 anticholinergiques inhalés ou systémiques n'est pas \
+                 recommandée ; elle majore les effets indésirables. »"
+                    .into(),
+                "CYP3A4 — Clarithromycine agit : exposition augmentée".into(),
+                "Anticholinergiques cumulés — rétention urinaire, \
+                 constipation, confusion chez le sujet âgé"
+                    .into(),
+            ],
         };
         // Et **avec les puces de la paire**, qui sont ce que la bulle
         // peut porter de plus large : c'est le cas qui déborderait.
@@ -66583,6 +66816,7 @@ mod tests {
                 toxicity: String::new(),
                 status: String::new(),
                 on_file: false,
+                why: Vec::new(),
             };
             let ctx = egui::Context::default();
             motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
@@ -69143,6 +69377,10 @@ mod tests {
                     )
                 })
                 .collect();
+            let mut keys = keys;
+            // Et le rouge des traits sérieux : il se dessine à côté des
+            // trois liens.
+            keys.push((tr("graph_serious").to_owned(), motif::alert()));
             for (i, (an, a)) in keys.iter().enumerate() {
                 for (bn, b) in keys.iter().skip(i + 1) {
                     assert!(
@@ -71644,6 +71882,46 @@ mod tests {
             std::fs::write(to, b"demain").map_err(|e| e.to_string())
         });
         assert!(neighbour.exists(), "la série voisine reste");
+    }
+
+    /// **Ce que les tables savent d'une paire entre dans la carte**, et
+    /// cela reste bon marché : lu une fois par centre, sur la base livrée.
+    /// Le Voltarène rencontre le méthotrexate par sa propre phrase, et une
+    /// fiche que rien ne cite mais qu'une table relie entre dans l'anneau
+    /// des interactions.
+    #[test]
+    fn the_map_reads_why_two_cards_meet_and_stays_cheap() {
+        let (s, _swept) = scratch_session("graph-why");
+        let volta = s
+            .drugs
+            .iter()
+            .find(|d| d.name.trim() == "Voltarène")
+            .expect("Voltarène livré")
+            .clone();
+        let folded: Vec<crate::revue::Folded> = super::ordonnance_terms(&s.drugs)
+            .iter()
+            .map(crate::revue::Folded::of)
+            .collect();
+        let t = std::time::Instant::now();
+        let reasons = super::graph_reasons(&volta, &s.drugs, &folded);
+        let spent = t.elapsed();
+        assert!(
+            spent < std::time::Duration::from_millis(1500),
+            "{} ms",
+            spent.as_millis()
+        );
+        let metho = s
+            .drugs
+            .iter()
+            .find(|d| d.name.trim() == "Méthotrexate")
+            .expect("Méthotrexate livré");
+        let why = reasons.get(&metho.id).expect("une raison");
+        assert!(why
+            .iter()
+            .any(|w| matches!(w, crate::graph::Why::Cited { .. })));
+        // Some pairs weigh on the shipped base: the AINS meets
+        // anticoagulants by an alert rule of the review.
+        assert!(reasons.values().any(|w| crate::graph::weight_of(w) == 3));
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
