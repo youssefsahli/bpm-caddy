@@ -4701,6 +4701,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 duration_days: 30,
                 renewals: 2,
                 dispensed: 2,
+                dispensed_on: "2026-09-23".to_owned(),
             };
             traitement_values(
                 &FicheData {
@@ -8697,6 +8698,7 @@ mod tests {
             duration_days: 30,
             renewals: 2,
             dispensed: 2,
+            dispensed_on: "2026-09-23".to_owned(),
         };
         // **Les quatre visualisations rendent la même lecture.** Le
         // dessin change, les chiffres et les dates ne bougent pas —
@@ -8737,7 +8739,7 @@ mod tests {
             );
             // Et le rendez-vous est annoncé avant l'épuisement.
             assert!(
-                source.contains("22/11/2026") && source.contains("15/11/2026"),
+                source.contains("21/11/2026") && source.contains("14/11/2026"),
                 "la date de fin et celle du rendez-vous ({viz:?})"
             );
             // Le balisage d'un nom hostile n'est jamais interprété.

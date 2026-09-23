@@ -419,6 +419,9 @@ CREATE TABLE IF NOT EXISTS patient_drugs (
     duration_days INTEGER NOT NULL DEFAULT 0,
     renewals      INTEGER NOT NULL DEFAULT 0,
     dispensed     INTEGER NOT NULL DEFAULT 0,
+    -- Le jour de la dernière délivrance notée : c'est de lui que part
+    -- « couvre jusqu'au », et non du jour où la feuille s'imprime.
+    dispensed_on  TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (patient_id, drug_id)
 );
 CREATE TABLE IF NOT EXISTS notes (
@@ -828,6 +831,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patient_drugs ADD COLUMN duration_days INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE patient_drugs ADD COLUMN renewals INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE patient_drugs ADD COLUMN dispensed INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE patient_drugs ADD COLUMN dispensed_on TEXT NOT NULL DEFAULT ''",
     // Les postes de l'équipe — voir le commentaire au-dessus de la
     // table dans `SCHEMA`. Une base d'avant 0.175.0 n'en a pas, et un
     // `CREATE TABLE IF NOT EXISTS` ici est ce qui l'y met sans rien
@@ -30512,7 +30516,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT drug_id, prescribed_on, duration_days, renewals, dispensed
+                "SELECT drug_id, prescribed_on, duration_days, renewals, dispensed,
+                        dispensed_on
                    FROM patient_drugs WHERE patient_id = ?1",
             )
             .map_err(|e| e.to_string())?;
@@ -30525,6 +30530,7 @@ impl Db {
                         duration_days: r.get::<_, i64>(2)?.clamp(0, 3650) as u32,
                         renewals: r.get::<_, i64>(3)?.clamp(0, 60) as u32,
                         dispensed: r.get::<_, i64>(4)?.clamp(0, 60) as u32,
+                        dispensed_on: r.get(5)?,
                     },
                 ))
             })
@@ -30548,11 +30554,11 @@ impl Db {
             .execute(
                 "UPDATE patient_drugs
                     SET prescribed_on = ?3, duration_days = ?4,
-                        renewals = ?5, dispensed = ?6
+                        renewals = ?5, dispensed = ?6, dispensed_on = ?11
                   WHERE patient_id = ?1 AND drug_id = ?2
                     AND prescribed_on = ?7 AND duration_days = ?8
-                    AND renewals = ?9 AND dispensed = ?10",
-                (
+                    AND renewals = ?9 AND dispensed = ?10 AND dispensed_on = ?12",
+                rusqlite::params![
                     patient_id,
                     drug_id,
                     new.prescribed_on.trim(),
@@ -30563,7 +30569,9 @@ impl Db {
                     i64::from(expected.duration_days),
                     i64::from(expected.renewals),
                     i64::from(expected.dispensed),
-                ),
+                    new.dispensed_on.trim(),
+                    expected.dispensed_on.trim(),
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -30640,7 +30648,8 @@ impl Db {
             .execute(
                 "DELETE FROM patient_drugs WHERE patient_id = ?1 AND drug_id = ?2
                    AND posology = ?3 AND dosage = ?4 AND prescribed_on = ?5
-                   AND duration_days = ?6 AND renewals = ?7 AND dispensed = ?8",
+                   AND duration_days = ?6 AND renewals = ?7 AND dispensed = ?8
+                   AND dispensed_on = ?9",
                 rusqlite::params![
                     patient_id,
                     drug_id,
@@ -30649,7 +30658,8 @@ impl Db {
                     shown_script.prescribed_on,
                     shown_script.duration_days,
                     shown_script.renewals,
-                    shown_script.dispensed
+                    shown_script.dispensed,
+                    shown_script.dispensed_on
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -38414,6 +38424,7 @@ mod tests {
             duration_days: 30,
             renewals: 2,
             dispensed: 1,
+            dispensed_on: String::new(),
         };
         assert!(db
             .set_patient_prescription(
@@ -43731,6 +43742,7 @@ mod tests {
                                 duration_days: 7,
                                 renewals: 0,
                                 dispensed: 1,
+                                dispensed_on: add_days(&today, -2).unwrap_or_default(),
                             }
                         } else {
                             crate::renewal::Prescription {
@@ -43738,6 +43750,7 @@ mod tests {
                                 duration_days: 30,
                                 renewals: 2,
                                 dispensed: 2,
+                                dispensed_on: add_days(&today, -2).unwrap_or_default(),
                             }
                         };
                         db.set_patient_prescription(

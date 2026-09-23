@@ -27,6 +27,17 @@ pub fn periods_between(start: &str, end: &str, period: Period) -> Option<u32> {
     if days < 0 {
         return None;
     }
+    // **A month is a calendar month**, not thirty days: 1st to 31st
+    // January is one monthly forfait, and thirty-day blocks billed two —
+    // thirteen over a calendar year. Counted as the months *started*: the
+    // smallest k for which start + k months lies after the end.
+    if period == Period::Month {
+        let mut k = crate::date::months_between(start, end)?.max(1) - 1;
+        while add_months(start, k)?.as_str() <= end {
+            k += 1;
+        }
+        return u32::try_from(k).ok();
+    }
     // Inclusive: a rental that starts and ends the same day is one day.
     let days = days as u32 + 1;
     let len = period.days();
@@ -96,7 +107,7 @@ pub fn standing(renewal: &str, today: &str, notice_days: u32) -> Option<Standing
 // Aucune des deux n'était fausse, et c'est précisément la situation que
 // la maison refuse ailleurs : deux mesures d'une même chose finissent
 // par diverger, et celle qui divergera est celle que personne ne relit.
-use crate::date::{add_days, days_between};
+use crate::date::{add_days, add_months, days_between};
 
 #[cfg(test)]
 mod tests {
@@ -131,13 +142,33 @@ mod tests {
     }
 
     #[test]
-    fn the_month_and_the_day_count_the_same_way() {
+    fn a_month_is_a_calendar_month_and_a_day_a_day() {
+        // All of January is one monthly forfait: thirty-day blocks billed
+        // it as two, and a calendar year as thirteen.
         assert_eq!(
-            periods_between("2026-01-01", "2026-01-30", Period::Month),
+            periods_between("2026-01-01", "2026-01-31", Period::Month),
             Some(1)
         );
         assert_eq!(
-            periods_between("2026-01-01", "2026-01-31", Period::Month),
+            periods_between("2026-01-01", "2026-02-01", Period::Month),
+            Some(2)
+        );
+        assert_eq!(
+            periods_between("2026-01-01", "2026-12-31", Period::Month),
+            Some(12)
+        );
+        // Started the same day: one month is due, as one day of a week.
+        assert_eq!(
+            periods_between("2026-03-15", "2026-03-15", Period::Month),
+            Some(1)
+        );
+        // From the 31st, February ends a month early rather than late.
+        assert_eq!(
+            periods_between("2026-01-31", "2026-02-27", Period::Month),
+            Some(1)
+        );
+        assert_eq!(
+            periods_between("2026-01-31", "2026-02-28", Period::Month),
             Some(2)
         );
         assert_eq!(

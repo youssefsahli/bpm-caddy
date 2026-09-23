@@ -109,6 +109,21 @@ pub fn months_between(from: &str, to: &str) -> Option<i64> {
     Some((y2 * 12 + m2) - (y1 * 12 + m1))
 }
 
+/// Le même quantième, `months` mois plus tard — ramené au dernier jour
+/// du mois quand celui-ci est plus court : le 31 janvier plus un mois est
+/// le 28 (ou 29) février, jamais le 3 mars.
+///
+/// Compté **depuis `from` à chaque fois**, jamais de proche en proche :
+/// enchaîner deux fois « plus un mois » depuis le 31 janvier donnerait le
+/// 28 mars.
+pub fn add_months(from: &str, months: i64) -> Option<String> {
+    let (y, m, d) = parse_iso(from)?;
+    let index = y * 12 + (m - 1) + months;
+    let (ny, nm) = (index.div_euclid(12), index.rem_euclid(12) + 1);
+    let last = end_of_month(ny, nm)?;
+    Some(from_days(days_from_civil(ny, nm, d.min(last))))
+}
+
 /// Le dernier jour de ce mois-là — 28, 29, 30 ou 31.
 ///
 /// La règle du siècle est dans l'arithmétique et non dans une condition
@@ -361,5 +376,16 @@ mod tests {
             after % 2,
             "deux semaines impaires de suite : quatorze jours s'y trompent"
         );
+    }
+
+    #[test]
+    fn a_month_later_keeps_the_day_or_falls_to_the_end_of_the_month() {
+        assert_eq!(add_months("2026-01-15", 1).as_deref(), Some("2026-02-15"));
+        assert_eq!(add_months("2026-01-31", 1).as_deref(), Some("2026-02-28"));
+        assert_eq!(add_months("2024-01-31", 1).as_deref(), Some("2024-02-29"));
+        assert_eq!(add_months("2026-01-31", 2).as_deref(), Some("2026-03-31"));
+        assert_eq!(add_months("2026-11-30", 3).as_deref(), Some("2027-02-28"));
+        assert_eq!(add_months("2026-03-31", -1).as_deref(), Some("2026-02-28"));
+        assert_eq!(add_months("pas une date", 1), None);
     }
 }

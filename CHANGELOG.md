@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.261.0] - 2026-09-23
+
+### Fixed
+- **« Couvre jusqu'au » part du jour de la délivrance**, retenu quand le
+  compte des délivrances monte, et non du jour où la fiche s'imprime :
+  réimprimée trois semaines plus tard, elle annonçait trois semaines de
+  traitement de trop. Jour inconnu, la date n'est pas écrite.
+- **Les dates de fin désignent le dernier jour couvert** : sept jours
+  d'antibiotique prescrits le 21 sont « valables jusqu'au 27 », et non
+  au 28 ; le rendez-vous à prendre suit d'un jour.
+- La note sous une ordonnance renouvelable sans délivrance notée disait
+  « non renouvelable » ; elle dit « délivrance non notée », comme la
+  fiche imprimée.
+- **Vigilance** : un produit hors vigilance ne reçoit plus aucune
+  question (plusieurs prescripteurs, pente), et la pente demande bien
+  trois hausses consécutives — deux suffisaient.
+- **Une location au mois se compte en mois civils** : du 1er au 31
+  janvier est un forfait, et non deux ; une année en faisait treize.
+
 ## [0.260.0] - 2026-09-23
 
 ### Added

@@ -60,6 +60,14 @@ pub struct Prescription {
     /// Combien de délivrances ont été faites, celle du jour comprise.
     /// 0 = aucune n'a été notée, ce qui n'est pas « la première ».
     pub dispensed: u32,
+    /// Le jour où la dernière délivrance notée a été faite, ISO. Vide =
+    /// inconnu — une ligne écrite avant que ce jour soit retenu, ou un
+    /// compte tapé sans délivrance.
+    ///
+    /// **C'est lui qui dit jusqu'à quand la boîte couvre**, et non le jour
+    /// où la feuille s'imprime : la fiche réimprimée trois semaines après
+    /// la délivrance annonçait trois semaines de traitement de trop.
+    pub dispensed_on: String,
 }
 
 impl Prescription {
@@ -119,9 +127,12 @@ pub struct Stand {
     pub step: u32,
     /// Combien en tout.
     pub steps: u32,
-    /// Jusqu'à quand la délivrance du jour couvre, ISO.
+    /// Le dernier jour que couvre la dernière délivrance notée, ISO —
+    /// `None` quand son jour n'est pas connu.
     pub covered_to: Option<String>,
-    /// Le jour où l'ordonnance est épuisée, ISO.
+    /// Le **dernier jour** que l'ordonnance couvre, ISO : une ordonnance
+    /// de sept jours faite le 21 couvre jusqu'au 27 inclus, et « valable
+    /// jusqu'au 28 » en donnait un huitième.
     pub ends_on: Option<String>,
     /// Le jour avant lequel il faut avoir vu le prescripteur, ISO.
     /// **Ce n'est pas [`Self::ends_on`]** : c'est lui moins le délai de
@@ -196,7 +207,7 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
     }
     let from = p.prescribed_on.trim();
     let duration = i64::from(p.duration_days);
-    let ends_on = add_days(from, duration * i64::from(steps));
+    let ends_on = add_days(from, duration * i64::from(steps) - 1);
     // **Un rendez-vous ne se prend pas dans le passé.** Quand le délai
     // de prévenance dépasse ce qui reste — sept jours de prévenance sur
     // un antibiotique de cinq —, la date tombait avant aujourd'hui, et
@@ -207,11 +218,6 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
         .as_deref()
         .and_then(|e| add_days(e, -i64::from(notice_days)))
         .filter(|d| d.as_str() >= today);
-    // **La boîte du jour couvre à partir d'aujourd'hui**, et non à
-    // partir d'un rang multiplié par une durée : c'est le jour de la
-    // délivrance qui commande, et il est passé en argument. Un patient
-    // venu avec huit jours de retard n'est pas couvert huit jours de
-    // plus.
     let days_left = ends_on.as_deref().and_then(|e| days_between(today, e));
     let expired = days_left.is_some_and(|d| d < 0);
     let step = p.dispensed.min(steps);
@@ -223,9 +229,13 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
     };
     // Et « couvert jusqu'au » ne se dit que d'une délivrance notée, sur
     // une ordonnance qui court : la feuille écrivait « délivrance non
-    // notée » puis la date qu'elle couvrait.
-    let covered_to = (step > 0 && state != State::Over)
-        .then(|| add_days(today, duration))
+    // notée » puis la date qu'elle couvrait. **Elle part du jour de la
+    // délivrance**, retenu à l'écriture — un patient venu avec huit jours
+    // de retard n'est pas couvert huit jours de plus, et une feuille
+    // réimprimée n'est pas une délivrance. Jour inconnu, date tue.
+    let dispensed_on = p.dispensed_on.trim();
+    let covered_to = (step > 0 && state != State::Over && !dispensed_on.is_empty())
+        .then(|| add_days(dispensed_on, duration - 1))
         .flatten();
     Stand {
         state,
@@ -324,6 +334,7 @@ mod tests {
             duration_days: days,
             renewals,
             dispensed,
+            dispensed_on: String::new(),
         }
     }
 
@@ -358,8 +369,8 @@ mod tests {
     fn the_last_box_is_not_the_end() {
         let s = read(&p("2026-09-21", 30, 2, 3), "2026-11-20", 7);
         assert_eq!(s.state, State::Last);
-        assert_eq!(s.ends_on.as_deref(), Some("2026-12-20"));
-        assert_eq!(s.see_by.as_deref(), Some("2026-12-13"));
+        assert_eq!(s.ends_on.as_deref(), Some("2026-12-19"));
+        assert_eq!(s.see_by.as_deref(), Some("2026-12-12"));
         assert!(
             s.see_by < s.ends_on,
             "le rendez-vous se prend avant l'épuisement"
@@ -385,9 +396,22 @@ mod tests {
         assert_eq!(early.step, 2);
         assert_eq!(late.step, 2, "le retard ne fait pas avancer le rang");
         assert_eq!(early.steps, late.steps);
-        // Ce que le jour change, en revanche, c'est jusqu'à quand la
-        // boîte du jour couvre : elle part du jour de la délivrance.
-        assert_ne!(early.covered_to, late.covered_to);
+        // Jusqu'à quand la boîte couvre part du jour où elle a été
+        // délivrée — jamais du jour où la feuille est lue : une fiche
+        // réimprimée trois semaines plus tard annonçait trois semaines
+        // de trop.
+        assert_eq!(
+            early.covered_to, None,
+            "jour de délivrance inconnu, date tue"
+        );
+        let dated = Prescription {
+            dispensed_on: "2026-04-20".to_owned(),
+            ..ordonnance
+        };
+        let at_counter = read(&dated, "2026-04-20", 7);
+        let reprinted = read(&dated, "2026-05-11", 7);
+        assert_eq!(at_counter.covered_to.as_deref(), Some("2026-05-19"));
+        assert_eq!(reprinted.covered_to, at_counter.covered_to);
     }
 
     /// **Zéro n'est pas un.**
@@ -421,7 +445,11 @@ mod tests {
         assert_eq!(s.state, State::Last);
         assert!(!s.has_progress(), "« 1 sur 1 » n'est pas un avancement");
         assert_eq!(s.pips(&one).len(), 1);
-        assert_eq!(s.ends_on.as_deref(), Some("2026-09-28"));
+        // Sept jours à partir du 21 : du 21 au 27 inclus. « Valable
+        // jusqu'au 28 » en donnait un huitième.
+        assert_eq!(s.ends_on.as_deref(), Some("2026-09-27"));
+        assert_eq!(read(&one, "2026-09-27", 7).state, State::Last);
+        assert_eq!(read(&one, "2026-09-28", 7).state, State::Over);
     }
 
     /// **Une visualisation change le dessin, jamais la lecture.**
@@ -516,7 +544,7 @@ mod tests {
     fn an_appointment_is_never_announced_in_the_past() {
         let s = read(&p("2026-09-22", 5, 0, 1), "2026-09-22", 7);
         assert_eq!(s.see_by, None, "{s:?}");
-        assert_eq!(s.ends_on.as_deref(), Some("2026-09-27"));
+        assert_eq!(s.ends_on.as_deref(), Some("2026-09-26"));
         // En retard sur la dernière délivrance : plus de date à tenir.
         let s = read(&p("2026-06-01", 30, 2, 3), "2026-08-28", 7);
         assert_eq!(s.see_by, None, "{s:?}");

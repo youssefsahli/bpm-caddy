@@ -353,6 +353,12 @@ pub fn findings(moves: &[Dispensing], today: &str, rules: &Rules) -> Vec<Finding
 /// Ce qu'une série de délivrances d'un dossier pour un produit dit
 /// d'elle-même : la question la plus grave, ou rien.
 fn judge(group: &[&Dispensing], today: &str, rules: &Rules) -> Option<Finding> {
+    // **Hors vigilance, le module ne dit rien** — pas seulement le
+    // rapprochement : les prescripteurs et la pente posaient encore leur
+    // question sur un produit que `unwatched` comptait en même temps.
+    if group.last()?.max_days <= 0 {
+        return None;
+    }
     let mut found: Vec<Finding> = Vec::new();
     if let Some(f) = rapprochement(group, today, rules) {
         found.push(f);
@@ -537,20 +543,19 @@ fn escalade(group: &[&Dispensing], today: &str, rules: &Rules) -> Option<Finding
         }
         rates.push((w[1].quantity / days as f64, w[0].seq, w[1].seq));
     }
-    if rates.len() <= rules.escalation_steps {
+    // `escalation_steps` compte des **hausses**, et trois hausses se
+    // lisent sur quatre débits : la queue en prenait trois, donc deux
+    // hausses suffisaient. Au moins un débit reste avant, pour la médiane.
+    let span = rules.escalation_steps + 1;
+    if rates.len() <= span {
         return None;
     }
-    let tail = &rates[rates.len() - rules.escalation_steps..];
+    let tail = &rates[rates.len() - span..];
     // Une pente, et non une bosse : strictement croissante.
     if !tail.windows(2).all(|p| p[1].0 > p[0].0) {
         return None;
     }
-    let usual = median_f(
-        rates[..rates.len() - rules.escalation_steps]
-            .iter()
-            .map(|r| r.0)
-            .collect(),
-    )?;
+    let usual = median_f(rates[..rates.len() - span].iter().map(|r| r.0).collect())?;
     let top = tail.last()?.0;
     if usual <= 0.0 || top < usual * rules.escalation_ratio {
         return None;
@@ -784,6 +789,10 @@ mod tests {
             m.max_days = 0;
         }
         assert!(findings(&loose, today, &rules).is_empty());
+        // Aucune question du tout : ni la pente, ni trois prescripteurs.
+        loose[2].prescriber = "Dr Lemoine";
+        loose[3].prescriber = "Dr Sow";
+        assert!(findings(&loose, today, &rules).is_empty());
         assert_eq!(unwatched(&loose), 1, "et la vue doit pouvoir le dire");
     }
 
@@ -911,7 +920,8 @@ mod tests {
             .expect("la pente doit se voir");
         match &esc.evidence {
             Evidence::Rate { rates, usual } => {
-                assert_eq!(rates.len(), 3);
+                // Trois hausses se lisent sur quatre débits.
+                assert_eq!(rates.len(), 4);
                 assert!(
                     rates.windows(2).all(|p| p[1] > p[0]),
                     "les débits montent : {rates:?}"
@@ -920,6 +930,18 @@ mod tests {
             }
             other => panic!("mauvaise preuve : {other:?}"),
         }
+
+        // Deux hausses ne sont pas trois : la queue en lisait trois
+        // débits, donc deux hausses suffisaient.
+        let two = [
+            d(1, "2026-01-01", 14.0, "Dr Martin", 7),
+            d(2, "2026-01-29", 14.0, "Dr Martin", 7),
+            d(3, "2026-02-26", 14.0, "Dr Martin", 7),
+            d(4, "2026-03-26", 22.0, "Dr Martin", 7),
+            d(5, "2026-04-23", 30.0, "Dr Martin", 7),
+        ];
+        let out = findings(&two, "2026-04-24", &rules);
+        assert!(out.iter().all(|f| f.signal != Signal::Escalade), "{out:?}");
     }
 
     /// Une délivrance annulée n'a pas eu lieu, et ne fait pas un motif.

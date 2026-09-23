@@ -19993,8 +19993,13 @@ impl App {
             trf("renew_missing", stand.missing)
         } else if stand.has_progress() {
             trn("renew_stand", &[&stand.step, &stand.steps])
-        } else {
+        } else if stand.steps == 1 {
             tr("renew_stand_none").to_owned()
+        } else {
+            // Renouvelable, mais aucune délivrance notée : la note disait
+            // « non renouvelable », ce que la feuille imprimée, elle, ne
+            // disait pas.
+            tr("fiche_renewal_unrecorded").to_owned()
         };
         [Self::intake_summary(&reading), stand_say]
     }
@@ -22681,7 +22686,17 @@ impl App {
             }
             session.strength_edit = strength_edit;
             session.script_date_edit = session.treat_dosing.map(|id| (id, script_date));
-            if let Some((id, next, was)) = set_script {
+            if let Some((id, mut next, was)) = set_script {
+                // **Une délivrance notée retient son jour** : c'est de lui
+                // que part « couvre jusqu'au ». Un compte qui monte est une
+                // délivrance d'aujourd'hui ; un compte remis à zéro n'a
+                // plus de jour ; un compte corrigé à la baisse n'en invente
+                // pas — le jour gardé devient inconnu plutôt que faux.
+                if next.dispensed > was.dispensed {
+                    next.dispensed_on = session.today.clone();
+                } else if next.dispensed < was.dispensed {
+                    next.dispensed_on.clear();
+                }
                 match session
                     .db
                     .set_patient_prescription(patient.id, id, &next, &was)
