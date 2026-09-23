@@ -143,6 +143,7 @@ fn fetch(url: &str) -> Fetched {
         return Fetched::Failed(crate::strings::tr("annuaire_not_https").to_owned());
     }
     let agent = ureq::AgentBuilder::new()
+        .https_only(true)
         .timeout_connect(std::time::Duration::from_secs(10))
         .timeout_read(std::time::Duration::from_secs(120))
         .user_agent("bpm-caddy")

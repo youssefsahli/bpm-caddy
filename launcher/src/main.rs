@@ -93,6 +93,23 @@ fn version_file() -> PathBuf {
     app_dir().join("version.txt")
 }
 
+/// La taille du binaire installé, écrite à côté de sa version : une
+/// version juste sur un fichier tronqué — une coupure de courant après
+/// le renommage — ne se retéléchargeait jamais.
+fn size_file() -> PathBuf {
+    app_dir().join("version.size")
+}
+
+/// Les nombres d'une étiquette `v0.257.0`, pour comparer des versions
+/// comme des nombres : « 0.100 » est après « 0.99 ».
+fn version_parts(tag: &str) -> Vec<u64> {
+    tag.trim()
+        .trim_start_matches('v')
+        .split(['.', '-'])
+        .map_while(|p| p.parse().ok())
+        .collect()
+}
+
 fn worker(shared: Arc<Shared>, ctx: egui::Context) {
     let outcome = check_and_update(&shared);
     let mut phase = shared.phase.lock().unwrap();
@@ -116,6 +133,9 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
         .timeout_connect(Duration::from_secs(10))
         .timeout_read(Duration::from_secs(30))
         .user_agent("bpm-caddy-launcher")
+        // Une redirection vers `http://` n'est pas suivie : ce qui
+        // arrive ici devient l'exécutable du comptoir.
+        .https_only(true)
         .build();
     let release: serde_json::Value = agent
         .get(&format!(
@@ -130,8 +150,22 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
 
     let installed = std::fs::read_to_string(version_file()).unwrap_or_default();
     let bin = bin_path();
-    if installed.trim() == tag && bin.exists() {
-        return Ok(format!("À jour ({tag})"));
+    // Le binaire installé est-il entier ? Sa taille est retenue à
+    // l'installation ; une taille qui ne correspond plus est un fichier
+    // abîmé, et il se retélécharge.
+    let whole = match std::fs::read_to_string(size_file())
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+    {
+        Some(size) => std::fs::metadata(&bin).is_ok_and(|m| m.len() == size),
+        None => bin.exists(),
+    };
+    // **Jamais en arrière** : si la dernière publication est retirée,
+    // « la plus récente » redevient la précédente, et chaque officine
+    // aurait remplacé une version par une plus ancienne — qui ouvrirait
+    // une base qu'une version plus récente a déjà migrée.
+    if whole && version_parts(&tag) <= version_parts(&installed) {
+        return Ok(format!("À jour ({})", installed.trim()));
     }
 
     *shared.phase.lock().unwrap() = Phase::Downloading(tag.clone());
@@ -155,22 +189,39 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     shared.downloaded.store(0, Ordering::Relaxed);
 
     std::fs::create_dir_all(app_dir())?;
-    let tmp = bin.with_extension("part");
-    let mut file = std::fs::File::create(&tmp)?;
-    let mut reader = resp.into_reader();
-    let mut buf = [0u8; 64 * 1024];
-    let mut written: u64 = 0;
-    loop {
-        let n = reader.read(&mut buf)?;
-        if n == 0 {
-            break;
+    // **Un fichier temporaire par lanceur** : sous un nom fixe, un second
+    // lanceur ouvert d'un double clic vidait le fichier que le premier
+    // écrivait, et le premier installait un binaire troué — que plus
+    // rien ne remplaçait, puisque sa version était la bonne.
+    let tmp = bin.with_extension(format!("{}.part", std::process::id()));
+    let download = || -> Result<u64, Box<dyn std::error::Error>> {
+        let mut file = std::fs::File::create(&tmp)?;
+        let mut reader = resp.into_reader();
+        let mut buf = [0u8; 64 * 1024];
+        let mut written: u64 = 0;
+        loop {
+            let n = reader.read(&mut buf)?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&buf[..n])?;
+            written += n as u64;
+            shared.downloaded.fetch_add(n as u64, Ordering::Relaxed);
         }
-        file.write_all(&buf[..n])?;
-        written += n as u64;
-        shared.downloaded.fetch_add(n as u64, Ordering::Relaxed);
-    }
-    file.flush()?;
-    drop(file);
+        // **Sur le disque avant le renommage** : `flush` ne fait rien sur
+        // un fichier, et une coupure de courant juste après pouvait
+        // laisser le nouveau nom sur un contenu vide.
+        file.sync_all()?;
+        Ok(written)
+    };
+    let written = match download() {
+        Ok(n) => n,
+        Err(e) => {
+            // Rien ne traîne sur un disque peut-être déjà plein.
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e);
+        }
+    };
 
     // Never install a truncated binary (a cleanly closed connection can
     // end a download early without any read error).
@@ -197,9 +248,18 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755))?;
+        if let Err(e) = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o755)) {
+            let _ = std::fs::remove_file(&tmp);
+            return Err(e.into());
+        }
     }
-    std::fs::rename(&tmp, &bin)?;
+    if let Err(e) = std::fs::rename(&tmp, &bin) {
+        // Sous Windows, un binaire en cours d'exécution ne se remplace
+        // pas : la version installée reste, et le temporaire part.
+        let _ = std::fs::remove_file(&tmp);
+        return Err(e.into());
+    }
+    std::fs::write(size_file(), written.to_string())?;
     std::fs::write(version_file(), &tag)?;
 
     Ok(format!("Mise à jour vers {tag} effectuée"))
@@ -510,5 +570,16 @@ mod tests {
             "le workflow ne se déclenche plus sur un tag v*"
         );
         assert_eq!(super::REPO, "youssefsahli/bpm-caddy");
+    }
+
+    /// **Les versions se comparent comme des nombres, et jamais en
+    /// arrière** : « 0.100 » vient après « 0.99 », et une publication
+    /// retirée ne fait pas redescendre les postes.
+    #[test]
+    fn versions_compare_as_numbers() {
+        assert!(super::version_parts("v0.100.0") > super::version_parts("v0.99.0"));
+        assert!(super::version_parts("v0.257.0") > super::version_parts("0.256.3"));
+        assert!(super::version_parts("v0.256.0") <= super::version_parts("v0.257.0"));
+        assert!(super::version_parts("v0.1.0") > super::version_parts(""));
     }
 }

@@ -23148,6 +23148,13 @@ impl App {
                             session.set_patients(list);
                         }
                         session.edit_patient = None;
+                        // **Une date de naissance corrigée change l'âge**,
+                        // et avec lui le panneau de l'âge, la section du
+                        // bilan imprimé, le calendrier vaccinal et la puce
+                        // du compagnon : ils gardaient l'ancien jusqu'à la
+                        // réouverture du dossier.
+                        session.refresh_bio_findings();
+                        session.refresh_vacc_due();
                     }
                     Ok((_, false)) => {
                         // Stale: reload the fresh row (header updates),
@@ -23155,6 +23162,8 @@ impl App {
                         if let Ok(list) = session.db.patients() {
                             session.set_patients(list);
                             session.resync_viewing();
+                            session.refresh_bio_findings();
+                            session.refresh_vacc_due();
                         }
                         // Composé avant l'emprunt du formulaire, et
                         // compté même si aucun n'est ouvert : la
@@ -52516,9 +52525,15 @@ impl App {
 
     fn companion_clip(d: &Drug, read: &CompanionRead, page: Option<CompanionPage>) -> String {
         let mut out = d.name.trim().to_owned();
+        // Sans libellé, pas de « : » devant : les puces et les lignes
+        // de posologie se collaient toutes précédées d'un deux-points.
         let mut part = |label: &str, text: &str| {
             if !text.trim().is_empty() {
-                out.push_str(&format!("\n\n{label} : {}", text.trim()));
+                if label.trim().is_empty() {
+                    out.push_str(&format!("\n\n{}", text.trim()));
+                } else {
+                    out.push_str(&format!("\n\n{label} : {}", text.trim()));
+                }
             }
         };
         match page {
@@ -55102,7 +55117,15 @@ fn companion_signals(
         list.push(card.clone());
     }
     let me = card.name.trim();
-    if file.iter().any(|d| d.id != card.id) {
+    // **Deux questions demandent une autre ligne, deux autres non.** Le
+    // bloc entier attendait une seconde ligne au dossier : une ordonnance
+    // qui ne portait que le Téralithe, lithiémie en retard, ne montrait
+    // ni « à surveiller » ni « déjà au dossier » — et la page « Dossier »
+    // marquait la même ligne, si bien que la barre se contredisait. Les
+    // interactions, la revue et les cytochromes croisent ; la
+    // surveillance et le doublon lisent le dossier tel qu'il est.
+    let crossed = file.iter().any(|d| d.id != card.id);
+    if !file.is_empty() {
         // Ce que les fiches du dossier disent **de celle-ci**, cité.
         // L'autre ligne est retrouvée par son identifiant et non en
         // relisant le libellé : le libellé est une écriture, et deux
@@ -55119,7 +55142,7 @@ fn companion_signals(
                 (name.to_owned(), sentence)
             })
             .collect();
-        if !pairs.is_empty() {
+        if crossed && !pairs.is_empty() {
             let mut hover = trf("companion_cross_head", pairs.len());
             for (other, sentence) in &pairs {
                 hover.push_str(&format!("\n\n{other} — {sentence}"));
@@ -55149,7 +55172,7 @@ fn companion_signals(
             .into_iter()
             .filter(|p| p.drugs.iter().any(|n| n == me))
             .collect();
-        if !points.is_empty() {
+        if crossed && !points.is_empty() {
             let mut hover = trf("companion_revue_head", points.len());
             for p in &points {
                 hover.push_str(&format!("\n\n{} — {}", p.title, p.detail));
@@ -55265,7 +55288,7 @@ fn companion_signals(
             .iter()
             .filter(|c| c.actor == me || c.affected == me)
             .collect();
-        if !mine.is_empty() {
+        if crossed && !mine.is_empty() {
             let mut hover = tr("cyp_scope").to_owned();
             for c in &mine {
                 hover.push_str(&format!(

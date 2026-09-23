@@ -125,7 +125,9 @@ fn check() -> Checked {
 }
 
 fn fetch_latest() -> Result<serde_json::Value, String> {
+    // `https_only` : une redirection vers `http://` n'est pas suivie.
     let agent = ureq::AgentBuilder::new()
+        .https_only(true)
         .timeout_connect(std::time::Duration::from_secs(10))
         .timeout_read(std::time::Duration::from_secs(15))
         .user_agent("bpm-caddy")

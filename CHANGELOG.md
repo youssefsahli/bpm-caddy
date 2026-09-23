@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.258.0] - 2026-09-23
+
+### Fixed
+- **Le lanceur ne peut plus installer un binaire abîmé pour de bon.**
+  Deux lanceurs ouverts d'un double clic écrivaient le même fichier
+  temporaire, et le premier installait un binaire troué que plus rien
+  ne remplaçait, puisque sa version était la bonne. Chaque lanceur a
+  désormais son propre temporaire, retiré à tout échec ; le binaire est
+  écrit sur le disque avant d'être mis en place, et sa taille, retenue
+  à l'installation, est revérifiée au démarrage suivant — un fichier
+  abîmé se retélécharge. Et le lanceur **ne revient jamais en arrière**
+  si la dernière publication disparaît. Les téléchargements refusent
+  toute redirection vers une adresse non chiffrée.
+- **Le compagnon** montre « à surveiller » et « déjà au dossier » même
+  quand la fiche cherchée est la seule ligne du dossier, et suit une
+  date de naissance corrigée — comme le panneau de l'âge, le bilan
+  imprimé et le calendrier vaccinal, qui gardaient l'ancien âge.
+- La toxicité psychique du Keppra paraît dans « Précautions » : elle
+  était rangée parmi ce qu'il traite. Et ce que le compagnon copie ne
+  commence plus par un deux-points.
+
 ## [0.257.0] - 2026-09-23
 
 ### Fixed

@@ -1593,7 +1593,12 @@ const IMPACTS: &[(&str, Organ, Effect, Grade, &str)] = &[
     ("Dexambutol", Organ::Neuro, Effect::Altere, Grade::Majeur, "névrite optique rétrobulbaire dose-dépendante"),
     ("Rimifon", Organ::Neuro, Effect::Altere, Grade::Notable, "neuropathie périphérique prévenue par la vitamine B6"),
     ("Lamictal", Organ::Neuro, Effect::Traite, Grade::Majeur, "antiépileptique, la vitesse de titration est la marge"),
-    ("Keppra", Organ::Neuro, Effect::Traite, Grade::Majeur, "antiépileptique, toxicité psychique dose-dépendante"),
+    ("Keppra", Organ::Neuro, Effect::Traite, Grade::Majeur, "antiépileptique des crises partielles, myocloniques et généralisées"),
+    // **Sa toxicité, écrite comme une toxicité** : elle vivait dans la
+    // clause de ce que le Keppra traite, et « Précautions », qui ne
+    // montre que ce qu'une fiche altère, n'en disait rien — alors que la
+    // fiche l'écrit en tête de sa toxicité.
+    ("Keppra", Organ::Neuro, Effect::Altere, Grade::Notable, "troubles du comportement, dépression et idées suicidaires, dose-dépendants"),
     ("Dépakine", Organ::Neuro, Effect::Traite, Grade::Majeur, "antiépileptique, tératogène le mieux documenté"),
     ("Rivotril", Organ::Neuro, Effect::Traite, Grade::Majeur, "antiépileptique, prescription encadrée"),
     ("Amiklin", Organ::Oreille, Effect::Altere, Grade::Majeur, "atteinte cochléovestibulaire irréversible, pouvant apparaître après la fin du traitement"),
@@ -3957,6 +3962,7 @@ mod tests {
                     "serotoninergique",
                     "akathisie",
                     "coma",
+                    "suicid",
                 ],
             ),
             (
