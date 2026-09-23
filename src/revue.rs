@@ -761,10 +761,13 @@ const RULES: &[Rule] = &[
                 "bétaméthasone",
                 "dexaméthasone",
             ]],
+            // Pas « calcium » : le mot nomme aussi le Rennie (un
+            // antiacide) et le Resikali (une résine à potassium), qui
+            // faisaient taire la règle — voir
+            // `an_absence_is_not_filled_by_a_namesake`.
             &[
                 "vitamine D",
                 "cholécalciférol",
-                "calcium",
                 "bisphosphonate",
                 "biphosphonate",
                 "alendronate",
@@ -1141,7 +1144,8 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Without(
             &[&["anti-aromatase", "anastrozole", "létrozole", "exémestane"]],
-            &["calcium", "vitamine D", "cholécalciférol", "bisphosphonate", "biphosphonate", "alendronate", "risédronate", "acide zolédronique", "dénosumab"],
+            // Pas « calcium », pour la même raison qu'au-dessus.
+            &["vitamine D", "cholécalciférol", "bisphosphonate", "biphosphonate", "alendronate", "risédronate", "acide zolédronique", "dénosumab"],
             &[],
         ),
         severity: Severity::Warn,

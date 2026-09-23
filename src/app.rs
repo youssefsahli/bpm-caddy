@@ -76,6 +76,67 @@ fn spawn_daily_backup(
     });
 }
 
+/// Une copie quotidienne, **écrite à côté puis mise en place**, et un
+/// élagage **à l'âge du fichier**.
+///
+/// Deux fautes que trois copies de ce code partageaient. Un
+/// `VACUUM INTO` interrompu (disque plein) laissait un fichier partiel
+/// sous le nom du jour — et comme ce nom existait, la copie du jour ne
+/// se refaisait plus, et l'on croyait l'avoir. Et l'élagage triait par
+/// nom, c'est-à-dire par la date **de l'horloge du poste qui avait
+/// copié** : un poste en avance écrivait « 2030 », que plus rien ne
+/// délogeait, et avec `keep = 1` chaque copie juste était effacée
+/// aussitôt écrite. Le fichier partiel porte `.part` jusqu'à ce qu'il
+/// soit complet, et l'élagage garde les plus récemment écrits.
+fn daily_copy(
+    dir: &std::path::Path,
+    target: &std::path::Path,
+    prefix: &str,
+    keep: usize,
+    write: impl FnOnce(&std::path::Path) -> Result<(), String>,
+) {
+    if target.exists() {
+        return;
+    }
+    if let Err(e) = std::fs::create_dir_all(dir) {
+        eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
+        return;
+    }
+    let part = target.with_extension("db.part");
+    let _ = std::fs::remove_file(&part);
+    if let Err(e) = write(&part) {
+        let _ = std::fs::remove_file(&part);
+        eprintln!("bpm-caddy : {e}");
+        return;
+    }
+    // Un autre poste a pu faire la sienne entre-temps : la sienne reste.
+    if target.exists() || std::fs::rename(&part, target).is_err() {
+        let _ = std::fs::remove_file(&part);
+        return;
+    }
+    let mut backups: Vec<(std::time::SystemTime, std::path::PathBuf)> = std::fs::read_dir(dir)
+        .map(|rd| {
+            rd.filter_map(|e| e.ok().map(|e| e.path()))
+                .filter(|p| {
+                    p.file_name()
+                        .and_then(|n| n.to_str())
+                        .is_some_and(|n| n.starts_with(prefix) && n.ends_with(".db"))
+                })
+                .map(|p| {
+                    let when = std::fs::metadata(&p)
+                        .and_then(|m| m.modified())
+                        .unwrap_or(std::time::UNIX_EPOCH);
+                    (when, p)
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    backups.sort();
+    while backups.len() > keep {
+        let _ = std::fs::remove_file(backups.remove(0).1);
+    }
+}
+
 /// La copie quotidienne du registre.
 ///
 /// Elle suit le **plus grand** des deux comptes, et non le sien : le
@@ -97,32 +158,9 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
     let target = dir.join(db::stups_backup_name(&today));
-    if target.exists() {
-        return;
-    }
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
-        return;
-    }
-    if let Err(e) = db.backup_stups_to(&target) {
-        eprintln!("bpm-caddy : {e}");
-        return;
-    }
-    let mut backups: Vec<_> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("bpm_caddy_stups-") && n.ends_with(".db"))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    backups.sort();
-    while backups.len() > keep {
-        let _ = std::fs::remove_file(backups.remove(0));
-    }
+    daily_copy(&dir, &target, "bpm_caddy_stups-", keep, |to| {
+        db.backup_stups_to(to)
+    });
 }
 
 /// La copie quotidienne du fichier des pièces, sur son propre compte.
@@ -145,32 +183,9 @@ fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
     let target = dir.join(db::scans_backup_name(&today));
-    if target.exists() {
-        return;
-    }
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
-        return;
-    }
-    if let Err(e) = db.backup_scans_to(&target) {
-        eprintln!("bpm-caddy : {e}");
-        return;
-    }
-    let mut backups: Vec<_> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("bpm_caddy_scans-") && n.ends_with(".db"))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    backups.sort();
-    while backups.len() > keep {
-        let _ = std::fs::remove_file(backups.remove(0));
-    }
+    daily_copy(&dir, &target, "bpm_caddy_scans-", keep, |to| {
+        db.backup_scans_to(to)
+    });
 }
 
 /// One backup per day, in `backups/` next to the database, pruned to
@@ -185,33 +200,7 @@ fn daily_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
     let target = dir.join(db::backup_name(&today));
-    if target.exists() {
-        return;
-    }
-    if let Err(e) = std::fs::create_dir_all(&dir) {
-        eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
-        return;
-    }
-    if let Err(e) = db.backup_to(&target) {
-        eprintln!("bpm-caddy : {e}");
-        return;
-    }
-    // Date-named files sort chronologically: drop the oldest past `keep`.
-    let mut backups: Vec<_> = std::fs::read_dir(&dir)
-        .map(|rd| {
-            rd.filter_map(|e| e.ok().map(|e| e.path()))
-                .filter(|p| {
-                    p.file_name()
-                        .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with("bpm_caddy-") && n.ends_with(".db"))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
-    backups.sort();
-    while backups.len() > keep {
-        let _ = std::fs::remove_file(backups.remove(0));
-    }
+    daily_copy(&dir, &target, "bpm_caddy-", keep, |to| db.backup_to(to));
 }
 
 /// Build the billing-reconciliation CSV: BOM + semicolons for French
@@ -58621,7 +58610,15 @@ impl eframe::App for App {
                 .canonicalize()
                 .map(|t| current.canonicalize().map(|c| t == c).unwrap_or(false))
                 .unwrap_or(false);
-            let result = if same {
+            // **Ni la base, ni ses pièces, ni son registre** : la
+            // vérification ne regardait que la base, et choisir le
+            // fichier des pièces ou du registre comme destination le
+            // supprimait avant d'y copier la base.
+            let onto_live = matches!(&self.state, State::Unlocked(session)
+                if [target.clone(), db::scans_path(&target), db::stups_path(&target)]
+                    .iter()
+                    .any(|p| session.db.is_live(p)));
+            let result = if same || onto_live {
                 Err(tr("opts_db_same").to_owned())
             } else if let State::Unlocked(session) = &self.state {
                 // The native dialog already confirmed overwriting, but
@@ -58638,17 +58635,25 @@ impl eframe::App for App {
                 session
                     .db
                     .backup_to(&target)
+                    // **Et ce qui traînait à l'arrivée part d'abord**, même
+                    // quand il n'y a rien à copier : un registre resté là
+                    // d'un essai précédent devenait, au démarrage suivant,
+                    // le registre de la base qu'on vient de copier.
                     .and_then(|()| {
-                        if session.db.scan_weight().map(|(n, _)| n).unwrap_or(0) == 0 {
-                            return Ok(());
-                        }
                         let side = db::scans_path(&target);
                         if side.exists() {
                             let _ = std::fs::remove_file(&side);
                         }
+                        if session.db.scan_weight().map(|(n, _)| n).unwrap_or(0) == 0 {
+                            return Ok(());
+                        }
                         session.db.backup_scans_to(&side)
                     })
                     .and_then(|()| {
+                        let side = db::stups_path(&target);
+                        if side.exists() {
+                            let _ = std::fs::remove_file(&side);
+                        }
                         if session
                             .db
                             .stup_weight()
@@ -58657,10 +58662,6 @@ impl eframe::App for App {
                             == 0
                         {
                             return Ok(());
-                        }
-                        let side = db::stups_path(&target);
-                        if side.exists() {
-                            let _ = std::fs::remove_file(&side);
                         }
                         session.db.backup_stups_to(&side)
                     })
@@ -66799,6 +66800,31 @@ mod tests {
             vec![id],
             "aucune seconde trame"
         );
+    }
+
+    /// **Une copie ne se croit pas faite quand elle a échoué, et
+    /// l'élagage ne fait pas confiance à l'horloge d'un autre poste.**
+    #[test]
+    fn a_daily_copy_is_whole_or_absent_and_pruned_by_age() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-dailycopy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        // Un poste en avance a écrit « 2030 ».
+        std::fs::write(dir.join("bpm_caddy-2030-01-01.db"), b"futur").unwrap();
+        std::thread::sleep(std::time::Duration::from_millis(20));
+        // Une copie qui échoue ne laisse rien sous le nom du jour.
+        let today = dir.join("bpm_caddy-2026-09-23.db");
+        super::daily_copy(&dir, &today, "bpm_caddy-", 1, |_| {
+            Err("disque plein".to_owned())
+        });
+        assert!(!today.exists(), "un échec ne laisse pas de copie du jour");
+        // Celle qui réussit est gardée, et c'est le « 2030 » qui part.
+        super::daily_copy(&dir, &today, "bpm_caddy-", 1, |to| {
+            std::fs::write(to, b"ok").map_err(|e| e.to_string())
+        });
+        assert!(today.exists());
+        assert!(!dir.join("bpm_caddy-2030-01-01.db").exists());
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {

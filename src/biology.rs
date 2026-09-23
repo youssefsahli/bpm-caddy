@@ -1244,7 +1244,10 @@ const RULES: &[Rule] = &[
         code: "PHOS",
         side: Side::Above,
         threshold: 1.45,
-        needs: &["chélateur du phosphore", "sevelamer", "carbonate de calcium"],
+        // Pas « carbonate de calcium » : il nomme aussi le Rennie et le
+        // Cacit, qui ne sont pas des chélateurs prescrits pour le
+        // phosphore, et l'écran leur disait « au milieu du repas ».
+        needs: &["chélateur du phosphore", "sevelamer", "sévélamer", "lanthane"],
         severity: Severity::Info,
         text: "Phosphorémie encore haute sous chélateur : le comprimé se prend au milieu du repas, pas avant ni après — pris à distance, il ne chélate rien.",
     },
@@ -1354,7 +1357,9 @@ const RULES: &[Rule] = &[
         code: "VITD",
         side: Side::Below,
         threshold: 20.0,
-        needs: &["bisphosphonate", "dénosumab", "alendronate", "calcium"],
+        // Pas « calcium » : le Rennie et le Resikali le portent, et ne
+        // traitent pas l'ostéoporose.
+        needs: &["bisphosphonate", "biphosphonate", "dénosumab", "alendronate", "risédronate"],
         severity: Severity::Warn,
         text: "Vitamine D effondrée sous traitement de l'ostéoporose : le traitement perd son efficacité et expose à l'hypocalcémie. Charge de correction puis entretien, et contrôle avant la prochaine injection.",
     },

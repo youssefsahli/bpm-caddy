@@ -29896,6 +29896,12 @@ impl Db {
     /// n'en garde pas, et lui en faire garder un pour ce seul usage
     /// serait mettre une clé dans un objet qui vit toute la séance.
     pub fn export_bundle(&self, to: &Path, password: &str) -> Result<(), String> {
+        // **Jamais par-dessus un fichier vivant** : le paquet commençait
+        // par supprimer sa destination, et choisir par mégarde la base,
+        // ses pièces ou son registre les effaçait.
+        if self.is_live(to) {
+            return Err(crate::strings::tr("export_onto_live").to_owned());
+        }
         let stage = to.with_extension("en-cours");
         let _ = std::fs::remove_dir_all(&stage);
         std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
@@ -29910,8 +29916,12 @@ impl Db {
         // Le paquet est réécrit et jamais complété : un export par
         // dessus un autre laisserait la moitié d'hier sous la moitié
         // d'aujourd'hui, et rien ne dirait laquelle est laquelle.
-        let _ = std::fs::remove_file(to);
-        let out = Connection::open(to).map_err(|e| e.to_string())?;
+        //
+        // **Écrit à côté, puis mis en place** : supprimé d'abord, un
+        // export qui échouait en route avait déjà détruit le paquet de la
+        // veille. Le nom définitif n'est pris qu'une fois tout écrit.
+        let part = stage.join("paquet.part");
+        let out = Connection::open(&part).map_err(|e| e.to_string())?;
         out.pragma_update(None, "key", password)
             .map_err(|e| e.to_string())?;
         out.execute_batch(
@@ -29950,11 +29960,30 @@ impl Db {
             .map_err(|e| e.to_string())?;
         }
         drop(out);
+        let _ = std::fs::remove_file(to);
+        std::fs::rename(&part, to)
+            .or_else(|_| std::fs::copy(&part, to).map(|_| ()))
+            .map_err(|e| e.to_string())?;
         // Les trois copies intermédiaires ne traînent pas : ce sont des
         // bases en clair de rien du tout — chiffrées, mais posées dans
         // un dossier que personne ne surveille.
         let _ = std::fs::remove_dir_all(&stage);
         Ok(())
+    }
+
+    /// Ce chemin est-il l'un des trois fichiers que ce poste tient
+    /// ouverts ? Comparé une fois résolu, pour qu'un lien ou un « ../ »
+    /// ne passe pas à côté.
+    pub fn is_live(&self, target: &Path) -> bool {
+        let resolve = |p: &Path| std::fs::canonicalize(p).ok();
+        let Some(target) = resolve(target) else {
+            return false;
+        };
+        [self.conn.path(), self.scans.path(), self.stups.path()]
+            .into_iter()
+            .flatten()
+            .filter_map(|p| resolve(Path::new(p)))
+            .any(|live| live == target)
     }
 
     /// Rend les trois fichiers d'un paquet, dans un dossier choisi.

@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.254.0] - 2026-09-23
+
+### Fixed
+- **Un paquet exporté ne peut plus effacer ce qu'il copie.** Il
+  commençait par supprimer sa destination : choisir par mégarde la
+  base, ses pièces ou son registre les effaçait, et un export qui
+  échouait en route avait déjà détruit celui de la veille. Il s'écrit
+  désormais à côté et ne prend son nom qu'une fois complet, et refuse
+  un fichier ouvert. « Copier la base vers… » refuse de même les pièces
+  et le registre ouverts, et retire ce qui traînait à l'arrivée d'un
+  essai précédent — un registre resté là devenait celui de la base
+  copiée.
+- **Les copies quotidiennes** s'écrivent à côté puis se mettent en
+  place : une copie interrompue ne se fait plus passer pour celle du
+  jour. Et l'élagage garde les plus récemment écrites au lieu de se fier
+  au nom, c'est-à-dire à l'horloge du poste qui les a faites — un poste
+  en avance n'efface plus les copies des autres.
+- « Déplacer la base vers… » et l'import d'un paquet disent que les
+  autres postes doivent être repointés, faute de quoi chacun écrit dans
+  une base différente.
+- **« Calcium » ne comble plus une absence qu'il ne comble pas** : un
+  antiacide ou une résine à potassium ne faisaient plus taire
+  « corticoïde sans protection osseuse » ni « anti-aromatase sans
+  protection osseuse », ni ne recevaient en biologie les lectures d'un
+  chélateur du phosphore ou d'un traitement de l'ostéoporose.
+
 ## [0.253.0] - 2026-09-23
 
 ### Fixed
