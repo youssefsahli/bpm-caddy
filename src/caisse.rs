@@ -170,8 +170,8 @@ pub fn cash_total(quantities: &Quantities) -> i64 {
     DENOMINATIONS
         .iter()
         .zip(quantities.iter())
-        .map(|(d, q)| d.cents * (*q).max(0))
-        .sum()
+        .map(|(d, q)| d.cents.saturating_mul((*q).max(0)))
+        .fold(0_i64, i64::saturating_add)
 }
 
 /// Le total des billets seuls — ce qu'on met sous enveloppe.
@@ -181,14 +181,14 @@ pub fn notes_total(quantities: &Quantities) -> i64 {
         .iter()
         .zip(quantities.iter())
         .filter(|(d, _)| d.note)
-        .map(|(d, q)| d.cents * (*q).max(0))
-        .sum()
+        .map(|(d, q)| d.cents.saturating_mul((*q).max(0)))
+        .fold(0_i64, i64::saturating_add)
 }
 
 /// Le total des pièces seules.
 #[must_use]
 pub fn coins_total(quantities: &Quantities) -> i64 {
-    cash_total(quantities) - notes_total(quantities)
+    cash_total(quantities).saturating_sub(notes_total(quantities))
 }
 
 /// Combien de coupures ont été comptées, toutes valeurs confondues.
@@ -196,7 +196,10 @@ pub fn coins_total(quantities: &Quantities) -> i64 {
 /// chose qu'un tiroir vide — et la feuille le dit.
 #[must_use]
 pub fn pieces(quantities: &Quantities) -> i64 {
-    quantities.iter().map(|q| (*q).max(0)).sum()
+    quantities
+        .iter()
+        .map(|q| (*q).max(0))
+        .fold(0_i64, i64::saturating_add)
 }
 
 /// Le comptage complet.

@@ -2043,8 +2043,12 @@ add clicking and typing; it is not the price of entry.
   cancelling one, whose own quantity is never looked at. That matters:
   the day you correct is the day the quantity was wrong, so a
   hand-typed opposite line gives back what somebody *believed* was
-  taken. Cancelling an inventory restores its stored `expected`, which
-  is the only reason that column is written rather than recomputed. An
+  taken. Cancelling an inventory **replays the register without it**
+  (and without every count already cancelled) up to the cancellation:
+  giving back the stored `expected − quantity` lost a forgotten line
+  entered afterwards at its true date, and a later count that was
+  itself cancelled stopped the earlier one from cancelling. `expected`
+  is still written — it is the gap the count explained. An
   annulation cannot itself be cancelled, cannot be written twice
   (checked inside the transaction — two PCs would double the stock),
   cannot name a line of another product, and never takes a dispensing

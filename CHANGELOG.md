@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.262.0] - 2026-09-23
+
+### Fixed
+- **Registre des stupéfiants : annuler un comptage relit le registre
+  sans lui.** Une sortie oubliée, inscrite ensuite à sa vraie date,
+  disparaissait du solde à l'annulation du comptage qu'elle expliquait ;
+  et un comptage plus récent, annulé lui aussi, empêchait l'ancien de
+  s'annuler.
+- **Une feuille de comptage antidatée compare au stock de son jour**, et
+  non à celui d'aujourd'hui : elle annonçait des écarts qui n'en étaient
+  pas, puis se faisait refuser en bloc sans nommer de case.
+- **Importer un annuaire qui ne lit personne ne l'efface plus** : un
+  fichier tronqué remplaçait l'annuaire en place par rien. Un champ
+  entre guillemets qui porte un saut de ligne ne fabrique plus un faux
+  prescripteur ; un praticien présent sur plusieurs lignes (une par
+  activité) n'est gardé qu'une fois ; et un fichier fait de deux exports
+  collés garde ses accents justes, ligne par ligne.
+- Le calcul de clairance ne donne plus de chiffre avant 18 ans :
+  Cockcroft-Gault n'est validé que chez l'adulte.
+- Un nombre de pièces absurde tapé dans la caisse ne fait plus déborder
+  le total.
+
 ## [0.261.0] - 2026-09-23
 
 ### Fixed

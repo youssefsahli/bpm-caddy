@@ -4214,6 +4214,9 @@ struct Session {
     /// Le résumé est une requête sur tout le registre : il est relu
     /// quand une ligne est écrite, jamais par image.
     stup_summary: Vec<db::Standing>,
+    /// Le stock de chaque produit au jour d'une feuille antidatée, lu une
+    /// fois par jour tapé et rendu à chaque relecture du registre.
+    batch_stocks: Option<(String, std::collections::HashMap<i64, f64>)>,
     stup_open: Option<i64>,
     stup_moves: Vec<db::StupMove>,
     /// La ligne en train d'être écrite : sa nature, sa quantité et sa
@@ -4839,6 +4842,7 @@ impl Session {
             class_counts_rev: u64::MAX,
             class_orphans: Vec::new(),
             stup_summary: Vec::new(),
+            batch_stocks: None,
             stup_open: None,
             stup_moves: Vec::new(),
             stup_new_kind: crate::ordonnancier::Kind::Sortie,
@@ -5986,6 +5990,7 @@ impl Session {
     /// solde par produit.
     fn reload_stup(&mut self) {
         self.stup_summary = self.db.stup_summary().unwrap_or_default();
+        self.batch_stocks = None;
         // « Trois de quatorze » : le quatorze vient du produit, et il
         // change avec lui. Les trois champs du comptage appartiennent au
         // produit ouvert et à aucun autre — laissés en place, ils
@@ -6240,7 +6245,14 @@ impl Session {
     fn caisse_reading(&self) -> (crate::caisse::Quantities, Vec<crate::caisse::Other>) {
         let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
         for (slot, text) in q.iter_mut().zip(self.caisse_qty.iter()) {
-            *slot = text.trim().parse().unwrap_or(0);
+            // Un million de pièces n'est pas un tiroir : c'est une faute
+            // de frappe, et quinze chiffres faisaient déborder le total.
+            *slot = text
+                .trim()
+                .parse::<i64>()
+                .ok()
+                .filter(|q| *q <= 1_000_000)
+                .unwrap_or(0);
         }
         let others = self
             .caisse_others
@@ -31409,6 +31421,20 @@ impl App {
                         });
                         ui.end_row();
                     });
+                // **Cockcroft-Gault n'est validé que chez l'adulte** : chez
+                // l'enfant la formule donne un chiffre qui a l'air d'une
+                // clairance et n'en est pas une (c'est Schwartz qui
+                // s'applique). Pas de chiffre plutôt qu'un faux.
+                if session.calc_age < 18.0 {
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("calc_cg_adult_only")).color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    return;
+                }
                 let k = if session.calc_female { 1.04 } else { 1.23 };
                 let clearance = if session.calc_creat > 0.0 {
                     (140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat
@@ -31659,7 +31685,7 @@ impl App {
                     // demanderait de faire deux fois.
                     if motif::button(ui, tr("calc_renal_take")).clicked() {
                         let k = if session.calc_female { 1.04 } else { 1.23 };
-                        if session.calc_creat > 0.0 {
+                        if session.calc_creat > 0.0 && session.calc_age >= 18.0 {
                             session.calc_renal_dfg =
                                 ((140.0 - session.calc_age) * session.calc_weight * k
                                     / session.calc_creat)
@@ -38061,6 +38087,36 @@ impl App {
         // plutôt qu'après le refus. Le `Plan` ne retient rien de la
         // feuille — il est en propre —, donc l'emprunt s'arrête ici et
         // le dessin peut réécrire les cases.
+        // **Le stock du jour de la feuille**, et non celui d'aujourd'hui :
+        // l'écriture compare chaque comptage au registre à cette date, et
+        // une feuille antidatée qui comparait au stock du jour annonçait
+        // un écart là où il n'y en avait pas — puis se faisait refuser
+        // en bloc là où elle n'en voyait aucun. Lu une fois par jour
+        // tapé, jamais par image.
+        let sheet_day = if batch.day.trim().is_empty() {
+            None
+        } else {
+            db::parse_french_date(&batch.day, session.year_now(), db::YearHint::Past)
+                .ok()
+                .filter(|iso| *iso < session.today)
+        };
+        if let Some(day) = &sheet_day {
+            if session.batch_stocks.as_ref().is_none_or(|(d, _)| d != day) {
+                let stocks = session.db.stup_stocks_on(day).unwrap_or_default();
+                session.batch_stocks = Some((day.clone(), stocks));
+            }
+        }
+        // Owned for the frame — forty figures — so that the rows below,
+        // which borrow the session, read the same stock as the plan.
+        let on_day: Option<std::collections::HashMap<i64, f64>> = sheet_day
+            .as_ref()
+            .and(session.batch_stocks.as_ref())
+            .map(|(_, m)| m.clone());
+        let sheet_stock = |s: &db::Standing| -> f64 {
+            on_day
+                .as_ref()
+                .map_or(s.stock, |m| m.get(&s.product.id).copied().unwrap_or(0.0))
+        };
         let plan = {
             let slots: Vec<crate::ordonnancier::Slot> = session
                 .stup_summary
@@ -38068,7 +38124,7 @@ impl App {
                 .map(|s| crate::ordonnancier::Slot {
                     stup_id: s.product.id,
                     typed: batch.typed.get(&s.product.id).map_or("", String::as_str),
-                    expected: s.stock,
+                    expected: sheet_stock(s),
                     reason: batch.reasons.get(&s.product.id).map_or("", String::as_str),
                 })
                 .collect();
@@ -38451,7 +38507,7 @@ impl App {
                                                 .get(&id)
                                                 .and_then(|t| crate::codex::parse_amount(t))
                                                 .map(|(v, _)| crate::ordonnancier::Discrepancy {
-                                                    expected: s.stock,
+                                                    expected: sheet_stock(s),
                                                     counted: v,
                                                 })
                                                 .filter(|d| kind == Kind::Inventaire && d.matters())
@@ -38478,9 +38534,11 @@ impl App {
                                                 None => egui::RichText::new(trn(
                                                     "batch_stock",
                                                     &[
-                                                        &crate::codex::format_quantity(s.stock),
+                                                        &crate::codex::format_quantity(
+                                                            sheet_stock(s),
+                                                        ),
                                                         &crate::ordonnancier::agreed_unit(
-                                                            s.stock,
+                                                            sheet_stock(s),
                                                             &s.product.unit,
                                                         ),
                                                     ],
@@ -38548,8 +38606,12 @@ impl App {
                                             .get(&id)
                                             .and_then(|t| crate::codex::parse_amount(t))
                                             .is_some_and(|(v, _)| {
-                                                crate::ordonnancier::reason_owed(kind, s.stock, v)
-                                                    .is_some()
+                                                crate::ordonnancier::reason_owed(
+                                                    kind,
+                                                    sheet_stock(s),
+                                                    v,
+                                                )
+                                                .is_some()
                                             });
                                         motif::field_sized(
                                             ui,

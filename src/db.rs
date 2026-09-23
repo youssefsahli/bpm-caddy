@@ -35064,6 +35064,56 @@ impl Db {
     /// Une requête pour toute la table, et non une par produit : la vue
     /// en affiche la liste, et quarante soldes lus un par un sur un
     /// partage réseau, c'est quarante allers-retours.
+    /// Le stock délivrable de chaque produit **au jour dit**, lignes de
+    /// ce jour comprises — ce qu'une feuille de comptage antidatée doit
+    /// comparer, et ce que l'écriture recalcule de son côté
+    /// ([`Self::stup_balance_on`]). La feuille comparait au stock
+    /// d'aujourd'hui, et refusait en bloc ce que chaque case annonçait
+    /// juste.
+    pub fn stup_stocks_on(&self, day: &str) -> Result<std::collections::HashMap<i64, f64>, String> {
+        let mut stmt = self
+            .stups
+            .prepare(
+                "SELECT stup_id, kind, happened_on, quantity, id, cancels, expected
+                 FROM stup_moves WHERE happened_on <= ?1 ORDER BY happened_on ASC, id ASC",
+            )
+            .map_err(|e| e.to_string())?;
+        type Row = (i64, String, String, f64, i64, i64, f64);
+        let rows: Vec<Row> = stmt
+            .query_map([day], |r| {
+                Ok((
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())?;
+        let mut per: std::collections::HashMap<i64, Vec<crate::ordonnancier::Move>> =
+            std::collections::HashMap::new();
+        for (stup_id, kind, day, quantity, id, cancels, expected) in &rows {
+            per.entry(*stup_id)
+                .or_default()
+                .push(crate::ordonnancier::Move {
+                    kind: crate::ordonnancier::Kind::from_key(kind),
+                    quantity: *quantity,
+                    day,
+                    seq: *id,
+                    cancels: *cancels,
+                    expected: *expected,
+                });
+        }
+        Ok(per
+            .into_iter()
+            .map(|(id, moves)| (id, crate::ordonnancier::balance(&moves).stock))
+            .collect())
+    }
+
     pub fn stup_summary(&self) -> Result<Vec<Standing>, String> {
         let products = self.stupefiants()?;
         let mut stmt = self
@@ -40135,6 +40185,12 @@ mod tests {
             summary[0].stock
         );
         assert_eq!(summary[0].last_count, "", "aucun comptage encore");
+        // Au jour dit, le registre redit ce qu'il disait ce jour-là :
+        // c'est ce qu'une feuille de comptage antidatée compare.
+        let on = |day: &str| db.stup_stocks_on(day).unwrap().get(&sid).copied();
+        assert_eq!(on("2026-01-04"), None, "rien d'écrit encore");
+        assert_eq!(on("2026-01-08"), Some(16.0));
+        assert_eq!(on("2026-01-12"), Some(11.0));
 
         // Un inventaire pose le solde et garde ce qu'il a corrigé.
         db.add_stup_move(&StupMove {

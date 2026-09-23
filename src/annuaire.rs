@@ -100,7 +100,18 @@ pub fn read_body(bytes: Vec<u8>) -> Result<String, String> {
     }
     match String::from_utf8(bytes) {
         Ok(text) => Ok(text),
-        Err(e) => Ok(e.into_bytes().into_iter().map(cp1252).collect()),
+        // **Ligne par ligne** : un fichier fait de deux exports collés
+        // porte des lignes UTF-8 et des lignes Windows, et relire le tout
+        // en Windows pour un seul octet écrivait « LefÃ¨vre » sur chaque
+        // nom juste. Seule la ligne qui n'est pas de l'UTF-8 se replie.
+        Err(e) => Ok(e
+            .into_bytes()
+            .split_inclusive(|b| *b == b'\n')
+            .map(|line| match std::str::from_utf8(line) {
+                Ok(text) => text.to_owned(),
+                Err(_) => line.iter().copied().map(cp1252).collect(),
+            })
+            .collect()),
     }
 }
 
@@ -291,5 +302,10 @@ mod tests {
     fn a_windows_file_keeps_its_apostrophes() {
         let text = read_body(b"D\x92ALMEIDA;C\x9cur;Lef\xe8vre".to_vec()).unwrap();
         assert_eq!(text, "D’ALMEIDA;Cœur;Lefèvre");
+        // Deux exports collés : la ligne UTF-8 reste juste, seule la
+        // ligne Windows se replie.
+        let mut mixed = "Lefèvre;Sète\n".as_bytes().to_vec();
+        mixed.extend_from_slice(b"D\x92ALMEIDA\n");
+        assert_eq!(read_body(mixed).unwrap(), "Lefèvre;Sète\nD’ALMEIDA\n");
     }
 }

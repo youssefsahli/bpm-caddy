@@ -147,6 +147,11 @@ pub struct Imported {
     /// comptés à part : c'est à l'officine de regarder, pas au
     /// logiciel de trancher.
     pub unverified: usize,
+    /// Les lignes d'un praticien déjà lu sous le même RPPS : l'extraction
+    /// publique porte une ligne par **activité**, et un médecin à trois
+    /// cabinets remplissait trois des cinq propositions de la recherche.
+    /// Personne ne manque : c'est la même personne, gardée une fois.
+    pub merged: usize,
     /// Les colonnes effectivement reconnues, dans l'ordre du fichier.
     /// Ce qui permet de dire ce qu'on a lu plutôt que « importé ».
     pub columns: Vec<String>,
@@ -297,7 +302,11 @@ fn fold(raw: &str) -> String {
 /// dit ce qu'il portait, parce qu'un refus qui ne nomme pas ce qu'il a
 /// vu laisse chercher au hasard.
 pub fn import(text: &str) -> Result<Imported, String> {
-    let mut lines = text.lines().filter(|l| !l.trim().is_empty());
+    let records = records(text);
+    let mut lines = records
+        .iter()
+        .map(String::as_str)
+        .filter(|l| !l.trim().is_empty());
     let Some(header) = lines.next() else {
         return Err(crate::strings::tr("presc_import_empty").to_owned());
     };
@@ -337,6 +346,7 @@ pub fn import(text: &str) -> Result<Imported, String> {
         columns: at.keys().map(|k| (*k).to_owned()).collect(),
         ..Imported::default()
     };
+    let mut seen = std::collections::HashSet::new();
     for line in lines {
         let cells = cells_of(line, sep);
         let mut who = Prescriber {
@@ -364,12 +374,81 @@ pub fn import(text: &str) -> Result<Imported, String> {
                 who.rpps.clear();
             }
         }
+        let key = who.rpps.trim().to_owned();
+        if !key.is_empty() && !seen.insert(key) {
+            out.merged += 1;
+            continue;
+        }
         if !who.rpps.trim().is_empty() && !who.rpps_checks() {
             out.unverified += 1;
         }
         out.found.push(who);
     }
+    // **Zéro personne lue n'est pas un annuaire vide** : l'import
+    // remplace l'annuaire en place, et un fichier tronqué ou une réponse
+    // de serveur qui n'était pas la bonne l'effaçait sous « 0
+    // prescripteur importé ». Rien n'est remplacé par rien.
+    if out.found.is_empty() {
+        return Err(crate::strings::trf("presc_import_none", out.skipped));
+    }
     Ok(out)
+}
+
+/// Les enregistrements d'un CSV, et non ses lignes : un champ entre
+/// guillemets peut porter un saut de ligne (« Alice⏎Marie »), et couper
+/// sur les lignes en faisait deux personnes, la seconde nommée d'après
+/// la ville de la première. Le saut de ligne d'un champ devient une
+/// espace ; celui d'un fin d'enregistrement Windows perd son `\r`.
+fn records(text: &str) -> Vec<String> {
+    // The separator is the header's, and a quote opens a field only at
+    // its start — the same reading as `cells_of`, or a stray quote inside
+    // a name would swallow every line after it.
+    let header = text.lines().find(|l| !l.trim().is_empty()).unwrap_or("");
+    let sep = separator(header);
+    let mut out = Vec::new();
+    let mut record = String::new();
+    let mut quoted = false;
+    let mut at_start = true;
+    let mut chars = text.chars().peekable();
+    while let Some(c) = chars.next() {
+        if quoted {
+            if c == '"' {
+                record.push(c);
+                if chars.peek() == Some(&'"') {
+                    record.push('"');
+                    chars.next();
+                } else {
+                    quoted = false;
+                }
+            } else if c == '\n' {
+                if record.ends_with('\r') {
+                    record.pop();
+                }
+                record.push(' ');
+            } else {
+                record.push(c);
+            }
+            continue;
+        }
+        match c {
+            '\n' => {
+                if record.ends_with('\r') {
+                    record.pop();
+                }
+                out.push(std::mem::take(&mut record));
+                at_start = true;
+                continue;
+            }
+            '"' if at_start => quoted = true,
+            _ => {}
+        }
+        at_start = c == sep;
+        record.push(c);
+    }
+    if !record.is_empty() {
+        out.push(record);
+    }
+    out
 }
 
 /// Cherche dans l'annuaire, comme le reste de l'application cherche.
@@ -514,10 +593,30 @@ mod tests {
         assert!(!read.found[0].rpps_checks());
         // Une ligne sans nom ne désigne personne : celle-là est
         // écartée, et **comptée**.
-        let nameless = format!("{HEADER}\n10001234565;;;;;;\n");
+        let mut nameless = format!("{HEADER}\n10001234565;;;;;;\n");
+        nameless.push_str("10001234573;Bonnet;Alice;;;;Sète\n");
         let read = import(&nameless).expect("un annuaire");
-        assert!(read.found.is_empty());
+        assert_eq!(read.found.len(), 1);
         assert_eq!(read.skipped, 1);
+        // Et **personne** lu n'est pas un annuaire vide : c'est un refus,
+        // qui laisse l'annuaire en place au lieu de le remplacer par rien.
+        assert!(import(&format!("{HEADER}\n10001234565;;;;;;\n")).is_err());
+        assert!(import(&format!("{HEADER}\n")).is_err());
+    }
+
+    /// Un champ entre guillemets peut porter un saut de ligne, et un
+    /// praticien à plusieurs activités n'est qu'une personne.
+    #[test]
+    fn a_record_is_not_a_line_and_one_rpps_is_one_person() {
+        let text =
+            "\"Identifiant PP\";\"Nom d'exercice\";\"Prénom d'exercice\";\"Libellé commune\"\r\n\
+                    \"10001234573\";\"Bonnet\";\"Alice\r\nMarie\";\"Sète\"\r\n\
+                    \"10001234573\";\"Bonnet\";\"Alice Marie\";\"Agde\"\r\n";
+        let read = import(text).expect("un annuaire");
+        assert_eq!(read.found.len(), 1, "{:?}", read.found);
+        assert_eq!(read.found[0].first, "Alice Marie");
+        assert_eq!(read.found[0].city, "Sète");
+        assert_eq!(read.merged, 1);
     }
 
     /// La recherche trouve par ce qu'on a sous les yeux — y compris le

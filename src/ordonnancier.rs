@@ -817,33 +817,54 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
                 return;
             };
-            // Rendre au solde ce que le comptage lui avait posé : le
-            // registre redit ce qu'il disait avant. C'est la seule
-            // raison pour laquelle `expected` est écrit dans la base au
-            // lieu d'être recalculé à la lecture.
-            //
-            // **Mais seulement l'écart qu'il avait posé**, et pas le
-            // solde d'alors. Reposer `expected` effaçait tout ce qui
-            // s'était écrit entre le comptage et son annulation : une
-            // délivrance de trois boîtes le lendemain disparaissait du
-            // solde. Et si un autre comptage est venu depuis, c'est lui
-            // qui dit ce qu'il y a au coffre : l'annulation de l'ancien
-            // n'y change rien.
+            // **Annuler un comptage, c'est relire le registre comme s'il
+            // n'avait pas eu lieu** — jusqu'à cette ligne, sans lui ni les
+            // comptages déjà annulés. Rendre l'écart écrit à l'époque
+            // (`expected − quantity`) se trompait deux fois : une sortie
+            // oubliée, inscrite ensuite à sa vraie date, disparaissait du
+            // solde ; et un comptage plus récent mais annulé lui-même
+            // empêchait l'ancien de s'annuler. Un comptage venu depuis et
+            // qui tient, lui, dit toujours ce qu'il y a au coffre : la
+            // relecture le rencontre et s'y arrête d'elle-même.
             if target.kind == Kind::Inventaire {
-                let recounted = all.iter().any(|t| {
-                    t.kind == Kind::Inventaire
-                        && (t.day, t.seq) > (target.day, target.seq)
-                        && (t.day, t.seq) < (m.day, m.seq)
-                });
-                if !recounted {
-                    b.stock += target.expected - target.quantity;
-                }
+                b.stock = stock_without_cancelled_counts(all, m);
             } else {
                 shift(b, target.kind, target.quantity, -1.0);
             }
         }
         kind => shift(b, kind, m.quantity, 1.0),
     }
+}
+
+/// Le stock délivrable juste après `upto`, relu sans aucun des comptages
+/// que les annulations écrites jusque-là désignent.
+fn stock_without_cancelled_counts(all: &[&Move], upto: &Move) -> f64 {
+    fn key<'a>(m: &Move<'a>) -> (&'a str, i64) {
+        (m.day, m.seq)
+    }
+    let before: Vec<&Move> = all
+        .iter()
+        .copied()
+        .filter(|m| key(m) <= key(upto))
+        .collect();
+    let dropped: Vec<i64> = before
+        .iter()
+        .filter(|m| m.kind == Kind::Annulation)
+        .filter_map(|m| {
+            all.iter()
+                .find(|t| t.seq == m.cancels && t.kind == Kind::Inventaire)
+                .map(|t| t.seq)
+        })
+        .collect();
+    let mut b = Balance::default();
+    for m in before.iter().filter(|m| key(m) < key(upto)) {
+        match m.kind {
+            Kind::Inventaire if dropped.contains(&m.seq) => {}
+            Kind::Annulation if dropped.contains(&m.cancels) => {}
+            _ => apply(&mut b, m, all),
+        }
+    }
+    b.stock
 }
 
 /// Une ligne a-t-elle été annulée ?
@@ -1970,6 +1991,34 @@ mod tests {
             (balance(&recounted).stock - 12.0).abs() < 1e-9,
             "{}",
             balance(&recounted).stock
+        );
+        // Deux comptages annulés, le plus récent d'abord : aucun ne tient,
+        // et le registre redit l'entrée. Le récent annulé empêchait
+        // l'ancien de s'annuler.
+        let both = [
+            mv(Kind::Entree, 10.0, "2026-09-01", 1),
+            count(8.0, 10.0, "2026-09-02", 2),
+            count(5.0, 8.0, "2026-09-03", 3),
+            cancel(3, "2026-09-04", 4),
+            cancel(2, "2026-09-05", 5),
+        ];
+        assert!(
+            (balance(&both).stock - 10.0).abs() < 1e-9,
+            "{}",
+            balance(&both).stock
+        );
+        // La sortie oubliée, inscrite ensuite à sa vraie date, explique
+        // l'écart du comptage : l'annuler ne la fait pas disparaître.
+        let forgotten = [
+            mv(Kind::Entree, 10.0, "2026-09-01", 1),
+            count(7.0, 10.0, "2026-09-03", 2),
+            mv(Kind::Sortie, 3.0, "2026-09-02", 3),
+            cancel(2, "2026-09-04", 4),
+        ];
+        assert!(
+            (balance(&forgotten).stock - 7.0).abs() < 1e-9,
+            "{}",
+            balance(&forgotten).stock
         );
     }
 
