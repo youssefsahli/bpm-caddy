@@ -32588,17 +32588,20 @@ impl App {
             session.codex_edit = Some(prep.clone());
             session.error = None;
         }
-        if print {
+        // **Une cible illisible ne s'imprime pas sous les quantités de
+        // base** : la fiche écrivait « Quantité préparée : 60 mL » puis la
+        // formule pour 100 g, sans rien pour le dire sur le papier.
+        let factor = crate::codex::scale_factor(&prep.yield_amount, &session.codex_target);
+        if print && !session.codex_target.trim().is_empty() && factor.is_none() {
+            session.error = Some(trf("codex_no_factor", prep.yield_amount.trim()));
+        } else if print {
             let lines: Vec<(String, String, String)> = crate::codex::parse_formula(&prep.formula)
                 .iter()
                 .map(|l| {
                     (
                         l.name.clone(),
                         l.written.clone(),
-                        l.scaled(
-                            crate::codex::scale_factor(&prep.yield_amount, &session.codex_target)
-                                .unwrap_or(1.0),
-                        ),
+                        l.scaled(factor.unwrap_or(1.0)),
                     )
                 })
                 .collect();
@@ -58870,7 +58873,7 @@ impl eframe::App for App {
                 // elle échoue à mi-chemin.
                 session.note(crate::telemetry::Signal::Pass);
                 self.maint_job = Some(crate::maintenance::spawn(
-                    self.config.db_path(),
+                    session.db.path().unwrap_or_else(|| self.config.db_path()),
                     session.password.clone(),
                     job,
                 ));
@@ -58883,7 +58886,11 @@ impl eframe::App for App {
             }
         }
         if let Some((target, point)) = db_export {
-            let current = self.config.db_path();
+            let current = match &self.state {
+                State::Unlocked(session) => session.db.path(),
+                _ => None,
+            }
+            .unwrap_or_else(|| self.config.db_path());
             let same = target
                 .canonicalize()
                 .map(|t| current.canonicalize().map(|c| t == c).unwrap_or(false))

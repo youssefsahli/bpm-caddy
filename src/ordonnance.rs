@@ -153,7 +153,10 @@ const ANGINE: Protocol = Protocol {
     // prend une fois par jour pendant trois.
     temps_de_prise: &[
         "Prendre les doses à intervalle régulier, à heure fixe, comme l'ordonnance l'indique.",
-        "Ces antibiotiques se prennent indifféremment pendant ou en dehors des repas.",
+        // Pas « indifféremment » pour tous : la table « Antibiotiques »
+        // met céfuroxime, cefpodoxime et clarithromycine au repas, et le
+        // céfuroxime-axétil s'absorbe mal à jeun.
+        "Amoxicilline et azithromycine se prennent pendant ou en dehors des repas ; céfuroxime, cefpodoxime et clarithromycine, au cours d'un repas.",
         "Aller au bout du traitement prescrit même si la gorge va mieux dès le deuxième jour.",
         "En cas d'oubli, prendre la dose dès que possible, sauf si la suivante est proche ; ne jamais doubler.",
     ],

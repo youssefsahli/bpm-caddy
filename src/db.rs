@@ -29978,6 +29978,19 @@ impl Db {
     /// Ce chemin est-il l'un des trois fichiers que ce poste tient
     /// ouverts ? Comparé une fois résolu, pour qu'un lien ou un « ../ »
     /// ne passe pas à côté.
+    /// Le fichier que cette session a **réellement** ouvert — pas celui
+    /// que la configuration nomme : un paquet importé ou une base
+    /// déplacée réécrit la configuration tout de suite, et la session
+    /// reste sur l'ancienne base jusqu'au redémarrage. Une passe de
+    /// maintenance lancée sur le chemin de la configuration réinitialisait
+    /// la copie importée en annonçant « fait » sur la base ouverte.
+    pub fn path(&self) -> Option<std::path::PathBuf> {
+        self.conn
+            .path()
+            .filter(|p| !p.is_empty())
+            .map(std::path::PathBuf::from)
+    }
+
     pub fn is_live(&self, target: &Path) -> bool {
         let resolve = |p: &Path| std::fs::canonicalize(p).ok();
         let Some(target) = resolve(target) else {
@@ -30035,13 +30048,37 @@ impl Db {
             }
         }
         std::fs::create_dir_all(into).map_err(|e| e.to_string())?;
-        for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
-            let bytes: Vec<u8> = pack
-                .query_row("SELECT bytes FROM files WHERE name = ?1", [name], |r| {
-                    r.get(0)
-                })
-                .map_err(|e| e.to_string())?;
-            std::fs::write(into.join(name), bytes).map_err(|e| e.to_string())?;
+        // **Les trois ou aucun.** Écrits en place l'un après l'autre, un
+        // disque plein pendant le deuxième laissait une base entière et un
+        // fichier tronqué — qui bloquait ensuite toute nouvelle tentative
+        // (« dossier occupé ») et se serait ouvert comme registre. Chacun
+        // est écrit à côté, synchronisé, et les trois ne prennent leur nom
+        // qu'une fois tous écrits ; au moindre échec, rien ne reste.
+        let part = |name: &str| into.join(format!("{name}.part"));
+        let written = (|| -> Result<(), String> {
+            for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+                let bytes: Vec<u8> = pack
+                    .query_row("SELECT bytes FROM files WHERE name = ?1", [name], |r| {
+                        r.get(0)
+                    })
+                    .map_err(|e| e.to_string())?;
+                let mut f = std::fs::File::create(part(name)).map_err(|e| e.to_string())?;
+                std::io::Write::write_all(&mut f, &bytes).map_err(|e| e.to_string())?;
+                f.sync_all().map_err(|e| e.to_string())?;
+            }
+            for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+                std::fs::rename(part(name), into.join(name)).map_err(|e| e.to_string())?;
+            }
+            Ok(())
+        })();
+        if let Err(e) = written {
+            // None of the three names existed before (checked above), so
+            // whatever carries one now was put there by this call.
+            for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
+                let _ = std::fs::remove_file(part(name));
+                let _ = std::fs::remove_file(into.join(name));
+            }
+            return Err(e);
         }
         Ok(target)
     }

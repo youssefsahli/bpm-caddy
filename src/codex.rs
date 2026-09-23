@@ -107,18 +107,41 @@ fn starts_with_qsp(text: &str) -> bool {
 /// a formula is written here.
 pub fn parse_amount(text: &str) -> Option<(f64, &str)> {
     let text = text.trim();
+    let chars: Vec<(usize, char)> = text.char_indices().collect();
     let mut end = 0;
-    for (i, c) in text.char_indices() {
+    let mut k = 0;
+    while k < chars.len() {
+        let (i, c) = chars[k];
+        let digit = |j: usize| chars.get(j).is_some_and(|(_, c)| c.is_ascii_digit());
         if c.is_ascii_digit() || ((c == ',' || c == '.') && i > 0) {
             end = i + c.len_utf8();
+        } else if matches!(c, ' ' | '\u{a0}' | '\u{202f}')
+            && end > 0
+            && digit(k - 1)
+            && digit(k + 1)
+            && digit(k + 2)
+            && digit(k + 3)
+            && !digit(k + 4)
+        {
+            // **« 1 000 g » est mille grammes**, et non un gramme suivi
+            // de « 000 g » : le séparateur de milliers français est une
+            // espace, et la lecture s'arrêtait dessus — la cible ne se
+            // comparait plus à la formule, et la fiche imprimait les
+            // quantités de base sous « 1 000 g ». Une espace n'est un
+            // séparateur que devant exactement trois chiffres.
         } else {
             break;
         }
+        k += 1;
     }
     if end == 0 {
         return None;
     }
-    let value: f64 = text[..end].replace(',', ".").parse().ok()?;
+    let figure: String = text[..end]
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '\u{a0}' | '\u{202f}'))
+        .collect();
+    let value: f64 = figure.replace(',', ".").parse().ok()?;
     Some((value, text[end..].trim()))
 }
 
@@ -216,6 +239,23 @@ pub fn capsule_batch_mass(dose_mg: f64, count: f64, overage_percent: f64) -> f64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// « 1 000 g » est mille grammes : l'espace des milliers ne coupe
+    /// pas le nombre — mais seulement devant exactement trois chiffres.
+    #[test]
+    fn a_thousands_space_does_not_cut_the_figure() {
+        assert_eq!(parse_amount("1 000 g"), Some((1000.0, "g")));
+        assert_eq!(parse_amount("1\u{a0}000 mL"), Some((1000.0, "mL")));
+        assert_eq!(parse_amount("2 500,5 g"), Some((2500.5, "g")));
+        assert_eq!(parse_amount("5 g"), Some((5.0, "g")));
+        // Deux quantités côte à côte ne se collent pas en une.
+        assert_eq!(parse_amount("2 10000"), Some((2.0, "10000")));
+        assert_eq!(parse_amount("30 12 g"), Some((30.0, "12 g")));
+        assert_eq!(
+            scale_factor("100 g", "1 000 g").map(|f| (f * 100.0).round()),
+            Some(1000.0)
+        );
+    }
 
     #[test]
     fn a_formula_line_is_read_as_written() {

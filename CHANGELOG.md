@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.263.0] - 2026-09-23
+
+### Fixed
+- **Une passe de maintenance porte sur la base ouverte**, et non sur
+  celle que nomme la configuration : après l'import d'un paquet ou un
+  déplacement enregistré, « Réinitialiser » ou « Compacter » agissaient
+  sur la copie qui servira au redémarrage, en annonçant « fait » sur
+  l'autre. La copie de la base vers une destination compare aussi au
+  fichier réellement ouvert.
+- **L'import d'un paquet écrit ses trois fichiers ou aucun** : un disque
+  plein pendant l'écriture laissait une base entière et un registre
+  tronqué, qui bloquait ensuite toute nouvelle tentative.
+- **Codex** : « 1 000 g » se lit mille grammes, et une fiche de
+  fabrication dont la quantité cible ne se compare pas à la formule
+  n'est plus imprimée avec les quantités de base.
+- Le conseil de prise de l'ordonnance d'angine disait tous les
+  antibiotiques « indifféremment pendant ou en dehors des repas » ;
+  céfuroxime, cefpodoxime et clarithromycine se prennent au cours d'un
+  repas, comme le dit la table « Antibiotiques ».
+
 ## [0.262.0] - 2026-09-23
 
 ### Fixed
