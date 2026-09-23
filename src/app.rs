@@ -795,6 +795,7 @@ fn drug_monograph(
     posologies: &[db::Posologie],
     links: &MonoLinks,
     style: MonoStyle,
+    supply: &DrugSupply,
 ) -> Option<i64> {
     // The other card the reader asked for, by clicking a name in the
     // prose. Opened by the caller once the sheet is drawn.
@@ -868,6 +869,40 @@ fn drug_monograph(
                             .color(motif::on_fill(status_color(&d.status)))
                             .background_color(status_color(&d.status)),
                     );
+                }
+                // **Une rupture se voit avant la lecture**, et ce que les
+                // collègues ont donné à la place avec elle : c'est la
+                // question qu'on vient poser. Le détail — issues,
+                // officines, gestes — est dans la colonne technique.
+                if let Some(s) = &supply.shortage {
+                    let top: Vec<String> = supply
+                        .tried
+                        .iter()
+                        .take(3)
+                        .map(|t| format!("{} ×{}", t.other, t.times))
+                        .collect();
+                    let mut said = if s.sources > 1 {
+                        trn(
+                            "rupt_banner_many",
+                            &[&db::format_french_date(&s.since), &s.sources],
+                        )
+                    } else {
+                        trf("rupt_banner", db::format_french_date(&s.since))
+                    };
+                    if !top.is_empty() {
+                        said.push_str(&trf("rupt_banner_given", top.join(", ")));
+                    }
+                    ui.add_space(3.0);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(said)
+                                .size(motif::pt(ui, 12.0))
+                                .strong()
+                                .color(motif::alert()),
+                        )
+                        .wrap(),
+                    )
+                    .on_hover_text(tr("rupt_tried_scope_full"));
                 }
                 let tags: Vec<&str> = d
                     .tags
@@ -2453,6 +2488,10 @@ pub fn keyring_entry() -> Option<keyring::Entry> {
 enum MainView {
     Search,
     Dashboard,
+    /// Les ruptures en cours, et ce que les pharmaciens ont donné à la
+    /// place — le journal de `ruptures.rs`, lu pour toute l'officine et
+    /// son réseau.
+    Ruptures,
     /// The team's drug reference base (F3).
     Drugs,
     /// Upcoming patient appointments, grouped by day (F4).
@@ -2596,6 +2635,7 @@ impl MainView {
             MainView::Classes => "classes",
             MainView::Finances => "finances",
             MainView::Stats => "stats",
+            MainView::Ruptures => "ruptures",
             MainView::Script => "script",
             MainView::Caisse => "caisse",
             MainView::CaisseHistory => "caisses",
@@ -2618,6 +2658,7 @@ impl MainView {
             "classes" => Some(MainView::Classes),
             "finances" => Some(MainView::Finances),
             "stats" => Some(MainView::Stats),
+            "ruptures" => Some(MainView::Ruptures),
             "script" => Some(MainView::Script),
             "caisse" => Some(MainView::Caisse),
             "caisses" => Some(MainView::CaisseHistory),
@@ -2690,6 +2731,7 @@ struct Stats {
 #[derive(Clone, PartialEq, Eq, Debug)]
 enum WorkTab {
     Dashboard,
+    Ruptures,
     Search,
     Agenda,
     Carnet,
@@ -4213,6 +4255,14 @@ struct Session {
     /// The open card's neighbours, and which card they were read for.
     drug_kin: DrugKin,
     drug_kin_key: Option<(i64, u64)>,
+    /// The journal of shortages and substitutions (`supply_events`).
+    supply_events: Vec<crate::ruptures::Event>,
+    supply_rev: u64,
+    /// What the journal says about the open card.
+    drug_supply: DrugSupply,
+    drug_supply_key: Option<(i64, u64, String)>,
+    /// A substitution being noted.
+    subst_form: Option<SubstForm>,
     /// Which neighbour list the operator has open, if either. Cleared
     /// when a card is opened: the answer belongs to the card that was
     /// asked, not to the next one.
@@ -4947,6 +4997,11 @@ impl Session {
             drug_hits_key: None,
             drug_kin: DrugKin::default(),
             drug_kin_key: None,
+            supply_events: Vec::new(),
+            supply_rev: 0,
+            drug_supply: DrugSupply::default(),
+            drug_supply_key: None,
+            subst_form: None,
             drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
@@ -5143,6 +5198,7 @@ impl Session {
         // their view is opened.
         session.reload_codex();
         session.reload_vacc_catalogue();
+        session.reload_supply();
         session.reload_dispositifs();
         // The search view opens on the day's own panels, so the figures
         // they show have to be loaded before the first frame.
@@ -5179,6 +5235,7 @@ impl Session {
             MainView::Classes => WorkTab::Classes,
             MainView::Finances => WorkTab::Finances,
             MainView::Stats => WorkTab::Stats,
+            MainView::Ruptures => WorkTab::Ruptures,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
@@ -5259,6 +5316,10 @@ impl Session {
             WorkTab::Stats => {
                 self.view = MainView::Stats;
                 self.refresh_stats();
+            }
+            WorkTab::Ruptures => {
+                self.view = MainView::Ruptures;
+                self.reload_supply();
             }
             WorkTab::Script => {
                 self.view = MainView::Script;
@@ -5394,6 +5455,7 @@ impl Session {
             WorkTab::Explorer,
             WorkTab::Classes,
             WorkTab::Stats,
+            WorkTab::Ruptures,
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
@@ -5610,6 +5672,7 @@ impl Session {
                 self.show_codex = true;
                 self.reload_codex();
                 self.reload_vacc_catalogue();
+                self.reload_supply();
                 self.codex_open = Some(id);
                 self.codex_edit = None;
                 self.codex_base = None;
@@ -6066,6 +6129,7 @@ impl Session {
         self.reload_stup();
         self.reload_codex();
         self.reload_vacc_catalogue();
+        self.reload_supply();
         self.reload_dispositifs();
         if self.view == MainView::Transmissions {
             self.load_transmissions();
@@ -7003,6 +7067,7 @@ impl Session {
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
+            WorkTab::Ruptures => tr("tab_ruptures").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
@@ -7163,6 +7228,57 @@ impl Session {
     }
 
     /// Reload the codex from the base.
+    /// The journal of shortages and substitutions — this officine's and
+    /// what the network sent. Read at opening, after each write and on a
+    /// resync; every reading of a card is computed from it once.
+    fn reload_supply(&mut self) {
+        self.supply_events = self.db.supply_events().unwrap_or_default();
+        self.supply_rev = self.supply_rev.wrapping_add(1);
+    }
+
+    /// What the journal says about the open card: in shortage or not, and
+    /// what was given in its place — kept between frames.
+    fn refresh_drug_supply(&mut self, id: i64, name: &str) {
+        let key = (id, self.supply_rev, self.today.clone());
+        if self.drug_supply_key.as_ref() == Some(&key) {
+            return;
+        }
+        let tried = crate::ruptures::tried(&self.supply_events, name);
+        let class_of = |n: &str| {
+            let k = crate::ruptures::key(n);
+            self.drugs
+                .iter()
+                .find(|d| crate::ruptures::key(&d.name) == k)
+                .map(|d| d.class.clone())
+                .filter(|c| !c.trim().is_empty())
+        };
+        let own = class_of(name);
+        let other_class = tried
+            .iter()
+            .map(|t| match (&own, class_of(&t.other)) {
+                (Some(a), Some(b)) if !crate::classes::same(a, &b) => {
+                    Some(crate::classes::display_name(&b).to_owned())
+                }
+                _ => None,
+            })
+            .collect();
+        self.drug_supply = DrugSupply {
+            shortage: crate::ruptures::shortage(&self.supply_events, name, &self.today),
+            tried,
+            other_class,
+        };
+        self.drug_supply_key = Some(key);
+    }
+
+    /// Write one event of the journal for the open card, and read the
+    /// journal again.
+    fn note_supply(&mut self, e: crate::ruptures::Event) {
+        match self.db.add_supply_event(&e) {
+            Ok(_) => self.reload_supply(),
+            Err(err) => self.error = Some(err),
+        }
+    }
+
     /// The vaccines the carnet offers, as the officine keeps them.
     fn reload_vacc_catalogue(&mut self) {
         self.vacc_catalogue = self.db.vaccine_catalogue().unwrap_or_default();
@@ -8693,6 +8809,34 @@ enum TechAction {
     /// Show (or hide again) one of the two neighbour lists.
     Neighbours(KinList),
     Open(i64),
+    /// Open the card that carries this name, if the base has one.
+    OpenName(String),
+    ReportShortage,
+    LiftShortage,
+    NoteSubstitution,
+}
+
+/// What the journal of shortages says about one card.
+#[derive(Clone, Default, Debug)]
+struct DrugSupply {
+    shortage: Option<crate::ruptures::Shortage>,
+    tried: Vec<crate::ruptures::Tried>,
+    /// For each line of `tried`, the substitute's class **when it is not
+    /// the product's** — Locoid is a « dermocorticoïde modéré » given for a
+    /// « fort »: the journal says it was done, the class says what changed.
+    other_class: Vec<Option<String>>,
+}
+
+/// A substitution being noted: the product replaced, what was given, and
+/// how it went.
+struct SubstForm {
+    product: String,
+    product_dci: String,
+    product_class: String,
+    query: String,
+    other: Option<(String, String)>,
+    outcome: crate::ruptures::Outcome,
+    note: String,
 }
 
 /// Which of a card's two neighbourhoods is on show. One at a time: the
@@ -10708,6 +10852,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
     match view {
         MainView::Dashboard | MainView::Finances => session.refresh_dashboard(),
         MainView::Stats => session.refresh_stats(),
+        MainView::Ruptures => session.reload_supply(),
         MainView::Script => session.refresh_scripts(),
         MainView::Caisse => session.refresh_caisse(),
         MainView::CaisseHistory => {
@@ -11310,6 +11455,10 @@ impl App {
                         Ok("stats") => {
                             session.refresh_stats();
                             session.view = MainView::Stats;
+                        }
+                        Ok("ruptures") => {
+                            session.reload_supply();
+                            session.view = MainView::Ruptures;
                         }
                         // Les carnets, sur la feuille la plus dense —
                         // celle qui a le plus de colonnes : c'est elle
@@ -12413,6 +12562,7 @@ impl App {
             }
             session.reload_codex();
             session.reload_vacc_catalogue();
+            session.reload_supply();
             session.reload_dispositifs();
             session.reload_protocols();
             if outcome.job == Job::Reset {
@@ -13010,6 +13160,7 @@ impl App {
                             MainView::Explorer
                             | MainView::Classes
                             | MainView::Stats
+                            | MainView::Ruptures
                             | MainView::Script
                             | MainView::Ddi => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard
@@ -14471,6 +14622,10 @@ impl App {
             }
             if session.view == MainView::Stats {
                 Self::stats_view(ui, session);
+                return;
+            }
+            if session.view == MainView::Ruptures {
+                Self::ruptures_view(ui, session);
                 return;
             }
             if session.view == MainView::Script {
@@ -24002,6 +24157,7 @@ impl App {
         }
         if wrote || stale {
             session.reload_vacc_catalogue();
+            session.reload_supply();
         }
         if let Some(edit) = &mut session.vacc_cat_edit {
             if delete && !edit.confirm_delete && !reset {
@@ -45051,6 +45207,7 @@ impl App {
         ui: &mut egui::Ui,
         d: &Drug,
         kin: &DrugKin,
+        supply: &DrugSupply,
         shown: Option<KinList>,
         rect: egui::Rect,
     ) -> Option<TechAction> {
@@ -45136,6 +45293,10 @@ impl App {
                             }
                         }
                     });
+                    ui.add_space(6.0);
+                    if let Some(a) = Self::drug_supply_section(ui, supply) {
+                        action = Some(a);
+                    }
                     ui.add_space(6.0);
                     // Same rule as the monograph: an insulin gets its
                     // action profile, everything else gets its decay.
@@ -45297,6 +45458,119 @@ impl App {
                         });
                 });
         });
+        action
+    }
+
+    /// « En rupture ? Qu'est-ce que les collègues ont donné à la place ? »
+    /// — le journal des ruptures, lu pour cette fiche.
+    ///
+    /// **La réserve avant le contenu**, comme les panneaux cliniques : ce
+    /// qui suit est un historique, pas une équivalence, et le dire après
+    /// la liste serait le dire à personne.
+    fn drug_supply_section(ui: &mut egui::Ui, supply: &DrugSupply) -> Option<TechAction> {
+        let mut action = None;
+        ui.label(
+            egui::RichText::new(tr("rupt_section"))
+                .size(motif::pt(ui, 10.5))
+                .strong()
+                .color(motif::text_dim()),
+        );
+        if let Some(s) = &supply.shortage {
+            let said = if s.sources > 1 {
+                trn(
+                    "rupt_since_many",
+                    &[&db::format_french_date(&s.since), &s.sources],
+                )
+            } else {
+                trf("rupt_since", db::format_french_date(&s.since))
+            };
+            ui.horizontal_wrapped(|ui| {
+                motif::badge(
+                    ui,
+                    tr("rupt_badge"),
+                    Some(motif::Pict::Stop),
+                    motif::alert(),
+                    true,
+                );
+                ui.label(
+                    egui::RichText::new(said)
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::alert()),
+                );
+            });
+        }
+        ui.horizontal_wrapped(|ui| {
+            if supply.shortage.is_some() {
+                if motif::button(ui, tr("rupt_lift"))
+                    .on_hover_text(tr("rupt_lift_tooltip"))
+                    .clicked()
+                {
+                    action = Some(TechAction::LiftShortage);
+                }
+            } else if motif::button(ui, tr("rupt_report"))
+                .on_hover_text(tr("rupt_report_tooltip"))
+                .clicked()
+            {
+                action = Some(TechAction::ReportShortage);
+            }
+            if motif::button(ui, tr("rupt_note_subst"))
+                .on_hover_text(tr("rupt_note_subst_tooltip"))
+                .clicked()
+            {
+                action = Some(TechAction::NoteSubstitution);
+            }
+        });
+        if supply.tried.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("rupt_tried_none"))
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_faint()),
+            );
+            return action;
+        }
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(tr("rupt_tried_scope"))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim()),
+            )
+            .truncate(),
+        )
+        .on_hover_text(tr("rupt_tried_scope_full"));
+        for (i, t) in supply.tried.iter().enumerate() {
+            let mut said = trn("rupt_tried_times", &[&t.times, &t.sources]);
+            if let Some(Some(class)) = supply.other_class.get(i) {
+                said.push_str(&trf("rupt_other_class", class));
+            }
+            let held = t.count(crate::ruptures::Outcome::Accepted);
+            let back = t.count(crate::ruptures::Outcome::Failed)
+                + t.count(crate::ruptures::Outcome::RefusedByPatient)
+                + t.count(crate::ruptures::Outcome::RefusedByPrescriber);
+            if held + back > 0 {
+                said.push_str(&trn("rupt_tried_outcomes", &[&held, &back]));
+            }
+            let title = if t.other_dci.is_empty() {
+                t.other.clone()
+            } else {
+                format!("{} · {}", t.other, t.other_dci)
+            };
+            let hover = crate::ruptures::Outcome::ALL
+                .iter()
+                .filter(|o| t.count(**o) > 0)
+                .map(|o| format!("{} : {}", o.label(), t.count(*o)))
+                .chain(std::iter::once(trf(
+                    "rupt_tried_last",
+                    db::format_french_date(&t.last),
+                )))
+                .collect::<Vec<_>>()
+                .join("\n");
+            if motif::list_row_pair(ui, &title, &said, false, 0.0)
+                .on_hover_text(hover)
+                .clicked()
+            {
+                action = Some(TechAction::OpenName(t.other.clone()));
+            }
+        }
         action
     }
 
@@ -46458,6 +46732,11 @@ impl App {
             });
         }
 
+        // What the journal of shortages says about this card, read before
+        // the sheet that shows it at its head.
+        if let Some((id, name)) = session.drug_form.as_ref().map(|d| (d.id, d.name.clone())) {
+            session.refresh_drug_supply(id, &name);
+        }
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
             let reading = session.drug_reading;
@@ -46712,6 +46991,7 @@ impl App {
                                     &session.posologies,
                                     &session.mono_links,
                                     MonoStyle::from_key(&config.ui.monograph),
+                                    &session.drug_supply,
                                 );
                             }
                             if !reading {
@@ -46962,15 +47242,63 @@ impl App {
                                 // pass over the whole base.
                                 session.refresh_drug_kin(&card);
                                 let shown = session.drug_kin_show;
+                                session.refresh_drug_supply(card.id, &card.name);
                                 match Self::drug_tech_pane(
                                     ui,
                                     &card,
                                     &session.drug_kin,
+                                    &session.drug_supply,
                                     shown,
                                     body,
                                 ) {
                                     Some(TechAction::Search(word)) => search_keyword = Some(word),
                                     Some(TechAction::Open(id)) => follow_link = Some(id),
+                                    Some(TechAction::OpenName(name)) => {
+                                        let key = crate::ruptures::key(&name);
+                                        match session
+                                            .drugs
+                                            .iter()
+                                            .find(|d| crate::ruptures::key(&d.name) == key)
+                                        {
+                                            Some(found) => follow_link = Some(found.id),
+                                            None => search_keyword = Some(name),
+                                        }
+                                    }
+                                    Some(
+                                        a @ (TechAction::ReportShortage | TechAction::LiftShortage),
+                                    ) => {
+                                        let kind = if matches!(a, TechAction::ReportShortage) {
+                                            crate::ruptures::Kind::Rupture
+                                        } else {
+                                            crate::ruptures::Kind::Levee
+                                        };
+                                        let e = crate::ruptures::Event {
+                                            uid: String::new(),
+                                            day: session.today.clone(),
+                                            kind,
+                                            product: card.name.clone(),
+                                            product_dci: card.dci.clone(),
+                                            other: String::new(),
+                                            other_dci: String::new(),
+                                            outcome: crate::ruptures::Outcome::Unknown,
+                                            note: String::new(),
+                                            operator: session.operator.clone(),
+                                            source: String::new(),
+                                            refers: String::new(),
+                                        };
+                                        session.note_supply(e);
+                                    }
+                                    Some(TechAction::NoteSubstitution) => {
+                                        session.subst_form = Some(SubstForm {
+                                            product: card.name.clone(),
+                                            product_dci: card.dci.clone(),
+                                            product_class: card.class.clone(),
+                                            query: String::new(),
+                                            other: None,
+                                            outcome: crate::ruptures::Outcome::Unknown,
+                                            note: String::new(),
+                                        });
+                                    }
                                     // Clicking the chip that is already open
                                     // closes it again: one gesture, both ways.
                                     Some(TechAction::Neighbours(which)) => {
@@ -47414,6 +47742,172 @@ impl App {
         if let Some(d) = open_drug {
             session.open_drug_card(d);
             session.error = None;
+        }
+        Self::subst_window(ctx, session);
+    }
+
+    /// « Noter une substitution » : ce qui a été donné à la place, et
+    /// comment ça s'est passé.
+    ///
+    /// Les propositions viennent d'abord de **la même molécule**, puis de
+    /// **la même classe**, puis du nom tapé — l'ordre dans lequel on
+    /// cherche au comptoir. Rien n'est choisi d'office.
+    fn subst_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(form) = &mut session.subst_form else {
+            return;
+        };
+        let mut save = false;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        // What to propose: same molecule, same class, then the typed name.
+        let same = |d: &Drug| {
+            !form.product_dci.trim().is_empty() && fuzzy::eq_folded(&d.dci, &form.product_dci)
+        };
+        let class = |d: &Drug| crate::classes::same(&d.class, &form.product_class);
+        let not_self =
+            |d: &&Drug| crate::ruptures::key(&d.name) != crate::ruptures::key(&form.product);
+        let query = form.query.trim().to_owned();
+        let mut offered: Vec<&Drug> = if query.is_empty() {
+            let mut v: Vec<&Drug> = session
+                .drugs
+                .iter()
+                .filter(not_self)
+                .filter(|d| same(d))
+                .collect();
+            v.extend(
+                session
+                    .drugs
+                    .iter()
+                    .filter(not_self)
+                    .filter(|d| !same(d) && !form.product_class.trim().is_empty() && class(d)),
+            );
+            v
+        } else {
+            let mut scored: Vec<(i32, &Drug)> = session
+                .drugs
+                .iter()
+                .filter(not_self)
+                .filter_map(|d| {
+                    fuzzy::score(&query, &d.name)
+                        .max(fuzzy::score(&query, &d.dci))
+                        .map(|sc| (sc, d))
+                })
+                .collect();
+            scored.sort_by_key(|&(sc, _)| std::cmp::Reverse(sc));
+            scored.into_iter().map(|(_, d)| d).collect()
+        };
+        offered.truncate(12);
+        let shown = egui::Window::new(trf("rupt_form_title", &form.product))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(640.0, 520.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("rupt_form_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    ui.label(tr("rupt_form_other"));
+                    motif::field(
+                        ui,
+                        ui.available_width(),
+                        egui::TextEdit::singleline(&mut form.query)
+                            .hint_text(motif::hint(tr("rupt_form_other_hint"))),
+                    );
+                });
+                let footer = App::row_height(ui) * 5.0 + ui.spacing().item_spacing.y * 6.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 3.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("subst_offers")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for d in &offered {
+                                let on = form.other.as_ref().is_some_and(|(n, _)| n == &d.name);
+                                let resp = motif::toggle(ui, &d.name, on);
+                                let resp = if d.dci.trim().is_empty() {
+                                    resp
+                                } else {
+                                    resp.on_hover_text(d.dci.as_str())
+                                };
+                                if resp.clicked() {
+                                    form.other = Some((d.name.clone(), d.dci.clone()));
+                                }
+                            }
+                            // A product the base does not hold is still a
+                            // substitution: what was typed is what was given.
+                            if !query.is_empty()
+                                && motif::toggle(
+                                    ui,
+                                    &trf("rupt_form_as_typed", &query),
+                                    form.other.as_ref().is_some_and(|(n, _)| n == &query),
+                                )
+                                .clicked()
+                            {
+                                form.other = Some((query.clone(), String::new()));
+                            }
+                        });
+                    });
+                ui.add_space(4.0);
+                ui.label(tr("rupt_form_outcome"));
+                ui.horizontal_wrapped(|ui| {
+                    for o in crate::ruptures::Outcome::ALL {
+                        if motif::radio(ui, form.outcome == o, o.label()).clicked() {
+                            form.outcome = o;
+                        }
+                    }
+                });
+                ui.horizontal(|ui| {
+                    ui.label(tr("rupt_form_note"));
+                    motif::field(
+                        ui,
+                        ui.available_width(),
+                        egui::TextEdit::singleline(&mut form.note)
+                            .hint_text(motif::hint(tr("rupt_form_note_hint"))),
+                    );
+                });
+                ui.add_space(4.0);
+                ui.horizontal(|ui| {
+                    if motif::button_enabled(ui, tr("rupt_form_save"), form.other.is_some())
+                        .clicked()
+                    {
+                        save = true;
+                    }
+                    if motif::button(ui, tr("form_cancel")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if save {
+            if let Some(form) = session.subst_form.take() {
+                if let Some((other, other_dci)) = form.other {
+                    let e = crate::ruptures::Event {
+                        uid: String::new(),
+                        day: session.today.clone(),
+                        kind: crate::ruptures::Kind::Substitution,
+                        product: form.product,
+                        product_dci: form.product_dci,
+                        other,
+                        other_dci,
+                        outcome: form.outcome,
+                        note: form.note,
+                        operator: session.operator.clone(),
+                        source: String::new(),
+                        refers: String::new(),
+                    };
+                    session.note_supply(e);
+                }
+            }
+        } else if close {
+            session.subst_form = None;
         }
     }
 
@@ -49735,6 +50229,156 @@ impl App {
                 &config.doc_template_path("caisses"),
             )
             .err();
+        }
+    }
+
+    /// « Ruptures » : ce qui manque en ce moment, et ce que les
+    /// pharmaciens — de cette officine et de son réseau — ont donné à la
+    /// place. Le journal entier à droite, du plus récent au plus ancien.
+    ///
+    /// Un pharmacien arrivé la semaine dernière y lit ce que l'équipe sait
+    /// depuis des mois ; c'est l'écran que la question « Diprosone est en
+    /// rupture, qu'est-ce qu'on donne ? » appelle.
+    fn ruptures_view(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [Self::heading_width(ui, tr("rupt_view_title"))].into_iter(),
+            tr("rupt_view_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("rupt_view_title"));
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("rupt_view_subtitle"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+        let wide = rows[1].width() >= chars_wide(ui, 90.0);
+        let panes = if wide {
+            motif::split_columns(rows[1], 2, 8.0)
+        } else {
+            motif::split_rows(rows[1], &[0.0, 0.0], 8.0)
+        };
+        let events = &session.supply_events;
+        let today = &session.today;
+        let current = crate::ruptures::shortages(events, today);
+        let mut open: Option<String> = None;
+        motif::panel(ui, panes[0], Some(tr("rupt_view_current")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("rupt_current")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    if current.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("rupt_view_none"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    for s in &current {
+                        let since = if s.sources > 1 {
+                            trn(
+                                "rupt_since_many",
+                                &[&db::format_french_date(&s.since), &s.sources],
+                            )
+                        } else {
+                            trf("rupt_since", db::format_french_date(&s.since))
+                        };
+                        if motif::list_row_pair(ui, &s.product, &since, false, 0.0)
+                            .on_hover_text(tr("rupt_view_open_tooltip"))
+                            .clicked()
+                        {
+                            open = Some(s.product.clone());
+                        }
+                        let tried = crate::ruptures::tried(events, &s.product);
+                        let top: Vec<String> = tried
+                            .iter()
+                            .take(3)
+                            .map(|t| format!("{} ×{}", t.other, t.times))
+                            .collect();
+                        ui.label(
+                            egui::RichText::new(if top.is_empty() {
+                                tr("rupt_tried_none").to_owned()
+                            } else {
+                                trf("rupt_view_given", top.join(", "))
+                            })
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_faint()),
+                        );
+                        ui.add_space(4.0);
+                    }
+                });
+        });
+        motif::panel(ui, panes[1], Some(tr("rupt_view_journal")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("rupt_journal")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let standing = crate::ruptures::standing(events);
+                    if standing.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("rupt_view_journal_none"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                        return;
+                    }
+                    for e in standing.iter().rev().take(200) {
+                        let what = match e.kind {
+                            crate::ruptures::Kind::Rupture => {
+                                trf("rupt_journal_rupture", &e.product)
+                            }
+                            crate::ruptures::Kind::Levee => trf("rupt_journal_levee", &e.product),
+                            crate::ruptures::Kind::Substitution => {
+                                trn("rupt_journal_subst", &[&e.product, &e.other])
+                            }
+                            crate::ruptures::Kind::Retrait => continue,
+                        };
+                        let who = if e.source.trim().is_empty() {
+                            e.operator.clone()
+                        } else {
+                            format!("{} · {}", e.operator, e.source)
+                        };
+                        let mut side = format!("{} · {}", db::format_french_date(&e.day), who);
+                        if e.kind == crate::ruptures::Kind::Substitution
+                            && e.outcome != crate::ruptures::Outcome::Unknown
+                        {
+                            side.push_str(&format!(" · {}", e.outcome.label()));
+                        }
+                        let row = motif::list_row_pair(ui, &what, &side, false, 0.0);
+                        let row = if e.note.trim().is_empty() {
+                            row
+                        } else {
+                            row.on_hover_text(e.note.as_str())
+                        };
+                        if row.clicked() {
+                            open = Some(e.product.clone());
+                        }
+                    }
+                });
+        });
+        if let Some(name) = open {
+            let key = crate::ruptures::key(&name);
+            if let Some(card) = session
+                .drugs
+                .iter()
+                .find(|d| crate::ruptures::key(&d.name) == key)
+                .cloned()
+            {
+                session.open_drug_card(card);
+                session.view = MainView::Drugs;
+            }
         }
     }
 
@@ -57352,6 +57996,7 @@ impl eframe::App for App {
                     | MainView::Classes
                     | MainView::Finances
                     | MainView::Stats
+                    | MainView::Ruptures
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory

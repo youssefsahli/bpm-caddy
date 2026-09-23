@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.272.0] - 2026-09-23
+
+### Added
+- **Le journal des ruptures et des substitutions.** Une fiche se signale
+  en rupture (et se lève) depuis sa colonne technique, et « Noter une
+  substitution… » garde ce qui a été donné à la place et comment ça
+  s'est passé — a tenu, refusé par le patient ou le prescripteur, revenu.
+  Les propositions viennent de la même molécule, puis de la même classe.
+  Aucun patient n'est noté.
+- Une rupture en cours s'affiche **en tête de la fiche**, avec ce que les
+  collègues ont donné à la place ; la colonne technique détaille chaque
+  substitut (combien de fois, combien d'officines, issues) et signale
+  quand il n'est pas de la même classe — un dermocorticoïde modéré pour
+  un fort.
+- La vue **Ruptures** (« Aller à… ») : ce qui manque en ce moment et tout
+  le journal. Le journal ne se réécrit pas ; il est fait pour voyager
+  entre les officines d'un réseau, ce que la prochaine version branche.
+
 ## [0.271.0] - 2026-09-23
 
 ### Added

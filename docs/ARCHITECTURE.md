@@ -1329,7 +1329,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 39 regions now set
+  fold is the control you came to use. 42 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -1392,7 +1392,10 @@ add clicking and typing; it is not the price of entry.
   « Enregistrer » sits under its last fields. The thirty-eighth is the
   carnet's « À faire » list, each line of which loads its vaccine into
   the form — and a pregnancy adds five. The thirty-ninth is the vaccine
-  catalogue editor, the same form as the TROD lines'.
+  catalogue editor, the same form as the TROD lines'. The fortieth to
+  forty-second are the substitution form's proposals (its « Noter » sits
+  under them) and the two panes of the « Ruptures » view, a list whose
+  lines each open a card.
 
   **And the scroll handle is no longer painted in ink.** egui takes it
   from `fg_stroke` when `scroll.foreground_color` is true — its own
@@ -2185,7 +2188,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|vaccins_grossesse|vaccins_catalogue|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
+  vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|registres|stup|
   trame|

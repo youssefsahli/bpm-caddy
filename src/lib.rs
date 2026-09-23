@@ -46,6 +46,7 @@ pub mod release;
 pub mod renal;
 pub mod renewal;
 pub mod revue;
+pub mod ruptures;
 pub mod scans;
 pub mod script;
 pub mod selfcheck;

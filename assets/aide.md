@@ -728,6 +728,33 @@ règle qui crie au loup est une règle qu'on éteint.
 Sous trois délivrances précédentes, rien n'est dit : il n'y a pas encore
 de cadence à laquelle comparer.
 
+# Les ruptures
+
+Quand un produit manque, sa fiche le signale : « Signaler une rupture »,
+dans la colonne technique, et « Rupture levée » quand il revient. Une
+rupture signalée s'affiche en tête de la fiche, avec ce que les
+collègues ont donné à la place.
+
+« Noter une substitution… » garde ce qui a été délivré à la place, et
+comment ça s'est passé : a tenu, refusé par le patient, refusé par le
+prescripteur, revenu. Les propositions viennent d'abord de la même
+molécule, puis de la même classe. **Aucun patient n'est noté** — un
+produit, un autre, une date et des initiales.
+
+La vue **Ruptures** (« Aller à… ») rassemble ce qui manque en ce moment
+et tout le journal. Un nouveau pharmacien y lit ce que l'équipe sait
+depuis des mois ; quand l'officine est reliée à d'autres, ce qu'elles
+ont noté s'y lit aussi, avec leur nom.
+
+**Ce qui a été tenté n'est pas une équivalence.** Quand le substitut
+n'est pas de la même classe — un dermocorticoïde modéré pour un fort —,
+la ligne le dit ; le dosage, la forme et le patient se vérifient devant
+l'ordonnance. Une rupture signalée depuis plus de quatre-vingt-dix jours
+sans nouvelle n'est plus « en cours » : quelqu'un a oublié de la lever.
+
+Le journal ne se réécrit pas ; une erreur se retire, et le retrait reste
+écrit.
+
 # La caisse
 
 Le comptage se fait en centimes entiers, jamais en flottants. L'écart

@@ -253,6 +253,24 @@ CREATE TABLE IF NOT EXISTS access_log (
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS supply_events (
+    id          INTEGER PRIMARY KEY,
+    -- `<base>:<numéro>` : global, pour qu'un événement reçu deux fois
+    -- d'une autre officine ne compte qu'une fois. Voir `ruptures.rs`.
+    uid         TEXT NOT NULL UNIQUE,
+    day         TEXT NOT NULL,
+    kind        TEXT NOT NULL,
+    product     TEXT NOT NULL DEFAULT '',
+    product_dci TEXT NOT NULL DEFAULT '',
+    other       TEXT NOT NULL DEFAULT '',
+    other_dci   TEXT NOT NULL DEFAULT '',
+    outcome     TEXT NOT NULL DEFAULT '',
+    note        TEXT NOT NULL DEFAULT '',
+    operator    TEXT NOT NULL DEFAULT '',
+    -- L'officine d'où vient l'événement ; vide : celle-ci.
+    source      TEXT NOT NULL DEFAULT '',
+    refers      TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS vaccine_catalogue (
     id        INTEGER PRIMARY KEY,
     -- Le code que le calendrier lit (DTCAP, GRIPPE…) ; libre pour un
@@ -957,6 +975,22 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
+    // Le journal des ruptures et des substitutions — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS supply_events (
+        id          INTEGER PRIMARY KEY,
+        uid         TEXT NOT NULL UNIQUE,
+        day         TEXT NOT NULL,
+        kind        TEXT NOT NULL,
+        product     TEXT NOT NULL DEFAULT '',
+        product_dci TEXT NOT NULL DEFAULT '',
+        other       TEXT NOT NULL DEFAULT '',
+        other_dci   TEXT NOT NULL DEFAULT '',
+        outcome     TEXT NOT NULL DEFAULT '',
+        note        TEXT NOT NULL DEFAULT '',
+        operator    TEXT NOT NULL DEFAULT '',
+        source      TEXT NOT NULL DEFAULT '',
+        refers      TEXT NOT NULL DEFAULT ''
+    )",
     // Le catalogue des vaccins que le carnet propose — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS vaccine_catalogue (
         id        INTEGER PRIMARY KEY,
@@ -32832,6 +32866,151 @@ impl Db {
         })
     }
 
+    /// L'identifiant de cette base, tiré au hasard **une fois** : le
+    /// préfixe des événements qu'elle émet vers d'autres officines.
+    pub fn base_uid(&self) -> Result<String, String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO settings (key, value)
+                 VALUES ('base_uid', lower(hex(randomblob(8))))",
+                [],
+            )
+            .map_err(|e| e.to_string())?;
+        self.setting("base_uid")
+            .ok_or_else(|| "identifiant de base illisible".to_owned())
+    }
+
+    /// Noter un événement du journal des ruptures — **en ajout seul** :
+    /// une erreur se retire par un événement `RETRAIT` qui la nomme,
+    /// jamais en réécrivant la ligne (voir `ruptures.rs`). L'`uid` est
+    /// attribué ici, dans la transaction qui écrit.
+    pub fn add_supply_event(&self, e: &crate::ruptures::Event) -> Result<String, String> {
+        let base = self.base_uid()?;
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let next: i64 = tx
+            .query_row(
+                "SELECT COALESCE(MAX(id), 0) + 1 FROM supply_events",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let uid = format!("{base}:{next}");
+        tx.execute(
+            "INSERT INTO supply_events
+                (uid, day, kind, product, product_dci, other, other_dci, outcome,
+                 note, operator, source, refers)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11)",
+            rusqlite::params![
+                uid,
+                e.day,
+                e.kind.key(),
+                e.product.trim(),
+                e.product_dci.trim(),
+                e.other.trim(),
+                e.other_dci.trim(),
+                e.outcome.key(),
+                e.note.trim(),
+                e.operator.trim(),
+                e.refers,
+            ],
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(uid)
+    }
+
+    /// Recevoir des événements d'une autre officine : **ceux qu'on a déjà
+    /// sont ignorés** (même `uid`), les autres ajoutés tels quels, leur
+    /// source comprise. Rend combien étaient nouveaux.
+    pub fn receive_supply_events(
+        &self,
+        events: &[crate::ruptures::Event],
+    ) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut added = 0;
+        for e in events {
+            added += tx
+                .execute(
+                    "INSERT OR IGNORE INTO supply_events
+                        (uid, day, kind, product, product_dci, other, other_dci, outcome,
+                         note, operator, source, refers)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    rusqlite::params![
+                        e.uid,
+                        e.day,
+                        e.kind.key(),
+                        e.product,
+                        e.product_dci,
+                        e.other,
+                        e.other_dci,
+                        e.outcome.key(),
+                        e.note,
+                        e.operator,
+                        e.source,
+                        e.refers,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Tout le journal, dans l'ordre des jours.
+    pub fn supply_events(&self) -> Result<Vec<crate::ruptures::Event>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT uid, day, kind, product, product_dci, other, other_dci, outcome,
+                        note, operator, source, refers
+                 FROM supply_events ORDER BY day, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let kind: String = r.get(2)?;
+                let outcome: String = r.get(7)?;
+                Ok((
+                    kind,
+                    outcome,
+                    crate::ruptures::Event {
+                        uid: r.get(0)?,
+                        day: r.get(1)?,
+                        kind: crate::ruptures::Kind::Rupture,
+                        product: r.get(3)?,
+                        product_dci: r.get(4)?,
+                        other: r.get(5)?,
+                        other_dci: r.get(6)?,
+                        outcome: crate::ruptures::Outcome::Unknown,
+                        note: r.get(8)?,
+                        operator: r.get(9)?,
+                        source: r.get(10)?,
+                        refers: r.get(11)?,
+                    },
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (kind, outcome, mut e) = row.map_err(|e| e.to_string())?;
+            // Une nature qu'une version postérieure a écrite : gardée en
+            // base, pas lue ici — la règle des compteurs.
+            let Some(kind) = crate::ruptures::Kind::from_key(&kind) else {
+                continue;
+            };
+            e.kind = kind;
+            e.outcome = crate::ruptures::Outcome::from_key(&outcome);
+            out.push(e);
+        }
+        Ok(out)
+    }
+
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
     pub fn setting(&self, key: &str) -> Option<String> {
         self.conn
@@ -40237,6 +40416,71 @@ mod tests {
     /// Alors ce n'est pas une convention, c'est un test : il relit le
     /// texte de ce fichier et refuse qu'un tel verbe y apparaisse. La
     /// discipline se perd, le test non.
+    /// **Le journal des ruptures ne se réécrit pas** : il voyage d'une
+    /// officine à l'autre, et une ligne réécrite chez l'une et pas chez
+    /// l'autre, ce sont deux vérités. Même lecture du texte que le
+    /// registre ; et un événement reçu deux fois ne compte qu'une fois.
+    #[test]
+    fn the_supply_journal_is_only_added_to_and_counts_a_twin_once() {
+        const SOURCE: &str = include_str!("db.rs");
+        let table = concat!("supply_", "events");
+        let update = concat!("UPDA", "TE");
+        let delete = concat!("DELE", "TE FROM");
+        for (n, line) in SOURCE.lines().enumerate() {
+            let line = line.trim();
+            if line.starts_with("//") || line.starts_with("--") {
+                continue;
+            }
+            assert!(
+                !(line.contains(table) && (line.contains(update) || line.contains(delete))),
+                "le journal des ruptures ne se réécrit pas (db.rs:{}) : {line}",
+                n + 1
+            );
+        }
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-supply-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("supply.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let base = db.base_uid().unwrap();
+        assert_eq!(db.base_uid().unwrap(), base, "tiré une fois");
+        let e = crate::ruptures::Event {
+            uid: String::new(),
+            day: "2026-09-20".to_owned(),
+            kind: crate::ruptures::Kind::Substitution,
+            product: "Diprosone".to_owned(),
+            product_dci: "bétaméthasone".to_owned(),
+            other: "Locoid".to_owned(),
+            other_dci: "hydrocortisone butyrate".to_owned(),
+            outcome: crate::ruptures::Outcome::Accepted,
+            note: String::new(),
+            operator: "CL".to_owned(),
+            source: String::new(),
+            refers: String::new(),
+        };
+        let uid = db.add_supply_event(&e).unwrap();
+        assert!(uid.starts_with(&base));
+        let all = db.supply_events().unwrap();
+        assert_eq!(all.len(), 1);
+        assert_eq!(all[0].outcome, crate::ruptures::Outcome::Accepted);
+        // Reçu d'une autre officine, puis reçu encore : une fois.
+        let theirs = crate::ruptures::Event {
+            uid: "ffff:1".to_owned(),
+            source: "Pharmacie du Port".to_owned(),
+            ..e.clone()
+        };
+        assert_eq!(
+            db.receive_supply_events(std::slice::from_ref(&theirs))
+                .unwrap(),
+            1
+        );
+        assert_eq!(db.receive_supply_events(&[theirs]).unwrap(), 0);
+        let tried = crate::ruptures::tried(&db.supply_events().unwrap(), "Diprosone");
+        assert_eq!(tried[0].times, 2);
+        assert_eq!(tried[0].sources, 2);
+    }
+
     #[test]
     fn the_register_can_only_ever_be_written_to() {
         const SOURCE: &str = include_str!("db.rs");
@@ -44652,6 +44896,79 @@ mod tests {
                         })
                         .unwrap();
                     }
+                }
+
+                // Le journal des ruptures : Diprosone en rupture ici et
+                // chez une officine du réseau, ce qu'on a donné à la
+                // place, et une rupture levée — les trois cas que l'écran
+                // doit savoir écrire.
+                {
+                    use crate::ruptures::{Event, Kind, Outcome};
+                    let ev =
+                        |days: i64, kind: Kind, product: &str, other: &str, outcome: Outcome| {
+                            Event {
+                                uid: String::new(),
+                                day: add_days(&today, -days).unwrap_or_default(),
+                                kind,
+                                product: product.to_owned(),
+                                product_dci: String::new(),
+                                other: other.to_owned(),
+                                other_dci: String::new(),
+                                outcome,
+                                note: String::new(),
+                                operator: "CL".to_owned(),
+                                source: String::new(),
+                                refers: String::new(),
+                            }
+                        };
+                    for e in [
+                        ev(21, Kind::Rupture, "Diprosone", "", Outcome::Unknown),
+                        ev(
+                            20,
+                            Kind::Substitution,
+                            "Diprosone",
+                            "Nérisone",
+                            Outcome::Accepted,
+                        ),
+                        ev(
+                            12,
+                            Kind::Substitution,
+                            "Diprosone",
+                            "Locoid",
+                            Outcome::Accepted,
+                        ),
+                        ev(
+                            6,
+                            Kind::Substitution,
+                            "Diprosone",
+                            "Locoid",
+                            Outcome::Failed,
+                        ),
+                        ev(40, Kind::Rupture, "Amoxicilline", "", Outcome::Unknown),
+                        ev(25, Kind::Levee, "Amoxicilline", "", Outcome::Unknown),
+                    ] {
+                        db.add_supply_event(&e).unwrap();
+                    }
+                    let theirs = Event {
+                        uid: "d3m0:1".to_owned(),
+                        source: "Pharmacie du Port".to_owned(),
+                        operator: "AM".to_owned(),
+                        note: "Dosage à adapter : Locoid est d'activité modérée".to_owned(),
+                        ..ev(
+                            9,
+                            Kind::Substitution,
+                            "Diprosone",
+                            "Locoid",
+                            Outcome::Accepted,
+                        )
+                    };
+                    let reported = Event {
+                        uid: "d3m0:2".to_owned(),
+                        source: "Pharmacie du Port".to_owned(),
+                        operator: "AM".to_owned(),
+                        ..ev(15, Kind::Rupture, "Diprosone", "", Outcome::Unknown)
+                    };
+                    db.receive_supply_events(&[reported, theirs]).unwrap();
                 }
 
                 // Transmissions: one entry yesterday, two today.
