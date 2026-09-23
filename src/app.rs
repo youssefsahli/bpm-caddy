@@ -10255,6 +10255,9 @@ pub struct App {
     /// with no way to tell a slow pass from a dead application. One at a
     /// time: the buttons are disabled while one runs.
     maint_job: Option<std::sync::mpsc::Receiver<crate::maintenance::Progress>>,
+    /// Which pass that receiver belongs to — what a pass that dies
+    /// without a word is reported against.
+    maint_kind: Option<crate::maintenance::Job>,
     maint_step: Option<String>,
     /// **Le compagnon** : la fenêtre réduite à une barre au-dessus de
     /// tout, dans un coin de l'écran (F9).
@@ -11986,6 +11989,7 @@ impl App {
             presc_fetch: None,
             update_note: None,
             maint_job: None,
+            maint_kind: None,
             maint_step: None,
             // Le compagnon s'ouvre par sa clé, comme toute autre vue :
             // c'est la seule façon pour `smoke.sh` de le regarder aux
@@ -12079,6 +12083,7 @@ impl App {
                 Ok(Progress::Done(outcome)) => {
                     self.finish_maintenance(&outcome);
                     self.maint_job = None;
+                    self.maint_kind = None;
                     self.maint_step = None;
                     return;
                 }
@@ -12090,11 +12095,21 @@ impl App {
                     return;
                 }
                 // The thread died without saying so — a panic in a seed.
-                // Better a wrong-looking message than a spinner that
-                // never stops.
+                // It may have died **after** writing (a reset that
+                // emptied the tables, then fell over reseeding them), so
+                // the lists are read again and the failure is said where
+                // the button was: a silent stop left stale lists on
+                // screen over a base that had changed under them.
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                     self.maint_job = None;
                     self.maint_step = None;
+                    if let Some(job) = self.maint_kind.take() {
+                        self.finish_maintenance(&crate::maintenance::Outcome {
+                            job,
+                            counts: Vec::new(),
+                            error: Some(tr("maint_died").to_owned()),
+                        });
+                    }
                     return;
                 }
             }
@@ -58876,6 +58891,7 @@ impl eframe::App for App {
                 // qu'on lance est une passe qu'on a demandée, même si
                 // elle échoue à mi-chemin.
                 session.note(crate::telemetry::Signal::Pass);
+                self.maint_kind = Some(job);
                 self.maint_job = Some(crate::maintenance::spawn(
                     session.db.path().unwrap_or_else(|| self.config.db_path()),
                     session.password.clone(),

@@ -1141,6 +1141,7 @@ maint_step_preparations = "Préparations"
 maint_step_dispositifs = "Dispositifs"
 maint_step_protocols = "Protocoles"
 maint_running = "{} — étape {} sur {}"
+maint_died = "La passe s'est interrompue sans rendre compte ; l'écran a relu la base. Relancez-la, ou copiez la base avant d'aller plus loin."
 maint_busy = "Une mise à jour de la base est déjà en cours."
 lock_db_found = "Base trouvée au démarrage, pas configurée — vérifiez le chemin."
 
