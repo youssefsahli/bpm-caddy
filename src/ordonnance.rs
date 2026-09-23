@@ -112,27 +112,31 @@ const ANGINE: Protocol = Protocol {
             caution: "Dose à rapporter au poids de l'enfant.",
         },
         Antibiotic {
-            name: "Céfuroxime-axétil",
+            name: "Céfuroxime-axétil 250 mg",
             situation: "Allergie aux pénicillines sans contre-indication aux céphalosporines",
-            posologies: &["Selon la recommandation en vigueur, durée courte"],
+            // Les doses de la recommandation, écrites : « selon la
+            // recommandation en vigueur » s'imprimait tel quel sur
+            // l'ordonnance remise au patient — sans dose, sans rythme,
+            // sans durée (SPILF / HAS, angine de l'adulte).
+            posologies: &["250 mg deux fois par jour pendant 4 jours"],
             caution: "Vérifier l'absence d'antécédent de réaction grave aux bêta-lactamines.",
         },
         Antibiotic {
-            name: "Cefpodoxime",
+            name: "Cefpodoxime-proxétil 100 mg",
             situation: "Allergie aux pénicillines sans contre-indication aux céphalosporines",
-            posologies: &["Selon la recommandation en vigueur, durée courte"],
+            posologies: &["100 mg deux fois par jour pendant 5 jours"],
             caution: "Vérifier l'absence d'antécédent de réaction grave aux bêta-lactamines.",
         },
         Antibiotic {
-            name: "Azithromycine",
+            name: "Azithromycine 250 mg",
             situation: "Contre-indication à toutes les bêta-lactamines",
-            posologies: &["Schéma de 3 jours, selon la recommandation en vigueur"],
+            posologies: &["500 mg une fois par jour pendant 3 jours"],
             caution: "Prélèvement de gorge pour culture avant de traiter.",
         },
         Antibiotic {
-            name: "Clarithromycine",
+            name: "Clarithromycine 250 mg",
             situation: "Contre-indication à toutes les bêta-lactamines",
-            posologies: &["Selon la recommandation en vigueur"],
+            posologies: &["250 mg deux fois par jour pendant 5 jours"],
             caution: "Prélèvement de gorge pour culture avant de traiter ; nombreuses interactions.",
         },
     ],
@@ -143,10 +147,14 @@ const ANGINE: Protocol = Protocol {
         "L'entourage n'est pas traité en l'absence de signes.",
         "Reconsulter sans attendre si la fièvre persiste au-delà de 3 jours, si la déglutition devient impossible, en cas de gêne respiratoire, d'éruption ou de gonflement du cou.",
     ],
+    // **Des conseils qui valent pour chacune des molécules** : ils
+    // parlaient de l'amoxicilline — « matin et soir », « aller au bout
+    // des 6 jours » — et s'imprimaient sous l'azithromycine, qui se
+    // prend une fois par jour pendant trois.
     temps_de_prise: &[
-        "Prendre les doses à intervalle régulier, matin et soir, à heure fixe.",
-        "L'amoxicilline se prend indifféremment pendant ou en dehors des repas.",
-        "Aller au bout des 6 jours même si la gorge va mieux dès le deuxième jour.",
+        "Prendre les doses à intervalle régulier, à heure fixe, comme l'ordonnance l'indique.",
+        "Ces antibiotiques se prennent indifféremment pendant ou en dehors des repas.",
+        "Aller au bout du traitement prescrit même si la gorge va mieux dès le deuxième jour.",
         "En cas d'oubli, prendre la dose dès que possible, sauf si la suivante est proche ; ne jamais doubler.",
     ],
 };

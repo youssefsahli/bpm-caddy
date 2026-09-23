@@ -29,9 +29,18 @@ impl FormulaLine {
     /// `factor` times its written size. A line without a number keeps
     /// what it says: « une pointe de spatule » does not scale.
     pub fn scaled(&self, factor: f64) -> String {
+        // **Ce qui ne se multiplie pas reste tel qu'écrit** : un
+        // pourcentage est une concentration et non une masse (« 5 % » à
+        // 60 g ne devient pas « 3 % »), une quantité par unité non plus,
+        // et une fourchette « 2 à 3 g » dont on ne multiplierait que la
+        // borne basse se lirait « 1,2 à 3 g ».
+        let unit = self.unit.trim_start();
+        if unit.starts_with(['%', '/', 'à', '-', '–']) {
+            return self.written.clone();
+        }
         match self.quantity {
             Some(q) => {
-                let value = format_quantity(q * factor);
+                let value = format_scaled(q * factor);
                 match (self.qsp, self.unit.is_empty()) {
                     (true, true) => format!("qsp {value}"),
                     (true, false) => format!("qsp {value} {}", self.unit),
@@ -86,7 +95,11 @@ fn starts_with_qsp(text: &str) -> bool {
         .take_while(|c| c.is_alphabetic() || *c == '.')
         .collect::<String>()
         .to_lowercase();
-    matches!(head.as_str(), "qsp" | "q.s.p" | "qs")
+    // Le point final aussi : « q.s.p. » est l'écriture la plus
+    // courante, et lu « q.s.p. » il n'était pas reconnu — l'excipient ne
+    // suivait pas le changement de quantité, et la préparation sortait
+    // à une autre concentration.
+    matches!(head.trim_end_matches('.'), "qsp" | "q.s.p" | "qs" | "q.s")
 }
 
 /// Read "100 g", "0,5 mL", "12.5 %" — the number, then whatever unit
@@ -107,6 +120,24 @@ pub fn parse_amount(text: &str) -> Option<(f64, &str)> {
     }
     let value: f64 = text[..end].replace(',', ".").parse().ok()?;
     Some((value, text[end..].trim()))
+}
+
+/// Une quantité **recalculée**, écrite à la précision qu'elle a.
+///
+/// `format_quantity` arrondit au milligramme, ce qui est juste pour une
+/// pesée en grammes et faux pour un principe actif à l'état de traces :
+/// le permanganate de la solution de Dakin, 0,001 g pour 100 mL,
+/// ramené à 30 mL, s'écrivait **« 0 g »**, et à 250 mL « 0,003 g » au
+/// lieu de 0,0025. Sous l'unité, trois chiffres significatifs ; et
+/// jamais zéro pour ce qui n'est pas zéro.
+pub fn format_scaled(value: f64) -> String {
+    if value <= 0.0 || value >= 1.0 {
+        return format_quantity(value);
+    }
+    let places = (2 - value.log10().floor() as i32).clamp(3, 9) as usize;
+    let text = format!("{value:.places$}");
+    let text = text.trim_end_matches('0').trim_end_matches('.');
+    text.replace('.', ",")
 }
 
 /// A quantity as a pharmacist writes it: French decimal comma, no
@@ -247,5 +278,20 @@ mod tests {
         assert_eq!(format_quantity(1.6666), "1,667");
         assert_eq!(format_quantity(0.5), "0,5");
         assert_eq!(format_quantity(100.0), "100");
+    }
+
+    /// **Une trace reste une trace, un « q.s.p. » un qsp, un pourcentage
+    /// une concentration.**
+    #[test]
+    fn a_rescaled_formula_keeps_what_it_says() {
+        assert_eq!(format_scaled(0.0003), "0,0003");
+        assert_eq!(format_scaled(0.0025), "0,0025");
+        assert_eq!(format_scaled(0.0005), "0,0005");
+        assert_eq!(format_scaled(12.5), "12,5");
+        let lines = parse_formula("Principe | 5 %\nVaseline | q.s.p. 100 g\nAutre | 2 à 3 g");
+        assert!(lines[1].qsp, "« q.s.p. » avec son point");
+        assert_eq!(lines[0].scaled(0.6), "5 %");
+        assert_eq!(lines[1].scaled(0.6), "qsp 60 g");
+        assert_eq!(lines[2].scaled(0.6), "2 à 3 g");
     }
 }

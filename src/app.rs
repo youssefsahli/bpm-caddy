@@ -15124,6 +15124,12 @@ impl App {
             let lines = choice.lines(protocol);
             if lines.is_empty() {
                 session.error = Some(tr("ord_empty").to_owned());
+            } else if choice.antibiotic.is_some() && choice.posology.trim().is_empty() {
+                // **Un antibiotique ne s'imprime pas sans sa posologie** :
+                // le champ vidé laissait partir une ordonnance qui nomme
+                // la molécule et ne dit ni la dose, ni le rythme, ni la
+                // durée.
+                session.error = Some(tr("ord_no_posology").to_owned());
             } else {
                 let today = session
                     .db

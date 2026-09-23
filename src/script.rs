@@ -127,6 +127,11 @@ pub struct Outcome {
     pub error: Option<String>,
 }
 
+/// Ce qu'un script peut imprimer en tout : un mégaoctet de texte, bien
+/// plus que ce qu'un volet se lit, bien moins que ce qui fait tomber un
+/// poste.
+const MAX_PRINTED: usize = 1_000_000;
+
 /// Exécuter un script contre un instantané.
 ///
 /// Ne panique jamais : une erreur de syntaxe, un dépassement de compte,
@@ -135,6 +140,26 @@ pub struct Outcome {
 pub fn run(source: &str, data: &Snapshot) -> Outcome {
     let printed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut engine = rhai::Engine::new();
+    // **Ni `import`, ni résolveur de modules.** `Engine::new` en pose un
+    // qui lit des fichiers : `import "/chemin/quelconque" as m;` lisait
+    // et exécutait un `.rhai` n'importe où sur le disque — et, sous
+    // Windows, un chemin `\\serveur\partage` ouvrait une connexion
+    // réseau qui envoie l'identité du poste. C'était la seule porte vers
+    // le monde, et la règle de ce module est qu'il n'y en a aucune.
+    engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
+    engine.disable_symbol("import");
+    // **Et ce qu'on imprime est borné en tout**, pas seulement ligne à
+    // ligne : `max_string_size` borne une valeur, et une boucle qui
+    // imprime un mégaoctet à chaque tour remplissait la mémoire bien
+    // avant que le compte d'opérations ne l'arrête.
+    let printed_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    {
+        let seen = Arc::clone(&printed_bytes);
+        engine.on_progress(move |_| {
+            (seen.load(std::sync::atomic::Ordering::Relaxed) > MAX_PRINTED)
+                .then(|| rhai::Dynamic::from("sortie trop longue"))
+        });
+    }
     // Les bornes. `set_max_operations` est ce qui arrête `while true {}` ;
     // les autres arrêtent les explosions de mémoire, qui sont l'autre
     // façon de bloquer une application avec trois caractères.
@@ -146,9 +171,13 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
     // Ce qu'un script écrit va dans le volet et nulle part ailleurs.
     {
         let sink = Arc::clone(&printed);
+        let bytes = Arc::clone(&printed_bytes);
         engine.on_print(move |text| {
-            if let Ok(mut lines) = sink.lock() {
-                lines.push(text.to_owned());
+            let total = bytes.fetch_add(text.len(), std::sync::atomic::Ordering::Relaxed);
+            if total <= MAX_PRINTED {
+                if let Ok(mut lines) = sink.lock() {
+                    lines.push(text.to_owned());
+                }
             }
         });
     }
@@ -156,9 +185,13 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
     // application de bureau n'a pas.
     {
         let sink = Arc::clone(&printed);
+        let bytes = Arc::clone(&printed_bytes);
         engine.on_debug(move |text, _, pos| {
-            if let Ok(mut lines) = sink.lock() {
-                lines.push(format!("{pos:?} {text}"));
+            let total = bytes.fetch_add(text.len(), std::sync::atomic::Ordering::Relaxed);
+            if total <= MAX_PRINTED {
+                if let Ok(mut lines) = sink.lock() {
+                    lines.push(format!("{pos:?} {text}"));
+                }
             }
         });
     }
@@ -836,6 +869,10 @@ mod tests {
             "ajouter_patient(\"X\")",
             "supprimer_fiche(1)",
             "ecrire_registre(1, 1.0)",
+            // **Ni `import`**, qui lisait un `.rhai` n'importe où sur le
+            // disque et, sous Windows, ouvrait un partage réseau.
+            "import \"/etc/passwd\" as m; 1",
+            "import \"\\\\serveur\\partage\\x\" as m; 1",
         ] {
             let out = run(attempt, &sample());
             assert!(
@@ -847,6 +884,15 @@ mod tests {
         // une copie, et l'appel suivant repart de la base.
         let out = run("let a = patients(); a.clear(); patients().len", &sample());
         assert_eq!(out.value, "2");
+        // Et ce qu'on imprime est borné en tout : une boucle qui imprime
+        // un mégaoctet par tour s'arrête sur une erreur, et la sortie
+        // gardée reste petite.
+        let out = run(
+            "let s = \"x\"; for i in 0..19 { s += s; } loop { print(s) }",
+            &sample(),
+        );
+        assert!(out.error.is_some());
+        assert!(out.printed.iter().map(String::len).sum::<usize>() <= 2_000_000);
     }
 
     /// Les exemples livrés s'exécutent, tous, sans erreur.

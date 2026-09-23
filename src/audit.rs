@@ -182,7 +182,12 @@ pub fn summarize(accesses: &[Access]) -> Summary {
         // Zéro n'est pas un dossier : c'est ce que porte un acte qui
         // n'en vise aucun, et le compter gonflerait le nombre de
         // dossiers touchés d'exactement un, toujours.
-        if a.file != 0 {
+        //
+        // **Et une purge n'est pas un dossier** : elle range dans `file`
+        // le nombre de lignes qu'elle a retirées, et ce nombre se
+        // comptait comme un numéro de dossier — un de plus, ou fondu
+        // avec le vrai dossier qui porte ce numéro.
+        if a.file != 0 && a.act != Act::Purge {
             files.insert(a.file);
         }
         *per_act.entry(a.act.key()).or_default() += 1;

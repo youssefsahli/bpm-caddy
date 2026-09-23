@@ -5,6 +5,32 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.256.0] - 2026-09-23
+
+### Security
+- **La console ne peut plus lire un fichier ni atteindre le réseau.**
+  Le moteur de script posait par défaut un résolveur de modules :
+  `import "/chemin" as m;` lisait et exécutait un fichier n'importe où
+  sur le disque, et sous Windows un chemin `\\serveur\partage` ouvrait
+  une connexion réseau qui envoie l'identité du poste. `import` est
+  désactivé et le résolveur retiré. Et ce qu'un script imprime est
+  borné en tout, et non plus ligne à ligne : une boucle qui imprimait un
+  mégaoctet par tour remplissait la mémoire.
+
+### Fixed
+- **L'ordonnance d'une angine écrit les doses** de la céfuroxime, du
+  cefpodoxime, de l'azithromycine et de la clarithromycine (SPILF /
+  HAS) au lieu de « selon la recommandation en vigueur », qui
+  s'imprimait tel quel ; les conseils de prise ne parlent plus de
+  l'amoxicilline sous une autre molécule ; et un antibiotique dont la
+  posologie a été vidée ne s'imprime plus.
+- **Le codex ne rend plus une trace à zéro** : le permanganate de la
+  solution de Dakin ramené à 30 mL s'écrivait « 0 g ». Sous l'unité,
+  trois chiffres significatifs. « q.s.p. » avec son point final est lu
+  comme un qsp, et un pourcentage ou une fourchette ne se multiplient
+  plus.
+- Le relevé d'accès ne compte plus une purge comme un dossier.
+
 ## [0.255.0] - 2026-09-23
 
 ### Fixed
