@@ -332,6 +332,16 @@ substitution. Sous la figure, la légende nomme chaque couleur, et une
 phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
 dit, il ne se devine pas.
 
+**La carte de l'ordonnance.** Un dossier ouvert qui porte au moins deux
+lignes, et « Ordonnance » change de carte : chaque ligne sur un cercle,
+et une corde entre celles qui se rencontrent — les mêmes trois tables,
+les mêmes poids, les mêmes couleurs. Une règle qui nomme trois lignes,
+comme la triade diurétique-IEC-AINS, les relie toutes les trois. Le
+survol d'une ligne dit avec qui elle se rencontre et pourquoi. Une ligne
+qui ne rencontre rien est en gris, et nommée sous la carte : elle ne
+rencontre rien **dans ces tables**, ce qui n'est pas une absence
+d'interaction. « Voisinage » revient à la fiche au centre.
+
 **Se déplacer et grossir.** La figure se glisse à la souris et se
 grossit à la molette — autour du pointeur, si bien que ce qu'on regarde
 reste où on le regarde. Au clavier, `+` et `−` font la même chose et `0`

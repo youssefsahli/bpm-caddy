@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.282.0] - 2026-09-24
+
+### Added
+- **La carte de l'ordonnance** : dans la carte du voisinage, un dossier
+  ouvert qui porte au moins deux lignes et « Ordonnance » change de
+  carte — chaque ligne sur un cercle, une corde entre celles qui se
+  rencontrent, avec les trois tables, les poids et les couleurs du
+  voisinage. Une règle de trois lignes (la triade) les relie toutes. Le
+  survol d'une ligne dit avec qui elle se rencontre et pourquoi ; ce qui
+  ne rencontre rien est en gris et nommé sous la carte, « dans ces
+  tables » — jamais « sans interaction ».
+
+### Changed
+- « Nouvelle fiche… » quitte la bande de la carte : la base a son propre
+  « Créer une fiche », et la bande garde deux rangées à 1024 × 700 en
+  texte 1,6.
+
 ## [0.281.0] - 2026-09-23
 
 ### Added

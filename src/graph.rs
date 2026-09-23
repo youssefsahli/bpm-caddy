@@ -903,6 +903,68 @@ pub fn circle(n: usize) -> Vec<(f32, f32)> {
         .collect()
 }
 
+/// Une corde de la carte d'une ordonnance : deux lignes qui se
+/// rencontrent, et pourquoi.
+#[derive(Clone, PartialEq, Eq, Debug)]
+pub struct Chord {
+    /// Les deux lignes, par leur rang dans l'ordonnance, la plus petite
+    /// d'abord.
+    pub a: usize,
+    pub b: usize,
+    pub why: Vec<Why>,
+    pub weight: u8,
+}
+
+/// **La carte d'une ordonnance** : ce que les tables trouvent entre ses
+/// lignes, rangé par paire.
+///
+/// `found` est ce que les trois lectures rendent — chaque raison avec
+/// les rangs des lignes qu'elle nomme. Une règle qui en nomme trois (la
+/// « triade ») relie chacune aux deux autres : c'est ce qu'elle dit, et
+/// la découper en une seule corde choisirait une paire au hasard. Une
+/// raison répétée sur une paire ne compte qu'une fois.
+///
+/// Rend les cordes, **les plus lourdes d'abord** — c'est l'ordre dans
+/// lequel on les peint par-dessus les autres et celui dans lequel on les
+/// lit —, et les lignes qui ne rencontrent rien. Ces dernières ne sont
+/// pas « sans interaction » : elles sont sans rencontre **dans ces
+/// tables**, et la vue le dit en ces mots.
+pub fn chords(lines: usize, found: &[(Vec<usize>, Why)]) -> (Vec<Chord>, Vec<usize>) {
+    let mut out: Vec<Chord> = Vec::new();
+    for (named, why) in found {
+        let mut named: Vec<usize> = named.iter().copied().filter(|i| *i < lines).collect();
+        named.sort_unstable();
+        named.dedup();
+        for (x, &a) in named.iter().enumerate() {
+            for &b in &named[x + 1..] {
+                match out.iter_mut().find(|c| c.a == a && c.b == b) {
+                    Some(c) => {
+                        if !c.why.contains(why) {
+                            c.why.push(why.clone());
+                        }
+                    }
+                    None => out.push(Chord {
+                        a,
+                        b,
+                        why: vec![why.clone()],
+                        weight: 0,
+                    }),
+                }
+            }
+        }
+    }
+    for c in &mut out {
+        c.why
+            .sort_by_key(|w| (std::cmp::Reverse(w.weight()), w.source_rank()));
+        c.weight = weight_of(&c.why);
+    }
+    out.sort_by_key(|c| (std::cmp::Reverse(c.weight), c.a, c.b));
+    let alone: Vec<usize> = (0..lines)
+        .filter(|i| !out.iter().any(|c| c.a == *i || c.b == *i))
+        .collect();
+    (out, alone)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1757,5 +1819,37 @@ mod tests {
             "le lithium a sa place"
         );
         assert_eq!(map.count(Tie::Interaction), 3);
+    }
+
+    /// **Une corde par paire, et une règle de trois lignes en relie
+    /// chacune aux deux autres.** Les plus lourdes d'abord ; une ligne
+    /// qui ne rencontre rien est nommée comme telle.
+    #[test]
+    fn an_ordonnance_map_draws_one_chord_per_pair_heaviest_first() {
+        let triade = Why::Effect {
+            title: "Triade néfaste".to_owned(),
+            detail: String::new(),
+            alert: true,
+        };
+        let cited = Why::Cited {
+            by: "A".to_owned(),
+            sentence: "Surveiller.".to_owned(),
+        };
+        let found = vec![
+            (vec![0, 1, 2], triade.clone()),
+            (vec![3, 0], cited.clone()),
+            // The same reason twice on one pair counts once.
+            (vec![0, 3], cited.clone()),
+            // A rank outside the list is ignored.
+            (vec![1, 9], cited.clone()),
+        ];
+        let (c, alone) = chords(5, &found);
+        let pairs: Vec<(usize, usize, u8)> = c.iter().map(|c| (c.a, c.b, c.weight)).collect();
+        assert_eq!(pairs, vec![(0, 1, 3), (0, 2, 3), (1, 2, 3), (0, 3, 2)]);
+        assert_eq!(c[3].why, vec![cited]);
+        assert_eq!(alone, vec![4]);
+        let (none, all) = chords(2, &[]);
+        assert!(none.is_empty());
+        assert_eq!(all, vec![0, 1]);
     }
 }

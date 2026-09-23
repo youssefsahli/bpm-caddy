@@ -4439,6 +4439,12 @@ struct Session {
     /// Every card as the review reads it, for the base revision it was
     /// read on — see `revue::Folded`.
     graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
+    /// The map shows the open file's ordonnance instead of a card's
+    /// neighbourhood.
+    graph_file: bool,
+    /// What the tables find between the file's lines, for the lines and
+    /// base revision it was read on.
+    graph_file_read: Option<GraphFileRead>,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -5166,6 +5172,8 @@ impl Session {
             graph_unnamed: 0,
             graph_reasons: None,
             graph_folded: None,
+            graph_file: false,
+            graph_file_read: None,
             graph_pair: None,
             graph_query: String::new(),
             graph_note: None,
@@ -7431,6 +7439,21 @@ impl Session {
         self.graph_key = Some(key);
     }
 
+    /// What the tables find between the open file's lines — read when
+    /// the lines or the base change, never per frame.
+    fn refresh_graph_file(&mut self) {
+        let key = (
+            self.patient_treats.iter().map(|d| d.id).collect::<Vec<_>>(),
+            self.drugs_rev,
+        );
+        if self.graph_file_read.as_ref().map(|(k, _, _)| k) == Some(&key) {
+            return;
+        }
+        let found = graph_file_found(&self.patient_treats);
+        let (chords, alone) = crate::graph::chords(self.patient_treats.len(), &found);
+        self.graph_file_read = Some((key, chords, alone));
+    }
+
     /// The open card's neighbourhood, kept between frames.
     ///
     /// Both lists are a pass over the whole base — 850 cards, two
@@ -9015,11 +9038,66 @@ fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
     out
 }
 
+/// What the tables find between an ordonnance's lines: the lines and the
+/// base revision it was read for, the chords, and the lines that meet
+/// nothing.
+type GraphFileRead = ((Vec<i64>, u64), Vec<crate::graph::Chord>, Vec<usize>);
+
 /// What the tables say of each pair, keyed by (centre, base revision).
 type GraphReasons = (
     (i64, u64),
     std::collections::HashMap<i64, Vec<crate::graph::Why>>,
 );
+
+/// **Ce que les trois lectures trouvent entre les lignes d'une
+/// ordonnance**, chaque raison avec les rangs des lignes qu'elle nomme —
+/// les mêmes lectures que le dossier et la barre du comptoir, sur la
+/// liste entière : une règle qui demande trois lignes se lit sur trois.
+fn graph_file_found(list: &[Drug]) -> Vec<(Vec<usize>, crate::graph::Why)> {
+    use crate::graph::Why;
+    let by_id = |id: i64| list.iter().position(|d| d.id == id);
+    let by_name = |n: &str| list.iter().position(|d| d.name.trim() == n.trim());
+    let mut out = Vec::new();
+    for (a, b, _, sentence) in interactions_paired(list) {
+        if let (Some(ra), Some(rb)) = (by_id(a), by_id(b)) {
+            out.push((
+                vec![ra, rb],
+                Why::Cited {
+                    by: list[ra].name.trim().to_owned(),
+                    sentence,
+                },
+            ));
+        }
+    }
+    let terms = ordonnance_terms(list);
+    for c in crate::cyp::cross(&terms).crossings {
+        if let (Some(ra), Some(rb)) = (by_name(&c.actor), by_name(&c.affected)) {
+            out.push((
+                vec![ra, rb],
+                Why::Enzyme {
+                    actor: c.actor.clone(),
+                    enzyme: c.enzyme.label().to_owned(),
+                    shift: c.shift.label().to_owned(),
+                    minor: c.weight == crate::cyp::Weight::Minor,
+                },
+            ));
+        }
+    }
+    for p in crate::revue::review(&terms) {
+        let ranks: Vec<usize> = p.drugs.iter().filter_map(|n| by_name(n)).collect();
+        if ranks.len() >= 2 {
+            out.push((
+                ranks,
+                Why::Effect {
+                    title: p.title.to_owned(),
+                    detail: p.detail.to_owned(),
+                    alert: p.severity == crate::biology::Severity::Alert,
+                },
+            ));
+        }
+    }
+    out
+}
 
 /// Une raison du trait, en une ligne, **sa source nommée**.
 fn graph_why_line(w: &crate::graph::Why) -> String {
@@ -12473,7 +12551,7 @@ impl App {
                         // jamais vu les autres, et celui-ci ne se
                         // capture pas autrement — un cliché ne glisse
                         // pas et ne molette pas.
-                        Ok(v @ ("graph" | "graph_zoom" | "graph_wide")) => {
+                        Ok(v @ ("graph" | "graph_zoom" | "graph_wide" | "graph_ordonnance")) => {
                             // **Un dossier ouvert derrière la carte.**
                             // Sans lui, « + à l'ordonnance » est gris
                             // sur toutes les captures jamais prises, et
@@ -12570,6 +12648,12 @@ impl App {
                                     zoom: 0.55,
                                     pan: (0.0, 0.0),
                                 };
+                            }
+                            // La carte de l'ordonnance du dossier le plus
+                            // fourni : ses cordes, et ce qui ne rencontre
+                            // rien.
+                            if v == "graph_ordonnance" {
+                                session.graph_file = true;
                             }
                             session.view = MainView::Drugs;
                         }
@@ -54734,6 +54818,199 @@ impl App {
             })
     }
 
+    /// La carte d'une ordonnance est-elle possible ? Un dossier ouvert
+    /// qui porte au moins deux lignes : une seule ne rencontre personne.
+    fn graph_file_possible(session: &Session) -> bool {
+        session.viewing.is_some() && session.patient_treats.len() >= 2
+    }
+
+    /// Les clés de la carte d'une ordonnance : les poids que ses cordes
+    /// portent, et rien d'autre — une clé sans corde de sa couleur est le
+    /// défaut qu'une légende corrige.
+    fn graph_file_keys(session: &Session) -> Vec<(String, egui::Color32)> {
+        let Some((_, chords, _)) = &session.graph_file_read else {
+            return Vec::new();
+        };
+        let has = |w: u8| chords.iter().any(|c| c.weight == w);
+        let mut keys = Vec::new();
+        if has(3) {
+            keys.push((tr("graph_serious").to_owned(), motif::alert()));
+        }
+        if has(2) {
+            keys.push((
+                tr("graph_file_notable").to_owned(),
+                motif::chart::series_color(crate::graph::Tie::Interaction.series()),
+            ));
+        }
+        if has(1) {
+            keys.push((tr("graph_file_minor").to_owned(), motif::text_faint()));
+        }
+        keys
+    }
+
+    /// La phrase sous la carte d'une ordonnance : ce qui ne rencontre
+    /// rien **dans ces tables** — jamais « sans interaction ».
+    fn graph_file_note(session: &Session) -> Option<(String, egui::Color32)> {
+        let (_, chords, alone) = session.graph_file_read.as_ref()?;
+        if chords.is_empty() {
+            return Some((tr("graph_file_none").to_owned(), motif::text_dim()));
+        }
+        if alone.is_empty() {
+            return None;
+        }
+        let names: Vec<String> = alone
+            .iter()
+            .filter_map(|i| session.patient_treats.get(*i))
+            .map(|d| d.name.trim().to_owned())
+            .collect();
+        Some((trf("graph_file_alone", names.join(", ")), motif::text_dim()))
+    }
+
+    /// La carte de l'ordonnance du dossier ouvert : chaque ligne sur un
+    /// cercle, une corde par paire qui se rencontre.
+    ///
+    /// La disposition vient de `graph::circle` et les cordes de
+    /// `graph::chords`, purs et testés ; les raisons, des trois lectures
+    /// du dossier (`graph_file_found`). La vue met à l'échelle et peint.
+    fn graph_file_figure(ui: &mut egui::Ui, session: &mut Session) {
+        let body = ui.available_rect_before_wrap();
+        let field = motif::well(ui, body);
+        let Some((_, chords, alone)) = session.graph_file_read.clone() else {
+            return;
+        };
+        let lines: Vec<Drug> = session.patient_treats.clone();
+        let ring = crate::graph::circle(lines.len());
+        let rx = field.width() * 0.30;
+        let ry = field.height() / 2.0 - Self::graph_margin_y(ui);
+        if rx < 24.0 || ry < 24.0 {
+            return;
+        }
+        let mid = field.center();
+        let at = |i: usize| {
+            let (x, y) = ring.get(i).copied().unwrap_or((0.0, 0.0));
+            egui::pos2(mid.x + x * rx, mid.y + y * ry)
+        };
+        let half = Self::GRAPH_NODE_HALF;
+        let box_of =
+            |p: egui::Pos2| egui::Rect::from_center_size(p, egui::vec2(half * 2.0, half * 2.0));
+        let responses: Vec<egui::Response> = (0..lines.len())
+            .map(|i| {
+                ui.interact(
+                    box_of(at(i)).expand(4.0),
+                    ui.id().with(("graph_file_node", i)),
+                    egui::Sense::hover(),
+                )
+            })
+            .collect();
+        let hot = responses.iter().position(|r| r.hovered());
+        let colour = |w: u8| match w {
+            3 => motif::alert(),
+            2 => motif::chart::series_color(crate::graph::Tie::Interaction.series()),
+            _ => motif::text_faint(),
+        };
+        // Les plus légères d'abord : la plus lourde passe par-dessus, et
+        // c'est elle qu'on doit lire quand deux cordes se croisent.
+        for c in chords.iter().rev() {
+            let touches = hot.is_some_and(|h| h == c.a || h == c.b);
+            let base = match c.weight {
+                3 => 2.8_f32,
+                2 => 1.8,
+                _ => 1.2,
+            };
+            let (w, col) = match hot {
+                Some(_) if touches => (base + 1.2, colour(c.weight)),
+                Some(_) => (base.min(1.2), colour(c.weight).gamma_multiply(0.3)),
+                None => (base, colour(c.weight)),
+            };
+            ui.painter()
+                .line_segment([at(c.a), at(c.b)], egui::Stroke::new(w, col));
+        }
+        let mut taken: Vec<egui::Rect> = (0..lines.len())
+            .map(|i| box_of(at(i)).expand(1.0))
+            .collect();
+        let font = Self::graph_node_font(ui);
+        for (i, d) in lines.iter().enumerate() {
+            let p = at(i);
+            let node = box_of(p);
+            // Une ligne qui ne rencontre rien : le carré en gris de grille,
+            // la couleur de ce qui ne dit rien.
+            let fill = if alone.contains(&i) {
+                motif::chart::grid_color()
+            } else {
+                motif::chart::series_color(crate::graph::Tie::Interaction.series())
+            };
+            ui.painter().rect_filled(node, 0.0, fill);
+            motif::bevel(ui.painter(), node, !responses[i].hovered());
+            let name = d.name.trim().to_owned();
+            let size = ui.fonts(|f| {
+                f.layout_no_wrap(name.clone(), font.clone(), motif::text())
+                    .size()
+            });
+            if let Some((anchor, pos)) =
+                Self::graph_label_spot(p, half, p - mid, size, field, &taken)
+            {
+                let place = anchor.anchor_size(pos, size);
+                taken.push(place);
+                ui.painter()
+                    .rect_filled(place.expand(1.0), 0.0, motif::trough());
+                ui.painter().text(
+                    pos,
+                    anchor,
+                    &name,
+                    font.clone(),
+                    if responses[i].hovered() {
+                        motif::text()
+                    } else {
+                        motif::text_dim()
+                    },
+                );
+            }
+        }
+        // **Le survol d'une ligne dit ses rencontres** : avec qui, et la
+        // raison la plus lourde de chacune, la source nommée.
+        if let Some(h) = hot {
+            let mine: Vec<&crate::graph::Chord> =
+                chords.iter().filter(|c| c.a == h || c.b == h).collect();
+            let name = lines[h].name.trim().to_owned();
+            let rows: Vec<(String, String, egui::Color32)> = mine
+                .iter()
+                .map(|c| {
+                    let other = if c.a == h { c.b } else { c.a };
+                    let partner = lines
+                        .get(other)
+                        .map(|d| d.name.trim().to_owned())
+                        .unwrap_or_default();
+                    let reason = c.why.first().map(graph_why_line).unwrap_or_default();
+                    (partner, reason, colour(c.weight))
+                })
+                .collect();
+            responses[h].clone().on_hover_ui(|ui| {
+                ui.set_max_width(chars_wide(ui, 48.0));
+                ui.label(egui::RichText::new(&name).size(motif::pt(ui, 13.0)));
+                if rows.is_empty() {
+                    ui.label(
+                        egui::RichText::new(tr("graph_file_meets_none"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    );
+                }
+                for (partner, reason, c) in &rows {
+                    ui.label(
+                        egui::RichText::new(trf("graph_file_with", partner))
+                            .size(motif::pt(ui, 11.0))
+                            .strong()
+                            .color(*c),
+                    );
+                    ui.label(
+                        egui::RichText::new(reason)
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text()),
+                    );
+                }
+            });
+        }
+    }
+
     /// The base as a map: one card in the middle, its neighbourhood
     /// around it, and one click to move the middle.
     ///
@@ -54759,11 +55036,26 @@ impl App {
         // la figure, alors que le double-clic dans le vide et la touche 0
         // font la même chose — les infobulles le disent, et le titre du
         // panneau dit le grossissement.
+        // **Deux cartes, un bouton pour passer de l'une à l'autre** : le
+        // voisinage d'une fiche, et l'ordonnance du dossier ouvert. Mesuré
+        // sur le plus long des deux libellés, pour que la bande ne change
+        // pas de hauteur en changeant de carte.
+        let file_mode = session.graph_file && Self::graph_file_possible(session);
+        if file_mode {
+            session.refresh_graph_file();
+        }
+        let toggle_measure = if Self::button_width(ui, tr("graph_file_mode"))
+            >= Self::button_width(ui, tr("graph_neighbours_mode"))
+        {
+            tr("graph_file_mode")
+        } else {
+            tr("graph_neighbours_mode")
+        };
         let labels = [
             tr("patient_back"),
             tr("graph_open_card"),
             tr("graph_add_treat"),
-            tr("graph_new_card"),
+            toggle_measure,
             tr("graph_zoom_out"),
             tr("graph_zoom_in"),
         ];
@@ -54854,7 +55146,16 @@ impl App {
         // `graph::place` et `graph::spread_order`.
         let coverage = room * (1.0 / session.graph_look.zoom).clamp(1.0, 4.0);
         session.refresh_graph(crate::graph::Caps::default().for_room(coverage, node_line));
-        let keys = Self::graph_legend_keys(session);
+        let keys = if file_mode {
+            Self::graph_file_keys(session)
+        } else {
+            Self::graph_legend_keys(session)
+        };
+        let note_line = if file_mode {
+            Self::graph_file_note(session)
+        } else {
+            Self::graph_note_line(session)
+        };
         let legend_h = motif::chart::legend_height(
             ui,
             &keys
@@ -54872,10 +55173,10 @@ impl App {
         // en « interaction citée » non dessinés », qui s'enveloppe sur
         // deux lignes dans un volet de comptoir — et la seconde sortait
         // du pied. La phrase qui dit ce qui manque manquait à son tour.
-        let note_h = match Self::graph_note_line(session) {
+        let note_h = match &note_line {
             Some((note, _)) => Self::prose_height(
                 ui,
-                &note,
+                note,
                 motif::pt(ui, 11.0),
                 Self::scrolled_width(ui, work.width() - 32.0),
             )
@@ -54896,10 +55197,10 @@ impl App {
         let mut typed_centre: Option<i64> = None;
         let mut typed_changed = false;
         let mut add_treat: Option<i64> = None;
-        let mut new_card = false;
         // Ce que les boutons du creux demandent : appliqué après le
         // dessin, comme tout le reste de cette vue.
         let mut zoom_by: Option<f32> = None;
+        let mut toggle_file = false;
 
         let centre_name = session
             .graph_map
@@ -54937,17 +55238,30 @@ impl App {
                 {
                     add_treat = session.graph_centre;
                 }
-                if motif::button(ui, tr("graph_new_card"))
-                    .on_hover_text(tr("graph_new_card_tooltip"))
-                    .clicked()
+                if motif::button_enabled(
+                    ui,
+                    if file_mode {
+                        tr("graph_neighbours_mode")
+                    } else {
+                        tr("graph_file_mode")
+                    },
+                    file_mode || Self::graph_file_possible(session),
+                )
+                .on_hover_text(if file_mode {
+                    tr("graph_neighbours_mode_tip")
+                } else {
+                    tr("graph_file_mode_tip")
+                })
+                .on_disabled_hover_text(tr("graph_file_mode_off"))
+                .clicked()
                 {
-                    new_card = true;
+                    toggle_file = true;
                 }
                 let look = session.graph_look;
                 if motif::button_enabled(
                     ui,
                     tr("graph_zoom_out"),
-                    look.zoom > crate::graph::Look::MIN + 1e-3,
+                    !file_mode && look.zoom > crate::graph::Look::MIN + 1e-3,
                 )
                 .on_hover_text(tr("graph_zoom_out_tip"))
                 .clicked()
@@ -54957,7 +55271,7 @@ impl App {
                 if motif::button_enabled(
                     ui,
                     tr("graph_zoom_in"),
-                    look.zoom < crate::graph::Look::MAX - 1e-3,
+                    !file_mode && look.zoom < crate::graph::Look::MAX - 1e-3,
                 )
                 .on_hover_text(tr("graph_zoom_in_tip"))
                 .clicked()
@@ -55011,10 +55325,24 @@ impl App {
                 ],
             )
         };
-        if session.graph_unnamed > 0 {
+        if session.graph_unnamed > 0 && !file_mode {
             title.push_str(&trf("graph_title_unnamed", session.graph_unnamed));
         }
+        if file_mode {
+            title = trf(
+                "graph_file_title",
+                session
+                    .viewing
+                    .as_ref()
+                    .map(|p| p.full_name())
+                    .unwrap_or_default(),
+            );
+        }
         motif::panel(ui, plot_rect, Some(&title), |ui| {
+            if file_mode {
+                Self::graph_file_figure(ui, session);
+                return;
+            }
             let body = ui.available_rect_before_wrap();
             let Some(map) = session.graph_map.clone() else {
                 ui.label(
@@ -55570,7 +55898,7 @@ impl App {
             // What the rings could not take, never in silence: twelve of
             // forty drawn with nothing said would read as « il y en a
             // douze », a wrong answer that looks complete.
-            if let Some((note, colour)) = Self::graph_note_line(session) {
+            if let Some((note, colour)) = note_line.clone() {
                 ui.label(
                     egui::RichText::new(note)
                         .size(motif::pt(ui, 11.0))
@@ -55584,6 +55912,9 @@ impl App {
         // que fait la molette quand le pointeur y est.
         if let Some(f) = zoom_by {
             session.graph_look = session.graph_look.zoom_about(f, (0.0, 0.0));
+        }
+        if toggle_file {
+            session.graph_file = !file_mode;
         }
         if let Some(id) = recentre.or(typed_centre) {
             session.graph_centre = Some(id);
@@ -55621,17 +55952,6 @@ impl App {
                     Err(e) => session.error = Some(e),
                 }
             }
-        }
-        if new_card {
-            // The base's own « Créer une fiche » path, and not a second
-            // one: the map is a way in, never a second way to write.
-            // What was typed to look for a centre travels with it, so
-            // the name searched for and not found is the name the
-            // create button offers.
-            session.drug_query = std::mem::take(&mut session.graph_query);
-            session.show_graph = false;
-            session.drug_form = None;
-            session.drug_selected = 0;
         }
     }
 
@@ -71922,6 +72242,37 @@ mod tests {
         // Some pairs weigh on the shipped base: the AINS meets
         // anticoagulants by an alert rule of the review.
         assert!(reasons.values().any(|w| crate::graph::weight_of(w) == 3));
+    }
+
+    /// **La carte d'une ordonnance** sur les fiches livrées : la triade
+    /// diurétique-IEC-AINS relie ses trois lignes deux à deux, en rouge,
+    /// et une ligne que rien ne rencontre est nommée comme telle.
+    #[test]
+    fn an_ordonnance_map_reads_the_triad_and_names_what_meets_nothing() {
+        let (s, _swept) = scratch_session("graph-file");
+        let pick = |n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .clone()
+        };
+        let list = vec![
+            pick("Lasilix"),
+            pick("Advil"),
+            pick("Coversyl"),
+            pick("Fosamax"),
+        ];
+        let found = super::graph_file_found(&list);
+        let (chords, alone) = crate::graph::chords(list.len(), &found);
+        for (a, b) in [(0, 1), (0, 2), (1, 2)] {
+            let c = chords
+                .iter()
+                .find(|c| c.a == a && c.b == b)
+                .unwrap_or_else(|| panic!("corde {a}-{b}"));
+            assert_eq!(c.weight, 3, "{a}-{b}");
+        }
+        assert_eq!(alone, vec![3]);
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
