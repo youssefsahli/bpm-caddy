@@ -3273,6 +3273,16 @@ struct OrdonnanceBox {
     age_text: String,
 }
 
+/// Le catalogue des vaccins en cours de rédaction : le vaccin ouvert tel
+/// qu'il est tapé, et ce que la base portait quand on l'a ouvert.
+#[derive(Default)]
+struct VaccCatEdit {
+    base: Option<vaccines::Vaccine>,
+    draft: vaccines::Vaccine,
+    confirm_delete: bool,
+    note: Option<(bool, String)>,
+}
+
 /// Rédiger les lignes d'un protocole TROD : la liste, la ligne ouverte
 /// telle qu'elle est tapée, et ce que la base portait quand on l'a
 /// ouverte — contre quoi l'écriture se compare.
@@ -3788,6 +3798,11 @@ struct Session {
     /// The pregnancy date as typed in the carnet, for the file it was
     /// typed on.
     vacc_ddr_text: Option<(i64, String)>,
+    /// The vaccine catalogue (`vaccine_catalogue`), read at opening and
+    /// after each write — the list the carnet offers by name.
+    vacc_catalogue: Vec<vaccines::Vaccine>,
+    /// Its editor, when open.
+    vacc_cat_edit: Option<VaccCatEdit>,
     /// In-progress country search of the travel panel.
     travel_query: String,
     /// The posology the file records for each of its treatments, by drug
@@ -4696,6 +4711,8 @@ impl Session {
         // And the TROD ordonnance lines, by the same rule: the shipped
         // protocols once, the team's rows after that.
         let _ = db.seed_trod_lines();
+        // And the vaccine catalogue the carnet offers by name.
+        let _ = db.seed_vaccine_catalogue();
         // And the thirteen « toxicité » sections that used to say the
         // same nothing: replaced once, only where the old sentence is
         // still there word for word.
@@ -4799,6 +4816,8 @@ impl Session {
             checklist_edit: None,
             vacc_due: Vec::new(),
             vacc_ddr_text: None,
+            vacc_catalogue: Vec::new(),
+            vacc_cat_edit: None,
             travel_query: String::new(),
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
@@ -5123,6 +5142,7 @@ impl Session {
         // both have to be loaded before the first Ctrl+K, not only when
         // their view is opened.
         session.reload_codex();
+        session.reload_vacc_catalogue();
         session.reload_dispositifs();
         // The search view opens on the day's own panels, so the figures
         // they show have to be loaded before the first frame.
@@ -5589,6 +5609,7 @@ impl Session {
                 self.enter_drug_panel();
                 self.show_codex = true;
                 self.reload_codex();
+                self.reload_vacc_catalogue();
                 self.codex_open = Some(id);
                 self.codex_edit = None;
                 self.codex_base = None;
@@ -6044,6 +6065,7 @@ impl Session {
         // l'écran.
         self.reload_stup();
         self.reload_codex();
+        self.reload_vacc_catalogue();
         self.reload_dispositifs();
         if self.view == MainView::Transmissions {
             self.load_transmissions();
@@ -7141,6 +7163,11 @@ impl Session {
     }
 
     /// Reload the codex from the base.
+    /// The vaccines the carnet offers, as the officine keeps them.
+    fn reload_vacc_catalogue(&mut self) {
+        self.vacc_catalogue = self.db.vaccine_catalogue().unwrap_or_default();
+    }
+
     fn reload_codex(&mut self) {
         self.preparations = self.db.preparations().unwrap_or_default();
         self.catalog_rev = self.catalog_rev.wrapping_add(1);
@@ -11987,7 +12014,7 @@ impl App {
                         // Le carnet d'une femme enceinte de 24 SA : les
                         // lignes de la grossesse n'existent sur aucune
                         // autre capture.
-                        Ok("vaccins_grossesse") => {
+                        Ok(key @ ("vaccins_grossesse" | "vaccins_catalogue")) => {
                             // Une femme en âge de l'être : la démo n'en a
                             // pas, on en crée une plutôt que de dater une
                             // grossesse à soixante-cinq ans.
@@ -12024,6 +12051,14 @@ impl App {
                                 }
                             }
                             session.patient_tab = PatientTab::Vaccins;
+                            if key == "vaccins_catalogue" {
+                                let mut edit = VaccCatEdit::default();
+                                if let Some(first) = session.vacc_catalogue.get(1).cloned() {
+                                    edit.base = Some(first.clone());
+                                    edit.draft = first;
+                                }
+                                session.vacc_cat_edit = Some(edit);
+                            }
                         }
                         Ok(
                             v
@@ -12400,6 +12435,7 @@ impl App {
                 session.pending = counts;
             }
             session.reload_codex();
+            session.reload_vacc_catalogue();
             session.reload_dispositifs();
             session.reload_protocols();
             if outcome.job == Job::Reset {
@@ -15959,9 +15995,14 @@ impl App {
             let form_rows = Self::wrapped_rows_of(
                 ui,
                 form_w,
-                Self::carnet_form_widths(ui, session.vacc_edit.is_some(), form_w)
-                    .into_iter()
-                    .filter(|w| *w > 0.0),
+                Self::carnet_form_widths(
+                    ui,
+                    session.vacc_edit.is_some(),
+                    form_w,
+                    &session.vacc_catalogue,
+                )
+                .into_iter()
+                .filter(|w| *w > 0.0),
             );
             let form_need = (Self::row_height(ui) + ui.spacing().item_spacing.y) * form_rows
                 + Self::carnet_notice_h(ui, session, config)
@@ -16003,6 +16044,7 @@ impl App {
         };
         Self::carnet_pane(ui, session, patient, operator, carnet, config);
         Self::vacc_due_pane(ui, session, patient, due);
+        Self::vacc_cat_editor(ui.ctx(), session);
         Self::vacc_travel_pane(ui, session, patient, travel);
     }
 
@@ -16064,7 +16106,8 @@ impl App {
             // gardait quatre-vingts pixels de vide sous le formulaire —
             // pris à la table au-dessus.
             let form_w = inner.width();
-            let widths = Self::carnet_form_widths(ui, editing.is_some(), form_w);
+            let widths =
+                Self::carnet_form_widths(ui, editing.is_some(), form_w, &session.vacc_catalogue);
             let form_rows =
                 Self::wrapped_rows_of(ui, form_w, widths.iter().copied().filter(|w| *w > 0.0));
             // Le formulaire prend ce qu'il a mesuré — une rangée de
@@ -16449,18 +16492,19 @@ impl App {
                         // connaît pas s'inscrit tel quel, et la rangée
                         // disparaît dès que le nom est celui d'une fiche.
                         let typed = session.vacc_new.label.trim().to_owned();
-                        let hits: Vec<&vaccines::VaccineRef> = if typed.is_empty()
-                            || vaccines::CATALOGUE
+                        let catalogue = std::mem::take(&mut session.vacc_catalogue);
+                        let hits: Vec<&vaccines::Vaccine> = if typed.is_empty()
+                            || catalogue
                                 .iter()
                                 .any(|v| v.label.eq_ignore_ascii_case(&typed))
                         {
                             Vec::new()
                         } else {
-                            let mut scored: Vec<(i32, &vaccines::VaccineRef)> = vaccines::CATALOGUE
+                            let mut scored: Vec<(i32, &vaccines::Vaccine)> = catalogue
                                 .iter()
                                 .filter_map(|v| {
-                                    let a = fuzzy::score(&typed, v.label);
-                                    let b = fuzzy::score(&typed, v.code);
+                                    let a = fuzzy::score(&typed, &v.label);
+                                    let b = fuzzy::score(&typed, &v.code);
                                     a.max(b).map(|s| (s, v))
                                 })
                                 .collect();
@@ -16477,31 +16521,37 @@ impl App {
                             let chosen = name_field.as_ref().and_then(|f| {
                                 Self::list_keys(ui, f, &mut session.vacc_cursor, hits.len())
                             });
-                            let mut take: Option<&vaccines::VaccineRef> =
+                            let mut take: Option<&vaccines::Vaccine> =
                                 chosen.and_then(|i| hits.get(i).copied());
                             ui.horizontal_wrapped(|ui| {
                                 for (i, v) in hits.iter().enumerate() {
                                     let on = i == session.vacc_cursor;
-                                    if motif::toggle(ui, v.label, on)
-                                        .on_hover_text(v.schedule)
-                                        .clicked()
-                                    {
+                                    let resp = motif::toggle(ui, &v.label, on);
+                                    let resp = if v.schedule.trim().is_empty() {
+                                        resp
+                                    } else {
+                                        resp.on_hover_text(v.schedule.as_str())
+                                    };
+                                    if resp.clicked() {
                                         take = Some(v);
                                     }
                                 }
                             });
                             if let Some(v) = take {
-                                session.vacc_new.label = v.label.to_owned();
-                                session.vacc_new.code = v.code.to_owned();
+                                session.vacc_new.label = v.label.clone();
+                                session.vacc_new.code = v.code.clone();
                                 session.vacc_cursor = 0;
                             }
                         }
+                        let offered = !hits.is_empty();
+                        drop(hits);
+                        session.vacc_catalogue = catalogue;
                         // Entrée écrit la dose — sauf sur le champ du
                         // nom quand une suggestion est offerte, où elle
                         // sert d'abord à la choisir et où la ligne n'est
                         // pas finie.
                         if entered(ui, &rest)
-                            || (hits.is_empty()
+                            || (!offered
                                 && name_field
                                     .as_ref()
                                     .is_some_and(|f| entered(ui, std::slice::from_ref(f))))
@@ -16610,7 +16660,8 @@ impl App {
             // Le code du calendrier ne vaut que pour le nom qui l'a
             // apporté : le garder après que le nom a été retapé
             // rangerait la dose sous un vaccin qui n'est pas le sien.
-            if !vaccines::CATALOGUE
+            if !session
+                .vacc_catalogue
                 .iter()
                 .any(|v| v.code == line.code && v.label.eq_ignore_ascii_case(&line.label))
             {
@@ -19946,6 +19997,7 @@ impl App {
             .collect();
         let mut fill = false;
         let mut ddr_write: Option<String> = None;
+        let mut open_catalogue = false;
         motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
             // **La grossesse en cours**, facultative : sa date donne le
             // terme, et le terme les vaccins de la grossesse. Pas pour un
@@ -19992,6 +20044,14 @@ impl App {
             // One click writes the whole schedule into the carnet, as
             // undated lines the counter then fills in, corrects or
             // deletes one by one. Nothing is recorded as given.
+            ui.horizontal_wrapped(|ui| {
+                if motif::button(ui, tr("vcat_open"))
+                    .on_hover_text(tr("vcat_open_tooltip"))
+                    .clicked()
+                {
+                    open_catalogue = true;
+                }
+            });
             if !owed.is_empty() {
                 let label = if session.vacc_fill_confirm {
                     trf("vacc_fill_confirm", owed.len().to_string())
@@ -20067,9 +20127,22 @@ impl App {
         if let Some(code) = pick {
             // « Charger ce vaccin dans la ligne » : c'est le nom qu'on
             // pose dans le champ, puisqu'il n'y a plus qu'un champ.
-            if let Some(v) = vaccines::CATALOGUE.iter().find(|v| v.code == code) {
-                session.vacc_new.label = v.label.to_owned();
-                session.vacc_new.code = v.code.to_owned();
+            // Le libellé de l'officine d'abord ; celui livré si elle a
+            // retiré ce vaccin de son catalogue.
+            let label = session
+                .vacc_catalogue
+                .iter()
+                .find(|v| v.code == code)
+                .map(|v| v.label.clone())
+                .or_else(|| {
+                    vaccines::CATALOGUE
+                        .iter()
+                        .find(|v| v.code == code)
+                        .map(|v| v.label.to_owned())
+                });
+            if let Some(label) = label {
+                session.vacc_new.label = label;
+                session.vacc_new.code = code.to_owned();
                 session.vacc_cursor = 0;
             }
         }
@@ -20096,6 +20169,9 @@ impl App {
             if written > 0 {
                 session.load_carnet(patient.id);
             }
+        }
+        if open_catalogue && session.vacc_cat_edit.is_none() {
+            session.vacc_cat_edit = Some(VaccCatEdit::default());
         }
         if let Some(typed) = ddr_write {
             let year = session.db.current_year();
@@ -21637,7 +21713,12 @@ impl App {
         (form_h, folded)
     }
 
-    fn carnet_form_widths(ui: &egui::Ui, correcting: bool, width: f32) -> Vec<f32> {
+    fn carnet_form_widths(
+        ui: &egui::Ui,
+        correcting: bool,
+        width: f32,
+        catalogue: &[vaccines::Vaccine],
+    ) -> Vec<f32> {
         // Les cinq premières sont les mêmes des deux côtés, dans le même
         // ordre : nom, dose, date, lot, site. Ce qui suit diffère.
         let dose = Self::field_width(ui, [tr("vacc_dose_hint")].into_iter());
@@ -21652,7 +21733,7 @@ impl App {
         let name = Self::field_width(
             ui,
             std::iter::once(tr("vacc_label_hint"))
-                .chain(vaccines::CATALOGUE.iter().map(|v| v.label)),
+                .chain(catalogue.iter().map(|v| v.label.as_str())),
         )
         .min(width * 0.30);
         if correcting {
@@ -23762,6 +23843,213 @@ impl App {
         // La dernière marque : le bas de tout ce qui a été dessiné.
         marks.push(ui.min_rect().bottom() - band_top);
         session.band_marks = marks;
+    }
+
+    /// La fenêtre qui rédige le catalogue des vaccins.
+    ///
+    /// **Le catalogue est celui de l'officine** : semé une fois, puis
+    /// réécrit ici — un vaccin ajouté, un libellé ou un schéma changé, un
+    /// vaccin qu'elle ne fait jamais retiré. Le calendrier lit les codes ;
+    /// un vaccin qu'il ne connaît pas se range sans code, et se note.
+    fn vacc_cat_editor(ctx: &egui::Context, session: &mut Session) {
+        let Some(edit) = &mut session.vacc_cat_edit else {
+            return;
+        };
+        let list = &session.vacc_catalogue;
+        let mut close = false;
+        let mut save = false;
+        let mut delete = false;
+        let mut add = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("vcat_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 600.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("vcat_subtitle"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                let footer = Self::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("vcat_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for v in list {
+                                let on = edit.base.as_ref().is_some_and(|b| b.id == v.id);
+                                if motif::toggle(ui, &v.label, on).clicked() {
+                                    edit.base = Some(v.clone());
+                                    edit.draft = v.clone();
+                                    edit.confirm_delete = false;
+                                    edit.note = None;
+                                }
+                            }
+                            if motif::button(ui, tr("vcat_add")).clicked() {
+                                add = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                        if edit.base.is_none() {
+                            ui.label(
+                                egui::RichText::new(tr("vcat_pick"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            return;
+                        }
+                        let wide = ui.available_width();
+                        egui::Grid::new("vcat_form")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                let field_w =
+                                    (wide - chars_wide(ui, 16.0)).max(chars_wide(ui, 20.0));
+                                Self::form_label(ui, tr("vcat_label"));
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::singleline(&mut edit.draft.label),
+                                );
+                                ui.end_row();
+                                Self::form_label(ui, tr("vcat_code"));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 12.0),
+                                    egui::TextEdit::singleline(&mut edit.draft.code)
+                                        .hint_text(motif::hint(tr("vcat_code_hint"))),
+                                )
+                                .on_hover_text(tr("vcat_code_tooltip"));
+                                ui.end_row();
+                                Self::form_label(ui, tr("vcat_schedule"));
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::singleline(&mut edit.draft.schedule),
+                                );
+                                ui.end_row();
+                            });
+                    });
+                if let Some((bad, note)) = &edit.note {
+                    ui.colored_label(
+                        if *bad {
+                            motif::alert()
+                        } else {
+                            motif::text_dim()
+                        },
+                        note.as_str(),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let open = edit.base.is_some();
+                    if motif::button_enabled(ui, tr("trod_edit_save"), open).clicked() {
+                        save = true;
+                    }
+                    let label = if edit.confirm_delete {
+                        tr("trod_edit_delete_confirm")
+                    } else {
+                        tr("trod_edit_delete")
+                    };
+                    if motif::button_enabled(ui, label, open).clicked() {
+                        delete = true;
+                    }
+                    if motif::button(ui, tr("trod_edit_done")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        let mut wrote = false;
+        let mut stale = false;
+        let mut open_id: Option<i64> = None;
+        let mut note: Option<(bool, String)> = None;
+        let mut reset = false;
+        if let Some(edit) = &session.vacc_cat_edit {
+            if add {
+                match session.db.add_vaccine(tr("vcat_new_label")) {
+                    Ok(id) => {
+                        open_id = Some(id);
+                        wrote = true;
+                    }
+                    Err(e) => note = Some((true, e)),
+                }
+            }
+            if save {
+                if let Some(base) = &edit.base {
+                    let mut new = edit.draft.clone();
+                    new.code = new.code.trim().to_uppercase();
+                    if new.label.trim().is_empty() {
+                        note = Some((true, tr("vcat_label_required").to_owned()));
+                    } else if !new.code.is_empty()
+                        && session
+                            .vacc_catalogue
+                            .iter()
+                            .any(|v| v.id != base.id && v.code == new.code)
+                    {
+                        note = Some((true, trf("vcat_code_taken", &new.code)));
+                    } else {
+                        match session.db.update_vaccine(&new, base) {
+                            Ok(true) => {
+                                open_id = Some(base.id);
+                                note = Some((false, tr("vcat_saved").to_owned()));
+                                wrote = true;
+                            }
+                            Ok(false) => stale = true,
+                            Err(e) => note = Some((true, e)),
+                        }
+                    }
+                }
+            }
+            if delete {
+                if let Some(base) = &edit.base {
+                    if edit.confirm_delete {
+                        match session.db.delete_vaccine(base.id, &base.label) {
+                            Ok(true) => {
+                                reset = true;
+                                wrote = true;
+                            }
+                            Ok(false) => stale = true,
+                            Err(e) => note = Some((true, e)),
+                        }
+                    }
+                }
+            }
+        }
+        if wrote || stale {
+            session.reload_vacc_catalogue();
+        }
+        if let Some(edit) = &mut session.vacc_cat_edit {
+            if delete && !edit.confirm_delete && !reset {
+                edit.confirm_delete = true;
+            }
+            if reset || stale {
+                *edit = VaccCatEdit::default();
+            }
+            if let Some(id) = open_id {
+                if let Some(v) = session.vacc_catalogue.iter().find(|v| v.id == id) {
+                    edit.base = Some(v.clone());
+                    edit.draft = v.clone();
+                    edit.confirm_delete = false;
+                }
+            }
+            if note.is_some() {
+                edit.note = note;
+            }
+        }
+        if stale {
+            session.stale("vcat_stale");
+        }
+        if close {
+            session.vacc_cat_edit = None;
+        }
     }
 
     /// La fenêtre qui rédige les lignes d'un protocole TROD.
@@ -66984,7 +67272,12 @@ mod tests {
                     let seen = std::cell::RefCell::new((0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32));
                     let _ = ctx.run(Default::default(), |ctx| {
                         egui::CentralPanel::default().show(ctx, |ui| {
-                            let widths = App::carnet_form_widths(ui, correcting, width);
+                            let widths = App::carnet_form_widths(
+                                ui,
+                                correcting,
+                                width,
+                                &crate::vaccines::starter_catalogue(),
+                            );
                             let counted = App::wrapped_rows_of(
                                 ui,
                                 width,

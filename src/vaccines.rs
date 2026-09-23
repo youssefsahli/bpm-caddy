@@ -382,6 +382,35 @@ pub struct VaccineRef {
     pub schedule: &'static str,
 }
 
+/// One vaccine the carnet offers, **as the officine keeps it**: the
+/// shipped [`CATALOGUE`] is seeded into the base once, and after that the
+/// list is the team's — a vaccine added, a label or a schedule hint
+/// rewritten, one they never give removed. The calendar reads codes, so a
+/// line whose code it knows keeps being matched whatever its label says.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Vaccine {
+    pub id: i64,
+    pub code: String,
+    pub label: String,
+    pub schedule: String,
+    pub rank: i64,
+}
+
+/// The shipped catalogue as rows to seed.
+pub fn starter_catalogue() -> Vec<Vaccine> {
+    CATALOGUE
+        .iter()
+        .enumerate()
+        .map(|(i, v)| Vaccine {
+            id: 0,
+            code: v.code.to_owned(),
+            label: v.label.to_owned(),
+            schedule: v.schedule.to_owned(),
+            rank: i as i64,
+        })
+        .collect()
+}
+
 pub const CATALOGUE: &[VaccineRef] = &[
     VaccineRef {
         code: "DTP",

@@ -253,6 +253,15 @@ CREATE TABLE IF NOT EXISTS access_log (
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS vaccine_catalogue (
+    id        INTEGER PRIMARY KEY,
+    -- Le code que le calendrier lit (DTCAP, GRIPPE…) ; libre pour un
+    -- vaccin qu'il ne connaît pas.
+    code      TEXT NOT NULL DEFAULT '',
+    label     TEXT NOT NULL,
+    schedule  TEXT NOT NULL DEFAULT '',
+    rank      INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS trod_lines (
     id          INTEGER PRIMARY KEY,
     -- `angine` ou `cystite` : le protocole que le TROD positif ouvre.
@@ -948,6 +957,14 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
+    // Le catalogue des vaccins que le carnet propose — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS vaccine_catalogue (
+        id        INTEGER PRIMARY KEY,
+        code      TEXT NOT NULL DEFAULT '',
+        label     TEXT NOT NULL,
+        schedule  TEXT NOT NULL DEFAULT '',
+        rank      INTEGER NOT NULL DEFAULT 0
+    )",
     // Les lignes des ordonnances TROD, éditables par l'officine — voir
     // la table dans `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS trod_lines (
@@ -31182,6 +31199,7 @@ impl Db {
         self.seed_conduite()?;
         self.seed_protocols()?;
         self.seed_trod_lines()?;
+        self.seed_vaccine_catalogue()?;
         Ok(inserted)
     }
 
@@ -31358,6 +31376,7 @@ impl Db {
             "preparations",
             "dispositifs",
             "trod_lines",
+            "vaccine_catalogue",
             "locations",
             "biology",
             "interviews",
@@ -33321,6 +33340,116 @@ impl Db {
             .execute(
                 "DELETE FROM trod_lines WHERE id = ?1 AND name = ?2",
                 (id, expected_name),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Semer le catalogue des vaccins, **une fois**, par code : un vaccin
+    /// que l'équipe a renommé ou retiré ne revient pas.
+    pub fn seed_vaccine_catalogue(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let present: std::collections::HashSet<String> = self
+            .vaccine_catalogue()?
+            .into_iter()
+            .map(|v| v.code)
+            .collect();
+        let seeded = self.seeded_names("vaccin")?;
+        let mut added = 0;
+        for v in crate::vaccines::starter_catalogue() {
+            if seeded.contains(&v.code) {
+                continue;
+            }
+            self.mark_seeded_name("vaccin", &v.code)?;
+            if present.contains(&v.code) {
+                continue;
+            }
+            self.conn
+                .execute(
+                    "INSERT INTO vaccine_catalogue (code, label, schedule, rank)
+                     VALUES (?1, ?2, ?3, ?4)",
+                    (&v.code, &v.label, &v.schedule, v.rank),
+                )
+                .map_err(|e| e.to_string())?;
+            added += 1;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Le catalogue, dans l'ordre où l'officine le range.
+    pub fn vaccine_catalogue(&self) -> Result<Vec<crate::vaccines::Vaccine>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, code, label, schedule, rank FROM vaccine_catalogue
+                 ORDER BY rank, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::vaccines::Vaccine {
+                    id: r.get(0)?,
+                    code: r.get(1)?,
+                    label: r.get(2)?,
+                    schedule: r.get(3)?,
+                    rank: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ajouter un vaccin au catalogue, en dernier.
+    pub fn add_vaccine(&self, label: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO vaccine_catalogue (label, rank)
+                 VALUES (?1, COALESCE((SELECT MAX(rank) FROM vaccine_catalogue), -1) + 1)",
+                [label],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Réécrire un vaccin du catalogue, compare-and-set sur ses colonnes.
+    pub fn update_vaccine(
+        &self,
+        new: &crate::vaccines::Vaccine,
+        expected: &crate::vaccines::Vaccine,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE vaccine_catalogue SET code = ?1, label = ?2, schedule = ?3, rank = ?4
+                 WHERE id = ?5 AND code = ?6 AND label = ?7 AND schedule = ?8 AND rank = ?9",
+                rusqlite::params![
+                    new.code.trim(),
+                    new.label.trim(),
+                    new.schedule.trim(),
+                    new.rank,
+                    expected.id,
+                    expected.code,
+                    expected.label,
+                    expected.schedule,
+                    expected.rank,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer un vaccin du catalogue — pas des carnets : les doses déjà
+    /// inscrites gardent leur nom.
+    pub fn delete_vaccine(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM vaccine_catalogue WHERE id = ?1 AND label = ?2",
+                (id, expected_label),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -38177,6 +38306,37 @@ mod tests {
         let cystite = db.trod_lines("cystite").unwrap();
         assert_eq!(cystite.last().map(|o| o.id), Some(id));
         assert!(cystite.last().is_some_and(|o| o.pregnancy));
+    }
+
+    #[test]
+    fn the_vaccine_catalogue_is_seeded_once_and_then_the_team_s() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-vcat-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("vcat.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_vaccine_catalogue().unwrap();
+        let all = db.vaccine_catalogue().unwrap();
+        assert_eq!(all.len(), crate::vaccines::CATALOGUE.len());
+        assert_eq!(db.seed_vaccine_catalogue().unwrap(), 0);
+        let first = all[0].clone();
+        let renamed = crate::vaccines::Vaccine {
+            label: "DTP nourrisson".to_owned(),
+            ..first.clone()
+        };
+        assert!(db.update_vaccine(&renamed, &first).unwrap());
+        assert!(
+            !db.update_vaccine(&renamed, &first).unwrap(),
+            "écran périmé"
+        );
+        assert!(db.delete_vaccine(first.id, "DTP nourrisson").unwrap());
+        assert_eq!(db.seed_vaccine_catalogue().unwrap(), 0, "ne revient pas");
+        let id = db.add_vaccine("Mpox").unwrap();
+        assert_eq!(
+            db.vaccine_catalogue().unwrap().last().map(|v| v.id),
+            Some(id)
+        );
     }
 
     #[test]
