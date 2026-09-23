@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.271.0] - 2026-09-23
+
+### Added
+- **`bpm-audit`, la fenêtre d'audit de l'officine** — un second
+  programme, joint à chaque version (`bpm-audit-linux-x86_64`,
+  `-windows-x86_64.exe`, `-macos-arm64`). Il demande le mot de passe de
+  la base (ou le trouve dans le trousseau), et lit sur 7, 30, 90 ou 365
+  jours : l'activité (actes, registre, caisses et écart cumulé), les
+  accès aux dossiers (par acte et par opérateur, jamais un nom de
+  patient), l'usage du logiciel et les contrôles (stupéfiants à compter,
+  locations dépassées, phrases à relire, fiches incomplètes). Il n'écrit
+  rien dans la base ; « Copier » et « Enregistrer le rapport… » rendent
+  le relevé de `bpm-caddy audit`.
+
+### Changed
+- **Options › À propos ne porte plus les relevés** : il garde ce qui
+  appartient au poste — compter ou non, effacer ce qui a été compté — et
+  renvoie à `bpm-audit` pour le reste.
+- Les deux programmes partagent une même bibliothèque : pas de seconde
+  écriture du schéma de la base.
+
 ## [0.270.0] - 2026-09-23
 
 ### Added

@@ -826,9 +826,9 @@ part : c'est à l'officine de regarder, pas au logiciel de trancher.
 
 # Les compteurs d'usage
 
-Options › À propos tient quelques nombres : combien de dossiers ouverts,
-de fiches consultées, de documents imprimés, de lignes au registre, sur
-combien de journées.
+Quelques nombres : combien de dossiers ouverts, de fiches consultées, de
+documents imprimés, de lignes au registre, sur combien de journées. Ils
+se lisent dans **bpm-audit**, la fenêtre d'audit de l'officine.
 
 Le plus utile est le dernier : « écritures concurrentes signalées »
 compte les fois où un autre poste avait écrit le premier et où celui-ci
@@ -837,21 +837,20 @@ personnes travaillent sur la même chose au même moment, et aucun autre
 écran ne le dit.
 
 Ils ne sortent pas. Il n'y a pas d'adresse à régler et il n'y en aura
-pas : ils vivent dans la base chiffrée de l'officine et se lisent sur
-cette page-là.
+pas : ils vivent dans la base chiffrée de l'officine et se lisent dans
+bpm-audit.
 
 Ils comptent le logiciel, jamais la personne — aucun opérateur, aucune
 initiale. « Combien de dossiers ont été ouverts » est une question sur
 laquelle on décide ; « combien un tel en a ouverts » n'en est pas une.
 
-Allumés au départ, éteints en un clic sur la même page, et poste par
-poste. Décocher arrête le comptage tout de suite et ne perd rien :
+Allumés au départ, éteints en un clic dans Options › À propos, et poste
+par poste. Décocher arrête le comptage tout de suite et ne perd rien :
 effacer est un bouton à part, qui demande deux fois.
 
 # Le journal des accès
 
-Sur la même page, juste en dessous : qui a ouvert quel dossier, et
-quand. C'est l'exact contraire des compteurs — ceux-là comptent le
+Qui a ouvert quel dossier, et quand — lu lui aussi dans bpm-audit. C'est l'exact contraire des compteurs — ceux-là comptent le
 logiciel et jamais la personne, celui-ci nomme la personne et jamais le
 logiciel, parce qu'il n'existe que pour répondre à « qui a regardé ce
 dossier-là, le 12 mars ».
@@ -870,12 +869,24 @@ un an au départ ; au-delà, les lignes sont purgées à l'ouverture de la
 séance, et la purge s'écrit dans le journal qu'elle purge. `0` ne purge
 rien.
 
+# La fenêtre d'audit
+
+**bpm-audit** est un second programme, livré à côté de l'application :
+on l'ouvre depuis l'arrière-boutique, il demande le mot de passe de la
+base (ou le trouve dans le trousseau), et il lit quatre volets sur la
+période choisie — 7, 30, 90 ou 365 jours : l'activité, les accès aux
+dossiers, l'usage du logiciel et les contrôles. Il n'écrit rien dans la
+base. « Copier le rapport » et « Enregistrer le rapport… » rendent le
+relevé en texte, le même que la commande ci-dessous.
+
+Les deux programmes partagent le même code de lecture de la base : il
+n'y a pas deux écritures du schéma, et donc pas de jour où elles
+divergent.
+
 # Le rapport d'audit
 
-`bpm-caddy audit` écrit un relevé sur la sortie standard, au lieu
-d'ouvrir une fenêtre. C'est un mode de la même application et non un
-second programme : un outil séparé devrait connaître le schéma de la
-base, et deux écritures d'un schéma finissent par différer.
+`bpm-caddy audit` écrit ce relevé sur la sortie standard, au lieu
+d'ouvrir une fenêtre.
 
     bpm-caddy audit --jours 90 > audit-septembre.txt
 

@@ -2442,7 +2442,7 @@ fn merge_team_notes(base: &str, ours: &str, theirs: &str) -> String {
 /// s'exécute sur un poste où l'application tourne déjà, et redemander
 /// le mot de passe dans un terminal serait le taper une fois de plus
 /// là où il n'a rien à faire.
-pub(crate) fn keyring_entry() -> Option<keyring::Entry> {
+pub fn keyring_entry() -> Option<keyring::Entry> {
     if std::env::var_os("BPM_CADDY_NO_KEYRING").is_some() {
         return None;
     }
@@ -10641,38 +10641,12 @@ impl OptionsPage {
     }
 }
 
-/// Ce que la page « À propos » lit dans la base, **une fois**.
-///
-/// Les compteurs d'usage, leur période et le journal des accès des
-/// trente derniers jours sont des agrégats sur des tables qui
-/// grossissent. Posés à chaque image, ce sont soixante interrogations
-/// par seconde d'un fichier qui est souvent un partage réseau — et
-/// pour un panneau dont rien ne bouge pendant qu'on le regarde. La
-/// boîte est modale et brève : lu quand on arrive sur la page, relu
-/// quand on y revient.
-/// Sur combien de jours le volet « À propos » lit le journal des accès.
-///
-/// Une fenêtre et non tout le journal : un an d'accès, ce sont des
-/// dizaines de milliers de lignes, et ce panneau répond à « est-ce que
-/// ça tourne », pas à « qu'a-t-on fait cette année ». La seconde
-/// question a son outil, et il s'appelle `bpm-caddy audit`.
-const AUDIT_WINDOW_DAYS: u32 = 30;
-
-struct AboutRead {
-    counters: Vec<(&'static str, u64)>,
-    span: crate::telemetry::Span,
-    access: crate::audit::Summary,
-}
-
 struct OptionsEditor {
     page: OptionsPage,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
     confirm_telemetry_clear: bool,
-    /// Voir [`AboutRead`] : posé en arrivant sur la page, jeté en la
-    /// quittant.
-    about_read: Option<AboutRead>,
     /// Le premier numéro d'ordonnancier, **tel qu'il est tapé**.
     ///
     /// Le texte vit ici jusqu'à ce que le champ perde le foyer, comme
@@ -10836,6 +10810,10 @@ struct GraphMini {
 }
 
 impl App {
+    // Not `Default`: building the application reads config.toml and the
+    // layout from disk, which a `Default` would hide behind a name that
+    // promises nothing happens.
+    #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         let mut config = Config::load();
         // A first launch with nothing written down and nothing where the
@@ -12230,7 +12208,6 @@ impl App {
                 message: None,
                 confirm_reset: false,
                 confirm_telemetry_clear: false,
-                about_read: None,
                 stup_start_text: None,
             })
         } else {
@@ -53325,7 +53302,6 @@ impl App {
                     message: None,
                     confirm_reset: false,
                     confirm_telemetry_clear: false,
-                    about_read: None,
                     stup_start_text: None,
                 })
             };
@@ -57809,70 +57785,6 @@ impl eframe::App for App {
             }
             _ => None,
         };
-        // Les compteurs d'usage, à la même condition et pour la même
-        // raison que les deux poids ci-dessus : une somme sur toute la
-        // table, posée seulement quand la page est ouverte.
-        //
-        // L'ordre est celui de `Signal::ALL` et non celui de la base :
-        // une clé qu'une version postérieure aurait écrite est
-        // **gardée** dans la table et simplement pas dessinée ici, ce
-        // qui est le seul moyen de ne pas faire perdre ses chiffres à
-        // une officine dont un poste passe à la version suivante avant
-        // les autres.
-        // **Ce que la page « À propos » lit dans la base, une fois.**
-        //
-        // Voir [`AboutRead`] : trois agrégats sur des tables qui
-        // grossissent, et une boîte de dialogue redessinée soixante
-        // fois par seconde. Lus en arrivant sur la page, et pas à
-        // chaque image.
-        //
-        // Ce que la séance en cours a compté sans l'avoir encore rendu
-        // est rattrapé au même moment : sans cela, une officine qui
-        // vient de cocher la case voit neuf zéros jusqu'au prochain
-        // versement — cinq minutes, ou la fermeture —, ce qui se lit
-        // comme un réglage qui ne marche pas.
-        if let (Some(e), State::Unlocked(s)) = (&self.options, &mut self.state) {
-            if e.page == OptionsPage::About && e.about_read.is_none() {
-                s.telemetry.gather();
-            }
-        }
-        if let (Some(editor), State::Unlocked(s)) = (&mut self.options, &self.state) {
-            if editor.page == OptionsPage::About && editor.about_read.is_none() {
-                let mut counts = [0u64; crate::telemetry::Signal::ALL.len()];
-                for (key, n) in s.db.telemetry_totals().unwrap_or_default() {
-                    // `from_key` rend `None` pour une clé qu'une version
-                    // postérieure a écrite : la ligne reste dans la
-                    // table et n'est simplement pas dessinée.
-                    if let Some(signal) = crate::telemetry::Signal::from_key(&key) {
-                        if let Some(slot) = crate::telemetry::Signal::ALL
-                            .iter()
-                            .position(|s| *s == signal)
-                            .and_then(|i| counts.get_mut(i))
-                        {
-                            *slot = n;
-                        }
-                    }
-                }
-                // **Trente jours et pas tout le journal** : un an
-                // d'accès, ce sont des dizaines de milliers de lignes.
-                // Le relevé complet est l'affaire de `bpm-caddy audit` ;
-                // ici on répond à « est-ce que ça tourne, et qui a
-                // regardé quoi ces temps-ci ».
-                let since = crate::date::add_days(&s.today, -i64::from(AUDIT_WINDOW_DAYS) + 1)
-                    .unwrap_or_else(|| s.today.clone());
-                editor.about_read = Some(AboutRead {
-                    counters: crate::telemetry::Signal::ALL
-                        .iter()
-                        .zip(counts)
-                        .map(|(signal, n)| (signal.label(), n + s.telemetry.count(*signal)))
-                        .collect(),
-                    span: s.db.telemetry_span(),
-                    access: crate::audit::summarize(
-                        &s.db.accesses_since(&since).unwrap_or_default(),
-                    ),
-                });
-            }
-        }
         // Où l'ordonnancier de papier s'était arrêté. Lu en arrivant
         // sur la page, et une seule fois : c'est une déclaration, pas
         // un compteur, et elle ne bouge pas pendant qu'on la regarde.
@@ -57955,7 +57867,6 @@ impl eframe::App for App {
                                 // lu ne vaut plus, et y revenir doit
                                 // relire plutôt que montrer l'état
                                 // d'avant.
-                                editor.about_read = None;
                                 editor.stup_start_text = None;
                             }
                         }
@@ -58512,77 +58423,41 @@ impl eframe::App for App {
                                     tr("telem_enabled"),
                                 )
                                 .on_hover_text(tr("telem_enabled_tooltip"));
-                                if let Some(read) = &editor.about_read {
-                                    let (rows, span) = (&read.counters, &read.span);
-                                    egui::Grid::new("opts_telemetry")
-                                        .num_columns(2)
-                                        .spacing([12.0, 5.0])
-                                        .show(ui, |ui| {
-                                            for (label, n) in rows {
-                                                ui.label(dim(label));
-                                                ui.label(n.to_string());
-                                                ui.end_row();
-                                            }
-                                        });
-                                    // **Sur combien de jours.** Un cumul
-                                    // sans période à côté se lit comme
-                                    // s'il couvrait tout ce qui a jamais
-                                    // existé — la règle du récapitulatif
-                                    // de la caisse, qui dit sur combien
-                                    // de soirs son écart est calculé.
+                                // **Les chiffres se lisent dans `bpm-audit`**, la
+                                // fenêtre d'audit de l'officine : ici ne reste
+                                // que ce qui appartient au poste — compter ou
+                                // non, et effacer ce qui a été compté.
+                                if !editor.cfg.telemetry.enabled {
                                     ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(if span.days == 0 {
-                                                tr("telem_span_none").to_owned()
-                                            } else {
-                                                crate::strings::trn(
-                                                    "telem_span",
-                                                    &[
-                                                        &span.days,
-                                                        &crate::db::format_french_date(&span.first),
-                                                        &crate::db::format_french_date(&span.last),
-                                                    ],
-                                                )
-                                            })
-                                            .size(motif::pt(ui, 11.0))
-                                            .color(motif::text_dim()),
+                                            egui::RichText::new(tr("telem_off"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::accent()),
                                         )
                                         .wrap(),
                                     );
-                                    if !editor.cfg.telemetry.enabled {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(tr("telem_off"))
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .color(motif::accent()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    }
-                                    // Effacer est un geste à part, et
-                                    // demandé deux fois : décocher
-                                    // arrête de compter, effacer efface,
-                                    // et confondre les deux ferait
-                                    // disparaître des chiffres que
-                                    // personne n'a demandé à perdre.
-                                    if span.days > 0
-                                        && motif::button(
-                                            ui,
-                                            if editor.confirm_telemetry_clear {
-                                                tr("telem_clear_confirm")
-                                            } else {
-                                                tr("telem_clear")
-                                            },
-                                        )
-                                        .on_hover_text(tr("telem_clear_tooltip"))
-                                        .clicked()
-                                    {
-                                        if editor.confirm_telemetry_clear {
-                                            clear_telemetry = true;
-                                            editor.confirm_telemetry_clear = false;
-                                        } else {
-                                            editor.confirm_telemetry_clear = true;
-                                        }
+                                }
+                                // Effacer est un geste à part, et demandé deux
+                                // fois : décocher arrête de compter, effacer
+                                // efface, et confondre les deux ferait
+                                // disparaître des chiffres que personne n'a
+                                // demandé à perdre.
+                                if motif::button(
+                                    ui,
+                                    if editor.confirm_telemetry_clear {
+                                        tr("telem_clear_confirm")
+                                    } else {
+                                        tr("telem_clear")
+                                    },
+                                )
+                                .on_hover_text(tr("telem_clear_tooltip"))
+                                .clicked()
+                                {
+                                    if editor.confirm_telemetry_clear {
+                                        clear_telemetry = true;
+                                        editor.confirm_telemetry_clear = false;
+                                    } else {
+                                        editor.confirm_telemetry_clear = true;
                                     }
                                 }
 
@@ -58609,59 +58484,14 @@ impl eframe::App for App {
                                     .wrap(),
                                 );
                                 ui.add_space(2.0);
-                                ui.label(dim(&trf("audit_window", AUDIT_WINDOW_DAYS)));
-                                if let Some(reading) = editor.about_read.as_ref().map(|r| &r.access)
-                                {
-                                    if reading.lines == 0 {
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(tr("audit_span_none"))
-                                                    .size(motif::pt(ui, 11.0))
-                                                    .color(motif::text_dim()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    } else {
-                                        egui::Grid::new("opts_audit_acts")
-                                            .num_columns(2)
-                                            .spacing([12.0, 5.0])
-                                            .show(ui, |ui| {
-                                                for (act, n) in &reading.by_act {
-                                                    ui.label(dim(act.label()));
-                                                    ui.label(n.to_string());
-                                                    ui.end_row();
-                                                }
-                                                ui.label(dim(tr("audit_by_operator")));
-                                                ui.end_row();
-                                                for (who, n) in &reading.by_operator {
-                                                    ui.label(dim(who.as_str()));
-                                                    ui.label(n.to_string());
-                                                    ui.end_row();
-                                                }
-                                            });
-                                        ui.add(
-                                            egui::Label::new(
-                                                egui::RichText::new(crate::strings::trn(
-                                                    "audit_span",
-                                                    &[
-                                                        &reading.lines,
-                                                        &reading.days,
-                                                        &crate::db::format_french_date(
-                                                            &reading.first,
-                                                        ),
-                                                        &crate::db::format_french_date(
-                                                            &reading.last,
-                                                        ),
-                                                        &reading.files,
-                                                    ],
-                                                ))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                            )
-                                            .wrap(),
-                                        );
-                                    }
-                                }
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("audit_elsewhere"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
                             }
                             if page == OptionsPage::Database {
                                 // The card reader lives on the Base page:
@@ -59976,13 +59806,6 @@ impl eframe::App for App {
             // répondre se lit comme un bouton qui n'a pas marché, et le
             // geste suivant est de le presser encore.
             self.update_note = Some((false, tr("telem_cleared").to_owned()));
-            // Et ce que la page avait lu ne vaut plus : sans cela elle
-            // continuerait d'afficher les chiffres qu'on vient
-            // d'effacer, ce qui se lit comme un bouton qui n'a pas
-            // marché — et le geste suivant est de le presser encore.
-            if let Some(editor) = &mut self.options {
-                editor.about_read = None;
-            }
         }
         // Le poste cesse de compter — ou s'y remet — à l'instant où la
         // case change, et non au prochain lancement. Ce qui est déjà

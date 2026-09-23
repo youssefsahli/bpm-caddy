@@ -60,10 +60,13 @@ jobs:
              "bpm-caddy-${{ matrix.suffix }}${{ matrix.ext }}"
           cp "target/${{ matrix.target }}/release/bpm-caddy-launcher${{ matrix.ext }}" \
              "bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}"
+          cp "target/${{ matrix.target }}/release/bpm-audit${{ matrix.ext }}" \
+             "bpm-audit-${{ matrix.suffix }}${{ matrix.ext }}"
       - name: Upload to release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             bpm-caddy-${{ matrix.suffix }}${{ matrix.ext }}
             bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}
+            bpm-audit-${{ matrix.suffix }}${{ matrix.ext }}
           generate_release_notes: true

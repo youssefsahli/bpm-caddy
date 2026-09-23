@@ -326,10 +326,13 @@ The one that was missing — « combien de fois un autre poste avait
   written where one would look: printing, because the one function all
   twenty-one printables pass through holds neither the operator nor the
   file. And the **report**: `bpm-caddy audit [--jours N]`, a decision
-  sheet on stdout, Linux-only — a *mode of this binary and not a second
-  programme*, because a separate tool would have to know the base's
-  schema and two writings of a schema end up differing, at which point
-  the one nobody runs is the one that looks right. Three sections and
+  sheet on stdout, Linux-only. The window that draws it is **`bpm-audit`**,
+  a second binary (`src/bin/bpm-audit.rs`, `src/audit_window.rs`) — and
+  it is a second programme *over the same library*, which is why the
+  crate became `lib.rs` + two binaries: a separate tool with its own copy
+  of the schema would be a second writing of it, and two writings of a
+  schema end up differing, at which point the one nobody runs is the one
+  that looks right. Three sections and
   none left blank — a section that finds nothing writes it in words,
   since a gap reads as a crash, which is the opposite of what an audit
   report is for. It reuses the modules rather than recomputing: the
@@ -346,13 +349,11 @@ The one that was missing — « combien de fois un autre poste avait
   the password comes from `BPM_CADDY_PASSWORD` or the system keyring —
   so it can sit in a night job. Pure, tested, no clock: the day is
   passed in),
-  (And the pane that draws all three — Options › À propos — reads them
-  **once** into `AboutRead` when the page is opened, not per frame: a
-  modal dialog still repaints sixty times a second, and three aggregates
+  (And the window that draws all three — `bpm-audit`, since 0.271.0 —
+  reads them **once** per period chosen, not per frame: three aggregates
   over growing tables is sixty questions a second to a file that is
-  often a network share. It is invalidated when the page is left and
-  when the counters are erased — a pane still showing what was just
-  erased reads as a button that did not work.)
+  often a network share. Options › À propos keeps only what belongs to
+  the post: counting or not, and erasing what was counted.)
   `src/annuaire.rs` (going to **fetch** that directory, on a button —
   the second network request in this application and the last. The
   rules are the ones that make the posture, not the count: **on a

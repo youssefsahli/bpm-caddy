@@ -21,7 +21,9 @@ line in that test.
 
 ## Workspace
 
-- root `bpm-caddy` — the app. `src/app.rs` is the UI/state (huge egui
+- root `bpm-caddy` — a library (`src/lib.rs`) and two binaries: the app
+  (`src/main.rs`) and `bpm-audit` (`src/bin/bpm-audit.rs`, the officine's
+  audit window, drawn by `src/audit_window.rs`). `src/app.rs` is the UI/state (huge egui
   layout), `src/db.rs` the SQLCipher storage (and the starter content),
   `src/pdf.rs` Typst printing, `src/config.rs` config.toml. Everything
   else in `src/` is a **pure, tested logic module** with no egui and no

@@ -1,56 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-mod agenda;
-mod annuaire;
-mod app;
-mod audit;
-mod biology;
-mod bulletin;
-mod caisse;
-mod classes;
-mod codebar;
-mod codex;
-mod conciliation;
-mod config;
-mod content;
-mod crush;
-mod cyp;
-mod date;
-mod db;
-mod dosing;
-mod elderly;
-mod entretien;
-mod facets;
-mod fuzzy;
-mod graph;
-mod gravidity;
-mod hepatic;
-mod insulin;
-mod intake;
-mod location;
-mod maintenance;
-mod ordonnance;
-mod ordonnancier;
-mod pdf;
-mod planning;
-mod prescribers;
-mod release;
-mod renal;
-mod renewal;
-mod revue;
-mod scans;
-mod script;
-mod selfcheck;
-mod strings;
-mod surveillance;
-mod tables;
-mod telemetry;
-mod timeline;
-mod vaccines;
-mod vigilance;
-mod vitale;
-mod winscard;
-
+use bpm_caddy::{app, audit, config, date, db};
 use eframe::egui;
 
 /// The size to open at: the screenshot/e2e hook
