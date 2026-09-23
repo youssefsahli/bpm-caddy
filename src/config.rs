@@ -282,6 +282,13 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # rythme que l'officine se donne, et il n'a rien à voir avec le minimum
 # légal.
 # count_days = 30
+#
+# Le caractère que votre douchette émet à la place du séparateur GS1 des
+# DataMatrix, si elle est réglée pour en émettre un (voir sa notice :
+# « FNC1 / GS substitute »). Sans lui, un numéro de lot suivi d'autre chose
+# n'est jamais lu avec certitude, parce que le séparateur lui-même
+# n'arrive jamais jusqu'à un champ de texte.
+# scanner_separator = "~"
 
 [scans]
 # Les pièces numérisées : ordonnance, feuille d'accident du travail,
@@ -580,6 +587,16 @@ pub struct StockConfig {
     pub suppliers: Vec<String>,
     /// Au bout de combien de jours un produit non compté est rappelé.
     pub count_days: u32,
+    /// Le caractère que **cette** douchette émet à la place du
+    /// séparateur GS1 — vide si elle n'en émet pas.
+    ///
+    /// Aucune douchette ne fait passer le séparateur GS jusqu'à un champ
+    /// de texte : c'est un caractère de contrôle, et l'interface l'écarte.
+    /// Sans lui, un numéro de lot suivi d'autre chose n'est jamais « fermé »
+    /// et se lit comme une supposition. La plupart des douchettes se
+    /// règlent pour émettre à sa place un caractère visible (`~`, `|`,
+    /// `^`) : écrit ici, il ferme le lot et la lecture redevient certaine.
+    pub scanner_separator: String,
 }
 
 impl Default for StockConfig {
@@ -595,6 +612,7 @@ impl Default for StockConfig {
             // Un mois : le rythme d'une officine qui tient son registre,
             // et douze fois ce que la loi exige au minimum.
             count_days: 30,
+            scanner_separator: String::new(),
         }
     }
 }

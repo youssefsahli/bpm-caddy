@@ -109,7 +109,7 @@ pub const PROFILES: &[Profile] = &[
         shape: Shape::Peaked,
         onset_min: 90,
         peak_min: Some((240, 480)),
-        duration_min: 960,
+        duration_min: 1440,
         note: "Suspension trouble : elle se remet en suspension par dix retournements lents avant chaque injection, sinon la dose n'est pas celle qu'on croit. Son pic de fin d'après-midi est la cause classique de l'hypoglycémie de 17 h.",
     },
     Profile {
@@ -169,7 +169,7 @@ pub const PROFILES: &[Profile] = &[
         shape: Shape::Biphasic,
         onset_min: 15,
         peak_min: Some((60, 240)),
-        duration_min: 960,
+        duration_min: 1440,
         note: "Deux insulines dans un stylo : un pic de repas et un plateau derrière. Elle se remet en suspension avant chaque injection, et elle impose des repas à heures fixes — c'est son prix.",
     },
 ];
@@ -196,7 +196,37 @@ pub fn for_card(name: &str, dci: &str) -> Option<&'static Profile> {
     PROFILES
         .iter()
         .find(|p| crate::fuzzy::sort_key(p.dci) == dci_key)
+        .or_else(|| {
+            let name_key = crate::fuzzy::sort_key(name);
+            ALIASES
+                .iter()
+                .find(|(written, _)| {
+                    let key = crate::fuzzy::sort_key(written);
+                    key == dci_key || key == name_key
+                })
+                .and_then(|(_, profile)| find(profile))
+        })
 }
+
+/// The DCIs — or, where the DCI is not enough, the box names — the
+/// cards write for an insulin a profile already draws.
+///
+/// A card is written the way its own RCP names the molecule, and three
+/// shipped ones did not name it the way the profile does: Umuline NPH
+/// (« insuline humaine isophane », which *is* NPH), NovoMix (« insuline
+/// asparte biphasique ») and Semglee. That one is keyed on its **name**:
+/// its DCI is « insuline glargine » bare, and a glargine without its
+/// concentration names two curves twelve hours apart, so the DCI alone
+/// stays unanswered (`the_action_curve_is_drawn_only_for_an_insulin`)
+/// while the box, a U100, is not ambiguous. None of the three
+/// half-life texts carries a figure either, so each fiche showed no
+/// curve at all. The curve is the molecule's, not the brand's: the strip
+/// prints the family and the note, never the profile's box name.
+const ALIASES: &[(&str, &str)] = &[
+    ("insuline humaine isophane", "Insulatard"),
+    ("insuline asparte biphasique", "NovoMix 30"),
+    ("Semglee", "Lantus"),
+];
 
 /// Relative activity at `minutes` after the injection, from 0 to 1,
 /// normalised so that each curve peaks at 1.
@@ -522,17 +552,24 @@ mod tests {
     /// curve nobody will ever see.
     #[test]
     fn every_profile_reaches_a_card_or_is_a_named_addition() {
-        // These are on the French market but not (yet) in the starter
-        // base; they are named so that adding the card is a decision.
-        const NOT_IN_BASE: &[&str] = &["Fiasp", "Actrapid", "NovoMix 30"];
         for p in PROFILES {
-            if NOT_IN_BASE.contains(&p.name) {
-                continue;
-            }
             let reached = crate::db::STARTER_DRUGS
                 .iter()
                 .any(|(name, dci, _, _)| for_card(name, dci).is_some_and(|f| f.name == p.name));
             assert!(reached, "profil sans fiche : {}", p.name);
+        }
+    }
+
+    /// And the other way: an insulin card that reaches no profile gets
+    /// neither the action strip nor a decay curve (its half-life text is
+    /// prose), so it shows nothing at all. Three shipped cards did.
+    #[test]
+    fn every_shipped_insulin_card_reaches_a_profile() {
+        for (name, dci, class, _) in crate::db::STARTER_DRUGS {
+            if !crate::fuzzy::sort_key(class).contains("insuline") {
+                continue;
+            }
+            assert!(for_card(name, dci).is_some(), "{name} ({dci}) sans profil");
         }
     }
 }

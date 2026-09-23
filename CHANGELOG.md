@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.260.0] - 2026-09-23
+
+### Added
+- **Le lot d'une boîte se lit avec certitude** quand la douchette est
+  réglée pour émettre un caractère visible à la place du séparateur
+  GS1 : `[stock] scanner_separator` dans `config.toml`. Sans lui, un lot
+  suivi d'autre chose reste une supposition, et le dit.
+
+### Fixed
+- **Les demi-vies se lisent sur le mot qui suit le chiffre.** L'unité
+  était prise n'importe où dans la phrase : l'aspirine, « 15 à 20
+  minutes … persiste 7 à 10 jours », se lisait 420 heures, l'Aricept
+  onze mille, et le compagnon annonçait « il reste ≈ 96 % à 24 h ». Un
+  chiffre collé à un nom (« E-3174 », « GS-331007 ») n'est plus lu, et
+  une fiche qui écrit « sans objet » n'a pas de courbe. Plus d'une
+  centaine de fiches livrées lisent désormais la première demi-vie
+  qu'elles écrivent.
+- **NovoMix, Umuline NPH et Semglee ont leur profil d'action** : leur
+  molécule était écrite autrement que dans la table, et ces fiches ne
+  montraient ni profil ni courbe. La durée d'action de l'Insulatard et
+  du NovoMix 30 suit leur RCP (jusqu'à vingt-quatre heures).
+- **Une réinitialisation ne redonne plus un numéro de dossier déjà
+  attribué** : le premier dossier créé ensuite reprenait le numéro 1 et
+  héritait des lignes du registre des stupéfiants et du journal des
+  accès qui le citaient. Les carnets de vaccination, les voyages et les
+  pièces numérisées partent avec les dossiers.
+- **Une préparation, un protocole ou un dispositif livré que l'équipe a
+  supprimé ou renommé ne revient plus** au lancement suivant. Et un
+  protocole est semé d'un bloc : interrompu à mi-chemin, il restait à
+  moitié écrit pour toujours.
+
 ## [0.259.0] - 2026-09-23
 
 ### Fixed

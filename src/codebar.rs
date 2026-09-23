@@ -588,4 +588,17 @@ mod tests {
         assert!(s.expiry.is_empty());
         assert!(!s.read_to_end, "la péremption avalée se dit");
     }
+
+    /// **Un séparateur de substitution ferme le lot** : la douchette
+    /// réglée pour émettre `~` à la place du GS1 rend la lecture du lot
+    /// certaine, et ce qui suit se lit.
+    #[test]
+    fn a_substitute_separator_closes_the_lot() {
+        let s = read_with("010340093000000710L42~17270531", "2026-09-23", &['~']).expect("lu");
+        assert_eq!(s.lot, "L42");
+        assert!(s.lot_certain);
+        assert_eq!(s.expiry, "2027-05-31");
+        let s = read("010340093000000710L42~17270531", "2026-09-23").expect("lu");
+        assert!(!s.lot_certain, "sans réglage, le lot reste une supposition");
+    }
 }

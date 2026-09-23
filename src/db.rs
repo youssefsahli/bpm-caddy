@@ -7085,14 +7085,14 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Insulatard",
         indications: "Traitement du diabète sucré nécessitant une insuline, chez l'adulte et chez l'enfant. L'insuline humaine isophane, dite NPH, est une insuline d'action intermédiaire utilisée comme insuline basale, en une ou deux injections quotidiennes, seule ou en association aux antidiabétiques oraux dans le diabète de type 2, ou intégrée à un schéma comportant une insuline rapide.",
-        mechanism: "Insuline humaine complexée à la protamine et au zinc sous forme de cristaux en suspension. Après injection sous-cutanée, la dissolution progressive de ces cristaux libère lentement l'insuline, d'où un délai d'action d'environ une heure et demie, un pic d'activité marqué entre la quatrième et la douzième heure et une durée d'action de l'ordre de douze à seize heures. Ce pic, absent des analogues lents, explique le risque d'hypoglycémie de milieu de nuit lorsque l'injection est faite au dîner, et impose parfois une collation.",
+        mechanism: "Insuline humaine complexée à la protamine et au zinc sous forme de cristaux en suspension. Après injection sous-cutanée, la dissolution progressive de ces cristaux libère lentement l'insuline, d'où un délai d'action d'environ une heure et demie, un pic d'activité marqué entre la quatrième et la douzième heure et une durée d'action qui peut atteindre vingt-quatre heures selon le RCP, l'effet utile étant plutôt de douze à seize heures en pratique. Ce pic, absent des analogues lents, explique le risque d'hypoglycémie de milieu de nuit lorsque l'injection est faite au dîner, et impose parfois une collation.",
         dosage: "Une ou deux injections sous-cutanées par jour, à horaires réguliers, la seconde étant volontiers faite au coucher plutôt qu'au dîner pour décaler le pic et limiter les hypoglycémies nocturnes. Dans le diabète de type 2, l'instauration se fait à faible dose puis la titration s'effectue par paliers de quelques unités selon la glycémie à jeun. Il n'existe pas de dose standard : la posologie est individuelle et évolutive. La dose est réduite en cas d'insuffisance rénale ou hépatique, d'amaigrissement, d'activité physique accrue ou de diminution d'une corticothérapie, et augmentée en cas d'infection, de fièvre, de stress ou de corticothérapie.",
         contraindications: "Hypersensibilité à l'insuline humaine, à la protamine ou à l'un des excipients. Hypoglycémie en cours. Cette suspension ne doit jamais être administrée par voie intraveineuse ni utilisée dans une pompe à insuline.",
         ddi: "Les corticoïdes, les diurétiques thiazidiques, les neuroleptiques atypiques, les bêta-2 mimétiques, les hormones thyroïdiennes, les œstroprogestatifs, le danazol et les sympathomimétiques augmentent les besoins en insuline. Les sulfamides hypoglycémiants, les inhibiteurs de l'enzyme de conversion, les fibrates, la pentamidine, les inhibiteurs de la monoamine oxydase, les salicylés à forte dose et l'alcool majorent le risque d'hypoglycémie. Les bêtabloquants masquent les signes adrénergiques de l'hypoglycémie. Chez le patient traité par insuline contenant de la protamine, une sensibilisation à la protamine peut majorer le risque de réaction lors d'une neutralisation d'héparine par sulfate de protamine.",
         adverse: "Hypoglycémie, avec un risque de survenue nocturne lié au pic d'action, surtout lorsque l'injection est faite au dîner. Réactions au site d'injection, rougeur, prurit, induration. Lipodystrophies et amylose cutanée en l'absence de rotation, responsables d'une absorption imprévisible et d'un diabète faussement instable. Œdèmes en début de traitement, prise de poids, troubles transitoires de la réfraction lors d'une normalisation glycémique rapide. Réactions allergiques, y compris à la protamine, rares mais possibles.",
         monitoring: "Autosurveillance glycémique, avec attention particulière à la glycémie à jeun, à celle du coucher et, en cas de suspicion, à une glycémie nocturne autour de trois heures du matin pour dépister une hypoglycémie du milieu de nuit. Hémoglobine glyquée tous les trois mois. Vérification, à chaque renouvellement, de la remise en suspension correcte du produit, geste dont dépend directement la dose reçue, ainsi que de la rotation des sites et de la technique d'injection. Surveillance du poids, de la pression artérielle, du bilan rénal et ophtalmologique. Vérification de la présence permanente d'un resucrage.",
         iup: "Cette insuline est trouble et laiteuse, contrairement aux insulines limpides : avant chaque injection, remettez-la en suspension en roulant doucement le stylo ou le flacon entre les paumes une dizaine de fois puis en le retournant lentement une dizaine de fois, jusqu'à obtenir un liquide uniformément blanc, sans agiter violemment et sans grumeaux ni dépôt collé au verre ; une insuline mal mélangée donne une dose fausse, tantôt insuffisante, tantôt excessive. Injectez sous la peau du ventre, de la cuisse, de la fesse ou du haut du bras, à horaire régulier, en changeant de point d'injection à chaque fois à l'intérieur de la même zone, car piquer toujours au même endroit crée des boules qui rendent l'insuline imprévisible. Utilisez une aiguille neuve à chaque injection et jetez-la dans le collecteur jaune. Conservez les stylos et flacons non entamés au réfrigérateur entre 2 et 8 degrés, jamais au congélateur ni contre la paroi du fond, et le stylo en cours à température ambiante, à l'abri de la lumière et de la chaleur, pour la durée indiquée sur la notice, en notant la date d'ouverture. Cette insuline a un pic d'action plusieurs heures après l'injection : une collation peut être nécessaire et les hypoglycémies nocturnes sont possibles, gardez de quoi vous resucrer sur la table de nuit et toujours sur vous. N'arrêtez jamais l'insuline, même si vous ne mangez pas : en cas de maladie, de fièvre ou de vomissements, contrôlez plus souvent la glycémie, cherchez les corps cétoniques si on vous l'a appris et contactez votre médecin.",
-        half_life: "Notion peu pertinente pour cette suspension : le délai d'action est d'environ 1 heure 30, le pic se situe entre la 4e et la 12e heure et la durée d'action est de douze à seize heures",
+        half_life: "Notion peu pertinente pour cette suspension : le délai d'action est d'environ 1 heure 30, le pic se situe entre la 4e et la 12e heure et la durée d'action peut atteindre vingt-quatre heures, l'effet utile étant plutôt de douze à seize heures",
         elimination: "Dégradation enzymatique de l'insuline humaine, essentiellement hépatique, rénale et musculaire, en métabolites inactifs.",
         renal: "Pas de règle chiffrée, mais la clairance de l'insuline diminue avec la fonction rénale et les besoins baissent : réduction prudente des doses et surveillance glycémique rapprochée, avec un risque d'hypoglycémie prolongée chez le sujet âgé insuffisant rénal. Même précaution en cas d'insuffisance hépatique.",
         pregnancy: "Utilisable pendant la grossesse : l'insuline humaine isophane dispose du recul le plus ancien chez la femme enceinte, avec adaptation fréquente des doses au fil des trimestres et chute des besoins immédiatement après l'accouchement. Allaitement possible sans restriction.",
@@ -7100,7 +7100,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "insuline intermédiaire, surveillance biologique",
-        toxicity: "Suspension et non solution : le flacon ou le stylo doit être remis en suspension avant chaque injection, une vingtaine de retournements lents jusqu'à ce que le liquide soit uniformément laiteux. Un stylo mal homogénéisé délivre une dose imprévisible, tantôt trop faible tantôt trop forte, et c'est la première cause de glycémies inexplicables sous NPH. Le profil comporte un pic à quatre ou six heures, contrairement aux analogues lents : l'hypoglycémie nocturne est le risque caractéristique, et une collation au coucher est parfois nécessaire. La durée d'action de douze à seize heures rend l'hypoglycémie prolongée. Antidote glucagon.",
+        toxicity: "Suspension et non solution : le flacon ou le stylo doit être remis en suspension avant chaque injection, une vingtaine de retournements lents jusqu'à ce que le liquide soit uniformément laiteux. Un stylo mal homogénéisé délivre une dose imprévisible, tantôt trop faible tantôt trop forte, et c'est la première cause de glycémies inexplicables sous NPH. Le profil comporte un pic à quatre ou six heures, contrairement aux analogues lents : l'hypoglycémie nocturne est le risque caractéristique, et une collation au coucher est parfois nécessaire. Une durée d'action qui peut atteindre vingt-quatre heures rend l'hypoglycémie prolongée. Antidote glucagon.",
         forms: "",
     },
     StarterDetail {
@@ -31117,6 +31117,40 @@ impl Db {
             .conn
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
+        // **Les numéros de dossier ne recommencent pas à un.** Le registre
+        // des stupéfiants — son propre fichier, jamais réinitialisé — et
+        // le journal des accès citent des numéros : après une remise à
+        // zéro, le premier dossier créé reprenait le numéro 1 et héritait
+        // de leurs lignes. Le plus haut numéro donné est retenu, comme le
+        // fait `delete_patient`.
+        tx.execute(
+            "INSERT INTO settings (key, value)
+             VALUES ('patient_id_high', CAST(COALESCE((SELECT MAX(id) FROM patients), 0) AS TEXT))
+             ON CONFLICT(key) DO UPDATE SET value = CAST(MAX(CAST(value AS INTEGER),
+                 COALESCE((SELECT MAX(id) FROM patients), 0)) AS TEXT)",
+            [],
+        )
+        .map_err(|e| e.to_string())?;
+        // Et ce qui appartient à un dossier ou à une fiche part avec eux :
+        // le carnet, les voyages, les pièces — laissés là, ils se
+        // rattachaient au prochain dossier ou à la prochaine fiche qui
+        // reprenait leur numéro.
+        let pieces: Vec<i64> = {
+            let mut stmt = tx
+                .prepare("SELECT id FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        for sql in [
+            "DELETE FROM vaccinations",
+            "DELETE FROM patient_travel",
+            "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
+        ] {
+            tx.execute(sql, []).map_err(|e| e.to_string())?;
+        }
         for table in [
             "notes",
             "patient_drugs",
@@ -31144,6 +31178,11 @@ impl Db {
         tx.execute("DELETE FROM seed_state WHERE key <> 'registre_deplace'", [])
             .map_err(|e| e.to_string())?;
         tx.commit().map_err(|e| e.to_string())?;
+        for id in pieces {
+            let _ = self
+                .scans
+                .execute("DELETE FROM scan_blobs WHERE scan_id = ?1", [id]);
+        }
         Ok(0)
     }
 
@@ -32104,6 +32143,38 @@ impl Db {
         Ok(())
     }
 
+    /// Les noms qu'une passe de semis a **déjà posés** dans cette base,
+    /// pour un genre de fiche (`preparation`, `protocole`, `dispositif`).
+    ///
+    /// Tester « le nom est-il encore là ? » ne suffisait pas : une fiche
+    /// livrée que l'équipe avait supprimée ou renommée revenait au
+    /// lancement suivant, sous son nom d'origine — un protocole réécrit
+    /// réapparaissait en double, une préparation retirée du codex y
+    /// rentrait toute seule. Un nom posé une fois ne l'est plus jamais ;
+    /// une réinitialisation efface ces marques avec les autres.
+    fn seeded_names(&self, kind: &str) -> Result<std::collections::HashSet<String>, String> {
+        let prefix = format!("nom:{kind}:");
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key FROM seed_state WHERE key LIKE 'nom:%'")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        let mut out = std::collections::HashSet::new();
+        for key in rows {
+            let key = key.map_err(|e| e.to_string())?;
+            if let Some(name) = key.strip_prefix(&prefix) {
+                out.insert(name.to_owned());
+            }
+        }
+        Ok(out)
+    }
+
+    fn mark_seeded_name(&self, kind: &str, name: &str) -> Result<(), String> {
+        self.set_seed_mark(&format!("nom:{kind}:{name}"), "1")
+    }
+
     /// Ce que les **autres postes** ont écrit, en un nombre.
     ///
     /// `PRAGMA data_version` d'SQLite change dès qu'une autre connexion
@@ -32677,19 +32748,31 @@ impl Db {
     /// alone: the tool is the team's, and a tree they have rewritten
     /// never comes back to what it shipped as.
     pub fn seed_protocols(&self) -> Result<usize, String> {
+        // Une transaction : un arbre interrompu à mi-semis restait à
+        // moitié écrit, et son titre présent l'empêchait d'être jamais
+        // complété.
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
         let existing: std::collections::HashSet<String> =
             self.protocols()?.into_iter().map(|p| p.title).collect();
+        let seeded = self.seeded_names("protocole")?;
         let mut added = 0;
         for proto in STARTER_PROTOCOLS {
-            if existing.contains(proto.title) {
+            if seeded.contains(proto.title) {
                 continue;
             }
-            let id = self.add_protocol(proto.title, proto.subject)?;
-            for step in proto.steps {
-                self.insert_starter_node(id, None, Branch::Root, step)?;
+            if !existing.contains(proto.title) {
+                let id = self.add_protocol(proto.title, proto.subject)?;
+                for step in proto.steps {
+                    self.insert_starter_node(id, None, Branch::Root, step)?;
+                }
+                added += 1;
             }
-            added += 1;
+            self.mark_seeded_name("protocole", proto.title)?;
         }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
     }
 
@@ -32731,8 +32814,13 @@ impl Db {
                 present.insert(row.map_err(|e| e.to_string())?);
             }
         }
+        let seeded = self.seeded_names("preparation")?;
         let mut added = 0;
         for p in STARTER_PREPARATIONS {
+            if seeded.contains(p.name) {
+                continue;
+            }
+            self.mark_seeded_name("preparation", p.name)?;
             if present.contains(p.name) {
                 continue;
             }
@@ -32885,13 +32973,15 @@ impl Db {
         // A base that once carried the shipped fiches and had them all
         // deleted is not an empty base: the marker says the pass ran.
         let seeded_before = self.seed_mark("dispositifs")?;
-        if present.is_empty() && seeded_before.is_some() {
-            tx.commit().map_err(|e| e.to_string())?;
-            return Ok(0);
-        }
+        let emptied = present.is_empty() && seeded_before.is_some();
+        let seeded = self.seeded_names("dispositif")?;
         let mut added = 0;
         for d in STARTER_DISPOSITIFS {
-            if present.contains(d.name) {
+            if seeded.contains(d.name) {
+                continue;
+            }
+            self.mark_seeded_name("dispositif", d.name)?;
+            if emptied || present.contains(d.name) {
                 continue;
             }
             added += tx
@@ -37607,6 +37697,35 @@ mod tests {
     }
 
     #[test]
+    fn a_reset_neither_reuses_a_file_number_nor_leaves_a_carnet_behind() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-wipe-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("wipe.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let old = db.add_patient("Martin", "Anne", "1960-01-01").unwrap();
+        db.add_vaccination(
+            old,
+            &Vaccination {
+                code: "DTP".to_owned(),
+                given_on: "2026-08-26".to_owned(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        db.wipe_all_data().unwrap();
+        // Le registre et le journal des accès citent des numéros : le
+        // premier dossier créé après la remise à zéro ne reprend pas
+        // celui d'un ancien, ni son carnet.
+        let new = db.add_patient("Nouveau", "Dossier", "1990-05-05").unwrap();
+        assert!(new > old, "{new} reprend un numéro déjà donné ({old})");
+        assert!(db.vaccinations(old).unwrap().is_empty());
+        assert!(db.vaccinations(new).unwrap().is_empty());
+    }
+
+    #[test]
     fn the_carnet_de_vaccination_round_trips_and_is_compare_and_set() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-vacc-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
@@ -41908,6 +42027,32 @@ mod tests {
         assert!(db.preparations().unwrap().iter().any(|p| p.id == id));
         assert!(!db.delete_preparation(id, "Autre nom").unwrap());
         assert!(db.delete_preparation(id, "Pommade de l'officine").unwrap());
+        // A shipped one the team deletes, or renames, does not come back
+        // at the next launch under its shipped name.
+        let first = db.preparations().unwrap()[0].clone();
+        assert!(db.delete_preparation(first.id, &first.name).unwrap());
+        let second = db.preparations().unwrap()[0].clone();
+        let mut renamed = second.clone();
+        renamed.name = format!("{} (officine)", second.name);
+        assert!(db.update_preparation(&renamed, &second).unwrap());
+        assert_eq!(db.seed_preparations().unwrap(), 0);
+        let names: Vec<String> = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.name)
+            .collect();
+        assert!(!names.contains(&first.name) && !names.contains(&second.name));
+        // Nor does a deleted protocol.
+        db.seed_protocols().unwrap();
+        let proto = db.protocols().unwrap()[0].clone();
+        assert!(db.delete_protocol(proto.id, &proto.title).unwrap());
+        assert_eq!(db.seed_protocols().unwrap(), 0);
+        assert!(db
+            .protocols()
+            .unwrap()
+            .iter()
+            .all(|p| p.title != proto.title));
 
         let _ = std::fs::remove_file(&path);
     }

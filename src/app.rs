@@ -8642,47 +8642,105 @@ fn list_step(cursor: usize, len: usize, up: bool, down: bool) -> usize {
     cursor
 }
 
+/// A half-life in hours, read off the card's free text.
+///
+/// **The unit is the word that follows the figure**, never a word met
+/// anywhere in the sentence. The first version picked « jours » or
+/// « semaines » wherever they sat and applied them to the first figure:
+/// aspirin's « 15 à 20 minutes … persiste 7 à 10 jours » read 420 hours,
+/// Aricept's « ≈ 70 heures … deux à trois semaines » eleven thousand,
+/// and the companion told the counter « il reste ≈ 96 % à 24 h ». A
+/// figure that no time unit follows is passed over (« 50 % », « DFG
+/// < 30 »), and one stuck to a letter or a hyphen is a name, not a
+/// figure — « E-3174 », « GS-331007 », « M1 ».
 fn parse_hours(text: &str) -> Option<f64> {
-    let cleaned = text.replace(',', ".");
-    let mut nums = Vec::new();
-    let mut cur = String::new();
-    for c in cleaned.chars() {
-        if c.is_ascii_digit() || (c == '.' && !cur.is_empty()) {
-            cur.push(c);
-        } else {
-            if let Ok(v) = cur.parse::<f64>() {
-                nums.push(v);
+    #[derive(Debug)]
+    enum Tok {
+        Num(f64),
+        Word(String),
+    }
+    // « Notion peu pertinente pour cette suspension : le délai d'action
+    // est d'environ 1 heure 30 » gives a delay, not a half-life; a card
+    // that says the notion does not apply is taken at its word.
+    let folded = crate::fuzzy::sort_key(text);
+    if ["sans objet", "non pertinente", "notion peu pertinente"]
+        .iter()
+        .any(|w| folded.trim_start().starts_with(&crate::fuzzy::sort_key(w)))
+    {
+        return None;
+    }
+    let chars: Vec<char> = text.to_lowercase().chars().collect();
+    let mut toks = Vec::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c.is_ascii_digit() {
+            let start = i;
+            while i < chars.len()
+                && (chars[i].is_ascii_digit()
+                    || ((chars[i] == ',' || chars[i] == '.')
+                        && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit())))
+            {
+                i += 1;
             }
-            cur.clear();
-        }
-    }
-    if let Ok(v) = cur.parse::<f64>() {
-        nums.push(v);
-    }
-    let lower = crate::fuzzy::sort_key(text);
-    // The unit is read from whole words: "min" inside "administration"
-    // used to turn 5 hours into 5 minutes.
-    let word = |w: &str| {
-        lower
-            .split(|c: char| !c.is_alphanumeric())
-            .any(|token| token == w)
-    };
-    let factor = if word("jour") || word("jours") || word("semaine") || word("semaines") {
-        if word("semaine") || word("semaines") {
-            24.0 * 7.0
+            // A figure glued to a name: a letter just before, or a hyphen
+            // that itself follows a letter.
+            let before = start.checked_sub(1).map(|k| chars[k]);
+            let named = before.is_some_and(|b| b.is_alphabetic())
+                || (before == Some('-')
+                    && start
+                        .checked_sub(2)
+                        .is_some_and(|k| chars[k].is_alphanumeric() && !chars[k].is_ascii_digit()));
+            let figure: String = chars[start..i].iter().collect();
+            match figure.replace(',', ".").parse::<f64>() {
+                Ok(v) if !named => toks.push(Tok::Num(v)),
+                _ => toks.push(Tok::Word(String::new())),
+            }
+        } else if c.is_alphabetic() {
+            let start = i;
+            while i < chars.len() && chars[i].is_alphabetic() {
+                i += 1;
+            }
+            toks.push(Tok::Word(chars[start..i].iter().collect()));
         } else {
-            24.0
+            if matches!(c, '-' | '–' | '—') {
+                toks.push(Tok::Word("à".to_owned()));
+            } else if !c.is_whitespace() && c != '≈' && c != '~' {
+                // Any other sign ends a phrase: « 12 h ; 30 % » must not
+                // read the 30 as the far end of a range.
+                toks.push(Tok::Word(c.to_string()));
+            }
+            i += 1;
         }
-    } else if word("min") || word("mn") || word("minute") || word("minutes") {
-        1.0 / 60.0
-    } else {
-        1.0
-    };
-    match nums.len() {
-        0 => None,
-        1 => Some(nums[0] * factor),
-        _ => Some((nums[0] + nums[1]) / 2.0 * factor),
     }
+    let factor = |w: &str| match w {
+        "h" | "heure" | "heures" => Some(1.0),
+        "min" | "mn" | "minute" | "minutes" => Some(1.0 / 60.0),
+        "j" | "jour" | "jours" => Some(24.0),
+        "semaine" | "semaines" => Some(24.0 * 7.0),
+        "s" | "seconde" | "secondes" => Some(1.0 / 3600.0),
+        _ => None,
+    };
+    let mut k = 0;
+    while k < toks.len() {
+        if let Tok::Num(low) = toks[k] {
+            let mut high = low;
+            let mut next = k + 1;
+            if let (Some(Tok::Word(w)), Some(Tok::Num(h))) = (toks.get(k + 1), toks.get(k + 2)) {
+                if w == "à" || w == "a" || w == "et" {
+                    high = *h;
+                    next = k + 3;
+                }
+            }
+            if let Some(Tok::Word(w)) = toks.get(next) {
+                if let Some(f) = factor(w) {
+                    return Some((low + high) / 2.0 * f);
+                }
+            }
+        }
+        k += 1;
+    }
+    None
 }
 
 /// The two questions a half-life answers, and the second one was
@@ -36796,7 +36854,11 @@ impl App {
                         if scan.lost_focus() && ui.ctx().input(|i| i.key_pressed(egui::Key::Enter))
                         {
                             let typed = std::mem::take(&mut session.stup_scan);
-                            match crate::codebar::read(typed.trim(), &session.today) {
+                            match crate::codebar::read_with(
+                                typed.trim(),
+                                &session.today,
+                                &config.stock.scanner_separator.chars().collect::<Vec<_>>(),
+                            ) {
                                 None => {
                                     session.stup_note =
                                         Some((true, tr("stup_scan_unreadable").to_owned()));
@@ -53402,7 +53464,21 @@ impl App {
             // dans la branche que la mémoïsation ne prend que lorsque la
             // question a bougé, et elle coûte bien moins que la passe
             // floue qui la précède.
-            let q = self.companion_query.trim();
+            // Le séparateur que la douchette émet à la place du GS1 —
+            // voir `StockConfig::scanner_separator` —, rendu à ce qu'il
+            // remplace, et seulement sur ce qui a l'air d'un code : un
+            // nom de médicament ne commence pas par un chiffre.
+            let raw = self.companion_query.trim();
+            let seps: Vec<char> = self.config.stock.scanner_separator.chars().collect();
+            let normalized: String =
+                if !seps.is_empty() && raw.starts_with(|c: char| c.is_ascii_digit() || c == ']') {
+                    raw.chars()
+                        .map(|c| if seps.contains(&c) { '\u{1d}' } else { c })
+                        .collect()
+                } else {
+                    raw.to_owned()
+                };
+            let q = normalized.as_str();
             let mut hits = companion_hits(&session.drugs, q);
             // **À défaut de nom, la prose.** « Aucun résultat dans la
             // base » était faux : le champ cherche un nom et une
@@ -66479,6 +66555,38 @@ mod tests {
         assert_eq!(parse_hours("≈ 7 jours"), Some(168.0));
         assert_eq!(parse_hours("30 min"), Some(0.5));
         assert_eq!(parse_hours("1,5 h"), Some(1.5));
+        // The unit is the word after the figure, not any word in the
+        // sentence: aspirin read 420 hours, Aricept eleven thousand.
+        assert_eq!(
+            parse_hours("de l'ordre de 15 à 20 minutes, mais l'inhibition persiste 7 à 10 jours"),
+            Some(17.5 / 60.0)
+        );
+        assert_eq!(
+            parse_hours("≈ 70 heures, équilibre atteint en deux à trois semaines"),
+            Some(70.0)
+        );
+        assert_eq!(
+            parse_hours("Environ 8 à 10 heures, délai d'action de quelques minutes"),
+            Some(9.0)
+        );
+        // A figure glued to a name is a name.
+        assert_eq!(
+            parse_hours("Losartan : environ 2 heures ; métabolite actif E-3174 : 6 à 9 heures"),
+            Some(2.0)
+        );
+        assert_eq!(
+            parse_hours("Sofosbuvir : environ 0,5 heure, métabolite GS-331007 environ 25 heures"),
+            Some(0.5)
+        );
+        // A figure no time unit follows is passed over.
+        assert_eq!(
+            parse_hours("Sans objet : le macrogol 4000 n'est pas absorbé"),
+            None
+        );
+        assert_eq!(
+            parse_hours("biodisponibilité 50 %, puis 12 heures"),
+            Some(12.0)
+        );
         // Nothing numeric: no curve to draw.
         assert_eq!(parse_hours("Très longue"), None);
         assert_eq!(parse_hours(""), None);
