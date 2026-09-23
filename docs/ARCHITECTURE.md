@@ -280,7 +280,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  60 of them, and counting at all but one would be a counter quietly
+  61 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
@@ -1328,7 +1328,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 36 regions now set
+  fold is the control you came to use. 37 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -1387,7 +1387,8 @@ add clicking and typing; it is not the price of entry.
   shows the one chosen. That is `richest_form`'s rule applied to a band
   of controls, and the side effects of a change of nature are written
   once (`App::stup_kind_picked`) because there are now two ways to pick
-  one.
+  one. The thirty-seventh is the TROD lines editor, a form whose
+  « Enregistrer » sits under its last fields.
 
   **And the scroll handle is no longer painted in ink.** egui takes it
   from `fg_stroke` when `scroll.foreground_color` is true — its own
@@ -2180,7 +2181,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|ordonnance|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
+  vaccine_map|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|registres|stup|
   trame|

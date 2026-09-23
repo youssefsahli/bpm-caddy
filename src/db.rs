@@ -21,6 +21,10 @@ CREATE TABLE IF NOT EXISTS patients (
     situation   TEXT NOT NULL DEFAULT '',
     nir         TEXT NOT NULL DEFAULT '',
     regime      TEXT NOT NULL DEFAULT '',
+    -- `F`, `M` ou vide : facultatif, comme la date de naissance. Su, il
+    -- change ce que l'application propose (les lignes d'un TROD) ; non
+    -- dit, il ne bloque rien — et le NIR le dit souvent à sa place.
+    sex         TEXT NOT NULL DEFAULT '',
     -- Local time, like every other stamp in this base: the counter
     -- works in its own clock, and an act entered after midnight in a
     -- pharmacie de garde must carry that day, not the UTC one.
@@ -244,6 +248,24 @@ CREATE TABLE IF NOT EXISTS access_log (
     operator TEXT NOT NULL DEFAULT '',
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS trod_lines (
+    id          INTEGER PRIMARY KEY,
+    -- `angine` ou `cystite` : le protocole que le TROD positif ouvre.
+    protocol    TEXT NOT NULL,
+    rank        INTEGER NOT NULL DEFAULT 0,
+    name        TEXT NOT NULL,
+    situation   TEXT NOT NULL DEFAULT '',
+    -- Une posologie par ligne, la plus usuelle d'abord.
+    posologies  TEXT NOT NULL DEFAULT '',
+    caution     TEXT NOT NULL DEFAULT '',
+    -- Les bornes du protocole, en années révolues ; NULL ne borne rien.
+    min_age     INTEGER,
+    max_age     INTEGER,
+    -- `F`, `M`, ou vide : pour qui la ligne est écrite.
+    sex         TEXT NOT NULL DEFAULT '',
+    -- 1 : délivrable pendant la grossesse.
+    pregnancy   INTEGER NOT NULL DEFAULT 1
 );
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
@@ -920,6 +942,22 @@ const MIGRATIONS: &[&str] = &[
         created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
+    "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
+    // Les lignes des ordonnances TROD, éditables par l'officine — voir
+    // la table dans `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS trod_lines (
+        id          INTEGER PRIMARY KEY,
+        protocol    TEXT NOT NULL,
+        rank        INTEGER NOT NULL DEFAULT 0,
+        name        TEXT NOT NULL,
+        situation   TEXT NOT NULL DEFAULT '',
+        posologies  TEXT NOT NULL DEFAULT '',
+        caution     TEXT NOT NULL DEFAULT '',
+        min_age     INTEGER,
+        max_age     INTEGER,
+        sex         TEXT NOT NULL DEFAULT '',
+        pregnancy   INTEGER NOT NULL DEFAULT 1
+    )",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -2290,11 +2328,20 @@ pub struct Patient {
     /// five bulletins have a field for it; the others print the line
     /// without one.
     pub regime: String,
+    /// `F`, `M`, or empty when nobody said. Optional, like the birth date.
+    pub sex: String,
 }
 
 impl Patient {
     pub fn full_name(&self) -> String {
         format!("{} {}", self.first_name, self.last_name)
+    }
+
+    /// The sex as far as the file knows it: what was written, else what
+    /// the NIR says, else nothing.
+    pub fn known_sex(&self) -> Option<crate::ordonnance::Sex> {
+        crate::ordonnance::Sex::from_key(&self.sex)
+            .or_else(|| crate::ordonnance::Sex::from_nir(&self.nir))
     }
 }
 
@@ -29809,7 +29856,7 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, last_name, first_name, birth_date, phone, notes,
-                        physician, email, address, situation, nir, regime
+                        physician, email, address, situation, nir, regime, sex
                  FROM patients",
             )
             .map_err(|e| e.to_string())?;
@@ -29828,6 +29875,7 @@ impl Db {
                     situation: r.get(9)?,
                     nir: r.get(10)?,
                     regime: r.get(11)?,
+                    sex: r.get(12)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -29835,11 +29883,23 @@ impl Db {
             .map_err(|e| e.to_string())
     }
 
+    #[cfg(test)]
     pub fn add_patient(
         &self,
         last_name: &str,
         first_name: &str,
         birth_date: &str,
+    ) -> Result<i64, String> {
+        self.add_patient_with_sex(last_name, first_name, birth_date, "")
+    }
+
+    /// [`Self::add_patient`], with the sex when the form gave one.
+    pub fn add_patient_with_sex(
+        &self,
+        last_name: &str,
+        first_name: &str,
+        birth_date: &str,
+        sex: &str,
     ) -> Result<i64, String> {
         // **Jamais un numéro déjà donné** — voir [`Db::delete_patient`] :
         // le suivant du plus haut, qu'il soit encore là ou supprimé. Lu
@@ -29847,15 +29907,15 @@ impl Db {
         // créent en même temps ne tirent pas le même.
         self.conn
             .execute(
-                "INSERT INTO patients (id, last_name, first_name, birth_date, created_at)
+                "INSERT INTO patients (id, last_name, first_name, birth_date, sex, created_at)
                  VALUES (
                      MAX(
                          COALESCE((SELECT MAX(id) FROM patients), 0),
                          COALESCE((SELECT CAST(value AS INTEGER) FROM settings
                                    WHERE key = 'patient_id_high'), 0)
                      ) + 1,
-                     ?1, ?2, ?3, datetime('now', 'localtime'))",
-                (last_name, first_name, birth_date),
+                     ?1, ?2, ?3, ?4, datetime('now', 'localtime'))",
+                (last_name, first_name, birth_date, sex),
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
@@ -30180,11 +30240,12 @@ impl Db {
             .execute(
                 "UPDATE patients SET last_name = ?1, first_name = ?2, birth_date = ?3,
                         phone = ?4, notes = ?5, physician = ?6, email = ?7, address = ?8,
-                        situation = ?9, nir = ?10, regime = ?11
+                        situation = ?9, nir = ?10, regime = ?11, sex = ?24
                  WHERE id = ?12 AND last_name = ?13 AND first_name = ?14
                    AND birth_date = ?15 AND phone = ?16 AND notes = ?17
                    AND physician = ?18 AND email = ?19 AND address = ?20
-                   AND situation = ?21 AND nir = ?22 AND regime = ?23",
+                   AND situation = ?21 AND nir = ?22 AND regime = ?23
+                   AND sex = ?25",
                 rusqlite::params![
                     new.last_name,
                     new.first_name,
@@ -30209,6 +30270,8 @@ impl Db {
                     expected.situation,
                     expected.nir,
                     expected.regime,
+                    new.sex,
+                    expected.sex,
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -30293,6 +30356,7 @@ impl Db {
                     situation: String::new(),
                     nir: String::new(),
                     regime: String::new(),
+                    sex: String::new(),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -31093,6 +31157,7 @@ impl Db {
         self.seed_dispositifs()?;
         self.seed_conduite()?;
         self.seed_protocols()?;
+        self.seed_trod_lines()?;
         Ok(inserted)
     }
 
@@ -31268,6 +31333,7 @@ impl Db {
             "drug_field_locks",
             "preparations",
             "dispositifs",
+            "trod_lines",
             "locations",
             "biology",
             "interviews",
@@ -33058,6 +33124,178 @@ impl Db {
             .conn
             .execute(
                 "DELETE FROM preparations WHERE id = ?1 AND name = ?2",
+                (id, expected_name),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Semer les lignes des ordonnances TROD, **une fois** : une ligne
+    /// que l'équipe a réécrite, renommée ou supprimée ne revient pas — la
+    /// règle du codex et des dispositifs, tenue par les mêmes marques.
+    pub fn seed_trod_lines(&self) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let present: std::collections::HashSet<(String, String)> = self
+            .trod_lines_all()?
+            .into_iter()
+            .map(|o| (o.protocol, o.name))
+            .collect();
+        let seeded = self.seeded_names("trod")?;
+        let mut added = 0;
+        for o in crate::ordonnance::starters() {
+            let mark = format!("{}:{}", o.protocol, o.name);
+            if seeded.contains(&mark) {
+                continue;
+            }
+            self.mark_seeded_name("trod", &mark)?;
+            if present.contains(&(o.protocol.clone(), o.name.clone())) {
+                continue;
+            }
+            self.insert_trod_line(&o)?;
+            added += 1;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    fn insert_trod_line(&self, o: &crate::ordonnance::Offer) -> Result<i64, String> {
+        self.conn
+            .execute(
+                "INSERT INTO trod_lines
+                    (protocol, rank, name, situation, posologies, caution,
+                     min_age, max_age, sex, pregnancy)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                rusqlite::params![
+                    o.protocol,
+                    o.rank,
+                    o.name.trim(),
+                    o.situation.trim(),
+                    o.posologies.join("\n"),
+                    o.caution.trim(),
+                    o.min_age,
+                    o.max_age,
+                    o.sex.map_or("", crate::ordonnance::Sex::key),
+                    o.pregnancy,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    fn trod_lines_all(&self) -> Result<Vec<crate::ordonnance::Offer>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, protocol, rank, name, situation, posologies, caution,
+                        min_age, max_age, sex, pregnancy
+                 FROM trod_lines ORDER BY protocol, rank, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let posologies: String = r.get(5)?;
+                let sex: String = r.get(9)?;
+                Ok(crate::ordonnance::Offer {
+                    id: r.get(0)?,
+                    protocol: r.get(1)?,
+                    rank: r.get(2)?,
+                    name: r.get(3)?,
+                    situation: r.get(4)?,
+                    posologies: posologies
+                        .lines()
+                        .map(str::trim)
+                        .filter(|l| !l.is_empty())
+                        .map(str::to_owned)
+                        .collect(),
+                    caution: r.get(6)?,
+                    min_age: r.get::<_, Option<i64>>(7)?.map(|v| v.clamp(0, 150) as u32),
+                    max_age: r.get::<_, Option<i64>>(8)?.map(|v| v.clamp(0, 150) as u32),
+                    sex: crate::ordonnance::Sex::from_key(&sex),
+                    pregnancy: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les lignes d'un protocole, dans l'ordre où l'officine les range.
+    pub fn trod_lines(&self, protocol: &str) -> Result<Vec<crate::ordonnance::Offer>, String> {
+        Ok(self
+            .trod_lines_all()?
+            .into_iter()
+            .filter(|o| o.protocol == protocol)
+            .collect())
+    }
+
+    /// Ajouter une ligne vide à un protocole, en dernier.
+    pub fn add_trod_line(&self, protocol: &str, name: &str) -> Result<i64, String> {
+        let rank = self
+            .trod_lines(protocol)?
+            .iter()
+            .map(|o| o.rank)
+            .max()
+            .map_or(0, |r| r + 1);
+        self.insert_trod_line(&crate::ordonnance::Offer {
+            protocol: protocol.to_owned(),
+            rank,
+            name: name.to_owned(),
+            pregnancy: true,
+            ..Default::default()
+        })
+    }
+
+    /// Réécrire une ligne, compare-and-set sur **toutes** ses colonnes :
+    /// une borne corrigée sur un poste n'est pas remise à l'ancienne par
+    /// une posologie corrigée sur l'autre.
+    pub fn update_trod_line(
+        &self,
+        new: &crate::ordonnance::Offer,
+        expected: &crate::ordonnance::Offer,
+    ) -> Result<bool, String> {
+        let sex = |o: &crate::ordonnance::Offer| o.sex.map_or("", crate::ordonnance::Sex::key);
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE trod_lines SET rank = ?1, name = ?2, situation = ?3, posologies = ?4,
+                        caution = ?5, min_age = ?6, max_age = ?7, sex = ?8, pregnancy = ?9
+                 WHERE id = ?10 AND rank = ?11 AND name = ?12 AND situation = ?13
+                   AND posologies = ?14 AND caution = ?15 AND min_age IS ?16
+                   AND max_age IS ?17 AND sex = ?18 AND pregnancy = ?19",
+                rusqlite::params![
+                    new.rank,
+                    new.name.trim(),
+                    new.situation.trim(),
+                    new.posologies.join("\n"),
+                    new.caution.trim(),
+                    new.min_age,
+                    new.max_age,
+                    sex(new),
+                    new.pregnancy,
+                    expected.id,
+                    expected.rank,
+                    expected.name,
+                    expected.situation,
+                    expected.posologies.join("\n"),
+                    expected.caution,
+                    expected.min_age,
+                    expected.max_age,
+                    sex(expected),
+                    expected.pregnancy,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une ligne, compare-and-set sur son nom affiché.
+    pub fn delete_trod_line(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM trod_lines WHERE id = ?1 AND name = ?2",
                 (id, expected_name),
             )
             .map_err(|e| e.to_string())?;
@@ -36132,6 +36370,7 @@ impl Db {
                         situation: String::new(),
                         nir: String::new(),
                         regime: String::new(),
+                        sex: String::new(),
                     },
                     r.get::<_, String>(9)?,
                 ))
@@ -37859,6 +38098,60 @@ mod tests {
         // A birth date after today, or a malformed one, has no age.
         assert_eq!(age_on("2030-01-01", "2026-08-26"), None);
         assert_eq!(age_on("", "2026-08-26"), None);
+    }
+
+    /// **Les lignes TROD sont celles de l'officine** : semées une fois,
+    /// réécrites sous compare-and-set, et une ligne supprimée ne revient
+    /// pas au lancement suivant.
+    #[test]
+    fn the_trod_lines_are_seeded_once_and_then_the_team_s() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-trod-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("trod.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_trod_lines().unwrap();
+        let angine = db.trod_lines("angine").unwrap();
+        let shipped = crate::ordonnance::starter("angine");
+        assert_eq!(angine.len(), shipped.len());
+        for (row, ship) in angine.iter().zip(&shipped) {
+            assert_eq!(
+                crate::ordonnance::Offer {
+                    id: 0,
+                    ..row.clone()
+                },
+                *ship,
+                "la ligne semée est la ligne livrée"
+            );
+        }
+        assert_eq!(db.seed_trod_lines().unwrap(), 0, "une seule fois");
+
+        // Réécrite : la borne d'âge bouge, et une seconde écriture depuis
+        // l'écran d'avant est refusée.
+        let first = angine[0].clone();
+        let moved = crate::ordonnance::Offer {
+            min_age: Some(12),
+            ..first.clone()
+        };
+        assert!(db.update_trod_line(&moved, &first).unwrap());
+        assert!(!db.update_trod_line(&moved, &first).unwrap());
+        assert_eq!(db.trod_lines("angine").unwrap()[0].min_age, Some(12));
+
+        // Supprimée : elle ne revient pas.
+        assert!(db.delete_trod_line(first.id, &first.name).unwrap());
+        assert_eq!(db.seed_trod_lines().unwrap(), 0);
+        assert!(db
+            .trod_lines("angine")
+            .unwrap()
+            .iter()
+            .all(|o| o.name != first.name));
+
+        // Ajoutée : en dernier, délivrable pendant la grossesse par défaut.
+        let id = db.add_trod_line("cystite", "Nouveau").unwrap();
+        let cystite = db.trod_lines("cystite").unwrap();
+        assert_eq!(cystite.last().map(|o| o.id), Some(id));
+        assert!(cystite.last().is_some_and(|o| o.pregnancy));
     }
 
     #[test]
@@ -43301,6 +43594,7 @@ mod tests {
             situation: "ALD".to_owned(),
             nir: "1 58 07 34 172 042 11".to_owned(),
             regime: "01".to_owned(),
+            sex: "M".to_owned(),
         };
         assert!(db.update_patient(&corrected, &seen).unwrap());
         let p = db.patients().unwrap();

@@ -535,10 +535,18 @@ Après un test rapide positif — angine à streptocoque, cystite simple —,
 l'écran compose l'ordonnance que le protocole autorise : l'antibiotique,
 sa posologie, l'adjuvant et les conseils.
 
-Les molécules, les doses et les durées sont **celles des tables de
-conversion** qu'on lit au comptoir, dans le même ordre et les mêmes
-mots : la table qu'on consulte et le document qu'on remet ne peuvent pas
-dire deux choses différentes, et un test le tient.
+Les lignes proposées sont **celles de l'officine** : livrées avec les
+protocoles en vigueur, elles se réécrivent avec « Modifier les
+lignes… » — une molécule ajoutée, une posologie changée, une borne
+d'âge déplacée le jour où le protocole change. Ce qui est réécrit vaut
+pour tous les postes.
+
+**L'âge, le sexe et la grossesse sont facultatifs.** Le dossier les
+donne quand il les connaît — la date de naissance, le sexe ou à défaut
+le NIR —, et la fenêtre les laisse corriger pour cette ordonnance. Sus,
+ils grisent les lignes que le protocole n'ouvre pas à cette personne,
+avec la raison ; inconnus, ils ne bloquent rien. Quand aucune ligne ne
+s'applique, l'écran le dit : c'est une orientation vers un médecin.
 
 Rien n'est jamais sélectionné d'office et toute posologie proposée est
 modifiable : l'application propose, le pharmacien décide.

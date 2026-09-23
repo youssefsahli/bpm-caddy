@@ -15,6 +15,64 @@
 
 use crate::db::InterviewKind;
 
+/// Who the ordonnance is for, as far as the counter knows it.
+///
+/// **Every field is optional**, because a TROD is often done on
+/// somebody whose file is a name and nothing else — quick entry must stay
+/// quick. What is known changes what is offered; what is not known
+/// blocks nothing, and the line's own situation text says what it
+/// assumes.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Who {
+    pub age: Option<u32>,
+    pub sex: Option<Sex>,
+    pub pregnant: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Sex {
+    F,
+    M,
+}
+
+impl Sex {
+    /// The key stored in the base: `F`, `M`, or empty for « not said ».
+    pub fn key(self) -> &'static str {
+        match self {
+            Sex::F => "F",
+            Sex::M => "M",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Option<Sex> {
+        match key.trim() {
+            "F" | "f" => Some(Sex::F),
+            "M" | "m" | "H" | "h" => Some(Sex::M),
+            _ => None,
+        }
+    }
+
+    /// What the NIR says, when nobody wrote the sex down: its first
+    /// digit is 1 for a man and 2 for a woman. A temporary number (7, 8)
+    /// says nothing, and neither does a missing one.
+    pub fn from_nir(nir: &str) -> Option<Sex> {
+        match nir.trim().chars().next() {
+            Some('1') => Some(Sex::M),
+            Some('2') => Some(Sex::F),
+            _ => None,
+        }
+    }
+}
+
+/// Why a line does not apply to the person in front of the counter.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Barrier {
+    TooYoung(u32),
+    TooOld(u32),
+    Sex(Sex),
+    Pregnant,
+}
+
 /// One antibiotic that may be dispensed for an indication.
 pub struct Antibiotic {
     /// What goes on the ordonnance ("Amoxicilline 1 g").
@@ -27,6 +85,103 @@ pub struct Antibiotic {
     /// The caution that belongs with this molecule, printed under the
     /// line when it is not empty.
     pub caution: &'static str,
+    /// Who the line is for — the bounds of the protocol, in years,
+    /// inclusive. `None` bounds nothing.
+    pub min_age: Option<u32>,
+    pub max_age: Option<u32>,
+    pub sex: Option<Sex>,
+    /// Whether the line may be dispensed to a pregnant woman.
+    pub pregnancy: bool,
+}
+
+/// One line the officine offers after a positive TROD, as the base holds
+/// it — **the shipped protocols are a starting point, seeded once**, and
+/// everything after that is the team's: a molecule added, a posology
+/// rewritten, a bound moved when the protocol changes.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Offer {
+    pub id: i64,
+    /// `angine` or `cystite`.
+    pub protocol: String,
+    pub rank: i64,
+    pub name: String,
+    pub situation: String,
+    /// Ready-made posologies, one per line, most usual first.
+    pub posologies: Vec<String>,
+    pub caution: String,
+    pub min_age: Option<u32>,
+    pub max_age: Option<u32>,
+    pub sex: Option<Sex>,
+    pub pregnancy: bool,
+}
+
+impl Offer {
+    /// What stops this line for `who`, the first reason found. Only a
+    /// **known** fact stops anything: an unknown age is not a child.
+    pub fn barrier(&self, who: &Who) -> Option<Barrier> {
+        if let (Some(age), Some(min)) = (who.age, self.min_age) {
+            if age < min {
+                return Some(Barrier::TooYoung(min));
+            }
+        }
+        if let (Some(age), Some(max)) = (who.age, self.max_age) {
+            if age > max {
+                return Some(Barrier::TooOld(max));
+            }
+        }
+        if let (Some(sex), Some(wanted)) = (who.sex, self.sex) {
+            if sex != wanted {
+                return Some(Barrier::Sex(wanted));
+            }
+        }
+        if who.pregnant && !self.pregnancy {
+            return Some(Barrier::Pregnant);
+        }
+        None
+    }
+}
+
+/// The shipped lines of a protocol, as rows to seed.
+pub fn starter(id: &str) -> Vec<Offer> {
+    protocols()
+        .into_iter()
+        .filter(|(pid, _)| *pid == id)
+        .flat_map(|(pid, p)| {
+            p.antibiotics
+                .iter()
+                .enumerate()
+                .map(move |(rank, a)| Offer {
+                    id: 0,
+                    protocol: pid.to_owned(),
+                    rank: rank as i64,
+                    name: a.name.to_owned(),
+                    situation: a.situation.to_owned(),
+                    posologies: a.posologies.iter().map(|s| (*s).to_owned()).collect(),
+                    caution: a.caution.to_owned(),
+                    min_age: a.min_age,
+                    max_age: a.max_age,
+                    sex: a.sex,
+                    pregnancy: a.pregnancy,
+                })
+        })
+        .collect()
+}
+
+/// Every shipped line, both protocols.
+pub fn starters() -> Vec<Offer> {
+    protocols()
+        .into_iter()
+        .flat_map(|(id, _)| starter(id))
+        .collect()
+}
+
+/// The key a protocol's rows carry in the base.
+pub fn protocol_id(kind: InterviewKind) -> Option<&'static str> {
+    match kind {
+        InterviewKind::TrodAngine => Some("angine"),
+        InterviewKind::TrodCystite => Some("cystite"),
+        _ => None,
+    }
 }
 
 /// Everything one indication offers.
@@ -104,12 +259,20 @@ const ANGINE: Protocol = Protocol {
             situation: "Adulte, 1re intention",
             posologies: &["1 g deux fois par jour pendant 6 jours"],
             caution: "",
+            min_age: Some(15),
+            max_age: None,
+            sex: None,
+            pregnancy: true,
         },
         Antibiotic {
             name: "Amoxicilline suspension buvable",
-            situation: "Enfant à partir de 3 ans, 1re intention",
+            situation: "Enfant de 10 à 14 ans, 1re intention",
             posologies: &["50 mg/kg/j en 2 prises pendant 6 jours"],
             caution: "Dose à rapporter au poids de l'enfant.",
+            min_age: Some(10),
+            max_age: Some(14),
+            sex: None,
+            pregnancy: true,
         },
         Antibiotic {
             name: "Céfuroxime-axétil 250 mg",
@@ -120,24 +283,40 @@ const ANGINE: Protocol = Protocol {
             // sans durée (SPILF / HAS, angine de l'adulte).
             posologies: &["250 mg deux fois par jour pendant 4 jours"],
             caution: "Vérifier l'absence d'antécédent de réaction grave aux bêta-lactamines.",
+            min_age: Some(15),
+            max_age: None,
+            sex: None,
+            pregnancy: true,
         },
         Antibiotic {
             name: "Cefpodoxime-proxétil 100 mg",
             situation: "Allergie aux pénicillines sans contre-indication aux céphalosporines",
             posologies: &["100 mg deux fois par jour pendant 5 jours"],
             caution: "Vérifier l'absence d'antécédent de réaction grave aux bêta-lactamines.",
+            min_age: Some(15),
+            max_age: None,
+            sex: None,
+            pregnancy: true,
         },
         Antibiotic {
             name: "Azithromycine 250 mg",
             situation: "Contre-indication à toutes les bêta-lactamines",
             posologies: &["500 mg une fois par jour pendant 3 jours"],
             caution: "Prélèvement de gorge pour culture avant de traiter.",
+            min_age: Some(15),
+            max_age: None,
+            sex: None,
+            pregnancy: true,
         },
         Antibiotic {
             name: "Clarithromycine 250 mg",
             situation: "Contre-indication à toutes les bêta-lactamines",
             posologies: &["250 mg deux fois par jour pendant 5 jours"],
             caution: "Prélèvement de gorge pour culture avant de traiter ; nombreuses interactions.",
+            min_age: Some(15),
+            max_age: None,
+            sex: None,
+            pregnancy: true,
         },
     ],
     conseils: &[
@@ -171,6 +350,10 @@ const CYSTITE: Protocol = Protocol {
             situation: "1re intention",
             posologies: &["3 g en dose unique"],
             caution: "À distance d'un repas, de préférence au coucher, après avoir uriné.",
+            min_age: Some(16),
+            max_age: Some(65),
+            sex: Some(Sex::F),
+            pregnancy: false,
         },
         Antibiotic {
             name: "Pivmécillinam 400 mg (Selexid)",
@@ -180,12 +363,20 @@ const CYSTITE: Protocol = Protocol {
                 "400 mg deux fois par jour pendant 5 jours",
             ],
             caution: "Contre-indiqué en cas d'allergie aux pénicillines. À avaler assis, avec un grand verre d'eau.",
+            min_age: Some(16),
+            max_age: Some(65),
+            sex: Some(Sex::F),
+            pregnancy: false,
         },
         Antibiotic {
             name: "Nitrofurantoïne 100 mg (Furadantine)",
             situation: "3e intention",
             posologies: &["100 mg trois fois par jour pendant 5 jours"],
             caution: "Jamais en traitement prolongé ni préventif ; contre-indiquée en cas d'insuffisance rénale. Prévenir de la coloration brune des urines.",
+            min_age: Some(16),
+            max_age: Some(65),
+            sex: Some(Sex::F),
+            pregnancy: false,
         },
     ],
     conseils: &[
@@ -232,8 +423,9 @@ pub struct Line {
 /// What the operator chose in the ordonnance box.
 #[derive(Clone, Debug, Default)]
 pub struct Choice {
-    /// Index into the protocol's antibiotics, if one is selected.
-    pub antibiotic: Option<usize>,
+    /// The chosen line, by its identifier in the base — not an index:
+    /// the list is the team's and may be edited while the box is open.
+    pub antibiotic: Option<i64>,
     /// The posology, pre-filled from the chosen molecule and freely
     /// editable — « we can choose or free write ».
     pub posology: String,
@@ -252,13 +444,16 @@ pub struct Choice {
 impl Choice {
     /// The prescribed lines, in the order they are printed. Empty when
     /// nothing has been chosen — the caller refuses to print then.
-    pub fn lines(&self, protocol: &Protocol) -> Vec<Line> {
+    pub fn lines(&self, offers: &[Offer]) -> Vec<Line> {
         let mut out = Vec::new();
-        if let Some(atb) = self.antibiotic.and_then(|i| protocol.antibiotics.get(i)) {
+        if let Some(atb) = self
+            .antibiotic
+            .and_then(|id| offers.iter().find(|o| o.id == id))
+        {
             out.push(Line {
-                name: atb.name.to_owned(),
+                name: atb.name.clone(),
                 posology: self.posology.trim().to_owned(),
-                caution: atb.caution.to_owned(),
+                caution: atb.caution.clone(),
             });
         }
         if let Some(name) = self.adjuvant.as_ref().filter(|n| !n.trim().is_empty()) {
@@ -360,8 +555,9 @@ mod tests {
     #[test]
     fn a_choice_prints_the_antibiotic_then_the_probiotic_then_the_extras() {
         let protocol = protocol(InterviewKind::TrodAngine).unwrap();
+        let offers = numbered(starter("angine"));
         let choice = Choice {
-            antibiotic: Some(0),
+            antibiotic: Some(offers[0].id),
             posology: "1 g deux fois par jour pendant 6 jours".to_owned(),
             adjuvant: Some("Lactéol".to_owned()),
             adjuvant_posology: "2 gélules deux fois par jour".to_owned(),
@@ -369,7 +565,7 @@ mod tests {
             temps_de_prise: false,
             extra: "Paracétamol 1 g si douleur\n\n  \n".to_owned(),
         };
-        let lines = choice.lines(protocol);
+        let lines = choice.lines(&offers);
         assert_eq!(lines.len(), 3);
         assert_eq!(lines[0].name, "Amoxicilline 1 g");
         assert_eq!(lines[0].posology, "1 g deux fois par jour pendant 6 jours");
@@ -397,14 +593,91 @@ mod tests {
 
     #[test]
     fn an_empty_choice_prints_nothing() {
-        let protocol = protocol(InterviewKind::TrodCystite).unwrap();
-        assert!(Choice::default().lines(protocol).is_empty());
+        let offers = numbered(starter("cystite"));
+        assert!(Choice::default().lines(&offers).is_empty());
         // A free-written line alone is still an ordonnance.
         let only_extra = Choice {
             extra: "Ibuprofène 400 mg".to_owned(),
             ..Default::default()
         };
-        assert_eq!(only_extra.lines(protocol).len(), 1);
+        assert_eq!(only_extra.lines(&offers).len(), 1);
+    }
+
+    /// The shipped rows, numbered as the base would number them.
+    fn numbered(mut offers: Vec<Offer>) -> Vec<Offer> {
+        for (i, o) in offers.iter_mut().enumerate() {
+            o.id = i as i64 + 1;
+        }
+        offers
+    }
+
+    /// **What is known changes what is offered; what is not known blocks
+    /// nothing.** A TROD done on a name alone offers every line; a
+    /// twelve-year-old gets the children's line; a man, a pregnant woman
+    /// or a woman of seventy gets no cystitis line at all.
+    #[test]
+    fn a_known_age_sex_or_pregnancy_bounds_the_lines_and_an_unknown_one_does_not() {
+        let angine = starter("angine");
+        let unknown = Who::default();
+        assert!(angine.iter().all(|o| o.barrier(&unknown).is_none()));
+        let child = Who {
+            age: Some(12),
+            ..Who::default()
+        };
+        let open: Vec<&str> = angine
+            .iter()
+            .filter(|o| o.barrier(&child).is_none())
+            .map(|o| o.name.as_str())
+            .collect();
+        assert_eq!(open, vec!["Amoxicilline suspension buvable"]);
+        assert_eq!(angine[0].barrier(&child), Some(Barrier::TooYoung(15)));
+        let small = Who {
+            age: Some(6),
+            ..Who::default()
+        };
+        assert!(angine.iter().all(|o| o.barrier(&small).is_some()));
+
+        let cystite = starter("cystite");
+        let man = Who {
+            sex: Some(Sex::M),
+            age: Some(40),
+            ..Who::default()
+        };
+        assert!(cystite
+            .iter()
+            .all(|o| o.barrier(&man) == Some(Barrier::Sex(Sex::F))));
+        let pregnant = Who {
+            sex: Some(Sex::F),
+            age: Some(30),
+            pregnant: true,
+        };
+        assert!(cystite
+            .iter()
+            .all(|o| o.barrier(&pregnant) == Some(Barrier::Pregnant)));
+        let older = Who {
+            sex: Some(Sex::F),
+            age: Some(70),
+            pregnant: false,
+        };
+        assert!(cystite
+            .iter()
+            .all(|o| o.barrier(&older) == Some(Barrier::TooOld(65))));
+        let woman = Who {
+            sex: Some(Sex::F),
+            age: Some(30),
+            pregnant: false,
+        };
+        assert!(cystite.iter().all(|o| o.barrier(&woman).is_none()));
+    }
+
+    #[test]
+    fn the_nir_says_the_sex_when_the_file_does_not() {
+        assert_eq!(Sex::from_nir("2 84 05 75 111 222 33"), Some(Sex::F));
+        assert_eq!(Sex::from_nir("185057511122233"), Some(Sex::M));
+        assert_eq!(Sex::from_nir("7"), None);
+        assert_eq!(Sex::from_nir(""), None);
+        assert_eq!(Sex::from_key(Sex::F.key()), Some(Sex::F));
+        assert_eq!(Sex::from_key(""), None);
     }
 
     #[test]

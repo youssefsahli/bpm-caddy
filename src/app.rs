@@ -3266,6 +3266,93 @@ struct OrdonnanceBox {
     interview: i64,
     kind: InterviewKind,
     choice: crate::ordonnance::Choice,
+    /// Who the ordonnance is for — pre-filled from the file, corrected
+    /// here for this ordonnance only. Every field optional.
+    who: crate::ordonnance::Who,
+    /// The age as typed, so a half-typed figure is not rewritten.
+    age_text: String,
+}
+
+/// Rédiger les lignes d'un protocole TROD : la liste, la ligne ouverte
+/// telle qu'elle est tapée, et ce que la base portait quand on l'a
+/// ouverte — contre quoi l'écriture se compare.
+struct TrodEdit {
+    protocol: &'static str,
+    /// The line open in the form, as the base gave it (`id` 0 before the
+    /// first read).
+    base: Option<crate::ordonnance::Offer>,
+    draft: crate::ordonnance::Offer,
+    posologies: String,
+    min_age: String,
+    max_age: String,
+    confirm_delete: bool,
+    note: Option<(bool, String)>,
+    /// The protocol's lines, read once and again after each write —
+    /// never on every frame.
+    lines: Option<Vec<crate::ordonnance::Offer>>,
+}
+
+impl TrodEdit {
+    fn new(protocol: &'static str) -> Self {
+        Self {
+            lines: None,
+            protocol,
+            base: None,
+            draft: crate::ordonnance::Offer::default(),
+            posologies: String::new(),
+            min_age: String::new(),
+            max_age: String::new(),
+            confirm_delete: false,
+            note: None,
+        }
+    }
+
+    fn open(&mut self, line: &crate::ordonnance::Offer) {
+        self.base = Some(line.clone());
+        self.draft = line.clone();
+        self.posologies = line.posologies.join("\n");
+        self.min_age = line.min_age.map(|a| a.to_string()).unwrap_or_default();
+        self.max_age = line.max_age.map(|a| a.to_string()).unwrap_or_default();
+        self.confirm_delete = false;
+    }
+
+    /// The form read back into a line — ages that do not read as a whole
+    /// number of years bound nothing, which the fields' hints say.
+    fn read(&self) -> crate::ordonnance::Offer {
+        let age = |t: &str| t.trim().parse::<u32>().ok().filter(|a| *a <= 130);
+        crate::ordonnance::Offer {
+            posologies: self
+                .posologies
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect(),
+            min_age: age(&self.min_age),
+            max_age: age(&self.max_age),
+            ..self.draft.clone()
+        }
+    }
+}
+
+impl OrdonnanceBox {
+    /// Opened on a positive TROD: the age from the birth date, the sex
+    /// from the file or its NIR. What the file does not say stays
+    /// unknown, and blocks nothing.
+    fn new(interview: i64, kind: InterviewKind, patient: Option<&Patient>, today: &str) -> Self {
+        let age = patient.and_then(|p| db::age_on(&p.birth_date, today));
+        Self {
+            interview,
+            kind,
+            choice: crate::ordonnance::Choice::default(),
+            who: crate::ordonnance::Who {
+                age,
+                sex: patient.and_then(Patient::known_sex),
+                pregnant: false,
+            },
+            age_text: age.map(|a| a.to_string()).unwrap_or_default(),
+        }
+    }
 }
 
 /// Une fiche ou un courrier en attente de ce qu'on veut y mettre.
@@ -3861,6 +3948,14 @@ struct Session {
     /// force and the revision of the drug base.
     ord_adjuvants: Vec<(Drug, Vec<db::Posologie>)>,
     ord_adjuvants_key: Option<(i64, String, u64)>,
+    /// The TROD lines of the open ordonnance, read when the box opens
+    /// and whenever the lines are edited (`trod_rev`).
+    ord_offers: Vec<crate::ordonnance::Offer>,
+    ord_offers_key: Option<(i64, u64)>,
+    /// The TROD lines editor, open over the ordonnance box.
+    trod_edit: Option<TrodEdit>,
+    /// Moved by every write to `trod_lines`.
+    trod_rev: u64,
     /// The open drug card's dated notes, newest first.
     drug_notes: Vec<Note>,
     /// Transmission logbook: the shown day, its entries, and the days
@@ -4563,6 +4658,8 @@ struct PatientForm {
     /// Numéro d'immatriculation and régime, for the bulletin d'adhésion.
     nir: String,
     regime: String,
+    /// `F`, `M` or empty — optional, like the birth date.
+    sex: String,
     error: Option<String>,
 }
 
@@ -4590,6 +4687,9 @@ impl Session {
         // And the dispositifs, by the same rule: seeded once, and a
         // fiche the team emptied never comes back to argue.
         let _ = db.seed_dispositifs();
+        // And the TROD ordonnance lines, by the same rule: the shipped
+        // protocols once, the team's rows after that.
+        let _ = db.seed_trod_lines();
         // And the thirteen « toxicité » sections that used to say the
         // same nothing: replaced once, only where the old sentence is
         // still there word for word.
@@ -4740,6 +4840,10 @@ impl Session {
             ordonnance: None,
             ord_adjuvants: Vec::new(),
             ord_adjuvants_key: None,
+            ord_offers: Vec::new(),
+            ord_offers_key: None,
+            trod_edit: None,
+            trod_rev: 0,
             drug_notes: Vec::new(),
             trans_day: String::new(),
             trans_notes: Vec::new(),
@@ -8744,6 +8848,17 @@ fn list_step(cursor: usize, len: usize, up: bool, down: bool) -> usize {
 /// figure that no time unit follows is passed over (« 50 % », « DFG
 /// < 30 »), and one stuck to a letter or a hyphen is a name, not a
 /// figure — « E-3174 », « GS-331007 », « M1 ».
+/// A birth date that may be left out: **quick entry stays quick**. Empty
+/// is an unknown date, never an error; anything typed must still read as
+/// a date.
+fn optional_birth(input: &str, year: u32) -> Result<String, String> {
+    if input.trim().is_empty() {
+        Ok(String::new())
+    } else {
+        db::parse_french_date(input, year, db::YearHint::Past)
+    }
+}
+
 fn parse_hours(text: &str) -> Option<f64> {
     #[derive(Debug)]
     enum Tok {
@@ -11804,7 +11919,7 @@ impl App {
                         // to it.
                         // Land on a positive TROD with its ordonnance
                         // box open (screenshots, smoke).
-                        Ok("ordonnance") => {
+                        Ok(key @ ("ordonnance" | "ordonnance_lignes")) => {
                             // The demo's TROD sits on one patient in
                             // particular: open files until one has it.
                             for candidate in session.patients.clone() {
@@ -11831,11 +11946,26 @@ impl App {
                                 if let Some(pid) = session.viewing.as_ref().map(|p| p.id) {
                                     session.reload_interviews(pid);
                                 }
-                                session.ordonnance = Some(OrdonnanceBox {
-                                    interview: itv.id,
-                                    kind: itv.kind,
-                                    choice: crate::ordonnance::Choice::default(),
-                                });
+                                session.ordonnance = Some(OrdonnanceBox::new(
+                                    itv.id,
+                                    itv.kind,
+                                    session.viewing.as_ref(),
+                                    &session.today,
+                                ));
+                                // With its lines editor open on the
+                                // first line: the form only a capture
+                                // can check.
+                                if key == "ordonnance_lignes" {
+                                    if let Some(pid) = crate::ordonnance::protocol_id(itv.kind) {
+                                        let mut edit = TrodEdit::new(pid);
+                                        if let Some(first) =
+                                            session.db.trod_lines(pid).unwrap_or_default().first()
+                                        {
+                                            edit.open(first);
+                                        }
+                                        session.trod_edit = Some(edit);
+                                    }
+                                }
                             }
                         }
                         // « watch » is the biology tab with its side
@@ -14515,6 +14645,9 @@ impl App {
                                     .hint_text(motif::hint(tr("form_birth_hint"))),
                             );
                             ui.end_row();
+                            Self::form_label(ui, tr("form_sex"));
+                            Self::sex_choice(ui, &mut form.sex);
+                            ui.end_row();
                             // Enter in any field submits (spec 3.1: shortcut
                             // driven — no mouse needed to create a patient).
                             [a, b, c].iter().any(|r| r.lost_focus())
@@ -14533,18 +14666,17 @@ impl App {
                 if create {
                     // Birth dates read two-digit years as the past ("49" → 1949).
                     let year = session.db.current_year();
-                    let outcome = db::parse_french_date(&form.birth_date, year, db::YearHint::Past)
-                        .and_then(|iso| {
-                            if form.last_name.trim().is_empty() || form.first_name.trim().is_empty()
-                            {
-                                return Err(tr("form_names_required").to_owned());
-                            }
-                            session.db.add_patient(
-                                form.last_name.trim(),
-                                form.first_name.trim(),
-                                &iso,
-                            )
-                        });
+                    let outcome = optional_birth(&form.birth_date, year).and_then(|iso| {
+                        if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
+                            return Err(tr("form_names_required").to_owned());
+                        }
+                        session.db.add_patient_with_sex(
+                            form.last_name.trim(),
+                            form.first_name.trim(),
+                            &iso,
+                            &form.sex,
+                        )
+                    });
                     match outcome {
                         Ok(new_id) => {
                             match session.db.patients() {
@@ -14829,6 +14961,9 @@ impl App {
         let work = strip[1];
         // The ordonnance box floats over whichever half is on screen.
         Self::ordonnance_box(ctx, session, patient, config, operator);
+        if session.ordonnance.is_none() {
+            session.trod_edit = None;
+        }
         if session.patient_tab == PatientTab::Fil {
             Self::patient_fil_pane(ui, session, work);
             return;
@@ -15018,8 +15153,18 @@ impl App {
             session.ord_adjuvants_key = Some(key);
         }
         let adjuvants = std::mem::take(&mut session.ord_adjuvants);
+        // Les lignes du protocole, **celles de l'officine** : lues à
+        // l'ouverture et à chaque réécriture, jamais par image.
+        let pid = crate::ordonnance::protocol_id(kind).unwrap_or("");
+        let offers_key = (interview, session.trod_rev);
+        if session.ord_offers_key != Some(offers_key) {
+            session.ord_offers = session.db.trod_lines(pid).unwrap_or_default();
+            session.ord_offers_key = Some(offers_key);
+        }
+        let offers = std::mem::take(&mut session.ord_offers);
         let mut close = false;
         let mut print = false;
+        let mut edit_lines = false;
         // La taille vient de l'écran, comme pour la fenêtre des
         // options : une fenêtre egui grandit avec son contenu, et à
         // `[ui] text_scale = 1,6` ce titre — « Ordonnance — Angine à
@@ -15040,7 +15185,6 @@ impl App {
                 let Some(open) = &mut session.ordonnance else {
                     return;
                 };
-                let choice = &mut open.choice;
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(protocol.indication)
@@ -15078,23 +15222,97 @@ impl App {
                     .id_salt("ord_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
+                        // **Pour qui**, facultatif : ce que le dossier
+                        // sait est déjà là, ce qu'il ne sait pas ne
+                        // bloque rien. Su, il grise les lignes que le
+                        // protocole n'ouvre pas à cette personne.
+                        let who = &mut open.who;
+                        let age_text = &mut open.age_text;
+                        ui.horizontal_wrapped(|ui| {
+                            Self::keep_together(
+                                ui,
+                                egui::vec2(
+                                    Self::group_width(
+                                        ui,
+                                        [
+                                            Self::widest(
+                                                ui,
+                                                motif::pt(ui, 11.0),
+                                                std::iter::once(tr("ord_who_age")),
+                                            ),
+                                            chars_wide(ui, 4.0),
+                                        ]
+                                        .into_iter(),
+                                    ),
+                                    Self::row_height(ui),
+                                ),
+                                |ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("ord_who_age"))
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::text_dim()),
+                                    );
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 4.0),
+                                        egui::TextEdit::singleline(age_text)
+                                            .hint_text(motif::hint("—")),
+                                    );
+                                },
+                            );
+                            who.age = age_text.trim().parse::<u32>().ok().filter(|a| *a <= 130);
+                            let mut sex_key = who.sex.map_or(String::new(), |s| s.key().to_owned());
+                            Self::sex_choice(ui, &mut sex_key);
+                            who.sex = crate::ordonnance::Sex::from_key(&sex_key);
+                            if who.sex != Some(crate::ordonnance::Sex::M) {
+                                motif::checkbox(ui, &mut who.pregnant, tr("ord_who_pregnant"));
+                            } else {
+                                who.pregnant = false;
+                            }
+                        });
+                        ui.add_space(4.0);
                         motif::section(ui, tr("ord_atb_section"));
                         ui.add_space(4.0);
-                        for (i, atb) in protocol.antibiotics.iter().enumerate() {
-                            let picked = choice.antibiotic == Some(i);
+                        let who = open.who;
+                        // Rien ne s'applique : on le dit, plutôt qu'une
+                        // liste toute grise qui ressemble à une panne.
+                        if !offers.is_empty() && offers.iter().all(|o| o.barrier(&who).is_some()) {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("ord_none_applies"))
+                                        .size(motif::pt(ui, 11.5))
+                                        .color(motif::alert()),
+                                )
+                                .wrap(),
+                            );
+                            ui.add_space(4.0);
+                        }
+                        if offers.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("ord_no_lines"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        let choice = &mut open.choice;
+                        for atb in &offers {
+                            let barrier = atb.barrier(&who);
+                            let picked = choice.antibiotic == Some(atb.id);
                             let row = ui.horizontal(|ui| {
-                                if motif::toggle(ui, atb.name, picked).clicked() {
+                                let toggled = ui
+                                    .add_enabled_ui(barrier.is_none() || picked, |ui| {
+                                        motif::toggle(ui, &atb.name, picked)
+                                    })
+                                    .inner;
+                                if toggled.clicked() {
                                     if picked {
                                         choice.antibiotic = None;
                                     } else {
-                                        choice.antibiotic = Some(i);
+                                        choice.antibiotic = Some(atb.id);
                                         // Pre-fill the usual posology;
                                         // it stays editable.
-                                        choice.posology = atb
-                                            .posologies
-                                            .first()
-                                            .map(|p| (*p).to_owned())
-                                            .unwrap_or_default();
+                                        choice.posology =
+                                            atb.posologies.first().cloned().unwrap_or_default();
                                     }
                                 }
                                 // **La situation enveloppe à côté du
@@ -15112,13 +15330,23 @@ impl App {
                                 // colonne et la rangée grandit avec
                                 // elle.
                                 let room = ui.available_width();
+                                let said = match barrier {
+                                    Some(b) => {
+                                        format!("{} — {}", atb.situation, Self::barrier_text(b))
+                                    }
+                                    None => atb.situation.clone(),
+                                };
                                 ui.scope(|ui| {
                                     ui.set_max_width(room);
                                     ui.add(
                                         egui::Label::new(
-                                            egui::RichText::new(atb.situation)
+                                            egui::RichText::new(said)
                                                 .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
+                                                .color(if barrier.is_some() {
+                                                    motif::alert()
+                                                } else {
+                                                    motif::text_dim()
+                                                }),
                                         )
                                         .wrap(),
                                     );
@@ -15131,10 +15359,10 @@ impl App {
                                 if atb.posologies.len() > 1 {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.add_space(12.0);
-                                        for p in atb.posologies {
+                                        for p in &atb.posologies {
                                             if motif::toggle(ui, p, choice.posology == *p).clicked()
                                             {
-                                                choice.posology = (*p).to_owned();
+                                                choice.posology = p.clone();
                                             }
                                         }
                                     });
@@ -15157,7 +15385,7 @@ impl App {
                                     ui.horizontal_wrapped(|ui| {
                                         ui.add_space(12.0);
                                         ui.label(
-                                            egui::RichText::new(atb.caution)
+                                            egui::RichText::new(atb.caution.as_str())
                                                 .size(motif::pt(ui, 11.0))
                                                 .italics()
                                                 .color(motif::alert()),
@@ -15277,6 +15505,12 @@ impl App {
                     if motif::button(ui, tr("ord_print")).clicked() {
                         print = true;
                     }
+                    if motif::button(ui, tr("ord_edit_lines"))
+                        .on_hover_text(tr("ord_edit_lines_tooltip"))
+                        .clicked()
+                    {
+                        edit_lines = true;
+                    }
                     if motif::button(ui, tr("ord_close"))
                         .on_hover_text(tr("ord_close_tooltip"))
                         .clicked()
@@ -15290,6 +15524,11 @@ impl App {
         // same time, and handed straight back: nothing between the two
         // lines returns.
         session.ord_adjuvants = adjuvants;
+        session.ord_offers = offers;
+        if edit_lines && session.trod_edit.is_none() {
+            session.trod_edit = Some(TrodEdit::new(pid));
+        }
+        Self::trod_editor(ctx, session);
 
         // Escape is handled by `patient_view`, which owns the key for
         // the whole file and dismisses this box before the file itself.
@@ -15299,9 +15538,22 @@ impl App {
                 .as_ref()
                 .map(|o| o.choice.clone())
                 .unwrap_or_default();
-            let lines = choice.lines(protocol);
+            let who = session
+                .ordonnance
+                .as_ref()
+                .map(|o| o.who)
+                .unwrap_or_default();
+            let lines = choice.lines(&session.ord_offers);
+            let blocked = choice
+                .antibiotic
+                .and_then(|id| session.ord_offers.iter().find(|o| o.id == id))
+                .and_then(|o| o.barrier(&who));
             if lines.is_empty() {
                 session.error = Some(tr("ord_empty").to_owned());
+            } else if let Some(b) = blocked {
+                // Choisie avant qu'on corrige l'âge ou le sexe : la ligne
+                // ne s'imprime pas pour quelqu'un que le protocole exclut.
+                session.error = Some(Self::barrier_text(b));
             } else if choice.antibiotic.is_some() && choice.posology.trim().is_empty() {
                 // **Un antibiotique ne s'imprime pas sans sa posologie** :
                 // le champ vidé laissait partir une ordonnance qui nomme
@@ -20609,7 +20861,7 @@ impl App {
         // The name is a heading and the birth date follows it.
         let heading = egui::TextStyle::Heading.resolve(ui.style());
         let body = egui::TextStyle::Body.resolve(ui.style());
-        let born = trf("patient_born", db::format_french_date(&patient.birth_date));
+        let born = Self::born_text(patient);
         needed += ui.fonts(|f| {
             f.layout_no_wrap(patient.full_name(), heading, motif::text())
                 .size()
@@ -22056,7 +22308,7 @@ impl App {
             // lui dit, et rien ne l'arrête — c'est la même famille que
             // le titre de `motif::panel` qui débordait sur le panneau
             // d'à côté.
-            let born = trf("patient_born", db::format_french_date(&patient.birth_date));
+            let born = Self::born_text(patient);
             let body = egui::TextStyle::Body.resolve(ui.style());
             let born_w = ui.fonts(|f| {
                 f.layout_no_wrap(born.clone(), body, motif::text_dim())
@@ -22194,6 +22446,9 @@ impl App {
                         egui::TextEdit::singleline(&mut form.birth_date)
                             .hint_text(motif::hint(tr("form_birth_hint"))),
                     );
+                    ui.end_row();
+                    Self::form_label(ui, tr("form_sex"));
+                    Self::sex_choice(ui, &mut form.sex);
                     ui.end_row();
                     Self::form_label(ui, tr("form_phone"));
                     motif::field_sized(
@@ -23299,30 +23554,30 @@ impl App {
         if save_edit {
             if let Some(form) = session.edit_patient.clone() {
                 let year = session.db.current_year();
-                let outcome = db::parse_french_date(&form.birth_date, year, db::YearHint::Past)
-                    .and_then(|iso| {
-                        if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
-                            return Err(tr("form_names_required").to_owned());
-                        }
-                        let updated = Patient {
-                            id: patient.id,
-                            last_name: form.last_name.trim().to_owned(),
-                            first_name: form.first_name.trim().to_owned(),
-                            birth_date: iso,
-                            phone: form.phone.trim().to_owned(),
-                            notes: form.notes.trim().to_owned(),
-                            physician: form.physician.trim().to_owned(),
-                            email: form.email.trim().to_owned(),
-                            address: form.address.trim().to_owned(),
-                            situation: form.situation.trim().to_owned(),
-                            nir: form.nir.trim().to_owned(),
-                            regime: form.regime.trim().to_owned(),
-                        };
-                        // CAS against the row as displayed: a colleague's
-                        // concurrent correction is never wiped.
-                        let applied = session.db.update_patient(&updated, patient)?;
-                        Ok((updated, applied))
-                    });
+                let outcome = optional_birth(&form.birth_date, year).and_then(|iso| {
+                    if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
+                        return Err(tr("form_names_required").to_owned());
+                    }
+                    let updated = Patient {
+                        id: patient.id,
+                        last_name: form.last_name.trim().to_owned(),
+                        first_name: form.first_name.trim().to_owned(),
+                        birth_date: iso,
+                        phone: form.phone.trim().to_owned(),
+                        notes: form.notes.trim().to_owned(),
+                        physician: form.physician.trim().to_owned(),
+                        email: form.email.trim().to_owned(),
+                        address: form.address.trim().to_owned(),
+                        situation: form.situation.trim().to_owned(),
+                        nir: form.nir.trim().to_owned(),
+                        regime: form.regime.trim().to_owned(),
+                        sex: form.sex.clone(),
+                    };
+                    // CAS against the row as displayed: a colleague's
+                    // concurrent correction is never wiped.
+                    let applied = session.db.update_patient(&updated, patient)?;
+                    Ok((updated, applied))
+                });
                 match outcome {
                     Ok((updated, true)) => {
                         session.viewing = Some(updated);
@@ -23369,6 +23624,294 @@ impl App {
         session.band_marks = marks;
     }
 
+    /// La fenêtre qui rédige les lignes d'un protocole TROD.
+    ///
+    /// **Les lignes sont celles de l'officine** : semées une fois depuis
+    /// les protocoles livrés, puis réécrites ici — une molécule ajoutée,
+    /// une posologie changée, une borne d'âge déplacée le jour où le
+    /// protocole change. Écrites dans la base, donc pour tous les postes,
+    /// et comparées à ce que la fenêtre montrait.
+    fn trod_editor(ctx: &egui::Context, session: &mut Session) {
+        let Some(edit) = &mut session.trod_edit else {
+            return;
+        };
+        if edit.lines.is_none() {
+            edit.lines = Some(session.db.trod_lines(edit.protocol).unwrap_or_default());
+        }
+        let lines = edit.lines.clone().unwrap_or_default();
+        let mut close = false;
+        let mut save = false;
+        let mut delete = false;
+        let mut add = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("trod_edit_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 640.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("trod_edit_subtitle"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                let footer = Self::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("trod_edit_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            for line in &lines {
+                                let on = edit.base.as_ref().is_some_and(|b| b.id == line.id);
+                                if motif::toggle(ui, &line.name, on).clicked() {
+                                    edit.open(line);
+                                    edit.note = None;
+                                }
+                            }
+                            if motif::button(ui, tr("trod_edit_add")).clicked() {
+                                add = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                        if edit.base.is_none() {
+                            ui.label(
+                                egui::RichText::new(tr("trod_edit_pick"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                            return;
+                        }
+                        let wide = ui.available_width();
+                        egui::Grid::new("trod_edit_form")
+                            .num_columns(2)
+                            .spacing([12.0, 6.0])
+                            .show(ui, |ui| {
+                                let field_w =
+                                    (wide - chars_wide(ui, 16.0)).max(chars_wide(ui, 20.0));
+                                Self::form_label(ui, tr("trod_edit_name"));
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::singleline(&mut edit.draft.name),
+                                );
+                                ui.end_row();
+                                Self::form_label(ui, tr("trod_edit_situation"));
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::singleline(&mut edit.draft.situation),
+                                );
+                                ui.end_row();
+                                Self::form_label(ui, tr("trod_edit_posologies"));
+                                motif::area(
+                                    ui,
+                                    egui::vec2(field_w, Self::row_height(ui) * 2.5),
+                                    egui::TextEdit::multiline(&mut edit.posologies)
+                                        .hint_text(motif::hint(tr("trod_edit_posologies_hint"))),
+                                );
+                                ui.end_row();
+                                Self::form_label(ui, tr("trod_edit_caution"));
+                                motif::field(
+                                    ui,
+                                    field_w,
+                                    egui::TextEdit::singleline(&mut edit.draft.caution),
+                                );
+                                ui.end_row();
+                                Self::form_label(ui, tr("trod_edit_ages"));
+                                ui.horizontal_wrapped(|ui| {
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 4.0),
+                                        egui::TextEdit::singleline(&mut edit.min_age)
+                                            .hint_text(motif::hint("—")),
+                                    )
+                                    .on_hover_text(tr("trod_edit_min_tooltip"));
+                                    ui.label(tr("trod_edit_to"));
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 4.0),
+                                        egui::TextEdit::singleline(&mut edit.max_age)
+                                            .hint_text(motif::hint("—")),
+                                    )
+                                    .on_hover_text(tr("trod_edit_max_tooltip"));
+                                    ui.label(tr("trod_edit_years"));
+                                });
+                                ui.end_row();
+                                Self::form_label(ui, tr("trod_edit_for"));
+                                let mut sex =
+                                    edit.draft.sex.map_or(String::new(), |s| s.key().to_owned());
+                                Self::sex_choice(ui, &mut sex);
+                                edit.draft.sex = crate::ordonnance::Sex::from_key(&sex);
+                                ui.end_row();
+                                Self::form_label(ui, "");
+                                motif::checkbox(
+                                    ui,
+                                    &mut edit.draft.pregnancy,
+                                    tr("trod_edit_pregnancy"),
+                                );
+                                ui.end_row();
+                            });
+                    });
+                if let Some((bad, note)) = &edit.note {
+                    ui.colored_label(
+                        if *bad {
+                            motif::alert()
+                        } else {
+                            motif::text_dim()
+                        },
+                        note.as_str(),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let open = edit.base.is_some();
+                    if motif::button_enabled(ui, tr("trod_edit_save"), open).clicked() {
+                        save = true;
+                    }
+                    let label = if edit.confirm_delete {
+                        tr("trod_edit_delete_confirm")
+                    } else {
+                        tr("trod_edit_delete")
+                    };
+                    if motif::button_enabled(ui, label, open).clicked() {
+                        delete = true;
+                    }
+                    if motif::button(ui, tr("trod_edit_done")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        let Some(edit) = &mut session.trod_edit else {
+            return;
+        };
+        let mut wrote = false;
+        let mut stale = false;
+        if add {
+            match session
+                .db
+                .add_trod_line(edit.protocol, tr("trod_edit_new_name"))
+            {
+                Ok(id) => {
+                    if let Some(line) = session
+                        .db
+                        .trod_lines(edit.protocol)
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|l| l.id == id)
+                    {
+                        edit.open(line);
+                    }
+                    wrote = true;
+                }
+                Err(e) => edit.note = Some((true, e)),
+            }
+        }
+        if save {
+            if let Some(base) = edit.base.clone() {
+                let new = edit.read();
+                if new.name.trim().is_empty() {
+                    edit.note = Some((true, tr("trod_edit_name_required").to_owned()));
+                } else if new.posologies.is_empty() {
+                    edit.note = Some((true, tr("trod_edit_posology_required").to_owned()));
+                } else {
+                    match session.db.update_trod_line(&new, &base) {
+                        Ok(true) => {
+                            if let Some(line) = session
+                                .db
+                                .trod_lines(edit.protocol)
+                                .unwrap_or_default()
+                                .iter()
+                                .find(|l| l.id == base.id)
+                            {
+                                edit.open(line);
+                            }
+                            edit.note = Some((false, tr("trod_edit_saved").to_owned()));
+                            wrote = true;
+                        }
+                        Ok(false) => stale = true,
+                        Err(e) => edit.note = Some((true, e)),
+                    }
+                }
+            }
+        }
+        if delete {
+            if let Some(base) = edit.base.clone() {
+                if edit.confirm_delete {
+                    match session.db.delete_trod_line(base.id, &base.name) {
+                        Ok(true) => {
+                            *edit = TrodEdit::new(edit.protocol);
+                            wrote = true;
+                        }
+                        Ok(false) => stale = true,
+                        Err(e) => edit.note = Some((true, e)),
+                    }
+                } else {
+                    edit.confirm_delete = true;
+                }
+            }
+        }
+        if stale {
+            let protocol = edit.protocol;
+            session.trod_edit = Some(TrodEdit::new(protocol));
+            session.stale("trod_edit_stale");
+            wrote = true;
+        }
+        if wrote {
+            session.trod_rev += 1;
+            if let Some(edit) = &mut session.trod_edit {
+                edit.lines = None;
+            }
+        }
+        if close {
+            session.trod_edit = None;
+        }
+    }
+
+    /// « Né(e) le … », ou ce qui en tient lieu quand la date n'a pas été
+    /// saisie — elle est facultative, et « Né(e) le » suivi de rien se lit
+    /// comme un défaut d'affichage.
+    fn born_text(patient: &Patient) -> String {
+        if patient.birth_date.trim().is_empty() {
+            tr("patient_born_unknown").to_owned()
+        } else {
+            trf("patient_born", db::format_french_date(&patient.birth_date))
+        }
+    }
+
+    /// Pourquoi une ligne de TROD ne s'applique pas, en une phrase.
+    fn barrier_text(b: crate::ordonnance::Barrier) -> String {
+        use crate::ordonnance::{Barrier, Sex};
+        match b {
+            Barrier::TooYoung(min) => trf("ord_bar_young", min),
+            Barrier::TooOld(max) => trf("ord_bar_old", max),
+            Barrier::Sex(Sex::F) => tr("ord_bar_women").to_owned(),
+            Barrier::Sex(Sex::M) => tr("ord_bar_men").to_owned(),
+            Barrier::Pregnant => tr("ord_bar_pregnant").to_owned(),
+        }
+    }
+
+    /// Le sexe du dossier, **facultatif** : trois choix, et « non
+    /// précisé » en est un. Le NIR le dit souvent à sa place.
+    fn sex_choice(ui: &mut egui::Ui, sex: &mut String) {
+        ui.horizontal_wrapped(|ui| {
+            for (key, label) in [
+                ("", tr("form_sex_none")),
+                ("F", tr("form_sex_f")),
+                ("M", tr("form_sex_m")),
+            ] {
+                if motif::radio(ui, sex.as_str() == key, label).clicked() {
+                    *sex = key.to_owned();
+                }
+            }
+        });
+    }
+
     /// « Modifier » : le dossier recopié dans le formulaire.
     ///
     /// Une fonction et non deux copies : le bandeau replié porte les
@@ -23389,6 +23932,7 @@ impl App {
             situation: patient.situation.clone(),
             nir: patient.nir.clone(),
             regime: patient.regime.clone(),
+            sex: patient.sex.clone(),
             error: None,
         });
     }
@@ -24529,11 +25073,7 @@ impl App {
             }
         }
         if let Some((id, kind)) = open_ordonnance {
-            session.ordonnance = Some(OrdonnanceBox {
-                interview: id,
-                kind,
-                choice: crate::ordonnance::Choice::default(),
-            });
+            session.ordonnance = Some(OrdonnanceBox::new(id, kind, Some(patient), &session.today));
         }
         if session.viewing_interviews.is_empty() {
             ui.label(tr("patient_no_interviews"));

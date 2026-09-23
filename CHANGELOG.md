@@ -5,6 +5,27 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.268.0] - 2026-09-23
+
+### Added
+- **Les lignes des ordonnances TROD sont celles de l'officine.** Elles
+  vivent dans la base, semées une fois depuis les protocoles livrés, et
+  se réécrivent avec « Modifier les lignes… » dans la fenêtre de
+  l'ordonnance : molécule, situation, posologies, précaution, bornes
+  d'âge, sexe, grossesse. Pour tous les postes, sous compare-and-set ; une
+  ligne supprimée ne revient pas.
+- **L'âge, le sexe et la grossesse changent ce que le TROD propose**,
+  quand ils sont connus : le dossier les donne (date de naissance, sexe,
+  ou à défaut le NIR), la fenêtre les laisse corriger. Une ligne que le
+  protocole n'ouvre pas à cette personne est grisée avec sa raison ; si
+  aucune ne s'applique, l'écran le dit. Inconnus, ils ne bloquent rien.
+  Bornes livrées, à vérifier contre le protocole en vigueur : angine,
+  amoxicilline enfant de 10 à 14 ans et doses adultes dès 15 ans ;
+  cystite, femmes de 16 à 65 ans, hors grossesse.
+- **Le dossier porte un sexe, facultatif**, à la création comme à la
+  correction. **La date de naissance devient facultative** : la création
+  rapide ne demande que le nom et le prénom.
+
 ## [0.267.0] - 2026-09-23
 
 ### Changed
