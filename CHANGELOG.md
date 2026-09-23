@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.284.0] - 2026-09-24
+
+### Added
+- **Survoler un trait dit pourquoi il est là**, sans viser le carré : sur
+  la carte du voisinage, le rayon le plus proche du pointeur s'éclaire,
+  les autres s'estompent, et ses raisons s'affichent, la source nommée ;
+  sur la carte de l'ordonnance, la corde et les deux lignes qu'elle
+  relie.
+
 ## [0.283.0] - 2026-09-24
 
 ### Added

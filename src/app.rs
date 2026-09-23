@@ -54932,7 +54932,25 @@ impl App {
                 )
             })
             .collect();
-        let hot = responses.iter().position(|r| r.hovered());
+        let hot_node = responses.iter().position(|r| r.hovered());
+        // Le survol d'une corde, quand aucune ligne ne l'est.
+        let pointer = ui
+            .input(|i| i.pointer.hover_pos())
+            .filter(|p| field.contains(*p));
+        let hot_chord: Option<usize> = match (hot_node, pointer) {
+            (None, Some(p)) => {
+                let segs: Vec<crate::graph::Segment> = chords
+                    .iter()
+                    .map(|c| {
+                        let (a, b) = (at(c.a), at(c.b));
+                        ((a.x, a.y), (b.x, b.y))
+                    })
+                    .collect();
+                crate::graph::nearest_segment((p.x, p.y), &segs, 5.0)
+            }
+            _ => None,
+        };
+        let hot = hot_node;
         let colour = |w: u8| match w {
             3 => motif::alert(),
             2 => motif::chart::series_color(crate::graph::Tie::Interaction.series()),
@@ -54940,8 +54958,9 @@ impl App {
         };
         // Les plus légères d'abord : la plus lourde passe par-dessus, et
         // c'est elle qu'on doit lire quand deux cordes se croisent.
-        for c in chords.iter().rev() {
-            let touches = hot.is_some_and(|h| h == c.a || h == c.b);
+        for (k, c) in chords.iter().enumerate().rev() {
+            let touches = hot.is_some_and(|h| h == c.a || h == c.b) || hot_chord == Some(k);
+            let hot = hot.or(hot_chord.map(|_| usize::MAX));
             let base = match c.weight {
                 3 => 2.8_f32,
                 2 => 1.8,
@@ -54995,6 +55014,36 @@ impl App {
                     },
                 );
             }
+        }
+        if let Some(k) = hot_chord {
+            let c = &chords[k];
+            let name = |i: usize| {
+                lines
+                    .get(i)
+                    .map(|d| d.name.trim().to_owned())
+                    .unwrap_or_default()
+            };
+            let head = trn("graph_line_head", &[&name(c.a), &name(c.b)]);
+            let reasons: Vec<String> = c.why.iter().map(graph_why_line).collect();
+            egui::show_tooltip_at_pointer(
+                ui.ctx(),
+                ui.layer_id(),
+                ui.id().with(("graph_chord", c.a, c.b)),
+                |ui| {
+                    ui.set_max_width(chars_wide(ui, 48.0));
+                    ui.label(egui::RichText::new(head).size(motif::pt(ui, 12.0)).strong());
+                    for l in reasons.iter().take(4) {
+                        ui.label(egui::RichText::new(l).size(motif::pt(ui, 11.0)));
+                    }
+                    if reasons.len() > 4 {
+                        ui.label(
+                            egui::RichText::new(trf("graph_why_more", reasons.len() - 4))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                    }
+                },
+            );
         }
         // **Le survol d'une ligne dit ses rencontres** : avec qui, et la
         // raison la plus lourde de chacune, la source nommée.
@@ -55519,7 +55568,32 @@ impl App {
                     )
                 })
                 .collect();
-            let hot = responses.iter().position(|r| r.hovered());
+            let hot_node = responses.iter().position(|r| r.hovered());
+            // **Le survol d'un trait**, quand aucun carré ne l'est : le
+            // trait le plus proche du pointeur, parmi ceux qui ont une
+            // raison — un rayon de classe se prend à la place du centre,
+            // il n'a rien à expliquer.
+            let pointer = ui
+                .input(|i| i.pointer.hover_pos())
+                .filter(|p| field.contains(*p));
+            let hot_line: Option<usize> = match (hot_node, pointer) {
+                (None, Some(p)) => {
+                    let with_why: Vec<usize> = (0..map.nodes.len())
+                        .filter(|i| !map.nodes[*i].why.is_empty())
+                        .collect();
+                    let segs: Vec<crate::graph::Segment> = with_why
+                        .iter()
+                        .map(|i| {
+                            let q = at(&map.nodes[*i]);
+                            ((mid.x, mid.y), (q.x, q.y))
+                        })
+                        .collect();
+                    crate::graph::nearest_segment((p.x, p.y), &segs, 5.0)
+                        .and_then(|k| with_why.get(k).copied())
+                }
+                _ => None,
+            };
+            let hot = hot_node.or(hot_line);
 
             // The rings first, faint, so the three distances read as
             // three distances and not as scatter.
@@ -55824,11 +55898,35 @@ impl App {
                 session.graph_unnamed = unnamed;
                 ui.ctx().request_repaint();
             }
+            if let (None, Some(i)) = (hot_node, hot_line) {
+                let n = &map.nodes[i];
+                let head = trn("graph_line_head", &[&map.centre.1, &n.name]);
+                let lines: Vec<String> = n.why.iter().map(graph_why_line).collect();
+                egui::show_tooltip_at_pointer(
+                    ui.ctx(),
+                    ui.layer_id(),
+                    ui.id().with(("graph_line", n.id)),
+                    |ui| {
+                        ui.set_max_width(chars_wide(ui, 48.0));
+                        ui.label(egui::RichText::new(head).size(motif::pt(ui, 12.0)).strong());
+                        for l in lines.iter().take(4) {
+                            ui.label(egui::RichText::new(l).size(motif::pt(ui, 11.0)));
+                        }
+                        if lines.len() > 4 {
+                            ui.label(
+                                egui::RichText::new(trf("graph_why_more", lines.len() - 4))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_faint()),
+                            );
+                        }
+                    },
+                );
+            }
             // **La petite fiche, et pour le seul nœud survolé.** Une
             // infobulle ne s'affiche qu'à un endroit : composer les
             // douze serait douze premières phrases par image pour onze
             // résultats jetés.
-            if let Some(i) = hot {
+            if let Some(i) = hot_node {
                 let (id, name, dci, tie, tox, why) = {
                     let n = &map.nodes[i];
                     (

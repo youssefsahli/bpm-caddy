@@ -997,6 +997,38 @@ pub fn chords(lines: usize, found: &[(Vec<usize>, Why)]) -> (Vec<Chord>, Vec<usi
     (out, alone)
 }
 
+/// Un trait : ses deux bouts.
+pub type Segment = ((f32, f32), (f32, f32));
+
+/// Le trait le plus proche d'un point, s'il passe à moins de `tol` —
+/// ce que le pointeur désigne quand il survole une ligne et non un carré.
+///
+/// La distance est celle **au segment**, pas à la droite : un pointeur
+/// posé dans le prolongement d'un rayon, au-delà de son carré, ne désigne
+/// pas ce rayon. À égalité, le premier de la liste — la vue les passe
+/// dans l'ordre où elle les peint par-dessus, le plus lourd d'abord.
+pub fn nearest_segment(p: (f32, f32), segments: &[Segment], tol: f32) -> Option<usize> {
+    let mut best: Option<(usize, f32)> = None;
+    for (i, &(a, b)) in segments.iter().enumerate() {
+        let (dx, dy) = (b.0 - a.0, b.1 - a.1);
+        let len2 = dx * dx + dy * dy;
+        let t = if len2 <= f32::EPSILON {
+            0.0
+        } else {
+            (((p.0 - a.0) * dx + (p.1 - a.1) * dy) / len2).clamp(0.0, 1.0)
+        };
+        let (cx, cy) = (a.0 + t * dx, a.1 + t * dy);
+        let d = ((p.0 - cx).powi(2) + (p.1 - cy).powi(2)).sqrt();
+        if !d.is_finite() || d > tol {
+            continue;
+        }
+        if best.is_none_or(|(_, bd)| d < bd) {
+            best = Some((i, d));
+        }
+    }
+    best.map(|(i, _)| i)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1904,5 +1936,23 @@ mod tests {
         assert!(map.omitted_for(Tie::Class) >= 2);
         assert!(map.nodes.iter().all(|n| n.tie != Tie::Class));
         assert!(!map.nodes.iter().any(|n| n.id == 3 || n.id == 4));
+    }
+
+    /// **Le pointeur désigne le trait le plus proche**, à moins de la
+    /// tolérance, et jamais dans le prolongement d'un segment.
+    #[test]
+    fn the_pointer_picks_the_nearest_line_and_not_its_extension() {
+        let segs = [((0.0, 0.0), (10.0, 0.0)), ((0.0, 0.0), (0.0, 10.0))];
+        assert_eq!(nearest_segment((5.0, 1.0), &segs, 3.0), Some(0));
+        assert_eq!(nearest_segment((1.0, 6.0), &segs, 3.0), Some(1));
+        assert_eq!(nearest_segment((5.0, 5.0), &segs, 3.0), None);
+        // Beyond the end of the first segment, on its line: nothing.
+        assert_eq!(nearest_segment((15.0, 0.0), &segs, 3.0), None);
+        // A point-long segment is a point.
+        assert_eq!(
+            nearest_segment((1.0, 1.0), &[((0.0, 0.0), (0.0, 0.0))], 2.0),
+            Some(0)
+        );
+        assert_eq!(nearest_segment((0.0, 0.0), &[], 2.0), None);
     }
 }

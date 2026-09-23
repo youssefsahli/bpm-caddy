@@ -321,7 +321,9 @@ pèse le plus, et une place par raison avant une seconde** : dix
 anticoagulants qui rencontrent un AINS par la même règle ne cachent pas
 le lithium, qui le rencontre par une autre. Le pied compte le reste. La
 petite fiche du survol dit **pourquoi ce trait**, raison par raison, la
-source nommée.
+source nommée — et **survoler le trait lui-même** le dit aussi, sans
+viser le carré : le trait s'éclaire, les autres s'estompent. Sur la carte
+de l'ordonnance, survoler une corde dit les deux lignes et leurs raisons.
 
 Ce que la fiche documente d'une toxicité ou d'une marge thérapeutique se
 lit dans la petite fiche qui s'ouvre au survol d'un carré — plus d'une
