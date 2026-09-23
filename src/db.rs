@@ -927,8 +927,11 @@ pub fn backup_dir(db_path: &Path) -> PathBuf {
 
 /// The name a backup takes for an ISO day. Date-named so the folder
 /// sorts chronologically and the pruning is a `sort` and a `remove`.
+#[cfg(test)]
 pub fn backup_name(day: &str) -> String {
-    format!("bpm_caddy-{day}.db")
+    // The default base's names — what the tests check; the application
+    // names a copy through [`backup_prefix`], after the base it copies.
+    format!("{}{day}.db", backup_prefix(Path::new(DB_FILE_NAME), None))
 }
 
 /// Le nom d'une copie du fichier des pièces pour un jour donné.
@@ -936,8 +939,14 @@ pub fn backup_name(day: &str) -> String {
 /// Un préfixe distinct, pour que l'élagage des deux ne se mélange pas :
 /// les copies de la base et celles des pièces se comptent séparément
 /// parce qu'on n'en garde pas le même nombre.
+#[cfg(test)]
 pub fn scans_backup_name(day: &str) -> String {
-    format!("bpm_caddy_scans-{day}.db")
+    // The default base's names — what the tests check; the application
+    // names a copy through [`backup_prefix`], after the base it copies.
+    format!(
+        "{}{day}.db",
+        backup_prefix(Path::new(DB_FILE_NAME), Some("scans"))
+    )
 }
 
 /// Le nom d'une copie du registre pour un jour donné.
@@ -947,8 +956,34 @@ pub fn scans_backup_name(day: &str) -> String {
 /// base, pas moins. Un fichier de quelques centaines de kilo-octets ne
 /// coûte rien à recopier, et c'est le seul de la maison qu'on ne peut
 /// pas reconstituer.
+#[cfg(test)]
 pub fn stups_backup_name(day: &str) -> String {
-    format!("bpm_caddy_stups-{day}.db")
+    // The default base's names — what the tests check; the application
+    // names a copy through [`backup_prefix`], after the base it copies.
+    format!(
+        "{}{day}.db",
+        backup_prefix(Path::new(DB_FILE_NAME), Some("stups"))
+    )
+}
+
+/// Le début du nom des copies d'une base — `None` pour la base,
+/// `Some("scans")` ou `Some("stups")` pour ses deux fichiers.
+///
+/// **Nommé d'après la base**, comme ses fichiers voisins
+/// ([`side_path`]) : deux bases d'un même dossier écrivaient la même
+/// série, et la seconde ouverte trouvait « la copie du jour » faite —
+/// celle de l'autre —, registre compris. Pour la base par défaut les
+/// noms sont exactement ceux d'avant, donc aucune copie existante ne
+/// devient orpheline.
+pub fn backup_prefix(db_path: &Path, kind: Option<&str>) -> String {
+    let stem = db_path
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "bpm_caddy".to_owned());
+    match kind {
+        None => format!("{stem}-"),
+        Some(kind) => format!("{stem}_{kind}-"),
+    }
 }
 
 /// What the backup folder actually holds.
@@ -971,6 +1006,7 @@ pub struct BackupState {
 /// believing it has copies. This is the number that answers that.
 pub fn backup_state(db_path: &Path) -> BackupState {
     let dir = backup_dir(db_path);
+    let prefix = backup_prefix(db_path, None);
     let mut days: Vec<String> = Vec::new();
     let mut bytes = 0u64;
     let Ok(entries) = std::fs::read_dir(&dir) else {
@@ -982,7 +1018,7 @@ pub fn backup_state(db_path: &Path) -> BackupState {
             continue;
         };
         let Some(day) = name
-            .strip_prefix("bpm_caddy-")
+            .strip_prefix(prefix.as_str())
             .and_then(|r| r.strip_suffix(".db"))
         else {
             continue;
@@ -41273,6 +41309,15 @@ mod tests {
         assert_eq!(backup_state(&live), BackupState::default());
         assert_eq!(backup_dir(&live), dir.join("backups"));
         assert_eq!(backup_name("2026-08-29"), "bpm_caddy-2026-08-29.db");
+        // Deux bases d'un même dossier ont deux séries : la seconde ne
+        // trouve plus « la copie du jour » de la première.
+        let other = Path::new("/officine/annexe.db");
+        assert_eq!(backup_prefix(other, None), "annexe-");
+        assert_eq!(backup_prefix(other, Some("stups")), "annexe_stups-");
+        assert_ne!(
+            backup_prefix(other, None),
+            backup_prefix(Path::new("/officine/bpm_caddy.db"), None)
+        );
 
         let bdir = backup_dir(&live);
         std::fs::create_dir_all(&bdir).unwrap();

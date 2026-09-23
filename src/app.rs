@@ -120,7 +120,12 @@ fn daily_copy(
                 .filter(|p| {
                     p.file_name()
                         .and_then(|n| n.to_str())
-                        .is_some_and(|n| n.starts_with(prefix) && n.ends_with(".db"))
+                        // Only a dated name of this very series: « a- »
+                        // must not prune « a-b-2026-09-01.db », the copies
+                        // of a base named « a-b ».
+                        .and_then(|n| n.strip_prefix(prefix))
+                        .and_then(|rest| rest.strip_suffix(".db"))
+                        .is_some_and(|day| day.len() == 10 && crate::date::parse_iso(day).is_some())
                 })
                 .map(|p| {
                     let when = std::fs::metadata(&p)
@@ -157,10 +162,9 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     }
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
-    let target = dir.join(db::stups_backup_name(&today));
-    daily_copy(&dir, &target, "bpm_caddy_stups-", keep, |to| {
-        db.backup_stups_to(to)
-    });
+    let prefix = db::backup_prefix(db_path, Some("stups"));
+    let target = dir.join(format!("{prefix}{today}.db"));
+    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_stups_to(to));
 }
 
 /// La copie quotidienne du fichier des pièces, sur son propre compte.
@@ -182,10 +186,9 @@ fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     }
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
-    let target = dir.join(db::scans_backup_name(&today));
-    daily_copy(&dir, &target, "bpm_caddy_scans-", keep, |to| {
-        db.backup_scans_to(to)
-    });
+    let prefix = db::backup_prefix(db_path, Some("scans"));
+    let target = dir.join(format!("{prefix}{today}.db"));
+    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_scans_to(to));
 }
 
 /// One backup per day, in `backups/` next to the database, pruned to
@@ -199,8 +202,9 @@ fn daily_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     }
     let Ok(today) = db.today_iso() else { return };
     let dir = db::backup_dir(db_path);
-    let target = dir.join(db::backup_name(&today));
-    daily_copy(&dir, &target, "bpm_caddy-", keep, |to| db.backup_to(to));
+    let prefix = db::backup_prefix(db_path, None);
+    let target = dir.join(format!("{prefix}{today}.db"));
+    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_to(to));
 }
 
 /// Build the billing-reconciliation CSV: BOM + semicolons for French
@@ -67142,6 +67146,16 @@ mod tests {
         });
         assert!(today.exists());
         assert!(!dir.join("bpm_caddy-2030-01-01.db").exists());
+        // La série d'une autre base dont le nom commence pareil n'est pas
+        // la sienne : « bpm_caddy-annexe » n'est pas élaguée par
+        // « bpm_caddy- ».
+        let neighbour = dir.join("bpm_caddy-annexe-2020-01-01.db");
+        std::fs::write(&neighbour, b"voisine").unwrap();
+        let tomorrow = dir.join("bpm_caddy-2026-09-24.db");
+        super::daily_copy(&dir, &tomorrow, "bpm_caddy-", 1, |to| {
+            std::fs::write(to, b"demain").map_err(|e| e.to_string())
+        });
+        assert!(neighbour.exists(), "la série voisine reste");
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
@@ -67757,7 +67771,9 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let _swept = crate::db::Swept(dir.clone());
-        let db_path = dir.join("live.db");
+        // The copies are named after the base: the default name keeps the
+        // series this test checks.
+        let db_path = dir.join(crate::db::DB_FILE_NAME);
         let db = crate::db::Db::open(&db_path, "secret").unwrap();
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
 
