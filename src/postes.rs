@@ -440,8 +440,22 @@ pub enum Progress {
     Code(String),
     /// Où en est la synchronisation automatique, en une phrase.
     Status(String),
+    /// Les postes entendus sur le réseau local à cet instant — ceux du
+    /// groupe et les autres.
+    Peers(Vec<PeerSeen>),
     Done(String),
     Failed(String),
+}
+
+/// Un poste entendu sur le réseau local.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PeerSeen {
+    pub device: String,
+    pub address: String,
+    /// Du groupe de ce poste.
+    pub member: bool,
+    /// La dernière conversation avec lui : réussie, échouée, ou aucune.
+    pub talked: Option<bool>,
 }
 
 /// Ce qu'on demande au fil des postes.
@@ -685,12 +699,16 @@ impl Default for Pace {
     }
 }
 
-/// La synchronisation automatique, **tant que l'application est
-/// ouverte** : une porte tenue ouverte aux postes du groupe, une annonce
-/// toutes les quelques secondes, et une conversation avec chaque poste
-/// entendu dès que ce poste a écrit quelque chose — ou toutes les vingt
-/// secondes sinon. Le dossier d'échange, s'il y en a un, chaque minute.
-/// S'arrête sur [`Poke::Stop`] ou quand l'écran disparaît.
+/// La synchronisation automatique, **dès le lancement et tant que
+/// l'application est ouverte**. Sur un poste d'un groupe : une porte
+/// tenue ouverte aux postes du groupe, une annonce toutes les quelques
+/// secondes, et une conversation avec chaque poste entendu dès que ce
+/// poste a écrit quelque chose — ou toutes les vingt secondes sinon ; le
+/// dossier d'échange, s'il y en a un, chaque minute. Sur un poste seul :
+/// **l'écoute seulement** — il sait quels postes s'annoncent, ce qui
+/// donne l'adresse à composer pour rejoindre, et n'ouvre rien. Dans les
+/// deux cas, la liste des postes entendus remonte à l'écran. S'arrête sur
+/// [`Poke::Stop`] ou quand l'écran disparaît.
 #[allow(clippy::too_many_arguments)]
 pub fn spawn_auto(
     path: PathBuf,
@@ -716,6 +734,16 @@ pub fn spawn_auto(
     (rx, poke_tx)
 }
 
+/// Ce que le fil sait d'un poste entendu.
+struct Seen {
+    heard: Heard,
+    at: Instant,
+    talked: Option<bool>,
+}
+
+/// Combien de temps un poste reste « en ligne » sans s'annoncer.
+const SEEN_FOR: Duration = Duration::from_secs(15);
+
 #[allow(clippy::too_many_arguments)]
 fn auto(
     path: &Path,
@@ -731,11 +759,12 @@ fn auto(
     use crate::strings::tr;
     let db = Db::open(path, password)?;
     let mut posts = Posts::load(&db)?;
-    let Some(trousseau) = posts.trousseau.clone() else {
-        return Err(tr("posts_err_no_group").to_owned());
-    };
-    let door = bpm_sync::link::Door::open(&format!("0.0.0.0:{port}")).ok();
-    if door.is_none() {
+    let trousseau = posts.trousseau.clone();
+    // A post on its own listens and opens nothing.
+    let door = trousseau
+        .as_ref()
+        .and_then(|_| bpm_sync::link::Door::open(&format!("0.0.0.0:{port}")).ok());
+    if trousseau.is_some() && door.is_none() {
         let _ = tx.send(Progress::Status(tr("posts_auto_no_door").to_owned()));
     }
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
@@ -744,7 +773,8 @@ fn auto(
         let _ = u.set_nonblocking(true);
     }
     let me = posts.device_hex();
-    let mut seen: Vec<Heard> = Vec::new();
+    let mut seen: Vec<Seen> = Vec::new();
+    let mut told: Vec<PeerSeen> = Vec::new();
     let long_ago = Instant::now()
         .checked_sub(Duration::from_secs(3600))
         .unwrap_or_else(Instant::now);
@@ -758,14 +788,15 @@ fn auto(
         }
         let mut talked = false;
         // A post knocking at our door.
-        if let Some(door) = &door {
-            if let Ok(mut link) = door.accept(Duration::from_millis(400)) {
-                if posts.talk(&db, &trousseau, &mut link, false).is_ok() {
-                    talked = true;
+        match (&door, &trousseau) {
+            (Some(door), Some(t)) => {
+                if let Ok(mut link) = door.accept(Duration::from_millis(400)) {
+                    if posts.talk(&db, t, &mut link, false).is_ok() {
+                        talked = true;
+                    }
                 }
             }
-        } else {
-            std::thread::sleep(Duration::from_millis(400));
+            _ => std::thread::sleep(Duration::from_millis(400)),
         }
         // Who announced themselves.
         if let Some(u) = &udp {
@@ -776,51 +807,77 @@ fn auto(
                     .and_then(|t| heard(t, from.ip()))
                 {
                     if h.device != me {
-                        seen.retain(|x| x.device != h.device);
-                        seen.push(h);
+                        let talked = seen
+                            .iter()
+                            .find(|x| x.heard.device == h.device)
+                            .and_then(|x| x.talked);
+                        seen.retain(|x| x.heard.device != h.device);
+                        seen.push(Seen {
+                            heard: h,
+                            at: Instant::now(),
+                            talked,
+                        });
                     }
                 }
             }
-            if last_beacon.elapsed() >= pace.beacon {
+            if trousseau.is_some() && last_beacon.elapsed() >= pace.beacon {
                 let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
                 last_beacon = Instant::now();
             }
         }
-        let pending = db
-            .pending_ops()
-            .map(|(o, _)| !o.is_empty())
-            .unwrap_or(false);
-        if pending || now_asked || talked || last_talk.elapsed() >= pace.talk {
-            let sent = posts.publish(&db, today)?;
-            if sent > 0 || now_asked || last_talk.elapsed() >= pace.talk {
-                let known: Vec<String> = posts.known(&db).iter().map(|d| hex(&d.0)).collect();
-                let mut targets: Vec<String> = seen
-                    .iter()
-                    .filter(|h| known.contains(&h.device))
-                    .map(|h| h.address.clone())
-                    .collect();
-                targets.extend(addresses.iter().filter(|a| !a.trim().is_empty()).cloned());
-                targets.dedup();
-                for t in targets {
-                    if posts.sync_with(&db, &t, TALK_PATIENCE).is_ok() {
-                        talked = true;
+        seen.retain(|x| x.at.elapsed() < SEEN_FOR);
+        let known: Vec<String> = posts.known(&db).iter().map(|d| hex(&d.0)).collect();
+        if trousseau.is_some() {
+            let pending = db
+                .pending_ops()
+                .map(|(o, _)| !o.is_empty())
+                .unwrap_or(false);
+            if pending || now_asked || talked || last_talk.elapsed() >= pace.talk {
+                let sent = posts.publish(&db, today)?;
+                if sent > 0 || now_asked || last_talk.elapsed() >= pace.talk {
+                    for x in seen.iter_mut().filter(|x| known.contains(&x.heard.device)) {
+                        let ok = posts
+                            .sync_with(&db, &x.heard.address, TALK_PATIENCE)
+                            .is_ok();
+                        x.talked = Some(ok);
+                        talked |= ok;
                     }
+                    for a in addresses.iter().filter(|a| !a.trim().is_empty()) {
+                        if !seen.iter().any(|x| x.heard.address == *a)
+                            && posts.sync_with(&db, a.trim(), TALK_PATIENCE).is_ok()
+                        {
+                            talked = true;
+                        }
+                    }
+                    last_talk = Instant::now();
                 }
-                last_talk = Instant::now();
+            }
+            if let Some(f) = &folder {
+                if now_asked || last_folder.elapsed() >= pace.folder {
+                    let _ = posts.exchange_folder(&db, f);
+                    last_folder = Instant::now();
+                    talked = true;
+                }
+            }
+            if talked || now_asked {
+                let report = posts.absorb(&db, today)?;
+                if report.received.written > 0 || report.received.conflicts > 0 || now_asked {
+                    let _ = tx.send(Progress::Status(said_synced(&report)));
+                }
             }
         }
-        if let Some(f) = &folder {
-            if now_asked || last_folder.elapsed() >= pace.folder {
-                let _ = posts.exchange_folder(&db, f);
-                last_folder = Instant::now();
-                talked = true;
-            }
-        }
-        if talked || now_asked {
-            let report = posts.absorb(&db, today)?;
-            if report.received.written > 0 || report.received.conflicts > 0 || now_asked {
-                let _ = tx.send(Progress::Status(said_synced(&report)));
-            }
+        let now: Vec<PeerSeen> = seen
+            .iter()
+            .map(|x| PeerSeen {
+                device: x.heard.device.clone(),
+                address: x.heard.address.clone(),
+                member: known.contains(&x.heard.device),
+                talked: x.talked,
+            })
+            .collect();
+        if now != told {
+            let _ = tx.send(Progress::Peers(now.clone()));
+            told = now;
         }
     }
     Ok(())
@@ -1009,6 +1066,46 @@ mod tests {
         assert!(!pa.journal.read(&mine, Stream::Dossiers).facts.is_empty());
         assert!(pa.journal.read(&mine, Stream::Reseau).facts.is_empty());
         assert!(!mine.same(&net));
+    }
+
+    /// **Un poste seul écoute** : lancé sur une base qui n'est d'aucun
+    /// groupe, le fil n'ouvre pas de porte mais entend les postes qui
+    /// s'annoncent, et le dit à l'écran — c'est l'adresse à composer.
+    #[test]
+    fn a_post_on_its_own_listens_and_reports_who_announces() {
+        let (dir, _s, db) = post("listen");
+        drop(db);
+        let port = std::net::UdpSocket::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (rx, poke) = spawn_auto(
+            dir.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-23".to_owned(),
+            port,
+            None,
+            Vec::new(),
+            Pace::default(),
+        );
+        let other = hex(&[9u8; 32]);
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let mut heard_it = None;
+        for _ in 0..40 {
+            let _ = sender.send_to(beacon(&other, 7743).as_bytes(), ("127.0.0.1", port));
+            if let Ok(Progress::Peers(p)) = rx.recv_timeout(Duration::from_millis(250)) {
+                heard_it = p.into_iter().find(|x| x.device == other);
+                if heard_it.is_some() {
+                    break;
+                }
+            }
+        }
+        poke.send(Poke::Stop).unwrap();
+        let h = heard_it.expect("entendu");
+        assert!(!h.member, "pas du groupe");
+        assert_eq!(h.address, "127.0.0.1:7743");
+        assert_eq!(h.talked, None);
     }
 
     #[test]

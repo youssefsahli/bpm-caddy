@@ -511,6 +511,9 @@ pub struct ReseauConfig {
     pub dossier: String,
     pub port: u16,
     pub a_la_fermeture: bool,
+    /// Synchroniser au lancement, puis toutes les `intervalle_minutes`.
+    pub automatique: bool,
+    pub intervalle_minutes: u32,
 }
 
 impl Default for ReseauConfig {
@@ -519,6 +522,8 @@ impl Default for ReseauConfig {
             dossier: String::new(),
             port: 7742,
             a_la_fermeture: true,
+            automatique: true,
+            intervalle_minutes: 15,
         }
     }
 }

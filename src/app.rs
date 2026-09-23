@@ -2507,6 +2507,11 @@ pub fn keyring_entry() -> Option<keyring::Entry> {
 #[derive(PartialEq, Clone, Copy)]
 enum MainView {
     Search,
+    /// Les connexions : les postes de l'officine et ceux qu'on entend sur
+    /// le réseau local, le réseau d'officines, ce qui attend d'être
+    /// arbitré et ce qui vient de se passer. L'icône de la barre d'état y
+    /// mène.
+    Connexions,
     Dashboard,
     /// Les ruptures en cours, et ce que les pharmaciens ont donné à la
     /// place — le journal de `ruptures.rs`, lu pour toute l'officine et
@@ -2662,6 +2667,7 @@ impl MainView {
             MainView::Ddi => "ddi",
             MainView::UiTexts => "libelles",
             MainView::Checklists => "listes",
+            MainView::Connexions => "connexions",
         }
     }
 
@@ -2685,6 +2691,7 @@ impl MainView {
             "ddi" => Some(MainView::Ddi),
             "libelles" => Some(MainView::UiTexts),
             "listes" => Some(MainView::Checklists),
+            "connexions" => Some(MainView::Connexions),
             _ => None,
         }
     }
@@ -2752,6 +2759,8 @@ struct Stats {
 enum WorkTab {
     Dashboard,
     Ruptures,
+    /// Les connexions entre les postes et les officines.
+    Connexions,
     Search,
     Agenda,
     Carnet,
@@ -4317,6 +4326,33 @@ struct Session {
     /// What the automatic synchronisation last said; `true` is a failure.
     #[cfg(feature = "sync")]
     posts_status: Option<(bool, String)>,
+    /// The posts heard on the local network, as the thread last said.
+    #[cfg(feature = "sync")]
+    posts_peers: Vec<crate::postes::PeerSeen>,
+    /// The officines' network synchronisation running in the background,
+    /// at launch and then at its interval.
+    #[cfg(feature = "sync")]
+    net_auto: Option<std::sync::mpsc::Receiver<crate::network::Progress>>,
+    /// When it runs next; `None` before the first frame.
+    #[cfg(feature = "sync")]
+    net_next: Option<Instant>,
+    /// What it last said: failed, the sentence, at what time.
+    #[cfg(feature = "sync")]
+    net_status: Option<(bool, String, String)>,
+    /// What happened on the connections, newest last: time, failure, what.
+    #[cfg(feature = "sync")]
+    conn_log: std::collections::VecDeque<(String, bool, String)>,
+    /// What the connections view reads from the base, when it opens and
+    /// after something moved — never per frame.
+    #[cfg(feature = "sync")]
+    conn_summary: Option<ConnSummary>,
+    /// Something moved since it was read.
+    conn_dirty: bool,
+    /// What the status bar's connection mark counts, refreshed with the
+    /// view's reading: the other active posts of the group, and whether
+    /// the officine is in a network.
+    #[cfg(feature = "sync")]
+    conn_badge: (usize, bool),
     /// Which neighbour list the operator has open, if either. Cleared
     /// when a card is opened: the answer belongs to the card that was
     /// asked, not to the next one.
@@ -5078,6 +5114,21 @@ impl Session {
             posts_auto_tried: false,
             #[cfg(feature = "sync")]
             posts_status: None,
+            #[cfg(feature = "sync")]
+            posts_peers: Vec::new(),
+            #[cfg(feature = "sync")]
+            net_auto: None,
+            #[cfg(feature = "sync")]
+            net_next: None,
+            #[cfg(feature = "sync")]
+            net_status: None,
+            #[cfg(feature = "sync")]
+            conn_log: std::collections::VecDeque::new(),
+            #[cfg(feature = "sync")]
+            conn_summary: None,
+            conn_dirty: false,
+            #[cfg(feature = "sync")]
+            conn_badge: (0, false),
             drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
@@ -5312,6 +5363,7 @@ impl Session {
             MainView::Finances => WorkTab::Finances,
             MainView::Stats => WorkTab::Stats,
             MainView::Ruptures => WorkTab::Ruptures,
+            MainView::Connexions => WorkTab::Connexions,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
@@ -5396,6 +5448,10 @@ impl Session {
             WorkTab::Ruptures => {
                 self.view = MainView::Ruptures;
                 self.reload_supply();
+            }
+            WorkTab::Connexions => {
+                self.view = MainView::Connexions;
+                self.reload_connections();
             }
             WorkTab::Script => {
                 self.view = MainView::Script;
@@ -5532,6 +5588,7 @@ impl Session {
             WorkTab::Classes,
             WorkTab::Stats,
             WorkTab::Ruptures,
+            WorkTab::Connexions,
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
@@ -6273,8 +6330,9 @@ impl Session {
     /// elle ne repart que si on la relance.
     #[cfg(feature = "sync")]
     fn start_posts_auto(&mut self, config: &Config) {
-        if self.posts_auto.is_some() || self.db.sync_post().is_none() || !config.postes.automatique
-        {
+        // A post on its own starts it too: it only listens, and that is
+        // how the connections view knows which posts announce themselves.
+        if self.posts_auto.is_some() || !config.postes.automatique {
             return;
         }
         let Some(path) = self.db.path() else {
@@ -6299,6 +6357,169 @@ impl Session {
         }
     }
 
+    /// Relire ce que la vue des connexions montre : les postes, le réseau
+    /// d'officines, et les fiches qui ont une version reçue à arbitrer.
+    fn reload_connections(&mut self) {
+        self.conn_dirty = false;
+        #[cfg(feature = "sync")]
+        {
+            let cards: Vec<(i64, String, usize)> = self
+                .drugs
+                .iter()
+                .filter_map(|d| {
+                    let n = crate::versions::pending(&self.card_edits, &d.name, &|f| {
+                        db::drug_field(d, f).map(str::to_owned)
+                    })
+                    .len();
+                    (n > 0).then(|| (d.id, d.name.clone(), n))
+                })
+                .collect();
+            let others = self
+                .db
+                .sync_posts()
+                .unwrap_or_default()
+                .iter()
+                .filter(|p| p.left_on.is_empty() && Some(p.post) != self.db.sync_post())
+                .count();
+            self.conn_badge = (others, self.db.setting("net_trousseau").is_some());
+            self.conn_summary = Some(ConnSummary {
+                posts: PostsSummary::read(&self.db).ok(),
+                net: NetSummary::read(&self.db).ok(),
+                cards,
+            });
+        }
+    }
+
+    /// La marque des connexions dans la barre d'état : sa couleur et son
+    /// texte. Rien de lu dans la base — ce que les fils ont dit et ce que
+    /// la dernière lecture a compté.
+    fn conn_mark(&self) -> (egui::Color32, String) {
+        #[cfg(feature = "sync")]
+        {
+            let (others, network) = self.conn_badge;
+            let failed = self.posts_status.as_ref().is_some_and(|s| s.0)
+                || self.net_status.as_ref().is_some_and(|s| s.0);
+            let online = self
+                .posts_peers
+                .iter()
+                .filter(|p| p.member && p.talked != Some(false))
+                .count()
+                .min(others);
+            let mut text = if others > 0 {
+                trn("conn_mark_posts", &[&online, &others])
+            } else {
+                tr("conn_mark_alone").to_owned()
+            };
+            if network {
+                text.push_str(tr("conn_mark_network"));
+            }
+            let color = if failed {
+                motif::alert()
+            } else if others > 0 && online == others {
+                motif::accent()
+            } else {
+                motif::text_dim()
+            };
+            (color, text)
+        }
+        #[cfg(not(feature = "sync"))]
+        (motif::text_dim(), tr("conn_mark_alone").to_owned())
+    }
+
+    /// Noter ce qui s'est passé sur les connexions, à l'heure de la base.
+    /// Cinquante lignes au plus : c'est un fil d'actualité, pas un
+    /// journal d'audit.
+    #[cfg(feature = "sync")]
+    fn log_connection(&mut self, bad: bool, what: &str) {
+        let at = self
+            .db
+            .now_local()
+            .map(|(_, m)| format!("{:02}:{:02}", m / 60, m % 60))
+            .unwrap_or_default();
+        self.conn_log.push_back((at, bad, what.to_owned()));
+        self.conn_dirty = true;
+        while self.conn_log.len() > 50 {
+            self.conn_log.pop_front();
+        }
+    }
+
+    /// Le réseau d'officines, **au lancement puis à intervalle** : une
+    /// synchronisation sur son fil quand l'officine en fait partie et que
+    /// le poste le veut. Rien n'est demandé à l'opérateur — une
+    /// synchronisation ne montre jamais de code.
+    #[cfg(feature = "sync")]
+    fn poll_net_auto(&mut self, ctx: &egui::Context, config: &Config) {
+        if let Some(rx) = &self.net_auto {
+            match rx.try_recv() {
+                Ok(crate::network::Progress::Done(said)) => {
+                    self.net_auto = None;
+                    self.log_connection(false, &said);
+                    let at = self
+                        .conn_log
+                        .back()
+                        .map(|l| l.0.clone())
+                        .unwrap_or_default();
+                    self.net_status = Some((false, said, at));
+                    self.reload_supply();
+                }
+                Ok(crate::network::Progress::Failed(said)) => {
+                    self.net_auto = None;
+                    self.log_connection(true, &said);
+                    let at = self
+                        .conn_log
+                        .back()
+                        .map(|l| l.0.clone())
+                        .unwrap_or_default();
+                    self.net_status = Some((true, said, at));
+                }
+                Ok(_) | Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    ctx.request_repaint_after(Duration::from_millis(500));
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.net_auto = None,
+            }
+            return;
+        }
+        let r = &config.reseau;
+        if !r.automatique {
+            return;
+        }
+        let now = Instant::now();
+        let due = self.net_next.is_none_or(|at| now >= at);
+        if !due {
+            return;
+        }
+        self.net_next =
+            Some(now + Duration::from_secs(u64::from(r.intervalle_minutes.max(1)) * 60));
+        // Asked only when due: a setting is a query, not a frame's work.
+        if self.db.setting("net_trousseau").is_none() {
+            return;
+        }
+        self.start_net_sync(config);
+    }
+
+    /// Lancer une synchronisation du réseau d'officines sur son fil.
+    #[cfg(feature = "sync")]
+    fn start_net_sync(&mut self, config: &Config) {
+        if self.net_auto.is_some() {
+            return;
+        }
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let folder = config.reseau.dossier.trim();
+        let (_answers_tx, answers_rx) = std::sync::mpsc::channel();
+        self.net_auto = Some(crate::network::spawn(
+            crate::network::Job::Sync {
+                folder: (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
+            },
+            path,
+            self.password.clone(),
+            config.pharmacy.name.clone(),
+            self.today.clone(),
+            answers_rx,
+        ));
+    }
+
     /// Ce que la synchronisation automatique a dit depuis la dernière
     /// image. Ce qu'elle range dans la base, l'écran le voit par
     /// `sync_if_others_wrote`, comme ce qu'écrit un poste sur la même
@@ -6308,32 +6529,46 @@ impl Session {
         if !self.posts_auto_tried {
             self.posts_auto_tried = true;
             self.start_posts_auto(config);
+            self.reload_connections();
         }
         let Some((rx, _)) = &self.posts_auto else {
             return;
         };
+        // Drained first, handled after: handling writes to the session.
+        let mut said: Vec<crate::postes::Progress> = Vec::new();
+        let mut gone = false;
         loop {
             match rx.try_recv() {
-                Ok(crate::postes::Progress::Status(said)) => {
-                    self.posts_status = Some((false, said));
-                }
-                Ok(crate::postes::Progress::Failed(said)) => {
-                    self.posts_status = Some((true, said));
-                    self.posts_auto = None;
-                    break;
-                }
-                Ok(_) => {}
-                Err(std::sync::mpsc::TryRecvError::Empty) => {
-                    // Often enough that another post's writing shows here
-                    // within seconds; rarely enough to cost nothing.
-                    ctx.request_repaint_after(Duration::from_secs(2));
-                    break;
-                }
+                Ok(p) => said.push(p),
+                Err(std::sync::mpsc::TryRecvError::Empty) => break,
                 Err(std::sync::mpsc::TryRecvError::Disconnected) => {
-                    self.posts_auto = None;
+                    gone = true;
                     break;
                 }
             }
+        }
+        for p in said {
+            match p {
+                crate::postes::Progress::Status(line) => {
+                    self.log_connection(false, &line);
+                    self.posts_status = Some((false, line));
+                }
+                crate::postes::Progress::Peers(peers) => self.posts_peers = peers,
+                crate::postes::Progress::Failed(line) => {
+                    self.log_connection(true, &line);
+                    self.posts_status = Some((true, line));
+                    gone = true;
+                }
+                _ => {}
+            }
+        }
+        if gone {
+            self.posts_auto = None;
+            self.posts_peers.clear();
+        } else {
+            // Often enough that another post's writing shows here within
+            // seconds; rarely enough to cost nothing.
+            ctx.request_repaint_after(Duration::from_secs(2));
         }
     }
 
@@ -7213,6 +7448,7 @@ impl Session {
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Ruptures => tr("tab_ruptures").to_owned(),
+            WorkTab::Connexions => tr("tab_connexions").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
@@ -9003,6 +9239,15 @@ enum TechAction {
     ReportShortage,
     LiftShortage,
     NoteSubstitution,
+}
+
+/// Ce que la vue des connexions lit dans la base.
+#[cfg(feature = "sync")]
+struct ConnSummary {
+    posts: Option<PostsSummary>,
+    net: Option<NetSummary>,
+    /// Les fiches qui ont une version reçue à arbitrer : id, nom, combien.
+    cards: Vec<(i64, String, usize)>,
 }
 
 /// La fenêtre des postes de l'officine : ce que la base en dit, une
@@ -11670,6 +11915,23 @@ impl App {
                                 ..PostsWindow::default()
                             });
                         }
+                        // Les connexions, sur une base qui a fondé son
+                        // groupe et créé son réseau : les quatre panneaux
+                        // ont de quoi dire. Aucun fil ne part.
+                        #[cfg(feature = "sync")]
+                        Ok("connexions") => {
+                            session.posts_auto_tried = true;
+                            if session.db.sync_post().is_none() {
+                                let _ =
+                                    crate::postes::Posts::load(&session.db).and_then(|mut p| {
+                                        p.found(&session.db, "Comptoir 1", &session.today)
+                                    });
+                            }
+                            let _ = crate::network::Net::create(&session.db);
+                            session.log_connection(false, tr("conn_sync_asked"));
+                            session.reload_connections();
+                            session.view = MainView::Connexions;
+                        }
                         Ok(key @ ("ruptures" | "reseau")) => {
                             session.reload_supply();
                             session.view = MainView::Ruptures;
@@ -13397,6 +13659,9 @@ impl App {
                             | MainView::Ddi => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard
                             | MainView::Search
+                            // Les connexions ne trient rien : le dock
+                            // qu'on avait devant soi reste.
+                            | MainView::Connexions
                             | MainView::Registres
                             | MainView::Finances
                             // Le comptage de caisse ne trie ni le
@@ -14858,6 +15123,10 @@ impl App {
             }
             if session.view == MainView::Ruptures {
                 Self::ruptures_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Connexions {
+                Self::connexions_view(ui, session, &config);
                 return;
             }
             if session.view == MainView::Script {
@@ -51206,6 +51475,410 @@ impl App {
         Self::net_window(ui.ctx(), session, config);
     }
 
+    /// La vue des connexions.
+    ///
+    /// **La réserve d'abord**, en sous-titre : ce qui voyage entre qui.
+    /// Puis quatre panneaux — les postes, le réseau d'officines, ce qui
+    /// attend d'être arbitré, ce qui vient de se passer. Tout ce qui est
+    /// lu dans la base l'est à l'ouverture et après un geste ou une
+    /// synchronisation (`reload_connections`), jamais par image.
+    fn connexions_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("conn_title")),
+                Self::button_width(ui, tr("conn_sync_all")),
+                Self::button_width(ui, tr("posts_open")),
+                Self::button_width(ui, tr("net_open")),
+            ]
+            .into_iter(),
+            tr("conn_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        #[cfg(not(feature = "sync"))]
+        {
+            let _ = (config, session);
+            motif::inside(ui, rows[0], |ui| {
+                ui.heading(tr("conn_title"));
+            });
+            motif::panel(ui, rows[1], None, |ui| {
+                ui.label(tr("conn_no_sync"));
+            });
+        }
+        #[cfg(feature = "sync")]
+        {
+            if session.conn_dirty || session.conn_summary.is_none() {
+                session.reload_connections();
+            }
+            let mut sync_all = false;
+            let mut open_posts: Option<String> = None;
+            let mut open_net = false;
+            motif::inside(ui, rows[0], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    ui.heading(tr("conn_title"));
+                    if motif::icon_button(ui, Some(motif::Pict::Link), tr("conn_sync_all"))
+                        .on_hover_text(tr("conn_sync_all_tooltip"))
+                        .clicked()
+                    {
+                        sync_all = true;
+                    }
+                    if motif::button(ui, tr("posts_open")).clicked() {
+                        open_posts = Some(String::new());
+                    }
+                    if motif::button(ui, tr("net_open"))
+                        .on_hover_text(tr("net_open_tooltip"))
+                        .clicked()
+                    {
+                        open_net = true;
+                    }
+                });
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("conn_subtitle"))
+                            .size(motif::pt(ui, 11.5))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+            });
+            let wide = rows[1].width() >= chars_wide(ui, 110.0);
+            let panes = if wide {
+                let cols = motif::split_columns(rows[1], 3, 8.0);
+                let right = motif::split_rows(cols[2], &[0.0, 0.0], 8.0);
+                vec![cols[0], cols[1], right[0], right[1]]
+            } else {
+                let halves = motif::split_rows(rows[1], &[0.0, 0.0], 8.0);
+                let top = motif::split_columns(halves[0], 2, 8.0);
+                let bottom = motif::split_columns(halves[1], 2, 8.0);
+                vec![top[0], top[1], bottom[0], bottom[1]]
+            };
+            let small = |ui: &egui::Ui, t: String| {
+                egui::RichText::new(t)
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim())
+            };
+            let mut settle: Option<(i64, bool)> = None;
+            let mut open_card: Option<i64> = None;
+            let peers = session.posts_peers.clone();
+            let auto_on = session.posts_auto.is_some();
+            let posts_status = session.posts_status.clone();
+            let net_status = session.net_status.clone();
+            let net_running = session.net_auto.is_some();
+            let net_in = session
+                .net_next
+                .map(|at| at.saturating_duration_since(Instant::now()).as_secs() / 60);
+            let log: Vec<(String, bool, String)> = session.conn_log.iter().rev().cloned().collect();
+            let Some(sum) = &session.conn_summary else {
+                return;
+            };
+            // 1 — Les postes.
+            motif::panel(ui, panes[0], Some(tr("conn_posts")), |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("conn_posts")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let Some(p) = &sum.posts else {
+                            ui.label(tr("posts_unreadable"));
+                            return;
+                        };
+                        let me = p.post;
+                        if !p.in_group {
+                            ui.add(egui::Label::new(tr("conn_alone")).wrap());
+                            ui.add_space(4.0);
+                            if peers.is_empty() {
+                                ui.label(small(ui, tr("conn_heard_none").to_owned()));
+                            } else {
+                                ui.label(small(ui, tr("conn_heard").to_owned()));
+                            }
+                            for h in &peers {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(egui::RichText::new(h.address.as_str()).monospace());
+                                    ui.label(small(ui, crate::postes::groups_of(&h.device)));
+                                    if motif::button(ui, tr("posts_join")).clicked() {
+                                        open_posts = Some(h.address.clone());
+                                    }
+                                });
+                            }
+                            return;
+                        }
+                        for row in &p.posts {
+                            let status = if Some(row.post) == me {
+                                (
+                                    motif::Pict::Check,
+                                    motif::accent(),
+                                    tr("conn_this_post").to_owned(),
+                                )
+                            } else if !row.left_on.is_empty() {
+                                (
+                                    motif::Pict::Stop,
+                                    motif::text_faint(),
+                                    trf("conn_retired", db::format_french_date(&row.left_on)),
+                                )
+                            } else if let Some(h) = peers.iter().find(|h| h.device == row.device) {
+                                match h.talked {
+                                    Some(false) => (
+                                        motif::Pict::Warn,
+                                        motif::alert(),
+                                        trf("conn_unreached", &h.address),
+                                    ),
+                                    _ => (
+                                        motif::Pict::Check,
+                                        motif::accent(),
+                                        trf("conn_online", &h.address),
+                                    ),
+                                }
+                            } else {
+                                (
+                                    motif::Pict::Pending,
+                                    motif::text_dim(),
+                                    tr("conn_offline").to_owned(),
+                                )
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                let (rect, _) = ui.allocate_exact_size(
+                                    egui::vec2(motif::pt(ui, 11.0), motif::pt(ui, 11.0)),
+                                    egui::Sense::hover(),
+                                );
+                                motif::pictogram(ui.painter(), rect, status.0, status.1);
+                                let name = if row.name.trim().is_empty() {
+                                    trf("conn_post_n", row.post + 1)
+                                } else {
+                                    format!("{} · {}", row.post + 1, row.name)
+                                };
+                                ui.label(egui::RichText::new(name).strong());
+                                if row.post == p.reference {
+                                    ui.label(
+                                        egui::RichText::new(tr("posts_reference"))
+                                            .color(motif::accent()),
+                                    );
+                                }
+                            });
+                            ui.label(egui::RichText::new(status.2).color(status.1));
+                            ui.add_space(4.0);
+                        }
+                        let strangers: Vec<&crate::postes::PeerSeen> =
+                            peers.iter().filter(|h| !h.member).collect();
+                        if !strangers.is_empty() {
+                            ui.label(small(ui, tr("conn_strangers").to_owned()));
+                            for h in strangers {
+                                ui.label(small(ui, h.address.clone()));
+                            }
+                        }
+                        ui.add_space(6.0);
+                        ui.label(small(
+                            ui,
+                            if auto_on {
+                                trf("posts_auto_on", config.postes.port)
+                            } else if config.postes.automatique {
+                                tr("posts_auto_stopped").to_owned()
+                            } else {
+                                tr("posts_auto_off").to_owned()
+                            },
+                        ));
+                        if let Some((bad, said)) = &posts_status {
+                            ui.add(
+                                egui::Label::new(egui::RichText::new(said.as_str()).color(
+                                    if *bad {
+                                        motif::alert()
+                                    } else {
+                                        motif::text_dim()
+                                    },
+                                ))
+                                .wrap(),
+                            );
+                        }
+                    });
+            });
+            // 2 — Le réseau d'officines.
+            motif::panel(ui, panes[1], Some(tr("conn_network")), |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("conn_network")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let Some(n) = &sum.net else {
+                            ui.label(tr("net_unreadable"));
+                            return;
+                        };
+                        if !n.in_network {
+                            ui.add(egui::Label::new(tr("net_none")).wrap());
+                            return;
+                        }
+                        if let Some(name) = &n.network {
+                            ui.label(trf("net_network", name));
+                        }
+                        ui.label(small(ui, trn("net_records", &[&n.records])));
+                        ui.add_space(4.0);
+                        if n.peers.is_empty() {
+                            ui.add(
+                                egui::Label::new(small(ui, tr("net_peers_none").to_owned())).wrap(),
+                            );
+                        }
+                        for peer in &n.peers {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(if peer.name.trim().is_empty() {
+                                        peer.groups()
+                                    } else {
+                                        peer.name.clone()
+                                    })
+                                    .strong(),
+                                );
+                                ui.label(small(
+                                    ui,
+                                    if peer.address.trim().is_empty() {
+                                        tr("conn_net_folder_only").to_owned()
+                                    } else {
+                                        peer.address.clone()
+                                    },
+                                ));
+                            });
+                        }
+                        ui.add_space(6.0);
+                        if net_running {
+                            ui.label(small(ui, tr("conn_net_running").to_owned()));
+                        } else if let Some((bad, said, at)) = &net_status {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(trn("conn_net_last", &[at, said])).color(
+                                        if *bad {
+                                            motif::alert()
+                                        } else {
+                                            motif::text_dim()
+                                        },
+                                    ),
+                                )
+                                .wrap(),
+                            );
+                        }
+                        ui.label(small(
+                            ui,
+                            match (config.reseau.automatique, net_in) {
+                                (true, Some(m)) => trf("conn_net_next", m),
+                                (true, None) => tr("conn_net_at_launch").to_owned(),
+                                (false, _) => tr("conn_net_manual").to_owned(),
+                            },
+                        ));
+                    });
+            });
+            // 3 — Ce qui attend d'être arbitré.
+            let questions = sum.posts.as_ref().map_or(0, |p| p.conflicts.len())
+                + sum.cards.iter().map(|c| c.2).sum::<usize>();
+            motif::panel(
+                ui,
+                panes[2],
+                Some(&trf("conn_questions", questions)),
+                |ui| {
+                    ui.spacing_mut().scroll.floating = false;
+                    egui::ScrollArea::vertical()
+                        .id_salt("conn_questions")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            if questions == 0 {
+                                ui.label(small(ui, tr("conn_questions_none").to_owned()));
+                            }
+                            for (id, name, n) in &sum.cards {
+                                if motif::list_row_pair(
+                                    ui,
+                                    name,
+                                    &trf("ver_pending", n),
+                                    false,
+                                    0.0,
+                                )
+                                .on_hover_text(tr("conn_open_card_tooltip"))
+                                .clicked()
+                                {
+                                    open_card = Some(*id);
+                                }
+                            }
+                            if let Some(p) = &sum.posts {
+                                for c in p.conflicts.iter().take(60) {
+                                    ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
+                                    ui.horizontal_wrapped(|ui| {
+                                        if c.kind == "CONFLIT" && !c.column.is_empty() {
+                                            if motif::button(ui, tr("ver_keep")).clicked() {
+                                                settle = Some((c.id, false));
+                                            }
+                                            if motif::button(ui, tr("posts_take_theirs")).clicked()
+                                            {
+                                                settle = Some((c.id, true));
+                                            }
+                                        } else if motif::button(ui, tr("posts_seen")).clicked() {
+                                            settle = Some((c.id, false));
+                                        }
+                                    });
+                                    ui.add_space(4.0);
+                                }
+                            }
+                        });
+                },
+            );
+            // 4 — Ce qui vient de se passer.
+            motif::panel(ui, panes[3], Some(tr("conn_activity")), |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("conn_activity")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if log.is_empty() {
+                            ui.label(small(ui, tr("conn_activity_none").to_owned()));
+                        }
+                        for (at, bad, what) in &log {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("{at}  {what}"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(if *bad {
+                                            motif::alert()
+                                        } else {
+                                            motif::text_dim()
+                                        }),
+                                )
+                                .wrap(),
+                            );
+                        }
+                    });
+            });
+            if let Some((id, theirs)) = settle {
+                let _ = session.db.settle_conflict(id, theirs);
+                session.conn_dirty = true;
+            }
+            if let Some(id) = open_card {
+                if let Some(card) = session.drugs.iter().find(|d| d.id == id).cloned() {
+                    session.open_drug_card(card);
+                    session.view = MainView::Drugs;
+                    session.versions_open = Some(id);
+                }
+            }
+            if sync_all {
+                if let Some((_, poke)) = &session.posts_auto {
+                    let _ = poke.send(crate::postes::Poke::Now);
+                }
+                session.start_net_sync(config);
+                session.log_connection(false, tr("conn_sync_asked"));
+            }
+            if let Some(address) = open_posts {
+                if session.posts_window.is_none() {
+                    session.posts_window = Some(PostsWindow {
+                        summary: PostsSummary::read(&session.db).ok(),
+                        join_address: address,
+                        ..PostsWindow::default()
+                    });
+                }
+            }
+            if open_net && session.net_window.is_none() {
+                session.net_window = Some(NetWindow {
+                    summary: NetSummary::read(&session.db).ok(),
+                    ..NetWindow::default()
+                });
+            }
+            Self::net_window(ui.ctx(), session, config);
+        }
+    }
+
     /// Une question « à arbitrer », en une ligne : où, quoi, les deux
     /// valeurs. Le libellé de la table quand la maison en a un, son nom
     /// sinon.
@@ -51273,6 +51946,7 @@ impl App {
                     Ok(Progress::Waiting(at)) => w.waiting = Some(at),
                     Ok(Progress::Code(code)) => w.code = Some(code),
                     Ok(Progress::Status(said)) => w.note = Some((false, said)),
+                    Ok(Progress::Peers(_)) => {}
                     Ok(Progress::Done(said)) => {
                         w.note = Some((false, said));
                         finished = true;
@@ -51300,7 +51974,9 @@ impl App {
             w.waiting = None;
             w.summary = PostsSummary::read(&session.db).ok();
             // Whatever the task was, the automatic synchronisation may
-            // run again — it was stopped to free the door.
+            // run again — it was stopped to free the door — and in the
+            // shape the post now has, member or on its own.
+            session.stop_posts_auto();
             session.posts_auto_tried = false;
         }
         let Some(w) = &mut session.posts_window else {
@@ -59207,6 +59883,7 @@ impl eframe::App for App {
             #[cfg(feature = "sync")]
             {
                 session.poll_posts(ctx, &self.config);
+                session.poll_net_auto(ctx, &self.config);
                 Self::posts_window(ctx, session, &self.config);
             }
         }
@@ -59559,6 +60236,7 @@ impl eframe::App for App {
             let synced = session
                 .sync_notice
                 .is_some_and(|at| at.elapsed() < Session::SYNC_NOTICE_FOR);
+            let conn_mark = session.conn_mark();
             let db_file = self
                 .config
                 .db_path()
@@ -59625,6 +60303,48 @@ impl eframe::App for App {
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
+                        // **Les connexions**, en une marque : combien de postes
+                        // du groupe on entend, et si le réseau d'officines a
+                        // parlé. Toujours là, même seul — c'est la porte de la
+                        // vue des connexions.
+                        ui.add_space(8.0);
+                        let (mark_color, mark_text) = conn_mark;
+                        // Right to left: the words, then the mark before
+                        // them — each in its own place, neither over the
+                        // other.
+                        // A narrow bar keeps the mark and drops the words
+                        // — shortened, never drawn over the counts.
+                        let side = motif::pt(ui, 10.0);
+                        let words_w = ui
+                            .painter()
+                            .layout_no_wrap(
+                                mark_text.clone(),
+                                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                                mark_color,
+                            )
+                            .size()
+                            .x;
+                        let gap = ui.spacing().item_spacing.x;
+                        let room = ui.available_width() - side - gap * 3.0;
+                        let words = (words_w <= room).then(|| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(mark_text)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(mark_color),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                            .on_hover_text(tr("conn_mark_tooltip"))
+                        });
+                        let (square, mark) =
+                            ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::click());
+                        motif::pictogram(ui.painter(), square, motif::Pict::Link, mark_color);
+                        if words.is_some_and(|w| w.clicked())
+                            || mark.on_hover_text(tr("conn_mark_tooltip")).clicked()
+                        {
+                            status_goto = Some(WorkTab::Connexions);
+                        }
                         // Who is stamping the notes, so a shared post
                         // never signs an entry with the last shift's
                         // initials without saying so.
@@ -59671,6 +60391,7 @@ impl eframe::App for App {
                     | MainView::Finances
                     | MainView::Stats
                     | MainView::Ruptures
+                    | MainView::Connexions
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory
@@ -60851,6 +61572,20 @@ impl eframe::App for App {
                                     &mut editor.cfg.reseau.a_la_fermeture,
                                     tr("opts_reseau_close"),
                                 );
+                                ui.horizontal_wrapped(|ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.automatique,
+                                        tr("opts_reseau_auto"),
+                                    );
+                                    ui.add(
+                                        egui::DragValue::new(
+                                            &mut editor.cfg.reseau.intervalle_minutes,
+                                        )
+                                        .range(1..=1440),
+                                    );
+                                    ui.label(dim(tr("opts_reseau_minutes")));
+                                });
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.

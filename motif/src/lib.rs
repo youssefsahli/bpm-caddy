@@ -1091,6 +1091,9 @@ pub enum Pict {
     Register,
     /// Un cadre avec un coin plein — où poser une fenêtre.
     Corner,
+    /// Trois nœuds reliés — les connexions entre les postes et les
+    /// officines.
+    Link,
 }
 
 /// Paint `pict` inside `rect` (a square of roughly 11 px) in `color`.
@@ -1278,6 +1281,20 @@ pub fn pictogram(painter: &egui::Painter, rect: egui::Rect, pict: Pict, color: C
                 egui::pos2(r.left() + w * 0.5, r.top() + h * 0.5),
             );
             painter.rect_filled(part, 0.0, color);
+        }
+        Pict::Link => {
+            // Three squares joined by two lines: one post in the middle,
+            // two others — a network, and nothing like the calendar grid.
+            let k = w * 0.3;
+            let node = |c: egui::Pos2| egui::Rect::from_center_size(c, egui::vec2(k, k));
+            let a = egui::pos2(r.left() + k * 0.5, r.top() + k * 0.5);
+            let b = egui::pos2(r.right() - k * 0.5, r.center().y);
+            let c = egui::pos2(r.left() + k * 0.5, r.bottom() - k * 0.5);
+            painter.line_segment([a, b], s);
+            painter.line_segment([c, b], s);
+            painter.rect_filled(node(a), 0.0, color);
+            painter.rect_filled(node(b), 0.0, color);
+            painter.rect_filled(node(c), 0.0, color);
         }
         Pict::Cog => {
             // A hub with four teeth: distinct from the calendar grid.

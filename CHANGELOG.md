@@ -5,6 +5,23 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.278.0] - 2026-09-23
+
+### Added
+- **Tout se connecte au lancement.** Les postes cherchent leur groupe
+  sur le réseau local dès l'ouverture ; un poste seul écoute et voit les
+  postes qui s'annoncent, avec l'adresse à composer pour rejoindre. Le
+  réseau d'officines se synchronise au lancement puis toutes les quinze
+  minutes (réglable, Options › Base).
+- **La vue « Connexions »** : les postes (en ligne, hors ligne,
+  retirés, référence), le réseau d'officines (officines appairées,
+  dernière et prochaine synchronisation), ce qui attend d'être arbitré —
+  entre postes et versions de fiches reçues — et l'activité depuis le
+  lancement ; « Tout synchroniser ».
+- **Une marque dans la barre d'état** (trois nœuds reliés) : combien de
+  postes du groupe répondent, le réseau, rouge sur un échec ; un clic
+  ouvre la vue.
+
 ## [0.277.1] - 2026-09-23
 
 ### Fixed

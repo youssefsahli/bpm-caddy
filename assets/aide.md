@@ -853,6 +853,29 @@ les mises à jour.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
+# Les connexions
+
+La marque à trois nœuds, en bas à droite de la barre d'état, dit combien
+de postes du groupe on entend (« 2/3 poste(s) ») et si l'officine fait
+partie d'un réseau ; un clic ouvre la vue « Connexions ». Elle est
+bleue quand tous les postes répondent, rouge quand une synchronisation
+a échoué.
+
+**Tout se connecte au lancement** : les postes du groupe se cherchent et
+se synchronisent sur le réseau local, et le réseau d'officines se
+synchronise au lancement puis toutes les quinze minutes (Options ›
+Base). Un poste seul écoute seulement : la vue montre les postes qui
+s'annoncent, avec leur adresse, et « Rejoindre… » la reprend. Rejoindre
+demande toujours le code de cinq groupes, lu des deux côtés — c'est ce
+qui garantit que personne ne s'est glissé entre les deux postes.
+
+La vue a quatre panneaux : les postes (en ligne, hors ligne, retirés),
+le réseau d'officines (les officines appairées, la dernière
+synchronisation, la prochaine), ce qui attend d'être arbitré (entre
+postes, et les versions de fiches reçues d'autres officines), et
+l'activité depuis le lancement. « Tout synchroniser » parle tout de
+suite aux postes entendus et aux officines du réseau.
+
 # La caisse
 
 Le comptage se fait en centimes entiers, jamais en flottants. L'écart
