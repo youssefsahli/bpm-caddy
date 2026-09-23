@@ -4306,6 +4306,8 @@ struct Session {
     edits_rev: u64,
     /// The history window, on this card.
     versions_open: Option<i64>,
+    /// The history window, on a codex entry or a protocol, by name.
+    entry_versions: Option<(crate::versions::Kind, String)>,
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
@@ -5104,6 +5106,7 @@ impl Session {
             card_edits: Vec::new(),
             edits_rev: 0,
             versions_open: None,
+            entry_versions: None,
             #[cfg(feature = "sync")]
             net_window: None,
             #[cfg(feature = "sync")]
@@ -6382,10 +6385,44 @@ impl Session {
                 .filter(|p| p.left_on.is_empty() && Some(p.post) != self.db.sync_post())
                 .count();
             self.conn_badge = (others, self.db.setting("net_trousseau").is_some());
+            let mut entries = Vec::new();
+            let names: Vec<(crate::versions::Kind, String)> = self
+                .preparations
+                .iter()
+                .map(|p| (crate::versions::Kind::Codex, p.name.clone()))
+                .chain(
+                    self.protocols
+                        .iter()
+                        .map(|p| (crate::versions::Kind::Protocole, p.title.clone())),
+                )
+                .collect();
+            for (kind, name) in names {
+                // Only entries some received version names: the others
+                // have nothing to settle, and reading a protocol's tree
+                // costs a query.
+                let k = crate::versions::key(&name);
+                if !self
+                    .card_edits
+                    .iter()
+                    .any(|e| e.kind == kind && e.card == k && !e.source.is_empty())
+                {
+                    continue;
+                }
+                if let Ok(Some((_, name, fields))) = self.db.entry_fields(kind, &name) {
+                    let local =
+                        |f: &str| fields.iter().find(|(x, _)| *x == f).map(|(_, v)| v.clone());
+                    let n =
+                        crate::versions::pending_of(&self.card_edits, kind, &name, &local).len();
+                    if n > 0 {
+                        entries.push((kind, name, n));
+                    }
+                }
+            }
             self.conn_summary = Some(ConnSummary {
                 posts: PostsSummary::read(&self.db).ok(),
                 net: NetSummary::read(&self.db).ok(),
                 cards,
+                entries,
             });
         }
     }
@@ -9248,6 +9285,8 @@ struct ConnSummary {
     net: Option<NetSummary>,
     /// Les fiches qui ont une version reçue à arbitrer : id, nom, combien.
     cards: Vec<(i64, String, usize)>,
+    /// Les préparations et les protocoles qui en ont : sorte, nom, combien.
+    entries: Vec<(crate::versions::Kind, String, usize)>,
 }
 
 /// La fenêtre des postes de l'officine : ce que la base en dit, une
@@ -34111,6 +34150,13 @@ impl App {
                         {
                             print = true;
                         }
+                        if motif::button(ui, tr("ver_open"))
+                            .on_hover_text(tr("ver_open_entry_tooltip"))
+                            .clicked()
+                        {
+                            session.entry_versions =
+                                Some((crate::versions::Kind::Codex, prep.name.clone()));
+                        }
                         ui.add_space(10.0);
                         let label = if session.codex_confirm_delete {
                             tr("patient_delete_confirm")
@@ -44340,6 +44386,13 @@ impl App {
                         if motif::button(ui, tr("proto_print")).clicked() {
                             print = true;
                         }
+                        if motif::button(ui, tr("ver_open"))
+                            .on_hover_text(tr("ver_open_entry_tooltip"))
+                            .clicked()
+                        {
+                            session.entry_versions =
+                                Some((crate::versions::Kind::Protocole, proto.title.clone()));
+                        }
                     });
                     ui.add_space(8.0);
                     if session.protocol_walk.is_some() {
@@ -46247,6 +46300,255 @@ impl App {
         }
         if close {
             session.versions_open = None;
+        }
+    }
+
+    /// Le nom d'un champ de préparation ou de protocole, pour
+    /// l'historique.
+    fn entry_field_label(field: &str) -> &'static str {
+        match field {
+            "form" => tr("codex_form_label"),
+            "indication" => tr("codex_indication"),
+            "formula" => tr("codex_formula"),
+            "yield_amount" => tr("codex_f_yield"),
+            "method" => tr("codex_method"),
+            "conservation" => tr("codex_conservation"),
+            "caution" => tr("codex_f_caution"),
+            "tags" => tr("ver_f_tags"),
+            "sources" => tr("ver_f_sources"),
+            "subject" => tr("proto_f_subject"),
+            "arbre" => tr("proto_f_tree"),
+            _ => tr("ver_f_other"),
+        }
+    }
+
+    /// L'historique d'une préparation du codex ou d'un protocole : la
+    /// même fenêtre que celle des fiches — ce qui attend d'être arbitré,
+    /// puis chaque champ et ses versions, avec le retour à n'importe
+    /// laquelle. Un arbre se lit en lignes, une question et ses deux
+    /// branches.
+    fn entry_versions_window(ctx: &egui::Context, session: &mut Session) {
+        let Some((kind, name)) = session.entry_versions.clone() else {
+            return;
+        };
+        // Read when drawn: an entry is a few fields, and the window is
+        // open for as long as someone reads it — not a per-frame cost
+        // anyone pays without asking.
+        let Ok(Some((_, name, fields))) = session.db.entry_fields(kind, &name) else {
+            session.entry_versions = None;
+            return;
+        };
+        let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
+        let shown = |field: &str, v: &str| -> String {
+            if v.trim().is_empty() || (field == "arbre" && v == "[]") {
+                tr("ver_empty").to_owned()
+            } else if field == "arbre" {
+                crate::versions::tree_text(v)
+            } else {
+                v.to_owned()
+            }
+        };
+        let pending: Vec<crate::versions::Edit> =
+            crate::versions::pending_of(&session.card_edits, kind, &name, &local)
+                .into_iter()
+                .cloned()
+                .collect();
+        let k = crate::versions::key(&name);
+        let mut set: Option<(String, String, bool)> = None;
+        let mut keep: Option<crate::versions::Edit> = None;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let win = egui::Window::new(trf("ver_title", &name))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(820.0, 640.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("ver_scope_entry"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                let footer = App::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("entry_versions_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        let who = |e: &crate::versions::Edit| {
+                            let place = if e.source.is_empty() {
+                                tr("ver_here").to_owned()
+                            } else {
+                                e.source.clone()
+                            };
+                            format!(
+                                "{} · {} · {}",
+                                db::format_french_date(&e.day),
+                                place,
+                                e.operator
+                            )
+                        };
+                        let text = |ui: &mut egui::Ui, field: &str, v: &str| {
+                            let t = shown(field, v);
+                            if field == "arbre" {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(t).size(motif::pt(ui, 10.5)),
+                                    )
+                                    .wrap(),
+                                );
+                            } else {
+                                ui.add(egui::Label::new(t.as_str()).truncate())
+                                    .on_hover_text(t.as_str());
+                            }
+                        };
+                        if !pending.is_empty() {
+                            motif::section(ui, tr("ver_to_settle"));
+                            for e in &pending {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} — {}",
+                                        App::entry_field_label(&e.field),
+                                        who(e)
+                                    ))
+                                    .strong(),
+                                );
+                                ui.label(tr("ver_proposed_label"));
+                                text(ui, &e.field, &e.value);
+                                ui.label(
+                                    egui::RichText::new(tr("ver_yours_label"))
+                                        .color(motif::text_dim()),
+                                );
+                                text(ui, &e.field, &local(&e.field).unwrap_or_default());
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("ver_adopt")).clicked() {
+                                        set = Some((e.field.clone(), e.value.clone(), false));
+                                    }
+                                    if motif::button(ui, tr("ver_keep")).clicked() {
+                                        keep = Some(e.clone());
+                                    }
+                                });
+                                ui.add_space(6.0);
+                            }
+                        }
+                        let mut any = false;
+                        for &field in kind.fields() {
+                            let h: Vec<&crate::versions::Edit> = session
+                                .card_edits
+                                .iter()
+                                .filter(|e| e.kind == kind && e.card == k && e.field == field)
+                                .collect();
+                            if h.is_empty() {
+                                continue;
+                            }
+                            any = true;
+                            motif::section(ui, App::entry_field_label(field));
+                            let current = local(field).unwrap_or_default();
+                            for e in h.iter().rev() {
+                                ui.horizontal_wrapped(|ui| {
+                                    let mut head = who(e);
+                                    if e.revert {
+                                        head.push_str(&format!(" · {}", tr("ver_revert_tag")));
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(head)
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    if e.value == current {
+                                        ui.label(
+                                            egui::RichText::new(tr("ver_current"))
+                                                .size(motif::pt(ui, 10.5))
+                                                .strong(),
+                                        );
+                                    } else if motif::button(ui, tr("ver_back"))
+                                        .on_hover_text(tr("ver_back_tooltip"))
+                                        .clicked()
+                                    {
+                                        set = Some((field.to_owned(), e.value.clone(), true));
+                                    }
+                                });
+                                text(ui, field, &e.value);
+                            }
+                            if let Some(first) = h.first().filter(|f| f.source.is_empty()) {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("ver_origin"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    if first.previous != current
+                                        && motif::button(ui, tr("ver_back")).clicked()
+                                    {
+                                        set =
+                                            Some((field.to_owned(), first.previous.clone(), true));
+                                    }
+                                });
+                                text(ui, field, &first.previous);
+                            }
+                            ui.add_space(6.0);
+                        }
+                        if !any {
+                            ui.label(tr("ver_none_entry"));
+                        }
+                    });
+                if motif::button(ui, tr("trod_edit_done")).clicked() {
+                    close = true;
+                }
+            });
+        motif::dialog_relief(ctx, &win);
+        let mut changed = false;
+        if let Some((field, value, revert)) = set {
+            let was = local(&field).unwrap_or_default();
+            match session.db.set_entry_field(
+                kind,
+                &name,
+                &field,
+                &value,
+                &was,
+                &session.operator,
+                revert,
+            ) {
+                Ok(true) => changed = true,
+                Ok(false) => {
+                    changed = true;
+                    session.stale("entry_stale");
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(e) = keep {
+            match session.db.keep_mine_entry(&e, &session.operator) {
+                Ok(()) => changed = true,
+                Err(err) => session.error = Some(err),
+            }
+        }
+        if changed {
+            session.reload_card_edits();
+            match kind {
+                crate::versions::Kind::Codex => session.reload_codex(),
+                crate::versions::Kind::Protocole => {
+                    session.reload_protocols();
+                    if let Some(open) = session.protocol_open.clone() {
+                        if let Some(p) = session.protocols.iter().find(|p| p.id == open.id).cloned()
+                        {
+                            session.protocol_nodes =
+                                session.db.protocol_nodes(p.id).unwrap_or_default();
+                            session.protocol_open = Some(p);
+                        }
+                    }
+                }
+                crate::versions::Kind::Fiche => {}
+            }
+            session.conn_dirty = true;
+        }
+        if close {
+            session.entry_versions = None;
         }
     }
 
@@ -51766,7 +52068,9 @@ impl App {
             });
             // 3 — Ce qui attend d'être arbitré.
             let questions = sum.posts.as_ref().map_or(0, |p| p.conflicts.len())
-                + sum.cards.iter().map(|c| c.2).sum::<usize>();
+                + sum.cards.iter().map(|c| c.2).sum::<usize>()
+                + sum.entries.iter().map(|c| c.2).sum::<usize>();
+            let mut open_entry: Option<(crate::versions::Kind, String)> = None;
             motif::panel(
                 ui,
                 panes[2],
@@ -51792,6 +52096,24 @@ impl App {
                                 .clicked()
                                 {
                                     open_card = Some(*id);
+                                }
+                            }
+                            for (kind, name, n) in &sum.entries {
+                                let tag = match kind {
+                                    crate::versions::Kind::Codex => tr("conn_entry_codex"),
+                                    _ => tr("conn_entry_protocol"),
+                                };
+                                if motif::list_row_pair(
+                                    ui,
+                                    &format!("{tag} · {name}"),
+                                    &trf("ver_pending", n),
+                                    false,
+                                    0.0,
+                                )
+                                .on_hover_text(tr("conn_open_entry_tooltip"))
+                                .clicked()
+                                {
+                                    open_entry = Some((*kind, name.clone()));
                                 }
                             }
                             if let Some(p) = &sum.posts {
@@ -51845,6 +52167,9 @@ impl App {
             if let Some((id, theirs)) = settle {
                 let _ = session.db.settle_conflict(id, theirs);
                 session.conn_dirty = true;
+            }
+            if let Some(entry) = open_entry {
+                session.entry_versions = Some(entry);
             }
             if let Some(id) = open_card {
                 if let Some(card) = session.drugs.iter().find(|d| d.id == id).cloned() {
@@ -59878,6 +60203,7 @@ impl eframe::App for App {
             Self::subst_window(ctx, session);
             Self::pk_window(ctx, session);
             Self::versions_window(ctx, session);
+            Self::entry_versions_window(ctx, session);
             // The posts: their automatic synchronisation, polled every
             // frame, and their window wherever it was opened from.
             #[cfg(feature = "sync")]
@@ -60362,7 +60688,21 @@ impl eframe::App for App {
                         // non en travers de l'écran : c'est une nouvelle
                         // ordinaire, rien n'est demandé, et la bande
                         // s'efface d'elle-même.
-                        if synced {
+                        // Only where it fits: at a narrow width the bar
+                        // keeps the counts, and the lists have visibly
+                        // changed anyway.
+                        let fits = ui
+                            .painter()
+                            .layout_no_wrap(
+                                tr("sync_refreshed").to_owned(),
+                                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                                motif::accent(),
+                            )
+                            .size()
+                            .x
+                            + ui.spacing().item_spacing.x * 2.0
+                            <= ui.available_width();
+                        if synced && fits {
                             ui.label(
                                 egui::RichText::new(tr("sync_refreshed"))
                                     .size(motif::pt(ui, 11.0))

@@ -811,6 +811,16 @@ rien ouvrir. Qui tient le dossier ne lit rien.
 Retirer une officine arrête ce qu'elle enverra ; ce qu'elle a déjà
 envoyé reste au journal.
 
+**Le codex et les protocoles voyagent aussi**, sous les mêmes règles
+que les fiches : une préparation corrigée ou créée dans une officine se
+corrige ou se crée chez les autres, champ par champ ; un protocole
+voyage avec son sujet et son **arbre entier**. Une version reçue ne
+s'applique que si votre entrée dit encore ce qu'elle remplaçait ; sinon
+elle attend, et « Historique… » — sur la fiche d'une préparation comme
+sur un protocole — propose « Adopter » ou « Garder la mienne », et le
+retour à n'importe quelle version. Dans un groupe de postes, c'est le
+poste de référence qui versionne ce que les autres postes modifient.
+
 Les valeurs de pharmacocinétique sourcées voyagent par le même chemin :
 ce qu'une officine a lu dans un RCP profite aux autres, avec sa source.
 Et la barre du comptoir (F9) dit une rupture avant tout le reste, avec

@@ -202,6 +202,7 @@ mod tests {
             ("prescribers.rs", include_str!("prescribers.rs")),
             ("annuaire.rs", include_str!("annuaire.rs")),
             ("postes.rs", include_str!("postes.rs")),
+            ("versions.rs", include_str!("versions.rs")),
             ("network.rs", include_str!("network.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
@@ -277,6 +278,7 @@ mod tests {
             include_str!("ruptures.rs"),
             include_str!("network.rs"),
             include_str!("postes.rs"),
+            include_str!("versions.rs"),
             include_str!("pk.rs"),
             include_str!("prescribers.rs"),
             include_str!("annuaire.rs"),

@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.279.0] - 2026-09-23
+
+### Added
+- **Le codex et les protocoles partagés entre les officines du réseau**,
+  versionnés comme les fiches : une préparation voyage champ par champ
+  (forme, formule, mode opératoire, conservation…), un protocole avec
+  son sujet et son arbre entier. Une entrée inconnue chez l'autre s'y
+  crée ; une version reçue ne s'applique que sur la valeur qu'elle
+  remplaçait, sinon elle attend « à arbitrer ».
+- **« Historique… » sur une préparation et sur un protocole** : chaque
+  version, ici et ailleurs, « Adopter », « Garder la mienne », et le
+  retour à n'importe quelle version. Les entrées à arbitrer figurent
+  dans la vue « Connexions ».
+
+### Fixed
+- Un fil qui ouvrait la base au lancement faisait annoncer « actualisé
+  depuis un autre poste » sans que rien ait changé.
+- La barre d'état ne dessine plus cette annonce par-dessus les compteurs
+  quand la place manque.
+
 ## [0.278.0] - 2026-09-23
 
 ### Added

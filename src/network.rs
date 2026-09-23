@@ -178,8 +178,11 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(e.uid.clone());
         }
-        // Les versions des fiches : chaque modification locale part une
-        // fois, et c'est chez les autres qu'elle s'applique — ou attend.
+        // Les versions des fiches, des préparations et des protocoles :
+        // ce que le codex et les protocoles ont changé ici est d'abord
+        // versionné, puis chaque version locale part une fois, et c'est
+        // chez les autres qu'elle s'applique — ou attend.
+        db.version_shared_entries("")?;
         let already_versions = db.published()?;
         for e in db
             .card_edits()?
@@ -274,6 +277,11 @@ impl Net {
             .iter()
             .filter_map(|f| crate::versions::decode(&f.payload))
             .collect();
+        // What the codex and the protocols changed here is versioned
+        // **before** what arrives is ranged: an edit made before this
+        // synchronisation replaced what this officine had, not what just
+        // came in — written after, it would silently answer it.
+        db.version_shared_entries("")?;
         db.receive_card_edits(&versions)?;
         db.receive_supply_events(&events)
     }
@@ -690,6 +698,170 @@ mod tests {
             1,
             "une officine retirée n'est plus lue"
         );
+    }
+
+    /// **Le codex et les protocoles voyagent aussi**, par le même chemin
+    /// et sous les mêmes règles que les fiches : une préparation créée
+    /// chez A se crée chez B avec sa formule, un protocole avec son arbre
+    /// entier ; une formule corrigée des deux côtés attend chez chacune.
+    #[test]
+    fn codex_entries_and_protocols_travel_with_their_versions() {
+        let (dir_a, _sa, a) = officine("codex-a");
+        let (_dir_b, _sb, b) = officine("codex-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        let key = a.setting("net_trousseau").unwrap();
+        b.net_key("net_trousseau", &key).unwrap();
+        let (na, nb) = (Net::load(&a).unwrap(), Net::load(&b).unwrap());
+        a.add_net_peer(&hex(&nb.device.id().0), "", "2026-09-23")
+            .unwrap();
+        b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-23")
+            .unwrap();
+
+        let id = a.add_preparation("Pommade maison").unwrap();
+        let before = a
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let after = crate::db::Preparation {
+            formula: "vaseline | qsp 100 g".to_owned(),
+            form: "pommade".to_owned(),
+            ..before.clone()
+        };
+        assert!(a.update_preparation(&after, &before).unwrap());
+        let proto = a.add_protocol("Toux de l'enfant", "toux").unwrap();
+        let q = a
+            .add_protocol_node(
+                proto,
+                None,
+                crate::db::Branch::Root,
+                crate::db::NodeKind::Question,
+                "Fièvre ?",
+            )
+            .unwrap();
+        a.add_protocol_node(
+            proto,
+            Some(q),
+            crate::db::Branch::Yes,
+            crate::db::NodeKind::Action,
+            "Orienter",
+        )
+        .unwrap();
+
+        let ship = |from: &Db, to: &Db| {
+            let mut n = Net::load(from).unwrap();
+            n.publish(from, "Pharmacie").unwrap();
+            n.exchange_folder(from, &folder).unwrap();
+            let mut m = Net::load(to).unwrap();
+            m.exchange_folder(to, &folder).unwrap();
+            m.absorb(to).unwrap();
+        };
+        ship(&a, &b);
+        let got = b
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Pommade maison")
+            .expect("créée chez B");
+        assert_eq!(got.formula, "vaseline | qsp 100 g");
+        assert_eq!(got.form, "pommade");
+        let bp = b
+            .protocols()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.title == "Toux de l'enfant")
+            .expect("protocole créé chez B");
+        assert_eq!(bp.subject, "toux");
+        assert_eq!(
+            b.protocol_tree(bp.id).unwrap(),
+            a.protocol_tree(proto).unwrap()
+        );
+
+        // Both correct the formula without seeing each other.
+        let set = |db: &Db, formula: &str| {
+            let p = db
+                .preparations()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.name == "Pommade maison")
+                .unwrap();
+            let new = crate::db::Preparation {
+                formula: formula.to_owned(),
+                ..p.clone()
+            };
+            assert!(db.update_preparation(&new, &p).unwrap());
+        };
+        set(&a, "vaseline | qsp 50 g");
+        set(&b, "vaseline | qsp 200 g");
+        ship(&a, &b);
+        ship(&b, &a);
+        let pending_on = |db: &Db, mine: &str| {
+            let edits = db.card_edits().unwrap();
+            let local = |f: &str| (f == "formula").then(|| mine.to_owned());
+            crate::versions::pending_of(
+                &edits,
+                crate::versions::Kind::Codex,
+                "Pommade maison",
+                &local,
+            )
+            .len()
+        };
+        assert_eq!(
+            pending_on(&a, "vaseline | qsp 50 g"),
+            1,
+            "rien d'écrasé chez A"
+        );
+        assert_eq!(
+            pending_on(&b, "vaseline | qsp 200 g"),
+            1,
+            "rien d'écrasé chez B"
+        );
+        let formula = |db: &Db| {
+            db.preparations()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.name == "Pommade maison")
+                .unwrap()
+                .formula
+        };
+        assert_eq!(formula(&a), "vaseline | qsp 50 g");
+        // A adopts B's: written here, and a version of it travels.
+        let theirs = a
+            .card_edits()
+            .unwrap()
+            .into_iter()
+            .rfind(|e| e.kind == crate::versions::Kind::Codex && !e.source.is_empty())
+            .unwrap();
+        assert!(a
+            .set_entry_field(
+                crate::versions::Kind::Codex,
+                "Pommade maison",
+                "formula",
+                &theirs.value,
+                "vaseline | qsp 50 g",
+                "CL",
+                false,
+            )
+            .unwrap());
+        assert_eq!(formula(&a), "vaseline | qsp 200 g");
+        assert_eq!(pending_on(&a, "vaseline | qsp 200 g"), 0);
+        // Reverting the protocol tree on B goes back to A.
+        let bp_tree = b.protocol_tree(bp.id).unwrap();
+        assert!(b
+            .set_entry_field(
+                crate::versions::Kind::Protocole,
+                "Toux de l'enfant",
+                "arbre",
+                "[]",
+                &bp_tree,
+                "CL",
+                true,
+            )
+            .unwrap());
+        ship(&b, &a);
+        assert_eq!(a.protocol_tree(proto).unwrap(), "[]");
     }
 
     /// **L'appairage réel** : une porte, un lien, le code des deux côtés —

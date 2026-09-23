@@ -296,7 +296,9 @@ CREATE TABLE IF NOT EXISTS card_edits (
     corrects  TEXT NOT NULL DEFAULT '',
     revert    INTEGER NOT NULL DEFAULT 0,
     operator  TEXT NOT NULL DEFAULT '',
-    source    TEXT NOT NULL DEFAULT ''
+    source    TEXT NOT NULL DEFAULT '',
+    -- `fiche`, `codex` ou `protocole` : ce que la version modifie.
+    kind      TEXT NOT NULL DEFAULT 'fiche'
 );
 CREATE TABLE IF NOT EXISTS net_records (
     -- Le réseau d'officines (`src/network.rs`) : les enregistrements
@@ -1130,6 +1132,8 @@ const MIGRATIONS: &[&str] = &[
         operator  TEXT NOT NULL DEFAULT '',
         source    TEXT NOT NULL DEFAULT ''
     )",
+    // Les versions des préparations et des protocoles — voir `SCHEMA`.
+    "ALTER TABLE card_edits ADD COLUMN kind TEXT NOT NULL DEFAULT 'fiche'",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
     "CREATE TABLE IF NOT EXISTS net_peers (
@@ -30053,14 +30057,29 @@ impl Db {
         // on its own base, and what each would capture is what the others
         // already did. The switch is inside the transaction, so another
         // post writing to this file meanwhile is still captured.
-        conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
-            .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        // Only on a base of a group, where there is a capture to mute: the
+        // switch is a write, and a write at every opening would tell every
+        // other connection — the counter's own screen, when a background
+        // thread opens the base — that someone changed something.
+        let grouped = conn
+            .query_row(
+                "SELECT 1 FROM sync_local WHERE key = 'post'",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok();
+        if grouped {
+            conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+                .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        }
         for migration in MIGRATIONS {
             // Fails harmlessly when the column already exists.
             let _ = conn.execute(migration, []);
         }
-        conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
-            .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        if grouped {
+            conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
+                .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        }
         // Last, because an index names a column and a column added since
         // this base was made is only there once the migrations have run.
         for index in INDEXES {
@@ -30121,14 +30140,26 @@ impl Db {
         .map_err(|_| "Fichier du registre illisible (mot de passe ?).".to_owned())?;
         conn.execute_batch(STUP_SCHEMA)
             .map_err(|e| format!("schéma du registre impossible : {e}"))?;
-        conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
-            .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        // Muted only where a capture exists — the same rule as the base.
+        let captured = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'trigger' AND name LIKE 'sync_%'",
+                [],
+                |_| Ok(()),
+            )
+            .is_ok();
+        if captured {
+            conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+                .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        }
         for migration in STUP_MIGRATIONS {
             // Sans effet quand la colonne est déjà là.
             let _ = conn.execute(migration, []);
         }
-        conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
-            .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        if captured {
+            conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
+                .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        }
         Ok(conn)
     }
 
@@ -31960,7 +31991,7 @@ impl Db {
             let corrects: String = self
                 .conn
                 .query_row(
-                    "SELECT uid FROM card_edits WHERE card = ?1 AND field = ?2
+                    "SELECT uid FROM card_edits WHERE kind = 'fiche' AND card = ?1 AND field = ?2
                      ORDER BY id DESC LIMIT 1",
                     (&card, field),
                     |r| r.get(0),
@@ -32063,13 +32094,14 @@ impl Db {
             .conn
             .prepare(
                 "SELECT uid, day, card, card_name, field, value, previous, corrects, revert,
-                        operator, source
+                        operator, source, kind
                  FROM card_edits ORDER BY id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
                 Ok(crate::versions::Edit {
+                    kind: crate::versions::Kind::from_key(&r.get::<_, String>(11)?),
                     uid: r.get(0)?,
                     day: r.get(1)?,
                     card: r.get(2)?,
@@ -32102,7 +32134,7 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let (mut received, mut applied) = (0, 0);
         for e in edits {
-            if !crate::versions::SHARED_FIELDS.contains(&e.field.as_str()) {
+            if !e.kind.fields().contains(&e.field.as_str()) {
                 continue;
             }
             let fresh = self
@@ -32111,8 +32143,8 @@ impl Db {
                     &format!(
                         "INSERT OR IGNORE INTO card_edits
                         (id, uid, day, card, card_name, field, value, previous, corrects,
-                         revert, operator, source)
-                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                         revert, operator, source, kind)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                         next = next_id("card_edits")
                     ),
                     rusqlite::params![
@@ -32127,6 +32159,7 @@ impl Db {
                         e.revert,
                         e.operator,
                         e.source,
+                        e.kind.key(),
                     ],
                 )
                 .map_err(|e| e.to_string())?;
@@ -32134,6 +32167,11 @@ impl Db {
                 continue;
             }
             received += 1;
+            // A preparation or a protocol: its own table, the same rule.
+            if e.kind != crate::versions::Kind::Fiche {
+                applied += usize::from(self.apply_entry_version(e)?);
+                continue;
+            }
             // The local card, by its folded name — created when this
             // officine does not have it yet.
             let mut id: Option<i64> = None;
@@ -38702,6 +38740,403 @@ pub fn format_french_date(iso: &str) -> String {
 
 /// A directory a test made, removed when the test ends.
 ///
+/// Un champ d'une préparation du codex, par son nom de colonne — ceux
+/// que [`crate::versions::CODEX_FIELDS`] nomme.
+pub fn codex_field<'a>(p: &'a Preparation, field: &str) -> Option<&'a str> {
+    Some(match field {
+        "form" => &p.form,
+        "indication" => &p.indication,
+        "formula" => &p.formula,
+        "yield_amount" => &p.yield_amount,
+        "method" => &p.method,
+        "conservation" => &p.conservation,
+        "caution" => &p.caution,
+        "tags" => &p.tags,
+        "sources" => &p.sources,
+        _ => return None,
+    })
+}
+
+fn starter_codex_field(p: &StarterPreparation, field: &str) -> Option<&'static str> {
+    Some(match field {
+        "form" => p.form,
+        "indication" => p.indication,
+        "formula" => p.formula,
+        "yield_amount" => p.yield_amount,
+        "method" => p.method,
+        "conservation" => p.conservation,
+        "caution" => p.caution,
+        "tags" => p.tags,
+        "sources" => p.sources,
+        _ => return None,
+    })
+}
+
+fn starter_tree(steps: &[StarterNode]) -> Vec<crate::versions::TreeNode> {
+    steps
+        .iter()
+        .map(|n| crate::versions::TreeNode {
+            kind: n.kind.as_str().to_owned(),
+            text: n.text.to_owned(),
+            yes: starter_tree(n.yes),
+            no: starter_tree(n.no),
+        })
+        .collect()
+}
+
+/// Une entrée du codex ou des protocoles : son identifiant, son nom, et
+/// ses champs partagés avec leur valeur.
+pub type EntryFields = (i64, String, Vec<(&'static str, String)>);
+
+/// L'arbre vide, sous sa forme canonique : celui d'un protocole qu'on
+/// vient de créer.
+const EMPTY_TREE: &str = "[]";
+
+impl Db {
+    /// L'arbre d'un protocole, sous sa forme canonique.
+    pub fn protocol_tree(&self, id: i64) -> Result<String, String> {
+        let rows: Vec<crate::versions::NodeRow> = self
+            .protocol_nodes(id)?
+            .into_iter()
+            .map(|n| {
+                (
+                    n.id,
+                    n.parent_id,
+                    n.branch.as_str().to_owned(),
+                    n.kind.as_str().to_owned(),
+                    n.text,
+                    n.position,
+                )
+            })
+            .collect();
+        Ok(crate::versions::tree_json(
+            &crate::versions::tree_from_rows(&rows),
+        ))
+    }
+
+    /// Une entrée du codex ou des protocoles par son nom replié : son
+    /// identifiant, son nom tel qu'il s'écrit, et ses champs partagés.
+    pub fn entry_fields(
+        &self,
+        kind: crate::versions::Kind,
+        card: &str,
+    ) -> Result<Option<EntryFields>, String> {
+        use crate::versions::{key, Kind, CODEX_FIELDS};
+        let k = key(card);
+        match kind {
+            Kind::Fiche => Ok(None),
+            Kind::Codex => Ok(self
+                .preparations()?
+                .into_iter()
+                .find(|p| key(&p.name) == k)
+                .map(|p| {
+                    let fields = CODEX_FIELDS
+                        .iter()
+                        .map(|f| (*f, codex_field(&p, f).unwrap_or_default().to_owned()))
+                        .collect();
+                    (p.id, p.name, fields)
+                })),
+            Kind::Protocole => {
+                let Some(p) = self.protocols()?.into_iter().find(|p| key(&p.title) == k) else {
+                    return Ok(None);
+                };
+                let tree = self.protocol_tree(p.id)?;
+                Ok(Some((
+                    p.id,
+                    p.title,
+                    vec![("subject", p.subject), ("arbre", tree)],
+                )))
+            }
+        }
+    }
+
+    /// Ce qu'un champ valait avant toute version : le contenu livré pour
+    /// une entrée livrée, vide (ou l'arbre vide) pour une entrée de
+    /// l'officine.
+    fn entry_origin(kind: crate::versions::Kind, name: &str, field: &str) -> String {
+        use crate::versions::Kind;
+        match kind {
+            Kind::Fiche => String::new(),
+            Kind::Codex => STARTER_PREPARATIONS
+                .iter()
+                .find(|p| p.name == name)
+                .and_then(|p| starter_codex_field(p, field))
+                .unwrap_or_default()
+                .to_owned(),
+            Kind::Protocole => {
+                let shipped = STARTER_PROTOCOLS.iter().find(|p| p.title == name);
+                match (field, shipped) {
+                    ("subject", Some(p)) => p.subject.to_owned(),
+                    ("arbre", Some(p)) => crate::versions::tree_json(&starter_tree(p.steps)),
+                    ("arbre", None) => EMPTY_TREE.to_owned(),
+                    _ => String::new(),
+                }
+            }
+        }
+    }
+
+    /// Écrire une version locale d'une entrée ; rend son `uid`.
+    fn insert_version(&self, e: &crate::versions::Edit) -> Result<String, String> {
+        let base = self.base_uid()?;
+        let next: i64 = self
+            .conn
+            .query_row(
+                &format!(
+                    "SELECT COALESCE({}, COALESCE(MAX(id), 0) + 1) FROM card_edits",
+                    next_id("card_edits")
+                ),
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let uid = format!("{base}:v{next}");
+        let day = if e.day.is_empty() {
+            self.today_iso().unwrap_or_default()
+        } else {
+            e.day.clone()
+        };
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO card_edits
+                    (id, uid, day, card, card_name, field, value, previous, corrects,
+                     revert, operator, source, kind)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11)",
+                    next = next_id("card_edits")
+                ),
+                rusqlite::params![
+                    uid,
+                    day,
+                    e.card,
+                    e.card_name,
+                    e.field,
+                    e.value,
+                    e.previous,
+                    e.corrects,
+                    e.revert,
+                    e.operator,
+                    e.kind.key(),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(uid)
+    }
+
+    /// Versionner ce que le codex et les protocoles ont changé ici depuis
+    /// ce que leur historique connaît (`versions::changes`) — avant de
+    /// publier vers le réseau. **Le poste de référence seulement** : les
+    /// modifications des autres postes lui arrivent par la réplication,
+    /// et deux postes qui versionneraient chacun écriraient deux fois la
+    /// même version. Rend combien.
+    pub fn version_shared_entries(&self, operator: &str) -> Result<usize, String> {
+        use crate::versions::{changes, Kind};
+        if !self.numbers_here() {
+            return Ok(0);
+        }
+        let edits = self.card_edits()?;
+        let mut names: Vec<(Kind, String)> = self
+            .preparations()?
+            .into_iter()
+            .map(|p| (Kind::Codex, p.name))
+            .collect();
+        names.extend(
+            self.protocols()?
+                .into_iter()
+                .map(|p| (Kind::Protocole, p.title)),
+        );
+        let mut written = 0;
+        for (kind, name) in names {
+            let Some((_, name, fields)) = self.entry_fields(kind, &name)? else {
+                continue;
+            };
+            let origin = |f: &str| Self::entry_origin(kind, &name, f);
+            for mut e in changes(kind, &name, &fields, &origin, &edits) {
+                e.operator = operator.to_owned();
+                self.insert_version(&e)?;
+                written += 1;
+            }
+        }
+        Ok(written)
+    }
+
+    /// Remplacer l'arbre d'un protocole par celui-ci.
+    fn replace_tree(
+        &self,
+        protocol_id: i64,
+        roots: &[crate::versions::TreeNode],
+    ) -> Result<(), String> {
+        fn put(
+            db: &Db,
+            protocol_id: i64,
+            parent: Option<i64>,
+            branch: Branch,
+            nodes: &[crate::versions::TreeNode],
+        ) -> Result<(), String> {
+            for n in nodes {
+                let id = db.add_protocol_node(
+                    protocol_id,
+                    parent,
+                    branch,
+                    NodeKind::parse(&n.kind),
+                    &n.text,
+                )?;
+                put(db, protocol_id, Some(id), Branch::Yes, &n.yes)?;
+                put(db, protocol_id, Some(id), Branch::No, &n.no)?;
+            }
+            Ok(())
+        }
+        self.conn
+            .execute(
+                "DELETE FROM protocol_nodes WHERE protocol_id = ?1",
+                [protocol_id],
+            )
+            .map_err(|e| e.to_string())?;
+        put(self, protocol_id, None, Branch::Root, roots)
+    }
+
+    /// Écrire un champ d'une entrée, **seulement s'il dit encore
+    /// `expected`**. Rend `true` quand c'est fait.
+    fn write_entry_field(
+        &self,
+        kind: crate::versions::Kind,
+        id: i64,
+        field: &str,
+        value: &str,
+        expected: &str,
+    ) -> Result<bool, String> {
+        use crate::versions::{Kind, CODEX_FIELDS};
+        match (kind, field) {
+            (Kind::Codex, _) => {
+                // The column comes from the list, never from the peer.
+                let Some(column) = CODEX_FIELDS.iter().find(|f| **f == field) else {
+                    return Ok(false);
+                };
+                self.conn
+                    .execute(
+                        &format!(
+                            "UPDATE preparations SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"
+                        ),
+                        (value, id, expected),
+                    )
+                    .map(|n| n == 1)
+                    .map_err(|e| e.to_string())
+            }
+            (Kind::Protocole, "subject") => self
+                .conn
+                .execute(
+                    "UPDATE protocols SET subject = ?1 WHERE id = ?2 AND subject = ?3",
+                    (value, id, expected),
+                )
+                .map(|n| n == 1)
+                .map_err(|e| e.to_string()),
+            (Kind::Protocole, "arbre") => {
+                let here = self.protocol_tree(id)?;
+                let same = here == expected || (here == EMPTY_TREE && expected.is_empty());
+                let Some(roots) = crate::versions::tree_nodes(value) else {
+                    return Ok(false);
+                };
+                if !same {
+                    return Ok(false);
+                }
+                self.replace_tree(id, &roots)?;
+                Ok(true)
+            }
+            _ => Ok(false),
+        }
+    }
+
+    /// Appliquer une version reçue d'une préparation ou d'un protocole —
+    /// **seulement sur la valeur qu'elle remplaçait**. Une entrée inconnue
+    /// ici est créée.
+    fn apply_entry_version(&self, e: &crate::versions::Edit) -> Result<bool, String> {
+        use crate::versions::Kind;
+        let id = match self.entry_fields(e.kind, &e.card_name)? {
+            Some((id, _, _)) => id,
+            None if !e.card_name.trim().is_empty() => match e.kind {
+                Kind::Codex => self.add_preparation(e.card_name.trim())?,
+                Kind::Protocole => self.add_protocol(e.card_name.trim(), "")?,
+                Kind::Fiche => return Ok(false),
+            },
+            None => return Ok(false),
+        };
+        self.write_entry_field(e.kind, id, &e.field, &e.value, &e.previous)
+    }
+
+    /// Revenir à une valeur, ou adopter une version reçue : la valeur est
+    /// écrite ici — **si le champ dit encore ce que l'écran montrait** — et
+    /// une version de plus la porte, qui voyage comme les autres. Rend
+    /// `false` quand le champ a changé entre-temps.
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_entry_field(
+        &self,
+        kind: crate::versions::Kind,
+        card: &str,
+        field: &str,
+        value: &str,
+        shown: &str,
+        operator: &str,
+        revert: bool,
+    ) -> Result<bool, String> {
+        let Some((id, name, _)) = self.entry_fields(kind, card)? else {
+            return Ok(false);
+        };
+        if !self.write_entry_field(kind, id, field, value, shown)? {
+            return Ok(false);
+        }
+        let edits = self.card_edits()?;
+        let corrects = crate::versions::history_of(&edits, kind, &name, field)
+            .last()
+            .map(|e| e.uid.clone())
+            .unwrap_or_default();
+        self.insert_version(&crate::versions::Edit {
+            kind,
+            uid: String::new(),
+            day: String::new(),
+            card: crate::versions::key(&name),
+            card_name: name,
+            field: field.to_owned(),
+            value: value.to_owned(),
+            previous: shown.to_owned(),
+            corrects,
+            revert,
+            operator: operator.to_owned(),
+            source: String::new(),
+        })?;
+        Ok(true)
+    }
+
+    /// « Garder la mienne » pour une préparation ou un protocole : une
+    /// version locale qui redit la valeur d'ici après une version reçue
+    /// qu'on n'adopte pas. Elle ferme l'arbitrage ici et ne part pas.
+    pub fn keep_mine_entry(
+        &self,
+        after: &crate::versions::Edit,
+        operator: &str,
+    ) -> Result<(), String> {
+        let Some((_, name, fields)) = self.entry_fields(after.kind, &after.card_name)? else {
+            return Ok(());
+        };
+        let Some((_, value)) = fields.into_iter().find(|(f, _)| *f == after.field) else {
+            return Ok(());
+        };
+        let uid = self.insert_version(&crate::versions::Edit {
+            kind: after.kind,
+            uid: String::new(),
+            day: String::new(),
+            card: crate::versions::key(&name),
+            card_name: name,
+            field: after.field.clone(),
+            value,
+            previous: after.value.clone(),
+            corrects: after.uid.clone(),
+            revert: true,
+            operator: operator.to_owned(),
+            source: String::new(),
+        })?;
+        self.mark_published(&[uid])
+    }
+}
+
 /// L'identifiant qu'une création tire du bloc de ce poste, à écrire dans
 /// la colonne `id` de chaque `INSERT` d'une table qui voyage.
 ///

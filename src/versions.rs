@@ -23,6 +23,14 @@
 //!
 //! Une fiche se reconnaît d'une officine à l'autre à son nom replié : les
 //! fiches livrées ont les mêmes partout. Pur, testé, sans base.
+//!
+//! **Trois sortes d'entrées** suivent les mêmes règles ([`Kind`]) : les
+//! fiches médicament, les préparations du codex, et les protocoles. Une
+//! préparation voyage champ par champ comme une fiche ; un protocole
+//! voyage en deux champs — son sujet et son **arbre entier**, écrit sous
+//! une forme canonique ([`tree_json`]) : deux officines qui ont le même
+//! arbre écrivent les mêmes octets, et une version d'arbre ne s'applique
+//! que sur l'arbre qu'elle remplaçait.
 
 /// Les champs d'une fiche que le réseau partage — tous sauf les notes
 /// de l'équipe.
@@ -54,9 +62,87 @@ pub const SHARED_FIELDS: [&str; 25] = [
     "red_flags",
 ];
 
+/// Les champs d'une préparation du codex que le réseau partage. Le nom
+/// est ce qui la reconnaît d'une officine à l'autre.
+pub const CODEX_FIELDS: [&str; 9] = [
+    "form",
+    "indication",
+    "formula",
+    "yield_amount",
+    "method",
+    "conservation",
+    "caution",
+    "tags",
+    "sources",
+];
+
+/// Les champs d'un protocole : son sujet, et son arbre entier.
+pub const PROTOCOL_FIELDS: [&str; 2] = ["subject", "arbre"];
+
+/// Ce qu'une version modifie.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+pub enum Kind {
+    /// Une fiche médicament.
+    #[default]
+    Fiche,
+    /// Une préparation du codex.
+    Codex,
+    /// Un protocole, son arbre compris.
+    Protocole,
+}
+
+impl Kind {
+    pub fn key(self) -> &'static str {
+        match self {
+            Kind::Fiche => "fiche",
+            Kind::Codex => "codex",
+            Kind::Protocole => "protocole",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Kind {
+        match key {
+            "codex" => Kind::Codex,
+            "protocole" => Kind::Protocole,
+            _ => Kind::Fiche,
+        }
+    }
+
+    /// Le type de charge qui voyage. Une fiche garde `version`, que les
+    /// versions d'avant connaissent ; les deux autres ont le leur, qu'une
+    /// version d'avant ignore au lieu de le prendre pour une fiche.
+    fn payload(self) -> &'static str {
+        match self {
+            Kind::Fiche => "version",
+            Kind::Codex => "codex",
+            Kind::Protocole => "protocole",
+        }
+    }
+
+    fn from_payload(tag: &str) -> Option<Kind> {
+        match tag {
+            "version" => Some(Kind::Fiche),
+            "codex" => Some(Kind::Codex),
+            "protocole" => Some(Kind::Protocole),
+            _ => None,
+        }
+    }
+
+    /// Les champs que le réseau partage pour cette sorte d'entrée.
+    pub fn fields(self) -> &'static [&'static str] {
+        match self {
+            Kind::Fiche => &SHARED_FIELDS,
+            Kind::Codex => &CODEX_FIELDS,
+            Kind::Protocole => &PROTOCOL_FIELDS,
+        }
+    }
+}
+
 /// Une version d'un champ.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Edit {
+    /// Fiche, préparation ou protocole.
+    pub kind: Kind,
     /// `<base>:<numéro>` — global, comme au journal des ruptures.
     pub uid: String,
     pub day: String,
@@ -87,10 +173,15 @@ pub fn key(name: &str) -> String {
 /// Les versions d'un champ d'une fiche, **de la plus ancienne à la plus
 /// récente** dans l'ordre où elles ont été reçues ou écrites.
 pub fn history<'a>(edits: &'a [Edit], card: &str, field: &str) -> Vec<&'a Edit> {
+    history_of(edits, Kind::Fiche, card, field)
+}
+
+/// La même chose pour n'importe quelle sorte d'entrée.
+pub fn history_of<'a>(edits: &'a [Edit], kind: Kind, card: &str, field: &str) -> Vec<&'a Edit> {
     let k = key(card);
     edits
         .iter()
-        .filter(|e| e.card == k && e.field == field)
+        .filter(|e| e.kind == kind && e.card == k && e.field == field)
         .collect()
 }
 
@@ -145,15 +236,25 @@ pub fn pending<'a>(
     card: &str,
     local: &dyn Fn(&str) -> Option<String>,
 ) -> Vec<&'a Edit> {
+    pending_of(edits, Kind::Fiche, card, local)
+}
+
+/// La même chose pour n'importe quelle sorte d'entrée.
+pub fn pending_of<'a>(
+    edits: &'a [Edit],
+    kind: Kind,
+    card: &str,
+    local: &dyn Fn(&str) -> Option<String>,
+) -> Vec<&'a Edit> {
     let k = key(card);
     let mut out: Vec<&Edit> = Vec::new();
-    for field in SHARED_FIELDS {
+    for &field in kind.fields() {
         // The field's last version, when it came from elsewhere and the
         // local card does not carry it. A local version written after it —
         // « garder la mienne », or an edit here — closes the question.
         if let Some(e) = edits
             .iter()
-            .rfind(|e| e.card == k && e.field == field)
+            .rfind(|e| e.kind == kind && e.card == k && e.field == field)
             .filter(|e| !e.source.is_empty())
         {
             if let Some(value) = local(field) {
@@ -170,7 +271,7 @@ pub fn pending<'a>(
 pub fn encode(e: &Edit, officine: &str) -> Vec<u8> {
     serde_json::json!({
         "v": 1,
-        "t": "version",
+        "t": e.kind.payload(),
         "uid": e.uid,
         "day": e.day,
         "card": e.card,
@@ -192,12 +293,17 @@ pub fn encode(e: &Edit, officine: &str) -> Vec<u8> {
 /// pas entrer ici.
 pub fn decode(bytes: &[u8]) -> Option<Edit> {
     let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
-    if v.get("v")?.as_u64()? != 1 || v.get("t")?.as_str()? != "version" {
+    if v.get("v")?.as_u64()? != 1 {
         return None;
     }
+    let kind = Kind::from_payload(v.get("t")?.as_str()?)?;
     let text = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_owned();
     let field = text("field");
-    if !SHARED_FIELDS.contains(&field.as_str()) {
+    if !kind.fields().contains(&field.as_str()) {
+        return None;
+    }
+    // An arbre that does not read as one never enters.
+    if field == "arbre" && !text("value").is_empty() && tree_nodes(&text("value")).is_none() {
         return None;
     }
     let uid = text("uid");
@@ -207,6 +313,7 @@ pub fn decode(bytes: &[u8]) -> Option<Edit> {
     }
     let officine = text("officine");
     Some(Edit {
+        kind,
         uid,
         day: text("day"),
         card,
@@ -225,6 +332,159 @@ pub fn decode(bytes: &[u8]) -> Option<Edit> {
     })
 }
 
+/// Ce qu'une entrée a changé ici depuis ce que son historique connaît :
+/// les versions à écrire. `local` donne chaque champ tel qu'il est,
+/// `origin` ce qu'il valait avant toute version — le contenu livré pour
+/// une entrée livrée, vide pour une entrée de l'officine.
+///
+/// **Une valeur déjà connue n'est pas une modification** : ni l'origine,
+/// ni la valeur d'une version de l'historique. C'est ce qui empêche une
+/// version reçue en attente d'arbitrage d'être « répondue » par la valeur
+/// locale qu'elle n'a pas remplacée. Une nouvelle version remplace la
+/// dernière de l'historique — celle que les autres officines ont, le plus
+/// probablement.
+pub fn changes(
+    kind: Kind,
+    card_name: &str,
+    local: &[(&str, String)],
+    origin: &dyn Fn(&str) -> String,
+    edits: &[Edit],
+) -> Vec<Edit> {
+    let mut out = Vec::new();
+    for (field, value) in local {
+        if !kind.fields().contains(field) {
+            continue;
+        }
+        let h = history_of(edits, kind, card_name, field);
+        let start = origin(field);
+        let known = *value == start || h.iter().any(|e| e.value == *value);
+        if known {
+            continue;
+        }
+        let (previous, corrects) = match h.last() {
+            Some(last) => (last.value.clone(), last.uid.clone()),
+            None => (start, String::new()),
+        };
+        out.push(Edit {
+            kind,
+            uid: String::new(),
+            day: String::new(),
+            card: key(card_name),
+            card_name: card_name.to_owned(),
+            field: (*field).to_owned(),
+            value: value.clone(),
+            previous,
+            corrects,
+            revert: false,
+            operator: String::new(),
+            source: String::new(),
+        });
+    }
+    out
+}
+
+/// Un nœud d'arbre de protocole, sans identifiant : ce qui voyage.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TreeNode {
+    /// `QUESTION` ou `ACTION`, comme la base les écrit.
+    pub kind: String,
+    pub text: String,
+    pub yes: Vec<TreeNode>,
+    pub no: Vec<TreeNode>,
+}
+
+fn node_json(n: &TreeNode) -> serde_json::Value {
+    serde_json::json!({
+        "k": n.kind,
+        "t": n.text,
+        "y": n.yes.iter().map(node_json).collect::<Vec<_>>(),
+        "n": n.no.iter().map(node_json).collect::<Vec<_>>(),
+    })
+}
+
+/// L'arbre sous sa forme canonique : le même arbre donne les mêmes
+/// octets, quels que soient les identifiants et l'ordre d'écriture.
+pub fn tree_json(roots: &[TreeNode]) -> String {
+    serde_json::Value::Array(roots.iter().map(node_json).collect()).to_string()
+}
+
+/// Un nœud tel que la base le rend : identifiant, parent, branche
+/// (`ROOT`, `YES`, `NO`), sorte, texte, position.
+pub type NodeRow = (i64, Option<i64>, String, String, String, i64);
+
+/// L'arbre d'une liste de nœuds tels que la base les rend.
+pub fn tree_from_rows(rows: &[NodeRow]) -> Vec<TreeNode> {
+    fn under(rows: &[NodeRow], parent: Option<i64>, branch: &str, depth: usize) -> Vec<TreeNode> {
+        if depth > 64 {
+            return Vec::new();
+        }
+        let mut here: Vec<&NodeRow> = rows
+            .iter()
+            .filter(|r| r.1 == parent && (parent.is_none() || r.2 == branch))
+            .collect();
+        here.sort_by_key(|r| (r.5, r.0));
+        here.into_iter()
+            .map(|r| TreeNode {
+                kind: r.3.clone(),
+                text: r.4.clone(),
+                yes: under(rows, Some(r.0), "YES", depth + 1),
+                no: under(rows, Some(r.0), "NO", depth + 1),
+            })
+            .collect()
+    }
+    under(rows, None, "ROOT", 0)
+}
+
+/// L'inverse de [`tree_json`] ; rien pour un texte qui n'est pas un arbre.
+pub fn tree_nodes(json: &str) -> Option<Vec<TreeNode>> {
+    fn read(v: &serde_json::Value, depth: usize) -> Option<TreeNode> {
+        if depth > 64 {
+            return None;
+        }
+        let list = |k: &str| -> Option<Vec<TreeNode>> {
+            v.get(k)?
+                .as_array()?
+                .iter()
+                .map(|c| read(c, depth + 1))
+                .collect()
+        };
+        let kind = v.get("k")?.as_str()?;
+        if kind != "QUESTION" && kind != "ACTION" {
+            return None;
+        }
+        Some(TreeNode {
+            kind: kind.to_owned(),
+            text: v.get("t")?.as_str()?.to_owned(),
+            yes: list("y")?,
+            no: list("n")?,
+        })
+    }
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    v.as_array()?.iter().map(|n| read(n, 0)).collect()
+}
+
+/// L'arbre en lignes lisibles, pour l'historique : une question suivie de
+/// ses deux branches, en retrait.
+pub fn tree_text(json: &str) -> String {
+    fn walk(out: &mut Vec<String>, nodes: &[TreeNode], depth: usize, tag: &str) {
+        for (i, n) in nodes.iter().enumerate() {
+            let lead = if i == 0 { tag } else { "" };
+            let mark = if n.kind == "QUESTION" { "? " } else { "- " };
+            out.push(format!("{}{lead}{mark}{}", "    ".repeat(depth), n.text));
+            walk(out, &n.yes, depth + 1, crate::strings::tr("proto_yes_tag"));
+            walk(out, &n.no, depth + 1, crate::strings::tr("proto_no_tag"));
+        }
+    }
+    match tree_nodes(json) {
+        Some(nodes) => {
+            let mut out = Vec::new();
+            walk(&mut out, &nodes, 0, "");
+            out.join("\n")
+        }
+        None => json.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -238,6 +498,7 @@ mod tests {
         source: &str,
     ) -> Edit {
         Edit {
+            kind: Kind::Fiche,
             uid: uid.to_owned(),
             day: "2026-09-23".to_owned(),
             card: key("Eliquis"),
@@ -340,5 +601,122 @@ mod tests {
         let notes = ed("a:10", "notes", "ne pas commander", "", "", "");
         assert!(decode(&encode(&notes, "X")).is_none());
         assert!(decode(b"{}").is_none());
+    }
+
+    /// **Une valeur déjà connue n'est pas une modification** — l'origine,
+    /// ou la valeur d'une version ; une valeur neuve remplace la dernière
+    /// version, ou l'origine s'il n'y en a pas.
+    #[test]
+    fn only_an_unknown_value_is_a_change_and_it_replaces_the_last_version() {
+        let origin = |f: &str| {
+            if f == "formula" {
+                "acide | 2 g".to_owned()
+            } else {
+                String::new()
+            }
+        };
+        let local = |v: &str| vec![("formula", v.to_owned()), ("caution", String::new())];
+        assert!(changes(Kind::Codex, "Vaseline", &local("acide | 2 g"), &origin, &[]).is_empty());
+        let first = changes(Kind::Codex, "Vaseline", &local("acide | 3 g"), &origin, &[]);
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].previous, "acide | 2 g");
+        assert_eq!(first[0].kind, Kind::Codex);
+        // A received version waits: the local value, the origin, is known —
+        // no version answers it behind the officine's back.
+        let theirs = Edit {
+            kind: Kind::Codex,
+            card: key("Vaseline"),
+            field: "formula".to_owned(),
+            value: "acide | 5 g".to_owned(),
+            previous: "acide | 2 g".to_owned(),
+            source: "Pharmacie du Port".to_owned(),
+            ..ed("b:1", "formula", "", "", "", "")
+        };
+        let all = [theirs];
+        assert!(changes(
+            Kind::Codex,
+            "Vaseline",
+            &local("acide | 2 g"),
+            &origin,
+            &all
+        )
+        .is_empty());
+        let next = changes(
+            Kind::Codex,
+            "Vaseline",
+            &local("acide | 4 g"),
+            &origin,
+            &all,
+        );
+        assert_eq!(
+            (next[0].previous.as_str(), next[0].corrects.as_str()),
+            ("acide | 5 g", "b:1")
+        );
+        // A drug card's history is not a preparation's.
+        assert!(history_of(&all, Kind::Fiche, "Vaseline", "formula").is_empty());
+        assert!(!Kind::Codex.fields().contains(&"name"));
+    }
+
+    /// **Le même arbre donne les mêmes octets**, quels que soient les
+    /// identifiants et l'ordre d'écriture ; il se relit tel quel, et un
+    /// texte qui n'est pas un arbre ne passe pas.
+    #[test]
+    fn a_tree_is_written_canonically_and_reads_back() {
+        let rows = |ids: [i64; 3]| {
+            vec![
+                (
+                    ids[0],
+                    None,
+                    "ROOT".to_owned(),
+                    "QUESTION".to_owned(),
+                    "Fièvre ?".to_owned(),
+                    0,
+                ),
+                (
+                    ids[1],
+                    Some(ids[0]),
+                    "YES".to_owned(),
+                    "ACTION".to_owned(),
+                    "Orienter".to_owned(),
+                    0,
+                ),
+                (
+                    ids[2],
+                    Some(ids[0]),
+                    "NO".to_owned(),
+                    "ACTION".to_owned(),
+                    "Conseil".to_owned(),
+                    0,
+                ),
+            ]
+        };
+        let a = tree_json(&tree_from_rows(&rows([1, 2, 3])));
+        let mut shuffled = rows([40, 7, 12]);
+        shuffled.reverse();
+        let b = tree_json(&tree_from_rows(&shuffled));
+        assert_eq!(a, b);
+        let back = tree_nodes(&a).unwrap();
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].yes[0].text, "Orienter");
+        assert_eq!(tree_json(&back), a);
+        assert!(tree_text(&a).contains("Fièvre"));
+        assert!(tree_nodes("pas un arbre").is_none());
+        assert!(tree_nodes(r#"[{"k":"AUTRE","t":"x","y":[],"n":[]}]"#).is_none());
+        // A protocol version travels under its own tag, and a malformed
+        // tree never enters.
+        let e = Edit {
+            kind: Kind::Protocole,
+            field: "arbre".to_owned(),
+            value: a.clone(),
+            ..ed("a:1", "arbre", "", "", "", "")
+        };
+        let bytes = encode(&e, "X");
+        assert!(String::from_utf8_lossy(&bytes).contains("\"t\":\"protocole\""));
+        assert_eq!(decode(&bytes).unwrap().kind, Kind::Protocole);
+        let bad = Edit {
+            value: "{".to_owned(),
+            ..e
+        };
+        assert!(decode(&encode(&bad, "X")).is_none());
     }
 }
