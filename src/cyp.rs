@@ -376,7 +376,8 @@ pub fn cross(treatments: &[crate::revue::Treatment]) -> Reading {
         // lire. Elle part en **inconnue** plutôt qu'en inerte, comme le
         // Kétoderm : ce module nomme ce sur quoi il ne se prononce pas,
         // et ne délivre pas de certificat de bonne conduite.
-        if crate::classes::is_local_form(t.class) {
+        // Sauf le miconazole buccal — voir `classes::local_but_absorbed`.
+        if crate::classes::stays_local(t.dci, t.class) {
             unknown.push(name);
             continue;
         }

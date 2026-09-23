@@ -154,7 +154,9 @@ pub fn review(treatments: &[Treatment]) -> Vec<Point> {
         .collect();
     let local: Vec<bool> = treatments
         .iter()
-        .map(|t| crate::classes::is_local_form(t.class))
+        // Le miconazole buccal passe dans le sang et compte comme la voie
+        // générale — voir `classes::local_but_absorbed`.
+        .map(|t| crate::classes::stays_local(t.dci, t.class))
         .collect();
     let antidote: Vec<bool> = treatments
         .iter()
@@ -2027,8 +2029,10 @@ mod tests {
         assert!(!titles(&["Vitamine K1", "Previscan"]).contains(&"Deux anticoagulants"));
         // Un bain de bouche n'est pas un second AINS.
         assert!(!titles(&["Tantum", "Advil"]).contains(&"Deux AINS"));
-        // Un shampooing ne croise pas la simvastatine.
+        // Un shampooing ne croise pas la simvastatine ; le gel buccal de
+        // miconazole, qui passe dans le sang, si.
         assert!(!titles(&["Kétoderm", "Zocor"]).contains(&"Statine + inhibiteur enzymatique"));
+        assert!(titles(&["Daktarin", "Zocor"]).contains(&"Statine + inhibiteur enzymatique"));
         // Et ce qui doit parler parle toujours.
         assert!(titles(&["Previscan", "Advil"]).contains(&"Anticoagulant + AINS"));
         assert!(titles(&["Xanax", "Skenan"]).contains(&"Benzodiazépine + opioïde"));

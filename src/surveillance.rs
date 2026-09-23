@@ -215,11 +215,7 @@ pub fn due(
         // numération trimestrielles « pour toxicité médullaire ». C'est
         // le piège que le `Without` de `revue.rs` a dû se donner un veto
         // pour éviter, écarté ici une fois.
-        .filter(|t| {
-            !crate::fuzzy::sort_key(t.class)
-                .trim_start()
-                .starts_with("antidote")
-        })
+        .filter(|t| !crate::classes::is_antidote(t.class))
         .map(|t| {
             (
                 t.name.trim().to_owned(),

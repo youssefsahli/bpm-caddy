@@ -5,6 +5,40 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.255.0] - 2026-09-23
+
+### Fixed
+- **Le dossier ouvert suit ce qu'un autre poste y écrit — tout le
+  dossier.** La biologie, le carnet vaccinal, les locations et les
+  voyages n'étaient pas relus : un DFG noté sur l'autre poste laissait
+  ici le panneau du rein, la puce du compagnon et le plan de
+  surveillance — imprimé — sur l'ancienne valeur. Le planning affiché et
+  la table de référence ouverte suivent aussi.
+- **Et ce que ce poste écrit lui-même** : corriger la classe d'une
+  fiche, une ligne de posologie ou une phrase imprimée relit désormais
+  les lectures du dossier ouvert. La feuille « Écraser ? » ou le plan de
+  surveillance imprimés juste après portaient l'ancienne lecture.
+- **À minuit, ce qui dépend du jour suit** : sur un poste de garde,
+  « demain », la semaine, l'âge du patient ouvert, son plan de
+  surveillance et la péremption d'une boîte déjà lue restaient ceux de
+  la veille.
+- **Un antidote ne porte plus la fiche de ce qu'il corrige** dans les
+  tables de la grossesse, du rein et de l'écrasement : la vitamine K1
+  n'est plus « interdite, embryopathie », la Lederfoline n'est plus « à
+  ne pas écraser, cytotoxique » ni « contre-indiquée sous 30 ».
+- **Le miconazole en gel buccal compte comme la voie générale**, ce que
+  sa fiche et celle de la Coumadine écrivent : il croise de nouveau les
+  cytochromes, la carte et la revue d'ordonnance (statine, AVK,
+  sulfamide), là où il est le plus dangereux. Les autres formes locales
+  restent à part.
+- **La bande du dossier ne cite plus une forme locale comme une
+  interaction** : la section « interactions » de l'Eliquis nomme les
+  azolés généraux, et un shampooing de kétoconazole s'y trouvait face à
+  l'anticoagulant.
+- En biologie, les inducteurs, les molécules du DRESS et les traitements
+  de la sclérose en plaques sont nommés plutôt que désignés par une
+  classe qui prenait aussi le Keppra, le Revlimid ou le Lyrica.
+
 ## [0.254.0] - 2026-09-23
 
 ### Fixed

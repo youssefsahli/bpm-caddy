@@ -2144,6 +2144,27 @@ pub fn strip_unsaid(folded: &str) -> String {
     out
 }
 
+/// Une forme locale **qui passe dans le sang assez pour compter** : la
+/// voie ne la fait pas taire.
+///
+/// Une seule aujourd'hui, et elle est nommée parce qu'elle est connue :
+/// le miconazole en gel buccal (et en ovule), dont le passage
+/// systémique suffit à faire flamber un INR ou une sulfonylurée — la
+/// fiche de la Coumadine écrit « contre-indiqué, même en gel buccal ».
+/// Filtré comme les autres formes locales, le Daktarin sortait du
+/// croisement des cytochromes et de la carte, là où il est le plus
+/// dangereux. `revue.rs` le savait déjà (`LOCAL_RULES`).
+pub fn local_but_absorbed(dci: &str, class: &str) -> bool {
+    let hay = crate::fuzzy::sort_key(&format!("{dci} {class}"));
+    crate::fuzzy::contains_folded(&hay, "miconazole")
+}
+
+/// Une forme locale que les tables de molécule doivent laisser de côté :
+/// [`is_local_form`], sauf [`local_but_absorbed`].
+pub fn stays_local(dci: &str, class: &str) -> bool {
+    is_local_form(class) && !local_but_absorbed(dci, class)
+}
+
 /// Une fiche d'antidote : sa classe le dit (« antidote des AVK »,
 /// « antidote du méthotrexate »). Une table qui déclenche sur la
 /// molécule qu'il corrige ne doit pas le lire comme elle — la
@@ -2554,5 +2575,49 @@ mod tests {
         // « localisé » n'est pas une voie : un cancer localisé se traite
         // par la voie générale.
         assert!(!is_local_form("anticancéreux — cancer localisé"));
+    }
+
+    /// **Un antidote n'est pas ce qu'il corrige, dans aucune table** —
+    /// la vitamine K1 lisait « interdit, embryopathie » (celle des AVK),
+    /// la Lederfoline « ne pas écraser, cytotoxique » et
+    /// « contre-indication sous 30 » (celles du méthotrexate).
+    #[test]
+    fn an_antidote_wears_no_table_of_what_it_reverses() {
+        let t = |n: &str| {
+            let (name, dci, class, _) = crate::db::STARTER_DRUGS
+                .iter()
+                .find(|(x, ..)| *x == n)
+                .unwrap_or_else(|| panic!("fiche absente : {n}"));
+            crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags: "",
+            }
+        };
+        for name in ["Vitamine K1", "Lederfoline"] {
+            assert!(
+                is_antidote(t(name).class),
+                "{name} n'est pas lu comme un antidote"
+            );
+            assert!(
+                crate::renal::read(&[t(name)], Some(20.0)).is_empty(),
+                "{name} : rein"
+            );
+            for g in crate::gravidity::read(&[t(name)]) {
+                assert!(
+                    !g.label.contains("thotrexate") && !g.label.contains("AVK"),
+                    "{name} : grossesse {}",
+                    g.label
+                );
+            }
+            for c in crate::crush::read(&[t(name)]) {
+                assert!(
+                    !c.label.contains("thotrexate"),
+                    "{name} : écraser {}",
+                    c.label
+                );
+            }
+        }
     }
 }

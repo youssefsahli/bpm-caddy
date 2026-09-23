@@ -1271,7 +1271,10 @@ const RULES: &[Rule] = &[
         code: "B9",
         side: Side::Below,
         threshold: 7.0,
-        needs: &["méthotrexate", "antiépileptique", "phénytoïne", "carbamazépine"],
+        // Les inducteurs nommés, et non « antiépileptique » : le mot
+        // prenait le Keppra, le Lyrica et le Rivotril, qui n'induisent
+        // rien, pour des « antiépileptiques inducteurs ».
+        needs: &["méthotrexate", "phénytoïne", "carbamazépine", "phénobarbital", "primidone"],
         severity: Severity::Warn,
         text: "Folates bas sous méthotrexate ou sous antiépileptique inducteur : la supplémentation est la règle sous méthotrexate, et elle se donne à distance de la prise hebdomadaire.",
     },
@@ -1327,7 +1330,10 @@ const RULES: &[Rule] = &[
         code: "TG",
         side: Side::Above,
         threshold: 2.0,
-        needs: &["isotrétinoïne", "antipsychotique", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "œstrogène"],
+        // « œstrogène » ne se repliait sur rien : les fiches écrivent
+        // « estro… ». L'œstrogène qui monte les triglycérides est celui
+        // de la voie orale — la pilule estroprogestative.
+        needs: &["isotrétinoïne", "antipsychotique", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "éthinylestradiol", "estroprogestatif"],
         severity: Severity::Warn,
         text: "Triglycérides élevés sous isotrétinoïne, antipsychotique, corticoïde ou œstrogène : la molécule y contribue et le bilan lipidique fait partie de sa surveillance. Sous isotrétinoïne, un contrôle s'impose avant de renouveler.",
     },
@@ -1514,7 +1520,12 @@ const RULES: &[Rule] = &[
         code: "PNE",
         side: Side::Above,
         threshold: 0.5,
-        needs: &["antibiotique", "antiépileptique", "allopurinol", "sulfamide"],
+        // Les molécules du DRESS, nommées : « antibiotique » (gardé en
+        // tête, c'est l'adresse de la phrase) ne prenait que trois
+        // fiches et aucune bêtalactamine, « antiépileptique »
+        // prenait le Keppra, et « sulfamide » les sulfamides
+        // hypoglycémiants, qui ne sont pas de cette famille-là.
+        needs: &["antibiotique", "allopurinol", "carbamazépine", "oxcarbazépine", "lamotrigine", "phénytoïne", "phénobarbital", "sulfaméthoxazole", "cotrimoxazole", "sulfasalazine", "sulfamide antibactérien", "dapsone", "minocycline", "vancomycine", "névirapine", "abacavir"],
         severity: Severity::Warn,
         text: "Éosinophilie modérée sous une classe connue pour l'hypersensibilité retardée : la surveiller, et demander au patient s'il a une éruption, de la fièvre ou des ganglions. Ce sont les trois questions qui font la différence entre une anomalie et un DRESS qui commence.",
     },
@@ -1522,7 +1533,11 @@ const RULES: &[Rule] = &[
         code: "LYMPHO",
         side: Side::Below,
         threshold: 0.5,
-        needs: &["fingolimod", "diméthyle", "tériflunomide", "interféron bêta", "cladribine", "natalizumab", "ocrélizumab", "ofatumumab", "immunomodulateur", "modulateur S1P"],
+        // La classe de la SEP, et non « immunomodulateur » seul, qui
+        // envoyait le Revlimid, l'Imnovid et l'Arava « à l'avis du
+        // neurologue » ; et « Tecfidera » là où « diméthyle » ne
+        // prenait rien (la fiche écrit « diméthyl »).
+        needs: &["fingolimod", "tecfidera", "tériflunomide", "interféron bêta", "cladribine", "natalizumab", "ocrélizumab", "ofatumumab", "immunomodulateur — sep", "modulateur S1P"],
         severity: Severity::Alert,
         text: "Lymphopénie sévère sous traitement de fond de la sclérose en plaques : c'est le seuil auquel le traitement se suspend et où la LEMP cesse d'être théorique. Ne pas renouveler sans l'avis du neurologue.",
     },

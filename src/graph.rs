@@ -523,8 +523,10 @@ fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
         // lui-même une forme locale, deux topiques se citent
         // légitimement.
         Tie::Interaction => {
+            // Le miconazole buccal croise quand même : voir
+            // `classes::local_but_absorbed`.
             (crate::classes::is_local_form(centre.class)
-                || !crate::classes::is_local_form(other.class))
+                || !crate::classes::stays_local(other.dci, other.class))
                 && (named_in(folded_ddi, other.name) || named_in(folded_ddi, other.dci))
         }
     }

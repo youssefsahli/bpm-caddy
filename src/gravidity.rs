@@ -189,7 +189,14 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Finding> {
         .map(|t| {
             let hay =
                 crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
-            let hit = TABLE.iter().find(|a| claims(a, &hay));
+            // **Un antidote n'est pas ce qu'il corrige** — la vitamine K1 n'est
+            // pas un AVK, la Lederfoline n'est pas du méthotrexate : sans
+            // ligne, il tombe dans « sans donnée » / « à vérifier », ce qui
+            // est la lecture honnête, et non dans celle de la molécule
+            // qu'il renverse.
+            let hit = (!crate::classes::is_antidote(t.class))
+                .then(|| TABLE.iter().find(|a| claims(a, &hay)))
+                .flatten();
             match hit {
                 Some(a) => Finding {
                     treatment: t.name.trim().to_owned(),

@@ -5788,8 +5788,19 @@ impl Session {
         // retard et le trait de « maintenant » parlaient tous d'un jour
         // qui n'était plus.
         if let Ok((day, minutes)) = self.db.now_local() {
+            let rolled = !self.today.is_empty() && day != self.today;
             self.today = day;
             self.now_minutes = minutes;
+            // **Et ce qui dépend du jour suit** — sur un poste de garde,
+            // minuit passe l'application ouverte : « demain », la semaine,
+            // les notes du jour, l'âge du patient ouvert, ce que son plan
+            // de surveillance dit dû. Seul `today` changeait, et le reste
+            // attendait qu'on navigue.
+            if rolled {
+                self.refresh_dashboard();
+                self.refresh_bio_findings();
+                self.refresh_vacc_due();
+            }
         }
         // Les compteurs d'usage suivent cette même cadence, divisée :
         // rendus toutes les cent cinquante passes, soit cinq minutes.
@@ -5907,10 +5918,49 @@ impl Session {
         // eux qu'on a sous les yeux quand quelqu'un d'autre écrit
         // dessus.
         if let Some(open) = self.viewing.as_ref().map(|p| p.id) {
+            // **Et ses autres moitiés**, qui manquaient : la biologie, le
+            // carnet, les locations, les voyages. Un DFG écrit sur
+            // l'autre poste laissait ici le panneau du rein, la puce du
+            // compagnon et le plan de surveillance — **imprimé** — lire
+            // l'ancien. Relues directement, sans `load_biology` ni
+            // `load_carnet`, qui ferment une correction en cours : une
+            // relecture ne touche pas à ce qu'on tape.
+            self.bio_results = self.db.bio_results(open).unwrap_or_default();
+            self.vaccinations = self.db.vaccinations(open).unwrap_or_default();
+            self.locations = self.db.locations_for(open).unwrap_or_default();
+            self.travels = self.db.travels(open).unwrap_or_default();
+            // Recalcule aussi les lectures de biologie, sur les valeurs
+            // qu'on vient de relire.
             self.reload_treatments(open);
+            self.refresh_vacc_due();
             self.reload_interviews(open);
             self.refresh_fil();
             self.refresh_scans(crate::scans::Subject::Patient, open);
+        }
+        // Le planning affiché, que la navigation seule relisait.
+        self.load_shifts(true);
+        // La table de référence ouverte, sauf si l'on corrige une de ses
+        // cellules.
+        if self.table_edit.is_none() {
+            if let Some(t) = crate::tables::TABLES.get(self.table_selected) {
+                self.table_cells = self.db.table_cells(t.short).unwrap_or_default();
+                self.table_rev = self.table_rev.wrapping_add(1);
+            }
+        }
+    }
+
+    /// Relire ce que le dossier ouvert tire des fiches et des phrases :
+    /// ses traitements, et avec eux ses six lectures — revue, rein,
+    /// écrasement, grossesse, âge, cytochromes — et sa biologie.
+    ///
+    /// **Une écriture de ce poste ne réveille pas `resync`** : le témoin
+    /// ne bouge que pour les autres. Corriger ici la classe d'une fiche
+    /// (« LP »), une ligne de posologie ou une phrase imprimée laissait
+    /// donc le dossier ouvert — et la feuille « Écraser ? » ou le plan de
+    /// surveillance qu'on imprime ensuite — sur l'ancienne lecture.
+    fn reread_open_file(&mut self) {
+        if let Some(open) = self.viewing.as_ref().map(|p| p.id) {
+            self.reload_treatments(open);
         }
     }
 
@@ -8080,6 +8130,17 @@ fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
                     let Some(other) = drugs.iter().find(|o| o.id == id) else {
                         continue;
                     };
+                    // **Une forme locale ne se cite pas comme une
+                    // interaction**, la règle que la carte suit déjà : la
+                    // section « interactions » de l'Eliquis nomme les
+                    // azolés *généraux*, et la bande du dossier mettait un
+                    // shampooing de kétoconazole face à l'anticoagulant.
+                    // Sauf le miconazole buccal, qui passe dans le sang.
+                    if !crate::classes::is_local_form(&d.class)
+                        && crate::classes::stays_local(&other.dci, &other.class)
+                    {
+                        continue;
+                    }
                     if !seen.insert((d.id, other.id)) {
                         continue;
                     }
@@ -44294,6 +44355,7 @@ impl App {
             }
         }
         session.content = session.db.content_overrides().unwrap_or_default();
+        session.reread_open_file();
         if refused > 0 {
             // Un autre poste est passé : ce qu'il a écrit est maintenant
             // à l'écran, et la réécriture se reprend dessus.
@@ -44530,6 +44592,8 @@ impl App {
             match session.db.reset_content(&prefix) {
                 Ok(n) => {
                     session.content = session.db.content_overrides().unwrap_or_default();
+                    session.reread_open_file();
+                    session.reread_open_file();
                     session.text_edit = None;
                     session.textes_open = None;
                     session.error = Some(trf("carnets_edit_reset_done", n));
@@ -44895,6 +44959,8 @@ impl App {
                 Ok(n) => {
                     session.error = None;
                     session.content = session.db.content_overrides().unwrap_or_default();
+                    session.reread_open_file();
+                    session.reread_open_file();
                     session.text_edit = None;
                     session.error = Some(trf("carnets_edit_reset_done", n));
                 }
@@ -45818,6 +45884,8 @@ impl App {
                         session.poso_new = (String::new(), String::new(), String::new());
                         session.posologies = session.db.posologies(drug_id).unwrap_or_default();
                         session.calc_poso = None;
+                        session.drugs_rev = session.drugs_rev.wrapping_add(1);
+                        session.reread_open_file();
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -45841,6 +45909,8 @@ impl App {
                     }
                     session.posologies = session.db.posologies(drug_id).unwrap_or_default();
                     session.calc_poso = None;
+                    session.drugs_rev = session.drugs_rev.wrapping_add(1);
+                    session.reread_open_file();
                 }
             }
             if let Some((id, indication)) = poso_delete {
@@ -45852,6 +45922,8 @@ impl App {
                 }
                 session.posologies = session.db.posologies(drug_id).unwrap_or_default();
                 session.calc_poso = None;
+                session.drugs_rev = session.drugs_rev.wrapping_add(1);
+                session.reread_open_file();
             }
             if edit_class {
                 session.class_note_edit = Some(session.class_note.clone());
@@ -45906,6 +45978,7 @@ impl App {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
                             }
+                            session.reread_open_file();
                         }
                         Ok(false) => {
                             // Reload the fresh card as the new baseline,
@@ -45938,6 +46011,7 @@ impl App {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
                             }
+                            session.reread_open_file();
                         }
                         Ok(false) => {
                             session.confirm_delete_drug = false;
@@ -53272,6 +53346,9 @@ impl App {
             // un code appris sur un autre poste ne bouge aucune des deux
             // autres, et la boîte scannée resterait inconnue.
             session.stup_rev,
+            // **Et le jour** : une boîte scannée à 23 h 58 et relue à
+            // minuit passé gardait « non périmée ».
+            session.today.clone(),
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
         // **Une autre réponse se lit par son début.** La zone qui porte
@@ -54343,7 +54420,16 @@ enum CompanionGo {
 /// règle que ce fichier écrit pour toute mémoïsation — on se souvient
 /// contre **la question**, et le DFG est dans la question que
 /// `renal::read` reçoit.
-type CompanionKey = (String, usize, Option<i64>, Option<f64>, u64, u64, u64);
+type CompanionKey = (
+    String,
+    usize,
+    Option<i64>,
+    Option<f64>,
+    u64,
+    u64,
+    u64,
+    String,
+);
 
 /// Ce dont dépend la lecture d'un nœud de la carte : la paire (centre,
 /// nœud), le dossier ouvert, son DFG et son ordonnance.

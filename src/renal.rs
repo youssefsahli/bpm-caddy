@@ -148,6 +148,13 @@ fn claims(a: &Adaptation, hay: &str) -> bool {
 pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Finding> {
     let mut out: Vec<Finding> = Vec::new();
     for t in treatments {
+        // **Un antidote n'est pas ce qu'il corrige** : la Lederfoline
+        // lisait « contre-indication sous 30 » — celle du méthotrexate —
+        // alors qu'elle est précisément ce qu'on donne quand le
+        // méthotrexate s'accumule dans un rein qui filtre mal.
+        if crate::classes::is_antidote(t.class) {
+            continue;
+        }
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
         for a in TABLE {
             if !claims(a, &hay) {
