@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.286.0] - 2026-09-24
+
+### Added
+- **Un clic sur une ligne de la carte de l'ordonnance ouvre son
+  voisinage.**
+
+### Fixed
+- **Les anneaux de la carte se répartissent enfin** : l'ordre dans
+  lequel un anneau ouvre ses places plaçait deux carrés voisins parmi
+  les premiers dès que le compte n'était pas une puissance de deux —
+  cinquante-cinq puis cinquante-six sur cent neuf. C'est maintenant la
+  suite de van der Corput, répartie à tout préfixe.
+- **L'anneau des interactions ne se tasse plus d'un côté** : les fiches
+  gardées pour leur poids se suivaient dans l'alphabet, donc sur le
+  cadran ; la plus importante prend maintenant la première place de
+  l'ordre réparti, la suivante la deuxième, et réduire le grossissement
+  n'en déplace aucune.
+
 ## [0.285.0] - 2026-09-24
 
 ### Fixed

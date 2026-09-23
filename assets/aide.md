@@ -348,7 +348,8 @@ comme la triade diurétique-IEC-AINS, les relie toutes les trois. Le
 survol d'une ligne dit avec qui elle se rencontre et pourquoi. Une ligne
 qui ne rencontre rien est en gris, et nommée sous la carte : elle ne
 rencontre rien **dans ces tables**, ce qui n'est pas une absence
-d'interaction. « Voisinage » revient à la fiche au centre.
+d'interaction. Un clic sur une ligne ouvre **son** voisinage ;
+« Voisinage » revient à la fiche au centre.
 
 **Se déplacer et grossir.** La figure se glisse à la souris et se
 grossit à la molette — autour du pointeur, si bien que ce qu'on regarde

@@ -54928,7 +54928,7 @@ impl App {
                 ui.interact(
                     box_of(at(i)).expand(4.0),
                     ui.id().with(("graph_file_node", i)),
-                    egui::Sense::hover(),
+                    egui::Sense::click(),
                 )
             })
             .collect();
@@ -55013,6 +55013,17 @@ impl App {
                         motif::text_dim()
                     },
                 );
+            }
+        }
+        // **Un clic sur une ligne ouvre son voisinage** : la carte de
+        // l'ordonnance dit où regarder, le voisinage dit ce qu'il y a
+        // autour — par quoi la remplacer, avec quoi elle se rencontre.
+        if let Some(i) = responses.iter().position(|r| r.clicked()) {
+            if let Some(d) = lines.get(i) {
+                session.graph_centre = Some(d.id);
+                session.graph_look = crate::graph::Look::default();
+                session.graph_note = None;
+                session.graph_file = false;
             }
         }
         if let Some(k) = hot_chord {

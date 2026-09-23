@@ -610,7 +610,7 @@ pub fn around_with(
         // dans l'ordre des places pour que le dessin les parcoure comme
         // on lit un cadran.
         let order = spread_order(ring.len());
-        let mut slots: Vec<usize> = if tie == Tie::Interaction {
+        if tie == Tie::Interaction {
             // The heaviest first, and among equals the spread order —
             // so a ring that is not cut keeps its dial, and a ring that
             // is cut keeps what weighs.
@@ -648,19 +648,32 @@ pub fn around_with(
                 })
                 .collect();
             ranked.sort_by_key(|&(_, w, occ, src, rank)| (std::cmp::Reverse(w), occ, src, rank));
-            ranked.into_iter().take(keep).map(|(j, ..)| j).collect()
-        } else {
-            order.into_iter().take(keep).collect()
-        };
-        slots.sort_unstable();
-        let first = nodes.len();
-        place(ring, &slots, ring.len(), tie, &mut nodes);
-        if tie == Tie::Interaction {
+            // **Le i-ième par importance prend la i-ième place de
+            // l'ordre réparti.** Placés à leur rang alphabétique, les
+            // gardés se tassaient d'un côté — les poids tombent sur des
+            // noms voisins : Arcoxia, Bipréterax, Calciparine et
+            // CoAprovel côte à côte à droite du Voltarène, et rien à
+            // gauche. Ainsi les gardés sont répartis, et en réduire le
+            // grossissement ajoute des places sans déplacer les
+            // précédentes : c'est la propriété de préfixe de
+            // `spread_order`.
+            let first = nodes.len();
+            let pairs: Vec<(usize, usize)> = ranked
+                .into_iter()
+                .take(keep)
+                .zip(order.iter().copied())
+                .map(|((j, ..), slot)| (j, slot))
+                .collect();
+            place_at(ring, &pairs, ring.len(), tie, &mut nodes);
             for n in &mut nodes[first..] {
                 n.why = reasons.get(&n.id).cloned().unwrap_or_default();
                 n.weight = weight_of(&n.why);
             }
+            continue;
         }
+        let mut slots: Vec<usize> = order.into_iter().take(keep).collect();
+        slots.sort_unstable();
+        place(ring, &slots, ring.len(), tie, &mut nodes);
     }
 
     Map {
@@ -827,6 +840,19 @@ fn named_in(folded_hay: &str, name: &str) -> bool {
 /// permet de régler la carte entre « tout voir » et « tout lire » sans
 /// la perdre de vue.
 fn place(ring: &[&Known], slots: &[usize], total: usize, tie: Tie, out: &mut Vec<Node>) {
+    let pairs: Vec<(usize, usize)> = slots.iter().map(|&j| (j, j)).collect();
+    place_at(ring, &pairs, total, tie, out);
+}
+
+/// Placer chaque membre `j` de l'anneau à la place `slot` : les deux ne
+/// coïncident pas quand l'anneau garde par importance.
+fn place_at(
+    ring: &[&Known],
+    pairs: &[(usize, usize)],
+    total: usize,
+    tie: Tie,
+    out: &mut Vec<Node>,
+) {
     if total == 0 {
         return;
     }
@@ -836,11 +862,13 @@ fn place(ring: &[&Known], slots: &[usize], total: usize, tie: Tie, out: &mut Vec
         Tie::Class => std::f32::consts::PI / 7.0,
         Tie::Interaction => std::f32::consts::PI / 3.5,
     };
-    for &j in slots {
+    let mut pairs = pairs.to_vec();
+    pairs.sort_by_key(|&(_, slot)| slot);
+    for (j, slot) in pairs {
         let Some(k) = ring.get(j) else { continue };
         // Straight up is zero, going clockwise, which is how anyone
         // reads a dial.
-        let a = offset + std::f32::consts::TAU * j as f32 / total as f32;
+        let a = offset + std::f32::consts::TAU * slot as f32 / total as f32;
         out.push(Node {
             id: k.id,
             name: k.name.trim().to_owned(),
@@ -870,28 +898,36 @@ fn place(ring: &[&Known], slots: &[usize], total: usize, tie: Tie, out: &mut Vec
 /// dont on remplit un cadran quand on veut pouvoir s'arrêter n'importe
 /// quand.
 fn spread_order(n: usize) -> Vec<usize> {
+    // **La suite de van der Corput** : 0, ½, ¼, ¾, ⅛, ⅝, ⅜, ⅞… — la
+    // fraction de tour de chaque place, dans l'ordre où on les ouvre.
+    // Tout préfixe en est réparti **quel que soit `n`**. La construction
+    // d'avant coupait en deux des pas arrondis, et pour un compte qui
+    // n'est pas une puissance de deux elle ouvrait deux places voisines
+    // parmi les premières — cinquante-cinq puis cinquante-six sur cent
+    // neuf : deux carrés l'un sur l'autre dès la quatrième place.
     let mut out: Vec<usize> = Vec::with_capacity(n);
-    if n == 0 {
-        return out;
-    }
-    out.push(0);
-    let mut step = n;
-    while out.len() < n {
-        step = step.div_ceil(2);
-        for i in (0..n).step_by(step.max(1)) {
-            if !out.contains(&i) {
-                out.push(i);
-            }
+    let mut taken = vec![false; n];
+    let mut k: u64 = 0;
+    // Enough terms to reach every slot; the fill below is the safety net.
+    while out.len() < n && k < (n as u64) * 4 + 8 {
+        let mut f = 0.0_f64;
+        let mut denom = 1.0_f64;
+        let mut x = k;
+        while x > 0 {
+            denom *= 2.0;
+            f += (x & 1) as f64 / denom;
+            x >>= 1;
         }
-        if step <= 1 {
-            // Le dernier passage prend tout ce qui reste : sans lui,
-            // un compte impair laisserait des places jamais ouvertes.
-            for i in 0..n {
-                if !out.contains(&i) {
-                    out.push(i);
-                }
-            }
-            break;
+        let slot = ((f * n as f64).round() as usize) % n.max(1);
+        if !taken[slot] {
+            taken[slot] = true;
+            out.push(slot);
+        }
+        k += 1;
+    }
+    for (i, t) in taken.iter().enumerate() {
+        if !t {
+            out.push(i);
         }
     }
     out
@@ -1954,5 +1990,95 @@ mod tests {
             Some(0)
         );
         assert_eq!(nearest_segment((0.0, 0.0), &[], 2.0), None);
+    }
+
+    /// **Les gardés par importance sont répartis, et en ouvrir un de plus
+    /// ne déplace personne.** Les poids tombent sur des noms voisins de
+    /// l'alphabet ; placés à leur rang, ils se tassaient d'un côté.
+    #[test]
+    fn heavy_members_are_spread_and_one_more_place_moves_none() {
+        let mut b = vec![card(1, "Centre", "centre", "classe a")];
+        let names: Vec<String> = (0..12).map(|i| format!("Fiche {i:02}")).collect();
+        for (i, n) in names.iter().enumerate() {
+            b.push(card(10 + i as i64, n, "", "autre"));
+        }
+        let mut reasons = std::collections::HashMap::new();
+        for i in 0..12 {
+            // The four alphabetically first weigh; the others are noted.
+            let alert = i < 4;
+            reasons.insert(
+                10 + i,
+                vec![Why::Effect {
+                    title: format!("Règle {i}"),
+                    detail: String::new(),
+                    alert,
+                }],
+            );
+        }
+        let with = |keep: usize| {
+            let caps = Caps {
+                interaction: keep,
+                total: keep,
+                ..Caps::default()
+            };
+            around_with(&b[0], &b, caps, &reasons)
+        };
+        let four = with(4);
+        let kept: Vec<i64> = four.nodes.iter().map(|n| n.id).collect();
+        for id in 10..14 {
+            assert!(kept.contains(&id), "{id} pèse et reste");
+        }
+        // Spread: the four are not all on one half of the dial.
+        let right = four.nodes.iter().filter(|n| n.x > 1e-3).count();
+        let left = four.nodes.iter().filter(|n| n.x < -1e-3).count();
+        assert!(
+            right < 4 && left < 4,
+            "tassés d'un côté : {right} à droite, {left} à gauche"
+        );
+        // One more place: the four stay exactly where they were.
+        let five = with(5);
+        for n in &four.nodes {
+            let m = five
+                .nodes
+                .iter()
+                .find(|m| m.id == n.id)
+                .expect("toujours là");
+            assert!(
+                (m.x - n.x).abs() < 1e-5 && (m.y - n.y).abs() < 1e-5,
+                "{} a bougé",
+                n.name
+            );
+        }
+    }
+
+    /// **Tout préfixe de l'ordre réparti est réparti**, quel que soit le
+    /// compte : aucune des premières places n'est voisine d'une autre.
+    #[test]
+    fn every_prefix_of_the_spread_order_is_spread() {
+        for n in [5_usize, 7, 12, 30, 109, 257] {
+            let order = spread_order(n);
+            let mut sorted = order.clone();
+            sorted.sort_unstable();
+            assert_eq!(
+                sorted,
+                (0..n).collect::<Vec<_>>(),
+                "n={n} : chaque place une fois"
+            );
+            for k in 2..=n.min(16) {
+                let mut pre: Vec<usize> = order[..k].to_vec();
+                pre.sort_unstable();
+                // The smallest gap between two opened places, around the
+                // dial, is at least half of an even share.
+                let gaps = pre
+                    .windows(2)
+                    .map(|w| w[1] - w[0])
+                    .chain(std::iter::once(n - pre[k - 1] + pre[0]));
+                let min = gaps.min().unwrap();
+                assert!(
+                    min * 2 * k + k >= n,
+                    "n={n}, {k} places : écart {min} sur {n}"
+                );
+            }
+        }
     }
 }
