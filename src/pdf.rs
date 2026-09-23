@@ -673,18 +673,26 @@ fn conversion_tables_values(edits: &TableEdits) -> Vec<(&'static str, String)> {
 pub fn open_drug_monograph(
     d: &Drug,
     posologies: &[crate::db::Posologie],
+    sourced: &[(String, String)],
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
             &template_source("monographie", template_path),
-            &monograph_values(d, posologies),
+            &monograph_values(d, posologies, sourced),
         ),
         &format!("monographie_{}", d.id),
     )
 }
 
-fn monograph_values(d: &Drug, posologies: &[crate::db::Posologie]) -> Vec<(&'static str, String)> {
+/// `sourced` : les valeurs de pharmacocinétique que l'officine a lues dans
+/// le RCP, libellé et « valeur (source) » — celles que l'écran montre sous
+/// la même rubrique, pour que la feuille dise ce que dit l'écran.
+fn monograph_values(
+    d: &Drug,
+    posologies: &[crate::db::Posologie],
+    sourced: &[(String, String)],
+) -> Vec<(&'static str, String)> {
     let mut src = String::new();
     let mut sub = d.dci.trim().to_owned();
     if !d.class.trim().is_empty() {
@@ -778,9 +786,13 @@ fn monograph_values(d: &Drug, posologies: &[crate::db::Posologie]) -> Vec<(&'sta
         ("Adaptation DFG", d.renal.as_str()),
         ("Grossesse / allaitement", d.pregnancy.as_str()),
     ];
-    if pk.iter().any(|(_, v)| !v.trim().is_empty()) {
+    if pk.iter().any(|(_, v)| !v.trim().is_empty()) || !sourced.is_empty() {
         let mut rows = String::new();
-        for (label, value) in pk {
+        for (label, value) in pk
+            .iter()
+            .map(|(l, v)| (*l, *v))
+            .chain(sourced.iter().map(|(l, v)| (l.as_str(), v.as_str())))
+        {
             if value.trim().is_empty() {
                 continue;
             }
@@ -4884,6 +4896,10 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 ..Default::default()
             },
             &[],
+            &[(
+                "Liaison aux protéines".to_owned(),
+                "87 % (RCP Eliquis, 5.2)".to_owned(),
+            )],
         ),
         // **Une liste d'aperçu a plus d'une ligne.** Ce modèle-ci range
         // les fiches par famille : sur un seul dispositif, ni le
@@ -7981,7 +7997,10 @@ mod tests {
             missed_dose: "Dans les 6 heures, sinon sauter la prise.".to_owned(),
             red_flags: "Selles noires, traumatisme crânien.".to_owned(),
         };
-        let source = fill(DEFAULT_MONOGRAPHIE_TEMPLATE, &monograph_values(&d, &[]));
+        let source = fill(
+            DEFAULT_MONOGRAPHIE_TEMPLATE,
+            &monograph_values(&d, &[], &[]),
+        );
         // Hostile text is escaped, never interpreted as Typst markup.
         assert!(!source.contains("#eval \"X\"]"));
         let world = PdfWorld::new(source);
@@ -8009,7 +8028,7 @@ mod tests {
         d.sources.clear();
         let world = PdfWorld::new(fill(
             DEFAULT_MONOGRAPHIE_TEMPLATE,
-            &monograph_values(&d, &[]),
+            &monograph_values(&d, &[], &[]),
         ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }

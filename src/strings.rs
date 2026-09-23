@@ -274,6 +274,7 @@ mod tests {
             include_str!("audit_window.rs"),
             include_str!("ruptures.rs"),
             include_str!("network.rs"),
+            include_str!("pk.rs"),
             include_str!("prescribers.rs"),
             include_str!("annuaire.rs"),
             // Le registre des textes imprimés y nomme ses

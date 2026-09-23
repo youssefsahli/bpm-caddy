@@ -42,6 +42,7 @@ pub mod network;
 pub mod ordonnance;
 pub mod ordonnancier;
 pub mod pdf;
+pub mod pk;
 pub mod planning;
 pub mod prescribers;
 pub mod release;

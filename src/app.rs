@@ -9,6 +9,7 @@ use crate::db::{
     NoteSubject, Patient,
 };
 use crate::fuzzy;
+use crate::pk::parse_hours;
 use crate::planning;
 use crate::strings::{tr, trf, trn};
 use crate::vaccines;
@@ -788,6 +789,7 @@ fn mono_look(style: MonoStyle) -> MonoLook {
 /// The drug card as a printed monograph on a sheet of paper: identity,
 /// then every filled section in reading order, the pharmacokinetics as
 /// a short definition list, and the numbered sources at the foot.
+#[allow(clippy::too_many_arguments)]
 fn drug_monograph(
     ui: &mut egui::Ui,
     d: &Drug,
@@ -796,6 +798,7 @@ fn drug_monograph(
     links: &MonoLinks,
     style: MonoStyle,
     supply: &DrugSupply,
+    kinetics: &[crate::pk::Row],
 ) -> Option<i64> {
     // The other card the reader asked for, by clicking a name in the
     // prose. Opened by the caller once the sheet is drawn.
@@ -1014,7 +1017,20 @@ fn drug_monograph(
                 (tr("drug_renal"), d.renal.as_str()),
                 (tr("drug_pregnancy"), d.pregnancy.as_str()),
             ];
-            if pk.iter().any(|(_, v)| !v.trim().is_empty()) {
+            // Les valeurs que l'officine a sourcées : la prose les dit déjà
+            // quand elle les dit, ce qui s'ajoute ici est ce que quelqu'un
+            // a lu dans le RCP — avec la source, sur la feuille même.
+            let sourced: Vec<(String, String)> = kinetics
+                .iter()
+                .filter_map(|r| r.fact.as_ref().filter(|f| !f.from_card()))
+                .map(|f| {
+                    (
+                        f.property.label().to_owned(),
+                        format!("{} ({})", f.value(), f.source),
+                    )
+                })
+                .collect();
+            if pk.iter().any(|(_, v)| !v.trim().is_empty()) || !sourced.is_empty() {
                 mono_heading(ui, width, tr("drug_sec_pk"));
                 // The half-life as a shape, not only as a sentence:
                 // how much is left a day after the last dose is the
@@ -1069,7 +1085,11 @@ fn drug_monograph(
                     .num_columns(2)
                     .spacing([14.0, 5.0])
                     .show(ui, |ui| {
-                        for (label, value) in pk {
+                        for (label, value) in pk
+                            .iter()
+                            .map(|(l, v)| (*l, *v))
+                            .chain(sourced.iter().map(|(l, v)| (l.as_str(), v.as_str())))
+                        {
                             if value.trim().is_empty() {
                                 continue;
                             }
@@ -4263,6 +4283,14 @@ struct Session {
     drug_supply_key: Option<(i64, u64, String)>,
     /// A substitution being noted.
     subst_form: Option<SubstForm>,
+    /// The open card's pharmacokinetics and pharmacodynamics: every
+    /// property, with the best value known — read once per card.
+    drug_pk: Vec<crate::pk::Row>,
+    drug_pk_key: Option<(i64, u64, u64)>,
+    /// Moved by every write to `drug_facts`.
+    facts_rev: u64,
+    /// The sourced values being written.
+    pk_edit: Option<PkEdit>,
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
@@ -5005,6 +5033,10 @@ impl Session {
             drug_supply: DrugSupply::default(),
             drug_supply_key: None,
             subst_form: None,
+            drug_pk: Vec::new(),
+            drug_pk_key: None,
+            facts_rev: 0,
+            pk_edit: None,
             #[cfg(feature = "sync")]
             net_window: None,
             drug_kin_show: None,
@@ -7275,6 +7307,36 @@ impl Session {
         self.drug_supply_key = Some(key);
     }
 
+    /// The open card's PK/PD table: what the prose writes and what the
+    /// officine sourced, merged — read once per card and per write.
+    fn refresh_drug_pk(&mut self, card: &Drug) {
+        let key = (card.id, self.facts_rev, self.drugs_rev);
+        if self.drug_pk_key == Some(key) {
+            return;
+        }
+        let text = [
+            card.indications.as_str(),
+            card.mechanism.as_str(),
+            card.dosage.as_str(),
+            card.contraindications.as_str(),
+            card.ddi.as_str(),
+            card.adverse.as_str(),
+            card.monitoring.as_str(),
+            card.elimination.as_str(),
+            card.renal.as_str(),
+            card.toxicity.as_str(),
+            card.auc.as_str(),
+        ]
+        .join(" ");
+        let mined = crate::pk::mine(&crate::pk::Prose {
+            half_life: &card.half_life,
+            text: &text,
+        });
+        let stored = self.db.drug_facts(card.id).unwrap_or_default();
+        self.drug_pk = crate::pk::rows(&mined, &stored);
+        self.drug_pk_key = Some(key);
+    }
+
     /// Write one event of the journal for the open card, and read the
     /// journal again.
     fn note_supply(&mut self, e: crate::ruptures::Event) {
@@ -8811,6 +8873,8 @@ impl DrugKin {
 /// while it draws — so it names what it wants and the caller acts.
 enum TechAction {
     Search(String),
+    /// Write the card's sourced pharmacokinetic values.
+    EditPk,
     /// Show (or hide again) one of the two neighbour lists.
     Neighbours(KinList),
     Open(i64),
@@ -8875,6 +8939,15 @@ struct DrugSupply {
     /// the product's** — Locoid is a « dermocorticoïde modéré » given for a
     /// « fort »: the journal says it was done, the class says what changed.
     other_class: Vec<Option<String>>,
+}
+
+/// The sourced values of one card being written: per property, what is
+/// typed, its source, and what the base held when the window opened.
+struct PkEdit {
+    drug_id: i64,
+    name: String,
+    entries: Vec<(crate::pk::Property, String, String, Option<crate::pk::Fact>)>,
+    note: Option<(bool, String)>,
 }
 
 /// A substitution being noted: the product replaced, what was given, and
@@ -9070,17 +9143,6 @@ fn list_step(cursor: usize, len: usize, up: bool, down: bool) -> usize {
     cursor
 }
 
-/// A half-life in hours, read off the card's free text.
-///
-/// **The unit is the word that follows the figure**, never a word met
-/// anywhere in the sentence. The first version picked « jours » or
-/// « semaines » wherever they sat and applied them to the first figure:
-/// aspirin's « 15 à 20 minutes … persiste 7 à 10 jours » read 420 hours,
-/// Aricept's « ≈ 70 heures … deux à trois semaines » eleven thousand,
-/// and the companion told the counter « il reste ≈ 96 % à 24 h ». A
-/// figure that no time unit follows is passed over (« 50 % », « DFG
-/// < 30 »), and one stuck to a letter or a hyphen is a name, not a
-/// figure — « E-3174 », « GS-331007 », « M1 ».
 /// A birth date that may be left out: **quick entry stays quick**. Empty
 /// is an unknown date, never an error; anything typed must still read as
 /// a date.
@@ -9090,96 +9152,6 @@ fn optional_birth(input: &str, year: u32) -> Result<String, String> {
     } else {
         db::parse_french_date(input, year, db::YearHint::Past)
     }
-}
-
-fn parse_hours(text: &str) -> Option<f64> {
-    #[derive(Debug)]
-    enum Tok {
-        Num(f64),
-        Word(String),
-    }
-    // « Notion peu pertinente pour cette suspension : le délai d'action
-    // est d'environ 1 heure 30 » gives a delay, not a half-life; a card
-    // that says the notion does not apply is taken at its word.
-    let folded = crate::fuzzy::sort_key(text);
-    if ["sans objet", "non pertinente", "notion peu pertinente"]
-        .iter()
-        .any(|w| folded.trim_start().starts_with(&crate::fuzzy::sort_key(w)))
-    {
-        return None;
-    }
-    let chars: Vec<char> = text.to_lowercase().chars().collect();
-    let mut toks = Vec::new();
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        if c.is_ascii_digit() {
-            let start = i;
-            while i < chars.len()
-                && (chars[i].is_ascii_digit()
-                    || ((chars[i] == ',' || chars[i] == '.')
-                        && chars.get(i + 1).is_some_and(|n| n.is_ascii_digit())))
-            {
-                i += 1;
-            }
-            // A figure glued to a name: a letter just before, or a hyphen
-            // that itself follows a letter.
-            let before = start.checked_sub(1).map(|k| chars[k]);
-            let named = before.is_some_and(|b| b.is_alphabetic())
-                || (before == Some('-')
-                    && start
-                        .checked_sub(2)
-                        .is_some_and(|k| chars[k].is_alphanumeric() && !chars[k].is_ascii_digit()));
-            let figure: String = chars[start..i].iter().collect();
-            match figure.replace(',', ".").parse::<f64>() {
-                Ok(v) if !named => toks.push(Tok::Num(v)),
-                _ => toks.push(Tok::Word(String::new())),
-            }
-        } else if c.is_alphabetic() {
-            let start = i;
-            while i < chars.len() && chars[i].is_alphabetic() {
-                i += 1;
-            }
-            toks.push(Tok::Word(chars[start..i].iter().collect()));
-        } else {
-            if matches!(c, '-' | '–' | '—') {
-                toks.push(Tok::Word("à".to_owned()));
-            } else if !c.is_whitespace() && c != '≈' && c != '~' {
-                // Any other sign ends a phrase: « 12 h ; 30 % » must not
-                // read the 30 as the far end of a range.
-                toks.push(Tok::Word(c.to_string()));
-            }
-            i += 1;
-        }
-    }
-    let factor = |w: &str| match w {
-        "h" | "heure" | "heures" => Some(1.0),
-        "min" | "mn" | "minute" | "minutes" => Some(1.0 / 60.0),
-        "j" | "jour" | "jours" => Some(24.0),
-        "semaine" | "semaines" => Some(24.0 * 7.0),
-        "s" | "seconde" | "secondes" => Some(1.0 / 3600.0),
-        _ => None,
-    };
-    let mut k = 0;
-    while k < toks.len() {
-        if let Tok::Num(low) = toks[k] {
-            let mut high = low;
-            let mut next = k + 1;
-            if let (Some(Tok::Word(w)), Some(Tok::Num(h))) = (toks.get(k + 1), toks.get(k + 2)) {
-                if w == "à" || w == "a" || w == "et" {
-                    high = *h;
-                    next = k + 3;
-                }
-            }
-            if let Some(Tok::Word(w)) = toks.get(next) {
-                if let Some(f) = factor(w) {
-                    return Some((low + high) / 2.0 * f);
-                }
-            }
-        }
-        k += 1;
-    }
-    None
 }
 
 /// The two questions a half-life answers, and the second one was
@@ -45271,6 +45243,7 @@ impl App {
         d: &Drug,
         kin: &DrugKin,
         supply: &DrugSupply,
+        pk: &[crate::pk::Row],
         shown: Option<KinList>,
         rect: egui::Rect,
     ) -> Option<TechAction> {
@@ -45359,6 +45332,10 @@ impl App {
                     ui.add_space(6.0);
                     if let Some(a) = Self::drug_supply_section(ui, supply) {
                         action = Some(a);
+                    }
+                    ui.add_space(6.0);
+                    if Self::drug_pk_section(ui, pk) {
+                        action = Some(TechAction::EditPk);
                     }
                     ui.add_space(6.0);
                     // Same rule as the monograph: an insulin gets its
@@ -45522,6 +45499,206 @@ impl App {
                 });
         });
         action
+    }
+
+    /// La pharmacocinétique et la pharmacodynamie de la fiche, **en
+    /// valeurs** : chacune avec d'où elle vient — la phrase de la fiche,
+    /// ou la source que l'officine a écrite. Ce que personne n'a chiffré
+    /// s'écrit « non chiffré », et c'est ce qui dit quoi compléter.
+    /// Rend `true` quand « Compléter… » est pressé.
+    fn drug_pk_section(ui: &mut egui::Ui, pk: &[crate::pk::Row]) -> bool {
+        let mut edit = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new(tr("pk_section"))
+                    .size(motif::pt(ui, 10.5))
+                    .strong()
+                    .color(motif::text_dim()),
+            );
+            if motif::button(ui, tr("pk_edit"))
+                .on_hover_text(tr("pk_edit_tooltip"))
+                .clicked()
+            {
+                edit = true;
+            }
+        });
+        egui::Grid::new("drug_pk_grid")
+            .num_columns(2)
+            .spacing([8.0, 3.0])
+            .striped(true)
+            .show(ui, |ui| {
+                for row in pk {
+                    ui.label(
+                        egui::RichText::new(row.property.label())
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                    match &row.fact {
+                        Some(f) => {
+                            let tag = if f.from_card() {
+                                tr("pk_from_card").to_owned()
+                            } else {
+                                f.source.clone()
+                            };
+                            let hover = if f.from_card() {
+                                f.text.clone()
+                            } else {
+                                format!("{}\n{}", f.text, f.source)
+                            };
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("{} · {tag}", f.value()))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text()),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(hover);
+                        }
+                        None => {
+                            ui.label(
+                                egui::RichText::new(tr("pk_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_faint()),
+                            );
+                        }
+                    }
+                    ui.end_row();
+                }
+            });
+        edit
+    }
+
+    /// « Compléter… » : les valeurs sourcées d'une fiche, une par
+    /// propriété. **Une valeur sans source est refusée** — c'est la seule
+    /// garantie qu'aucun chiffre de ce tableau n'est inventé.
+    fn pk_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(edit) = &mut session.pk_edit else {
+            return;
+        };
+        let mut save = false;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(trf("pk_window_title", &edit.name))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 560.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("pk_window_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                let footer = App::row_height(ui) * 2.0 + ui.spacing().item_spacing.y * 3.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("pk_edit_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        egui::Grid::new("pk_edit_grid")
+                            .num_columns(3)
+                            .spacing([8.0, 6.0])
+                            .show(ui, |ui| {
+                                for (p, value, source, _) in &mut edit.entries {
+                                    App::form_label(ui, p.label());
+                                    let hint = match p.shape() {
+                                        crate::pk::Shape::Number { unit, .. } => {
+                                            trf("pk_value_hint", unit)
+                                        }
+                                        crate::pk::Shape::Text => tr("pk_text_hint").to_owned(),
+                                        crate::pk::Shape::Flag => tr("pk_flag_hint").to_owned(),
+                                    };
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 16.0),
+                                        egui::TextEdit::singleline(value)
+                                            .hint_text(motif::hint(&hint)),
+                                    );
+                                    motif::field(
+                                        ui,
+                                        chars_wide(ui, 22.0),
+                                        egui::TextEdit::singleline(source)
+                                            .hint_text(motif::hint(tr("pk_source_hint"))),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
+                    });
+                if let Some((bad, note)) = &edit.note {
+                    ui.colored_label(
+                        if *bad {
+                            motif::alert()
+                        } else {
+                            motif::text_dim()
+                        },
+                        note.as_str(),
+                    );
+                }
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("form_save")).clicked() {
+                        save = true;
+                    }
+                    if motif::button(ui, tr("form_cancel")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if save {
+            let Some(edit) = &mut session.pk_edit else {
+                return;
+            };
+            let mut stale = false;
+            let mut wrote = false;
+            let mut refused: Option<String> = None;
+            for (p, value, source, was) in &edit.entries {
+                let unchanged = was.as_ref().map_or(value.trim().is_empty(), |w| {
+                    w.text == value.trim() && w.source == source.trim()
+                });
+                if unchanged {
+                    continue;
+                }
+                if value.trim().is_empty() {
+                    if let Some(w) = was {
+                        match session.db.delete_drug_fact(edit.drug_id, w) {
+                            Ok(true) => wrote = true,
+                            Ok(false) => stale = true,
+                            Err(e) => refused = Some(e),
+                        }
+                    }
+                    continue;
+                }
+                match crate::pk::parse(*p, value, source) {
+                    Ok(fact) => match session.db.set_drug_fact(edit.drug_id, &fact, was.as_ref()) {
+                        Ok(true) => wrote = true,
+                        Ok(false) => stale = true,
+                        Err(e) => refused = Some(e),
+                    },
+                    Err(e) => refused = Some(format!("{} : {e}", p.label())),
+                }
+            }
+            if wrote || stale {
+                session.facts_rev = session.facts_rev.wrapping_add(1);
+            }
+            if stale {
+                session.pk_edit = None;
+                session.stale("pk_stale");
+            } else if let Some(e) = refused {
+                if let Some(edit) = &mut session.pk_edit {
+                    edit.note = Some((true, e));
+                }
+            } else {
+                session.pk_edit = None;
+            }
+        } else if close {
+            session.pk_edit = None;
+        }
     }
 
     /// « En rupture ? Qu'est-ce que les collègues ont donné à la place ? »
@@ -46797,8 +46974,9 @@ impl App {
 
         // What the journal of shortages says about this card, read before
         // the sheet that shows it at its head.
-        if let Some((id, name)) = session.drug_form.as_ref().map(|d| (d.id, d.name.clone())) {
-            session.refresh_drug_supply(id, &name);
+        if let Some(card) = session.drug_form.clone() {
+            session.refresh_drug_supply(card.id, &card.name);
+            session.refresh_drug_pk(&card);
         }
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
@@ -47055,6 +47233,7 @@ impl App {
                                     &session.mono_links,
                                     MonoStyle::from_key(&config.ui.monograph),
                                     &session.drug_supply,
+                                    &session.drug_pk,
                                 );
                             }
                             if !reading {
@@ -47306,14 +47485,44 @@ impl App {
                                 session.refresh_drug_kin(&card);
                                 let shown = session.drug_kin_show;
                                 session.refresh_drug_supply(card.id, &card.name);
+                                session.refresh_drug_pk(&card);
                                 match Self::drug_tech_pane(
                                     ui,
                                     &card,
                                     &session.drug_kin,
                                     &session.drug_supply,
+                                    &session.drug_pk,
                                     shown,
                                     body,
                                 ) {
+                                    Some(TechAction::EditPk) => {
+                                        let stored =
+                                            session.db.drug_facts(card.id).unwrap_or_default();
+                                        session.pk_edit = Some(PkEdit {
+                                            drug_id: card.id,
+                                            name: card.name.clone(),
+                                            entries: crate::pk::Property::ALL
+                                                .into_iter()
+                                                .map(|p| {
+                                                    let was = stored
+                                                        .iter()
+                                                        .find(|f| f.property == p)
+                                                        .cloned();
+                                                    (
+                                                        p,
+                                                        was.as_ref()
+                                                            .map(|f| f.text.clone())
+                                                            .unwrap_or_default(),
+                                                        was.as_ref()
+                                                            .map(|f| f.source.clone())
+                                                            .unwrap_or_default(),
+                                                        was,
+                                                    )
+                                                })
+                                                .collect(),
+                                            note: None,
+                                        });
+                                    }
                                     Some(TechAction::Search(word)) => search_keyword = Some(word),
                                     Some(TechAction::Open(id)) => follow_link = Some(id),
                                     Some(TechAction::OpenName(name)) => {
@@ -47558,9 +47767,23 @@ impl App {
             }
             if print_mono {
                 if let Some(card) = session.drug_form.clone() {
+                    // Les valeurs sourcées que la feuille à l'écran montre
+                    // sous « Pharmacocinétique » : la même liste, imprimée.
+                    let sourced: Vec<(String, String)> = session
+                        .drug_pk
+                        .iter()
+                        .filter_map(|r| r.fact.as_ref().filter(|f| !f.from_card()))
+                        .map(|f| {
+                            (
+                                f.property.label().to_owned(),
+                                format!("{} ({})", f.value(), f.source),
+                            )
+                        })
+                        .collect();
                     if let Err(e) = crate::pdf::open_drug_monograph(
                         &card,
                         &session.posologies,
+                        &sourced,
                         &config.doc_template_path("monographie"),
                     ) {
                         session.error = Some(e);
@@ -47807,6 +48030,7 @@ impl App {
             session.error = None;
         }
         Self::subst_window(ctx, session);
+        Self::pk_window(ctx, session);
     }
 
     /// « Noter une substitution » : ce qui a été donné à la place, et
@@ -68706,10 +68930,10 @@ mod tests {
         assert_eq!(parse_hours("1,5 h"), Some(1.5));
         // The unit is the word after the figure, not any word in the
         // sentence: aspirin read 420 hours, Aricept eleven thousand.
-        assert_eq!(
-            parse_hours("de l'ordre de 15 à 20 minutes, mais l'inhibition persiste 7 à 10 jours"),
-            Some(17.5 / 60.0)
-        );
+        let aspirin =
+            parse_hours("de l'ordre de 15 à 20 minutes, mais l'inhibition persiste 7 à 10 jours")
+                .unwrap();
+        assert!((aspirin - 17.5 / 60.0).abs() < 1e-9, "{aspirin}");
         assert_eq!(
             parse_hours("≈ 70 heures, équilibre atteint en deux à trois semaines"),
             Some(70.0)

@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.274.0] - 2026-09-23
+
+### Added
+- **La pharmacocinétique et la pharmacodynamie, en valeurs.** La colonne
+  technique d'une fiche porte un tableau de dix propriétés —
+  biodisponibilité, Tmax, liaison aux protéines, volume de distribution,
+  part éliminée inchangée, demi-vie, cible, délai et durée d'action,
+  marge thérapeutique étroite. Chaque valeur dit d'où elle vient : la
+  phrase de la fiche qui la chiffre, ou la source que l'officine a écrite
+  avec « Compléter… » (une valeur sans source est refusée). Ce que
+  personne n'a chiffré s'écrit « non chiffré ». Les valeurs sourcées
+  s'affichent sur la monographie et s'impriment avec elle.
+- Les fiches livrées chiffrent peu : le tableau lit déjà les demi-vies,
+  les marges étroites et les quelques durées d'action et
+  biodisponibilités écrites, et laisse le reste à compléter.
+
+### Changed
+- La lecture des demi-vies garde les fourchettes quand il s'agit d'une
+  durée d'action (« 3 à 5 heures »), au lieu de leur moyenne.
+
 ## [0.273.0] - 2026-09-23
 
 ### Added

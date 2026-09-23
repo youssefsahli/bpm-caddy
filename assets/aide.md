@@ -728,6 +728,20 @@ règle qui crie au loup est une règle qu'on éteint.
 Sous trois délivrances précédentes, rien n'est dit : il n'y a pas encore
 de cadence à laquelle comparer.
 
+# Pharmacocinétique et pharmacodynamie
+
+La colonne technique d'une fiche porte un tableau : biodisponibilité,
+pic plasmatique, liaison aux protéines, volume de distribution, part
+éliminée inchangée, demi-vie, cible, délai et durée d'action, marge
+thérapeutique étroite.
+
+**Aucun chiffre n'y est inventé.** Une valeur vient de la fiche — lue
+dans sa prose, et la phrase se lit au survol — ou de l'officine, qui la
+saisit avec « Compléter… » et **sa source** (le RCP, section 5.1 ou
+5.2) : une valeur sans source est refusée. Ce que personne n'a chiffré
+s'écrit « non chiffré ». Une valeur sourcée l'emporte sur la lecture de
+la prose, s'affiche sur la monographie et s'imprime avec elle.
+
 # Les ruptures
 
 Quand un produit manque, sa fiche le signale : « Signaler une rupture »,

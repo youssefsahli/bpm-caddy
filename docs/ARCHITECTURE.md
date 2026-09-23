@@ -280,7 +280,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  64 of them, and counting at all but one would be a counter quietly
+  65 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
@@ -1329,7 +1329,7 @@ add clicking and typing; it is not the price of entry.
   subject itself, that one region turns it off.** Saying the total works
   for a band of doors (« 13 axes en tout »); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 43 regions now set
+  fold is the control you came to use. 44 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -1397,6 +1397,8 @@ add clicking and typing; it is not the price of entry.
   under them) and the two panes of the « Ruptures » view, a list whose
   lines each open a card. The forty-third is the officines' network
   window, whose peers list ends in the gestures that sync and invite.
+  The forty-fourth is the PK/PD editor, ten properties above its
+  « Enregistrer ».
 
   **And the scroll handle is no longer painted in ink.** egui takes it
   from `fg_stroke` when `scroll.foreground_color` is true — its own

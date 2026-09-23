@@ -253,6 +253,19 @@ CREATE TABLE IF NOT EXISTS access_log (
     act      TEXT NOT NULL,
     file     INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS drug_facts (
+    -- Les valeurs de pharmacocinétique et de pharmacodynamie qu'une
+    -- officine a sourcées pour une fiche (voir `src/pk.rs`). Une par
+    -- propriété ; celles que la prose chiffre d'elle-même ne sont pas
+    -- ici — elles se relisent dans la fiche.
+    drug_id   INTEGER NOT NULL,
+    property  TEXT NOT NULL,
+    low       REAL,
+    high      REAL,
+    text      TEXT NOT NULL DEFAULT '',
+    source    TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (drug_id, property)
+);
 CREATE TABLE IF NOT EXISTS net_records (
     -- Le réseau d'officines (`src/network.rs`) : les enregistrements
     -- scellés du flux « Réseau », tels qu'ils ont été reçus ou écrits.
@@ -995,6 +1008,15 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS drug_facts (
+        drug_id   INTEGER NOT NULL,
+        property  TEXT NOT NULL,
+        low       REAL,
+        high      REAL,
+        text      TEXT NOT NULL DEFAULT '',
+        source    TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (drug_id, property)
+    )",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
     "CREATE TABLE IF NOT EXISTS net_peers (
@@ -31440,6 +31462,7 @@ impl Db {
             "dispositifs",
             "trod_lines",
             "vaccine_catalogue",
+            "drug_facts",
             "locations",
             "biology",
             "interviews",
@@ -31640,6 +31663,8 @@ impl Db {
             tx.execute("DELETE FROM posologies WHERE drug_id = ?1", [id])
                 .map_err(|e| e.to_string())?;
             tx.execute("DELETE FROM drug_field_locks WHERE drug_id = ?1", [id])
+                .map_err(|e| e.to_string())?;
+            tx.execute("DELETE FROM drug_facts WHERE drug_id = ?1", [id])
                 .map_err(|e| e.to_string())?;
             changed = tx
                 .execute(
@@ -33172,6 +33197,93 @@ impl Db {
             .map_err(|e| e.to_string())?;
         self.setting(key)
             .ok_or_else(|| "clé du réseau illisible".to_owned())
+    }
+
+    /// Les valeurs sourcées d'une fiche.
+    pub fn drug_facts(&self, drug_id: i64) -> Result<Vec<crate::pk::Fact>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT property, low, high, text, source FROM drug_facts WHERE drug_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([drug_id], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<f64>>(1)?,
+                    r.get::<_, Option<f64>>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (key, low, high, text, source) = row.map_err(|e| e.to_string())?;
+            if let Some(property) = crate::pk::Property::from_key(&key) {
+                out.push(crate::pk::Fact {
+                    property,
+                    low,
+                    high,
+                    text,
+                    source,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Écrire une valeur sourcée, **contre celle que l'écran montrait**
+    /// (`None` : il n'y en avait pas). `false` quand un autre poste l'a
+    /// changée entre-temps.
+    pub fn set_drug_fact(
+        &self,
+        drug_id: i64,
+        new: &crate::pk::Fact,
+        was: Option<&crate::pk::Fact>,
+    ) -> Result<bool, String> {
+        let changed = match was {
+            None => self.conn.execute(
+                "INSERT INTO drug_facts (drug_id, property, low, high, text, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
+                rusqlite::params![
+                    drug_id,
+                    new.property.key(),
+                    new.low,
+                    new.high,
+                    new.text,
+                    new.source
+                ],
+            ),
+            Some(old) => self.conn.execute(
+                "UPDATE drug_facts SET low = ?3, high = ?4, text = ?5, source = ?6
+                 WHERE drug_id = ?1 AND property = ?2 AND text = ?7 AND source = ?8",
+                rusqlite::params![
+                    drug_id,
+                    new.property.key(),
+                    new.low,
+                    new.high,
+                    new.text,
+                    new.source,
+                    old.text,
+                    old.source
+                ],
+            ),
+        }
+        .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une valeur sourcée, contre celle que l'écran montrait.
+    pub fn delete_drug_fact(&self, drug_id: i64, was: &crate::pk::Fact) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM drug_facts
+                 WHERE drug_id = ?1 AND property = ?2 AND text = ?3 AND source = ?4",
+                (drug_id, was.property.key(), &was.text, &was.source),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
@@ -38679,6 +38791,35 @@ mod tests {
             db.vaccine_catalogue().unwrap().last().map(|v| v.id),
             Some(id)
         );
+    }
+
+    #[test]
+    fn a_sourced_value_is_written_against_what_the_screen_showed() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-facts-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("facts.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let v = crate::pk::parse(
+            crate::pk::Property::ProteinBinding,
+            "87",
+            "RCP Eliquis, 5.2",
+        )
+        .unwrap();
+        assert!(db.set_drug_fact(7, &v, None).unwrap());
+        assert!(
+            !db.set_drug_fact(7, &v, None).unwrap(),
+            "déjà écrite ailleurs"
+        );
+        let w = crate::pk::parse(crate::pk::Property::ProteinBinding, "87 %", "RCP, 5.2").unwrap();
+        assert!(db.set_drug_fact(7, &w, Some(&v)).unwrap());
+        assert!(!db.set_drug_fact(7, &w, Some(&v)).unwrap(), "écran périmé");
+        let back = db.drug_facts(7).unwrap();
+        assert_eq!(back.len(), 1);
+        assert_eq!(back[0].source, "RCP, 5.2");
+        assert!(db.delete_drug_fact(7, &w).unwrap());
+        assert!(db.drug_facts(7).unwrap().is_empty());
     }
 
     #[test]
