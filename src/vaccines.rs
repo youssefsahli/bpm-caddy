@@ -385,13 +385,13 @@ pub struct VaccineRef {
 pub const CATALOGUE: &[VaccineRef] = &[
     VaccineRef {
         code: "DTP",
-        label: "dTP — diphtérie, tétanos, poliomyélite",
-        schedule: "Rappels à 25, 45 et 65 ans, puis tous les 10 ans",
+        label: "DTP — nourrisson (DTCaP-Hib-HepB)",
+        schedule: "Primovaccination du nourrisson : 2, 4 et 11 mois",
     },
     VaccineRef {
         code: "DTCAP",
-        label: "dTcaP — avec coqueluche",
-        schedule: "Rappel de 25 ans, cocooning, grossesse (20-36 SA)",
+        label: "dTcaP — diphtérie, tétanos, coqueluche, polio",
+        schedule: "Rappels à 25, 45 et 65 ans puis tous les 10 ans ; chaque grossesse (20-36 SA)",
     },
     VaccineRef {
         code: "GRIPPE",
@@ -530,7 +530,156 @@ pub struct Dose<'a> {
 /// `birth` and `today` are ISO, so the whole thing stays pure and
 /// testable — no clock inside. The age comes from the birth date, and
 /// so does the age at each dose; the birth year decides the ROR cohort.
+#[cfg(test)]
 pub fn due_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
+    due_lines_with(birth, today, doses, "")
+}
+
+/// Combien de semaines d'aménorrhée à `today`, pour une grossesse dont
+/// le premier jour des dernières règles est `ddr`. `None` sans date, et
+/// au-delà de 42 SA : une date oubliée au dossier n'est pas une
+/// grossesse de deux ans.
+pub fn weeks_of_amenorrhea(ddr: &str, today: &str) -> Option<u32> {
+    let days = crate::date::days_between(ddr.trim(), today)?;
+    (0..=294).contains(&days).then_some((days / 7) as u32)
+}
+
+/// [`due_lines`], et **les vaccins de la grossesse** quand le dossier en
+/// porte une (`ddr`, premier jour des dernières règles, ISO ; vide
+/// sinon).
+///
+/// Quatre recommandations et un interdit, chacun à son terme :
+/// la coqueluche à **chaque** grossesse à partir de 20 SA (la dose
+/// protège le nouveau-né par les anticorps transmis, donc une dose
+/// d'avant la grossesse ne compte pas) ; la grippe pendant la campagne,
+/// quel que soit le trimestre ; le COVID-19 pendant la campagne ; le VRS
+/// entre 32 et 36 SA, de septembre à janvier, dont l'alternative est le
+/// nirsévimab chez le nourrisson ; et les vaccins vivants, contre-
+/// indiqués. Pendant une grossesse, les lignes générales de la grippe et
+/// du COVID cèdent la place à celles-ci : deux lignes pour un même vaccin
+/// se liraient comme deux doses.
+pub fn due_lines_with(birth: &str, today: &str, doses: &[Dose], ddr: &str) -> Vec<DueLine> {
+    let mut out = general_lines(birth, today, doses);
+    let Some(sa) = weeks_of_amenorrhea(ddr, today) else {
+        return out;
+    };
+    let ddr = ddr.trim();
+    let since = |code: &str| {
+        doses
+            .iter()
+            .any(|d| d.code == code && !d.date.is_empty() && d.date >= ddr)
+    };
+    let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+    let campaign = matches!(month, 10..=12 | 1 | 2);
+    let season = flu_season_start(today);
+    let this_season = |code: &str| {
+        doses
+            .iter()
+            .any(|d| d.code == code && d.date >= season.as_str())
+    };
+    out.retain(|l| l.code != "GRIPPE" && l.code != "COVID");
+
+    let (level, detail) = if since("DTCAP") {
+        (
+            DueLevel::Ok,
+            "Dose de cette grossesse enregistrée.".to_owned(),
+        )
+    } else if sa >= 20 {
+        (
+            DueLevel::Due,
+            format!("Recommandée à chaque grossesse, de préférence entre 20 et 36 SA ({sa} SA)."),
+        )
+    } else {
+        (
+            DueLevel::Ask,
+            format!("À chaque grossesse, à partir de 20 SA ({sa} SA aujourd'hui)."),
+        )
+    };
+    out.push(DueLine {
+        code: "DTCAP",
+        label: "dTcaP — grossesse",
+        level,
+        detail,
+    });
+
+    let (level, detail) = if this_season("GRIPPE") {
+        (
+            DueLevel::Ok,
+            "Dose de la campagne en cours enregistrée.".to_owned(),
+        )
+    } else if campaign {
+        (
+            DueLevel::Due,
+            "Recommandée pendant la grossesse, quel que soit le trimestre.".to_owned(),
+        )
+    } else {
+        (
+            DueLevel::Ask,
+            "Hors campagne ; recommandée à la prochaine, quel que soit le trimestre.".to_owned(),
+        )
+    };
+    out.push(DueLine {
+        code: "GRIPPE",
+        label: "Grippe — grossesse",
+        level,
+        detail,
+    });
+
+    out.push(DueLine {
+        code: "COVID",
+        label: "COVID-19 — grossesse",
+        level: if this_season("COVID") {
+            DueLevel::Ok
+        } else {
+            DueLevel::Ask
+        },
+        detail: if this_season("COVID") {
+            "Dose de la campagne en cours enregistrée.".to_owned()
+        } else {
+            "Recommandée pendant la grossesse, pendant la campagne annuelle.".to_owned()
+        },
+    });
+
+    let vrs_months = matches!(month, 9..=12 | 1);
+    let (level, detail) = if since("VRS") {
+        (
+            DueLevel::Ok,
+            "Dose de cette grossesse enregistrée.".to_owned(),
+        )
+    } else if (32..=36).contains(&sa) && vrs_months {
+        (
+            DueLevel::Due,
+            format!("Entre 32 et 36 SA, de septembre à janvier ({sa} SA)."),
+        )
+    } else if sa < 32 {
+        (
+            DueLevel::Ask,
+            format!("Entre 32 et 36 SA ({sa} SA aujourd'hui), de septembre à janvier ; sinon nirsévimab pour le nourrisson."),
+        )
+    } else {
+        (
+            DueLevel::Ask,
+            "Hors fenêtre : le nourrisson recevra le nirsévimab à la naissance.".to_owned(),
+        )
+    };
+    out.push(DueLine {
+        code: "VRS",
+        label: "VRS — grossesse",
+        level,
+        detail,
+    });
+
+    out.push(DueLine {
+        code: "VIVANTS",
+        label: "Vaccins vivants",
+        level: DueLevel::Ask,
+        detail: "Contre-indiqués pendant la grossesse : ROR, varicelle ; fièvre jaune seulement si le voyage ne peut être différé."
+            .to_owned(),
+    });
+    out
+}
+
+fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     let age = crate::db::age_on(birth, today);
     let birth_year: Option<u32> = birth.get(..4).and_then(|y| y.parse().ok());
     // **L'âge à une dose se compte à la date de naissance**, et non par
@@ -555,7 +704,11 @@ pub fn due_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     };
     let mut out = Vec::new();
 
-    // --- dTP: 25, 45, 65, then every ten years ---
+    // --- dTcaP: 25, 45, 65, then every ten years ---
+    //
+    // **L'adulte se suit en dTcaP**, le DTP étant celui du nourrisson :
+    // la ligne porte ce code, et c'est lui que « Noter » propose. Une
+    // dose ancienne notée DTP compte toujours pour l'horloge.
     //
     // The clock is the *milestone*, not a flat ten years: someone
     // boosted at 25 owes nothing until 45, and reading their dose as
@@ -599,8 +752,8 @@ pub fn due_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             }
         };
         out.push(DueLine {
-            code: "DTP",
-            label: "dTP — rappel décennal",
+            code: "DTCAP",
+            label: "dTcaP — rappel",
             level,
             detail,
         });
@@ -2406,7 +2559,7 @@ mod tests {
             date: "2015-05-04",
         }];
         let lines = due_lines("1990-01-01", "2026-08-26", &doses);
-        let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").unwrap();
         assert_eq!(dtp.level, DueLevel::Ok);
         assert!(dtp.detail.contains("45 ans"), "{}", dtp.detail);
     }
@@ -2419,7 +2572,7 @@ mod tests {
             date: "2005-03-01",
         }];
         let lines = due_lines("1960-01-01", "2026-08-26", &doses);
-        let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         assert!(dtp.detail.contains("65 ans"), "{}", dtp.detail);
     }
@@ -2434,7 +2587,7 @@ mod tests {
     #[test]
     fn an_empty_carnet_owes_the_milestone_already_reached() {
         let lines = due_lines("1974-01-01", "2026-08-26", &[]);
-        let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         // At 52 the booster owed is the one for 45, not a future one.
         assert!(dtp.detail.contains("45 ans"), "{}", dtp.detail);
@@ -2455,7 +2608,7 @@ mod tests {
             },
         ];
         let lines = due_lines("1956-01-01", "2026-01-15", &doses);
-        let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").unwrap();
         assert_eq!(dtp.level, DueLevel::Ok);
         let flu = lines.iter().find(|l| l.code == "GRIPPE").unwrap();
         assert_eq!(flu.level, DueLevel::Ok);
@@ -2478,7 +2631,7 @@ mod tests {
             date: "2010-06-01",
         }];
         let lines = due_lines("1978-01-01", "2026-08-26", &doses);
-        let dtp = lines.iter().find(|l| l.code == "DTP").unwrap();
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").unwrap();
         assert_eq!(dtp.level, DueLevel::Due);
         assert!(dtp.detail.contains("32 ans"), "{}", dtp.detail);
     }
@@ -2609,7 +2762,7 @@ mod tests {
             date: "2025-10-15",
         }];
         let lines = due_lines("2000-10-01", "2026-09-23", &doses);
-        let dtp = lines.iter().find(|l| l.code == "DTP").expect("dTP");
+        let dtp = lines.iter().find(|l| l.code == "DTCAP").expect("dTP");
         assert_eq!(dtp.level, DueLevel::Ok, "{}", dtp.detail);
         // Commencé à 15 ans : deux doses ne font pas le schéma.
         let doses = [
@@ -2658,5 +2811,48 @@ mod tests {
             date: "2010-01-10",
         }];
         assert!(covers("HEPA", &hepa, "2026-09-23"));
+    }
+
+    /// **Pendant une grossesse, le calendrier change.** La coqueluche à
+    /// chaque grossesse dès 20 SA — une dose d'avant ne compte pas —, le
+    /// VRS entre 32 et 36 SA, la grippe et le COVID remplacés par leur
+    /// ligne de grossesse, et les vaccins vivants nommés.
+    #[test]
+    fn a_pregnancy_brings_its_own_vaccines_at_their_own_term() {
+        assert_eq!(weeks_of_amenorrhea("2026-05-01", "2026-09-23"), Some(20));
+        assert_eq!(weeks_of_amenorrhea("2024-01-01", "2026-09-23"), None);
+        assert_eq!(weeks_of_amenorrhea("", "2026-09-23"), None);
+        // dTcaP il y a trois ans : le rappel adulte est fait, celui de la
+        // grossesse est dû à 20 SA.
+        let doses = [Dose {
+            code: "DTCAP",
+            date: "2023-06-01",
+        }];
+        let lines = due_lines_with("1996-01-01", "2026-09-23", &doses, "2026-05-01");
+        let preg = lines
+            .iter()
+            .find(|l| l.label == "dTcaP — grossesse")
+            .expect("ligne de grossesse");
+        assert_eq!(preg.level, DueLevel::Due);
+        let adult = lines.iter().find(|l| l.label == "dTcaP — rappel").unwrap();
+        assert_eq!(adult.level, DueLevel::Ok);
+        // Une ligne de grippe, pas deux.
+        assert_eq!(lines.iter().filter(|l| l.code == "GRIPPE").count(), 1);
+        assert!(lines.iter().any(|l| l.code == "VIVANTS"));
+        // À 12 SA, la coqueluche attend 20 SA.
+        let early = due_lines_with("1996-01-01", "2026-09-23", &[], "2026-07-01");
+        let preg = early
+            .iter()
+            .find(|l| l.label == "dTcaP — grossesse")
+            .unwrap();
+        assert_eq!(preg.level, DueLevel::Ask);
+        // À 33 SA en octobre, le VRS est dû.
+        let late = due_lines_with("1996-01-01", "2026-10-15", &[], "2026-02-26");
+        let vrs = late.iter().find(|l| l.code == "VRS").unwrap();
+        assert_eq!(vrs.level, DueLevel::Due, "{}", vrs.detail);
+        // Sans grossesse, rien de tout cela.
+        let none = due_lines_with("1996-01-01", "2026-09-23", &[], "");
+        assert!(none.iter().all(|l| !l.label.contains("grossesse")));
+        assert!(!none.iter().any(|l| l.code == "VIVANTS"));
     }
 }

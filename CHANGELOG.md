@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.269.0] - 2026-09-23
+
+### Added
+- **Les vaccins de la grossesse.** Le carnet porte une date de début de
+  grossesse facultative (premier jour des dernières règles) ; tant
+  qu'elle est en cours, le calendrier affiche le terme et ce qui est dû
+  à ce terme : dTcaP à chaque grossesse à partir de 20 SA (une dose
+  d'avant ne compte pas), grippe et COVID-19 pendant la campagne, VRS
+  entre 32 et 36 SA de septembre à janvier (sinon nirsévimab pour le
+  nourrisson), et la mise en garde sur les vaccins vivants. La fenêtre
+  TROD coche « Enceinte » d'elle-même quand la grossesse est au dossier.
+
+### Changed
+- **L'adulte se suit en dTcaP** : le rappel de 25, 45, 65 ans puis tous
+  les dix ans porte le code dTcaP, et le DTP est décrit comme le vaccin
+  du nourrisson. Une dose ancienne notée DTP compte toujours.
+- La liste « À faire » du carnet a une barre de défilement visible :
+  chaque ligne est un geste, et celles d'en dessous étaient cachées.
+
 ## [0.268.0] - 2026-09-23
 
 ### Added

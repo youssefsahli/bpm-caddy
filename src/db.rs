@@ -25,6 +25,10 @@ CREATE TABLE IF NOT EXISTS patients (
     -- change ce que l'application propose (les lignes d'un TROD) ; non
     -- dit, il ne bloque rien — et le NIR le dit souvent à sa place.
     sex         TEXT NOT NULL DEFAULT '',
+    -- Premier jour des dernières règles d'une grossesse en cours, ISO ;
+    -- vide sinon. Il donne le terme, et le terme donne les vaccins de la
+    -- grossesse ; au-delà de 42 SA il ne dit plus rien.
+    pregnancy_ddr TEXT NOT NULL DEFAULT '',
     -- Local time, like every other stamp in this base: the counter
     -- works in its own clock, and an act entered after midnight in a
     -- pharmacie de garde must carry that day, not the UTC one.
@@ -943,6 +947,7 @@ const MIGRATIONS: &[&str] = &[
     )",
     "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
     "ALTER TABLE patients ADD COLUMN sex TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patients ADD COLUMN pregnancy_ddr TEXT NOT NULL DEFAULT ''",
     // Les lignes des ordonnances TROD, éditables par l'officine — voir
     // la table dans `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS trod_lines (
@@ -2330,6 +2335,9 @@ pub struct Patient {
     pub regime: String,
     /// `F`, `M`, or empty when nobody said. Optional, like the birth date.
     pub sex: String,
+    /// First day of the last period of a pregnancy under way, ISO, or
+    /// empty. Written apart from the identity (`set_patient_ddr`).
+    pub pregnancy_ddr: String,
 }
 
 impl Patient {
@@ -29856,7 +29864,8 @@ impl Db {
             .conn
             .prepare(
                 "SELECT id, last_name, first_name, birth_date, phone, notes,
-                        physician, email, address, situation, nir, regime, sex
+                        physician, email, address, situation, nir, regime, sex,
+                        pregnancy_ddr
                  FROM patients",
             )
             .map_err(|e| e.to_string())?;
@@ -29876,6 +29885,7 @@ impl Db {
                     nir: r.get(10)?,
                     regime: r.get(11)?,
                     sex: r.get(12)?,
+                    pregnancy_ddr: r.get(13)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -30278,6 +30288,19 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Poser, corriger ou effacer la grossesse en cours d'un dossier,
+    /// compare-and-set contre la date affichée.
+    pub fn set_patient_ddr(&self, id: i64, new: &str, expected: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patients SET pregnancy_ddr = ?2 WHERE id = ?1 AND pregnancy_ddr = ?3",
+                (id, new.trim(), expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// The patient's current treatments, joined from the drug base.
     pub fn drugs_for_patient(&self, patient_id: i64) -> Result<Vec<Drug>, String> {
         let mut stmt = self
@@ -30357,6 +30380,7 @@ impl Db {
                     nir: String::new(),
                     regime: String::new(),
                     sex: String::new(),
+                    pregnancy_ddr: String::new(),
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -36371,6 +36395,7 @@ impl Db {
                         nir: String::new(),
                         regime: String::new(),
                         sex: String::new(),
+                        pregnancy_ddr: String::new(),
                     },
                     r.get::<_, String>(9)?,
                 ))
@@ -43595,6 +43620,7 @@ mod tests {
             nir: "1 58 07 34 172 042 11".to_owned(),
             regime: "01".to_owned(),
             sex: "M".to_owned(),
+            pregnancy_ddr: String::new(),
         };
         assert!(db.update_patient(&corrected, &seen).unwrap());
         let p = db.patients().unwrap();

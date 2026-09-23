@@ -3348,7 +3348,10 @@ impl OrdonnanceBox {
             who: crate::ordonnance::Who {
                 age,
                 sex: patient.and_then(Patient::known_sex),
-                pregnant: false,
+                // Une grossesse au dossier, datée et en cours.
+                pregnant: patient.is_some_and(|p| {
+                    crate::vaccines::weeks_of_amenorrhea(&p.pregnancy_ddr, today).is_some()
+                }),
             },
             age_text: age.map(|a| a.to_string()).unwrap_or_default(),
         }
@@ -3782,6 +3785,9 @@ struct Session {
     /// La ligne qu'on corrige : son identifiant, son texte et sa note.
     checklist_edit: Option<(i64, String, String)>,
     vacc_due: Vec<vaccines::DueLine>,
+    /// The pregnancy date as typed in the carnet, for the file it was
+    /// typed on.
+    vacc_ddr_text: Option<(i64, String)>,
     /// In-progress country search of the travel panel.
     travel_query: String,
     /// The posology the file records for each of its treatments, by drug
@@ -4792,6 +4798,7 @@ impl Session {
             checklist_note: String::new(),
             checklist_edit: None,
             vacc_due: Vec::new(),
+            vacc_ddr_text: None,
             travel_query: String::new(),
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
@@ -7783,7 +7790,12 @@ impl Session {
                 date: v.given_on.as_str(),
             })
             .collect();
-        self.vacc_due = vaccines::due_lines(&patient.birth_date, &self.today, &doses);
+        self.vacc_due = vaccines::due_lines_with(
+            &patient.birth_date,
+            &self.today,
+            &doses,
+            &patient.pregnancy_ddr,
+        );
     }
 
     /// (Re)read the patient's carnet and destinations. Called on open
@@ -11972,6 +11984,47 @@ impl App {
                         // panel on the second reading: what the
                         // ordonnance asks to have measured, rather than
                         // what the values already there say.
+                        // Le carnet d'une femme enceinte de 24 SA : les
+                        // lignes de la grossesse n'existent sur aucune
+                        // autre capture.
+                        Ok("vaccins_grossesse") => {
+                            // Une femme en âge de l'être : la démo n'en a
+                            // pas, on en crée une plutôt que de dater une
+                            // grossesse à soixante-cinq ans.
+                            let today = session.today.clone();
+                            let young = |p: &&Patient| {
+                                db::age_on(&p.birth_date, &today)
+                                    .is_some_and(|a| (16..=45).contains(&a))
+                                    && p.known_sex() != Some(crate::ordonnance::Sex::M)
+                            };
+                            if !session.patients.iter().any(|p| young(&p)) {
+                                let _ = session.db.add_patient_with_sex(
+                                    "Garnier",
+                                    "Emma",
+                                    "1994-04-12",
+                                    "F",
+                                );
+                                if let Ok(list) = session.db.patients() {
+                                    session.set_patients(list);
+                                }
+                            }
+                            let pick = session.patients.iter().find(young).cloned();
+                            if let Some(p) = pick {
+                                if let Some(ddr) = db::add_days(&session.today, -168) {
+                                    let _ =
+                                        session.db.set_patient_ddr(p.id, &ddr, &p.pregnancy_ddr);
+                                }
+                                if let Ok(list) = session.db.patients() {
+                                    session.set_patients(list);
+                                }
+                                if let Some(fresh) =
+                                    session.patients.iter().find(|q| q.id == p.id).cloned()
+                                {
+                                    session.open_patient(fresh);
+                                }
+                            }
+                            session.patient_tab = PatientTab::Vaccins;
+                        }
                         Ok(
                             v
                             @ ("vaccins" | "bio" | "watch" | "rein" | "grossesse" | "age" | "cyp"),
@@ -19887,9 +19940,55 @@ impl App {
         let owed: Vec<&vaccines::DueLine> = lines
             .iter()
             .filter(|l| l.level != vaccines::DueLevel::Ok && !planned.contains(l.code))
+            // Une mise en garde n'est pas une dose à planifier : « Vaccins
+            // vivants » dit ce qu'il ne faut pas faire.
+            .filter(|l| vaccines::CATALOGUE.iter().any(|v| v.code == l.code))
             .collect();
         let mut fill = false;
+        let mut ddr_write: Option<String> = None;
         motif::panel(ui, rect, Some(tr("vacc_due_section")), |ui| {
+            // **La grossesse en cours**, facultative : sa date donne le
+            // terme, et le terme les vaccins de la grossesse. Pas pour un
+            // dossier d'homme.
+            if patient.known_sex() != Some(crate::ordonnance::Sex::M) {
+                if session.vacc_ddr_text.as_ref().map(|(id, _)| *id) != Some(patient.id) {
+                    session.vacc_ddr_text =
+                        Some((patient.id, db::format_french_date(&patient.pregnancy_ddr)));
+                }
+                let sa = vaccines::weeks_of_amenorrhea(&patient.pregnancy_ddr, &session.today);
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(tr("vacc_ddr"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .on_hover_text(tr("vacc_ddr_tooltip"));
+                    if let Some((_, text)) = &mut session.vacc_ddr_text {
+                        let field = motif::field(
+                            ui,
+                            Self::field_width(ui, [tr("form_birth_hint")].into_iter()),
+                            egui::TextEdit::singleline(text)
+                                .hint_text(motif::hint(tr("form_birth_hint"))),
+                        );
+                        if field.lost_focus() {
+                            ddr_write = Some(text.clone());
+                        }
+                    }
+                    let said = match sa {
+                        Some(w) => trf("vacc_ddr_weeks", w),
+                        None if patient.pregnancy_ddr.trim().is_empty() => {
+                            tr("vacc_ddr_none").to_owned()
+                        }
+                        None => tr("vacc_ddr_over").to_owned(),
+                    };
+                    ui.label(
+                        egui::RichText::new(said)
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_faint()),
+                    );
+                });
+                ui.add_space(4.0);
+            }
             // One click writes the whole schedule into the carnet, as
             // undated lines the counter then fills in, corrects or
             // deletes one by one. Nothing is recorded as given.
@@ -19911,6 +20010,10 @@ impl App {
                 }
                 ui.add_space(4.0);
             }
+            // Chaque ligne est un geste (elle charge le vaccin dans le
+            // formulaire) : une barre flottante cachait celles d'en
+            // dessous, et une grossesse en ajoute cinq.
+            ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("vacc_due")
                 .auto_shrink([false, false])
@@ -19992,6 +20095,37 @@ impl App {
             }
             if written > 0 {
                 session.load_carnet(patient.id);
+            }
+        }
+        if let Some(typed) = ddr_write {
+            let year = session.db.current_year();
+            let iso = if typed.trim().is_empty() {
+                Ok(String::new())
+            } else {
+                db::parse_french_date(&typed, year, db::YearHint::Past)
+            };
+            match iso {
+                Ok(iso) if iso != patient.pregnancy_ddr => {
+                    match session
+                        .db
+                        .set_patient_ddr(patient.id, &iso, &patient.pregnancy_ddr)
+                    {
+                        Ok(applied) => {
+                            if let Ok(list) = session.db.patients() {
+                                session.set_patients(list);
+                                session.resync_viewing();
+                            }
+                            session.vacc_ddr_text = None;
+                            session.refresh_vacc_due();
+                            if !applied {
+                                session.stale("vacc_ddr_stale");
+                            }
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+                Ok(_) => {}
+                Err(e) => session.error = Some(e),
             }
         }
     }
@@ -20696,12 +20830,16 @@ impl App {
                 date: v.given_on.as_str(),
             })
             .collect();
-        let vaccines: Vec<String> =
-            crate::vaccines::due_lines(&patient.birth_date, &session.today, &doses)
-                .into_iter()
-                .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
-                .map(|l| format!("{} — {}", l.label, l.detail))
-                .collect();
+        let vaccines: Vec<String> = crate::vaccines::due_lines_with(
+            &patient.birth_date,
+            &session.today,
+            &doses,
+            &patient.pregnancy_ddr,
+        )
+        .into_iter()
+        .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
+        .map(|l| format!("{} — {}", l.label, l.detail))
+        .collect();
         let acts: Vec<(String, String, String, String)> = session
             .viewing_interviews
             .iter()
@@ -23572,6 +23710,8 @@ impl App {
                         nir: form.nir.trim().to_owned(),
                         regime: form.regime.trim().to_owned(),
                         sex: form.sex.clone(),
+                        // Not on the identity form: kept as it is.
+                        pregnancy_ddr: patient.pregnancy_ddr.clone(),
                     };
                     // CAS against the row as displayed: a colleague's
                     // concurrent correction is never wiped.

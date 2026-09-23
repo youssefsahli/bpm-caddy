@@ -99,7 +99,7 @@ demo_vitale_card "$card"
 views=(
     verrou search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
-    vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance ordonnance_lignes
+    vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance ordonnance_lignes vaccins_grossesse
     protocols protocol_open codex codex_open dispositifs dispositif_open
     finances stats companion companion_poso companion_conseils companion_soins companion_dossier companion_vide companion_doublon companion_boite script carnets carnets_edit textes graph graph_zoom graph_wide stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans patient_dose fil registres regles aide
     explorer explorer_organ classes classes_outside export
