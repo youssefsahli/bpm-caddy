@@ -309,9 +309,10 @@ que « bisphosphonate » et « biphosphonate » sont bien le même anneau.
 elle-même — le lien qui ne découle pas du classement, et le seul qui
 traverse toute la base.
 
-Un cerclage rouge dit que la fiche documente une toxicité ou une marge
-thérapeutique ; c'est ce qui fait rouvrir la fiche d'un voisin qu'on
-allait proposer. Une coche dit que le dossier ouvert **prend déjà** ce
+Ce que la fiche documente d'une toxicité ou d'une marge thérapeutique se
+lit dans la petite fiche qui s'ouvre au survol d'un carré — plus d'une
+fiche sur deux en a une, et une marque sur la moitié des carrés ne
+désignait rien. Une coche dit que le dossier ouvert **prend déjà** ce
 médicament — la réponse à la question qu'on se pose en cherchant une
 substitution. Sous la figure, la légende nomme chaque couleur, et une
 phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
@@ -320,10 +321,10 @@ dit, il ne se devine pas.
 **Se déplacer et grossir.** La figure se glisse à la souris et se
 grossit à la molette — autour du pointeur, si bien que ce qu'on regarde
 reste où on le regarde. Au clavier, `+` et `−` font la même chose et `0`
-remet la carte à sa taille et à sa place ; deux boutons dans un coin de
-la figure les doublent, un double-clic dans le vide la remet à plat, et
-le titre du cadre porte le grossissement dès qu'il n'est plus de cent
-pour cent.
+remet la carte à sa taille et à sa place ; les boutons `−` et `+` de la
+bande les doublent, un double-clic dans le vide la remet à plat, et le
+titre du cadre porte le grossissement dès qu'il n'est plus de cent pour
+cent — et combien de noms la place a refusés, qu'un survol fait lire.
 
 Le grossissement est le réglage entre **tout voir** et **tout lire**.
 Réduite, la carte prend davantage de voisins — jusqu'au plafond de

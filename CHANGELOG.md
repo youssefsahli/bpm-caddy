@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.280.0] - 2026-09-23
+
+### Fixed
+- **La carte du voisinage ne cache plus de voisin sous ses boutons** :
+  « − » et « + » passent dans la bande de commandes. À 1024 × 700 en
+  texte 1,6, Méthotrexate était invisible sous eux sur la carte du
+  Voltarène.
+- **La bande de commandes ne réserve plus une rangée vide** : elle était
+  mesurée dans un autre ordre et sur une autre largeur que celle où elle
+  se dessine. La figure y gagne sa hauteur — treize voisins nommés au
+  lieu de neuf à cette taille.
+- **Les noms se lisent sur un fond**, au lieu d'être traversés par les
+  rayons.
+
+### Changed
+- **Plus de cerclage rouge « toxicité renseignée »** : il marquait 484
+  fiches sur 862 et ne désignait rien. La phrase de la section toxicité
+  reste dans la petite fiche du survol.
+- **Le titre du cadre dit combien de noms la place a refusés** (« 7
+  nom(s) au survol »), en ne comptant que les carrés visibles.
+- Le bouton « 100 % » disparaît : le double-clic dans le vide et la
+  touche 0 font la même chose, et les infobulles de « − » et « + » le
+  disent.
+
 ## [0.279.0] - 2026-09-23
 
 ### Added

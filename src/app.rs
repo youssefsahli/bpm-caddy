@@ -4431,6 +4431,8 @@ struct Session {
     /// fiche est une autre image, et la garder grossie au coin où l'on
     /// avait laissé la précédente ouvrirait la suivante sur du gris.
     graph_look: crate::graph::Look,
+    /// How many names the last drawing of the map had no room for.
+    graph_unnamed: usize,
     graph_query: String,
     /// What the map last did, said where the map is — never in the
     /// error line, which is painted in the alert red: « Eliquis ajouté à
@@ -5155,6 +5157,7 @@ impl Session {
             graph_map: None,
             graph_key: None,
             graph_look: crate::graph::Look::default(),
+            graph_unnamed: 0,
             graph_pair: None,
             graph_query: String::new(),
             graph_note: None,
@@ -54069,7 +54072,6 @@ impl App {
                 .into_iter()
                 .filter(|t| speaks(*t))
                 .collect::<Vec<_>>(),
-            map.is_some_and(|m| m.nodes.iter().any(|n| n.toxicity_noted)),
             ticked,
         )
     }
@@ -54079,13 +54081,12 @@ impl App {
     /// savoir ce que le cercle portera. Les deux noms, eux, viennent de
     /// la fiche du centre et non de la carte : ils sont connus avant.
     fn graph_legend_keys_all(session: &Session) -> Vec<(String, egui::Color32)> {
-        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true, true)
+        Self::graph_legend_keys_of(session, &crate::graph::Tie::ALL, true)
     }
 
     fn graph_legend_keys_of(
         session: &Session,
         ties: &[crate::graph::Tie],
-        toxicity: bool,
         ticked: bool,
     ) -> Vec<(String, egui::Color32)> {
         let centre = session
@@ -54115,9 +54116,11 @@ impl App {
             .iter()
             .map(|t| (named(*t), motif::chart::series_color(t.series())))
             .collect();
-        if toxicity {
-            keys.push((tr("graph_toxicity").to_owned(), motif::alert()));
-        }
+        // **Plus de clé « toxicité ».** Le cerclage rouge marquait les
+        // fiches qui ont une section toxicité — 484 sur 862 : une marque
+        // sur plus d'une fiche sur deux ne désigne rien, et elle
+        // disputait l'œil aux couleurs qui disent le lien. La phrase de
+        // la section est dans la petite fiche du survol, où elle se lit.
         if ticked {
             keys.push((tr("graph_on_file").to_owned(), motif::accent()));
         }
@@ -54556,11 +54559,24 @@ impl App {
         // The command band's height is measured, never a constant: a
         // button row that wrapped into two on a narrow window would draw
         // its second row over the map.
+        // **Et les boutons de grossissement, dans la bande.** Ils étaient
+        // posés dans un coin de la figure : réservés pour les noms, pas
+        // pour les carrés — un voisin tombait dessous (Méthotrexate sur
+        // la carte du Voltarène, à 1024 en texte 1,6) et on ne le voyait
+        // plus du tout. Dans la bande, ils ne couvrent rien ; ils prennent
+        // la place qui restait sur la seconde rangée. **Deux, et pas de
+        // retour à cent pour cent** : ce troisième bouton passait sur une
+        // troisième rangée à 1024 en texte 1,6 et coûtait six voisins à
+        // la figure, alors que le double-clic dans le vide et la touche 0
+        // font la même chose — les infobulles le disent, et le titre du
+        // panneau dit le grossissement.
         let labels = [
             tr("patient_back"),
             tr("graph_open_card"),
             tr("graph_add_treat"),
             tr("graph_new_card"),
+            tr("graph_zoom_out"),
+            tr("graph_zoom_in"),
         ];
         // **Le champ tient son invite.** Trente pour cent du volet
         // plafonnés à trois cent vingt pixels, c'est un nombre de
@@ -54573,13 +54589,19 @@ impl App {
         let search_w = Self::field_width(ui, [tr("graph_hint")].into_iter())
             .max(work.width() * 0.3)
             .min((work.width() - 32.0).max(chars_wide(ui, 8.0)));
+        // **Dans l'ordre où la bande les dessine** : le champ vient en
+        // second. Mesuré en dernier, il faisait croire à une troisième
+        // rangée que le dessin ne remplissait pas — une bande vide au
+        // bas des boutons, prise sur la figure.
+        // Et **sur la largeur où elle se dessine** : `motif::inside` ne
+        // retire rien au rectangle, et trente-deux pixels ôtés ici
+        // renvoyaient à la ligne un bouton que le dessin gardait.
         let rows = Self::wrapped_rows_of(
             ui,
-            work.width() - 32.0,
-            labels
-                .iter()
-                .map(|l| Self::button_width(ui, l))
-                .chain(std::iter::once(search_w)),
+            work.width(),
+            std::iter::once(Self::button_width(ui, labels[0]))
+                .chain(std::iter::once(search_w))
+                .chain(labels[1..].iter().map(|l| Self::button_width(ui, l))),
         );
         let band = rows * (Self::button_height(ui) + ui.spacing().item_spacing.y) + 10.0;
         // The legend says what the colours are; under it, what the rings
@@ -54689,7 +54711,6 @@ impl App {
         // Ce que les boutons du creux demandent : appliqué après le
         // dessin, comme tout le reste de cette vue.
         let mut zoom_by: Option<f32> = None;
-        let mut reset_look = false;
 
         let centre_name = session
             .graph_map
@@ -54733,6 +54754,27 @@ impl App {
                 {
                     new_card = true;
                 }
+                let look = session.graph_look;
+                if motif::button_enabled(
+                    ui,
+                    tr("graph_zoom_out"),
+                    look.zoom > crate::graph::Look::MIN + 1e-3,
+                )
+                .on_hover_text(tr("graph_zoom_out_tip"))
+                .clicked()
+                {
+                    zoom_by = Some(1.0 / crate::graph::Look::STEP);
+                }
+                if motif::button_enabled(
+                    ui,
+                    tr("graph_zoom_in"),
+                    look.zoom < crate::graph::Look::MAX - 1e-3,
+                )
+                .on_hover_text(tr("graph_zoom_in_tip"))
+                .clicked()
+                {
+                    zoom_by = Some(crate::graph::Look::STEP);
+                }
             });
         });
 
@@ -54769,7 +54811,7 @@ impl App {
         // dans le creux serait un objet qui couvre ce qu'il annonce. À
         // cent pour cent il ne dit rien de plus : un état permanent
         // qu'on ne peut pas ne pas avoir est du bruit.
-        let title = if session.graph_look.is_plain() {
+        let mut title = if session.graph_look.is_plain() {
             tr("graph_title").to_owned()
         } else {
             trn(
@@ -54780,6 +54822,9 @@ impl App {
                 ],
             )
         };
+        if session.graph_unnamed > 0 {
+            title.push_str(&trf("graph_title_unnamed", session.graph_unnamed));
+        }
         motif::panel(ui, plot_rect, Some(&title), |ui| {
             let body = ui.available_rect_before_wrap();
             let Some(map) = session.graph_map.clone() else {
@@ -55013,7 +55058,7 @@ impl App {
             let boxes: Vec<egui::Rect> = map
                 .nodes
                 .iter()
-                .map(|n| box_of(at(n), half + if n.toxicity_noted { 4.0 } else { 1.0 }))
+                .map(|n| box_of(at(n), half + 1.0))
                 .collect();
             // **Le nom du centre ne peut pas être abandonné, donc il se
             // déplace.** Les voisins se refusent les uns les autres et
@@ -55057,42 +55102,11 @@ impl App {
                 box_of(mid, 11.0 + 4.0),
             ];
             taken.extend(boxes);
-            // **Et la rangée des boutons de grossissement.** Elle est
-            // peinte en dernier, pour passer devant la figure, mais
-            // réservée ici : ce qui est peint est réservé, et un nom
-            // écrit sous un bouton est un nom perdu deux fois — illisible
-            // et par-dessus un contrôle.
-            // **Le retour à cent pour cent n'est là que lorsqu'il fait
-            // quelque chose.** Gris, il occupait quand même sa place, et
-            // à `text_scale = 1,6` les trois boutons prenaient le quart
-            // haut-droit de la figure — deux noms de moins pour un
-            // bouton qui ne pouvait rien. C'est la règle que la légende
-            // et la ligne du pied suivent déjà : ce qui ne dit rien
-            // n'est pas dessiné.
-            let mut zoom_row = vec![tr("graph_zoom_out"), tr("graph_zoom_in")];
-            if !look.is_plain() {
-                zoom_row.push(tr("graph_zoom_reset"));
-            }
-            let zoom_w = Self::group_width(ui, zoom_row.iter().map(|l| Self::button_width(ui, l)));
-            let zoom_h = Self::button_height(ui);
-            let pad = ui.spacing().item_spacing.x;
-            // Seulement si elle tient sans manger la figure : un volet
-            // trop étroit garde la carte et perd les boutons, la molette
-            // et le glissement restant.
-            let strip = (zoom_w + pad * 2.0 < field.width() * 0.75
-                && zoom_h + pad * 2.0 < field.height() * 0.5)
-                .then(|| {
-                    egui::Rect::from_min_size(
-                        egui::pos2(field.right() - zoom_w - pad, field.top() + pad),
-                        egui::vec2(zoom_w, zoom_h),
-                    )
-                });
-            if let Some(r) = strip {
-                taken.push(r.expand(pad));
-            }
             // Le nœud survolé dont le nom n'a pas pu s'écrire : il
             // s'écrira quand même, sur une plaque, après tout le reste.
             let mut nameless: Option<usize> = None;
+            // Et combien de noms la place a refusés : le titre le dit.
+            let mut unnamed = 0usize;
             for (i, n) in map.nodes.iter().enumerate() {
                 let p = at(n);
                 let node = box_of(p, half);
@@ -55100,24 +55114,6 @@ impl App {
                 let color = motif::chart::series_color(n.tie.series());
                 ui.painter().rect_filled(node, 0.0, color);
                 motif::bevel(ui.painter(), node, !resp.hovered());
-                // **Ce que la fiche documente d'une toxicité ou d'une
-                // marge** reçoit l'anneau d'alerte : c'est ce qui fait
-                // rouvrir la fiche d'un voisin qu'on allait proposer.
-                //
-                // Ce n'est **pas** « marge thérapeutique étroite » au
-                // sens clinique : le champ est une section de prose,
-                // remplie sur 484 fiches sur 862. Le commentaire qui
-                // l'affirmait ici a fini par être recopié dans une
-                // légende, où il devenait une erreur visible — Zeclar,
-                // Sporanox et Rifadine portent l'anneau. D'où le nom du
-                // champ, qui dit la donnée et non son interprétation.
-                if n.toxicity_noted {
-                    ui.painter().rect_stroke(
-                        node.expand(3.0),
-                        0.0,
-                        egui::Stroke::new(1.5_f32, motif::alert()),
-                    );
-                }
                 // **Une coche pour ce que le dossier ouvert prend
                 // déjà.** Une marque et non une teinte : la couleur d'un
                 // carré dit son anneau, elle est prise, et une seconde
@@ -55153,7 +55149,15 @@ impl App {
                 });
                 let spot = Self::graph_label_spot(p, half, p - mid, size, field, &taken);
                 if let Some((anchor, at)) = spot {
-                    taken.push(anchor.anchor_size(at, size));
+                    let place = anchor.anchor_size(at, size);
+                    taken.push(place);
+                    // **Sur un fond, comme le nom du moyeu.** Un nom écrit
+                    // en travers de deux rayons se lit à travers eux ; le
+                    // fond les coupe là où le nom est, et nulle part
+                    // ailleurs. La place est déjà réservée, donc le fond
+                    // ne couvre ni un carré ni un autre nom.
+                    ui.painter()
+                        .rect_filled(place.expand(1.0), 0.0, motif::trough());
                     ui.painter().text(
                         at,
                         anchor,
@@ -55169,8 +55173,14 @@ impl App {
                 // Le nom que la place a refusé n'est pas perdu : la
                 // petite fiche le porte en tête, et le survol le pose
                 // en clair sur la figure — voir plus bas.
-                if spot.is_none() && hot == Some(i) {
-                    nameless = Some(i);
+                // Counted only where the square is in sight: grossie, la
+                // carte déborde du creux, et un carré hors du cadre n'a
+                // pas de nom à refuser.
+                if spot.is_none() && field.contains(p) {
+                    unnamed += 1;
+                    if hot == Some(i) {
+                        nameless = Some(i);
+                    }
                 }
                 if resp.clicked() {
                     recentre = Some(n.id);
@@ -55181,13 +55191,6 @@ impl App {
             let hub = box_of(mid, 11.0);
             ui.painter().rect_filled(hub, 0.0, motif::accent());
             motif::bevel(ui.painter(), hub, false);
-            if map.centre.2 {
-                ui.painter().rect_stroke(
-                    hub.expand(3.0),
-                    0.0,
-                    egui::Stroke::new(1.5_f32, motif::alert()),
-                );
-            }
             // Below the hub and clear of it: the spokes leave the middle
             // in every direction, and a name written against them is a
             // name read through three lines.
@@ -55243,58 +55246,16 @@ impl App {
                 );
             }
 
-            // **Les boutons de grossissement, dans le creux.** Une bande
-            // de plus en haut coûterait une rangée à toutes les tailles
-            // de texte, et c'est la figure qui la paierait ; un coin de
-            // la figure ne coûte rien et se trouve là où l'on regarde.
-            // Posés en dernier : egui donne le pointeur au dernier des
-            // objets qui se recouvrent, donc ils gagnent sur le
-            // glissement de la carte et sur les nœuds qu'ils couvrent.
-            if let Some(r) = strip {
-                // **Sur une plaque à elle.** Ce qui flotte au-dessus du
-                // plan de travail le dit par un relief — c'est la règle
-                // de la maison pour une fenêtre et pour un menu ouvert —
-                // et sans elle un nœud se voyait par le trou entre deux
-                // boutons, à moitié couvert, sans qu'on sache si c'était
-                // un objet de la carte ou une faute de dessin.
-                let plate = r.expand(pad * 0.5);
-                ui.painter().rect_filled(plate, 0.0, motif::bg());
-                motif::bevel(ui.painter(), plate, true);
-                ui.allocate_new_ui(egui::UiBuilder::new().max_rect(r), |ui| {
-                    ui.horizontal(|ui| {
-                        if motif::button_enabled(
-                            ui,
-                            tr("graph_zoom_out"),
-                            look.zoom > crate::graph::Look::MIN + 1e-3,
-                        )
-                        .on_hover_text(tr("graph_zoom_out_tip"))
-                        .clicked()
-                        {
-                            zoom_by = Some(1.0 / crate::graph::Look::STEP);
-                        }
-                        if motif::button_enabled(
-                            ui,
-                            tr("graph_zoom_in"),
-                            look.zoom < crate::graph::Look::MAX - 1e-3,
-                        )
-                        .on_hover_text(tr("graph_zoom_in_tip"))
-                        .clicked()
-                        {
-                            zoom_by = Some(crate::graph::Look::STEP);
-                        }
-                        // Il montre l'état où il ramène, et il n'est
-                        // là que lorsqu'on n'y est pas : voir plus haut.
-                        if !look.is_plain()
-                            && motif::button(ui, tr("graph_zoom_reset"))
-                                .on_hover_text(tr("graph_zoom_reset_tip"))
-                                .clicked()
-                        {
-                            reset_look = true;
-                        }
-                    });
-                });
+            // **Un nom que la place refuse se dit.** Réduit, l'anneau prend
+            // plus de monde qu'il n'en peut nommer, et des carrés muets
+            // sans rien pour le dire se lisent comme des fiches sans
+            // nom. Le titre le compte à l'image suivante — il est posé
+            // avant la figure — et le compte ne change qu'avec le
+            // grossissement ou le centre.
+            if session.graph_unnamed != unnamed {
+                session.graph_unnamed = unnamed;
+                ui.ctx().request_repaint();
             }
-
             // **La petite fiche, et pour le seul nœud survolé.** Une
             // infobulle ne s'affiche qu'à un endroit : composer les
             // douze serait douze premières phrases par image pour onze
@@ -55411,9 +55372,6 @@ impl App {
         // que fait la molette quand le pointeur y est.
         if let Some(f) = zoom_by {
             session.graph_look = session.graph_look.zoom_about(f, (0.0, 0.0));
-        }
-        if reset_look {
-            session.graph_look = crate::graph::Look::default();
         }
         if let Some(id) = recentre.or(typed_centre) {
             session.graph_centre = Some(id);
@@ -69174,9 +69132,9 @@ mod tests {
         }
         for theme in motif::THEMES.iter() {
             motif::set_theme(theme.key);
-            // L'anneau rouge est une clé de cette légende comme les
-            // trois autres : il est dessiné, donc il se confond ou non.
-            let mut keys: Vec<(String, egui::Color32)> = Tie::ALL
+            // Les trois liens seulement : la coche de l'ordonnance est
+            // une forme sur le carré, pas une couleur de plus.
+            let keys: Vec<(String, egui::Color32)> = Tie::ALL
                 .iter()
                 .map(|t| {
                     (
@@ -69185,7 +69143,6 @@ mod tests {
                     )
                 })
                 .collect();
-            keys.push((tr("graph_toxicity").to_owned(), motif::alert()));
             for (i, (an, a)) in keys.iter().enumerate() {
                 for (bn, b) in keys.iter().skip(i + 1) {
                     assert!(
