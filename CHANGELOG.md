@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.289.0] - 2026-09-24
+
+### Added
+- **Revenir d'un pas sur la carte du voisinage** : la touche Retour
+  arrière, ou le bouton « précédent » de la souris, ramène au centre
+  d'avant — la carte se parcourt en cliquant de voisin en voisin, et
+  revenir se faisait en retapant le nom. L'infobulle du champ « Mettre
+  au centre… » le dit.
+
 ## [0.288.1] - 2026-09-24
 
 ### Fixed

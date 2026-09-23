@@ -4441,6 +4441,9 @@ struct Session {
     graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
     /// The rings the operator hid by clicking their key in the legend.
     graph_hidden: Vec<crate::graph::Tie>,
+    /// The centres walked through by clicking, most recent last — what
+    /// the back key returns to.
+    graph_trail: Vec<i64>,
     /// For each card, what it would meet on the open file's ordonnance:
     /// (line, reason) — read once per file and base revision.
     graph_file_meet: Option<GraphFileMeet>,
@@ -5178,6 +5181,7 @@ impl Session {
             graph_reasons: None,
             graph_folded: None,
             graph_hidden: Vec::new(),
+            graph_trail: Vec::new(),
             graph_file_meet: None,
             graph_file: false,
             graph_file_read: None,
@@ -55154,6 +55158,9 @@ impl App {
         // autour — par quoi la remplacer, avec quoi elle se rencontre.
         if let Some(i) = responses.iter().position(|r| r.clicked()) {
             if let Some(d) = lines.get(i) {
+                if let Some(was) = session.graph_centre.filter(|w| *w != d.id) {
+                    session.graph_trail.push(was);
+                }
                 session.graph_centre = Some(d.id);
                 session.graph_look = crate::graph::Look::default();
                 session.graph_note = None;
@@ -55432,6 +55439,7 @@ impl App {
         // dessin, comme tout le reste de cette vue.
         let mut zoom_by: Option<f32> = None;
         let mut toggle_file = false;
+        let mut go_back = false;
         let mut toggle_ring: Option<crate::graph::Tie> = None;
 
         let centre_name = session
@@ -55455,6 +55463,7 @@ impl App {
                     )),
                 );
                 typed_changed = resp.changed();
+                resp.on_hover_text(tr("graph_hint_tip"));
                 let open = session.graph_centre.is_some();
                 if motif::button_enabled(ui, tr("graph_open_card"), open).clicked() {
                     open_card = session.graph_centre;
@@ -55663,6 +55672,17 @@ impl App {
                         i.key_pressed(egui::Key::Num0),
                     )
                 });
+                // **Revenir au centre d'avant** : la touche Retour arrière,
+                // ou le bouton « précédent » de la souris. La carte se
+                // parcourt en cliquant de voisin en voisin, et revenir
+                // d'un pas se faisait en retapant le nom.
+                let back = ui.input(|i| {
+                    i.key_pressed(egui::Key::Backspace)
+                        || i.pointer.button_clicked(egui::PointerButton::Extra1)
+                });
+                if back {
+                    go_back = true;
+                }
                 if home {
                     look = crate::graph::Look::default();
                 } else if plus {
@@ -56268,6 +56288,23 @@ impl App {
                 session.graph_hidden.remove(at);
             } else {
                 session.graph_hidden.push(t);
+            }
+        }
+        // A click moves along the trail; typing does not — each keystroke
+        // is a centre, and the trail would fill with half-typed names.
+        if let (Some(id), Some(was)) = (recentre, session.graph_centre) {
+            if id != was {
+                session.graph_trail.push(was);
+                if session.graph_trail.len() > 30 {
+                    session.graph_trail.remove(0);
+                }
+            }
+        }
+        if go_back && recentre.is_none() && typed_centre.is_none() {
+            if let Some(prev) = session.graph_trail.pop() {
+                session.graph_centre = Some(prev);
+                session.graph_look = crate::graph::Look::default();
+                session.graph_note = None;
             }
         }
         if let Some(id) = recentre.or(typed_centre) {
