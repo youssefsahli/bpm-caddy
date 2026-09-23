@@ -1141,14 +1141,11 @@ const RULES: &[Rule] = &[
         severity: Severity::Alert,
         text: "CPK au-delà de cinq fois la normale sous statine ou fibrate : arrêt et avis, d'autant plus si les urines sont foncées ou la douleur musculaire diffuse.",
     },
-    Rule {
-        code: "ALAT",
-        side: Side::Above,
-        threshold: 120.0,
-        needs: &["vastatine", "méthotrexate", "isoniazide", "amiodarone", "agomélatine", "vildagliptine", "tériflunomide", "terbinafine", "pazopanib"],
-        severity: Severity::Alert,
-        text: "Transaminases au-delà de trois fois la normale sous un traitement hépatotoxique : arrêt à discuter avec le prescripteur, contrôle rapproché.",
-    },
+    // Une règle ALAT à 120 vivait ici, qui disait la même chose que
+    // celle de plus bas avec moins de molécules : au-delà de 150 sous
+    // statine, l'écran écrivait deux fois « au-delà de trois fois la
+    // normale ». Fondues en une, au seuil de trois fois la normale
+    // (3 × 40 = 120).
     Rule {
         code: "PLQ",
         side: Side::Below,
@@ -1592,7 +1589,7 @@ const RULES: &[Rule] = &[
     Rule {
         code: "ALAT",
         side: Side::Above,
-        threshold: 150.0,
+        threshold: 120.0,
         needs: &["vastatine", "amiodarone", "méthotrexate", "isoniazide", "kétoconazole", "amoxicilline", "clavulanique", "agomélatine", "vildagliptine", "tériflunomide", "terbinafine", "pazopanib"],
         severity: Severity::Alert,
         text: "Transaminases au-delà de trois fois la normale sous un médicament hépatotoxique : arrêter et faire évaluer. Sous amoxicilline-clavulanate, l'atteinte est cholestatique et peut apparaître après la fin du traitement — elle contre-indique l'association à vie, mais pas l'amoxicilline seule.",
@@ -2221,8 +2218,10 @@ mod tests {
         // qu'elle disait était faux — elle comptait les AVK et les
         // corticoïdes parmi les inducteurs ; pour les vrais, la règle à
         // 150 dit la même chose. Une lecture perdue, et c'était une
-        // lecture fausse.
-        const RULES_FLOOR: usize = 102;
+        // lecture fausse. 101 depuis la 0.259 : les deux règles ALAT
+        // disaient la même phrase à 120 et à 150 ; fondues en une, au
+        // seuil de 120, avec toutes les molécules des deux.
+        const RULES_FLOOR: usize = 101;
         assert!(
             CATALOGUE.len() >= CATALOGUE_FLOOR,
             "{} analytes, il y en avait {CATALOGUE_FLOOR}",

@@ -100,6 +100,19 @@ fn size_file() -> PathBuf {
     app_dir().join("version.size")
 }
 
+/// Le binaire installé est-il là, et entier ? Sa taille est retenue à
+/// l'installation ; un fichier qui n'a plus cette taille est abîmé.
+fn installed_whole() -> bool {
+    let bin = bin_path();
+    match std::fs::read_to_string(size_file())
+        .ok()
+        .and_then(|s| s.trim().parse::<u64>().ok())
+    {
+        Some(size) => std::fs::metadata(&bin).is_ok_and(|m| m.len() == size),
+        None => bin.exists(),
+    }
+}
+
 /// Les nombres d'une étiquette `v0.257.0`, pour comparer des versions
 /// comme des nombres : « 0.100 » est après « 0.99 ».
 fn version_parts(tag: &str) -> Vec<u64> {
@@ -153,13 +166,7 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     // Le binaire installé est-il entier ? Sa taille est retenue à
     // l'installation ; une taille qui ne correspond plus est un fichier
     // abîmé, et il se retélécharge.
-    let whole = match std::fs::read_to_string(size_file())
-        .ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-    {
-        Some(size) => std::fs::metadata(&bin).is_ok_and(|m| m.len() == size),
-        None => bin.exists(),
-    };
+    let whole = installed_whole();
     // **Jamais en arrière** : si la dernière publication est retirée,
     // « la plus récente » redevient la précédente, et chaque officine
     // aurait remplacé une version par une plus ancienne — qui ouvrirait
@@ -189,6 +196,25 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     shared.downloaded.store(0, Ordering::Relaxed);
 
     std::fs::create_dir_all(app_dir())?;
+    // Les temporaires qu'un lanceur fermé en route a laissés — celui
+    // qu'on quitte par « Lancer la version installée » en laisse un.
+    // Seulement ceux de plus d'une heure : un autre lanceur peut être en
+    // train d'écrire le sien.
+    if let Ok(dir) = std::fs::read_dir(app_dir()) {
+        for entry in dir.flatten() {
+            let path = entry.path();
+            let stale =
+                path.file_name()
+                    .and_then(|n| n.to_str())
+                    .is_some_and(|n| n.starts_with("bpm-caddy") && n.ends_with(".part"))
+                    && entry.metadata().and_then(|m| m.modified()).is_ok_and(|t| {
+                        t.elapsed().is_ok_and(|age| age > Duration::from_secs(3600))
+                    });
+            if stale {
+                let _ = std::fs::remove_file(path);
+            }
+        }
+    }
     // **Un fichier temporaire par lanceur** : sous un nom fixe, un second
     // lanceur ouvert d'un double clic vidait le fichier que le premier
     // écrivait, et le premier installait un binaire troué — que plus
@@ -386,6 +412,18 @@ impl eframe::App for Launcher {
                         } else {
                             let t = ui.input(|i| i.time);
                             motif::progress_marquee(ui, 300.0, t);
+                        }
+                        // **Le comptoir n'attend pas la mise à jour** :
+                        // sur une ligne lente, trente mégaoctets prennent
+                        // des minutes, et fermer la fenêtre laissait sans
+                        // application. La version installée se lance
+                        // tout de suite ; la mise à jour sera reprise au
+                        // prochain démarrage.
+                        if installed_whole() {
+                            ui.add_space(6.0);
+                            if motif::button(ui, "Lancer la version installée").clicked() {
+                                self.launch_app(ctx);
+                            }
                         }
                     }
                     Phase::ReadyToLaunch(note) => {
