@@ -22,6 +22,12 @@
 //!   faire est un comptage valide et un écart inconnu : `gap` vaut
 //!   `None`, la feuille laisse la ligne vide. Le contraire annoncerait
 //!   « + 1 240,50 € d'excédent » tous les soirs.
+//! * **Le fond d'ouverture n'est pas une recette.** Le tiroir du soir
+//!   contient ce que la journée a encaissé *plus* le fond qu'on y avait
+//!   trouvé le matin — celui que la veille avait laissé. La recette
+//!   encaissée le retranche : sans cela chaque écart était faussé de
+//!   tout le fond, cent cinquante euros d'« excédent » tous les soirs
+//!   où l'attendu était juste.
 //!
 //! Pur, testé, sans horloge et sans base : le jour et l'attendu sont
 //! passés.
@@ -142,6 +148,10 @@ pub struct Other {
 pub struct Tally {
     /// Les espèces trouvées dans le tiroir.
     pub cash: i64,
+    /// Le fond trouvé dans le tiroir à l'ouverture — celui que la veille
+    /// a laissé. Il était là avant la première vente : il se retranche
+    /// de la recette.
+    pub opening: i64,
     /// Ce qu'on laisse pour ouvrir demain.
     pub float_kept: i64,
     /// Ce qui sort du tiroir : les espèces moins le fond. Négatif
@@ -151,7 +161,8 @@ pub struct Tally {
     pub banked: i64,
     /// Carte, chèques, tout ce qui n'est pas dans le tiroir.
     pub other: i64,
-    /// Espèces plus le reste : la recette encaissée du jour.
+    /// Espèces moins le fond d'ouverture, plus le reste : la recette
+    /// encaissée du jour.
     pub takings: i64,
     /// Ce que la journée devait faire, quand quelqu'un l'a saisi.
     pub expected: Option<i64>,
@@ -206,16 +217,19 @@ pub fn pieces(quantities: &Quantities) -> i64 {
 #[must_use]
 pub fn tally(
     quantities: &Quantities,
+    opening: i64,
     float_kept: i64,
     others: &[Other],
     expected: Option<i64>,
 ) -> Tally {
     let cash = cash_total(quantities);
+    let opening = opening.max(0);
     let float_kept = float_kept.max(0);
     let other: i64 = others.iter().map(|o| o.cents).sum();
-    let takings = cash + other;
+    let takings = cash - opening + other;
     Tally {
         cash,
+        opening,
         float_kept,
         banked: cash - float_kept,
         other,
@@ -321,15 +335,20 @@ pub struct Counted {
     /// Carte, chèques : la somme des lignes hors tiroir.
     pub other: i64,
     pub float_kept: i64,
+    /// Le fond trouvé à l'ouverture. `None` pour un comptage écrit avant
+    /// que ce fond soit saisi : [`fill_openings`] le reprend alors du
+    /// fond laissé la veille, quand la veille est connue.
+    pub opening: Option<i64>,
     /// Ce que la journée devait faire, quand quelqu'un l'a saisi.
     pub expected: Option<i64>,
 }
 
 impl Counted {
-    /// La recette encaissée : le tiroir et le reste.
+    /// La recette encaissée : le tiroir moins le fond d'ouverture, et le
+    /// reste.
     #[must_use]
     pub fn takings(&self) -> i64 {
-        self.cash + self.other
+        self.cash - self.opening.unwrap_or(0) + self.other
     }
 
     /// L'écart de ce soir-là, ou rien — la règle du module, appliquée
@@ -361,6 +380,27 @@ pub fn per_day(counts: &[Counted]) -> Vec<&Counted> {
     }
     kept.sort_by(|a, b| a.day.cmp(&b.day).then(a.id.cmp(&b.id)));
     kept
+}
+
+/// Le fond d'ouverture des comptages qui ne l'ont pas saisi — ceux
+/// d'avant ce champ : c'est le fond laissé le soir précédent, dernier
+/// comptage de ce soir-là. `before` est le dernier comptage antérieur à
+/// la période, quand il y en a un ; sans veille connue, le fond reste
+/// inconnu et compte pour zéro, ce qui est l'ancienne lecture.
+pub fn fill_openings(counts: &mut [Counted], before: Option<&Counted>) {
+    let days: Vec<(String, i64)> = per_day(counts)
+        .iter()
+        .map(|c| (c.day.clone(), c.float_kept))
+        .collect();
+    for c in counts.iter_mut().filter(|c| c.opening.is_none()) {
+        let previous = days
+            .iter()
+            .rev()
+            .find(|(day, _)| *day < c.day)
+            .map(|(_, float)| *float)
+            .or_else(|| before.filter(|b| b.day < c.day).map(|b| b.float_kept));
+        c.opening = previous;
+    }
 }
 
 /// Les comptages qu'un plus récent a remplacés, par identifiant : la
@@ -499,7 +539,7 @@ mod tests {
     fn without_an_expected_figure_there_is_no_gap() {
         let mut q = none();
         q[3] = 4;
-        let t = tally(&q, 15_000, &[], None);
+        let t = tally(&q, 0, 15_000, &[], None);
         assert_eq!(t.cash, 20_000);
         assert_eq!(t.takings, 20_000);
         assert_eq!(t.gap, None);
@@ -515,7 +555,7 @@ mod tests {
             cents: 45_075,
         }];
         // Attendu 660,00 : il manque 9,25.
-        let t = tally(&q, 15_000, &others, Some(66_000));
+        let t = tally(&q, 0, 15_000, &others, Some(66_000));
         assert_eq!(t.other, 45_075);
         assert_eq!(t.takings, 65_075);
         assert_eq!(t.gap, Some(-925));
@@ -523,7 +563,7 @@ mod tests {
         // l'attendu : c'est toute la discipline.
         assert_eq!(t.cash, 20_000);
         // Et dans l'autre sens, un excédent.
-        let t = tally(&q, 15_000, &others, Some(64_000));
+        let t = tally(&q, 0, 15_000, &others, Some(64_000));
         assert_eq!(t.gap, Some(1_075));
     }
 
@@ -532,7 +572,7 @@ mod tests {
     fn the_float_leaves_the_takings_alone() {
         let mut q = none();
         q[3] = 4; // 200,00
-        let t = tally(&q, 15_000, &[], Some(20_000));
+        let t = tally(&q, 0, 15_000, &[], Some(20_000));
         assert_eq!(t.banked, 5_000);
         assert_eq!(
             t.takings, 20_000,
@@ -541,10 +581,10 @@ mod tests {
         assert_eq!(t.gap, Some(0));
         // Un fond plus grand que le tiroir se dit en négatif : il faudra
         // en remettre demain matin.
-        let t = tally(&q, 25_000, &[], None);
+        let t = tally(&q, 0, 25_000, &[], None);
         assert_eq!(t.banked, -5_000);
         // Un fond négatif saisi par erreur vaut zéro.
-        let t = tally(&q, -100, &[], None);
+        let t = tally(&q, 0, -100, &[], None);
         assert_eq!(t.float_kept, 0);
         assert_eq!(t.banked, 20_000);
     }
@@ -610,8 +650,47 @@ mod tests {
             cash,
             other: 0,
             float_kept: 15_000,
+            opening: Some(0),
             expected,
         }
+    }
+
+    /// **Le fond d'ouverture n'est pas une recette** : le tiroir du soir
+    /// porte ce que la journée a encaissé plus ce qu'on y a trouvé le
+    /// matin. Un attendu juste tombait « + 150,00 » tous les soirs.
+    #[test]
+    fn the_opening_float_is_not_takings() {
+        let mut q = none();
+        q[3] = 7; // 350,00 dans le tiroir le soir, dont 150,00 du matin
+        let t = tally(&q, 15_000, 15_000, &[], Some(20_000));
+        assert_eq!(t.cash, 35_000);
+        assert_eq!(t.takings, 20_000);
+        assert_eq!(t.gap, Some(0), "l'attendu juste tombe juste");
+        assert_eq!(t.banked, 20_000, "ce qui sort est la recette");
+
+        // Un comptage d'avant ce champ reprend le fond laissé la veille.
+        let mut old = [
+            Counted {
+                opening: None,
+                ..counted(1, "2026-09-07", 35_000, Some(20_000))
+            },
+            Counted {
+                opening: None,
+                ..counted(2, "2026-09-08", 36_000, Some(21_000))
+            },
+        ];
+        let before = counted(0, "2026-09-05", 0, None);
+        fill_openings(&mut old, Some(&before));
+        assert_eq!(old[0].opening, Some(15_000), "la veille hors période");
+        assert_eq!(old[1].opening, Some(15_000), "le soir d'avant");
+        assert_eq!(old[1].gap(), Some(0));
+        // Sans veille connue, le fond reste inconnu.
+        let mut alone = [Counted {
+            opening: None,
+            ..counted(3, "2026-09-07", 35_000, None)
+        }];
+        fill_openings(&mut alone, None);
+        assert_eq!(alone[0].opening, None);
     }
 
     /// La règle de l'historique : la table est en insertion seule, donc

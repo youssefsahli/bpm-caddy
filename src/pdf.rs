@@ -537,7 +537,8 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
             cash: 20_250,
             other: 45_075,
             float_kept: 15_000,
-            expected: Some(66_000),
+            opening: Some(15_000),
+            expected: Some(51_000),
         },
         crate::caisse::Counted {
             id: 2,
@@ -545,7 +546,8 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
             cash: 20_450,
             other: 45_075,
             float_kept: 15_000,
-            expected: Some(66_000),
+            opening: Some(15_000),
+            expected: Some(51_000),
         },
         crate::caisse::Counted {
             id: 3,
@@ -553,6 +555,7 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
             cash: 31_200,
             other: 52_300,
             float_kept: 15_000,
+            opening: Some(15_000),
             expected: None,
         },
     ]
@@ -566,6 +569,7 @@ fn sample_caisse_history() -> Vec<CaisseHistoryRow> {
         .map(|c| CaisseHistoryRow {
             day: crate::db::format_french_date(&c.day),
             cash: c.cash,
+            opening: c.opening,
             other: c.other,
             takings: c.takings(),
             expected: c.expected,
@@ -4467,6 +4471,7 @@ const MARKERS_CAISSE: &[&str] = &[
     "{{NOTES_TOTAL}}",
     "{{COINS_TOTAL}}",
     "{{CASH}}",
+    "{{OPENING}}",
     "{{OTHERS}}",
     "{{OTHER_TOTAL}}",
     "{{TAKINGS}}",
@@ -5641,7 +5646,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 "Claire Leroy",
                 &q,
                 &others,
-                &crate::caisse::tally(&q, 15_000, &others, Some(92_500)),
+                &crate::caisse::tally(&q, 15_000, 15_000, &others, Some(77_500)),
                 "Un billet de 20 € retrouvé sous le tiroir en fin de comptage.",
             )
         }
@@ -5926,6 +5931,7 @@ const DEFAULT_CAISSE_TEMPLATE: &str = r##"
 #v(5mm)
 #table(columns: (1fr, auto), inset: 5pt, stroke: 0.4pt,
   [Espèces comptées], [{{CASH}} €],
+  [Fond à l'ouverture], [− {{OPENING}} €],
   {{OTHERS}}
   [Autres encaissements], [{{OTHER_TOTAL}} €],
   [*Recette encaissée*], [*{{TAKINGS}} €*],
@@ -6022,6 +6028,7 @@ fn caisse_values(
             euros(crate::caisse::coins_total(quantities)),
         ),
         ("{{CASH}}", euros(tally.cash)),
+        ("{{OPENING}}", euros(tally.opening)),
         ("{{OTHERS}}", others_rows),
         ("{{OTHER_TOTAL}}", euros(tally.other)),
         ("{{TAKINGS}}", euros(tally.takings)),
@@ -6066,6 +6073,8 @@ pub struct CaisseHistoryRow {
     /// Le jour compté, déjà en français.
     pub day: String,
     pub cash: i64,
+    /// Le fond d'ouverture retranché ; `None` quand il n'est pas connu.
+    pub opening: Option<i64>,
     pub other: i64,
     pub takings: i64,
     pub expected: Option<i64>,
@@ -6099,9 +6108,9 @@ const DEFAULT_CAISSES_TEMPLATE: &str = r##"
 #align(center)[#text(10pt)[{{PHARMACY_NAME}} — {{PERIOD}}]]
 #v(4mm)
 
-#table(columns: (auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.4pt,
-  align: (left, right, right, right, right, right, left, left),
-  [*Jour*], [*Espèces*], [*Autres*], [*Recette*], [*Attendu*], [*Écart*], [*Par*], [*Remarque*],
+#table(columns: (auto, auto, auto, auto, auto, auto, auto, auto, 1fr), inset: 4pt, stroke: 0.4pt,
+  align: (left, right, right, right, right, right, right, left, left),
+  [*Jour*], [*Espèces*], [*Fond ouv.*], [*Autres*], [*Recette*], [*Attendu*], [*Écart*], [*Par*], [*Remarque*],
 {{ROWS}})
 
 #v(4mm)
@@ -6154,8 +6163,10 @@ fn caisse_history_values(
         // colonne de chiffres nus à côté d'une colonne en euros se lit
         // comme deux choses différentes.
         body.push_str(&format!(
-            "  {day}, [{} €], [{} €], [{} €], [{}], [{}], [#{}], [#text(8pt)[#{}]],\n",
+            "  {day}, [{} €], [{}], [{} €], [{} €], [{}], [{}], [#{}], [#text(8pt)[#{}]],\n",
             euros(r.cash),
+            r.opening
+                .map_or_else(|| "—".to_owned(), |o| format!("- {} €", euros(o))),
             euros(r.other),
             euros(r.takings),
             money(r.expected),
@@ -6165,7 +6176,7 @@ fn caisse_history_values(
         ));
     }
     if body.is_empty() {
-        body.push_str("  [], [], [], [], [], [], [], [],\n");
+        body.push_str("  [], [], [], [], [], [], [], [], [],\n");
     }
     // Ce que la période dit, et ce qu'elle ne dit pas. Sans attendu
     // saisi, il n'y a pas d'écart : la ligne le dit en toutes lettres
@@ -7009,7 +7020,7 @@ mod tests {
             label: "Carte #eval \"x\"".to_owned(),
             cents: 45_075,
         }];
-        let t = tally(&q, 15_000, &others, Some(80_000));
+        let t = tally(&q, 0, 15_000, &others, Some(80_000));
         let src = fill(
             DEFAULT_CAISSE_TEMPLATE,
             &caisse_values(
@@ -7054,7 +7065,7 @@ mod tests {
             "Claire Leroy",
             &q,
             &[],
-            &tally(&q, 0, &[], None),
+            &tally(&q, 0, 0, &[], None),
             "   ",
         );
         let of = |m: &str| {
@@ -7161,10 +7172,11 @@ mod tests {
                 .map(|(_, v)| v.as_str())
                 .unwrap_or("")
         };
-        // 204,50 + 450,75 le 7 (le recomptage), 312,00 + 523,00 le 8 :
-        // 1 490,25 €. Avec les deux comptages du 7 additionnés, on
-        // lirait 1 692,75 — l'erreur que ce test existe pour tenir.
-        assert_eq!(of("{{TAKINGS}}"), "1\u{a0}490,25 €");
+        // 204,50 − 150,00 + 450,75 le 7 (le recomptage), 312,00 −
+        // 150,00 + 523,00 le 8 : 1 190,25 €, fond d'ouverture retranché.
+        // Avec les deux comptages du 7 additionnés, on lirait 1 392,75
+        // — l'erreur que ce test existe pour tenir.
+        assert_eq!(of("{{TAKINGS}}"), "1\u{a0}190,25 €");
         assert!(of("{{DAYS}}").contains("2 soirs comptés"));
         assert!(of("{{DAYS}}").contains("1 recomptage"));
         // L'écart porte sur le seul soir qui avait un attendu, et le

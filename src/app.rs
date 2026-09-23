@@ -3768,6 +3768,12 @@ struct Session {
     /// effacer ce qui est écrit.
     caisse_qty: [String; crate::caisse::DENOMINATIONS.len()],
     caisse_float: String,
+    /// Le fond trouvé à l'ouverture, tel que tapé — pré-rempli avec le
+    /// fond laissé au dernier comptage d'avant le jour compté.
+    caisse_opening: String,
+    /// Le jour pour lequel `caisse_opening` a été pré-rempli : changer de
+    /// jour relit la veille, taper dans le champ ne se fait pas écraser.
+    caisse_opening_for: String,
     caisse_expected: String,
     caisse_others: Vec<(String, String)>,
     caisse_remark: String,
@@ -4701,6 +4707,8 @@ impl Session {
             script_edit_id: None,
             caisse_qty: std::array::from_fn(|_| String::new()),
             caisse_float: String::new(),
+            caisse_opening: String::new(),
+            caisse_opening_for: String::new(),
             caisse_expected: String::new(),
             caisse_others: Vec::new(),
             caisse_remark: String::new(),
@@ -6223,6 +6231,16 @@ impl Session {
                 ..c.counted()
             })
             .collect();
+        // Les comptages d'avant le champ « fond à l'ouverture » le
+        // reprennent de la veille — celle du mois, ou le dernier soir du
+        // mois précédent pour le premier.
+        let before = self
+            .db
+            .caisse_last_before(&from)
+            .ok()
+            .flatten()
+            .map(|c| c.counted());
+        crate::caisse::fill_openings(&mut self.caisse_counted, before.as_ref());
         let counted = &self.caisse_counted;
         self.caisse_summary = crate::caisse::summarize(counted);
         self.caisse_superseded = crate::caisse::superseded(counted);
@@ -11185,7 +11203,9 @@ impl App {
                             session.caisse_float = "150".to_owned();
                             // Un écart petit et négatif : c'est le cas courant, et
                             // c'est celui qui exerce la couleur d'alerte.
-                            session.caisse_expected = "820".to_owned();
+                            // Le tiroir porte les 150,00 € du matin : l'attendu est
+                            // la recette, fond retranché.
+                            session.caisse_expected = "670".to_owned();
                             session.view = MainView::Caisse;
                         }
                         // L'historique, sur le mois du jour : la démo
@@ -47320,6 +47340,19 @@ impl App {
         if session.caisse_day.is_empty() {
             session.caisse_day.clone_from(&session.today);
         }
+        // **Le fond d'ouverture est celui que la veille a laissé** : lu
+        // une fois par jour affiché, jamais par image, et laissé à qui le
+        // corrige tant qu'on ne change pas de jour.
+        if session.caisse_opening_for != session.caisse_day {
+            session.caisse_opening = session
+                .db
+                .caisse_last_before(&session.caisse_day)
+                .ok()
+                .flatten()
+                .map(|c| crate::caisse::euros(c.float_kept))
+                .unwrap_or_default();
+            session.caisse_opening_for.clone_from(&session.caisse_day);
+        }
         // La phrase sous le titre annonce ce que l'écran fait. Sans
         // recette attendue, il ne fait plus la moitié de ce qu'elle
         // promet : on compte le tiroir, et il n'est plus question
@@ -47401,6 +47434,7 @@ impl App {
         let want_expected = config.ui.caisse_expected;
         let tally = crate::caisse::tally(
             &quantities,
+            crate::caisse::parse_euros(&session.caisse_opening).unwrap_or(0),
             crate::caisse::parse_euros(&session.caisse_float).unwrap_or(0),
             &others,
             want_expected
@@ -47645,6 +47679,17 @@ impl App {
                     }
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
+                        ui.label(tr("caisse_opening"));
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 10.0),
+                            egui::TextEdit::singleline(&mut session.caisse_opening)
+                                .horizontal_align(egui::Align::RIGHT),
+                        )
+                        .on_hover_text(tr("caisse_opening_tooltip"));
+                        ui.label("€");
+                    });
+                    ui.horizontal(|ui| {
                         ui.label(tr("caisse_float"));
                         motif::field(
                             ui,
@@ -47770,6 +47815,12 @@ impl App {
                     );
                     row(
                         ui,
+                        tr("caisse_opening_less"),
+                        format!("- {} €", euros(tally.opening)),
+                        false,
+                    );
+                    row(
+                        ui,
                         tr("caisse_other_total"),
                         format!("{} €", euros(tally.other)),
                         false,
@@ -47823,7 +47874,15 @@ impl App {
                                 .size(motif::pt(ui, 11.0))
                                 .color(motif::text_dim()),
                         );
-                        for c in &session.caisse_history {
+                        // L'écart de chaque soir est **celui du module** —
+                        // fond d'ouverture retranché — et non une seconde
+                        // soustraction écrite ici : la liste gardait
+                        // « espèces + autres − attendu » et annonçait
+                        // + 150 € tous les soirs où le mois disait juste.
+                        let mut counted: Vec<crate::caisse::Counted> =
+                            session.caisse_history.iter().map(|c| c.counted()).collect();
+                        crate::caisse::fill_openings(&mut counted, None);
+                        for (c, counted) in session.caisse_history.iter().zip(&counted) {
                             // Les derniers soirs : ce qu'ils avaient
                             // dans le tiroir, et leur écart — celui-là
                             // seulement si l'officine compte contre une
@@ -47831,16 +47890,12 @@ impl App {
                             // au montant : un « · — » à chaque soir est
                             // une colonne qui ne dit rien.
                             let tail = if want_expected {
-                                let gap = match (
-                                    c.expected,
-                                    c.others.iter().map(|(_, v)| v).sum::<i64>(),
-                                ) {
-                                    (Some(e), other) => {
-                                        let g = c.cash + other - e;
+                                let gap = match counted.gap() {
+                                    Some(g) => {
                                         let sign = if g > 0 { "+" } else { "" };
                                         format!("{sign}{} €", euros(g))
                                     }
-                                    (None, _) => "—".to_owned(),
+                                    None => "—".to_owned(),
                                 };
                                 format!(" · {gap}")
                             } else {
@@ -47893,6 +47948,11 @@ impl App {
             })
             .map(|(t, d)| format!("{} : « {} »", d.label, t.trim()))
             .or_else(|| {
+                let t = session.caisse_opening.trim();
+                (!t.is_empty() && crate::caisse::parse_euros(t).is_none())
+                    .then(|| format!("{} : « {t} »", tr("caisse_opening")))
+            })
+            .or_else(|| {
                 session
                     .caisse_others
                     .iter()
@@ -47910,6 +47970,7 @@ impl App {
                 quantities,
                 cash: tally.cash,
                 float_kept: tally.float_kept,
+                opening: Some(tally.opening),
                 others: others.iter().map(|o| (o.label.clone(), o.cents)).collect(),
                 expected: tally.expected,
                 operator: operator.to_owned(),
@@ -48159,6 +48220,19 @@ impl App {
                 "caisses_col_other",
                 &rows.iter().map(|c| money_text(c.other)).collect::<Vec<_>>(),
             );
+            // Le fond d'ouverture a sa colonne : la recette est les
+            // espèces **moins** lui, plus le reste, et une recette qui ne
+            // vaut pas la somme des colonnes affichées se lit comme une
+            // faute de calcul. Inconnu (comptage ancien sans veille), un
+            // tiret.
+            let opening_text = |c: &crate::caisse::Counted| {
+                c.opening
+                    .map_or_else(|| "—".to_owned(), |o| format!("- {}", money_text(o)))
+            };
+            let opening_w = money_col(
+                "caisses_col_opening",
+                &rows.iter().map(opening_text).collect::<Vec<_>>(),
+            );
             let takings_w = money_col(
                 "caisses_col_takings",
                 &rows
@@ -48232,11 +48306,12 @@ impl App {
             };
             let full = day_w
                 + cash_w
+                + opening_w
                 + other_w
                 + takings_w
                 + with_expected
                 + by_w
-                + (4.0 + gap_cols) * gutter
+                + (5.0 + gap_cols) * gutter
                 + chars_wide(ui, 12.0);
             // **Et la barre de défilement se soustrait avant la
             // comparaison.** La table est dans un `ScrollArea::both` :
@@ -48264,14 +48339,18 @@ impl App {
             } else {
                 day_w
             };
-            let detail_cols = if tight { 0.0 } else { 2.0 };
+            let detail_cols = if tight { 0.0 } else { 3.0 };
             let cols = if bare {
                 2 + gap_cols as usize
             } else {
                 4 + detail_cols as usize + gap_cols as usize
             };
             let fixed = day_w
-                + if tight { 0.0 } else { cash_w + other_w }
+                + if tight {
+                    0.0
+                } else {
+                    cash_w + opening_w + other_w
+                }
                 + takings_w
                 + with_expected
                 + if bare { 0.0 } else { by_w }
@@ -48298,6 +48377,7 @@ impl App {
                             head(ui, day_w, "caisses_col_day");
                             if !tight {
                                 head(ui, cash_w, "caisses_col_cash");
+                                head(ui, opening_w, "caisses_col_opening");
                                 head(ui, other_w, "caisses_col_other");
                             }
                             head(ui, takings_w, "caisses_col_takings");
@@ -48357,21 +48437,20 @@ impl App {
                                         cell.on_hover_text(hover);
                                     }
                                 }
-                                let detail: &[(f32, i64)] = if tight {
-                                    &[]
+                                let detail: Vec<(f32, String)> = if tight {
+                                    Vec::new()
                                 } else {
-                                    &[(cash_w, counted.cash), (other_w, counted.other)]
+                                    vec![
+                                        (cash_w, money_text(counted.cash)),
+                                        (opening_w, opening_text(counted)),
+                                        (other_w, money_text(counted.other)),
+                                    ]
                                 };
-                                for (w, amount) in detail
-                                    .iter()
-                                    .copied()
-                                    .chain(std::iter::once((takings_w, counted.takings())))
-                                {
-                                    Self::grid_cell(
-                                        ui,
-                                        w,
-                                        egui::RichText::new(money_text(amount)).color(ink),
-                                    );
+                                for (w, text) in detail.into_iter().chain(std::iter::once((
+                                    takings_w,
+                                    money_text(counted.takings()),
+                                ))) {
+                                    Self::grid_cell(ui, w, egui::RichText::new(text).color(ink));
                                 }
                                 if want_expected {
                                     // Sans attendu, un tiret : pas un
@@ -48624,6 +48703,7 @@ impl App {
                 .map(|(c, counted)| crate::pdf::CaisseHistoryRow {
                     day: db::format_french_date(&c.day),
                     cash: counted.cash,
+                    opening: counted.opening,
                     other: counted.other,
                     takings: counted.takings(),
                     expected: counted.expected,

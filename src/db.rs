@@ -572,6 +572,10 @@ CREATE TABLE IF NOT EXISTS caisse_counts (
     quantities   TEXT NOT NULL DEFAULT '',
     cash         INTEGER NOT NULL DEFAULT 0,
     float_kept   INTEGER NOT NULL DEFAULT 0,
+    -- Le fond trouvé à l'ouverture, retranché de la recette. NULL pour
+    -- un comptage d'avant ce champ : `caisse::fill_openings` le reprend
+    -- du fond laissé la veille.
+    float_opening INTEGER,
     -- Carte, chèques : « libellé=centimes », séparés par des
     -- points-virgules.
     others       TEXT NOT NULL DEFAULT '',
@@ -915,6 +919,7 @@ const MIGRATIONS: &[&str] = &[
         remark       TEXT NOT NULL DEFAULT '',
         created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
+    "ALTER TABLE caisse_counts ADD COLUMN float_opening INTEGER",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -1913,6 +1918,9 @@ pub struct CaisseCount {
     /// le chiffre qui a été lu et signé ce soir-là.
     pub cash: i64,
     pub float_kept: i64,
+    /// Le fond trouvé à l'ouverture ; `None` pour un comptage d'avant ce
+    /// champ.
+    pub opening: Option<i64>,
     /// Carte, chèques : le libellé et le montant.
     pub others: Vec<(String, i64)>,
     /// Ce que la journée devait faire, ou `None` quand personne ne l'a
@@ -1934,6 +1942,7 @@ impl CaisseCount {
             cash: self.cash,
             other: self.others.iter().map(|(_, v)| v).sum(),
             float_kept: self.float_kept,
+            opening: self.opening,
             expected: self.expected,
         }
     }
@@ -1945,7 +1954,7 @@ impl CaisseCount {
 /// finissent par diverger, et c'est celle qu'on relit le moins souvent
 /// qui rend le mauvais chiffre.
 const CAISSE_SELECT: &str = "SELECT id, day, quantities, cash, float_kept, others, expected,
-                                    operator, remark, created_at
+                                    operator, remark, created_at, float_opening
                              FROM caisse_counts";
 
 /// Une ligne de `caisse_counts`, lue dans l'ordre de [`CAISSE_SELECT`].
@@ -1974,6 +1983,7 @@ fn caisse_row(r: &rusqlite::Row) -> rusqlite::Result<CaisseCount> {
         operator: r.get(7)?,
         remark: r.get(8)?,
         created_at: r.get(9)?,
+        opening: r.get(10)?,
     })
 }
 
@@ -30354,8 +30364,9 @@ impl Db {
         self.conn
             .execute(
                 "INSERT INTO caisse_counts
-                   (day, quantities, cash, float_kept, others, expected, operator, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                   (day, quantities, cash, float_kept, others, expected, operator, remark,
+                    float_opening)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     c.day,
                     quantities,
@@ -30365,11 +30376,27 @@ impl Db {
                     c.expected,
                     c.operator,
                     c.remark,
+                    c.opening,
                 ],
             )
             .map_err(|e| e.to_string())?;
         crate::telemetry::tally(crate::telemetry::Signal::Till);
         Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Le dernier comptage d'un soir antérieur à `day` — le fond qu'il a
+    /// laissé est celui que `day` a trouvé à l'ouverture.
+    pub fn caisse_last_before(&self, day: &str) -> Result<Option<CaisseCount>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{CAISSE_SELECT} WHERE day < ?1 ORDER BY day DESC, id DESC LIMIT 1"
+            ))
+            .map_err(|e| e.to_string())?;
+        let mut rows = stmt
+            .query_map([day], caisse_row)
+            .map_err(|e| e.to_string())?;
+        rows.next().transpose().map_err(|e| e.to_string())
     }
 
     /// Les derniers comptages, du plus récent au plus ancien.
@@ -32578,11 +32605,15 @@ impl Db {
         // La caisse passe par son propre module : un soir recompté est
         // **une** soirée, et la somme des écarts ne se calcule pas
         // autrement ici que là-bas.
-        let counted: Vec<crate::caisse::Counted> = self
+        let mut counted: Vec<crate::caisse::Counted> = self
             .caisse_counts_between(from, to)?
             .iter()
             .map(CaisseCount::counted)
             .collect();
+        // Le fond d'ouverture des comptages anciens, repris de la veille
+        // — la même lecture que l'écran du mois.
+        let before = self.caisse_last_before(from)?.map(|c| c.counted());
+        crate::caisse::fill_openings(&mut counted, before.as_ref());
         let till = crate::caisse::summarize(&counted);
 
         Ok(crate::audit::Activity {
@@ -37116,6 +37147,7 @@ mod tests {
             quantities: q,
             cash: 20_250,
             float_kept: 15_000,
+            opening: Some(15_000),
             others: vec![("Carte".to_owned(), 45_075)],
             expected: Some(66_000),
             operator: "CL".to_owned(),
@@ -44095,10 +44127,12 @@ mod tests {
                     // n'exercerait jamais l'encre d'alerte, qui est la
                     // moitié de ce que la vue a à dire.
                     let drift = (wobble % 7) * 25 - 75;
+                    // Le tiroir porte le fond du matin : l'attendu est la
+                    // recette, fond retranché.
                     let expected = if back % 11 == 3 {
                         None
                     } else {
-                        Some(cash + card - drift)
+                        Some(cash - 15_000 + card - drift)
                     };
                     let mut q = [0_i64; crate::caisse::DENOMINATIONS.len()];
                     q[3] = cash / 5_000;
@@ -44110,6 +44144,7 @@ mod tests {
                         quantities: q,
                         cash,
                         float_kept: 15_000,
+                        opening: Some(15_000),
                         others: vec![("Carte".to_owned(), card)],
                         expected,
                         operator: if back % 2 == 0 { "CL" } else { "MB" }.to_owned(),
@@ -44127,6 +44162,7 @@ mod tests {
                             quantities: q,
                             cash: cash + 2_000,
                             float_kept: 15_000,
+                            opening: Some(15_000),
                             others: vec![("Carte".to_owned(), card)],
                             expected,
                             operator: "CL".to_owned(),

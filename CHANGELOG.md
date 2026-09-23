@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.266.0] - 2026-09-23
+
+### Fixed
+- **La recette encaissée retranche le fond trouvé à l'ouverture.** Le
+  tiroir du soir porte la journée *plus* le fond du matin : chaque écart
+  était faussé de tout le fond, cent cinquante euros d'« excédent » les
+  soirs où l'attendu était juste. Un champ « Fond à l'ouverture »,
+  pré-rempli avec le fond laissé au dernier comptage, entre dans le
+  calcul, dans le récapitulatif, dans l'historique (colonne « Fond
+  ouv. ») et sur les deux feuilles imprimées (marqueur `{{OPENING}}`).
+  Les comptages déjà enregistrés reprennent le fond laissé la veille.
+  Un modèle d'historique réécrit par l'officine doit gagner une colonne.
+
 ## [0.265.0] - 2026-09-23
 
 ### Fixed

@@ -728,6 +728,11 @@ n'est pas recalculé depuis ce qui était attendu.
 
 Sans recette attendue, il n'y a pas d'écart et la ligne reste vide.
 
+La recette encaissée est le tiroir **moins le fond trouvé à
+l'ouverture**, plus la carte et les chèques. Ce fond est pré-rempli avec
+celui que le dernier comptage a laissé ; il se corrige s'il a changé
+entre-temps.
+
 Un soir recompté est une **seconde ligne**, pas une correction : le mois
 garde le dernier comptage de chaque soir et montre les autres barrés.
 
