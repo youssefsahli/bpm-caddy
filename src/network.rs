@@ -178,6 +178,34 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(e.uid.clone());
         }
+        // Les valeurs de pharmacocinétique sourcées : chacune part une
+        // fois par valeur — la clé porte le texte et la source, donc une
+        // valeur corrigée repart, et c'est la dernière reçue qui compte.
+        let already = db.published()?;
+        for (name, dci, fact) in db.all_drug_facts()? {
+            let key = format!(
+                "fait:{}:{}:{}:{}",
+                crate::ruptures::key(&name),
+                fact.property.key(),
+                fact.text,
+                fact.source
+            );
+            if already.contains(&key) {
+                continue;
+            }
+            let payload = crate::pk::encode_shared(&name, &dci, &fact, officine);
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(key);
+        }
         self.keep(db)?;
         db.mark_published(&done)?;
         Ok(done.len())
@@ -203,14 +231,24 @@ impl Net {
         };
         let me = self.device.id();
         let known = self.known();
-        let events: Vec<crate::ruptures::Event> = self
+        let facts: Vec<bpm_sync::Fact> = self
             .journal
             .read(trousseau, Stream::Reseau)
             .facts
             .into_iter()
             .filter(|f| f.author != me && known.contains(&f.author))
+            .collect();
+        let events: Vec<crate::ruptures::Event> = facts
+            .iter()
             .filter_map(|f| crate::ruptures::decode(&f.payload))
             .collect();
+        // In causal order, so the last value an officine sent for a
+        // property is the one kept.
+        let shared: Vec<crate::pk::Shared> = facts
+            .iter()
+            .filter_map(|f| crate::pk::decode_shared(&f.payload))
+            .collect();
+        db.receive_net_facts(&shared)?;
         db.receive_supply_events(&events)
     }
 
@@ -545,9 +583,18 @@ mod tests {
         b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-20")
             .unwrap();
         a.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        // Et une valeur sourcée : elle voyage aussi.
+        let eliquis = a.add_drug("Eliquis").unwrap();
+        let bound = crate::pk::parse(
+            crate::pk::Property::ProteinBinding,
+            "87",
+            "RCP Eliquis, 5.2",
+        )
+        .unwrap();
+        a.set_drug_fact(eliquis, &bound, None).unwrap();
 
         let mut na = Net::load(&a).unwrap();
-        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 1);
+        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 2);
         assert_eq!(
             na.publish(&a, "Pharmacie du Centre").unwrap(),
             0,
@@ -563,13 +610,17 @@ mod tests {
         }
 
         let mut nb = Net::load(&b).unwrap();
-        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 1);
+        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 2);
         assert_eq!(nb.absorb(&b).unwrap(), 1);
         let tried = crate::ruptures::tried(&b.supply_events().unwrap(), "Diprosone");
         assert_eq!(tried.len(), 1);
         assert_eq!(tried[0].other, "Locoid");
         let theirs = b.supply_events().unwrap();
         assert_eq!(theirs[0].source, "Pharmacie du Centre");
+        let facts = b.net_facts_for("eliquis").unwrap();
+        assert_eq!(facts.len(), 1);
+        assert_eq!(facts[0].officine, "Pharmacie du Centre");
+        assert_eq!(facts[0].fact.low, Some(87.0));
         // Relu : rien de neuf.
         assert_eq!(nb.absorb(&b).unwrap(), 0);
 

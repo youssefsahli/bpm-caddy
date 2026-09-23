@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.275.0] - 2026-09-23
+
+### Added
+- **Les valeurs de pharmacocinétique sourcées voyagent sur le réseau
+  d'officines** : ce qu'une officine a lu dans un RCP s'affiche chez les
+  autres, avec sa source et le nom de l'officine — après les valeurs
+  qu'elle a sourcées elle-même, avant la lecture de la prose. Une valeur
+  sans source n'entre pas.
+- **La barre du comptoir (F9) dit une rupture en premier**, avec ce que
+  les collègues ont donné à la place — la même phrase que l'en-tête de la
+  fiche.
+
 ## [0.274.0] - 2026-09-23
 
 ### Added

@@ -742,6 +742,10 @@ saisit avec « Compléter… » et **sa source** (le RCP, section 5.1 ou
 s'écrit « non chiffré ». Une valeur sourcée l'emporte sur la lecture de
 la prose, s'affiche sur la monographie et s'imprime avec elle.
 
+Quand l'officine fait partie d'un réseau, les valeurs qu'elle a sourcées
+y voyagent aussi, et celles des autres officines s'affichent avec leur
+source et leur nom — après les siennes, avant la prose.
+
 # Les ruptures
 
 Quand un produit manque, sa fiche le signale : « Signaler une rupture »,
@@ -790,6 +794,11 @@ rien ouvrir. Qui tient le dossier ne lit rien.
 
 Retirer une officine arrête ce qu'elle enverra ; ce qu'elle a déjà
 envoyé reste au journal.
+
+Les valeurs de pharmacocinétique sourcées voyagent par le même chemin :
+ce qu'une officine a lu dans un RCP profite aux autres, avec sa source.
+Et la barre du comptoir (F9) dit une rupture avant tout le reste, avec
+ce que les collègues ont donné à la place.
 
 # La caisse
 

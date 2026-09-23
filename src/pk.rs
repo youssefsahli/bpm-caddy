@@ -341,6 +341,64 @@ fn percent(clause: &str) -> Option<(f64, f64)> {
     (high <= 100.0).then_some((low, high))
 }
 
+/// Une valeur sourcée **reçue d'une autre officine du réseau** : le
+/// produit tel qu'elle le nomme, la valeur, sa source, et qui l'a lue.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Shared {
+    pub product: String,
+    pub product_dci: String,
+    pub fact: Fact,
+    pub officine: String,
+}
+
+/// Ce qu'une valeur sourcée devient pour voyager vers le réseau. Pas de
+/// patient ici non plus : un produit, une propriété, une valeur, une
+/// source. Marqué `"t": "fait"`, ce qui le distingue d'un événement du
+/// journal des ruptures sur le même flux.
+pub fn encode_shared(product: &str, product_dci: &str, f: &Fact, officine: &str) -> Vec<u8> {
+    serde_json::json!({
+        "v": 1,
+        "t": "fait",
+        "product": product,
+        "product_dci": product_dci,
+        "property": f.property.key(),
+        "low": f.low,
+        "high": f.high,
+        "text": f.text,
+        "source": f.source,
+        "officine": officine,
+    })
+    .to_string()
+    .into_bytes()
+}
+
+/// L'inverse. Une valeur sans source n'entre pas — la règle de ce module
+/// vaut aussi pour ce qui vient d'ailleurs.
+pub fn decode_shared(bytes: &[u8]) -> Option<Shared> {
+    let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
+    if v.get("v")?.as_u64()? != 1 || v.get("t")?.as_str()? != "fait" {
+        return None;
+    }
+    let text = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_owned();
+    let source = text("source");
+    let product = text("product");
+    if source.trim().is_empty() || source == FROM_CARD || product.trim().is_empty() {
+        return None;
+    }
+    Some(Shared {
+        product,
+        product_dci: text("product_dci"),
+        fact: Fact {
+            property: Property::from_key(&text("property"))?,
+            low: v.get("low").and_then(|x| x.as_f64()),
+            high: v.get("high").and_then(|x| x.as_f64()),
+            text: text("text"),
+            source,
+        },
+        officine: text("officine"),
+    })
+}
+
 /// Une ligne du tableau : la propriété, et ce qu'on en sait — la valeur
 /// sourcée de l'officine, sinon celle de la fiche, sinon rien.
 #[derive(Clone, Debug, PartialEq)]
@@ -351,16 +409,28 @@ pub struct Row {
 
 /// Toutes les propriétés, dans l'ordre, chacune avec la meilleure valeur
 /// connue. **Ce que l'officine a sourcé l'emporte** sur la lecture.
-pub fn rows(mined: &[Fact], stored: &[Fact]) -> Vec<Row> {
+pub fn rows(mined: &[Fact], stored: &[Fact], network: &[Shared]) -> Vec<Row> {
     Property::ALL
         .into_iter()
         .map(|property| Row {
             property,
+            // L'officine d'abord, puis ce qu'une autre officine du réseau
+            // a sourcé (sa source et son nom dans la même chaîne), puis la
+            // prose de la fiche.
             fact: stored
                 .iter()
                 .find(|f| f.property == property)
-                .or_else(|| mined.iter().find(|f| f.property == property))
-                .cloned(),
+                .cloned()
+                .or_else(|| {
+                    network
+                        .iter()
+                        .find(|s| s.fact.property == property)
+                        .map(|s| Fact {
+                            source: format!("{} · {}", s.fact.source, s.officine),
+                            ..s.fact.clone()
+                        })
+                })
+                .or_else(|| mined.iter().find(|f| f.property == property).cloned()),
         })
         .collect()
 }
@@ -521,7 +591,7 @@ mod tests {
         });
         let typed = parse(Property::HalfLife, "10 à 14", "RCP Eliquis, 5.2").unwrap();
         assert_eq!((typed.low, typed.high), (Some(10.0), Some(14.0)));
-        let table = rows(&mined, &[typed]);
+        let table = rows(&mined, &[typed], &[]);
         assert_eq!(table.len(), Property::ALL.len());
         let hl = table
             .iter()
@@ -559,6 +629,39 @@ mod tests {
                 .value(),
             "facteur Xa"
         );
+    }
+
+    /// **Ce qu'une autre officine a sourcé** passe après ce que
+    /// l'officine a sourcé elle-même, et avant la prose ; sa source et son
+    /// nom l'accompagnent, et une valeur sans source n'entre pas.
+    #[test]
+    fn a_value_from_the_network_comes_with_its_officine_and_its_source() {
+        let f = parse(Property::ProteinBinding, "87", "RCP Eliquis, 5.2").unwrap();
+        let bytes = encode_shared("Eliquis", "apixaban", &f, "Pharmacie du Port");
+        let shared = decode_shared(&bytes).expect("lu");
+        assert_eq!(shared.fact, f);
+        let table = rows(&[], &[], std::slice::from_ref(&shared));
+        let row = table
+            .iter()
+            .find(|r| r.property == Property::ProteinBinding)
+            .unwrap();
+        assert_eq!(
+            row.fact.as_ref().map(|f| f.source.as_str()),
+            Some("RCP Eliquis, 5.2 · Pharmacie du Port")
+        );
+        let mine = parse(Property::ProteinBinding, "88", "RCP, 5.2").unwrap();
+        let table = rows(&[], std::slice::from_ref(&mine), &[shared]);
+        assert_eq!(
+            table[2].fact.as_ref().and_then(|f| f.low),
+            Some(88.0),
+            "l'officine d'abord"
+        );
+        let unsourced = Fact {
+            source: String::new(),
+            ..f
+        };
+        assert!(decode_shared(&encode_shared("Eliquis", "", &unsourced, "X")).is_none());
+        assert!(decode_shared(b"{}").is_none());
     }
 
     #[test]

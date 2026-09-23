@@ -7333,7 +7333,8 @@ impl Session {
             text: &text,
         });
         let stored = self.db.drug_facts(card.id).unwrap_or_default();
-        self.drug_pk = crate::pk::rows(&mined, &stored);
+        let network = self.db.net_facts_for(&card.name).unwrap_or_default();
+        self.drug_pk = crate::pk::rows(&mined, &stored, &network);
         self.drug_pk_key = Some(key);
     }
 
@@ -55887,6 +55888,9 @@ impl App {
             // **Et le jour** : une boîte scannée à 23 h 58 et relue à
             // minuit passé gardait « non périmée ».
             session.today.clone(),
+            // **Et le journal des ruptures** : une rupture signalée sur un
+            // autre poste, ou reçue du réseau, doit se lire en tête.
+            session.supply_rev,
         );
         let mut held = self.companion_read.take().filter(|(k, _)| *k == key);
         // **Une autre réponse se lit par son début.** La zone qui porte
@@ -55956,7 +55960,7 @@ impl App {
                     )
                 })
                 .unwrap_or_default();
-            let look = companion_look(
+            let mut look = companion_look(
                 hits,
                 &session.patient_treats,
                 session.renal_dfg,
@@ -56001,6 +56005,37 @@ impl App {
                     })
                     .collect::<Vec<_>>(),
             );
+            // **Une rupture se dit avant tout le reste**, avec ce que les
+            // collègues ont donné à la place : c'est souvent pour ça
+            // qu'on a tapé le nom. Même phrase que l'en-tête de la fiche.
+            if let Some(card) = look.hits.get(look.pick) {
+                if let Some(sh) =
+                    crate::ruptures::shortage(&session.supply_events, &card.name, &session.today)
+                {
+                    let mut line = if sh.sources > 1 {
+                        trn(
+                            "rupt_banner_many",
+                            &[&db::format_french_date(&sh.since), &sh.sources],
+                        )
+                    } else {
+                        trf("rupt_banner", db::format_french_date(&sh.since))
+                    };
+                    let top: Vec<String> =
+                        crate::ruptures::tried(&session.supply_events, &card.name)
+                            .iter()
+                            .take(3)
+                            .map(|t| format!("{} ×{}", t.other, t.times))
+                            .collect();
+                    if !top.is_empty() {
+                        line.push_str(&trf("rupt_banner_given", top.join(", ")));
+                    }
+                    look.flag = if look.flag.is_empty() {
+                        line
+                    } else {
+                        format!("{line}. {}", look.flag)
+                    };
+                }
+            }
             (key, look)
         });
         // La page lue, bornée à ce que **cette** fiche porte : on garde
@@ -56981,6 +57016,7 @@ type CompanionKey = (
     u64,
     u64,
     String,
+    u64,
 );
 
 /// Ce dont dépend la lecture d'un nœud de la carte : la paire (centre,

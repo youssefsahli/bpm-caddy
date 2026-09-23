@@ -266,6 +266,21 @@ CREATE TABLE IF NOT EXISTS drug_facts (
     source    TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (drug_id, property)
 );
+CREATE TABLE IF NOT EXISTS net_facts (
+    -- Les valeurs de pharmacocinétique qu'une **autre officine** du
+    -- réseau a sourcées, reçues par le flux « Réseau ». La dernière reçue
+    -- par officine, produit et propriété.
+    officine    TEXT NOT NULL,
+    product_key TEXT NOT NULL,
+    property    TEXT NOT NULL,
+    product     TEXT NOT NULL DEFAULT '',
+    product_dci TEXT NOT NULL DEFAULT '',
+    low         REAL,
+    high        REAL,
+    text        TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (officine, product_key, property)
+);
 CREATE TABLE IF NOT EXISTS net_records (
     -- Le réseau d'officines (`src/network.rs`) : les enregistrements
     -- scellés du flux « Réseau », tels qu'ils ont été reçus ou écrits.
@@ -1016,6 +1031,18 @@ const MIGRATIONS: &[&str] = &[
         text      TEXT NOT NULL DEFAULT '',
         source    TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (drug_id, property)
+    )",
+    "CREATE TABLE IF NOT EXISTS net_facts (
+        officine    TEXT NOT NULL,
+        product_key TEXT NOT NULL,
+        property    TEXT NOT NULL,
+        product     TEXT NOT NULL DEFAULT '',
+        product_dci TEXT NOT NULL DEFAULT '',
+        low         REAL,
+        high        REAL,
+        text        TEXT NOT NULL DEFAULT '',
+        source      TEXT NOT NULL DEFAULT '',
+        PRIMARY KEY (officine, product_key, property)
     )",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
@@ -33284,6 +33311,139 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
+    }
+
+    /// Toutes les valeurs sourcées de la base, avec le nom et la DCI de
+    /// leur fiche — ce que le réseau partage.
+    pub fn all_drug_facts(&self) -> Result<Vec<(String, String, crate::pk::Fact)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT d.name, d.dci, f.property, f.low, f.high, f.text, f.source
+                 FROM drug_facts f JOIN drugs d ON d.id = f.drug_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, Option<f64>>(3)?,
+                    r.get::<_, Option<f64>>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (name, dci, key, low, high, text, source) = row.map_err(|e| e.to_string())?;
+            if let Some(property) = crate::pk::Property::from_key(&key) {
+                out.push((
+                    name,
+                    dci,
+                    crate::pk::Fact {
+                        property,
+                        low,
+                        high,
+                        text,
+                        source,
+                    },
+                ));
+            }
+        }
+        Ok(out)
+    }
+
+    /// Ranger les valeurs reçues du réseau : la dernière par officine,
+    /// produit et propriété.
+    pub fn receive_net_facts(&self, facts: &[crate::pk::Shared]) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for s in facts {
+            tx.execute(
+                "INSERT INTO net_facts
+                    (officine, product_key, property, product, product_dci, low, high, text, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+                 ON CONFLICT(officine, product_key, property) DO UPDATE SET
+                    product = excluded.product, product_dci = excluded.product_dci,
+                    low = excluded.low, high = excluded.high,
+                    text = excluded.text, source = excluded.source",
+                rusqlite::params![
+                    s.officine,
+                    crate::ruptures::key(&s.product),
+                    s.fact.property.key(),
+                    s.product,
+                    s.product_dci,
+                    s.fact.low,
+                    s.fact.high,
+                    s.fact.text,
+                    s.fact.source,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Ce que le réseau a sourcé pour un produit, par son nom.
+    pub fn net_facts_for(&self, product: &str) -> Result<Vec<crate::pk::Shared>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT officine, property, product, product_dci, low, high, text, source
+                 FROM net_facts WHERE product_key = ?1 ORDER BY officine",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([crate::ruptures::key(product)], |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, Option<f64>>(4)?,
+                    r.get::<_, Option<f64>>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, String>(7)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (officine, key, product, product_dci, low, high, text, source) =
+                row.map_err(|e| e.to_string())?;
+            if let Some(property) = crate::pk::Property::from_key(&key) {
+                out.push(crate::pk::Shared {
+                    product,
+                    product_dci,
+                    fact: crate::pk::Fact {
+                        property,
+                        low,
+                        high,
+                        text,
+                        source,
+                    },
+                    officine,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Ce qui est déjà parti vers le réseau, par clé.
+    pub fn published(&self) -> Result<std::collections::HashSet<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT uid FROM net_published")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, String>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
