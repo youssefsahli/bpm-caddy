@@ -4291,6 +4291,12 @@ struct Session {
     facts_rev: u64,
     /// The sourced values being written.
     pk_edit: Option<PkEdit>,
+    /// Every version of every card (`card_edits`), this officine's and the
+    /// network's — read at opening, after each save and after a sync.
+    card_edits: Vec<crate::versions::Edit>,
+    edits_rev: u64,
+    /// The history window, on this card.
+    versions_open: Option<i64>,
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
@@ -5037,6 +5043,9 @@ impl Session {
             drug_pk_key: None,
             facts_rev: 0,
             pk_edit: None,
+            card_edits: Vec::new(),
+            edits_rev: 0,
+            versions_open: None,
             #[cfg(feature = "sync")]
             net_window: None,
             drug_kin_show: None,
@@ -7265,12 +7274,21 @@ impl Session {
     }
 
     /// Reload the codex from the base.
+    /// Every card version, and a new revision for whatever reads them.
+    fn reload_card_edits(&mut self) {
+        self.card_edits = self.db.card_edits().unwrap_or_default();
+        self.edits_rev = self.edits_rev.wrapping_add(1);
+    }
+
     /// The journal of shortages and substitutions — this officine's and
     /// what the network sent. Read at opening, after each write and on a
     /// resync; every reading of a card is computed from it once.
     fn reload_supply(&mut self) {
         self.supply_events = self.db.supply_events().unwrap_or_default();
         self.supply_rev = self.supply_rev.wrapping_add(1);
+        // The network brings both: whatever re-reads one re-reads the
+        // other.
+        self.reload_card_edits();
     }
 
     /// What the journal says about the open card: in shortage or not, and
@@ -8876,6 +8894,8 @@ enum TechAction {
     Search(String),
     /// Write the card's sourced pharmacokinetic values.
     EditPk,
+    /// Open the card's history of versions.
+    Versions,
     /// Show (or hide again) one of the two neighbour lists.
     Neighbours(KinList),
     Open(i64),
@@ -12283,7 +12303,7 @@ impl App {
                                 _ => 0,
                             };
                         }
-                        Ok("drug_card") => {
+                        Ok(key @ ("drug_card" | "versions")) => {
                             if let Ok(list) = session.db.drugs() {
                                 session.set_drugs(list);
                             }
@@ -12299,6 +12319,11 @@ impl App {
                                 .or(session.drugs.first())
                                 .cloned();
                             if let Some(d) = card {
+                                // With its history open: the window only a
+                                // capture can check.
+                                if key == "versions" {
+                                    session.versions_open = Some(d.id);
+                                }
                                 session.open_drug_card(d);
                             }
                             // Land straight on the editable form, so the
@@ -45239,12 +45264,14 @@ impl App {
     /// looked at again at the counter, mid-sentence, and it must be
     /// legible without reading a paragraph. Returns the keyword clicked,
     /// which sends the base's search to it.
+    #[allow(clippy::too_many_arguments)]
     fn drug_tech_pane(
         ui: &mut egui::Ui,
         d: &Drug,
         kin: &DrugKin,
         supply: &DrugSupply,
         pk: &[crate::pk::Row],
+        versions: (usize, usize, usize),
         shown: Option<KinList>,
         rect: egui::Rect,
     ) -> Option<TechAction> {
@@ -45337,6 +45364,10 @@ impl App {
                     ui.add_space(6.0);
                     if Self::drug_pk_section(ui, pk) {
                         action = Some(TechAction::EditPk);
+                    }
+                    ui.add_space(6.0);
+                    if Self::drug_versions_section(ui, versions) {
+                        action = Some(TechAction::Versions);
                     }
                     ui.add_space(6.0);
                     // Same rule as the monograph: an insulin gets its
@@ -45500,6 +45531,301 @@ impl App {
                 });
         });
         action
+    }
+
+    /// Combien de versions a cette fiche, combien viennent d'autres
+    /// officines, combien attendent l'arbitrage.
+    fn version_counts(session: &Session, card: &Drug) -> (usize, usize, usize) {
+        let k = crate::versions::key(&card.name);
+        let mine: Vec<&crate::versions::Edit> =
+            session.card_edits.iter().filter(|e| e.card == k).collect();
+        let others = mine.iter().filter(|e| !e.source.is_empty()).count();
+        let local = |f: &str| db::drug_field(card, f).map(str::to_owned);
+        let pending = crate::versions::pending(&session.card_edits, &card.name, &local).len();
+        (mine.len(), others, pending)
+    }
+
+    /// Les versions de la fiche : combien, d'où, et ce qui attend.
+    /// Rend `true` quand « Historique… » est pressé.
+    fn drug_versions_section(ui: &mut egui::Ui, counts: (usize, usize, usize)) -> bool {
+        let (all, others, pending) = counts;
+        let mut open = false;
+        ui.horizontal_wrapped(|ui| {
+            ui.label(
+                egui::RichText::new(tr("ver_section"))
+                    .size(motif::pt(ui, 10.5))
+                    .strong()
+                    .color(motif::text_dim()),
+            );
+            if motif::button(ui, tr("ver_open"))
+                .on_hover_text(tr("ver_open_tooltip"))
+                .clicked()
+            {
+                open = true;
+            }
+        });
+        let said = if all == 0 {
+            tr("ver_none").to_owned()
+        } else {
+            trn("ver_counts", &[&all, &others])
+        };
+        ui.label(
+            egui::RichText::new(said)
+                .size(motif::pt(ui, 11.0))
+                .color(motif::text_faint()),
+        );
+        if pending > 0 {
+            ui.label(
+                egui::RichText::new(trn("ver_pending", &[&pending]))
+                    .size(motif::pt(ui, 11.0))
+                    .strong()
+                    .color(motif::alert()),
+            );
+        }
+        open
+    }
+
+    /// L'historique d'une fiche : ce qui attend l'arbitrage d'abord, puis
+    /// chaque champ modifié avec ses versions, la plus récente en haut.
+    /// **Revenir à une version** écrit une version de plus, qui voyage
+    /// comme les autres ; rien ne s'efface.
+    fn versions_window(ctx: &egui::Context, session: &mut Session) {
+        let Some(id) = session.versions_open else {
+            return;
+        };
+        let Some(card) = session.drugs.iter().find(|d| d.id == id).cloned() else {
+            session.versions_open = None;
+            return;
+        };
+        let k = crate::versions::key(&card.name);
+        let local = |f: &str| db::drug_field(&card, f).map(str::to_owned);
+        let pending: Vec<crate::versions::Edit> =
+            crate::versions::pending(&session.card_edits, &card.name, &local)
+                .into_iter()
+                .cloned()
+                .collect();
+        let mut set: Option<(String, String)> = None;
+        let mut keep: Option<crate::versions::Edit> = None;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(trf("ver_title", &card.name))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(820.0, 640.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("ver_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(4.0);
+                let footer = App::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("versions_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        let who = |e: &crate::versions::Edit| {
+                            let place = if e.source.is_empty() {
+                                tr("ver_here").to_owned()
+                            } else {
+                                e.source.clone()
+                            };
+                            format!(
+                                "{} · {} · {}",
+                                db::format_french_date(&e.day),
+                                place,
+                                e.operator
+                            )
+                        };
+                        if !pending.is_empty() {
+                            motif::section(ui, tr("ver_to_settle"));
+                            for e in &pending {
+                                ui.label(
+                                    egui::RichText::new(format!(
+                                        "{} — {}",
+                                        App::field_label(&e.field),
+                                        who(e)
+                                    ))
+                                    .strong(),
+                                );
+                                ui.label(trf("ver_proposed", &e.value));
+                                ui.label(
+                                    egui::RichText::new(trf(
+                                        "ver_yours",
+                                        local(&e.field)
+                                            .filter(|v| !v.trim().is_empty())
+                                            .unwrap_or_else(|| tr("ver_empty").to_owned()),
+                                    ))
+                                    .color(motif::text_dim()),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("ver_adopt")).clicked() {
+                                        set = Some((e.field.clone(), e.value.clone()));
+                                    }
+                                    if motif::button(ui, tr("ver_keep")).clicked() {
+                                        keep = Some(e.clone());
+                                    }
+                                });
+                                ui.add_space(6.0);
+                            }
+                        }
+                        let mut any = false;
+                        for field in crate::versions::SHARED_FIELDS {
+                            let h: Vec<&crate::versions::Edit> = session
+                                .card_edits
+                                .iter()
+                                .filter(|e| e.card == k && e.field == field)
+                                .collect();
+                            if h.is_empty() {
+                                continue;
+                            }
+                            any = true;
+                            motif::section(ui, App::field_label(field));
+                            let current = local(field).unwrap_or_default();
+                            for e in h.iter().rev() {
+                                ui.horizontal_wrapped(|ui| {
+                                    let mut head = who(e);
+                                    if e.revert {
+                                        head.push_str(&format!(" · {}", tr("ver_revert_tag")));
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(head)
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    if e.value == current {
+                                        ui.label(
+                                            egui::RichText::new(tr("ver_current"))
+                                                .size(motif::pt(ui, 10.5))
+                                                .strong(),
+                                        );
+                                    } else if motif::button(ui, tr("ver_back"))
+                                        .on_hover_text(tr("ver_back_tooltip"))
+                                        .clicked()
+                                    {
+                                        set = Some((field.to_owned(), e.value.clone()));
+                                    }
+                                });
+                                let shown = if e.value.trim().is_empty() {
+                                    tr("ver_empty").to_owned()
+                                } else {
+                                    e.value.clone()
+                                };
+                                ui.add(egui::Label::new(shown.as_str()).truncate())
+                                    .on_hover_text(shown.as_str());
+                            }
+                            // The value the card started from, before any
+                            // version: the first version's `previous` — when
+                            // that version was written here. A first version
+                            // received from elsewhere replaced the value on
+                            // *that* officine's card, not this one.
+                            if let Some(first) = h.first().filter(|f| f.source.is_empty()) {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("ver_origin"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    if first.previous != current
+                                        && motif::button(ui, tr("ver_back")).clicked()
+                                    {
+                                        set = Some((field.to_owned(), first.previous.clone()));
+                                    }
+                                });
+                                let shown = if first.previous.trim().is_empty() {
+                                    tr("ver_empty").to_owned()
+                                } else {
+                                    first.previous.clone()
+                                };
+                                ui.add(egui::Label::new(shown.as_str()).truncate())
+                                    .on_hover_text(shown.as_str());
+                            }
+                            ui.add_space(6.0);
+                        }
+                        if !any {
+                            ui.label(tr("ver_none"));
+                        }
+                    });
+                if motif::button(ui, tr("trod_edit_done")).clicked() {
+                    close = true;
+                }
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some((field, value)) = set {
+            let mut new = card.clone();
+            if db::set_drug_field(&mut new, &field, value) {
+                match session
+                    .db
+                    .update_drug_by(&new, &card, &session.operator, true)
+                {
+                    Ok(true) => {
+                        if let Ok(list) = session.db.drugs() {
+                            session.set_drugs(list);
+                        }
+                        if session.drug_form.as_ref().is_some_and(|d| d.id == card.id) {
+                            session.drug_form = Some(new.clone());
+                            session.drug_base = Some(new);
+                        }
+                        session.reload_card_edits();
+                        session.reread_open_file();
+                    }
+                    Ok(false) => {
+                        if let Ok(list) = session.db.drugs() {
+                            session.set_drugs(list);
+                        }
+                        session.stale("drug_stale");
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if let Some(e) = keep {
+            match session.db.keep_mine(&card, &e.field, &e, &session.operator) {
+                Ok(()) => session.reload_card_edits(),
+                Err(err) => session.error = Some(err),
+            }
+        }
+        if close {
+            session.versions_open = None;
+        }
+    }
+
+    /// Le nom d'un champ de fiche, pour l'historique.
+    fn field_label(field: &str) -> &'static str {
+        match field {
+            "name" => tr("ver_f_name"),
+            "dci" => tr("ver_f_dci"),
+            "class" => tr("ver_f_class"),
+            "dosage" => tr("mono_f_dosage"),
+            "ddi" => tr("mono_f_ddi"),
+            "iup" => tr("mono_f_iup"),
+            "antidote" => tr("drug_antidote"),
+            "half_life" => tr("drug_half_life"),
+            "auc" => tr("drug_auc"),
+            "elimination" => tr("drug_elimination"),
+            "renal" => tr("drug_renal"),
+            "pregnancy" => tr("drug_pregnancy"),
+            "indications" => tr("drug_sec_indications"),
+            "mechanism" => tr("drug_sec_mechanism"),
+            "contraindications" => tr("drug_sec_ci"),
+            "adverse" => tr("drug_sec_adverse"),
+            "monitoring" => tr("drug_sec_monitoring"),
+            "sources" => tr("ver_f_sources"),
+            "status" => tr("drug_status"),
+            "smr" => tr("drug_sec_smr"),
+            "tags" => tr("ver_f_tags"),
+            "toxicity" => tr("drug_sec_toxicity"),
+            "forms" => tr("mono_f_forms"),
+            "missed_dose" => tr("mono_f_missed"),
+            "red_flags" => tr("mono_f_flags"),
+            _ => tr("ver_f_other"),
+        }
     }
 
     /// La pharmacocinétique et la pharmacodynamie de la fiche, **en
@@ -47493,9 +47819,13 @@ impl App {
                                     &session.drug_kin,
                                     &session.drug_supply,
                                     &session.drug_pk,
+                                    Self::version_counts(session, &card),
                                     shown,
                                     body,
                                 ) {
+                                    Some(TechAction::Versions) => {
+                                        session.versions_open = Some(card.id);
+                                    }
                                     Some(TechAction::EditPk) => {
                                         let stored =
                                             session.db.drug_facts(card.id).unwrap_or_default();
@@ -47795,8 +48125,12 @@ impl App {
                 if form.name.trim().is_empty() {
                     session.error = Some(tr("drug_name_required").to_owned());
                 } else if let Some(base) = session.drug_base.clone() {
-                    match session.db.update_drug(&form, &base) {
+                    match session
+                        .db
+                        .update_drug_by(&form, &base, &session.operator, false)
+                    {
                         Ok(true) => {
+                            session.reload_card_edits();
                             session.error = None;
                             session.drug_base = Some(form);
                             session.drug_reading = true;
@@ -48030,8 +48364,6 @@ impl App {
             session.open_drug_card(d);
             session.error = None;
         }
-        Self::subst_window(ctx, session);
-        Self::pk_window(ctx, session);
     }
 
     /// « Noter une substitution » : ce qui a été donné à la place, et
@@ -58185,6 +58517,12 @@ impl eframe::App for App {
         self.poll_maintenance(ctx);
         if let State::Unlocked(session) = &mut self.state {
             session.poll_script(ctx);
+            // The card's three windows — substitution, sourced values,
+            // history — drawn every frame whatever path drew the card:
+            // the card view returns early on more than one branch.
+            Self::subst_window(ctx, session);
+            Self::pk_window(ctx, session);
+            Self::versions_window(ctx, session);
         }
 
         // Auto-lock after inactivity (spec 4.3).

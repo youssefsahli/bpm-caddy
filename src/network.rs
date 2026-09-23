@@ -178,6 +178,27 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(e.uid.clone());
         }
+        // Les versions des fiches : chaque modification locale part une
+        // fois, et c'est chez les autres qu'elle s'applique — ou attend.
+        let already_versions = db.published()?;
+        for e in db
+            .card_edits()?
+            .into_iter()
+            .filter(|e| e.source.is_empty() && !already_versions.contains(&e.uid))
+        {
+            let payload = crate::versions::encode(&e, officine);
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(e.uid);
+        }
         // Les valeurs de pharmacocinétique sourcées : chacune part une
         // fois par valeur — la clé porte le texte et la source, donc une
         // valeur corrigée repart, et c'est la dernière reçue qui compte.
@@ -249,6 +270,11 @@ impl Net {
             .filter_map(|f| crate::pk::decode_shared(&f.payload))
             .collect();
         db.receive_net_facts(&shared)?;
+        let versions: Vec<crate::versions::Edit> = facts
+            .iter()
+            .filter_map(|f| crate::versions::decode(&f.payload))
+            .collect();
+        db.receive_card_edits(&versions)?;
         db.receive_supply_events(&events)
     }
 
@@ -593,8 +619,23 @@ mod tests {
         .unwrap();
         a.set_drug_fact(eliquis, &bound, None).unwrap();
 
+        // Et une fiche modifiée : sa version voyage, et s'applique chez B,
+        // qui a la même fiche.
+        let b_eliquis = b.add_drug("Eliquis").unwrap();
+        let before = a
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == eliquis)
+            .unwrap();
+        let after = crate::db::Drug {
+            dosage: "5 mg deux fois par jour".to_owned(),
+            ..before.clone()
+        };
+        a.update_drug_by(&after, &before, "CL", false).unwrap();
+
         let mut na = Net::load(&a).unwrap();
-        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 2);
+        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 3);
         assert_eq!(
             na.publish(&a, "Pharmacie du Centre").unwrap(),
             0,
@@ -610,13 +651,23 @@ mod tests {
         }
 
         let mut nb = Net::load(&b).unwrap();
-        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 2);
+        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 3);
         assert_eq!(nb.absorb(&b).unwrap(), 1);
         let tried = crate::ruptures::tried(&b.supply_events().unwrap(), "Diprosone");
         assert_eq!(tried.len(), 1);
         assert_eq!(tried[0].other, "Locoid");
         let theirs = b.supply_events().unwrap();
         assert_eq!(theirs[0].source, "Pharmacie du Centre");
+        let card = b
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == b_eliquis)
+            .unwrap();
+        assert_eq!(
+            card.dosage, "5 mg deux fois par jour",
+            "la version s'est appliquée"
+        );
         let facts = b.net_facts_for("eliquis").unwrap();
         assert_eq!(facts.len(), 1);
         assert_eq!(facts[0].officine, "Pharmacie du Centre");

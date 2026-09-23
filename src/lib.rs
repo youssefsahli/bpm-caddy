@@ -59,6 +59,7 @@ pub mod tables;
 pub mod telemetry;
 pub mod timeline;
 pub mod vaccines;
+pub mod versions;
 pub mod vigilance;
 pub mod vitale;
 pub mod winscard;

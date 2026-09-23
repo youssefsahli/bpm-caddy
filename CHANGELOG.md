@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.276.0] - 2026-09-23
+
+### Added
+- **L'historique des fiches médicament, partagé entre les officines.**
+  Chaque modification d'un champ est une version (qui, quand, quelle
+  valeur, ce qu'elle remplaçait) ; « Historique… », dans la colonne
+  technique, les montre champ par champ, et « Revenir à cette version »
+  en écrit une de plus avec l'ancienne valeur — rien ne s'efface.
+- **Les versions voyagent sur le réseau** : une fiche corrigée dans une
+  officine se corrige chez les autres si leur fiche dit encore ce que la
+  version remplaçait ; sinon elle attend « à arbitrer » (« Adopter »,
+  « Garder la mienne »), sans rien écraser. Chaque officine peut revenir
+  à n'importe quelle version. Une fiche créée ailleurs se crée ici. Les
+  notes de l'équipe ne voyagent pas.
+
 ## [0.275.0] - 2026-09-23
 
 ### Added

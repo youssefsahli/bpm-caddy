@@ -746,6 +746,22 @@ Quand l'officine fait partie d'un réseau, les valeurs qu'elle a sourcées
 y voyagent aussi, et celles des autres officines s'affichent avec leur
 source et leur nom — après les siennes, avant la prose.
 
+# Les versions d'une fiche
+
+Chaque modification d'un champ d'une fiche est une **version** : qui,
+quand, quelle valeur, et ce qu'elle remplaçait. « Historique… », dans la
+colonne technique, les montre champ par champ, la plus récente en haut ;
+« Revenir à cette version » en écrit une de plus avec l'ancienne valeur.
+Rien ne s'efface.
+
+Quand l'officine fait partie d'un réseau, les versions voyagent : une
+fiche corrigée dans une officine se corrige chez les autres — **si leur
+fiche dit encore ce que la version remplaçait**. Sinon la version attend,
+« à arbitrer » : « Adopter » la prend, « Garder la mienne » la laisse,
+et rien n'est écrasé en silence. Chaque officine peut revenir à
+n'importe quelle version de n'importe quel champ. Les notes de l'équipe
+ne voyagent pas, et aucune fiche ne porte de patient.
+
 # Les ruptures
 
 Quand un produit manque, sa fiche le signale : « Signaler une rupture »,

@@ -281,6 +281,23 @@ CREATE TABLE IF NOT EXISTS net_facts (
     source      TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (officine, product_key, property)
 );
+CREATE TABLE IF NOT EXISTS card_edits (
+    -- Les versions des fiches médicament (voir `src/versions.rs`) : une
+    -- ligne par champ modifié, ici ou dans une autre officine du réseau.
+    -- **En ajout seul** : revenir en arrière écrit une version de plus.
+    id        INTEGER PRIMARY KEY,
+    uid       TEXT NOT NULL UNIQUE,
+    day       TEXT NOT NULL,
+    card      TEXT NOT NULL,
+    card_name TEXT NOT NULL DEFAULT '',
+    field     TEXT NOT NULL,
+    value     TEXT NOT NULL DEFAULT '',
+    previous  TEXT NOT NULL DEFAULT '',
+    corrects  TEXT NOT NULL DEFAULT '',
+    revert    INTEGER NOT NULL DEFAULT 0,
+    operator  TEXT NOT NULL DEFAULT '',
+    source    TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS net_records (
     -- Le réseau d'officines (`src/network.rs`) : les enregistrements
     -- scellés du flux « Réseau », tels qu'ils ont été reçus ou écrits.
@@ -1043,6 +1060,20 @@ const MIGRATIONS: &[&str] = &[
         text        TEXT NOT NULL DEFAULT '',
         source      TEXT NOT NULL DEFAULT '',
         PRIMARY KEY (officine, product_key, property)
+    )",
+    "CREATE TABLE IF NOT EXISTS card_edits (
+        id        INTEGER PRIMARY KEY,
+        uid       TEXT NOT NULL UNIQUE,
+        day       TEXT NOT NULL,
+        card      TEXT NOT NULL,
+        card_name TEXT NOT NULL DEFAULT '',
+        field     TEXT NOT NULL,
+        value     TEXT NOT NULL DEFAULT '',
+        previous  TEXT NOT NULL DEFAULT '',
+        corrects  TEXT NOT NULL DEFAULT '',
+        revert    INTEGER NOT NULL DEFAULT 0,
+        operator  TEXT NOT NULL DEFAULT '',
+        source    TEXT NOT NULL DEFAULT ''
     )",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
@@ -2330,6 +2361,75 @@ pub struct Interview {
     /// sign with, through the team list in the configuration.
     pub operator: String,
     pub created_at: String,
+}
+
+/// Un champ d'une fiche, par son nom de colonne — ceux que
+/// [`crate::versions::SHARED_FIELDS`] nomme, et les notes.
+pub fn drug_field<'a>(d: &'a Drug, field: &str) -> Option<&'a str> {
+    Some(match field {
+        "name" => &d.name,
+        "dci" => &d.dci,
+        "class" => &d.class,
+        "dosage" => &d.dosage,
+        "ddi" => &d.ddi,
+        "iup" => &d.iup,
+        "antidote" => &d.antidote,
+        "notes" => &d.notes,
+        "half_life" => &d.half_life,
+        "auc" => &d.auc,
+        "elimination" => &d.elimination,
+        "renal" => &d.renal,
+        "pregnancy" => &d.pregnancy,
+        "indications" => &d.indications,
+        "mechanism" => &d.mechanism,
+        "contraindications" => &d.contraindications,
+        "adverse" => &d.adverse,
+        "monitoring" => &d.monitoring,
+        "sources" => &d.sources,
+        "status" => &d.status,
+        "smr" => &d.smr,
+        "tags" => &d.tags,
+        "toxicity" => &d.toxicity,
+        "forms" => &d.forms,
+        "missed_dose" => &d.missed_dose,
+        "red_flags" => &d.red_flags,
+        _ => return None,
+    })
+}
+
+/// L'inverse : poser un champ par son nom. `false` pour un nom inconnu.
+pub fn set_drug_field(d: &mut Drug, field: &str, value: String) -> bool {
+    let slot = match field {
+        "name" => &mut d.name,
+        "dci" => &mut d.dci,
+        "class" => &mut d.class,
+        "dosage" => &mut d.dosage,
+        "ddi" => &mut d.ddi,
+        "iup" => &mut d.iup,
+        "antidote" => &mut d.antidote,
+        "notes" => &mut d.notes,
+        "half_life" => &mut d.half_life,
+        "auc" => &mut d.auc,
+        "elimination" => &mut d.elimination,
+        "renal" => &mut d.renal,
+        "pregnancy" => &mut d.pregnancy,
+        "indications" => &mut d.indications,
+        "mechanism" => &mut d.mechanism,
+        "contraindications" => &mut d.contraindications,
+        "adverse" => &mut d.adverse,
+        "monitoring" => &mut d.monitoring,
+        "sources" => &mut d.sources,
+        "status" => &mut d.status,
+        "smr" => &mut d.smr,
+        "tags" => &mut d.tags,
+        "toxicity" => &mut d.toxicity,
+        "forms" => &mut d.forms,
+        "missed_dose" => &mut d.missed_dose,
+        "red_flags" => &mut d.red_flags,
+        _ => return false,
+    };
+    *slot = value;
+    true
 }
 
 /// The administrative statuses the base recognises. Anything else is
@@ -31528,6 +31628,20 @@ impl Db {
     /// Update a drug card. Compare-and-set against the card as loaded,
     /// like every other shared-row write. Returns `false` when stale.
     pub fn update_drug(&self, new: &Drug, expected: &Drug) -> Result<bool, String> {
+        self.update_drug_by(new, expected, "", false)
+    }
+
+    /// [`Self::update_drug`], signée : les champs changés s'écrivent aussi
+    /// comme des **versions** (`card_edits`), dans la même transaction —
+    /// l'historique de la fiche, que le réseau partage. `revert` marque un
+    /// retour à une version antérieure.
+    pub fn update_drug_by(
+        &self,
+        new: &Drug,
+        expected: &Drug,
+        operator: &str,
+        revert: bool,
+    ) -> Result<bool, String> {
         // **La fiche et ses verrous en une transaction.** Écrits l'un
         // après l'autre, un champ vidé exprès pouvait se retrouver sans
         // son verrou — un partage qui tombe entre les deux, ou le
@@ -31615,6 +31729,7 @@ impl Db {
             .map_err(|e| e.to_string())?;
         if changed == 1 {
             self.lock_edited_fields(new, expected)?;
+            self.write_versions(new, expected, operator, revert)?;
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -31623,6 +31738,233 @@ impl Db {
     /// Remember which clinical fields the team has written to, so a
     /// later « compléter les médicaments » never overwrites their work —
     /// a field they cleared on purpose stays cleared.
+    /// Écrire une version par champ partagé qui a changé. Chacune nomme la
+    /// version qu'elle remplace — la dernière connue de ce champ.
+    fn write_versions(
+        &self,
+        new: &Drug,
+        expected: &Drug,
+        operator: &str,
+        revert: bool,
+    ) -> Result<(), String> {
+        let base = self.base_uid()?;
+        let day = self.today_iso().unwrap_or_default();
+        let card = crate::versions::key(&expected.name);
+        for field in crate::versions::SHARED_FIELDS {
+            let (Some(before), Some(after)) = (drug_field(expected, field), drug_field(new, field))
+            else {
+                continue;
+            };
+            if before == after {
+                continue;
+            }
+            let corrects: String = self
+                .conn
+                .query_row(
+                    "SELECT uid FROM card_edits WHERE card = ?1 AND field = ?2
+                     ORDER BY id DESC LIMIT 1",
+                    (&card, field),
+                    |r| r.get(0),
+                )
+                .unwrap_or_default();
+            let next: i64 = self
+                .conn
+                .query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM card_edits", [], |r| {
+                    r.get(0)
+                })
+                .map_err(|e| e.to_string())?;
+            self.conn
+                .execute(
+                    "INSERT INTO card_edits
+                        (uid, day, card, card_name, field, value, previous, corrects,
+                         revert, operator, source)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '')",
+                    rusqlite::params![
+                        format!("{base}:v{next}"),
+                        day,
+                        card,
+                        expected.name,
+                        field,
+                        after,
+                        before,
+                        corrects,
+                        revert,
+                        operator,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// « Garder la mienne » : une version locale qui redit la valeur de la
+    /// fiche après une version reçue qu'on n'adopte pas. Elle ferme
+    /// l'arbitrage **ici**, et ne part pas vers le réseau — l'imposer aux
+    /// autres officines serait écraser leur fiche avec un refus.
+    pub fn keep_mine(
+        &self,
+        card: &Drug,
+        field: &str,
+        after: &crate::versions::Edit,
+        operator: &str,
+    ) -> Result<(), String> {
+        let Some(value) = drug_field(card, field) else {
+            return Ok(());
+        };
+        let base = self.base_uid()?;
+        let next: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM card_edits", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+        let uid = format!("{base}:v{next}");
+        self.conn
+            .execute(
+                "INSERT INTO card_edits
+                    (uid, day, card, card_name, field, value, previous, corrects,
+                     revert, operator, source)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, '')",
+                rusqlite::params![
+                    uid,
+                    self.today_iso().unwrap_or_default(),
+                    crate::versions::key(&card.name),
+                    card.name,
+                    field,
+                    value,
+                    after.value,
+                    after.uid,
+                    operator,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        self.mark_published(&[uid])
+    }
+
+    /// Toutes les versions, dans l'ordre où elles ont été écrites ou
+    /// reçues.
+    pub fn card_edits(&self) -> Result<Vec<crate::versions::Edit>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT uid, day, card, card_name, field, value, previous, corrects, revert,
+                        operator, source
+                 FROM card_edits ORDER BY id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::versions::Edit {
+                    uid: r.get(0)?,
+                    day: r.get(1)?,
+                    card: r.get(2)?,
+                    card_name: r.get(3)?,
+                    field: r.get(4)?,
+                    value: r.get(5)?,
+                    previous: r.get(6)?,
+                    corrects: r.get(7)?,
+                    revert: r.get(8)?,
+                    operator: r.get(9)?,
+                    source: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Recevoir des versions d'autres officines : les nouvelles sont
+    /// rangées, et **appliquées à la fiche locale seulement si elle dit
+    /// encore ce qu'elles remplaçaient** — sinon elles attendent
+    /// l'arbitrage. Une fiche inconnue ici est créée. Rend (reçues,
+    /// appliquées).
+    pub fn receive_card_edits(
+        &self,
+        edits: &[crate::versions::Edit],
+    ) -> Result<(usize, usize), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let (mut received, mut applied) = (0, 0);
+        for e in edits {
+            if !crate::versions::SHARED_FIELDS.contains(&e.field.as_str()) {
+                continue;
+            }
+            let fresh = self
+                .conn
+                .execute(
+                    "INSERT OR IGNORE INTO card_edits
+                        (uid, day, card, card_name, field, value, previous, corrects,
+                         revert, operator, source)
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    rusqlite::params![
+                        e.uid,
+                        e.day,
+                        e.card,
+                        e.card_name,
+                        e.field,
+                        e.value,
+                        e.previous,
+                        e.corrects,
+                        e.revert,
+                        e.operator,
+                        e.source,
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            if fresh == 0 {
+                continue;
+            }
+            received += 1;
+            // The local card, by its folded name — created when this
+            // officine does not have it yet.
+            let mut id: Option<i64> = None;
+            {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT id, name FROM drugs")
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+                    .map_err(|e| e.to_string())?;
+                for row in rows {
+                    let (i, name) = row.map_err(|e| e.to_string())?;
+                    if crate::versions::key(&name) == e.card {
+                        id = Some(i);
+                        break;
+                    }
+                }
+            }
+            let id = match id {
+                Some(i) => i,
+                None if !e.card_name.trim().is_empty() => {
+                    self.conn
+                        .execute("INSERT INTO drugs (name) VALUES (?1)", [e.card_name.trim()])
+                        .map_err(|e| e.to_string())?;
+                    self.conn.last_insert_rowid()
+                }
+                None => continue,
+            };
+            // Applied only on the value it replaced: the column name comes
+            // from `SHARED_FIELDS`, never from the peer.
+            let Some(column) = crate::versions::SHARED_FIELDS
+                .iter()
+                .find(|f| **f == e.field)
+            else {
+                continue;
+            };
+            applied += self
+                .conn
+                .execute(
+                    &format!("UPDATE drugs SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"),
+                    (&e.value, id, &e.previous),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok((received, applied))
+    }
+
     fn lock_edited_fields(&self, new: &Drug, expected: &Drug) -> Result<(), String> {
         for (column, before, after) in [
             ("indications", &expected.indications, &new.indications),
@@ -38982,6 +39324,115 @@ mod tests {
         assert!(db.drug_facts(7).unwrap().is_empty());
     }
 
+    /// **Les versions d'une fiche** : une modification écrit une version
+    /// par champ, une version reçue s'applique sur la valeur qu'elle
+    /// remplaçait et attend sinon, une fiche inconnue se crée, et le
+    /// journal ne se réécrit jamais.
+    #[test]
+    fn a_card_keeps_its_versions_and_a_received_one_applies_only_cleanly() {
+        const SOURCE: &str = include_str!("db.rs");
+        let table = concat!("card_", "edits");
+        let (update, delete) = (concat!("UPDA", "TE"), concat!("DELE", "TE FROM"));
+        for line in SOURCE.lines().map(str::trim) {
+            if line.starts_with("//") {
+                continue;
+            }
+            assert!(
+                !(line.contains(table) && (line.contains(update) || line.contains(delete))),
+                "les versions ne se réécrivent pas : {line}"
+            );
+        }
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-versions-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("versions.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let id = db.add_drug("Eliquis").unwrap();
+        let before = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+            .unwrap();
+        let after = Drug {
+            dosage: "5 mg x2".to_owned(),
+            notes: "à commander".to_owned(),
+            ..before.clone()
+        };
+        assert!(db.update_drug_by(&after, &before, "CL", false).unwrap());
+        let edits = db.card_edits().unwrap();
+        assert_eq!(edits.len(), 1, "une version, et pas pour les notes");
+        assert_eq!(edits[0].field, "dosage");
+        assert_eq!(edits[0].operator, "CL");
+
+        // D'une autre officine : elle remplace « 5 mg x2 », ce que la fiche
+        // dit — elle s'applique.
+        let theirs = crate::versions::Edit {
+            uid: "ffff:v1".to_owned(),
+            previous: "5 mg x2".to_owned(),
+            value: "2,5 mg x2".to_owned(),
+            corrects: edits[0].uid.clone(),
+            source: "Pharmacie du Port".to_owned(),
+            ..edits[0].clone()
+        };
+        assert_eq!(
+            db.receive_card_edits(std::slice::from_ref(&theirs))
+                .unwrap(),
+            (1, 1)
+        );
+        assert_eq!(
+            db.receive_card_edits(&[theirs]).unwrap(),
+            (0, 0),
+            "une fois"
+        );
+        let card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+            .unwrap();
+        assert_eq!(card.dosage, "2,5 mg x2");
+        // Une autre remplace une valeur que la fiche ne dit plus : elle
+        // attend.
+        let stale = crate::versions::Edit {
+            uid: "eeee:v1".to_owned(),
+            previous: "10 mg".to_owned(),
+            value: "15 mg".to_owned(),
+            source: "Pharmacie du Lac".to_owned(),
+            ..edits[0].clone()
+        };
+        assert_eq!(db.receive_card_edits(&[stale]).unwrap(), (1, 0));
+        let card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.id == id)
+            .unwrap();
+        assert_eq!(card.dosage, "2,5 mg x2", "rien n'est écrasé");
+        let all = db.card_edits().unwrap();
+        let local = |f: &str| drug_field(&card, f).map(str::to_owned);
+        assert_eq!(crate::versions::pending(&all, "Eliquis", &local).len(), 1);
+        // Une fiche inconnue ici se crée.
+        let new_card = crate::versions::Edit {
+            uid: "ffff:v2".to_owned(),
+            card: crate::versions::key("Médicament du Port"),
+            card_name: "Médicament du Port".to_owned(),
+            field: "dci".to_owned(),
+            previous: String::new(),
+            value: "molécule".to_owned(),
+            corrects: String::new(),
+            source: "Pharmacie du Port".to_owned(),
+            ..all[0].clone()
+        };
+        assert_eq!(db.receive_card_edits(&[new_card]).unwrap(), (1, 1));
+        assert!(db
+            .drugs()
+            .unwrap()
+            .iter()
+            .any(|d| d.name == "Médicament du Port" && d.dci == "molécule"));
+    }
+
     #[test]
     fn a_reset_neither_reuses_a_file_number_nor_leaves_a_carnet_behind() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-wipe-{}", std::process::id()));
@@ -45433,6 +45884,48 @@ mod tests {
                         ..ev(15, Kind::Rupture, "Diprosone", "", Outcome::Unknown)
                     };
                     db.receive_supply_events(&[reported, theirs]).unwrap();
+                }
+
+                // Les versions de la fiche Eliquis : une modification ici,
+                // une version reçue du réseau qui s'est appliquée, et une
+                // autre qui attend l'arbitrage — les trois états que
+                // l'historique doit savoir écrire.
+                if let Some(card) = db
+                    .drugs()
+                    .unwrap()
+                    .into_iter()
+                    .find(|d| d.name == "Eliquis")
+                {
+                    let edited = Drug {
+                        tags: format!("{}, AOD", card.tags)
+                            .trim_matches([',', ' '])
+                            .to_owned(),
+                        ..card.clone()
+                    };
+                    db.update_drug_by(&edited, &card, "CL", false).unwrap();
+                    let head = db.card_edits().unwrap().last().cloned().unwrap();
+                    let applied = crate::versions::Edit {
+                        uid: "d3m0:v1".to_owned(),
+                        day: add_days(&today, -3).unwrap_or_default(),
+                        previous: edited.tags.clone(),
+                        value: format!("{}, anticoagulant", edited.tags),
+                        corrects: head.uid.clone(),
+                        operator: "AM".to_owned(),
+                        source: "Pharmacie du Port".to_owned(),
+                        ..head.clone()
+                    };
+                    let waiting = crate::versions::Edit {
+                        uid: "d3m0:v2".to_owned(),
+                        day: add_days(&today, -1).unwrap_or_default(),
+                        field: "status".to_owned(),
+                        previous: "Commercialisé (vérifier)".to_owned(),
+                        value: "Tension d'approvisionnement signalée".to_owned(),
+                        corrects: String::new(),
+                        operator: "JB".to_owned(),
+                        source: "Pharmacie du Lac".to_owned(),
+                        ..head
+                    };
+                    db.receive_card_edits(&[applied, waiting]).unwrap();
                 }
 
                 // Transmissions: one entry yesterday, two today.
