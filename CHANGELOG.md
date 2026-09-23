@@ -5,6 +5,14 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.288.1] - 2026-09-24
+
+### Fixed
+- Sur la carte de l'ordonnance, le carré d'une ligne qui ne rencontre
+  rien disparaissait sur les peaux de nuit (gris de grille sur un creux
+  sombre) : il est maintenant en gris pâle, lisible sur toutes les
+  peaux.
+
 ## [0.288.0] - 2026-09-24
 
 ### Added

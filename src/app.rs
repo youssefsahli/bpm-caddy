@@ -55112,10 +55112,13 @@ impl App {
         for (i, d) in lines.iter().enumerate() {
             let p = at(i);
             let node = box_of(p);
-            // Une ligne qui ne rencontre rien : le carré en gris de grille,
-            // la couleur de ce qui ne dit rien.
+            // Une ligne qui ne rencontre rien : le carré en gris pâle, la
+            // couleur de ce qui ne dit rien. **Pas le gris de grille** :
+            // sur les peaux de nuit il est à deux pas du creux, et le
+            // carré disparaissait — une ligne de l'ordonnance que la
+            // carte ne montrait plus.
             let fill = if alone.contains(&i) {
-                motif::chart::grid_color()
+                motif::text_faint()
             } else {
                 motif::chart::series_color(crate::graph::Tie::Interaction.series())
             };
