@@ -2441,6 +2441,8 @@ fn stup_register_values(
         };
         let no = if m.ordo_no > 0 {
             crate::ordonnancier::number_label(m.ordo_no as u32)
+        } else if kind.is_dispensing() {
+            crate::strings::tr("stup_no_pending").to_owned()
         } else {
             String::new()
         };

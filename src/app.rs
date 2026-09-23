@@ -4300,6 +4300,23 @@ struct Session {
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
+    /// The posts window, when open.
+    #[cfg(feature = "sync")]
+    posts_window: Option<PostsWindow>,
+    /// The automatic synchronisation between the posts, while it runs.
+    #[cfg(feature = "sync")]
+    posts_auto: Option<(
+        std::sync::mpsc::Receiver<crate::postes::Progress>,
+        std::sync::mpsc::Sender<crate::postes::Poke>,
+    )>,
+    /// Started once per session at most: stopped (by an invitation, a
+    /// failure, the operator) it is restarted on purpose, never by the
+    /// next frame.
+    #[cfg(feature = "sync")]
+    posts_auto_tried: bool,
+    /// What the automatic synchronisation last said; `true` is a failure.
+    #[cfg(feature = "sync")]
+    posts_status: Option<(bool, String)>,
     /// Which neighbour list the operator has open, if either. Cleared
     /// when a card is opened: the answer belongs to the card that was
     /// asked, not to the next one.
@@ -4779,31 +4796,36 @@ impl Session {
         let opening_day = db.today_iso().unwrap_or_default();
         let patients = db.patients()?;
         let pending = db.pending_counts().unwrap_or_default();
-        // First unlock of a fresh base: starter drug cards (names, DCI,
-        // textbook antidotes). Non-fatal if it fails.
-        let _ = db.seed_drugs_if_empty();
-        // The codex seeds on its own account: a base opened before the
-        // preparations existed gets them here, without touching a
-        // formula the team has since rewritten.
-        let _ = db.seed_preparations();
-        // Same for the two counter answers a card was missing: they
-        // only ever fill an empty field.
-        let _ = db.seed_conduite();
-        // The protocols too: a base opened before they existed gets
-        // them, and a tree the team rewrote is never replaced.
-        let _ = db.seed_protocols();
-        // And the dispositifs, by the same rule: seeded once, and a
-        // fiche the team emptied never comes back to argue.
-        let _ = db.seed_dispositifs();
-        // And the TROD ordonnance lines, by the same rule: the shipped
-        // protocols once, the team's rows after that.
-        let _ = db.seed_trod_lines();
-        // And the vaccine catalogue the carnet offers by name.
-        let _ = db.seed_vaccine_catalogue();
-        // And the thirteen « toxicité » sections that used to say the
-        // same nothing: replaced once, only where the old sentence is
-        // still there word for word.
-        let _ = db.refresh_toxicity();
+        // Dans un groupe de postes, **un seul poste sème** — le poste de
+        // référence — et ce qu'il sème voyage : deux postes qui sèmeraient
+        // chacun créeraient chaque fiche deux fois, sous deux numéros.
+        if db.seeds_here() {
+            // First unlock of a fresh base: starter drug cards (names, DCI,
+            // textbook antidotes). Non-fatal if it fails.
+            let _ = db.seed_drugs_if_empty();
+            // The codex seeds on its own account: a base opened before the
+            // preparations existed gets them here, without touching a
+            // formula the team has since rewritten.
+            let _ = db.seed_preparations();
+            // Same for the two counter answers a card was missing: they
+            // only ever fill an empty field.
+            let _ = db.seed_conduite();
+            // The protocols too: a base opened before they existed gets
+            // them, and a tree the team rewrote is never replaced.
+            let _ = db.seed_protocols();
+            // And the dispositifs, by the same rule: seeded once, and a
+            // fiche the team emptied never comes back to argue.
+            let _ = db.seed_dispositifs();
+            // And the TROD ordonnance lines, by the same rule: the shipped
+            // protocols once, the team's rows after that.
+            let _ = db.seed_trod_lines();
+            // And the vaccine catalogue the carnet offers by name.
+            let _ = db.seed_vaccine_catalogue();
+            // And the thirteen « toxicité » sections that used to say the
+            // same nothing: replaced once, only where the old sentence is
+            // still there word for word.
+            let _ = db.refresh_toxicity();
+        }
         let drugs = db.drugs().unwrap_or_default();
         let protocols = db.protocols().unwrap_or_default();
         let mut session = Self {
@@ -5048,6 +5070,14 @@ impl Session {
             versions_open: None,
             #[cfg(feature = "sync")]
             net_window: None,
+            #[cfg(feature = "sync")]
+            posts_window: None,
+            #[cfg(feature = "sync")]
+            posts_auto: None,
+            #[cfg(feature = "sync")]
+            posts_auto_tried: false,
+            #[cfg(feature = "sync")]
+            posts_status: None,
             drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
@@ -6236,6 +6266,75 @@ impl Session {
         });
         self.script_job = Some((rx, stop));
         self.script_note = Some((false, tr("script_running").to_owned()));
+    }
+
+    /// Lancer la synchronisation automatique des postes, quand ce poste
+    /// fait partie d'un groupe et le veut. Une fois par session : arrêtée,
+    /// elle ne repart que si on la relance.
+    #[cfg(feature = "sync")]
+    fn start_posts_auto(&mut self, config: &Config) {
+        if self.posts_auto.is_some() || self.db.sync_post().is_none() || !config.postes.automatique
+        {
+            return;
+        }
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let folder = config.postes.dossier.trim();
+        self.posts_auto = Some(crate::postes::spawn_auto(
+            path,
+            self.password.clone(),
+            self.today.clone(),
+            config.postes.port,
+            (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
+            config.postes.adresses.clone(),
+            crate::postes::Pace::default(),
+        ));
+    }
+
+    #[cfg(feature = "sync")]
+    fn stop_posts_auto(&mut self) {
+        if let Some((_, poke)) = self.posts_auto.take() {
+            let _ = poke.send(crate::postes::Poke::Stop);
+        }
+    }
+
+    /// Ce que la synchronisation automatique a dit depuis la dernière
+    /// image. Ce qu'elle range dans la base, l'écran le voit par
+    /// `sync_if_others_wrote`, comme ce qu'écrit un poste sur la même
+    /// base : le témoin de SQLite bouge pour toute autre connexion.
+    #[cfg(feature = "sync")]
+    fn poll_posts(&mut self, ctx: &egui::Context, config: &Config) {
+        if !self.posts_auto_tried {
+            self.posts_auto_tried = true;
+            self.start_posts_auto(config);
+        }
+        let Some((rx, _)) = &self.posts_auto else {
+            return;
+        };
+        loop {
+            match rx.try_recv() {
+                Ok(crate::postes::Progress::Status(said)) => {
+                    self.posts_status = Some((false, said));
+                }
+                Ok(crate::postes::Progress::Failed(said)) => {
+                    self.posts_status = Some((true, said));
+                    self.posts_auto = None;
+                    break;
+                }
+                Ok(_) => {}
+                Err(std::sync::mpsc::TryRecvError::Empty) => {
+                    // Often enough that another post's writing shows here
+                    // within seconds; rarely enough to cost nothing.
+                    ctx.request_repaint_after(Duration::from_secs(2));
+                    break;
+                }
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.posts_auto = None;
+                    break;
+                }
+            }
+        }
     }
 
     /// Ce qu'un script en cours a rendu, relevé à chaque image — un
@@ -8906,6 +9005,60 @@ enum TechAction {
     NoteSubstitution,
 }
 
+/// La fenêtre des postes de l'officine : ce que la base en dit, une
+/// tâche en cours sur son fil, et ce que l'écran a sous les doigts.
+#[cfg(feature = "sync")]
+#[derive(Default)]
+struct PostsWindow {
+    summary: Option<PostsSummary>,
+    job: Option<(
+        std::sync::mpsc::Receiver<crate::postes::Progress>,
+        std::sync::mpsc::Sender<bool>,
+    )>,
+    code: Option<String>,
+    waiting: Option<String>,
+    note: Option<(bool, String)>,
+    join_address: String,
+    /// Rejoindre remplace ce que ce poste contient : le premier clic le
+    /// dit, le second le fait.
+    join_armed: bool,
+    /// Quitter le groupe, au même garde-fou.
+    leave_armed: bool,
+    /// A post's name as typed, by number.
+    names: std::collections::HashMap<i64, String>,
+}
+
+/// What the base says about the posts, read when the window opens and
+/// after each gesture — never on every frame.
+#[cfg(feature = "sync")]
+struct PostsSummary {
+    in_group: bool,
+    groups: String,
+    group: Option<String>,
+    post: Option<i64>,
+    reference: i64,
+    posts: Vec<db::PostRow>,
+    records: usize,
+    conflicts: Vec<db::SyncConflict>,
+}
+
+#[cfg(feature = "sync")]
+impl PostsSummary {
+    fn read(db: &Db) -> Result<Self, String> {
+        let posts = crate::postes::Posts::load(db)?;
+        Ok(Self {
+            in_group: posts.in_group(),
+            groups: posts.groups(),
+            group: posts.group_groups(),
+            post: db.sync_post(),
+            reference: db.sync_reference(),
+            posts: db.sync_posts()?,
+            records: posts.record_count(),
+            conflicts: db.sync_conflicts()?,
+        })
+    }
+}
+
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
 /// en cours sur son fil, et ce que l'écran a sous les doigts.
 #[cfg(feature = "sync")]
@@ -11498,6 +11651,24 @@ impl App {
                         Ok("stats") => {
                             session.refresh_stats();
                             session.view = MainView::Stats;
+                        }
+                        // Les postes : sur une base qui a fondé son
+                        // groupe, pour que la capture montre la liste et
+                        // les gestes. La synchronisation automatique ne
+                        // part pas — une capture n'ouvre pas de porte.
+                        #[cfg(feature = "sync")]
+                        Ok("postes") => {
+                            session.posts_auto_tried = true;
+                            if session.db.sync_post().is_none() {
+                                let _ =
+                                    crate::postes::Posts::load(&session.db).and_then(|mut p| {
+                                        p.found(&session.db, "Comptoir 1", &session.today)
+                                    });
+                            }
+                            session.posts_window = Some(PostsWindow {
+                                summary: PostsSummary::read(&session.db).ok(),
+                                ..PostsWindow::default()
+                            });
                         }
                         Ok(key @ ("ruptures" | "reseau")) => {
                             session.reload_supply();
@@ -41538,6 +41709,20 @@ impl App {
                         .color(motif::text_dim()),
                 ),
             );
+        } else if crate::ordonnancier::Kind::from_key(&m.kind).is_dispensing() {
+            // Écrite sur un poste qui ne numérote pas : le poste de
+            // référence donnera le numéro en la recevant.
+            Self::grid_cell(
+                ui,
+                w,
+                dress(
+                    egui::RichText::new(tr("stup_no_pending"))
+                        .size(motif::pt(ui, 10.5))
+                        .italics()
+                        .color(motif::text_faint()),
+                ),
+            )
+            .on_hover_text(tr("stup_no_pending_tooltip"));
         } else {
             Self::grid_cell(ui, w, egui::RichText::new(""));
         }
@@ -51021,6 +51206,500 @@ impl App {
         Self::net_window(ui.ctx(), session, config);
     }
 
+    /// Une question « à arbitrer », en une ligne : où, quoi, les deux
+    /// valeurs. Le libellé de la table quand la maison en a un, son nom
+    /// sinon.
+    #[cfg(feature = "sync")]
+    fn conflict_line(c: &db::SyncConflict) -> String {
+        let table = match c.table.as_str() {
+            "patients" => tr("posts_tbl_patients"),
+            "interviews" => tr("posts_tbl_interviews"),
+            "notes" => tr("posts_tbl_notes"),
+            "vaccinations" => tr("posts_tbl_vaccinations"),
+            "patient_drugs" => tr("posts_tbl_patient_drugs"),
+            "drugs" => tr("posts_tbl_drugs"),
+            "events" => tr("posts_tbl_events"),
+            "shifts" => tr("posts_tbl_shifts"),
+            "settings" => tr("posts_tbl_settings"),
+            "caisse_counts" => tr("posts_tbl_caisse"),
+            "stupefiants" | "stup_moves" | "stup_numbers" => tr("posts_tbl_register"),
+            other => other,
+        };
+        let key: Vec<String> = c
+            .key
+            .values()
+            .map(|v| {
+                v.as_str()
+                    .map(str::to_owned)
+                    .unwrap_or_else(|| v.to_string())
+            })
+            .collect();
+        let shown = |v: &Option<serde_json::Value>| match v {
+            None => tr("posts_value_gone").to_owned(),
+            Some(serde_json::Value::String(t)) if t.is_empty() => tr("ver_empty").to_owned(),
+            Some(serde_json::Value::String(t)) => t.chars().take(60).collect(),
+            Some(serde_json::Value::Object(_)) => tr("posts_value_row").to_owned(),
+            Some(v) => v.to_string(),
+        };
+        let place = format!("{table} {}", key.join(" · "));
+        match c.kind.as_str() {
+            "REFUS" => trf("posts_q_refused", place),
+            "ABSENT" => trf("posts_q_absent", place),
+            "TROP_GRAND" => trf("posts_q_oversize", place),
+            _ if c.column.is_empty() => trf("posts_q_row", place),
+            _ => trn(
+                "posts_q_field",
+                &[&place, &c.column, &shown(&c.mine), &shown(&c.theirs)],
+            ),
+        }
+    }
+
+    /// La fenêtre des postes de l'officine.
+    ///
+    /// **La réserve d'abord** : ce qui voyage, entre qui, sous quelle
+    /// clé. Puis ce poste, les autres, ce qui attend d'être arbitré, et
+    /// les gestes — fonder, rejoindre, inviter, synchroniser. Le code de
+    /// cinq groupes, quand il arrive, prend la fenêtre.
+    #[cfg(feature = "sync")]
+    fn posts_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
+        use crate::postes::{Job, Progress};
+        let Some(w) = &mut session.posts_window else {
+            return;
+        };
+        let mut finished = false;
+        if let Some((rx, _)) = &w.job {
+            loop {
+                match rx.try_recv() {
+                    Ok(Progress::Waiting(at)) => w.waiting = Some(at),
+                    Ok(Progress::Code(code)) => w.code = Some(code),
+                    Ok(Progress::Status(said)) => w.note = Some((false, said)),
+                    Ok(Progress::Done(said)) => {
+                        w.note = Some((false, said));
+                        finished = true;
+                        break;
+                    }
+                    Ok(Progress::Failed(said)) => {
+                        w.note = Some((true, said));
+                        finished = true;
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {
+                        ctx.request_repaint_after(Duration::from_millis(150));
+                        break;
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        finished = true;
+                        break;
+                    }
+                }
+            }
+        }
+        if finished {
+            w.job = None;
+            w.code = None;
+            w.waiting = None;
+            w.summary = PostsSummary::read(&session.db).ok();
+            // Whatever the task was, the automatic synchronisation may
+            // run again — it was stopped to free the door.
+            session.posts_auto_tried = false;
+        }
+        let Some(w) = &mut session.posts_window else {
+            return;
+        };
+        let mut start: Option<Job> = None;
+        let mut close = false;
+        let mut answer: Option<bool> = None;
+        let mut settle: Option<(i64, bool)> = None;
+        let mut rename: Option<(i64, String, String)> = None;
+        let mut retire: Option<i64> = None;
+        let mut reference: Option<i64> = None;
+        let mut leave = false;
+        let mut sync_now = false;
+        let busy = w.job.is_some();
+        let auto_on = session.posts_auto.is_some();
+        let status = session.posts_status.clone();
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("posts_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 620.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("posts_scope"))
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.add_space(6.0);
+                if let Some(code) = &w.code {
+                    ui.label(tr("posts_code_intro"));
+                    ui.label(
+                        egui::RichText::new(code.as_str())
+                            .size(motif::pt(ui, 26.0))
+                            .monospace()
+                            .strong(),
+                    );
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button(ui, tr("net_code_same")).clicked() {
+                            answer = Some(true);
+                        }
+                        if motif::button(ui, tr("net_code_other")).clicked() {
+                            answer = Some(false);
+                        }
+                    });
+                    return;
+                }
+                let footer = App::row_height(ui) * 3.0 + ui.spacing().item_spacing.y * 4.0;
+                let body_h = (ui.available_height() - footer).max(App::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("posts_body")
+                    .max_height(body_h)
+                    .show(ui, |ui| {
+                        let Some(sum) = &w.summary else {
+                            ui.label(tr("posts_unreadable"));
+                            return;
+                        };
+                        ui.label(trf("posts_you", &sum.groups))
+                            .on_hover_text(tr("posts_you_tooltip"));
+                        if !sum.in_group {
+                            ui.add_space(6.0);
+                            ui.label(tr("posts_none"));
+                            ui.horizontal_wrapped(|ui| {
+                                if motif::button_enabled(ui, tr("posts_found"), !busy)
+                                    .on_hover_text(tr("posts_found_tooltip"))
+                                    .clicked()
+                                {
+                                    start = Some(Job::Found {
+                                        name: config.pharmacy.name.clone(),
+                                    });
+                                }
+                            });
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(tr("posts_join_label"));
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 22.0),
+                                    egui::TextEdit::singleline(&mut w.join_address)
+                                        .hint_text(motif::hint(tr("posts_join_hint"))),
+                                );
+                                let ready = !busy && !w.join_address.trim().is_empty();
+                                if !w.join_armed {
+                                    if motif::button_enabled(ui, tr("posts_join"), ready).clicked()
+                                    {
+                                        w.join_armed = true;
+                                    }
+                                } else if motif::button_enabled(ui, tr("posts_join_confirm"), ready)
+                                    .clicked()
+                                {
+                                    w.join_armed = false;
+                                    start = Some(Job::Join {
+                                        address: w.join_address.trim().to_owned(),
+                                        name: String::new(),
+                                    });
+                                }
+                            });
+                            if w.join_armed {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("posts_join_warn"))
+                                            .strong()
+                                            .color(motif::alert()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            return;
+                        }
+                        if let Some(g) = &sum.group {
+                            ui.label(trf("posts_group", g));
+                        }
+                        if let Some(post) = sum.post {
+                            // Shown from one: the founding post is « n° 1 ».
+                            ui.label(if post == sum.reference {
+                                trf("posts_you_are_reference", post + 1)
+                            } else {
+                                trn("posts_you_are", &[&(post + 1), &(sum.reference + 1)])
+                            })
+                            .on_hover_text(tr("posts_reference_tooltip"));
+                        }
+                        ui.label(
+                            egui::RichText::new(trn("posts_records", &[&sum.records]))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                        );
+                        ui.add_space(6.0);
+                        motif::section(ui, tr("posts_list"));
+                        for p in &sum.posts {
+                            let typed = w.names.entry(p.post).or_insert_with(|| p.name.clone());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(format!("{:>2}", p.post + 1))
+                                        .monospace()
+                                        .strong(),
+                                );
+                                ui.label(
+                                    egui::RichText::new(crate::postes::groups_of(&p.device))
+                                        .monospace()
+                                        .size(motif::pt(ui, 11.0)),
+                                );
+                                if !p.left_on.is_empty() {
+                                    ui.label(
+                                        egui::RichText::new(trn(
+                                            "posts_retired",
+                                            &[&p.name, &db::format_french_date(&p.left_on)],
+                                        ))
+                                        .color(motif::text_faint()),
+                                    );
+                                    return;
+                                }
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 18.0),
+                                    egui::TextEdit::singleline(typed)
+                                        .hint_text(motif::hint(tr("posts_name_hint"))),
+                                );
+                                if motif::button_enabled(ui, tr("form_save"), *typed != p.name)
+                                    .clicked()
+                                {
+                                    rename = Some((p.post, typed.clone(), p.name.clone()));
+                                }
+                                if p.post == sum.reference {
+                                    ui.label(
+                                        egui::RichText::new(tr("posts_reference"))
+                                            .strong()
+                                            .color(motif::accent()),
+                                    );
+                                } else if motif::button(ui, tr("posts_make_reference"))
+                                    .on_hover_text(tr("posts_reference_tooltip"))
+                                    .clicked()
+                                {
+                                    reference = Some(p.post);
+                                }
+                                if Some(p.post) != sum.post
+                                    && motif::button(ui, "×")
+                                        .on_hover_text(tr("posts_retire_tooltip"))
+                                        .clicked()
+                                {
+                                    retire = Some(p.post);
+                                }
+                            });
+                        }
+                        ui.add_space(6.0);
+                        motif::section(ui, &trf("posts_questions", sum.conflicts.len()));
+                        if sum.conflicts.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("posts_questions_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for c in sum.conflicts.iter().take(100) {
+                            ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(trn(
+                                        "posts_q_from",
+                                        &[&c.author, &db::format_french_date(&c.day)],
+                                    ))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_faint()),
+                                );
+                                if c.kind == "CONFLIT" && !c.column.is_empty() {
+                                    if motif::button(ui, tr("ver_keep"))
+                                        .on_hover_text(tr("posts_keep_mine_tooltip"))
+                                        .clicked()
+                                    {
+                                        settle = Some((c.id, false));
+                                    }
+                                    if motif::button(ui, tr("posts_take_theirs")).clicked() {
+                                        settle = Some((c.id, true));
+                                    }
+                                } else if motif::button(ui, tr("posts_seen")).clicked() {
+                                    settle = Some((c.id, false));
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
+                        if sum.conflicts.len() > 100 {
+                            ui.label(trf("posts_questions_more", sum.conflicts.len() - 100));
+                        }
+                        ui.add_space(6.0);
+                        ui.label(
+                            egui::RichText::new(if auto_on {
+                                trf("posts_auto_on", config.postes.port)
+                            } else if config.postes.automatique {
+                                tr("posts_auto_stopped").to_owned()
+                            } else {
+                                tr("posts_auto_off").to_owned()
+                            })
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                        );
+                        if let Some((bad, said)) = &status {
+                            ui.colored_label(
+                                if *bad {
+                                    motif::alert()
+                                } else {
+                                    motif::text_dim()
+                                },
+                                said.as_str(),
+                            );
+                        }
+                        if let Some(at) = &w.waiting {
+                            ui.label(
+                                egui::RichText::new(trf("posts_waiting", at))
+                                    .strong()
+                                    .color(motif::accent()),
+                            );
+                        }
+                    });
+                if let Some((bad, note)) = &w.note {
+                    ui.colored_label(
+                        if *bad {
+                            motif::alert()
+                        } else {
+                            motif::text_dim()
+                        },
+                        note.as_str(),
+                    );
+                }
+                ui.horizontal_wrapped(|ui| {
+                    let in_group = w.summary.as_ref().is_some_and(|s| s.in_group);
+                    if in_group {
+                        if motif::button_enabled(ui, tr("net_sync"), !busy)
+                            .on_hover_text(tr("posts_sync_tooltip"))
+                            .clicked()
+                        {
+                            sync_now = true;
+                        }
+                        if motif::button_enabled(ui, tr("posts_invite"), !busy)
+                            .on_hover_text(tr("posts_invite_tooltip"))
+                            .clicked()
+                        {
+                            start = Some(Job::Invite {
+                                port: config.postes.port,
+                            });
+                        }
+                        if !w.leave_armed {
+                            if motif::button_enabled(ui, tr("posts_leave"), !busy)
+                                .on_hover_text(tr("posts_leave_tooltip"))
+                                .clicked()
+                            {
+                                w.leave_armed = true;
+                            }
+                        } else if motif::button_enabled(ui, tr("posts_leave_confirm"), !busy)
+                            .clicked()
+                        {
+                            w.leave_armed = false;
+                            leave = true;
+                        }
+                    }
+                    if motif::button(ui, tr("trod_edit_done")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        if let Some(yes) = answer {
+            if let Some((_, tx)) = &w.job {
+                let _ = tx.send(yes);
+            }
+            w.code = None;
+        }
+        let mut stale = false;
+        let mut reread = false;
+        if let Some((id, theirs)) = settle {
+            if let Err(e) = session.db.settle_conflict(id, theirs) {
+                w.note = Some((true, e));
+            }
+            reread = true;
+        }
+        if let Some((post, name, was)) = rename {
+            match session.db.set_post_name(post, &name, &was) {
+                Ok(true) => {}
+                Ok(false) => stale = true,
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.names.remove(&post);
+            reread = true;
+        }
+        if let Some(post) = retire {
+            if let Err(e) = session.db.retire_post(post, &session.today) {
+                w.note = Some((true, e));
+            }
+            reread = true;
+        }
+        if let Some(post) = reference {
+            if let Err(e) = session.db.set_sync_reference(post, &session.today) {
+                w.note = Some((true, e));
+            }
+            reread = true;
+        }
+        if reread {
+            w.summary = PostsSummary::read(&session.db).ok();
+        }
+        if leave {
+            session.stop_posts_auto();
+            let said = match session.db.leave_posts() {
+                Ok(()) => (false, tr("posts_left").to_owned()),
+                Err(e) => (true, e),
+            };
+            let summary = PostsSummary::read(&session.db).ok();
+            if let Some(w) = &mut session.posts_window {
+                w.note = Some(said);
+                w.summary = summary;
+            }
+        }
+        if sync_now {
+            if let Some((_, poke)) = &session.posts_auto {
+                let _ = poke.send(crate::postes::Poke::Now);
+                if let Some(w) = &mut session.posts_window {
+                    w.note = Some((false, tr("posts_poked").to_owned()));
+                }
+            } else {
+                let folder = config.postes.dossier.trim();
+                start = Some(Job::Sync {
+                    folder: (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
+                    addresses: config.postes.adresses.clone(),
+                });
+            }
+        }
+        if let Some(job) = start {
+            // The door and the base are the task's while it runs.
+            session.stop_posts_auto();
+            session.posts_auto_tried = true;
+            let (answers_tx, answers_rx) = std::sync::mpsc::channel();
+            let path = session.db.path().unwrap_or_default();
+            let rx = crate::postes::spawn(
+                job,
+                path,
+                session.password.clone(),
+                session.today.clone(),
+                answers_rx,
+            );
+            if let Some(w) = &mut session.posts_window {
+                w.job = Some((rx, answers_tx));
+                w.note = None;
+            }
+        }
+        if close
+            && session
+                .posts_window
+                .as_ref()
+                .is_some_and(|w| w.job.is_none())
+        {
+            session.posts_window = None;
+        }
+        if stale {
+            session.stale("posts_name_stale");
+        }
+    }
+
     /// La fenêtre du réseau d'officines.
     ///
     /// **La réserve d'abord** : ce qui voyage, et ce qui ne voyage jamais.
@@ -58523,6 +59202,13 @@ impl eframe::App for App {
             Self::subst_window(ctx, session);
             Self::pk_window(ctx, session);
             Self::versions_window(ctx, session);
+            // The posts: their automatic synchronisation, polled every
+            // frame, and their window wherever it was opened from.
+            #[cfg(feature = "sync")]
+            {
+                session.poll_posts(ctx, &self.config);
+                Self::posts_window(ctx, session, &self.config);
+            }
         }
 
         // Auto-lock after inactivity (spec 4.3).
@@ -59434,6 +60120,9 @@ impl eframe::App for App {
             }
         }
         let mut set_stup_start: Option<u32> = None;
+        // « Postes de l'officine… », ouvert après l'emprunt.
+        #[cfg(feature = "sync")]
+        let mut open_posts = false;
         // Le paquet : écrit d'un côté, rendu de l'autre. Comme tout ce
         // que cette page décide, les deux sortent en drapeau et sont
         // faits après l'emprunt.
@@ -60162,6 +60851,76 @@ impl eframe::App for App {
                                     &mut editor.cfg.reseau.a_la_fermeture,
                                     tr("opts_reseau_close"),
                                 );
+                                // Les postes de l'officine, ce qui en est
+                                // propre à ce poste-ci. La clé et la liste
+                                // des postes sont dans la base.
+                                #[cfg(feature = "sync")]
+                                {
+                                    ui.add_space(10.0);
+                                    motif::section(ui, tr("opts_postes"));
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(tr("opts_postes_hint"))
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::text_dim()),
+                                        )
+                                        .wrap(),
+                                    );
+                                    if motif::button(ui, tr("posts_open"))
+                                        .on_hover_text(tr("posts_open_tooltip"))
+                                        .clicked()
+                                    {
+                                        open_posts = true;
+                                    }
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.automatique,
+                                        tr("opts_postes_auto"),
+                                    );
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(dim(tr("opts_reseau_port")));
+                                        ui.add(
+                                            egui::DragValue::new(&mut editor.cfg.postes.port)
+                                                .range(1024..=65535),
+                                        );
+                                    });
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(dim(tr("opts_reseau_folder")));
+                                        motif::field(
+                                            ui,
+                                            chars_wide(ui, 34.0),
+                                            egui::TextEdit::singleline(
+                                                &mut editor.cfg.postes.dossier,
+                                            )
+                                            .hint_text(motif::hint(tr("opts_reseau_folder_hint"))),
+                                        );
+                                    });
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.label(dim(tr("opts_postes_addresses")));
+                                        let mut typed = editor.cfg.postes.adresses.join(", ");
+                                        if motif::field(
+                                            ui,
+                                            chars_wide(ui, 34.0),
+                                            egui::TextEdit::singleline(&mut typed).hint_text(
+                                                motif::hint(tr("opts_postes_addresses_hint")),
+                                            ),
+                                        )
+                                        .changed()
+                                        {
+                                            editor.cfg.postes.adresses = typed
+                                                .split([',', ';', ' '])
+                                                .map(str::trim)
+                                                .filter(|a| !a.is_empty())
+                                                .map(str::to_owned)
+                                                .collect();
+                                        }
+                                    });
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.a_la_fermeture,
+                                        tr("opts_reseau_close"),
+                                    );
+                                }
                                 // The card reader lives on the Base page:
                                 // it is about this post's hardware, like
                                 // the database path beside it.
@@ -61366,6 +62125,17 @@ impl eframe::App for App {
         } else {
             None
         };
+        #[cfg(feature = "sync")]
+        if open_posts {
+            if let State::Unlocked(session) = &mut self.state {
+                if session.posts_window.is_none() {
+                    session.posts_window = Some(PostsWindow {
+                        summary: PostsSummary::read(&session.db).ok(),
+                        ..PostsWindow::default()
+                    });
+                }
+            }
+        }
         if let (Some(first), State::Unlocked(session)) = (set_stup_start, &self.state) {
             let _ = session.db.set_ordonnancier_start(first);
             // Relu : déclaré sous ce qui est déjà écrit, il ne fait
@@ -61718,6 +62488,33 @@ impl eframe::App for App {
         // poste qu'on ferme avant midi.
         if let State::Unlocked(s) = &mut self.state {
             s.flush_telemetry();
+        }
+        // **Les postes à la fermeture** : la synchronisation automatique
+        // s'arrête, puis une dernière conversation — le dossier d'échange
+        // et les adresses écrites, avec une patience courte — pour que ce
+        // qui vient d'être écrit ne dorme pas sur ce poste jusqu'à demain.
+        #[cfg(feature = "sync")]
+        if let State::Unlocked(s) = &mut self.state {
+            s.stop_posts_auto();
+            let p = &self.config.postes;
+            if p.a_la_fermeture && s.db.sync_post().is_some() {
+                if let Some(path) = s.db.path() {
+                    let folder = p.dossier.trim();
+                    let (tx, _rx) = std::sync::mpsc::channel();
+                    let (_ans_tx, ans_rx) = std::sync::mpsc::channel();
+                    let _ = crate::postes::run(
+                        &crate::postes::Job::Sync {
+                            folder: (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
+                            addresses: p.adresses.clone(),
+                        },
+                        &path,
+                        &s.password,
+                        &s.today,
+                        &tx,
+                        &ans_rx,
+                    );
+                }
+            }
         }
         // **Le réseau à la fermeture**, quand le poste le veut et qu'il y
         // a de quoi : le dossier d'échange, puis les officines qui ont une

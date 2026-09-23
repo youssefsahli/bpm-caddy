@@ -702,6 +702,61 @@ CREATE TABLE IF NOT EXISTS caisse_counts (
     remark       TEXT NOT NULL DEFAULT '',
     created_at   TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
 );
+-- Les postes de l'officine, chacun avec sa base (`replica.rs`). Cette
+-- table-là voyage : chaque poste sait quels postes existent, leur
+-- numéro — qui choisit leur bloc de numéros — et leur empreinte.
+CREATE TABLE IF NOT EXISTS sync_posts (
+    post    INTEGER PRIMARY KEY,
+    device  TEXT NOT NULL,
+    name    TEXT NOT NULL DEFAULT '',
+    joined  TEXT NOT NULL DEFAULT '',
+    -- Le jour où l'officine l'a retiré ; vide tant qu'il en est. Un poste
+    -- retiré n'est plus écouté, et ce qu'il écrit n'est plus rangé.
+    left_on TEXT NOT NULL DEFAULT ''
+);
+-- Tout ce qui suit est **propre à ce poste** et ne voyage jamais : son
+-- identité et sa clé, ce qu'il a déjà rangé, ses questions, ses
+-- numéros. Les tables vivent dans toute base, vides tant que le poste
+-- n'a rejoint aucun groupe.
+CREATE TABLE IF NOT EXISTS sync_local (
+    key   TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_records (
+    id    TEXT PRIMARY KEY,
+    bytes BLOB NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_applied (id TEXT PRIMARY KEY);
+CREATE TABLE IF NOT EXISTS sync_conflicts (
+    id      INTEGER PRIMARY KEY,
+    day     TEXT NOT NULL DEFAULT '',
+    kind    TEXT NOT NULL DEFAULT 'CONFLIT',
+    file    TEXT NOT NULL DEFAULT 'm',
+    tbl     TEXT NOT NULL,
+    row_key TEXT NOT NULL DEFAULT '{}',
+    col     TEXT NOT NULL DEFAULT '',
+    mine    TEXT,
+    theirs  TEXT,
+    author  TEXT NOT NULL DEFAULT ''
+);
+-- Les écritures pas encore parties vers les autres postes, capturées
+-- par les déclencheurs que `Db::install_capture` pose ; les numéros de
+-- ce poste ; et l'interrupteur qui coupe la capture le temps de ranger
+-- ce qui vient d'ailleurs, dans la transaction qui range.
+CREATE TABLE IF NOT EXISTS sync_log (
+    seq  INTEGER PRIMARY KEY AUTOINCREMENT,
+    tbl  TEXT NOT NULL,
+    op   TEXT NOT NULL,
+    old  TEXT,
+    new  TEXT
+);
+CREATE TABLE IF NOT EXISTS sync_blocks (
+    tbl  TEXT PRIMARY KEY,
+    lo   INTEGER NOT NULL,
+    hi   INTEGER NOT NULL,
+    high INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL);
 ";
 
 /// The indexes, applied **after** [`MIGRATIONS`] and not with [`SCHEMA`].
@@ -1123,6 +1178,50 @@ const MIGRATIONS: &[&str] = &[
         sex         TEXT NOT NULL DEFAULT '',
         pregnancy   INTEGER NOT NULL DEFAULT 1
     )",
+    // Les postes de l'officine et ce qui est propre à chacun — voir
+    // `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS sync_posts (
+        post    INTEGER PRIMARY KEY,
+        device  TEXT NOT NULL,
+        name    TEXT NOT NULL DEFAULT '',
+        joined  TEXT NOT NULL DEFAULT '',
+        left_on TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_local (
+        key   TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_records (
+        id    TEXT PRIMARY KEY,
+        bytes BLOB NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_applied (id TEXT PRIMARY KEY)",
+    "CREATE TABLE IF NOT EXISTS sync_conflicts (
+        id      INTEGER PRIMARY KEY,
+        day     TEXT NOT NULL DEFAULT '',
+        kind    TEXT NOT NULL DEFAULT 'CONFLIT',
+        file    TEXT NOT NULL DEFAULT 'm',
+        tbl     TEXT NOT NULL,
+        row_key TEXT NOT NULL DEFAULT '{}',
+        col     TEXT NOT NULL DEFAULT '',
+        mine    TEXT,
+        theirs  TEXT,
+        author  TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_log (
+        seq  INTEGER PRIMARY KEY AUTOINCREMENT,
+        tbl  TEXT NOT NULL,
+        op   TEXT NOT NULL,
+        old  TEXT,
+        new  TEXT
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_blocks (
+        tbl  TEXT PRIMARY KEY,
+        lo   INTEGER NOT NULL,
+        hi   INTEGER NOT NULL,
+        high INTEGER NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -29732,6 +29831,38 @@ CREATE INDEX IF NOT EXISTS idx_stup_moves_stup ON stup_moves(stup_id);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_day ON stup_moves(happened_on);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_ordo ON stup_moves(ordo_year, ordo_no);
 CREATE INDEX IF NOT EXISTS idx_stup_moves_cancels ON stup_moves(cancels);
+-- Les numéros d'ordonnancier que **le poste de référence** a donnés aux
+-- délivrances écrites sur un autre poste. Un registre se numérote d'un
+-- bout à l'autre, et deux postes qui délivrent chacun de leur côté
+-- tireraient le même numéro : seul le poste de référence numérote, et une
+-- délivrance écrite ailleurs se lit « en attente » jusqu'à ce qu'il
+-- l'ait reçue. En ajout seul, comme le registre qu'elle complète : la
+-- ligne de délivrance ne se réécrit pas pour recevoir son numéro.
+CREATE TABLE IF NOT EXISTS stup_numbers (
+    move_id     INTEGER PRIMARY KEY,
+    ordo_year   INTEGER NOT NULL DEFAULT 0,
+    ordo_no     INTEGER NOT NULL,
+    assigned_on TEXT NOT NULL DEFAULT '',
+    operator    TEXT NOT NULL DEFAULT ''
+);
+-- Les écritures pas encore parties vers les autres postes, capturées
+-- par les déclencheurs que `Db::install_capture` pose ; les numéros de
+-- ce poste ; et l'interrupteur qui coupe la capture le temps de ranger
+-- ce qui vient d'ailleurs, dans la transaction qui range.
+CREATE TABLE IF NOT EXISTS sync_log (
+    seq  INTEGER PRIMARY KEY AUTOINCREMENT,
+    tbl  TEXT NOT NULL,
+    op   TEXT NOT NULL,
+    old  TEXT,
+    new  TEXT
+);
+CREATE TABLE IF NOT EXISTS sync_blocks (
+    tbl  TEXT PRIMARY KEY,
+    lo   INTEGER NOT NULL,
+    hi   INTEGER NOT NULL,
+    high INTEGER NOT NULL
+);
+CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL);
 ";
 
 /// Ce que le fichier du registre ajoute à un fichier déjà créé par une
@@ -29774,6 +29905,30 @@ const STUP_MIGRATIONS: &[&str] = &[
     // ouvrir est infiniment pire qu'un doublon qu'on peut voir.
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_stup_ordo_unique
        ON stup_moves(ordo_year, ordo_no) WHERE ordo_no > 0",
+    // Les numéros donnés par le poste de référence — voir `STUP_SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS stup_numbers (
+        move_id     INTEGER PRIMARY KEY,
+        ordo_year   INTEGER NOT NULL DEFAULT 0,
+        ordo_no     INTEGER NOT NULL,
+        assigned_on TEXT NOT NULL DEFAULT '',
+        operator    TEXT NOT NULL DEFAULT ''
+    )",
+    // Les écritures pas encore parties, les numéros de ce poste —
+    // voir `STUP_SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS sync_log (
+        seq  INTEGER PRIMARY KEY AUTOINCREMENT,
+        tbl  TEXT NOT NULL,
+        op   TEXT NOT NULL,
+        old  TEXT,
+        new  TEXT
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_blocks (
+        tbl  TEXT PRIMARY KEY,
+        lo   INTEGER NOT NULL,
+        hi   INTEGER NOT NULL,
+        high INTEGER NOT NULL
+    )",
+    "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
 ];
 
 /// Où vivent les octets des pièces, pour une base donnée.
@@ -29894,10 +30049,18 @@ impl Db {
         .map_err(|_| "Mot de passe incorrect (ou fichier illisible).".to_owned())?;
         conn.execute_batch(SCHEMA)
             .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
+        // Muted, in one transaction: every post runs the same migrations
+        // on its own base, and what each would capture is what the others
+        // already did. The switch is inside the transaction, so another
+        // post writing to this file meanwhile is still captured.
+        conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+            .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
         for migration in MIGRATIONS {
             // Fails harmlessly when the column already exists.
             let _ = conn.execute(migration, []);
         }
+        conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
+            .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
         // Last, because an index names a column and a column added since
         // this base was made is only there once the migrations have run.
         for index in INDEXES {
@@ -29908,6 +30071,11 @@ impl Db {
         let stups = Self::open_stup_store(path, password)?;
         let db = Self { conn, scans, stups };
         db.move_register_beside_the_base()?;
+        // A post of a group: its capture follows the schema, which a
+        // migration may just have widened.
+        if db.sync_post().is_some() {
+            db.install_capture(false)?;
+        }
         Ok(db)
     }
 
@@ -29953,10 +30121,14 @@ impl Db {
         .map_err(|_| "Fichier du registre illisible (mot de passe ?).".to_owned())?;
         conn.execute_batch(STUP_SCHEMA)
             .map_err(|e| format!("schéma du registre impossible : {e}"))?;
+        conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+            .map_err(|e| format!("schéma du registre impossible : {e}"))?;
         for migration in STUP_MIGRATIONS {
             // Sans effet quand la colonne est déjà là.
             let _ = conn.execute(migration, []);
         }
+        conn.execute_batch("DELETE FROM sync_mute; COMMIT;")
+            .map_err(|e| format!("schéma du registre impossible : {e}"))?;
         Ok(conn)
     }
 
@@ -30143,17 +30315,22 @@ impl Db {
         // **Jamais un numéro déjà donné** — voir [`Db::delete_patient`] :
         // le suivant du plus haut, qu'il soit encore là ou supprimé. Lu
         // et écrit dans une même instruction, pour que deux postes qui
-        // créent en même temps ne tirent pas le même.
+        // créent en même temps ne tirent pas le même. Dans un groupe de
+        // postes, le suivant du plus haut **du bloc de ce poste**
+        // (`next_id`) : chaque poste a ses numéros.
         self.conn
             .execute(
-                "INSERT INTO patients (id, last_name, first_name, birth_date, sex, created_at)
-                 VALUES (
-                     MAX(
-                         COALESCE((SELECT MAX(id) FROM patients), 0),
-                         COALESCE((SELECT CAST(value AS INTEGER) FROM settings
-                                   WHERE key = 'patient_id_high'), 0)
-                     ) + 1,
-                     ?1, ?2, ?3, ?4, datetime('now', 'localtime'))",
+                &format!(
+                    "INSERT INTO patients (id, last_name, first_name, birth_date, sex, created_at)
+                     VALUES (
+                         COALESCE({next}, MAX(
+                             COALESCE((SELECT MAX(id) FROM patients), 0),
+                             COALESCE((SELECT CAST(value AS INTEGER) FROM settings
+                                       WHERE key = 'patient_id_high'), 0)
+                         ) + 1),
+                         ?1, ?2, ?3, ?4, datetime('now', 'localtime'))",
+                    next = next_id("patients")
+                ),
                 (last_name, first_name, birth_date, sex),
             )
             .map_err(|e| e.to_string())?;
@@ -30627,8 +30804,11 @@ impl Db {
     ) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO notes (subject_kind, subject_id, operator, body)
-                 VALUES (?1, ?2, ?3, ?4)",
+                &format!(
+                    "INSERT INTO notes (id, subject_kind, subject_id, operator, body)
+                 VALUES ({next}, ?1, ?2, ?3, ?4)",
+                    next = next_id("notes")
+                ),
                 (subject.as_str(), subject_id, operator, body),
             )
             .map_err(|e| e.to_string())?;
@@ -30680,10 +30860,13 @@ impl Db {
             .join(";");
         self.conn
             .execute(
-                "INSERT INTO caisse_counts
-                   (day, quantities, cash, float_kept, others, expected, operator, remark,
+                &format!(
+                    "INSERT INTO caisse_counts
+                   (id, day, quantities, cash, float_kept, others, expected, operator, remark,
                     float_opening)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    next = next_id("caisse_counts")
+                ),
                 rusqlite::params![
                     c.day,
                     quantities,
@@ -31280,9 +31463,9 @@ impl Db {
                 // column default: a base created by an older version
                 // still defaults to UTC, and the day an act belongs to
                 // is the counter's day.
-                "INSERT INTO interviews (patient_id, kind, theme, operator, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, datetime('now', 'localtime'),
-                         datetime('now', 'localtime'))",
+                &format!("INSERT INTO interviews (id, patient_id, kind, theme, operator, created_at, updated_at)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, datetime('now', 'localtime'),
+                         datetime('now', 'localtime'))", next = next_id("interviews")),
                 (patient_id, kind.as_str(), theme, operator.trim()),
             )
             .map_err(|e| e.to_string())?;
@@ -31431,9 +31614,12 @@ impl Db {
         for (name, dci, class, antidote) in STARTER_DRUGS {
             inserted += tx
                 .execute(
-                    "INSERT INTO drugs (name, dci, class, antidote)
-                     SELECT ?1, ?2, ?3, ?4
+                    &format!(
+                        "INSERT INTO drugs (id, name, dci, class, antidote)
+                     SELECT {next}, ?1, ?2, ?3, ?4
                      WHERE NOT EXISTS (SELECT 1 FROM drugs WHERE name = ?1)",
+                        next = next_id("drugs")
+                    ),
                     (name, dci, class, antidote),
                 )
                 .map_err(|e| e.to_string())?;
@@ -31620,7 +31806,13 @@ impl Db {
 
     pub fn add_drug(&self, name: &str) -> Result<i64, String> {
         self.conn
-            .execute("INSERT INTO drugs (name) VALUES (?1)", [name])
+            .execute(
+                &format!(
+                    "INSERT INTO drugs (id, name) VALUES ({next}, ?1)",
+                    next = next_id("drugs")
+                ),
+                [name],
+            )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -31769,16 +31961,24 @@ impl Db {
                 .unwrap_or_default();
             let next: i64 = self
                 .conn
-                .query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM card_edits", [], |r| {
-                    r.get(0)
-                })
+                .query_row(
+                    &format!(
+                        "SELECT COALESCE({}, COALESCE(MAX(id), 0) + 1) FROM card_edits",
+                        next_id("card_edits")
+                    ),
+                    [],
+                    |r| r.get(0),
+                )
                 .map_err(|e| e.to_string())?;
             self.conn
                 .execute(
-                    "INSERT INTO card_edits
-                        (uid, day, card, card_name, field, value, previous, corrects,
+                    &format!(
+                        "INSERT INTO card_edits
+                        (id, uid, day, card, card_name, field, value, previous, corrects,
                          revert, operator, source)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '')",
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '')",
+                        next = next_id("card_edits")
+                    ),
                     rusqlite::params![
                         format!("{base}:v{next}"),
                         day,
@@ -31814,17 +32014,25 @@ impl Db {
         let base = self.base_uid()?;
         let next: i64 = self
             .conn
-            .query_row("SELECT COALESCE(MAX(id), 0) + 1 FROM card_edits", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                &format!(
+                    "SELECT COALESCE({}, COALESCE(MAX(id), 0) + 1) FROM card_edits",
+                    next_id("card_edits")
+                ),
+                [],
+                |r| r.get(0),
+            )
             .map_err(|e| e.to_string())?;
         let uid = format!("{base}:v{next}");
         self.conn
             .execute(
-                "INSERT INTO card_edits
-                    (uid, day, card, card_name, field, value, previous, corrects,
+                &format!(
+                    "INSERT INTO card_edits
+                    (id, uid, day, card, card_name, field, value, previous, corrects,
                      revert, operator, source)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, '')",
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, 1, ?9, '')",
+                    next = next_id("card_edits")
+                ),
                 rusqlite::params![
                     uid,
                     self.today_iso().unwrap_or_default(),
@@ -31893,10 +32101,13 @@ impl Db {
             let fresh = self
                 .conn
                 .execute(
-                    "INSERT OR IGNORE INTO card_edits
-                        (uid, day, card, card_name, field, value, previous, corrects,
+                    &format!(
+                        "INSERT OR IGNORE INTO card_edits
+                        (id, uid, day, card, card_name, field, value, previous, corrects,
                          revert, operator, source)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                        next = next_id("card_edits")
+                    ),
                     rusqlite::params![
                         e.uid,
                         e.day,
@@ -31939,7 +32150,13 @@ impl Db {
                 Some(i) => i,
                 None if !e.card_name.trim().is_empty() => {
                     self.conn
-                        .execute("INSERT INTO drugs (name) VALUES (?1)", [e.card_name.trim()])
+                        .execute(
+                            &format!(
+                                "INSERT INTO drugs (id, name) VALUES ({next}, ?1)",
+                                next = next_id("drugs")
+                            ),
+                            [e.card_name.trim()],
+                        )
                         .map_err(|e| e.to_string())?;
                     self.conn.last_insert_rowid()
                 }
@@ -32336,7 +32553,10 @@ impl Db {
     pub fn add_checklist(&self, title: &str, subject: &str) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO checklists (title, subject) VALUES (?1, ?2)",
+                &format!(
+                    "INSERT INTO checklists (id, title, subject) VALUES ({next}, ?1, ?2)",
+                    next = next_id("checklists")
+                ),
                 (title, subject),
             )
             .map_err(|e| e.to_string())?;
@@ -32398,8 +32618,11 @@ impl Db {
             .map_err(|e| e.to_string())?;
         self.conn
             .execute(
-                "INSERT INTO checklist_items (checklist_id, text, note, position)
-                 VALUES (?1, ?2, ?3, ?4)",
+                &format!(
+                    "INSERT INTO checklist_items (id, checklist_id, text, note, position)
+                 VALUES ({next}, ?1, ?2, ?3, ?4)",
+                    next = next_id("checklist_items")
+                ),
                 (list, text, note, next),
             )
             .map_err(|e| e.to_string())?;
@@ -32479,7 +32702,10 @@ impl Db {
     pub fn add_protocol(&self, title: &str, subject: &str) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO protocols (title, subject) VALUES (?1, ?2)",
+                &format!(
+                    "INSERT INTO protocols (id, title, subject) VALUES ({next}, ?1, ?2)",
+                    next = next_id("protocols")
+                ),
                 (title, subject),
             )
             .map_err(|e| e.to_string())?;
@@ -32573,9 +32799,12 @@ impl Db {
             .unwrap_or(0);
         self.conn
             .execute(
-                "INSERT INTO protocol_nodes
-                     (protocol_id, parent_id, branch, kind, text, position)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+                &format!(
+                    "INSERT INTO protocol_nodes
+                     (id, protocol_id, parent_id, branch, kind, text, position)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                    next = next_id("protocol_nodes")
+                ),
                 (
                     protocol_id,
                     parent_id,
@@ -32682,8 +32911,8 @@ impl Db {
             }
             added += tx
                 .execute(
-                    "INSERT INTO posologies (drug_id, indication, posologie, remarque, position)
-                     SELECT d.id, ?2, ?3, ?4, ?5 FROM drugs d WHERE d.name = ?1",
+                    &format!("INSERT INTO posologies (id, drug_id, indication, posologie, remarque, position)
+                     SELECT {next}, d.id, ?2, ?3, ?4, ?5 FROM drugs d WHERE d.name = ?1", next = next_id("posologies")),
                     (brand, indication, posologie, remarque, position),
                 )
                 .map_err(|e| e.to_string())?;
@@ -32987,11 +33216,12 @@ impl Db {
             .map_err(|e| e.to_string())?;
         {
             let mut add = tx
-                .prepare(
+                .prepare(&format!(
                     "INSERT INTO prescribers
-                       (rpps, last_name, first_name, speciality, finess, am, city)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                )
+                       (id, rpps, last_name, first_name, speciality, finess, am, city)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    next = next_id("prescribers")
+                ))
                 .map_err(|e| e.to_string())?;
             for p in who {
                 add.execute(rusqlite::params![
@@ -33050,8 +33280,11 @@ impl Db {
     pub fn log_access(&self, operator: &str, act: crate::audit::Act, file: i64) -> bool {
         self.conn
             .execute(
-                "INSERT INTO access_log (at, operator, act, file)
-                 VALUES (datetime('now', 'localtime'), ?1, ?2, ?3)",
+                &format!(
+                    "INSERT INTO access_log (id, at, operator, act, file)
+                 VALUES ({next}, datetime('now', 'localtime'), ?1, ?2, ?3)",
+                    next = next_id("access_log")
+                ),
                 rusqlite::params![operator.trim(), act.key(), file],
             )
             .is_ok()
@@ -33315,17 +33548,23 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let next: i64 = tx
             .query_row(
-                "SELECT COALESCE(MAX(id), 0) + 1 FROM supply_events",
+                &format!(
+                    "SELECT COALESCE({}, COALESCE(MAX(id), 0) + 1) FROM supply_events",
+                    next_id("supply_events")
+                ),
                 [],
                 |r| r.get(0),
             )
             .map_err(|e| e.to_string())?;
         let uid = format!("{base}:{next}");
         tx.execute(
-            "INSERT INTO supply_events
-                (uid, day, kind, product, product_dci, other, other_dci, outcome,
+            &format!(
+                "INSERT INTO supply_events
+                (id, uid, day, kind, product, product_dci, other, other_dci, outcome,
                  note, operator, source, refers)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11)",
+             VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, '', ?11)",
+                next = next_id("supply_events")
+            ),
             rusqlite::params![
                 uid,
                 e.day,
@@ -33360,10 +33599,13 @@ impl Db {
         for e in events {
             added += tx
                 .execute(
-                    "INSERT OR IGNORE INTO supply_events
-                        (uid, day, kind, product, product_dci, other, other_dci, outcome,
+                    &format!(
+                        "INSERT OR IGNORE INTO supply_events
+                        (id, uid, day, kind, product, product_dci, other, other_dci, outcome,
                          note, operator, source, refers)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                        next = next_id("supply_events")
+                    ),
                     rusqlite::params![
                         e.uid,
                         e.day,
@@ -34005,10 +34247,13 @@ impl Db {
             }
             added += tx
                 .execute(
-                    "INSERT INTO preparations
-                        (name, form, indication, formula, yield_amount, method,
+                    &format!(
+                        "INSERT INTO preparations
+                        (id, name, form, indication, formula, yield_amount, method,
                          conservation, caution, tags, sources)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        next = next_id("preparations")
+                    ),
                     (
                         p.name,
                         p.form,
@@ -34061,7 +34306,13 @@ impl Db {
     /// Add an empty preparation, ready to be written.
     pub fn add_preparation(&self, name: &str) -> Result<i64, String> {
         self.conn
-            .execute("INSERT INTO preparations (name) VALUES (?1)", [name])
+            .execute(
+                &format!(
+                    "INSERT INTO preparations (id, name) VALUES ({next}, ?1)",
+                    next = next_id("preparations")
+                ),
+                [name],
+            )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -34163,10 +34414,13 @@ impl Db {
     fn insert_trod_line(&self, o: &crate::ordonnance::Offer) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO trod_lines
-                    (protocol, rank, name, situation, posologies, caution,
+                &format!(
+                    "INSERT INTO trod_lines
+                    (id, protocol, rank, name, situation, posologies, caution,
                      min_age, max_age, sex, pregnancy)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                    next = next_id("trod_lines")
+                ),
                 rusqlite::params![
                     o.protocol,
                     o.rank,
@@ -34325,8 +34579,11 @@ impl Db {
             }
             self.conn
                 .execute(
-                    "INSERT INTO vaccine_catalogue (code, label, schedule, rank)
-                     VALUES (?1, ?2, ?3, ?4)",
+                    &format!(
+                        "INSERT INTO vaccine_catalogue (id, code, label, schedule, rank)
+                     VALUES ({next}, ?1, ?2, ?3, ?4)",
+                        next = next_id("vaccine_catalogue")
+                    ),
                     (&v.code, &v.label, &v.schedule, v.rank),
                 )
                 .map_err(|e| e.to_string())?;
@@ -34363,8 +34620,11 @@ impl Db {
     pub fn add_vaccine(&self, label: &str) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO vaccine_catalogue (label, rank)
-                 VALUES (?1, COALESCE((SELECT MAX(rank) FROM vaccine_catalogue), -1) + 1)",
+                &format!(
+                    "INSERT INTO vaccine_catalogue (id, label, rank)
+                 VALUES ({next}, ?1, COALESCE((SELECT MAX(rank) FROM vaccine_catalogue), -1) + 1)",
+                    next = next_id("vaccine_catalogue")
+                ),
                 [label],
             )
             .map_err(|e| e.to_string())?;
@@ -34447,10 +34707,13 @@ impl Db {
             }
             added += tx
                 .execute(
-                    "INSERT INTO dispositifs
-                        (name, family, indication, sizes, application, renewal,
+                    &format!(
+                        "INSERT INTO dispositifs
+                        (id, name, family, indication, sizes, application, renewal,
                          lpp, caution, tags, sources)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        next = next_id("dispositifs")
+                    ),
                     (
                         d.name,
                         d.family,
@@ -34506,7 +34769,13 @@ impl Db {
     /// Add an empty dispositif, ready to be written.
     pub fn add_dispositif(&self, name: &str) -> Result<i64, String> {
         self.conn
-            .execute("INSERT INTO dispositifs (name) VALUES (?1)", [name])
+            .execute(
+                &format!(
+                    "INSERT INTO dispositifs (id, name) VALUES ({next}, ?1)",
+                    next = next_id("dispositifs")
+                ),
+                [name],
+            )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
     }
@@ -34650,10 +34919,13 @@ impl Db {
     pub fn add_location(&self, l: &Location) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO locations
-                    (patient_id, label, lpp, period, fee, renewal_days,
+                &format!(
+                    "INSERT INTO locations
+                    (id, patient_id, label, lpp, period, fee, renewal_days,
                      max_periods, started_on, ended_on, renewed_on, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+                    next = next_id("locations")
+                ),
                 rusqlite::params![
                     l.patient_id,
                     &l.label,
@@ -34779,8 +35051,8 @@ impl Db {
             .unwrap_or(0);
         self.conn
             .execute(
-                "INSERT INTO posologies (drug_id, indication, posologie, remarque, position)
-                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                &format!("INSERT INTO posologies (id, drug_id, indication, posologie, remarque, position)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5)", next = next_id("posologies")),
                 (drug_id, indication, posologie, remarque, next),
             )
             .map_err(|e| e.to_string())?;
@@ -34969,8 +35241,8 @@ impl Db {
     pub fn add_bio_result(&self, patient_id: i64, r: &BioResult) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO biology (patient_id, code, label, value, unit, taken_on, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                &format!("INSERT INTO biology (id, patient_id, code, label, value, unit, taken_on, remark)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7)", next = next_id("biology")),
                 (
                     patient_id,
                     &r.code,
@@ -35031,9 +35303,9 @@ impl Db {
     pub fn add_vaccination(&self, patient_id: i64, v: &Vaccination) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO vaccinations
-                     (patient_id, code, label, dose, given_on, lot, site, operator, next_due, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                &format!("INSERT INTO vaccinations
+                     (id, patient_id, code, label, dose, given_on, lot, site, operator, next_due, remark)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)", next = next_id("vaccinations")),
                 (
                     patient_id,
                     &v.code,
@@ -35618,9 +35890,12 @@ impl Db {
         }
         self.stups
             .execute(
-                "INSERT INTO stupefiants
-                     (drug_id, label, unit, threshold, family, status, max_days, note, per_box)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                &format!(
+                    "INSERT INTO stupefiants
+                     (id, drug_id, label, unit, threshold, family, status, max_days, note, per_box)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                    next = next_id("stupefiants")
+                ),
                 rusqlite::params![
                     p.drug_id,
                     label,
@@ -35727,8 +36002,11 @@ impl Db {
         // seraient l'un et l'autre pires que rien.
         if changed == 1 && renamed {
             tx.execute(
-                "INSERT INTO stup_labels (stup_id, was, became, operator)
-                 VALUES (?1, ?2, ?3, ?4)",
+                &format!(
+                    "INSERT INTO stup_labels (id, stup_id, was, became, operator)
+                 VALUES ({next}, ?1, ?2, ?3, ?4)",
+                    next = next_id("stup_labels")
+                ),
                 rusqlite::params![new.id, was, label, operator.trim()],
             )
             .map_err(|e| e.to_string())?;
@@ -36100,7 +36378,7 @@ impl Db {
             "SELECT id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                     patient_id, prescriber, supplier, reference, expected,
                     operator, remark, cancels, lot, expiry
-             FROM stup_moves {tail}"
+             FROM {NUMBERED_MOVES} {tail}"
         );
         let mut stmt = self.stups.prepare(&sql).map_err(|e| e.to_string())?;
         let rows = stmt
@@ -36141,7 +36419,7 @@ impl Db {
             .stups
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
-        let id = Self::insert_stup_move(&tx, m)?;
+        let id = Self::insert_stup_move(&tx, m, self.numbers_here())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(id)
     }
@@ -36164,13 +36442,14 @@ impl Db {
         if moves.is_empty() {
             return Ok(Vec::new());
         }
+        let here = self.numbers_here();
         let tx = self
             .stups
             .unchecked_transaction()
             .map_err(|e| e.to_string())?;
         let mut ids = Vec::with_capacity(moves.len());
         for m in moves {
-            ids.push(Self::insert_stup_move(&tx, m)?);
+            ids.push(Self::insert_stup_move(&tx, m, here)?);
         }
         tx.commit().map_err(|e| e.to_string())?;
         for _ in &ids {
@@ -36227,7 +36506,11 @@ impl Db {
         Ok(crate::ordonnancier::balance(&moves).stock)
     }
 
-    fn insert_stup_move(tx: &rusqlite::Transaction, m: &StupMove) -> Result<i64, String> {
+    fn insert_stup_move(
+        tx: &rusqlite::Transaction,
+        m: &StupMove,
+        numbers_here: bool,
+    ) -> Result<i64, String> {
         let day = m.happened_on.trim();
         if day.is_empty() {
             return Err(crate::strings::tr("stup_err_no_day").to_owned());
@@ -36331,7 +36614,11 @@ impl Db {
                 return Err(crate::strings::tr("stup_err_already_cancelled").to_owned());
             }
         }
-        let (year, no) = if kind.is_dispensing() {
+        let (year, no) = if kind.is_dispensing() && !numbers_here {
+            // Un autre poste numérote : l'année est écrite, le numéro
+            // viendra du poste de référence (`stup_numbers`).
+            (day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0), 0)
+        } else if kind.is_dispensing() {
             // L'année reste **écrite sur la ligne** : c'est celle où la
             // délivrance a eu lieu, et l'ordonnancier s'imprime par
             // exercice. Ce qu'elle ne fait plus, c'est borner la suite.
@@ -36348,7 +36635,10 @@ impl Db {
             // cela n'arrive qu'au moment où quelqu'un délivre.
             let used: Vec<u32> = {
                 let mut stmt = tx
-                    .prepare("SELECT ordo_no FROM stup_moves WHERE ordo_no > 0")
+                    .prepare(
+                        "SELECT ordo_no FROM stup_moves WHERE ordo_no > 0
+                         UNION ALL SELECT ordo_no FROM stup_numbers",
+                    )
                     .map_err(|e| e.to_string())?;
                 let rows = stmt
                     .query_map([], |r| r.get::<_, i64>(0))
@@ -36378,11 +36668,11 @@ impl Db {
             (0, 0)
         };
         tx.execute(
-            "INSERT INTO stup_moves
-                 (stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+            &format!("INSERT INTO stup_moves
+                 (id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
                   patient_id, prescriber, supplier, reference, expected,
                   operator, remark, cancels, lot, expiry)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)",
+             VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16)", next = next_id("stup_moves")),
             rusqlite::params![
                 m.stup_id,
                 kind.as_key(),
@@ -36981,8 +37271,8 @@ impl Db {
         let repeat_days = stored_step(cadence, 0);
         self.conn
             .execute(
-                "INSERT INTO events (day, time, end_time, title, category, repeat_days, cadence, repeat_until)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                &format!("INSERT INTO events (id, day, time, end_time, title, category, repeat_days, cadence, repeat_until)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)", next = next_id("events")),
                 (
                     day,
                     time,
@@ -37228,10 +37518,13 @@ impl Db {
     pub fn add_shift(&self, s: &NewShift) -> Result<i64, String> {
         self.conn
             .execute(
-                "INSERT INTO shifts (operator, day, start_time, end_time, pause_minutes,
+                &format!(
+                    "INSERT INTO shifts (id, operator, day, start_time, end_time, pause_minutes,
                                      kind, repeat_days, repeat_until, note,
                                      supersedes, cancelled, cadence)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                    next = next_id("shifts")
+                ),
                 (
                     &s.operator,
                     &s.day,
@@ -38402,6 +38695,1054 @@ pub fn format_french_date(iso: &str) -> String {
 
 /// A directory a test made, removed when the test ends.
 ///
+/// L'identifiant qu'une création tire du bloc de ce poste, à écrire dans
+/// la colonne `id` de chaque `INSERT` d'une table qui voyage.
+///
+/// Hors groupe, le bloc n'existe pas, la sous-requête ne rend rien, et
+/// SQLite choisit comme il l'a toujours fait. Dans un groupe, c'est le
+/// suivant du plus haut numéro que ce poste a donné — jamais celui d'un
+/// autre poste, et jamais un numéro déjà donné puis supprimé.
+/// `replica_inserts_draw_from_the_block` lit ce fichier et refuse un
+/// `INSERT` qui l'oublierait.
+pub fn next_id(table: &str) -> String {
+    format!("(SELECT high + 1 FROM sync_blocks WHERE tbl = '{table}')")
+}
+
+/// Les lignes du registre avec leur numéro d'ordonnancier, **qu'il soit
+/// écrit sur la ligne ou donné ensuite par le poste de référence**
+/// (`stup_numbers`). Nommée comme la table, pour que les filtres écrits
+/// pour elle s'y appliquent tels quels.
+const NUMBERED_MOVES: &str = "(SELECT m.id, m.stup_id, m.kind, m.happened_on, m.quantity,
+        m.ordo_year,
+        CASE WHEN m.ordo_no > 0 THEN m.ordo_no ELSE COALESCE(n.ordo_no, 0) END AS ordo_no,
+        m.patient_id, m.prescriber, m.supplier, m.reference, m.expected, m.operator,
+        m.remark, m.cancels, m.lot, m.expiry, m.created_at
+   FROM stup_moves m LEFT JOIN stup_numbers n ON n.move_id = m.id) AS stup_moves";
+
+/// Un poste de l'officine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PostRow {
+    pub post: i64,
+    /// Son identité, en hexadécimal.
+    pub device: String,
+    pub name: String,
+    pub joined: String,
+    /// Vide tant qu'il fait partie du groupe.
+    pub left_on: String,
+}
+
+/// Une écriture capturée : son numéro, sa table, sa nature, la ligne
+/// avant et après.
+type Captured = (i64, String, String, Option<String>, Option<String>);
+
+/// Ce qu'un enregistrement reçu d'un autre poste a fait ici.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct Applied {
+    /// Des lignes créées, modifiées ou supprimées.
+    pub written: usize,
+    /// Des questions posées — un champ modifié des deux côtés.
+    pub conflicts: usize,
+    /// Des écritures refusées : une table en ajout seul.
+    pub refused: usize,
+    /// Des créations déjà là sous un autre numéro — un événement du
+    /// réseau d'officines que deux postes ont reçu chacun.
+    pub duplicates: usize,
+}
+
+/// Une question posée par une écriture reçue, ou le refus d'une.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SyncConflict {
+    pub id: i64,
+    pub day: String,
+    /// `CONFLIT`, `ABSENT` (la ligne n'existe plus ici), `REFUS` (une
+    /// table en ajout seul), `TROP_GRAND` (une valeur que le protocole ne
+    /// porte pas).
+    pub kind: String,
+    pub file: crate::replica::File,
+    pub table: String,
+    pub key: serde_json::Map<String, serde_json::Value>,
+    pub column: String,
+    pub mine: Option<serde_json::Value>,
+    pub theirs: Option<serde_json::Value>,
+    pub author: String,
+}
+
+fn sql_value(v: &serde_json::Value) -> rusqlite::types::Value {
+    use rusqlite::types::Value as V;
+    match v {
+        serde_json::Value::Null => V::Null,
+        serde_json::Value::Bool(b) => V::Integer(i64::from(*b)),
+        serde_json::Value::Number(n) => match n.as_i64() {
+            Some(i) => V::Integer(i),
+            None => V::Real(n.as_f64().unwrap_or(0.0)),
+        },
+        serde_json::Value::String(s) => V::Text(s.clone()),
+        other => V::Text(other.to_string()),
+    }
+}
+
+/// `json_object('a', p."a", 'b', p."b"…)` over these columns.
+fn json_row(prefix: &str, cols: &[String]) -> String {
+    let parts: Vec<String> = cols
+        .iter()
+        .map(|c| format!("'{c}', {prefix}\"{c}\""))
+        .collect();
+    format!("json_object({})", parts.join(", "))
+}
+
+fn parse_object(text: Option<String>) -> Option<serde_json::Map<String, serde_json::Value>> {
+    match serde_json::from_str::<serde_json::Value>(&text?).ok()? {
+        serde_json::Value::Object(m) => Some(m),
+        _ => None,
+    }
+}
+
+impl Db {
+    #[cfg(all(test, feature = "sync"))]
+    pub(crate) fn conn_for_tests(&self) -> &Connection {
+        &self.conn
+    }
+
+    fn conn_of(&self, file: crate::replica::File) -> &Connection {
+        match file {
+            crate::replica::File::Main => &self.conn,
+            crate::replica::File::Stups => &self.stups,
+        }
+    }
+
+    /// Les colonnes d'une table, et celles de sa clé primaire dans
+    /// l'ordre de la clé.
+    fn table_shape(conn: &Connection, table: &str) -> Result<(Vec<String>, Vec<String>), String> {
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info(\"{table}\")"))
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(1)?, r.get::<_, i64>(5)?)))
+            .map_err(|e| e.to_string())?;
+        let all: Vec<(String, i64)> = rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?;
+        let cols = all.iter().map(|(c, _)| c.clone()).collect();
+        let mut key: Vec<(i64, String)> = all
+            .into_iter()
+            .filter(|(_, pk)| *pk > 0)
+            .map(|(c, pk)| (pk, c))
+            .collect();
+        key.sort();
+        Ok((cols, key.into_iter().map(|(_, c)| c).collect()))
+    }
+
+    /// Le poste qui numérote l'ordonnancier et sème le contenu livré :
+    /// le fondateur, tant que l'officine n'en a pas désigné un autre.
+    pub fn sync_reference(&self) -> i64 {
+        self.setting("sync_reference")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0)
+    }
+
+    /// Désigner le poste de référence. Capturé : tous les postes le
+    /// savent.
+    pub fn set_sync_reference(&self, post: i64, day: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO settings (key, value, updated_on, updated_by)
+                 VALUES ('sync_reference', ?1, ?2, '')
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value,
+                     updated_on = excluded.updated_on",
+                rusqlite::params![post.to_string(), day],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Ce poste numérote-t-il l'ordonnancier ? Hors groupe, toujours ;
+    /// dans un groupe, seulement le poste de référence.
+    pub fn numbers_here(&self) -> bool {
+        self.sync_post()
+            .is_none_or(|post| post == self.sync_reference())
+    }
+
+    /// Le contenu livré se sème-t-il ici ? Même règle : un seul poste
+    /// sème, et ce qu'il sème voyage — deux postes qui sèmeraient chacun
+    /// créeraient chaque fiche deux fois.
+    pub fn seeds_here(&self) -> bool {
+        self.numbers_here()
+    }
+
+    /// Numéroter les délivrances écrites sur d'autres postes et arrivées
+    /// ici sans numéro — **le poste de référence seulement**, dans l'ordre
+    /// où elles ont eu lieu, à la suite de l'ordonnancier. Rend combien.
+    pub fn number_pending(&self, day: &str) -> Result<usize, String> {
+        if !self.numbers_here() {
+            return Ok(0);
+        }
+        let tx = self
+            .stups
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let waiting: Vec<(i64, String, i64)> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT m.id, m.kind, m.ordo_year FROM stup_moves m
+                     WHERE m.ordo_no = 0
+                       AND NOT EXISTS (SELECT 1 FROM stup_numbers n WHERE n.move_id = m.id)
+                     ORDER BY m.happened_on, m.created_at, m.id",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let start: u32 = tx
+            .query_row(
+                "SELECT value FROM stup_settings WHERE key = 'ordonnancier_start'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .ok()
+            .and_then(|v| v.trim().parse().ok())
+            .unwrap_or(0);
+        let mut used: Vec<u32> = {
+            let mut stmt = tx
+                .prepare(
+                    "SELECT ordo_no FROM stup_moves WHERE ordo_no > 0
+                     UNION ALL SELECT ordo_no FROM stup_numbers",
+                )
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, i64>(0))
+                .map_err(|e| e.to_string())?;
+            rows.map(|r| r.map(|n| n.max(0) as u32))
+                .collect::<Result<_, _>>()
+                .map_err(|e| e.to_string())?
+        };
+        let mut done = 0;
+        for (id, kind, year) in waiting {
+            if !crate::ordonnancier::Kind::from_key(&kind).is_dispensing() {
+                continue;
+            }
+            let no = crate::ordonnancier::next_number(&used, start);
+            tx.execute(
+                "INSERT INTO stup_numbers (move_id, ordo_year, ordo_no, assigned_on)
+                 VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![id, year, i64::from(no), day],
+            )
+            .map_err(|e| e.to_string())?;
+            used.push(no);
+            done += 1;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(done)
+    }
+
+    /// Une valeur propre à ce poste — son numéro, son identité, sa clé.
+    pub fn sync_local(&self, key: &str) -> Option<String> {
+        self.conn
+            .query_row("SELECT value FROM sync_local WHERE key = ?1", [key], |r| {
+                r.get::<_, String>(0)
+            })
+            .ok()
+    }
+
+    pub fn set_sync_local(&self, key: &str, value: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT INTO sync_local (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                [key, value],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Le numéro de ce poste dans le groupe de l'officine ; aucun hors
+    /// groupe.
+    pub fn sync_post(&self) -> Option<i64> {
+        self.sync_local("post").and_then(|v| v.parse().ok())
+    }
+
+    /// Les postes de l'officine, retirés compris.
+    pub fn sync_posts(&self) -> Result<Vec<PostRow>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT post, device, name, joined, left_on FROM sync_posts ORDER BY post")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(PostRow {
+                    post: r.get(0)?,
+                    device: r.get(1)?,
+                    name: r.get(2)?,
+                    joined: r.get(3)?,
+                    left_on: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Nommer un poste — compare-and-set sur le nom affiché. Capturé :
+    /// le nom voyage.
+    pub fn set_post_name(&self, post: i64, name: &str, was: &str) -> Result<bool, String> {
+        self.conn
+            .execute(
+                "UPDATE sync_posts SET name = ?2 WHERE post = ?1 AND name = ?3",
+                rusqlite::params![post, name.trim(), was],
+            )
+            .map(|n| n == 1)
+            .map_err(|e| e.to_string())
+    }
+
+    /// Retirer un poste : il n'est plus écouté, ce qu'il écrit n'est plus
+    /// rangé, et son numéro ne se redonne pas. Capturé : tous les postes
+    /// le retirent.
+    pub fn retire_post(&self, post: i64, day: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE sync_posts SET left_on = ?2 WHERE post = ?1 AND left_on = ''",
+                rusqlite::params![post, day],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Poser (ou reposer) les déclencheurs qui capturent chaque écriture
+    /// d'une table qui voyage. Recalculés d'après le schéma : une
+    /// colonne ajoutée par une migration est capturée dès l'ouverture
+    /// qui l'ajoute. Sans rien refaire quand rien n'a changé, sauf si
+    /// `force`.
+    pub fn install_capture(&self, force: bool) -> Result<(), String> {
+        use crate::replica::{File, TABLES};
+        for file in [File::Main, File::Stups] {
+            let conn = self.conn_of(file);
+            let mut sql = String::new();
+            for t in TABLES.iter().filter(|t| t.file == file) {
+                let (cols, _) = Self::table_shape(conn, t.name)?;
+                if cols.is_empty() {
+                    continue;
+                }
+                let name = t.name;
+                let quiet = "WHEN NOT EXISTS (SELECT 1 FROM sync_mute WHERE mute = 1)";
+                for kind in ["i", "u", "d", "h"] {
+                    sql.push_str(&format!("DROP TRIGGER IF EXISTS sync_{kind}_{name};\n"));
+                }
+                sql.push_str(&format!(
+                    "CREATE TRIGGER sync_i_{name} AFTER INSERT ON \"{name}\" {quiet}
+                     BEGIN INSERT INTO sync_log (tbl, op, old, new)
+                     VALUES ('{name}', 'I', NULL, {}); END;\n",
+                    json_row("NEW.", &cols)
+                ));
+                // Ce qui s'écrit en ajout seul n'a ni modification ni
+                // suppression à capturer : il n'en a pas.
+                if !t.append_only {
+                    sql.push_str(&format!(
+                        "CREATE TRIGGER sync_u_{name} AFTER UPDATE ON \"{name}\" {quiet}
+                         BEGIN INSERT INTO sync_log (tbl, op, old, new)
+                         VALUES ('{name}', 'U', {}, {}); END;\n",
+                        json_row("OLD.", &cols),
+                        json_row("NEW.", &cols)
+                    ));
+                    sql.push_str(&format!(
+                        "CREATE TRIGGER sync_d_{name} AFTER DELETE ON \"{name}\" {quiet}
+                         BEGIN INSERT INTO sync_log (tbl, op, old, new)
+                         VALUES ('{name}', 'D', {}, NULL); END;\n",
+                        json_row("OLD.", &cols)
+                    ));
+                }
+                if t.blocked {
+                    sql.push_str(&format!(
+                        "CREATE TRIGGER sync_h_{name} AFTER INSERT ON \"{name}\"
+                         BEGIN UPDATE sync_blocks SET high = NEW.id
+                         WHERE tbl = '{name}' AND NEW.id > high AND NEW.id BETWEEN lo AND hi;
+                         END;\n"
+                    ));
+                }
+            }
+            let stamp = {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                sql.hash(&mut h);
+                format!("{:016x}", h.finish())
+            };
+            let slot = format!("capture_{}", file.key());
+            if !force && self.sync_local(&slot).as_deref() == Some(stamp.as_str()) {
+                continue;
+            }
+            conn.execute_batch(&format!("BEGIN;\n{sql}COMMIT;"))
+                .map_err(|e| format!("capture impossible : {e}"))?;
+            self.set_sync_local(&slot, &stamp)?;
+        }
+        Ok(())
+    }
+
+    /// Retirer les déclencheurs : ce poste ne fait plus partie d'aucun
+    /// groupe, et ses écritures redeviennent les siennes seules.
+    fn remove_capture(&self) -> Result<(), String> {
+        use crate::replica::{File, TABLES};
+        for file in [File::Main, File::Stups] {
+            let mut sql = String::new();
+            for t in TABLES.iter().filter(|t| t.file == file) {
+                for kind in ["i", "u", "d", "h"] {
+                    sql.push_str(&format!("DROP TRIGGER IF EXISTS sync_{kind}_{};\n", t.name));
+                }
+            }
+            sql.push_str("DELETE FROM sync_log; DELETE FROM sync_blocks;\n");
+            self.conn_of(file)
+                .execute_batch(&sql)
+                .map_err(|e| e.to_string())?;
+        }
+        self.conn
+            .execute("DELETE FROM sync_local WHERE key LIKE 'capture_%'", [])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Poser les blocs de numéros de ce poste. Le plus haut déjà donné
+    /// dans chaque bloc est repris : un bloc repris après une réinstallation
+    /// ne redonne pas un numéro.
+    fn set_blocks(&self, post: i64) -> Result<(), String> {
+        use crate::replica::{bounds, File, ROW_BLOCK, TABLES};
+        let patient_size: i64 = self
+            .setting("sync_patient_block")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(crate::replica::patient_block(0));
+        for t in TABLES.iter().filter(|t| t.blocked) {
+            let size = if t.name == "patients" && t.file == File::Main {
+                patient_size
+            } else {
+                ROW_BLOCK
+            };
+            let (lo, hi) = bounds(post, size);
+            let conn = self.conn_of(t.file);
+            let high: i64 = conn
+                .query_row(
+                    &format!(
+                        "SELECT COALESCE(MAX(id), ?1 - 1) FROM \"{}\" WHERE id BETWEEN ?1 AND ?2",
+                        t.name
+                    ),
+                    [lo, hi],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            // Les numéros de dossier déjà donnés puis supprimés ne se
+            // redonnent pas — la règle de `add_patient`.
+            let high = if t.name == "patients" {
+                let kept: i64 = self
+                    .setting("patient_id_high")
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(0);
+                if (lo..=hi).contains(&kept) {
+                    high.max(kept)
+                } else {
+                    high
+                }
+            } else {
+                high
+            };
+            conn.execute(
+                "INSERT INTO sync_blocks (tbl, lo, hi, high) VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (tbl) DO UPDATE SET lo = excluded.lo, hi = excluded.hi,
+                     high = MAX(sync_blocks.high, excluded.high)",
+                rusqlite::params![t.name, lo, hi, high],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Fonder le groupe des postes sur cette base : elle devient le poste
+    /// zéro, garde tout ce qu'elle a et tous ses numéros, et rend la
+    /// photographie de ses données — ce que le premier poste qui la
+    /// rejoindra recevra.
+    pub fn found_posts(
+        &self,
+        device: &str,
+        name: &str,
+        day: &str,
+    ) -> Result<Vec<crate::replica::Op>, String> {
+        if self.sync_post().is_some() {
+            return Err(crate::strings::tr("posts_err_already").to_owned());
+        }
+        let max_patient: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(id), 0) FROM patients", [], |r| {
+                r.get(0)
+            })
+            .map_err(|e| e.to_string())?;
+        let kept: i64 = self
+            .setting("patient_id_high")
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(0);
+        self.conn
+            .execute(
+                "INSERT INTO settings (key, value, updated_on, updated_by) VALUES ('sync_patient_block', ?1, ?2, '')
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                rusqlite::params![crate::replica::patient_block(max_patient.max(kept)).to_string(), day],
+            )
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT INTO sync_posts (post, device, name, joined) VALUES (0, ?1, ?2, ?3)",
+                [device, name, day],
+            )
+            .map_err(|e| e.to_string())?;
+        self.set_sync_local("post", "0")?;
+        self.set_blocks(0)?;
+        self.install_capture(true)?;
+        self.snapshot()
+    }
+
+    /// Toutes les lignes de toutes les tables qui voyagent, en créations.
+    pub fn snapshot(&self) -> Result<Vec<crate::replica::Op>, String> {
+        use crate::replica::{Kind, Op, TABLES};
+        let mut out = Vec::new();
+        for t in TABLES {
+            let conn = self.conn_of(t.file);
+            let (cols, key) = Self::table_shape(conn, t.name)?;
+            if cols.is_empty() || key.is_empty() {
+                continue;
+            }
+            let mut stmt = conn
+                .prepare(&format!(
+                    "SELECT {} FROM \"{}\" ORDER BY {}",
+                    json_row("", &cols),
+                    t.name,
+                    key.join(", ")
+                ))
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                let row = row.map_err(|e| e.to_string())?;
+                let Some(new) = parse_object(Some(row)) else {
+                    continue;
+                };
+                let mut k = serde_json::Map::new();
+                for c in &key {
+                    k.insert(c.clone(), new.get(c).cloned().unwrap_or_default());
+                }
+                out.push(Op {
+                    file: t.file,
+                    table: t.name.to_owned(),
+                    kind: Kind::Insert,
+                    key: k,
+                    old: serde_json::Map::new(),
+                    new,
+                });
+            }
+        }
+        Ok(out)
+    }
+
+    /// Préparer ce poste à rejoindre un groupe : **ce qu'il contenait
+    /// est remplacé** par ce que le groupe lui enverra. Tout ce qui voyage
+    /// est vidé, sans capture ; ce qui est propre au poste reste.
+    pub fn prepare_join(&self) -> Result<(), String> {
+        use crate::replica::{File, TABLES};
+        if self.sync_post().is_some() {
+            return Err(crate::strings::tr("posts_err_already").to_owned());
+        }
+        self.remove_capture()?;
+        for file in [File::Main, File::Stups] {
+            let mut sql = String::from("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);\n");
+            for t in TABLES.iter().filter(|t| t.file == file) {
+                sql.push_str(&format!("DELETE FROM \"{}\";\n", t.name));
+            }
+            sql.push_str("DELETE FROM sync_mute; COMMIT;");
+            self.conn_of(file)
+                .execute_batch(&sql)
+                .map_err(|e| e.to_string())?;
+        }
+        self.conn
+            .execute_batch("DELETE FROM sync_applied; DELETE FROM sync_conflicts;")
+            .map_err(|e| e.to_string())
+    }
+
+    /// Finir de rejoindre : ce poste prend son numéro, ses blocs, pose sa
+    /// capture et se déclare aux autres — cette ligne-là part avec sa
+    /// première synchronisation.
+    pub fn finish_join(&self, device: &str, name: &str, day: &str) -> Result<i64, String> {
+        let taken: Vec<i64> = self.sync_posts()?.into_iter().map(|p| p.post).collect();
+        let post = crate::replica::next_post(&taken);
+        self.set_sync_local("post", &post.to_string())?;
+        self.set_blocks(post)?;
+        self.install_capture(true)?;
+        self.conn
+            .execute(
+                "INSERT INTO sync_posts (post, device, name, joined) VALUES (?1, ?2, ?3, ?4)",
+                rusqlite::params![post, device, name, day],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(post)
+    }
+
+    /// Quitter le groupe : les données restent, la capture et les
+    /// numéros de poste partent, et la clé avec eux.
+    pub fn leave_posts(&self) -> Result<(), String> {
+        self.remove_capture()?;
+        self.conn
+            .execute_batch(
+                "DELETE FROM sync_local; DELETE FROM sync_records;
+                 DELETE FROM sync_applied; DELETE FROM sync_conflicts;",
+            )
+            .map_err(|e| e.to_string())
+    }
+
+    /// Les écritures capturées pas encore parties, dans l'ordre, et le
+    /// dernier numéro lu dans chaque fichier — ce que
+    /// [`Db::clear_pending`] efface une fois qu'elles sont scellées.
+    pub fn pending_ops(&self) -> Result<(Vec<crate::replica::Op>, [i64; 2]), String> {
+        use crate::replica::{from_capture, File};
+        let mut out = Vec::new();
+        let mut last = [0i64; 2];
+        for (i, file) in [File::Main, File::Stups].into_iter().enumerate() {
+            let conn = self.conn_of(file);
+            let rows: Vec<Captured> = {
+                let mut stmt = conn
+                    .prepare("SELECT seq, tbl, op, old, new FROM sync_log ORDER BY seq")
+                    .map_err(|e| e.to_string())?;
+                let rows = stmt
+                    .query_map([], |r| {
+                        Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?, r.get(4)?))
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            let mut keys: std::collections::HashMap<String, Vec<String>> = Default::default();
+            for (seq, tbl, op, old, new) in rows {
+                last[i] = seq;
+                if !keys.contains_key(&tbl) {
+                    keys.insert(tbl.clone(), Self::table_shape(conn, &tbl)?.1);
+                }
+                out.extend(from_capture(
+                    file,
+                    &tbl,
+                    &op,
+                    old.as_deref(),
+                    new.as_deref(),
+                    &keys[&tbl],
+                ));
+            }
+        }
+        Ok((out, last))
+    }
+
+    /// Effacer les écritures capturées jusqu'à ces numéros : elles sont
+    /// scellées au journal.
+    pub fn clear_pending(&self, upto: [i64; 2]) -> Result<(), String> {
+        use crate::replica::File;
+        for (i, file) in [File::Main, File::Stups].into_iter().enumerate() {
+            self.conn_of(file)
+                .execute("DELETE FROM sync_log WHERE seq <= ?1", [upto[i]])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Le journal des postes, tel que ce poste le garde.
+    pub fn sync_records(&self) -> Result<Vec<Vec<u8>>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT bytes FROM sync_records")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Garder les enregistrements du journal des postes — en ajout seul :
+    /// un enregistrement est nommé par son contenu, et il ne se réécrit
+    /// pas.
+    pub fn keep_sync_records(&self, records: &[(String, Vec<u8>)]) -> Result<usize, String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let mut added = 0;
+        for (id, bytes) in records {
+            added += tx
+                .execute(
+                    "INSERT OR IGNORE INTO sync_records (id, bytes) VALUES (?1, ?2)",
+                    rusqlite::params![id, bytes],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Cet enregistrement du journal est-il déjà rangé ici ?
+    pub fn sync_applied(&self, record: &str) -> bool {
+        self.conn
+            .query_row("SELECT 1 FROM sync_applied WHERE id = ?1", [record], |_| {
+                Ok(())
+            })
+            .is_ok()
+    }
+
+    /// Marquer rangé un enregistrement qui n'a rien à ranger — écrit par
+    /// ce poste, ou d'un flux que ce poste ne lit pas.
+    pub fn mark_sync_applied(&self, record: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO sync_applied (id) VALUES (?1)",
+                [record],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// La ligne d'une table telle qu'elle est ici, lue comme la capture
+    /// la lit.
+    fn local_row(
+        conn: &Connection,
+        table: &str,
+        cols: &[String],
+        key: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<serde_json::Map<String, serde_json::Value>>, String> {
+        let names: Vec<&String> = key.keys().collect();
+        let filter: Vec<String> = names
+            .iter()
+            .enumerate()
+            .map(|(i, c)| format!("\"{c}\" IS ?{}", i + 1))
+            .collect();
+        let values: Vec<rusqlite::types::Value> = key.values().map(sql_value).collect();
+        let text: Option<String> = conn
+            .query_row(
+                &format!(
+                    "SELECT {} FROM \"{table}\" WHERE {}",
+                    json_row("", cols),
+                    filter.join(" AND ")
+                ),
+                rusqlite::params_from_iter(values.iter()),
+                |r| r.get(0),
+            )
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                e => Err(e.to_string()),
+            })?;
+        Ok(parse_object(text))
+    }
+
+    /// Ranger les écritures d'un enregistrement reçu d'un autre poste —
+    /// **chacune sur la valeur qu'elle remplaçait** (`replica::decide`).
+    /// Sans capture : ce qui vient d'un poste n'y retourne pas. Une fois
+    /// par enregistrement.
+    pub fn apply_record(
+        &self,
+        record: &str,
+        author: &str,
+        day: &str,
+        ops: &[crate::replica::Op],
+    ) -> Result<Applied, String> {
+        use crate::replica::{decide, table, Action, File, Kind};
+        let mut done = Applied::default();
+        if self.sync_applied(record) {
+            return Ok(done);
+        }
+        let main = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let stups = self
+            .stups
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        for tx in [&main, &stups] {
+            tx.execute("INSERT INTO sync_mute (mute) VALUES (1)", [])
+                .map_err(|e| e.to_string())?;
+        }
+        let mut shapes: std::collections::HashMap<(File, String), Vec<String>> = Default::default();
+        let mut questions: Vec<(String, &crate::replica::Op, crate::replica::Conflict)> =
+            Vec::new();
+        for op in ops {
+            let Some(t) = table(op.file, &op.table) else {
+                continue;
+            };
+            let conn: &Connection = match op.file {
+                File::Main => &main,
+                File::Stups => &stups,
+            };
+            let slot = (op.file, op.table.clone());
+            if !shapes.contains_key(&slot) {
+                shapes.insert(slot.clone(), Self::table_shape(conn, &op.table)?.0);
+            }
+            let cols = &shapes[&slot];
+            // A column this post does not have — a newer version wrote
+            // it — is left out; a key column it does not have makes the
+            // write meaningless here.
+            if !op.key.keys().all(|c| cols.contains(c)) {
+                continue;
+            }
+            let local = Self::local_row(conn, &op.table, cols, &op.key)?;
+            let outcome = decide(op, t.append_only, local.as_ref());
+            let kind = match (&outcome.action, op.kind) {
+                (Action::Refused, _) => "REFUS",
+                (_, Kind::Update | Kind::Patch) if local.is_none() => "ABSENT",
+                _ => "CONFLIT",
+            };
+            for c in outcome.conflicts {
+                questions.push((kind.to_owned(), op, c));
+            }
+            let filter: Vec<String> = op
+                .key
+                .keys()
+                .enumerate()
+                .map(|(i, c)| format!("\"{c}\" IS ?{}", i + 1))
+                .collect();
+            let key_values: Vec<rusqlite::types::Value> = op.key.values().map(sql_value).collect();
+            match outcome.action {
+                Action::Refused => {
+                    done.refused += 1;
+                    questions.push((
+                        "REFUS".to_owned(),
+                        op,
+                        crate::replica::Conflict {
+                            column: String::new(),
+                            mine: None,
+                            theirs: Some(serde_json::Value::Object(op.new.clone())),
+                        },
+                    ));
+                }
+                Action::Nothing => {}
+                Action::Insert => {
+                    let known: Vec<(&String, &serde_json::Value)> =
+                        op.new.iter().filter(|(c, _)| cols.contains(c)).collect();
+                    let names: Vec<String> =
+                        known.iter().map(|(c, _)| format!("\"{c}\"")).collect();
+                    let marks: Vec<String> = (1..=known.len()).map(|i| format!("?{i}")).collect();
+                    let values: Vec<rusqlite::types::Value> =
+                        known.iter().map(|(_, v)| sql_value(v)).collect();
+                    match conn.execute(
+                        &format!(
+                            "INSERT INTO \"{}\" ({}) VALUES ({})",
+                            op.table,
+                            names.join(", "),
+                            marks.join(", ")
+                        ),
+                        rusqlite::params_from_iter(values.iter()),
+                    ) {
+                        Ok(_) => done.written += 1,
+                        // Another unique column already holds it: the same
+                        // fact reached this post by another road.
+                        Err(rusqlite::Error::SqliteFailure(e, _))
+                            if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+                        {
+                            done.duplicates += 1
+                        }
+                        Err(e) => return Err(e.to_string()),
+                    }
+                }
+                Action::Set(set) => {
+                    let known: Vec<(&String, &serde_json::Value)> =
+                        set.iter().filter(|(c, _)| cols.contains(c)).collect();
+                    if known.is_empty() {
+                        continue;
+                    }
+                    let n = key_values.len();
+                    let assign: Vec<String> = known
+                        .iter()
+                        .enumerate()
+                        .map(|(i, (c, _))| format!("\"{c}\" = ?{}", n + i + 1))
+                        .collect();
+                    let mut values = key_values.clone();
+                    values.extend(known.iter().map(|(_, v)| sql_value(v)));
+                    match conn.execute(
+                        &format!(
+                            "UPDATE \"{}\" SET {} WHERE {}",
+                            op.table,
+                            assign.join(", "),
+                            filter.join(" AND ")
+                        ),
+                        rusqlite::params_from_iter(values.iter()),
+                    ) {
+                        Ok(_) => done.written += 1,
+                        Err(rusqlite::Error::SqliteFailure(e, _))
+                            if e.code == rusqlite::ErrorCode::ConstraintViolation =>
+                        {
+                            done.duplicates += 1
+                        }
+                        Err(e) => return Err(e.to_string()),
+                    }
+                }
+                Action::Delete => {
+                    conn.execute(
+                        &format!(
+                            "DELETE FROM \"{}\" WHERE {}",
+                            op.table,
+                            filter.join(" AND ")
+                        ),
+                        rusqlite::params_from_iter(key_values.iter()),
+                    )
+                    .map_err(|e| e.to_string())?;
+                    done.written += 1;
+                }
+            }
+        }
+        for (kind, op, c) in &questions {
+            if kind != "REFUS" {
+                done.conflicts += 1;
+            }
+            main.execute(
+                "INSERT INTO sync_conflicts
+                     (day, kind, file, tbl, row_key, col, mine, theirs, author)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                rusqlite::params![
+                    day,
+                    kind,
+                    op.file.key(),
+                    op.table,
+                    serde_json::Value::Object(op.key.clone()).to_string(),
+                    c.column,
+                    c.mine.as_ref().map(|v| v.to_string()),
+                    c.theirs.as_ref().map(|v| v.to_string()),
+                    author,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        main.execute(
+            "INSERT OR IGNORE INTO sync_applied (id) VALUES (?1)",
+            [record],
+        )
+        .map_err(|e| e.to_string())?;
+        for tx in [&main, &stups] {
+            tx.execute("DELETE FROM sync_mute", [])
+                .map_err(|e| e.to_string())?;
+        }
+        stups.commit().map_err(|e| e.to_string())?;
+        main.commit().map_err(|e| e.to_string())?;
+        Ok(done)
+    }
+
+    /// Nommer les écritures que le protocole ne porte pas, même seules :
+    /// une valeur de plus de quarante mille octets. Elles restent ici, et
+    /// l'écran le dit.
+    pub fn note_oversize(&self, ops: &[crate::replica::Op], day: &str) -> Result<(), String> {
+        for op in ops {
+            self.conn
+                .execute(
+                    "INSERT INTO sync_conflicts (day, kind, file, tbl, row_key, col)
+                     VALUES (?1, 'TROP_GRAND', ?2, ?3, ?4, '')",
+                    rusqlite::params![
+                        day,
+                        op.file.key(),
+                        op.table,
+                        serde_json::Value::Object(op.key.clone()).to_string()
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Les questions et les refus de ce poste, les plus récents d'abord.
+    pub fn sync_conflicts(&self) -> Result<Vec<SyncConflict>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, day, kind, file, tbl, row_key, col, mine, theirs, author
+                 FROM sync_conflicts ORDER BY id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
+                    r.get::<_, String>(5)?,
+                    r.get::<_, String>(6)?,
+                    r.get::<_, Option<String>>(7)?,
+                    r.get::<_, Option<String>>(8)?,
+                    r.get::<_, String>(9)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, day, kind, file, table, key, column, mine, theirs, author) =
+                row.map_err(|e| e.to_string())?;
+            let value = |t: Option<String>| t.and_then(|t| serde_json::from_str(&t).ok());
+            out.push(SyncConflict {
+                id,
+                day,
+                kind,
+                file: crate::replica::File::from_key(&file).unwrap_or(crate::replica::File::Main),
+                table,
+                key: parse_object(Some(key)).unwrap_or_default(),
+                column,
+                mine: value(mine),
+                theirs: value(theirs),
+                author,
+            });
+        }
+        Ok(out)
+    }
+
+    /// Trancher une question. **Prendre la leur** écrit leur valeur ici —
+    /// capturée, elle repart comme toute écriture. **Garder la mienne**
+    /// n'écrit rien ici mais envoie la mienne comme remplaçant la leur :
+    /// un poste qui porte encore la leur la prend, et les postes
+    /// retombent d'accord. Dans les deux cas la question disparaît.
+    pub fn settle_conflict(&self, id: i64, take_theirs: bool) -> Result<(), String> {
+        let Some(c) = self.sync_conflicts()?.into_iter().find(|c| c.id == id) else {
+            return Ok(());
+        };
+        let plain = c.kind == "CONFLIT"
+            && !c.column.is_empty()
+            && crate::replica::plain_identifier(&c.column)
+            && crate::replica::table(c.file, &c.table).is_some();
+        if plain {
+            let conn = self.conn_of(c.file);
+            let filter: Vec<String> = c
+                .key
+                .keys()
+                .enumerate()
+                .map(|(i, k)| format!("\"{k}\" IS ?{}", i + 1))
+                .collect();
+            let mut values: Vec<rusqlite::types::Value> = c.key.values().map(sql_value).collect();
+            if take_theirs {
+                let theirs = c.theirs.clone().unwrap_or(serde_json::Value::Null);
+                values.push(sql_value(&theirs));
+                conn.execute(
+                    &format!(
+                        "UPDATE \"{}\" SET \"{}\" = ?{} WHERE {}",
+                        c.table,
+                        c.column,
+                        values.len(),
+                        filter.join(" AND ")
+                    ),
+                    rusqlite::params_from_iter(values.iter()),
+                )
+                .map_err(|e| e.to_string())?;
+            } else if let Some(mine) = &c.mine {
+                let mut old = c.key.clone();
+                let mut new = c.key.clone();
+                old.insert(c.column.clone(), c.theirs.clone().unwrap_or_default());
+                new.insert(c.column.clone(), mine.clone());
+                conn.execute(
+                    "INSERT INTO sync_log (tbl, op, old, new) VALUES (?1, 'U', ?2, ?3)",
+                    rusqlite::params![
+                        c.table,
+                        serde_json::Value::Object(old).to_string(),
+                        serde_json::Value::Object(new).to_string()
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+            }
+        }
+        self.conn
+            .execute("DELETE FROM sync_conflicts WHERE id = ?1", [id])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+}
+
 /// Every test here works on a real SQLCipher file, and every one of them
 /// used to leave its directory behind: one `cargo test` run leaked forty
 /// databases, and a machine that runs the suite a few dozen times filled
@@ -39431,6 +40772,346 @@ mod tests {
             .unwrap()
             .iter()
             .any(|d| d.name == "Médicament du Port" && d.dci == "molécule"));
+    }
+
+    /// Deux postes de la même officine, chacun avec sa base, et ce que
+    /// l'un a écrit porté chez l'autre — par le même chemin que le
+    /// réseau : lots scellables, relus, rangés.
+    fn ship(from: &Db, to: &Db, record: &str) -> Applied {
+        let (ops, upto) = from.pending_ops().unwrap();
+        from.clear_pending(upto).unwrap();
+        let (lots, refused) = crate::replica::batches(&ops, crate::replica::LIMIT);
+        assert!(refused.is_empty());
+        let back: Vec<crate::replica::Op> = lots
+            .iter()
+            .flat_map(|l| crate::replica::decode(l).unwrap())
+            .collect();
+        to.apply_record(record, "poste", "2026-09-23", &back)
+            .unwrap()
+    }
+
+    fn two_posts(tag: &str) -> (Swept, Db, Db) {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-posts-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let swept = Swept(dir.clone());
+        let a = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let b = Db::open(&dir.join("b.db"), "secret").unwrap();
+        (swept, a, b)
+    }
+
+    /// **Tout voyage, champ par champ, et deux postes ne tirent jamais le
+    /// même numéro.** A fonde le groupe avec ses dossiers ; B le rejoint
+    /// et reçoit tout ; chacun crée un dossier dans son bloc ; les deux
+    /// modifient le même dossier, à deux champs différents puis au même :
+    /// le premier cas passe, le second pose une question des deux côtés,
+    /// et l'arbitrage les remet d'accord.
+    #[test]
+    fn two_posts_share_everything_field_by_field_and_never_draw_the_same_number() {
+        let (_swept, a, b) = two_posts("share");
+        let old = a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        a.add_patient("Martin", "Anne", "1960-01-01").unwrap();
+        b.add_patient("Local", "Oublié", "1990-01-01").unwrap();
+
+        let snapshot = a.found_posts("aa", "Comptoir 1", "2026-09-23").unwrap();
+        assert!(snapshot.iter().any(|o| o.table == "patients"));
+        assert_eq!(a.sync_post(), Some(0));
+        b.prepare_join().unwrap();
+        let (lots, _) = crate::replica::batches(&snapshot, crate::replica::LIMIT);
+        for (i, lot) in lots.iter().enumerate() {
+            let ops = crate::replica::decode(lot).unwrap();
+            b.apply_record(&format!("snap{i}"), "aa", "2026-09-23", &ops)
+                .unwrap();
+        }
+        assert_eq!(b.finish_join("bb", "Comptoir 2", "2026-09-23").unwrap(), 1);
+        // What B held before joining is gone; what A had is there.
+        let names: Vec<String> = b
+            .patients()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.last_name)
+            .collect();
+        assert_eq!(names.len(), 2, "{names:?}");
+        assert!(!names.contains(&"Local".to_owned()));
+        ship(&b, &a, "b1");
+        assert_eq!(a.sync_posts().unwrap().len(), 2, "A sait que B existe");
+
+        // Each draws from its own block.
+        let from_a = a.add_patient("Petit", "Luc", "1970-02-02").unwrap();
+        let from_b = b.add_patient("Grand", "Eve", "1980-03-03").unwrap();
+        assert_eq!(from_a, old + 2);
+        assert_eq!(from_b, 100_000);
+        ship(&a, &b, "a1");
+        ship(&b, &a, "b2");
+        let ids = |db: &Db| {
+            let mut v: Vec<i64> = db.patients().unwrap().into_iter().map(|p| p.id).collect();
+            v.sort();
+            v
+        };
+        assert_eq!(ids(&a), ids(&b));
+        assert_eq!(ids(&a).len(), 4);
+
+        // Two fields: both land. The same field: a question each side.
+        a.conn
+            .execute("UPDATE patients SET phone = '0611' WHERE id = ?1", [old])
+            .unwrap();
+        b.conn
+            .execute("UPDATE patients SET email = 'j@d.fr' WHERE id = ?1", [old])
+            .unwrap();
+        ship(&a, &b, "a2");
+        ship(&b, &a, "b3");
+        let phone_email = |db: &Db| {
+            db.conn
+                .query_row(
+                    "SELECT phone, email FROM patients WHERE id = ?1",
+                    [old],
+                    |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)),
+                )
+                .unwrap()
+        };
+        assert_eq!(phone_email(&a), ("0611".to_owned(), "j@d.fr".to_owned()));
+        assert_eq!(phone_email(&b), phone_email(&a));
+
+        a.conn
+            .execute("UPDATE patients SET phone = '0622' WHERE id = ?1", [old])
+            .unwrap();
+        b.conn
+            .execute("UPDATE patients SET phone = '0633' WHERE id = ?1", [old])
+            .unwrap();
+        let got_b = ship(&a, &b, "a3");
+        let got_a = ship(&b, &a, "b4");
+        assert_eq!((got_a.conflicts, got_b.conflicts), (1, 1));
+        assert_eq!(phone_email(&a).0, "0622", "rien d'écrasé en silence");
+        assert_eq!(phone_email(&b).0, "0633");
+        let qa = a.sync_conflicts().unwrap();
+        assert_eq!(qa.len(), 1);
+        assert_eq!(qa[0].column, "phone");
+        assert_eq!(qa[0].theirs, Some(serde_json::json!("0633")));
+        // A keeps its own; B takes theirs. They agree again, and nothing
+        // is left to ask.
+        a.settle_conflict(qa[0].id, false).unwrap();
+        let qb = b.sync_conflicts().unwrap();
+        b.settle_conflict(qb[0].id, true).unwrap();
+        ship(&a, &b, "a4");
+        ship(&b, &a, "b5");
+        assert_eq!(phone_email(&a).0, "0622");
+        assert_eq!(phone_email(&b).0, "0622");
+        assert!(a.sync_conflicts().unwrap().is_empty());
+        assert!(b.sync_conflicts().unwrap().is_empty());
+
+        // A record is ranged once.
+        assert_eq!(
+            b.apply_record("a4", "aa", "2026-09-23", &[]).unwrap(),
+            Applied::default()
+        );
+
+        // Leaving keeps the data and stops the capture.
+        b.leave_posts().unwrap();
+        assert_eq!(b.sync_post(), None);
+        b.add_patient("Hors", "Groupe", "1999-09-09").unwrap();
+        assert!(b.pending_ops().unwrap().0.is_empty());
+        assert_eq!(ids(&b).len(), 5);
+    }
+
+    /// **Le registre voyage en ajout seul**, et ses numéros de dossier
+    /// désignent le même dossier des deux côtés. Une modification reçue
+    /// pour une ligne du registre est refusée, et le refus se voit.
+    #[test]
+    fn the_register_travels_append_only_and_a_rewrite_is_refused_in_sight() {
+        let (_swept, a, b) = two_posts("register");
+        let snapshot = a.found_posts("aa", "", "2026-09-23").unwrap();
+        b.prepare_join().unwrap();
+        b.apply_record("snap", "aa", "2026-09-23", &snapshot)
+            .unwrap();
+        b.finish_join("bb", "", "2026-09-23").unwrap();
+        let file = b.add_patient("Durand", "Paul", "1950-05-05").unwrap();
+        let sid = b
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+        let mv = b
+            .add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: crate::ordonnancier::Kind::Entree.as_key().to_owned(),
+                happened_on: "2026-09-23".to_owned(),
+                quantity: 14.0,
+                ordo_year: 0,
+                ordo_no: 0,
+                patient_id: 0,
+                prescriber: String::new(),
+                supplier: "OCP".to_owned(),
+                reference: "BL-1".to_owned(),
+                lot: String::new(),
+                expiry: String::new(),
+                expected: 0.0,
+                operator: "CL".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+            })
+            .unwrap();
+        assert!(mv >= crate::replica::ROW_BLOCK, "le bloc du poste 1");
+        let got = ship(&b, &a, "b1");
+        assert_eq!(got.refused, 0);
+        assert!(a.patients().unwrap().iter().any(|p| p.id == file));
+        let moves = a.stup_moves(sid).unwrap();
+        assert_eq!(moves.len(), 1);
+        assert_eq!(moves[0].id, mv);
+
+        let rewrite = crate::replica::Op {
+            file: crate::replica::File::Stups,
+            table: "stup_moves".to_owned(),
+            kind: crate::replica::Kind::Update,
+            key: serde_json::json!({ "id": mv }).as_object().unwrap().clone(),
+            old: serde_json::json!({ "quantity": 14.0 })
+                .as_object()
+                .unwrap()
+                .clone(),
+            new: serde_json::json!({ "quantity": 140.0 })
+                .as_object()
+                .unwrap()
+                .clone(),
+        };
+        let got = a
+            .apply_record("forged", "bb", "2026-09-23", &[rewrite])
+            .unwrap();
+        assert_eq!(got.refused, 1);
+        assert_eq!(a.stup_moves(sid).unwrap()[0].quantity, 14.0);
+        assert!(a
+            .sync_conflicts()
+            .unwrap()
+            .iter()
+            .any(|c| c.kind == "REFUS"));
+
+        // **Seul le poste de référence numérote.** B délivre : sa ligne
+        // part sans numéro ; A, la référence, la numérote en la recevant,
+        // et le numéro revient à B.
+        let sortie = StupMove {
+            kind: crate::ordonnancier::Kind::Sortie.as_key().to_owned(),
+            quantity: 7.0,
+            patient_id: file,
+            prescriber: "Dr Martin".to_owned(),
+            supplier: String::new(),
+            reference: String::new(),
+            ..b.stup_moves(sid).unwrap()[0].clone()
+        };
+        assert!(!b.numbers_here() && a.numbers_here());
+        let out = b.add_stup_move(&sortie).unwrap();
+        assert_eq!(b.stup_dispensings(2026).unwrap().len(), 0, "en attente");
+        ship(&b, &a, "b2");
+        assert_eq!(a.number_pending("2026-09-23").unwrap(), 1);
+        assert_eq!(a.number_pending("2026-09-23").unwrap(), 0, "une fois");
+        let numbered = a.stup_dispensings(2026).unwrap();
+        assert_eq!(numbered.len(), 1);
+        assert_eq!(numbered[0].id, out);
+        assert!(numbered[0].ordo_no > 0);
+        ship(&a, &b, "a1");
+        assert_eq!(
+            b.stup_dispensings(2026).unwrap()[0].ordo_no,
+            numbered[0].ordo_no
+        );
+        // A's own dispensing follows on.
+        let own = a
+            .add_stup_move(&StupMove {
+                quantity: 1.0,
+                ..sortie.clone()
+            })
+            .unwrap();
+        let after = a.stup_dispensings(2026).unwrap();
+        assert_eq!(after.len(), 2);
+        assert_eq!(after[1].id, own);
+        assert_eq!(after[1].ordo_no, numbered[0].ordo_no + 1);
+    }
+
+    /// **Chaque table voyage ou reste, jamais les deux, et aucune n'est
+    /// oubliée** : une table ajoutée au schéma sans être rangée fait
+    /// échouer ce test. Et ce qui voyage tient dans ce que la capture sait
+    /// écrire — pas d'octets bruts, pas plus de soixante colonnes.
+    #[test]
+    fn every_table_either_travels_or_stays_and_none_is_forgotten() {
+        let (_swept, a, _b) = two_posts("tables");
+        for (file, conn) in [
+            (crate::replica::File::Main, &a.conn),
+            (crate::replica::File::Stups, &a.stups),
+        ] {
+            let mut stmt = conn
+                .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'")
+                .unwrap();
+            let names: Vec<String> = stmt
+                .query_map([], |r| r.get(0))
+                .unwrap()
+                .collect::<Result<_, _>>()
+                .unwrap();
+            for name in names {
+                let travels = crate::replica::table(file, &name).is_some();
+                let stays = crate::replica::LOCAL
+                    .iter()
+                    .any(|(f, n, _)| *f == file && *n == name);
+                assert!(travels != stays, "{name} : ni rangée, ou rangée deux fois");
+                if travels {
+                    let mut info = conn.prepare(&format!("PRAGMA table_info({name})")).unwrap();
+                    let cols: Vec<String> = info
+                        .query_map([], |r| r.get::<_, String>(2))
+                        .unwrap()
+                        .collect::<Result<_, _>>()
+                        .unwrap();
+                    assert!(cols.len() <= 60, "{name}");
+                    assert!(
+                        !cols.iter().any(|t| t.eq_ignore_ascii_case("BLOB")),
+                        "{name}"
+                    );
+                }
+            }
+        }
+        for t in crate::replica::TABLES {
+            let conn = if t.file == crate::replica::File::Main {
+                &a.conn
+            } else {
+                &a.stups
+            };
+            let (cols, key) = Db::table_shape(conn, t.name).unwrap();
+            assert!(!cols.is_empty(), "{} n'existe pas", t.name);
+            assert!(!key.is_empty(), "{} n'a pas de clé", t.name);
+            assert_eq!(t.blocked, key == ["id"], "{}", t.name);
+        }
+    }
+
+    /// **Une création tire son numéro du bloc du poste.** Ce test lit ce
+    /// fichier : un `INSERT` dans une table numérotée par bloc qui ne dit
+    /// pas son `id` laisserait SQLite prendre le plus haut plus un — le
+    /// bloc d'un autre poste.
+    #[test]
+    fn replica_inserts_draw_from_the_block() {
+        const SOURCE: &str = include_str!("db.rs");
+        let code = &SOURCE[..SOURCE.find(concat!("\nmod ", "tests {")).unwrap()];
+        // A replace would travel as a creation, and a creation on a row
+        // that exists is a question on every post.
+        for t in crate::replica::TABLES {
+            let replace = format!("{} INTO {} ", concat!("OR ", "REPLACE"), t.name);
+            assert!(!code.contains(&replace), "{replace}");
+        }
+        for t in crate::replica::TABLES.iter().filter(|t| t.blocked) {
+            for into in [format!("INTO {} ", t.name), format!("INTO {}\n", t.name)] {
+                let mut rest = code;
+                while let Some(at) = rest.find(&into) {
+                    let tail = &rest[at + into.len()..];
+                    rest = tail;
+                    let before = &code[..code.len() - tail.len() - into.len()];
+                    if !before.trim_end().ends_with("INSERT")
+                        && !before.trim_end().ends_with("IGNORE")
+                    {
+                        continue;
+                    }
+                    let cols = tail.trim_start();
+                    assert!(
+                        cols.starts_with("(id,") || cols.starts_with("(id ,"),
+                        "INSERT INTO {} sans son id : {}",
+                        t.name,
+                        &cols[..cols.len().min(80)]
+                    );
+                }
+            }
+        }
     }
 
     #[test]

@@ -308,133 +308,100 @@ module et refuse le jour où l'un ou l'autre change.
 
 ---
 
-## 7. Ce qui reste à faire
+## 7. Ce que l'application en a fait (0.277)
 
-Rien de ce qui suit n'est commencé. C'est délibéré : les décisions
-ci-dessous appartiennent à l'officine, pas au module.
+Les décisions que cette section laissait à l'officine ont été prises
+avec elle le 23/09/2026 ; ce qui suit est ce qui est construit, et où.
 
 ### 7.1 Où vivent les clés
 
-La graine du poste et le trousseau sont deux fois trente-deux octets. Ils
-vont dans la base chiffrée, pas dans `config.toml` — `config.toml` est un
-fichier en clair, un par PC. Concrètement : une table `sync_keys` dans
-`SCHEMA` **et** un `ALTER TABLE` idempotent dans `MIGRATIONS`, plus la
-liste des postes appairés (`sync_peers` : `DeviceId`, empreinte, nom
-donné par l'officine, date).
+Dans la base chiffrée, table `sync_local`, **qui ne voyage jamais** : la
+graine du poste (`device`), la clé des postes (`trousseau`), le numéro
+du poste (`post`), les empreintes des déclencheurs. La liste des postes,
+elle, voyage (`sync_posts` : numéro, identité, nom, arrivée, retrait) —
+chaque poste sait quels postes existent. Le réseau d'officines garde sa
+propre clé dans `settings` (`net_trousseau`), qui ne scelle que
+`Stream::Reseau` : les deux clés n'ouvrent rien l'une de l'autre, et un
+test le vérifie sur les octets (`the_posts_key_and_the_network_key_open_nothing_of_each_other`).
 
-Conséquences à ne pas oublier, chacune déjà nommée dans `docs/ARCHITECTURE.md` :
-`change_password` re-clé **trois** fichiers aujourd'hui ; « Copier la
-base… » en copie trois ; et une base d'une version antérieure doit
-continuer de répondre à toutes les requêtes
-(`a_base_from_an_older_version_still_answers_every_query`).
+### 7.2 Ligne ou opération : **l'opération, champ par champ, partout**
 
-### 7.2 La correspondance entre les tables et les flux
+`src/replica.rs` tient la liste des tables qui voyagent (`TABLES`, avec
+leur flux) et de celles qui restent (`LOCAL`, avec la raison) ; un test
+lit le schéma des deux fichiers et échoue sur une table rangée nulle part
+(`every_table_either_travels_or_stays_and_none_is_forgotten`).
 
-`Stream` a sept valeurs connues. La question ouverte est **ce qu'un
-enregistrement contient** : une ligne SQL sérialisée, ou une opération
-(« ce champ de ce dossier passe à cette valeur »). La deuxième fusionne
-mieux — deux postes qui modifient deux champs du même dossier ne
-divergent pas — et coûte une couche de projection dans les deux sens.
-C'est la décision structurante qui reste, et elle se prend flux par
-flux :
-
-| flux | forme naturelle | pourquoi |
-| --- | --- | --- |
-| `Registre` | la ligne, telle quelle | il est déjà en ajout seul : l'union suffit, il ne peut pas diverger. **C'est par lui qu'il faut commencer.** |
-| `Caisse` | la ligne | `caisse_counts` est en `INSERT` seul aussi |
-| `Dossiers` | l'opération | c'est le seul endroit où deux postes touchent la même ligne le même jour |
-| `Planning`, `Agenda` | l'opération | même raison, en plus calme |
-| `Officine`, `Fiches` | la ligne | déjà édités « comme un tout » dans un dialogue |
+Une écriture voyage comme une opération : création (la ligne entière),
+modification (**les seuls champs changés**, avec leur ancienne valeur),
+suppression (la ligne vue). Reçue, une modification ne s'applique que
+sur la valeur qu'elle remplaçait, champ par champ ; sinon elle attend
+« à arbitrer » (`sync_conflicts`), et « Garder la mienne » renvoie la
+valeur locale comme remplaçant l'autre, ce qui remet les postes
+d'accord. Le registre, `stup_labels`, `stup_numbers`, la caisse et les
+journaux des ruptures et des versions sont **en ajout seul** : une
+modification reçue pour eux est refusée, et le refus se voit.
 
 ### 7.3 La projection
 
-Deux fonctions, pures, testées dans les deux sens, par flux : `base →
-enregistrements` et `enregistrements → base`. Le piège est connu et
-porte un nom dans cette maison : **deux écritures d'une même chose
-divergent**. La lecture qui projette et l'écriture qui range doivent se
-lire l'une l'autre, ou l'une des deux mentira.
+**Capturée par des déclencheurs** posés par `Db::install_capture` —
+seulement sur une base qui fait partie d'un groupe : hors groupe, aucun
+déclencheur, aucun coût, aucun changement. Chaque écriture d'une table
+qui voyage laisse sa ligne avant et après dans `sync_log` (un par
+fichier), dans la transaction qui écrit ; `Postes::publish` en fait des
+lots de moins de quarante mille octets, scellés par flux. Ranger ce qui
+vient d'ailleurs se fait **sans capture** (`sync_mute`, dans la
+transaction qui range), si bien qu'une écriture ne revient jamais à son
+poste. Les migrations aussi sont muettes : chaque poste fait les
+siennes.
 
-Et une mise en garde de plus, qui est la règle de la maison : **rien de
-coûteux dans une frame.** `Journal::read` trie tout le flux à chaque
-appel — c'est bon marché pour une projection qui tourne au moment d'une
-synchronisation, et c'est soixante fois par seconde si quelqu'un
-l'appelle depuis un dessin. La projection écrit dans la base ; les vues
-lisent la base, comme aujourd'hui.
+**Les numéros viennent d'un bloc par poste** (`sync_blocks`,
+`db::next_id`) : chaque `INSERT` d'une table numérotée tire le suivant du
+plus haut numéro du bloc de ce poste — jamais celui d'un autre, jamais un
+numéro supprimé. Les dossiers ont des blocs de cent mille lisibles (le
+fondateur garde les siens), le reste des blocs d'un million de millions.
+`replica_inserts_draw_from_the_block` lit `db.rs` et refuse un `INSERT`
+qui oublierait son `id`.
 
-Et la projection vers la base doit respecter la discipline qui existe
-déjà : compare-and-set sur les valeurs affichées, avis en français quand
-ça bouge sous les doigts, et `resync` qui **recharge des lectures et
-jamais un tampon de saisie**.
+**Un seul poste numérote l'ordonnancier** — le poste de référence,
+réglage `sync_reference` qui voyage. Une délivrance écrite ailleurs part
+sans numéro ; il la numérote en la recevant (`stup_numbers`, en ajout
+seul) et le numéro revient. Le même poste est le seul à semer le contenu
+livré.
 
 ### 7.4 L'écran
 
-Options › Officine, puisque c'est là que la feuille de route le
-demandait. Ce qu'il porte, au minimum :
-
-* l'empreinte de ce poste, en cinq groupes de quatre, à lire au
-  téléphone ;
-* « Appairer un poste… » des deux côtés (inviter / rejoindre), avec le
-  code de cinq groupes **en gros**, et les deux boutons « c'est le même
-  code » / « ce n'est pas le même » ;
-* la liste des postes connus, avec le droit d'en retirer un ;
-* le volet de télémétrie : dernière conversation, ce qui a traversé, les
-  refus par motif ;
-* et la réserve, **écrite avant le contenu et pas en pied de panneau** —
-  c'est la règle
-  `a_clinical_pane_writes_its_caveat_before_what_it_qualifies`.
-
-Attention aux règles d'affichage de la maison sur cet écran-là : la
-boîte de dialogue Options a déjà une barre de défilement solide, les
-champs se mesurent en caractères et pas en pixels, et un code lu à voix
-haute ne s'élide jamais — il se réduit ou il ne se dessine pas.
+Options › Base › « Postes de l'officine… » : l'empreinte du poste, le
+groupe, les postes (nom, référence, retrait), ce qui attend d'être
+arbitré, et les gestes — fonder, rejoindre (qui **remplace** ce que le
+poste contenait), inviter, synchroniser, quitter. La réserve est écrite
+avant le contenu.
 
 ### 7.5 Le transport
 
-Les deux moitiés existent et ne dépendent que de `std::net` :
-`link::Door` (ouvrir, dire où l'on est, accepter **un** poste) et
-`link::dial` (frapper). Pour deux postes du même comptoir, c'est tout ce
-qu'il faut, et le chiffrement est celui de bout en bout — pas de TLS,
-pas de certificat, pas de seconde chose à faire correctement.
+Trois chemins (`src/postes.rs`) : **automatique sur le réseau local**
+tant que l'application est ouverte — une porte tenue ouverte aux postes
+du groupe, une annonce UDP toutes les trois secondes qui ne porte que
+l'identité et le port, une conversation dès qu'une écriture est
+capturée ; un **dossier d'échange** (`<empreinte>.bpmposte`) ; des
+**adresses écrites** ; plus le bouton et la fermeture. `link.rs` ne
+décide toujours de rien : c'est l'application qui a un fil.
 
-Deux choses y sont déjà réglées parce qu'elles se règlent mal plus
-haut : une porte à laquelle personne ne vient **rend la main** (`std`
-n'a pas d'`accept` avec échéance, alors elle scrute — c'est le seul
-endroit du crate qui le fait, et c'est écrit là plutôt que dans
-l'appelant), et frapper là où il n'y a personne répond tout de suite au
-lieu des quatre-vingt-dix secondes du système.
+### 7.6 Ce qui ne voyage pas
 
-Ce qui reste, côté application : un fil dédié, une adresse et un port
-dans `config.toml` — c'est propre au poste, donc c'est bien là —, et la
-règle que `link.rs` énonce et ne s'autorise pas à assouplir : *rien ici
-ne décide de rien*. Pas de reconnexion automatique, pas d'horaire. Une
-officine qui veut synchroniser à la fermeture appuie sur un bouton, ou
-pose une tâche.
+Les pièces scannées (§ 7.6 d'origine : des fichiers, pas des
+enregistrements), la télémétrie du poste, le journal du réseau
+d'officines et ce que ce poste en a déjà envoyé, et tout `sync_*` propre
+au poste.
 
-Le relais entre deux sites viendra après, s'il vient : il n'a rien à
-apprendre de neuf, puisqu'il ne porte que des octets opaques.
+## 8. Ce qui reste
 
-### 7.6 Ce qui ne sera pas synchronisé
-
-Les pièces scannées. `MAX_PAYLOAD` vaut quarante-huit mille octets et ce
-chiffre n'est pas arbitraire : un message Noise en porte 65 535, et il
-n'y a **aucun tampon de réassemblage** dans ce crate, volontairement —
-un protocole qui découpe et recolle est un protocole avec une table de
-choses à moitié arrivées, et cette table est exactement l'endroit où un
-pair fait retenir de la mémoire qu'on ne lui a pas proposée. Une
-ordonnance scannée n'est donc pas un enregistrement : c'est un fichier,
-il vit dans `<base>_scans.db`, et il aura son propre arrangement le jour
-où quelqu'un le voudra.
-
----
-
-## 8. Les décisions qui appartiennent à l'officine
-
-1. **Ligne ou opération, flux par flux** (§ 7.2). Commencer par le
-   registre ne demande de trancher rien du tout, et donne la moitié de
-   la valeur.
-2. **Qui écoute.** Un poste « serveur » désigné, ou n'importe lequel ?
-3. **Quand.** À la fermeture, sur bouton, ou en continu ?
-4. **Entre sites.** Deux officines du même groupement, c'est un relais et
-   une conversation sur l'appairage à distance — le code de cinq groupes
-   se lit très bien au téléphone, et c'est précisément le cas pour
-   lequel il est fait.
+1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
+   été écrit depuis la fondation, et le relit en mémoire à chaque
+   synchronisation. Une photographie datée, et l'oubli de ce qui la
+   précède, viendront quand un groupe en aura besoin.
+2. **Deux appairages simultanés** sur deux postes différents, hors
+   ligne, donneraient le même numéro aux deux arrivants. Appairer un
+   poste à la fois.
+3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
+   quelques vues ; entre deux postes, le bloc du second passe après celui
+   du premier.

@@ -816,6 +816,43 @@ ce qu'une officine a lu dans un RCP profite aux autres, avec sa source.
 Et la barre du comptoir (F9) dit une rupture avant tout le reste, avec
 ce que les collègues ont donné à la place.
 
+# Les postes de l'officine
+
+Chaque poste peut garder **sa propre base**, et recevoir tout ce que les
+autres écrivent : dossiers, registre, caisse, planning, agenda, fiches,
+réglages. « Postes de l'officine… », dans Options › Base. Tout voyage
+chiffré sous une clé que seuls les postes de l'officine détiennent ; le
+réseau d'officines a la sienne et n'ouvre rien de tout cela.
+
+Un poste **fonde** le groupe : sa base garde tout, et ses numéros de
+dossier. Il **invite** ensuite les autres, comme pour le réseau : une
+porte ouverte, une adresse composée, un code de cinq groupes lu des deux
+côtés. **Rejoindre remplace ce que le poste contenait** par les données
+du groupe — faites une copie avant si elle compte.
+
+Ensuite, sur le réseau local, les postes se trouvent et se synchronisent
+**tout seuls**, quelques secondes après chaque écriture. S'ils ne se
+voient pas (réseau cloisonné, deux sites), un dossier d'échange ou des
+adresses écrites dans Options › Base font le chemin ; le bouton
+« Synchroniser » et la fermeture restent là.
+
+Deux postes ne donnent jamais le même numéro de dossier : chacun a son
+bloc (le deuxième poste commence à 100 000). Une modification reçue ne
+s'applique que sur la valeur qu'elle remplaçait : deux postes qui
+modifient deux champs d'un dossier ne se gênent pas ; le même champ des
+deux côtés attend « à arbitrer » — « Garder la mienne » ou « Prendre la
+leur ». Rien n'est écrasé en silence.
+
+**L'ordonnancier n'a qu'une suite** : seul le poste de référence
+numérote. Une délivrance écrite sur un autre poste se lit « en attente »
+jusqu'à ce qu'il la reçoive — quelques secondes sur le réseau local. Le
+registre, la caisse et les journaux restent en ajout seul en voyageant :
+une modification reçue pour eux est refusée, et le refus se voit. Le
+poste de référence est aussi celui qui installe le contenu livré avec
+les mises à jour.
+
+Les pièces scannées restent sur le poste qui les a numérisées.
+
 # La caisse
 
 Le comptage se fait en centimes entiers, jamais en flottants. L'écart

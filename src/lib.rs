@@ -44,10 +44,13 @@ pub mod ordonnancier;
 pub mod pdf;
 pub mod pk;
 pub mod planning;
+#[cfg(feature = "sync")]
+pub mod postes;
 pub mod prescribers;
 pub mod release;
 pub mod renal;
 pub mod renewal;
+pub mod replica;
 pub mod revue;
 pub mod ruptures;
 pub mod scans;

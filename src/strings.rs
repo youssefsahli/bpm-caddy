@@ -201,6 +201,8 @@ mod tests {
             ("audit.rs", include_str!("audit.rs")),
             ("prescribers.rs", include_str!("prescribers.rs")),
             ("annuaire.rs", include_str!("annuaire.rs")),
+            ("postes.rs", include_str!("postes.rs")),
+            ("network.rs", include_str!("network.rs")),
         ];
         let mut missing: Vec<String> = Vec::new();
         for (file, source) in SOURCES {
@@ -274,6 +276,7 @@ mod tests {
             include_str!("audit_window.rs"),
             include_str!("ruptures.rs"),
             include_str!("network.rs"),
+            include_str!("postes.rs"),
             include_str!("pk.rs"),
             include_str!("prescribers.rs"),
             include_str!("annuaire.rs"),

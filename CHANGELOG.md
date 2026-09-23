@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.277.0] - 2026-09-23
+
+### Added
+- **Les postes de l'officine, chacun avec sa base.** Toutes les données
+  de l'officine voyagent entre ses postes — dossiers, registre, caisse,
+  planning, agenda, fiches, réglages —, chiffrées et signées sous une clé
+  que seuls ses postes détiennent ; aucune ne sort de l'officine, et le
+  réseau d'officines n'en ouvre aucune. « Postes de l'officine… »,
+  Options › Base : fonder le groupe, inviter un poste (code de cinq
+  groupes), rejoindre — ce que le poste contenait est alors remplacé.
+- **Synchronisation automatique sur le réseau local**, quelques secondes
+  après chaque écriture ; un dossier d'échange ou des adresses écrites
+  pour les postes qui ne se voient pas ; le bouton et la fermeture.
+- **Champ par champ** : une modification reçue ne s'applique que sur la
+  valeur qu'elle remplaçait ; le même champ modifié des deux côtés
+  attend « à arbitrer » (« Garder la mienne », « Prendre la leur »).
+- **Un bloc de numéros par poste** : un numéro de dossier désigne le
+  même dossier partout, et deux postes n'en donnent jamais le même.
+- **L'ordonnancier n'a qu'une suite** : seul le poste de référence
+  numérote ; une délivrance écrite ailleurs se lit « en attente »
+  jusqu'à ce qu'il la reçoive. Le registre, la caisse et les journaux
+  restent en ajout seul en voyageant. Le contenu livré ne s'installe que
+  sur le poste de référence.
+
 ## [0.276.0] - 2026-09-23
 
 ### Added

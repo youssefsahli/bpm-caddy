@@ -434,6 +434,7 @@ pub struct Config {
     pub prevention: PreventionConfig,
     pub telemetry: TelemetryConfig,
     pub reseau: ReseauConfig,
+    pub postes: PostesConfig,
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
 }
@@ -517,6 +518,34 @@ impl Default for ReseauConfig {
         Self {
             dossier: String::new(),
             port: 7742,
+            a_la_fermeture: true,
+        }
+    }
+}
+
+/// Les postes de l'officine, **ce qui appartient à ce poste-ci** : s'il
+/// synchronise tout seul sur le réseau local, sur quel port, où est le
+/// dossier d'échange sur cette machine, les adresses à composer quand le
+/// réseau local ne laisse pas passer l'annonce, et s'il synchronise à la
+/// fermeture. La clé des postes et leur liste vivent dans la base
+/// chiffrée.
+#[derive(Deserialize, Serialize, Clone, PartialEq, Debug)]
+#[serde(default)]
+pub struct PostesConfig {
+    pub automatique: bool,
+    pub port: u16,
+    pub dossier: String,
+    pub adresses: Vec<String>,
+    pub a_la_fermeture: bool,
+}
+
+impl Default for PostesConfig {
+    fn default() -> Self {
+        Self {
+            automatique: true,
+            port: 7743,
+            dossier: String::new(),
+            adresses: Vec::new(),
             a_la_fermeture: true,
         }
     }

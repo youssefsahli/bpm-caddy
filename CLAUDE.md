@@ -36,15 +36,17 @@ line in that test.
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
   `bulletin`, `content`, `script` (Rhai console), `telemetry`, `audit`,
+  `replica` (what travels between posts, field-by-field apply),
   `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).
 - `sync/` — `bpm-sync`, the P2P encrypted journal (feature `sync`, on by
-  default since 0.273.0). Only one use is wired: the officines' network
-  (`src/network.rs`), which carries `Stream::Reseau` — shortages and
-  substitutions, never a patient — under a network-only trousseau. Map:
-  `docs/SYNC.md`.
+  default since 0.273.0). Two uses: the officines' network
+  (`src/network.rs`, `Stream::Reseau` only — never a patient — under a
+  network-only trousseau) and the officine's own posts (`src/postes.rs`,
+  every table in `replica::TABLES`, under the posts' trousseau in
+  `sync_local`). Map: `docs/SYNC.md` § 7.
 
 ## Build and gates
 
@@ -75,6 +77,14 @@ cheap reclaim, `cargo clean` the full one. Do not rebuild while
   `db::parse_french_date` + `db::YearHint` (accepts `230826`, `2308`).
 - Only characters the bundled egui faces have a glyph for (no arrows in
   proportional text; no U+202F). Glyph tests guard this.
+
+**Posts replication** (only on a base that founded or joined a group)
+- A new table goes in `replica::TABLES` or `replica::LOCAL`; a test reads
+  the schema. Every `INSERT` into a block-numbered table writes its `id`
+  from `db::next_id(table)` — a test reads `db.rs`. No `INSERT OR
+  REPLACE` on a travelling table (it would travel as a creation).
+- Only the reference post numbers the ordonnancier and seeds shipped
+  content (`numbers_here`, `seeds_here`).
 
 **Storage**
 - Schema change = `SCHEMA` **and** an idempotent `ALTER TABLE` in
