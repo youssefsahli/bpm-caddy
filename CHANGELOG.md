@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.257.0] - 2026-09-23
+
+### Fixed
+- **Le journal des accès trace la console.** `patients()` rend la liste
+  des patients, noms compris : `print(patients())` était le moyen de
+  regarder toute la base sans laisser de ligne. Chaque exécution qui la
+  lit s'écrit désormais au journal (« lectures de la liste des patients
+  par la console »), comme un export.
+- La purge du journal et la ligne qui la consigne s'écrivent ensemble
+  ou pas du tout.
+
 ## [0.256.0] - 2026-09-23
 
 ### Security

@@ -125,6 +125,10 @@ pub struct Outcome {
     /// qu'un script a écrit avant de se tromper est souvent ce qui dit
     /// où il s'est trompé.
     pub error: Option<String>,
+    /// Le script a-t-il lu la liste des patients ? Leurs noms sont
+    /// passés par la console, et c'est une consultation que le journal
+    /// d'accès doit porter comme une autre.
+    pub read_patients: bool,
 }
 
 /// Ce qu'un script peut imprimer en tout : un mégaoctet de texte, bien
@@ -202,7 +206,10 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
     // parcourt, se filtre et s'imprime avec le langage tel qu'il est,
     // sans que personne ait à apprendre une bibliothèque.
     let patients = data.patients.clone();
+    let read_patients = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let noted = Arc::clone(&read_patients);
     engine.register_fn("patients", move || {
+        noted.store(true, std::sync::atomic::Ordering::Relaxed);
         patients
             .iter()
             .map(|p| {
@@ -285,6 +292,7 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
         .lock()
         .map(|l| l.clone())
         .unwrap_or_else(|e| e.into_inner().clone());
+    let read_patients = read_patients.load(std::sync::atomic::Ordering::Relaxed);
     match result {
         Ok(value) => Outcome {
             printed,
@@ -294,11 +302,13 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
                 value.to_string()
             },
             error: None,
+            read_patients,
         },
         Err(e) => Outcome {
             printed,
             value: String::new(),
             error: Some(e.to_string()),
+            read_patients,
         },
     }
 }

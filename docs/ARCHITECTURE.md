@@ -317,9 +317,12 @@ The one that was missing — « combien de fois un autre poste avait
   shrank and a log somebody emptied read alike; it runs once per
   session, at unlock, because a deletion that repeats all day is a
   deletion nobody looks at. `the_access_log_is_only_added_to_and_purged_once`
-  reads `db.rs` and counts: exactly one deletion, no update. Two
+  reads `db.rs` and counts: exactly one deletion, no update. Three
   gestures are traced — opening a file, at the single door the twenty
-  call sites go through, and exporting — and what is **not** traced is
+  call sites go through, exporting, and a console script reading the
+  patient list (`Act::Console`, file 0: it returns every name, and
+  `print(patients())` was a way to read the whole base without a
+  line) — and what is **not** traced is
   written where one would look: printing, because the one function all
   twenty-one printables pass through holds neither the operator nor the
   file. And the **report**: `bpm-caddy audit [--jours N]`, a decision

@@ -32346,13 +32346,22 @@ impl Db {
     /// nombre de lignes retirées dans son champ `file`, qui est le seul
     /// nombre qu'une ligne ait. Rend combien ont été retirées.
     pub fn purge_accesses(&self, horizon: &str, operator: &str) -> Result<usize, String> {
+        // **La purge et sa ligne ensemble, ou ni l'une ni l'autre** : un
+        // journal qui a rétréci sans le dire se lit comme un journal
+        // qu'on a vidé, et c'est la seule chose que cette ligne existe
+        // pour empêcher.
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
         let removed = self
             .conn
             .execute("DELETE FROM access_log WHERE at < ?1", [horizon])
             .map_err(|e| e.to_string())?;
-        if removed > 0 {
-            self.log_access(operator, crate::audit::Act::Purge, removed as i64);
+        if removed > 0 && !self.log_access(operator, crate::audit::Act::Purge, removed as i64) {
+            return Err("purge non consignée : le journal est laissé tel quel".to_owned());
         }
+        tx.commit().map_err(|e| e.to_string())?;
         Ok(removed)
     }
 

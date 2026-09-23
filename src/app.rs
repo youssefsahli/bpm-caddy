@@ -5949,6 +5949,20 @@ impl Session {
         }
     }
 
+    /// Exécuter le script de la console sur un instantané, **et le
+    /// tracer** quand il a lu la liste des patients — voir
+    /// `audit::Act::Console`.
+    fn run_script(&mut self) -> crate::script::Outcome {
+        let data = self.script_snapshot();
+        let out = crate::script::run(&self.script_text, &data);
+        if out.read_patients {
+            let _ = self
+                .db
+                .log_access(&self.operator, crate::audit::Act::Console, 0);
+        }
+        out
+    }
+
     /// Relire ce que le dossier ouvert tire des fiches et des phrases :
     /// ses traitements, et avec eux ses six lectures — revue, rein,
     /// écrasement, grossesse, âge, cytochromes — et sa biologie.
@@ -11077,9 +11091,7 @@ impl App {
                                 session.script_open = Some((*name).to_owned());
                                 session.script_name = (*name).to_owned();
                                 session.script_text = (*source).to_owned();
-                                let data = session.script_snapshot();
-                                session.script_out =
-                                    Some(crate::script::run(&session.script_text, &data));
+                                session.script_out = Some(session.run_script());
                             }
                             session.view = MainView::Script;
                         }
@@ -12336,8 +12348,7 @@ impl App {
                 session.script_open = None;
                 session.script_name.clear();
                 session.script_text = source;
-                let data = session.script_snapshot();
-                session.script_out = Some(crate::script::run(&session.script_text, &data));
+                session.script_out = Some(session.run_script());
                 session.view = MainView::Script;
             }
         }
@@ -47065,8 +47076,7 @@ impl App {
             session.script_note = None;
         }
         if run {
-            let data = session.script_snapshot();
-            let out = crate::script::run(&session.script_text, &data);
+            let out = session.run_script();
             session.script_note = match &out.error {
                 Some(_) => Some((true, tr("script_failed").to_owned())),
                 None => Some((false, trf("script_ran", out.printed.len()))),

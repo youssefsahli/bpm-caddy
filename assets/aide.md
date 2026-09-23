@@ -848,8 +848,9 @@ s'imprime doit permettre de remonter au patient, pas de l'afficher.
 Sans initiales déclarées dans Options › Interface, la ligne écrit un
 tiret — elle ne devine pas.
 
-Deux gestes sont tracés : ouvrir un dossier et exporter. L'impression ne
-l'est pas, et mieux vaut le savoir que le croire.
+Trois gestes sont tracés : ouvrir un dossier, exporter, et lire la liste
+des patients depuis la console — qui la rend noms compris. L'impression
+ne l'est pas, et mieux vaut le savoir que le croire.
 
 La durée de conservation est dans `[audit] keep_days` de `config.toml`,
 un an au départ ; au-delà, les lignes sont purgées à l'ouverture de la

@@ -71,10 +71,15 @@ pub enum Act {
     /// journal qui a rétréci et un journal qu'on a vidé se lisent
     /// autrement pareil.
     Purge,
+    /// La console a lu la liste des patients — noms compris. C'est une
+    /// consultation de toute la base d'un coup : laissée hors du
+    /// journal, `print(patients())` était le moyen de tout regarder sans
+    /// laisser de trace. Sans dossier, comme l'export.
+    Console,
 }
 
 impl Act {
-    pub const ALL: [Act; 3] = [Act::Ouvert, Act::Exporte, Act::Purge];
+    pub const ALL: [Act; 4] = [Act::Ouvert, Act::Exporte, Act::Purge, Act::Console];
 
     /// Ce qui est écrit dans la base. Ne change jamais.
     pub fn key(self) -> &'static str {
@@ -82,6 +87,7 @@ impl Act {
             Act::Ouvert => "ouvert",
             Act::Exporte => "exporte",
             Act::Purge => "purge",
+            Act::Console => "console",
         }
     }
 
@@ -97,6 +103,7 @@ impl Act {
             Act::Ouvert => tr("audit_act_ouvert"),
             Act::Exporte => tr("audit_act_exporte"),
             Act::Purge => tr("audit_act_purge"),
+            Act::Console => tr("audit_act_console"),
         }
     }
 }
@@ -590,7 +597,9 @@ mod tests {
             at("2026-09-17", "09:05:00", "CL", Act::Ouvert, 4022),
             at("2026-09-18", "10:00:00", "MB", Act::Ouvert, 4021),
             at("2026-09-18", "18:00:00", "MB", Act::Exporte, 0),
-            at("2026-09-19", "07:00:00", "", Act::Purge, 0),
+            // Une purge range dans `file` le nombre de lignes retirées :
+            // ce n'est pas un dossier.
+            at("2026-09-19", "07:00:00", "", Act::Purge, 12),
         ];
         let s = summarize(&lines);
         assert_eq!((s.lines, s.days), (5, 3));
@@ -603,7 +612,12 @@ mod tests {
         assert_eq!(s.files, 2);
         assert_eq!(
             s.by_act,
-            vec![(Act::Ouvert, 3), (Act::Exporte, 1), (Act::Purge, 1)]
+            vec![
+                (Act::Ouvert, 3),
+                (Act::Exporte, 1),
+                (Act::Purge, 1),
+                (Act::Console, 0)
+            ]
         );
         // Le plus actif d'abord, puis par nom.
         assert_eq!(
@@ -815,7 +829,10 @@ mod tests {
             assert!(act.key().chars().all(|c| c.is_ascii_lowercase()));
             assert!(!act.label().is_empty());
         }
-        assert_eq!(Act::ALL.map(Act::key), ["ouvert", "exporte", "purge"]);
+        assert_eq!(
+            Act::ALL.map(Act::key),
+            ["ouvert", "exporte", "purge", "console"]
+        );
         assert_eq!(Act::from_key("ce-que-fera-la-suite"), None);
     }
 }
