@@ -186,7 +186,18 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
     let haystack: Vec<String> = treatments
         .iter()
         .filter(|t| !crate::classes::is_local_form(t.class))
-        .map(|t| crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags)))
+        // **Ni un antidote**, qui n'est pas ce qu'il corrige : la
+        // vitamine K1 lisait un INR bas comme « sous-dosage sous AVK »,
+        // et la Lederfoline des folates bas comme « la supplémentation
+        // est la règle » sous méthotrexate.
+        .filter(|t| !crate::classes::is_antidote(t.class))
+        // Et sans ce que le libellé nie — voir `classes::strip_unsaid`.
+        .map(|t| {
+            crate::classes::strip_unsaid(&crate::fuzzy::sort_key(&format!(
+                "{} {} {} {}",
+                t.name, t.dci, t.class, t.tags
+            )))
+        })
         .collect();
     let takes = |needle: &str| {
         haystack
@@ -1401,14 +1412,11 @@ const RULES: &[Rule] = &[
         severity: Severity::Warn,
         text: "Albuminurie franche : la néphroprotection se discute même sans diabète — bloqueur du système rénine-angiotensine, gliflozine, tension à la cible. Et l'ordonnance se relit du point de vue du rein, AINS en tête.",
     },
-    Rule {
-        code: "GGT",
-        side: Side::Above,
-        threshold: 110.0,
-        needs: &["carbamazépine", "phénytoïne", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "AVK"],
-        severity: Severity::Info,
-        text: "GGT isolément élevée sous inducteur enzymatique : c'est attendu et ce n'est pas une hépatite. Ce qui compte est l'effet de l'induction sur le reste de l'ordonnance — AVK, contraception, immunosuppresseur.",
-    },
+    // Une règle GGT à 110 vivait ici. Elle rangeait les AVK et les
+    // corticoïdes parmi les inducteurs enzymatiques — ils n'en sont pas —,
+    // si bien qu'une GGT à 120 sous Previscan se lisait « c'est attendu,
+    // ce n'est pas une hépatite » ; et pour les vrais inducteurs elle
+    // doublait celle de 150, plus bas, qui dit la même chose. Retirée.
     Rule {
         code: "HDL",
         side: Side::Below,
@@ -2189,7 +2197,12 @@ mod tests {
         // « 0,7 » et « 2,6 » : à l'œil, deux règles différentes. **Aucune lecture n'a été perdue** — c'est ce qu'il faut
         // pouvoir écrire ici pour baisser ce chiffre.
         const CATALOGUE_FLOOR: usize = 55;
-        const RULES_FLOOR: usize = 103;
+        // 102 depuis la 0.253 : la règle GGT à 110 est retirée, et ce
+        // qu'elle disait était faux — elle comptait les AVK et les
+        // corticoïdes parmi les inducteurs ; pour les vrais, la règle à
+        // 150 dit la même chose. Une lecture perdue, et c'était une
+        // lecture fausse.
+        const RULES_FLOOR: usize = 102;
         assert!(
             CATALOGUE.len() >= CATALOGUE_FLOOR,
             "{} analytes, il y en avait {CATALOGUE_FLOOR}",
@@ -2278,6 +2291,48 @@ mod tests {
             wrong.is_empty(),
             "une forme locale explique un résultat :\n{}",
             wrong.join("\n")
+        );
+    }
+
+    /// **Un antidote n'est pas ce qu'il corrige** : un INR bas sous
+    /// vitamine K1 n'est pas un sous-dosage d'AVK, et une GGT haute sous
+    /// Previscan n'est pas « l'induction ».
+    #[test]
+    fn an_antidote_reads_nothing_for_what_it_reverses() {
+        let t = |n: &str| {
+            let (name, dci, class, _) = crate::db::STARTER_DRUGS
+                .iter()
+                .find(|(x, ..)| *x == n)
+                .unwrap_or_else(|| panic!("fiche absente : {n}"));
+            crate::revue::Treatment {
+                name,
+                dci,
+                class,
+                tags: "",
+            }
+        };
+        let inr = [Reading {
+            code: "INR",
+            value: 1.2,
+            date: "2026-09-01",
+        }];
+        let got = read(&inr, &[t("Vitamine K1")]);
+        assert!(
+            got.iter().all(|f| !f.text.contains("AVK")),
+            "{:?}",
+            got.len()
+        );
+        let ggt = [Reading {
+            code: "GGT",
+            value: 120.0,
+            date: "2026-09-01",
+        }];
+        let got = read(&ggt, &[t("Previscan")]);
+        assert!(
+            got.iter()
+                .all(|f| !f.text.contains("sous inducteur enzymatique")),
+            "{:?}",
+            got.iter().map(|f| f.text.clone()).collect::<Vec<_>>()
         );
     }
 }

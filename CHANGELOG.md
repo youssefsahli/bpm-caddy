@@ -5,6 +5,34 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.253.0] - 2026-09-23
+
+### Fixed
+- **La revue d'ordonnance et la biologie ne lisent plus une négation
+  comme une affirmation.** L'Acupan, « antalgique non opioïde », et le
+  Relistor, « antagoniste opioïde périphérique », se lisaient opioïdes —
+  le Relistor recevait l'alerte de dépression respiratoire à côté de la
+  morphine qu'il accompagne, et « opioïde sans laxatif » alors qu'il est
+  le laxatif. Le Kerendia (antagoniste des récepteurs
+  minéralocorticoïdes) recevait les règles des corticoïdes.
+- **Un antidote ne reçoit plus les règles de ce qu'il corrige** : la
+  vitamine K1 n'est plus « deux anticoagulants » avec le Previscan, ni
+  un INR bas sous vitamine K1 un « sous-dosage d'AVK » ; la Lederfoline
+  n'est plus lue comme du méthotrexate. Il peut toujours combler ce qui
+  manque (« méthotrexate sans acide folique »).
+- **Une forme locale ne déclenche plus les règles de sa molécule
+  générale** dans la revue d'ordonnance : un bain de bouche et un
+  collyre ne sont plus « deux AINS » avec l'Advil, un dermocorticoïde ou
+  un spray nasal n'appellent plus de protection osseuse, un collyre
+  antibiotique ne croise plus l'AVK, un shampooing ne croise plus la
+  simvastatine. Les quatre règles écrites pour une forme locale — le
+  collyre bêtabloquant, le miconazole en gel buccal, la charge
+  corticoïde cumulée — la lisent toujours.
+- La règle qui lisait une GGT haute sous AVK ou corticoïde comme
+  « l'induction enzymatique » est retirée : ni l'un ni l'autre n'est un
+  inducteur. « Lithium exposé » ne vise plus le Dépakote, et le vernis
+  de l'onychomycose compte comme une forme locale.
+
 ## [0.252.0] - 2026-09-23
 
 ### Fixed

@@ -124,23 +124,66 @@ struct Rule {
     detail: &'static str,
 }
 
+/// Les règles **écrites pour une forme locale** : le collyre
+/// bêtabloquant qui passe dans le sang, le gel buccal de miconazole dont
+/// le passage systémique suffit, et la charge corticoïde qui additionne
+/// l'inhalé, le nasal et le cutané. Ailleurs, une forme locale ne
+/// déclenche rien.
+const LOCAL_RULES: &[&str] = &[
+    "Bêtabloquant caché",
+    "Charge corticoïde cumulée",
+    "Miconazole + AVK",
+    "Miconazole + sulfamide hypoglycémiant",
+];
+
 /// Read an ordonnance against itself. Loudest first; inside one
 /// severity, the order of the rules — which is the order a pharmacist
 /// checks them in.
 pub fn review(treatments: &[Treatment]) -> Vec<Point> {
+    // Chaque ligne repliée une fois, **sans ce que son libellé nie**
+    // (voir `classes::strip_unsaid`), et avec deux questions posées une
+    // fois : est-ce une forme locale, est-ce un antidote.
     let folded: Vec<(String, String)> = treatments
         .iter()
-        .map(|t| (t.name.trim().to_owned(), t.haystack()))
+        .map(|t| {
+            (
+                t.name.trim().to_owned(),
+                crate::classes::strip_unsaid(&t.haystack()),
+            )
+        })
         .collect();
-    let matches = |words: &[&str]| -> Vec<String> {
-        folded
-            .iter()
-            .filter(|(_, hay)| words.iter().any(|w| crate::fuzzy::contains_folded(hay, w)))
-            .map(|(name, _)| name.clone())
-            .collect()
-    };
+    let local: Vec<bool> = treatments
+        .iter()
+        .map(|t| crate::classes::is_local_form(t.class))
+        .collect();
+    let antidote: Vec<bool> = treatments
+        .iter()
+        .map(|t| crate::classes::is_antidote(t.class))
+        .collect();
     let mut out = Vec::new();
     for rule in RULES {
+        // **Ce qui déclenche une règle** : ni un antidote — la vitamine K1
+        // recevait les règles des AVK, et « deux anticoagulants » avec le
+        // Previscan qu'elle corrige —, ni une forme locale, sauf pour les
+        // règles écrites pour elle. Les tables sont indexées sur la
+        // molécule, et l'Indocollyre, le Tantum ou le Kétoderm tombaient
+        // dans les règles de leur molécule générale : « Deux AINS » pour
+        // un bain de bouche, et le Kétoderm face à la simvastatine, que
+        // ce dépôt cite comme l'exemple même à ne pas faire.
+        //
+        // Un antidote reste une ligne de l'ordonnance : il peut toujours
+        // **combler** une absence (la Lederfoline répond à « méthotrexate
+        // sans acide folique »).
+        let local_ok = LOCAL_RULES.contains(&rule.title);
+        let matches = |words: &[&str]| -> Vec<String> {
+            folded
+                .iter()
+                .enumerate()
+                .filter(|(i, _)| !antidote[*i] && (local_ok || !local[*i]))
+                .filter(|(_, (_, hay))| words.iter().any(|w| crate::fuzzy::contains_folded(hay, w)))
+                .map(|(_, (name, _))| name.clone())
+                .collect()
+        };
         let drugs = match &rule.kind {
             Kind::Combination(groups) => {
                 let mut named: Vec<String> = Vec::new();
@@ -390,7 +433,10 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["lithium", "thymorégulateur"],
+            // Le lithium, et non « thymorégulateur » : la classe nomme
+            // aussi le Dépakote et le Dépamide, qui recevaient l'alerte
+            // d'une lithémie qu'ils n'ont pas.
+            &["lithium", "téralithe"],
             &["AINS", "IEC", "sartan", "diurétique"],
         ]),
         severity: Severity::Alert,
@@ -1947,5 +1993,40 @@ mod tests {
             class,
             tags,
         }
+    }
+
+    /// **Ce qu'une ligne nie, ce qu'elle corrige et ce qu'elle ne fait
+    /// qu'effleurer ne déclenchent rien** — confronté aux fiches livrées.
+    #[test]
+    fn a_negation_an_antidote_and_a_local_form_trigger_nothing() {
+        let t = |n: &str| {
+            let (name, dci, class, _) = crate::db::STARTER_DRUGS
+                .iter()
+                .find(|(x, ..)| *x == n)
+                .unwrap_or_else(|| panic!("fiche absente : {n}"));
+            Treatment {
+                name,
+                dci,
+                class,
+                tags: "",
+            }
+        };
+        let titles = |names: &[&str]| -> Vec<&'static str> {
+            let list: Vec<Treatment> = names.iter().map(|n| t(n)).collect();
+            review(&list).iter().map(|p| p.title).collect()
+        };
+        // Le Relistor accompagne la morphine : il n'en est pas une.
+        let got = titles(&["Relistor", "Xanax"]);
+        assert!(!got.contains(&"Benzodiazépine + opioïde"), "{got:?}");
+        assert!(!titles(&["Relistor"]).contains(&"Opioïde sans laxatif"));
+        // L'antidote n'est pas ce qu'il corrige.
+        assert!(!titles(&["Vitamine K1", "Previscan"]).contains(&"Deux anticoagulants"));
+        // Un bain de bouche n'est pas un second AINS.
+        assert!(!titles(&["Tantum", "Advil"]).contains(&"Deux AINS"));
+        // Un shampooing ne croise pas la simvastatine.
+        assert!(!titles(&["Kétoderm", "Zocor"]).contains(&"Statine + inhibiteur enzymatique"));
+        // Et ce qui doit parler parle toujours.
+        assert!(titles(&["Previscan", "Advil"]).contains(&"Anticoagulant + AINS"));
+        assert!(titles(&["Xanax", "Skenan"]).contains(&"Benzodiazépine + opioïde"));
     }
 }

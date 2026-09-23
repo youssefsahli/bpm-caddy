@@ -1615,7 +1615,7 @@ livre = "Une phrase qui n'est plus livrée"
                 format!(
                     "applies {} rules that tie a value",
                     match crate::biology::rule_count() {
-                        103 => "a hundred and three",
+                        102 => "a hundred and two",
                         n => panic!("{n} règles de biologie : l'écrire ici et au README"),
                     }
                 ),

@@ -2111,6 +2111,49 @@ pub const CLASSES: &[Class] = &[
     },
 ];
 
+/// Ce qu'un libellé nomme **en le niant**, retiré d'une botte de foin
+/// déjà repliée avant qu'une table y cherche ses mots.
+///
+/// Les tables cliniques cherchent des fragments, et un fragment ne sait
+/// pas lire une négation : l'Acupan, « antalgique **non** opioïde », et
+/// le Relistor, « **antagoniste** opioïde périphérique », se lisaient
+/// opioïdes — le Relistor recevait l'alerte de dépression respiratoire
+/// avec la morphine qu'il accompagne, et « opioïde sans laxatif » alors
+/// qu'il *est* le laxatif. Le Kerendia, antagoniste des récepteurs
+/// « minéralo**corticoïdes** », recevait les règles des corticoïdes ;
+/// le Casodex, « anti-**androgène** », celles de la testostérone. Et
+/// « méthyl**naltrexone** » contient « naltrexone ».
+///
+/// Une liste de locutions et non une grammaire : chacune a été trouvée
+/// sur une fiche livrée, et une négation qu'on devine serait une
+/// lecture de plus à tenir.
+pub fn strip_unsaid(folded: &str) -> String {
+    const UNSAID: &[&str] = &[
+        "non opioide",
+        "antagoniste opioide",
+        "antagonistes opioides",
+        "methylnaltrexone",
+        "mineralocorticoide",
+        "anti-androgene",
+        "antiandrogene",
+    ];
+    let mut out = folded.to_owned();
+    for w in UNSAID {
+        out = out.replace(w, " ");
+    }
+    out
+}
+
+/// Une fiche d'antidote : sa classe le dit (« antidote des AVK »,
+/// « antidote du méthotrexate »). Une table qui déclenche sur la
+/// molécule qu'il corrige ne doit pas le lire comme elle — la
+/// vitamine K1 n'est pas un AVK.
+pub fn is_antidote(class: &str) -> bool {
+    crate::fuzzy::sort_key(class)
+        .trim_start()
+        .starts_with("antidote")
+}
+
 /// Ce libellé de classe désigne-t-il une **forme locale** ?
 ///
 /// Une question de voie et non de classe, mais c'est la classe de la
@@ -2175,6 +2218,9 @@ pub fn is_local_form(class: &str) -> bool {
         "ovule",
         "lotion",
         "shampoing",
+        // Le vernis de l'onychomycose — le Loceryl — recevait les
+        // lectures de cholestase d'un antifongique par voie générale.
+        "vernis",
     ];
     LOCAL
         .iter()
