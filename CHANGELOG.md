@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.287.0] - 2026-09-24
+
+### Fixed
+- **Deux formes locales à deux sites ne se rencontrent plus.** La fiche
+  d'un corticoïde nasal nomme le kétoconazole par voie générale ; la
+  bande du dossier et la carte mettaient le Kétoderm — un shampooing —
+  en face d'elle. Une forme locale a maintenant un site (œil, oreille,
+  nez, bouche, vagin, rectum, peau) lu dans sa classe ; deux sites
+  différents et connus ne se citent pas, un site inconnu laisse la
+  rencontre.
+- **Le budésonide avalé n'est plus compté parmi les formes locales.**
+  L'Entocort et le Cortiment portent « corticoïde à action locale » : la
+  classe dit comment ils agissent, pas par où ils passent, et leurs
+  fiches préviennent qu'un inhibiteur puissant du CYP3A4 en majore
+  l'exposition générale. Ils étaient tus par les tables qui écartent les
+  formes locales. La règle « corticoïde inhalé sans traitement de crise »
+  les écarte par leurs propres mots.
+
 ## [0.286.0] - 2026-09-24
 
 ### Added

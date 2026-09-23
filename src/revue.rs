@@ -897,7 +897,11 @@ const RULES: &[Rule] = &[
                 "ciclésonide",
             ]],
             &["bêta-2", "salbutamol", "terbutaline", "bronchodilatateur"],
-            &[],
+            // **Le budésonide avalé n'est pas un traitement de l'asthme** :
+            // l'Entocort et le Cortiment soignent un Crohn ou une
+            // rectocolite, et « budésonide » les attrapait dès qu'ils ont
+            // cessé d'être comptés parmi les formes locales.
+            &["budésonide oral", "MMX", "MICI", "action locale"],
         ),
         severity: Severity::Warn,
         title: "Corticoïde inhalé sans traitement de crise",

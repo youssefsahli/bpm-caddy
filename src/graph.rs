@@ -727,8 +727,9 @@ fn share(want: [usize; 3], total: usize) -> [usize; 3] {
 /// que l'anneau des interactions suit déjà pour les noms cités (voir
 /// [`ties`]), et que les raisons venues des tables suivent aussi.
 fn local_may_meet(centre: &Known, other: &Known) -> bool {
-    crate::classes::is_local_form(centre.class)
-        || !crate::classes::stays_local(other.dci, other.class)
+    !crate::classes::apart_locally(centre.class, other.class)
+        && (crate::classes::is_local_form(centre.class)
+            || !crate::classes::stays_local(other.dci, other.class))
 }
 
 fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
@@ -770,8 +771,7 @@ fn ties(centre: &Known, other: &Known, folded_ddi: &str, tie: Tie) -> bool {
         Tie::Interaction => {
             // Le miconazole buccal croise quand même : voir
             // `classes::local_but_absorbed`.
-            (crate::classes::is_local_form(centre.class)
-                || !crate::classes::stays_local(other.dci, other.class))
+            local_may_meet(centre, other)
                 && (named_in(folded_ddi, other.name) || named_in(folded_ddi, other.dci))
         }
     }

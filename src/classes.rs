@@ -2220,6 +2220,15 @@ pub fn is_local_form(class: &str) -> bool {
     // fiche livrée. « patch » n'en est pas une et n'y sera pas : le
     // Neupro, l'Evra et le Nicopatch passent tous dans le sang.
     let folded = folded.replace("anesthesique local", "anesthesique");
+    // **« à action locale » dit comment agit un médicament, pas par où
+    // il passe** — la même faute, et elle était livrée aussi. L'Entocort
+    // et le Cortiment sont du budésonide **avalé** : leur premier passage
+    // hépatique réduit l'exposition générale sans l'annuler, et leurs
+    // propres fiches préviennent qu'un inhibiteur puissant du CYP3A4 —
+    // clarithromycine, kétoconazole — la majore jusqu'au syndrome de
+    // Cushing. Rangés parmi les formes locales, la table des cytochromes
+    // et la revue les taisaient face à la clarithromycine.
+    let folded = folded.replace("action locale", "action");
     const LOCAL: &[&str] = &[
         "collyre",
         "topique",
@@ -2246,6 +2255,69 @@ pub fn is_local_form(class: &str) -> bool {
     LOCAL
         .iter()
         .any(|v| crate::fuzzy::contains_folded(&folded, v))
+}
+
+/// **Où s'applique une forme locale** : l'œil, l'oreille, le nez, la
+/// bouche, le poumon, le vagin, le rectum, la peau — lu dans les mots de
+/// sa classe, comme [`is_local_form`]. `None` pour une forme générale, et
+/// pour une forme locale dont la classe ne dit pas le site.
+///
+/// Elle sert une question précise : **deux formes locales se
+/// rencontrent-elles ?** Sur le même site, oui — deux dermocorticoïdes
+/// s'additionnent sur la peau. Sur deux sites, non : la fiche d'un
+/// corticoïde nasal qui nomme le kétoconazole parle du kétoconazole par
+/// voie générale, pas d'un shampooing. Un site inconnu ne tranche pas :
+/// la rencontre reste, puisque le silence n'est pas une autorisation.
+pub fn local_site(class: &str) -> Option<&'static str> {
+    if !is_local_form(class) {
+        return None;
+    }
+    let folded = crate::fuzzy::sort_key(class);
+    let has = |w: &str| crate::fuzzy::contains_folded(&folded, w);
+    // The specific sites first: « pommade ophtalmique » is an eye, not a
+    // skin, and « gel buccal » a mouth.
+    const SITES: &[(&str, &[&str])] = &[
+        ("oeil", &["collyre", "ophtalm", "oculaire"]),
+        ("oreille", &["auriculaire", "otique"]),
+        ("nez", &["nasal"]),
+        (
+            "bouche",
+            &["buccal", "bouche", "gorge", "gingiv", "oropharyn"],
+        ),
+        ("poumon", &["inhal"]),
+        ("vagin", &["vaginal", "ovule"]),
+        ("rectum", &["rectal"]),
+        (
+            "peau",
+            &[
+                // « local » and « topique » alone come last: in the
+                // shipped base they are always the skin — an antibiotic,
+                // a lice lotion, an antifungal, a scabicide.
+                "dermo",
+                "cutane",
+                "creme",
+                "pommade",
+                "lotion",
+                "shampoing",
+                "vernis",
+                "topique",
+                "local",
+            ],
+        ),
+    ];
+    SITES
+        .iter()
+        .find(|(_, words)| words.iter().any(|w| has(w)))
+        .map(|(site, _)| *site)
+}
+
+/// Deux formes locales à deux sites différents, **tous deux connus** : ce
+/// qui ne se rencontre pas. Voir [`local_site`].
+pub fn apart_locally(a_class: &str, b_class: &str) -> bool {
+    matches!(
+        (local_site(a_class), local_site(b_class)),
+        (Some(x), Some(y)) if x != y
+    )
 }
 
 /// De quel côté ranger un libellé : la classe canonique qu'il désigne,
@@ -2543,7 +2615,6 @@ mod tests {
             // L'Emla tient par « crème », et c'est ce qui le distingue
             // des cinq anesthésiques injectables ci-dessous.
             "anesthésique local — crème/patch",
-            "corticoïde à action locale",
             "estrogène local vaginal",
             "vasoconstricteur nasal",
             "gouttes auriculaires antibiotiques",
@@ -2565,6 +2636,12 @@ mod tests {
         // faire taire disait d'une lidocaïne injectable qu'elle ne
         // rencontre aucune enzyme et ne demande aucun examen.
         assert!(!is_local_form("anesthésique local"));
+        // **« à action locale » non plus** : l'Entocort et le Cortiment
+        // sont du budésonide avalé, et leurs fiches préviennent qu'un
+        // inhibiteur puissant du CYP3A4 en majore l'exposition générale.
+        // Rangés parmi les formes locales, ils étaient tus face à la
+        // clarithromycine.
+        assert!(!is_local_form("corticoïde à action locale"));
         // Et l'Emla reste local, par « crème » : c'est le mot de la
         // voie, là où « local » était celui de la classe. « patch » n'en
         // est pas un et n'en sera pas — le Neupro, l'Evra et le
@@ -2619,5 +2696,30 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **Le site d'une forme locale**, lu dans sa classe ; une forme
+    /// générale n'en a pas, et deux sites différents ne se rencontrent
+    /// pas.
+    #[test]
+    fn a_local_form_has_a_site_and_two_sites_stay_apart() {
+        assert_eq!(local_site("antifongique topique"), Some("peau"));
+        assert_eq!(local_site("antifongique local"), Some("peau"));
+        assert_eq!(local_site("AINS local — bouche et gorge"), Some("bouche"));
+        assert_eq!(local_site("corticoïde nasal"), Some("nez"));
+        assert_eq!(local_site("collyre — AINS"), Some("oeil"));
+        assert_eq!(local_site("pommade ophtalmique antibiotique"), Some("oeil"));
+        assert_eq!(local_site("estrogène local vaginal"), Some("vagin"));
+        assert_eq!(local_site("AVK"), None);
+        // Swallowed budesonide acts locally and passes through the liver:
+        // it is not a local form, and its crossings are not silenced.
+        assert!(!is_local_form("corticoïde à action locale — MICI"));
+        assert!(!is_local_form("corticoïde à action locale"));
+        assert!(apart_locally("antifongique topique", "corticoïde nasal"));
+        assert!(!apart_locally(
+            "dermocorticoïde fort",
+            "antifongique topique"
+        ));
+        assert!(!apart_locally("antifongique topique", "AVK"));
     }
 }

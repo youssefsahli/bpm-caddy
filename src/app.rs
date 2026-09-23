@@ -9019,8 +9019,13 @@ fn interactions_paired(drugs: &[Drug]) -> Vec<(i64, i64, String, String)> {
                     // azolés *généraux*, et la bande du dossier mettait un
                     // shampooing de kétoconazole face à l'anticoagulant.
                     // Sauf le miconazole buccal, qui passe dans le sang.
-                    if !crate::classes::is_local_form(&d.class)
-                        && crate::classes::stays_local(&other.dci, &other.class)
+                    // **Et deux formes locales ne se citent que sur un même
+                    // site** : la fiche d'un corticoïde nasal nomme le
+                    // kétoconazole par voie générale, et la bande mettait
+                    // le Kétoderm — un shampooing — en face d'elle.
+                    if crate::classes::stays_local(&other.dci, &other.class)
+                        && (!crate::classes::is_local_form(&d.class)
+                            || crate::classes::apart_locally(&d.class, &other.class))
                     {
                         continue;
                     }
@@ -72448,6 +72453,51 @@ mod tests {
             assert_eq!(c.weight, 3, "{a}-{b}");
         }
         assert_eq!(alone, vec![3]);
+    }
+
+    /// **Deux formes locales à deux sites ne se citent pas** : le
+    /// corticoïde nasal nomme le kétoconazole par voie générale, pas le
+    /// shampooing. Sur la bande du dossier comme sur la carte.
+    #[test]
+    fn two_local_forms_on_two_sites_do_not_meet() {
+        let (s, _swept) = scratch_session("local-sites");
+        let pick = |n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .clone()
+        };
+        let pair = [pick("Kétoderm"), pick("Flixonase")];
+        assert!(
+            super::interactions_paired(&pair).is_empty(),
+            "{:?}",
+            super::interactions_paired(&pair)
+        );
+    }
+
+    /// **Le budésonide avalé n'est ni une forme locale ni un traitement
+    /// de l'asthme.** L'Entocort ne demande pas de traitement de crise ;
+    /// le Pulmicort, lui, en demande toujours un.
+    #[test]
+    fn swallowed_budesonide_is_neither_local_nor_an_asthma_treatment() {
+        let (s, _swept) = scratch_session("budesonide");
+        let pick = |n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .clone()
+        };
+        let title = "Corticoïde inhalé sans traitement de crise";
+        for oral in ["Entocort", "Cortiment"] {
+            let d = pick(oral);
+            assert!(!crate::classes::is_local_form(&d.class), "{oral}");
+            let points = crate::revue::review(&super::ordonnance_terms(&[d]));
+            assert!(!points.iter().any(|p| p.title == title), "{oral}");
+        }
+        let points = crate::revue::review(&super::ordonnance_terms(&[pick("Pulmicort")]));
+        assert!(points.iter().any(|p| p.title == title), "Pulmicort");
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
