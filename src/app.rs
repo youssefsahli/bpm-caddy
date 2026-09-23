@@ -3744,6 +3744,12 @@ struct Session {
     script_open: Option<String>,
     script_text: String,
     script_out: Option<crate::script::Outcome>,
+    /// Un script en cours, sur son propre fil : ce qu'il rendra, et le
+    /// drapeau qui l'arrête.
+    script_job: Option<(
+        std::sync::mpsc::Receiver<crate::script::Outcome>,
+        std::sync::Arc<std::sync::atomic::AtomicBool>,
+    )>,
     script_note: Option<(bool, String)>,
     script_name: String,
     /// Ce que l'éditeur propose : la portion du mot commencé, les
@@ -4701,6 +4707,7 @@ impl Session {
             script_open: None,
             script_text: String::new(),
             script_out: None,
+            script_job: None,
             script_note: None,
             script_name: String::new(),
             script_sugg: None,
@@ -5968,6 +5975,56 @@ impl Session {
     /// Exécuter le script de la console sur un instantané, **et le
     /// tracer** quand il a lu la liste des patients — voir
     /// `audit::Act::Console`.
+    /// Lancer le script **sur son propre fil**. Sur celui de l'interface,
+    /// un script long figeait la fenêtre — plus de dessin, plus de clic,
+    /// pas même pour l'arrêter. L'instantané est pris ici, avant le
+    /// départ : le script lit ce que la base disait au moment du clic.
+    fn start_script(&mut self) {
+        if self.script_job.is_some() {
+            return;
+        }
+        let data = self.script_snapshot();
+        let source = self.script_text.clone();
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let (tx, rx) = std::sync::mpsc::channel();
+        let flag = std::sync::Arc::clone(&stop);
+        std::thread::spawn(move || {
+            let _ = tx.send(crate::script::run_until(&source, &data, flag));
+        });
+        self.script_job = Some((rx, stop));
+        self.script_note = Some((false, tr("script_running").to_owned()));
+    }
+
+    /// Ce qu'un script en cours a rendu, relevé à chaque image — un
+    /// `try_recv` quand rien ne tourne.
+    fn poll_script(&mut self, ctx: &egui::Context) {
+        let Some((rx, _)) = &self.script_job else {
+            return;
+        };
+        match rx.try_recv() {
+            Ok(out) => {
+                self.script_job = None;
+                if out.read_patients {
+                    let _ = self
+                        .db
+                        .log_access(&self.operator, crate::audit::Act::Console, 0);
+                }
+                self.script_note = match &out.error {
+                    Some(_) => Some((true, tr("script_failed").to_owned())),
+                    None => Some((false, trf("script_ran", out.printed.len()))),
+                };
+                self.script_out = Some(out);
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                ctx.request_repaint_after(Duration::from_millis(100));
+            }
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.script_job = None;
+                self.script_note = Some((true, tr("script_failed").to_owned()));
+            }
+        }
+    }
+
     fn run_script(&mut self) -> crate::script::Outcome {
         let data = self.script_snapshot();
         let out = crate::script::run(&self.script_text, &data);
@@ -12457,7 +12514,8 @@ impl App {
                 session.script_open = None;
                 session.script_name.clear();
                 session.script_text = source;
-                session.script_out = Some(session.run_script());
+                session.script_out = None;
+                session.start_script();
                 session.view = MainView::Script;
             }
         }
@@ -47019,7 +47077,11 @@ impl App {
             ui,
             body.width(),
             [
-                tr("script_run"),
+                if session.script_job.is_some() {
+                    tr("script_stop")
+                } else {
+                    tr("script_run")
+                },
                 tr("script_save"),
                 tr("script_new"),
                 tr("script_reveal"),
@@ -47050,7 +47112,14 @@ impl App {
         let mut save = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
-                if motif::button(ui, tr("script_run"))
+                if let Some((_, stop)) = &session.script_job {
+                    if motif::button(ui, tr("script_stop"))
+                        .on_hover_text(tr("script_stop_tooltip"))
+                        .clicked()
+                    {
+                        stop.store(true, std::sync::atomic::Ordering::Relaxed);
+                    }
+                } else if motif::button(ui, tr("script_run"))
                     .on_hover_text(tr("script_run_tooltip"))
                     .clicked()
                 {
@@ -47266,12 +47335,7 @@ impl App {
             session.script_note = None;
         }
         if run {
-            let out = session.run_script();
-            session.script_note = match &out.error {
-                Some(_) => Some((true, tr("script_failed").to_owned())),
-                None => Some((false, trf("script_ran", out.printed.len()))),
-            };
-            session.script_out = Some(out);
+            session.start_script();
         }
         if save {
             let name = session.script_name.trim().to_owned();
@@ -55881,6 +55945,9 @@ impl eframe::App for App {
         // counter goes on working while eight hundred and fifty cards
         // are topped up under it.
         self.poll_maintenance(ctx);
+        if let State::Unlocked(session) = &mut self.state {
+            session.poll_script(ctx);
+        }
 
         // Auto-lock after inactivity (spec 4.3).
         if ctx.input(|i| !i.events.is_empty() || i.pointer.is_moving()) {

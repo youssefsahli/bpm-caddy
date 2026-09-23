@@ -142,6 +142,28 @@ const MAX_PRINTED: usize = 1_000_000;
 /// un accès hors bornes se rendent comme du texte. La console est un
 /// endroit où l'on se trompe, c'est même sa raison d'être.
 pub fn run(source: &str, data: &Snapshot) -> Outcome {
+    run_until(
+        source,
+        data,
+        Arc::new(std::sync::atomic::AtomicBool::new(false)),
+    )
+}
+
+/// [`run`], arrêtable de l'extérieur : `stop` passé à vrai termine le
+/// script au prochain pas du moteur.
+///
+/// **La console tourne sur son propre fil**, et c'est ce qui rend ce
+/// drapeau nécessaire : sur le fil de l'interface, un script de vingt
+/// millions d'opérations figeait la fenêtre plusieurs secondes — plus de
+/// dessin, plus de clic, pas même pour l'interrompre. Le plafond
+/// d'opérations reste la borne ; ce drapeau est le geste de qui n'a pas
+/// envie d'attendre qu'elle soit atteinte.
+pub fn run_until(
+    source: &str,
+    data: &Snapshot,
+    stop: Arc<std::sync::atomic::AtomicBool>,
+) -> Outcome {
+    let stop_seen = stop;
     let printed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut engine = rhai::Engine::new();
     // **Ni `import`, ni résolveur de modules.** `Engine::new` en pose un
@@ -159,7 +181,11 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
     let printed_bytes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     {
         let seen = Arc::clone(&printed_bytes);
+        let halted = Arc::clone(&stop_seen);
         engine.on_progress(move |_| {
+            if halted.load(std::sync::atomic::Ordering::Relaxed) {
+                return Some(rhai::Dynamic::from("arrêté"));
+            }
             (seen.load(std::sync::atomic::Ordering::Relaxed) > MAX_PRINTED)
                 .then(|| rhai::Dynamic::from("sortie trop longue"))
         });
@@ -307,7 +333,14 @@ pub fn run(source: &str, data: &Snapshot) -> Outcome {
         Err(e) => Outcome {
             printed,
             value: String::new(),
-            error: Some(e.to_string()),
+            // Arrêté à la main, le moteur dit « Script terminated » :
+            // c'est ce qui s'est passé, et ce n'est pas une faute du
+            // script.
+            error: Some(if stop_seen.load(std::sync::atomic::Ordering::Relaxed) {
+                "arrêté".to_owned()
+            } else {
+                e.to_string()
+            }),
             read_patients,
         },
     }
@@ -858,6 +891,17 @@ mod tests {
             .error
             .is_some());
         assert!(run("", &sample()).error.is_none());
+    }
+
+    /// **Un script se laisse arrêter.** Il tourne sur son propre fil ;
+    /// le drapeau levé l'arrête au pas suivant, bien avant le plafond
+    /// d'opérations, et ce qu'il avait écrit reste lisible.
+    #[test]
+    fn a_script_can_be_stopped_from_outside() {
+        let stop = Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let out = run_until("print(\"début\"); while true { }", &sample(), stop);
+        let err = out.error.expect("arrêté");
+        assert!(err.contains("arrêté"), "{err}");
     }
 
     /// **Rien ne sort et rien ne s'écrit.**

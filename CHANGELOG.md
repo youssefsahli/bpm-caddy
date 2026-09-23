@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.267.0] - 2026-09-23
+
+### Changed
+- **La console tourne sur son propre fil.** Un script long figeait la
+  fenêtre entière jusqu'à son plafond d'opérations ; l'application reste
+  maintenant utilisable pendant qu'il tourne, et « Exécuter » devient
+  « Arrêter » tant qu'il n'a pas fini. Ce qu'il a déjà écrit reste dans
+  la sortie.
+
 ## [0.266.0] - 2026-09-23
 
 ### Fixed
