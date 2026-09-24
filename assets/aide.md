@@ -998,6 +998,18 @@ l'appartenance à un réseau d'officines ; un clic ouvre la vue
 « Connexions ». Bleue quand tous les postes répondent, rouge après un
 échec de synchronisation.
 
+**La carte.** « Carte », dans la vue, dessine les connexions : ce poste
+au centre, les autres postes de l'officine autour, les officines du
+réseau au-delà. Chaque lien a la forme de son état : trait plein, la
+dernière connexion directe a réussi ; trait fin, des nouvelles sans
+connexion directe ; tirets, la dernière tentative a échoué ; pointillés,
+rien entendu. Un clic sur un nœud le détaille à côté et propose ses
+gestes : pour une officine, **Écrire**, **Envoyer un fichier…** (la
+conversation s'ouvre, le fichier joint au prochain message) et
+**Essayer** (une connexion directe, quand elle a une adresse) ; pour un
+poste, le synchroniser ; pour ce poste, tout synchroniser, relier un
+poste ou inviter une officine.
+
 **Connexion au lancement** : les postes du groupe se découvrent et se
 synchronisent sur le réseau local ; le réseau d'officines se synchronise
 au lancement puis toutes les quinze minutes (Options › Base). Un poste

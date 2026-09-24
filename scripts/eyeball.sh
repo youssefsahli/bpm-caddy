@@ -109,7 +109,7 @@ views=(
     protocols protocol_open codex codex_open dispositifs dispositif_open
     finances stats companion companion_poso companion_conseils companion_soins companion_dossier companion_vide companion_doublon companion_boite script carnets carnets_edit textes graph graph_zoom graph_wide graph_ordonnance graph_filtre stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans patient_dose fil registres regles aide
     explorer explorer_organ classes classes_outside export
-    template options about base peaux keys keys_outils nouveautes messages act_picker vitale
+    template options about base peaux keys keys_outils nouveautes messages connexions_carte act_picker vitale
     caisse caisses
     goto goto_jump mono_search mono_patient
 )

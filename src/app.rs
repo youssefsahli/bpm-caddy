@@ -4646,6 +4646,10 @@ struct Session {
     conn_summary: Option<ConnSummary>,
     /// Something moved since it was read.
     conn_dirty: bool,
+    /// La vue des connexions en carte plutôt qu'en panneaux.
+    conn_map: bool,
+    /// Le nœud choisi sur la carte (`netmap::Node::key`).
+    conn_pick: Option<String>,
     /// La messagerie : ce que la vue « Messages » montre, relu quand
     /// quelque chose bouge — jamais à chaque image.
     msg: MessagesState,
@@ -5461,6 +5465,8 @@ impl Session {
             conn_summary: None,
             msg: MessagesState::default(),
             conn_dirty: false,
+            conn_map: false,
+            conn_pick: None,
             #[cfg(feature = "sync")]
             conn_badge: (0, false),
             drug_kin_show: None,
@@ -7336,6 +7342,30 @@ impl Session {
 
     /// Lancer une synchronisation du réseau d'officines sur son fil.
     #[cfg(feature = "sync")]
+    /// Composer une seule officine, sur le même fil que la synchronisation
+    /// automatique — « Essayer » depuis la carte des connexions.
+    #[cfg(feature = "sync")]
+    fn start_net_dial(&mut self, device: &str, config: &Config) {
+        if self.net_auto.is_some() {
+            return;
+        }
+        let Some(path) = self.db.path() else {
+            return;
+        };
+        let (_answers_tx, answers_rx) = std::sync::mpsc::channel();
+        self.net_auto = Some(crate::network::spawn(
+            crate::network::Job::Dial {
+                device: device.to_owned(),
+            },
+            path,
+            self.password.clone(),
+            config.pharmacy.name.clone(),
+            self.today.clone(),
+            answers_rx,
+        ));
+        self.log_connection(false, tr("conn_dial_asked"));
+    }
+
     fn start_net_sync(&mut self, config: &Config) {
         if self.net_auto.is_some() {
             return;
@@ -10783,6 +10813,17 @@ fn local_stamp(stamp: &str) -> String {
 /// deviner, au jour où une rupture manque au journal, si elle n'a pas été
 /// signalée ou si elle n'est pas arrivée.
 #[cfg(feature = "sync")]
+/// L'état d'un lien de la carte, en une phrase.
+#[cfg(feature = "sync")]
+fn conn_state_text(s: crate::netmap::LinkState) -> &'static str {
+    match s {
+        crate::netmap::LinkState::Ok => tr("conn_map_ok_long"),
+        crate::netmap::LinkState::Heard => tr("conn_map_heard_long"),
+        crate::netmap::LinkState::Failing => tr("conn_map_failing_long"),
+        crate::netmap::LinkState::Silent => tr("conn_map_silent_long"),
+    }
+}
+
 fn net_peer_status(p: &crate::network::Peer) -> Vec<(bool, String)> {
     let mut out = Vec::new();
     // Le nom sous lequel elle signe, **quand ce n'est pas déjà le titre**
@@ -13661,7 +13702,7 @@ impl App {
                         // groupe et créé son réseau : les quatre panneaux
                         // ont de quoi dire. Aucun fil ne part.
                         #[cfg(feature = "sync")]
-                        Ok("connexions") => {
+                        Ok(key @ ("connexions" | "connexions_carte")) => {
                             session.posts_auto_tried = true;
                             if session.db.sync_post().is_none() {
                                 let _ =
@@ -13674,6 +13715,15 @@ impl App {
                             session.log_connection(false, tr("conn_sync_asked"));
                             session.reload_connections();
                             session.view = MainView::Connexions;
+                            // La carte, une officine choisie : le volet
+                            // montre ses gestes.
+                            if key == "connexions_carte" {
+                                session.conn_map = true;
+                                session.conn_pick =
+                                    session.db.net_peers().ok().and_then(|p| {
+                                        p.last().map(|p| format!("net:{}", p.device))
+                                    });
+                            }
                         }
                         Ok(key @ ("ruptures" | "reseau")) => {
                             session.reload_supply();
@@ -24724,8 +24774,14 @@ impl App {
             .size()
             .x
         });
-        let sub_rows = (sub_w / usable).ceil().max(1.0);
-        heading.max(button) + (rows - 1.0) * (button + spacing) + spacing + sub_rows * line + 14.0
+        // Sans sous-titre, pas de ligne pour lui : la carte des connexions
+        // le retire, et la ligne vide restait réservée.
+        let sub = if subtitle.is_empty() {
+            0.0
+        } else {
+            spacing + (sub_w / usable).ceil().max(1.0) * line
+        };
+        heading.max(button) + (rows - 1.0) * (button + spacing) + sub + 14.0
     }
 
     /// How tall the identity band needs to be: a header and one or two
@@ -55560,9 +55616,15 @@ impl App {
                 Self::button_width(ui, tr("conn_sync_all")),
                 Self::button_width(ui, tr("posts_open")),
                 Self::button_width(ui, tr("net_open")),
+                Self::button_width(ui, tr("conn_map")),
             ]
             .into_iter(),
-            tr("conn_subtitle"),
+            // En carte, la phrase d'en-tête cède sa place au dessin.
+            if session.conn_map {
+                ""
+            } else {
+                tr("conn_subtitle")
+            },
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         #[cfg(not(feature = "sync"))]
@@ -55601,16 +55663,38 @@ impl App {
                     {
                         open_net = true;
                     }
+                    // La carte : les mêmes connexions, dessinées.
+                    if motif::toggle(ui, tr("conn_map"), session.conn_map)
+                        .on_hover_text(tr("conn_map_tooltip"))
+                        .clicked()
+                    {
+                        session.conn_map = !session.conn_map;
+                    }
                 });
-                ui.add(
-                    egui::Label::new(
-                        egui::RichText::new(tr("conn_subtitle"))
-                            .size(motif::pt(ui, 11.5))
-                            .color(motif::text_dim()),
-                    )
-                    .wrap(),
-                );
+                if !session.conn_map {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("conn_subtitle"))
+                                .size(motif::pt(ui, 11.5))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                }
             });
+            if session.conn_map {
+                Self::conn_map_view(
+                    ui,
+                    session,
+                    config,
+                    rows[1],
+                    &mut sync_all,
+                    &mut open_posts,
+                    &mut open_net,
+                );
+                Self::conn_tail(ui, session, config, sync_all, open_posts, open_net);
+                return;
+            }
             let wide = rows[1].width() >= chars_wide(ui, 110.0);
             let panes = if wide {
                 let cols = motif::split_columns(rows[1], 3, 8.0);
@@ -55988,27 +56072,458 @@ impl App {
                     session.versions_open = Some(id);
                 }
             }
-            if sync_all {
-                if let Some((_, poke)) = &session.posts_auto {
-                    let _ = poke.send(crate::postes::Poke::Now);
-                }
-                session.start_net_sync(config);
-                session.log_connection(false, tr("conn_sync_asked"));
-            }
-            if let Some(address) = open_posts {
-                if session.posts_window.is_none() {
-                    session.posts_window = Some(PostsWindow {
-                        summary: PostsSummary::read(&session.db).ok(),
-                        join_address: address,
-                        ..PostsWindow::default()
-                    });
-                }
-            }
-            if open_net && session.net_window.is_none() {
-                session.net_window = Some(NetWindow::opened(&session.db));
-            }
-            Self::net_window(ui.ctx(), session, config);
+            Self::conn_tail(ui, session, config, sync_all, open_posts, open_net);
         }
+    }
+
+    /// **La carte des connexions** : ce poste au centre, les postes et les
+    /// officines autour, chaque lien dans son état (`src/netmap.rs`). Un
+    /// clic choisit un nœud ; le volet d'à côté dit ce qu'on en sait et ce
+    /// qu'on peut faire — écrire, envoyer un fichier, se connecter.
+    #[cfg(feature = "sync")]
+    #[allow(clippy::too_many_arguments)]
+    fn conn_map_view(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        config: &Config,
+        rect: egui::Rect,
+        sync_all: &mut bool,
+        open_posts: &mut Option<String>,
+        open_net: &mut bool,
+    ) {
+        use crate::netmap::{LinkState, NodeKind};
+        let Some(sum) = &session.conn_summary else {
+            return;
+        };
+        let posts: Vec<db::PostRow> = sum
+            .posts
+            .as_ref()
+            .map(|p| p.posts.clone())
+            .unwrap_or_default();
+        let my_post = sum.posts.as_ref().ok().and_then(|p| p.post);
+        let peers: Vec<crate::network::Peer> = sum
+            .net
+            .as_ref()
+            .map(|n| n.peers.clone())
+            .unwrap_or_default();
+        let heard = session.posts_peers.clone();
+        let nodes = crate::netmap::nodes(
+            tr("conn_map_me"),
+            my_post,
+            &posts
+                .iter()
+                .map(|p| crate::netmap::PostIn {
+                    post: p.post,
+                    device: &p.device,
+                    name: &p.name,
+                    left: !p.left_on.is_empty(),
+                })
+                .collect::<Vec<_>>(),
+            &heard
+                .iter()
+                .map(|h| crate::netmap::HeardIn {
+                    device: &h.device,
+                    talked: h.talked,
+                })
+                .collect::<Vec<_>>(),
+            &peers
+                .iter()
+                .map(|p| crate::netmap::OfficineIn {
+                    device: &p.device,
+                    name: &p.name,
+                    seen_as: &p.seen_as,
+                    received: p.received,
+                    last_ok: &p.last_ok,
+                    last_try: &p.last_try,
+                    last_error: &p.last_error,
+                })
+                .collect::<Vec<_>>(),
+            &|n| trf("conn_map_post", n),
+            &crate::network::peer_groups,
+        );
+        let places = crate::netmap::layout(&nodes);
+        // La carte à gauche, le volet du nœud à droite ; l'un sur l'autre
+        // quand la vue est étroite.
+        let side_w = chars_wide(ui, 34.0);
+        let (map_rect, side_rect) = if rect.width() >= side_w * 2.2 {
+            (
+                egui::Rect::from_min_max(
+                    rect.min,
+                    egui::pos2(rect.right() - side_w - 8.0, rect.bottom()),
+                ),
+                egui::Rect::from_min_max(egui::pos2(rect.right() - side_w, rect.top()), rect.max),
+            )
+        } else {
+            // L'une sur l'autre : le volet garde quelques rangées, la carte
+            // le reste.
+            let side_h = (rect.height() * 0.32).min(Self::row_height(ui) * 5.0);
+            let parts = motif::split_rows(rect, &[0.0, side_h], 8.0);
+            (parts[0], parts[1])
+        };
+        let mut picked: Option<Option<String>> = None;
+        motif::panel(ui, map_rect, Some(tr("conn_map_title")), |ui| {
+            let color = |s: LinkState| match s {
+                LinkState::Ok => motif::accent(),
+                LinkState::Heard => motif::text_dim(),
+                LinkState::Failing => motif::alert(),
+                LinkState::Silent => motif::text_faint(),
+            };
+            // **La légende montre les traits**, pas des pastilles : c'est
+            // la forme qui dit l'état autant que la couleur.
+            let draw_stroke = |painter: &egui::Painter, line: [egui::Pos2; 2], st: LinkState| {
+                let c = color(st);
+                match st {
+                    LinkState::Ok => {
+                        painter.line_segment(line, egui::Stroke::new(2.5_f32, c));
+                    }
+                    LinkState::Heard => {
+                        painter.line_segment(line, egui::Stroke::new(1.0_f32, c));
+                    }
+                    LinkState::Failing => {
+                        painter.extend(egui::Shape::dashed_line(
+                            &line,
+                            egui::Stroke::new(2.0_f32, c),
+                            8.0,
+                            5.0,
+                        ));
+                    }
+                    LinkState::Silent => {
+                        painter.extend(egui::Shape::dotted_line(&line, c, 6.0, 1.2));
+                    }
+                }
+            };
+            ui.horizontal_wrapped(|ui| {
+                for (st, label) in [
+                    (LinkState::Ok, tr("conn_map_ok")),
+                    (LinkState::Heard, tr("conn_map_heard")),
+                    (LinkState::Failing, tr("conn_map_failing")),
+                    (LinkState::Silent, tr("conn_map_silent")),
+                ] {
+                    let (r, _) = ui.allocate_exact_size(
+                        egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
+                        egui::Sense::hover(),
+                    );
+                    draw_stroke(ui.painter(), [r.left_center(), r.right_center()], st);
+                    ui.label(
+                        egui::RichText::new(label)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                    ui.add_space(6.0);
+                }
+            });
+            let field = ui.available_rect_before_wrap();
+            // **Les cercles prennent toute la place** : en ellipses quand la
+            // carte est large et basse, plutôt qu'en un carré qui entasse
+            // les nœuds au milieu d'une bande étroite. Une marge garde les
+            // noms dans le cadre.
+            let pad = egui::vec2(chars_wide(ui, 8.0), Self::label_line(ui) * 1.5);
+            let square = field.shrink2(pad.min(field.size() * 0.3));
+            let resp = ui.allocate_rect(field, egui::Sense::click());
+            let painter = ui.painter_at(field);
+            let at = |i: usize| {
+                let (x, y) = places[i];
+                // Les places vont de 0,1 à 0,9 : étirées sur le cadre.
+                egui::pos2(
+                    square.left() + (x - 0.1) / 0.8 * square.width(),
+                    square.top() + (y - 0.1) / 0.8 * square.height(),
+                )
+            };
+            let pixels: Vec<(f32, f32)> = (0..places.len())
+                .map(|i| {
+                    let p = at(i);
+                    (p.x, p.y)
+                })
+                .collect();
+            let r = motif::pt(ui, 9.0);
+            // Les liens d'abord, sous les nœuds.
+            for (i, n) in nodes.iter().enumerate().skip(1) {
+                draw_stroke(&painter, [at(0), at(i)], n.state);
+            }
+            let label_font = egui::FontId::proportional(motif::pt(ui, 10.5));
+            let label_w = chars_wide(ui, 16.0);
+            for (i, n) in nodes.iter().enumerate() {
+                let c = at(i);
+                let chosen = session.conn_pick.as_deref() == Some(n.key.as_str());
+                let ring = egui::Stroke::new(
+                    if chosen { 3.0_f32 } else { 1.0_f32 },
+                    if chosen {
+                        motif::accent()
+                    } else {
+                        motif::text()
+                    },
+                );
+                match n.kind {
+                    NodeKind::Me => {
+                        let b = egui::Rect::from_center_size(c, egui::vec2(r * 2.4, r * 2.4));
+                        painter.rect_filled(b, 0.0, motif::accent());
+                        painter.rect_stroke(b, 0.0, ring);
+                    }
+                    NodeKind::Post => {
+                        let b = egui::Rect::from_center_size(c, egui::vec2(r * 2.0, r * 2.0));
+                        painter.rect_filled(b, 0.0, motif::bg_light());
+                        painter.rect_stroke(b, 0.0, ring);
+                    }
+                    NodeKind::Officine => {
+                        painter.circle_filled(c, r, motif::bg_light());
+                        painter.circle_stroke(c, r, ring);
+                    }
+                }
+                let mut job = egui::text::LayoutJob::single_section(
+                    n.label.clone(),
+                    egui::TextFormat {
+                        font_id: label_font.clone(),
+                        color: motif::text(),
+                        ..Default::default()
+                    },
+                );
+                job.wrap = egui::text::TextWrapping {
+                    max_width: label_w,
+                    max_rows: 1,
+                    break_anywhere: false,
+                    overflow_character: Some('…'),
+                };
+                job.halign = egui::Align::Center;
+                let g = ui.fonts(|f| f.layout_job(job));
+                painter.galley(c + egui::vec2(0.0, r * 1.4), g, motif::text());
+            }
+            // Le survol dit l'état ; le clic choisit — au plus près, en
+            // pixels.
+            let reach = r * 1.8;
+            if let Some(p) = resp.hover_pos() {
+                if let Some(i) = crate::netmap::hit(&pixels, p.x, p.y, reach) {
+                    resp.clone().on_hover_text(format!(
+                        "{} — {}",
+                        nodes[i].label,
+                        conn_state_text(nodes[i].state)
+                    ));
+                }
+            }
+            if resp.clicked() {
+                if let Some(p) = resp.interact_pointer_pos() {
+                    picked = Some(
+                        crate::netmap::hit(&pixels, p.x, p.y, reach).map(|i| nodes[i].key.clone()),
+                    );
+                }
+            }
+        });
+        if let Some(p) = picked {
+            session.conn_pick = p;
+        }
+        // Le volet du nœud choisi.
+        let chosen = session
+            .conn_pick
+            .as_ref()
+            .and_then(|k| nodes.iter().find(|n| &n.key == k))
+            .cloned();
+        let mut write_net: Option<String> = None;
+        let mut file_net: Option<String> = None;
+        let mut dial: Option<String> = None;
+        motif::panel(
+            ui,
+            side_rect,
+            Some(
+                chosen
+                    .as_ref()
+                    .map(|n| n.label.as_str())
+                    .unwrap_or(tr("conn_map_pick_title")),
+            ),
+            |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("conn_map_side")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let small = |ui: &egui::Ui, t: String| {
+                            egui::RichText::new(t)
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim())
+                        };
+                        let Some(n) = &chosen else {
+                            ui.add(
+                                egui::Label::new(small(ui, tr("conn_map_pick").to_owned())).wrap(),
+                            );
+                            return;
+                        };
+                        ui.label(
+                            egui::RichText::new(conn_state_text(n.state))
+                                .size(motif::pt(ui, 11.0))
+                                .color(match n.state {
+                                    LinkState::Failing => motif::alert(),
+                                    _ => motif::text(),
+                                }),
+                        );
+                        match n.kind {
+                            NodeKind::Me => {
+                                ui.add(
+                                    egui::Label::new(small(ui, tr("conn_map_me_note").to_owned()))
+                                        .wrap(),
+                                );
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::icon_button(
+                                        ui,
+                                        Some(motif::Pict::Link),
+                                        tr("conn_sync_all"),
+                                    )
+                                    .clicked()
+                                    {
+                                        *sync_all = true;
+                                    }
+                                    if motif::button(ui, tr("posts_open")).clicked() {
+                                        *open_posts = Some(String::new());
+                                    }
+                                    if motif::button(ui, tr("net_open"))
+                                        .on_hover_text(tr("conn_map_invite_tooltip"))
+                                        .clicked()
+                                    {
+                                        *open_net = true;
+                                    }
+                                });
+                            }
+                            NodeKind::Post => {
+                                if let Some(h) = heard.iter().find(|h| h.device == n.device) {
+                                    ui.label(small(ui, h.address.clone()));
+                                }
+                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button(ui, tr("conn_map_sync_posts")).clicked() {
+                                        if let Some((_, poke)) = &session.posts_auto {
+                                            let _ = poke.send(crate::postes::Poke::Now);
+                                        }
+                                    }
+                                    if motif::button(ui, tr("posts_open")).clicked() {
+                                        *open_posts = Some(String::new());
+                                    }
+                                });
+                            }
+                            NodeKind::Officine => {
+                                if let Some(p) = peers.iter().find(|p| p.device == n.device) {
+                                    ui.label(small(ui, crate::network::peer_groups(&p.device)));
+                                    if !p.address.trim().is_empty() {
+                                        ui.label(small(ui, p.address.clone()));
+                                    }
+                                    for (bad, line) in net_peer_status(p) {
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(line)
+                                                    .size(motif::pt(ui, 10.5))
+                                                    .color(if bad {
+                                                        motif::alert()
+                                                    } else {
+                                                        motif::text_dim()
+                                                    }),
+                                            )
+                                            .wrap(),
+                                        );
+                                    }
+                                    ui.add_space(4.0);
+                                    ui.horizontal_wrapped(|ui| {
+                                        if motif::button(ui, tr("conn_map_write")).clicked() {
+                                            write_net = Some(p.device.clone());
+                                        }
+                                        if motif::icon_button(
+                                            ui,
+                                            Some(motif::Pict::Doc),
+                                            tr("conn_map_file"),
+                                        )
+                                        .on_hover_text(tr("conn_map_file_tooltip"))
+                                        .clicked()
+                                        {
+                                            file_net = Some(p.device.clone());
+                                        }
+                                        if !p.address.trim().is_empty()
+                                            && motif::button_enabled(
+                                                ui,
+                                                tr("net_peer_dial"),
+                                                session.net_auto.is_none(),
+                                            )
+                                            .on_hover_text(tr("net_peer_dial_tooltip"))
+                                            .clicked()
+                                        {
+                                            dial = Some(p.device.clone());
+                                        }
+                                    });
+                                    if !session.msg.peer_keys.contains(&p.device) {
+                                        ui.add(
+                                            egui::Label::new(small(
+                                                ui,
+                                                tr("msg_net_no_key").to_owned(),
+                                            ))
+                                            .wrap(),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    });
+            },
+        );
+        if let Some(device) = write_net {
+            session.write_to_officine(&device);
+            session.activate_tab(&WorkTab::Messages);
+        }
+        if let Some(device) = file_net {
+            session.write_to_officine(&device);
+            if let Some(path) = rfd::FileDialog::new().pick_file() {
+                match std::fs::read(&path) {
+                    Ok(bytes) if bytes.len() <= crate::messages::MAX_FILE => {
+                        let name = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        session.msg.attach = Some((crate::messages::safe_name(&name), bytes));
+                    }
+                    Ok(_) => {
+                        session.msg.note = Some((
+                            true,
+                            trf(
+                                "msg_file_too_big",
+                                crate::messages::MAX_FILE / (1024 * 1024),
+                            ),
+                        ));
+                    }
+                    Err(e) => session.msg.note = Some((true, e.to_string())),
+                }
+            }
+            session.activate_tab(&WorkTab::Messages);
+        }
+        if let Some(device) = dial {
+            session.start_net_dial(&device, config);
+        }
+    }
+
+    /// Ce que les deux formes de la vue des connexions demandent en
+    /// commun : tout synchroniser, ouvrir la fenêtre des postes ou du
+    /// réseau — et dessiner celle du réseau quand elle est ouverte.
+    #[cfg(feature = "sync")]
+    fn conn_tail(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        config: &Config,
+        sync_all: bool,
+        open_posts: Option<String>,
+        open_net: bool,
+    ) {
+        if sync_all {
+            if let Some((_, poke)) = &session.posts_auto {
+                let _ = poke.send(crate::postes::Poke::Now);
+            }
+            session.start_net_sync(config);
+            session.log_connection(false, tr("conn_sync_asked"));
+        }
+        if let Some(address) = open_posts {
+            if session.posts_window.is_none() {
+                session.posts_window = Some(PostsWindow {
+                    summary: PostsSummary::read(&session.db).ok(),
+                    join_address: address,
+                    ..PostsWindow::default()
+                });
+            }
+        }
+        if open_net && session.net_window.is_none() {
+            session.net_window = Some(NetWindow::opened(&session.db));
+        }
+        Self::net_window(ui.ctx(), session, config);
     }
 
     /// Une question « à arbitrer », en une ligne : où, quoi, les deux

@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.314.0] - 2026-09-24
+
+### Added
+- **Carte des connexions.** « Carte », dans la vue Connexions : ce poste
+  au centre, les postes de l'officine autour, les officines du réseau
+  au-delà, chaque lien dessiné selon son état (plein, fin, tirets,
+  pointillés). Un clic sur une officine propose Écrire, Envoyer un
+  fichier… et Essayer ; sur un poste, le synchroniser ; sur ce poste,
+  tout synchroniser, relier un poste ou inviter une officine.
+
 ## [0.313.0] - 2026-09-24
 
 ### Added

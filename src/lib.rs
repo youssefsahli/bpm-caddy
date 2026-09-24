@@ -40,6 +40,7 @@ pub mod location;
 pub mod maintenance;
 pub mod messages;
 #[cfg(feature = "sync")]
+pub mod netmap;
 pub mod network;
 pub mod ordonnance;
 pub mod ordonnancier;
