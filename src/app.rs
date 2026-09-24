@@ -11623,6 +11623,65 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// route — type three letters of the thing itself and land on it. It is
 /// deliberately keyboard-only in spirit: the arrows walk the list, Entrée
 /// opens, Échap gives up and leaves the view exactly where it was.
+/// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
+/// nature, et la nature en petit à droite.
+fn goto_row(ui: &mut egui::Ui, hit: &GotoHit, active: bool, row_h: f32) -> egui::Response {
+    let row = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(egui::vec2(row, row_h), egui::Sense::click());
+    if active || resp.hovered() {
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            if active { motif::accent() } else { motif::bg() },
+        );
+    }
+    let fg = if active { motif::bg() } else { motif::text() };
+    // **Le libellé s'arrête avant la nature.** Les deux étaient peints
+    // sans borne, l'un depuis la gauche et l'autre depuis la droite, et un
+    // `Painter` peint où on lui dit : « Colposeptine — chlorquinaldol et
+    // promestriène » passait sous « fiche », et ni l'un ni l'autre ne se
+    // lisait. La nature est courte et se mesure ; c'est le libellé qui
+    // cède la place, et il s'élide plutôt que de sortir.
+    let kind_font = egui::FontId::proportional(motif::pt(ui, 10.0));
+    let kind_w = ui.fonts(|f| {
+        f.layout_no_wrap(hit.kind.to_owned(), kind_font.clone(), motif::text_dim())
+            .size()
+            .x
+    });
+    let mut job = egui::text::LayoutJob::single_section(
+        hit.label.clone(),
+        egui::TextFormat {
+            font_id: egui::FontId::proportional(motif::pt(ui, 13.0)),
+            color: fg,
+            ..Default::default()
+        },
+    );
+    job.wrap = egui::text::TextWrapping {
+        max_width: (row - kind_w - 18.0).max(8.0),
+        max_rows: 1,
+        break_anywhere: false,
+        overflow_character: Some('…'),
+    };
+    let galley = ui.fonts(|f| f.layout_job(job));
+    ui.painter().galley(
+        egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0),
+        galley,
+        fg,
+    );
+    ui.painter().text(
+        rect.right_center() - egui::vec2(6.0, 0.0),
+        egui::Align2::RIGHT_CENTER,
+        hit.kind,
+        kind_font,
+        if active {
+            motif::bg()
+        } else {
+            motif::text_dim()
+        },
+    );
+    resp
+}
+
 fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
     // The arrows and Entrée are claimed before the field is drawn, or
     // the text cursor would eat them and the list would never move.
@@ -11689,10 +11748,27 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             // venait y découvrir, n'étaient plus nulle part.
             let cap = (ctx.screen_rect().bottom() - ui.cursor().top() - App::row_height(ui) * 2.0)
                 .max(App::label_line(ui) * 4.0);
-            // La hauteur d'un champ : une rangée de liste se lit comme une
-            // ligne qu'on choisit, pas comme un bouton.
-            let row_h = ui.spacing().interact_size.y;
-            let content = hits.len() as f32 * (row_h + ui.spacing().item_spacing.y);
+            // La hauteur de la ligne de texte qu'elle porte, et un peu
+            // d'air : la hauteur d'un champ faisait de douze résultats une
+            // liste qui défile, et la dernière rangée — « Chercher dans le
+            // texte », la sortie d'une recherche qui n'a rien trouvé par
+            // nom — passait sous le bord.
+            let row_h = ui
+                .fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 13.0))))
+                + ui.spacing().button_padding.y * 2.0;
+            // **La recherche dans le texte reste en vue** : c'est la sortie
+            // d'une recherche qui n'a rien trouvé par nom, et elle est
+            // toujours la dernière rangée — donc la première à passer sous
+            // le bord d'une liste qui défile.
+            let pinned = hits.last().is_some_and(|h| matches!(h.dest, Goto::Text(_)));
+            let listed = if pinned { hits.len() - 1 } else { hits.len() };
+            let cap = if pinned {
+                (cap - row_h).max(row_h * 2.0)
+            } else {
+                cap
+            };
+            let content = listed as f32 * row_h;
+            let selected = session.goto_selected;
             egui::ScrollArea::vertical()
                 .id_salt("goto_list")
                 .max_height(cap)
@@ -11701,77 +11777,28 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                 .min_scrolled_height(content.min(cap))
                 .auto_shrink([false, true])
                 .show(ui, |ui| {
-                    for (i, hit) in hits.iter().enumerate() {
-                        let row = ui.available_width();
-                        let (rect, resp) =
-                            ui.allocate_exact_size(egui::vec2(row, row_h), egui::Sense::click());
-                        let active = i == session.goto_selected;
+                    // Chaque rangée porte son propre air.
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    for (i, hit) in hits.iter().take(listed).enumerate() {
+                        let active = i == selected;
+                        let resp = goto_row(ui, hit, active, row_h);
                         // Les flèches font défiler jusqu'à la rangée choisie.
                         if active && (down || up) {
                             resp.scroll_to_me(None);
                         }
-                        if active || resp.hovered() {
-                            ui.painter().rect_filled(
-                                rect,
-                                0.0,
-                                if active { motif::accent() } else { motif::bg() },
-                            );
-                        }
-                        let fg = if active { motif::bg() } else { motif::text() };
-                        // **Le libellé s'arrête avant la nature.** Les deux
-                        // étaient peints sans borne, l'un depuis la gauche et
-                        // l'autre depuis la droite, et un `Painter` peint où on
-                        // lui dit : « Colposeptine — chlorquinaldol et
-                        // promestriène » passait sous « fiche », et ni l'un ni
-                        // l'autre ne se lisait. La nature est courte et se
-                        // mesure ; c'est le libellé qui cède la place, et il
-                        // s'élide plutôt que de sortir.
-                        let kind_font = egui::FontId::proportional(motif::pt(ui, 10.0));
-                        let kind_w = ui.fonts(|f| {
-                            f.layout_no_wrap(
-                                hit.kind.to_owned(),
-                                kind_font.clone(),
-                                motif::text_dim(),
-                            )
-                            .size()
-                            .x
-                        });
-                        let mut job = egui::text::LayoutJob::single_section(
-                            hit.label.clone(),
-                            egui::TextFormat {
-                                font_id: egui::FontId::proportional(motif::pt(ui, 13.0)),
-                                color: fg,
-                                ..Default::default()
-                            },
-                        );
-                        job.wrap = egui::text::TextWrapping {
-                            max_width: (row - kind_w - 18.0).max(8.0),
-                            max_rows: 1,
-                            break_anywhere: false,
-                            overflow_character: Some('…'),
-                        };
-                        let galley = ui.fonts(|f| f.layout_job(job));
-                        ui.painter().galley(
-                            egui::pos2(rect.left() + 6.0, rect.center().y - galley.size().y / 2.0),
-                            galley,
-                            fg,
-                        );
-                        ui.painter().text(
-                            rect.right_center() - egui::vec2(6.0, 0.0),
-                            egui::Align2::RIGHT_CENTER,
-                            hit.kind,
-                            kind_font,
-                            if active {
-                                motif::bg()
-                            } else {
-                                motif::text_dim()
-                            },
-                        );
                         if resp.clicked() {
                             chosen = Some(hit.dest.clone());
                         }
                     }
                 });
+            if pinned {
+                if let Some(hit) = hits.last() {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    if goto_row(ui, hit, selected + 1 == hits.len(), row_h).clicked() {
+                        chosen = Some(hit.dest.clone());
+                    }
+                }
+            }
         });
     motif::dialog_relief(ctx, &shown);
     if enter {
@@ -33110,6 +33137,26 @@ impl App {
     fn frame_dialog(ctx: &egui::Context, session: &mut Session, config: &Config) {
         if !session.frame.open {
             return;
+        }
+        // **Ouverte sans personne choisie** — par « Aller à… », avant que
+        // le planning n'ait posé la sienne —, la trame prend l'opérateur
+        // de ce poste s'il est de l'équipe, sinon le premier de l'équipe :
+        // une grille vide sous un menu vide ne dit pas quoi faire.
+        if session.frame.operator.trim().is_empty() {
+            let me = session.operator.trim();
+            let pick = config
+                .pharmacy
+                .operators
+                .iter()
+                .map(|o| o.initials.trim())
+                .find(|i| !me.is_empty() && *i == me)
+                .or_else(|| config.pharmacy.operators.first().map(|o| o.initials.trim()))
+                .unwrap_or_default()
+                .to_owned();
+            if !pick.is_empty() {
+                session.frame.operator = pick;
+                Self::frame_load(session);
+            }
         }
         // Ce qu'on tape est en français, ce qui est rangé est ISO, et la
         // conversion ne va que dans un sens : tant que la frappe ne se

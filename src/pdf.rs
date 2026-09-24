@@ -4328,6 +4328,24 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_CR_TEMPLATE,
     },
     Doc {
+        key: "trod",
+        label: "tpl_target_trod",
+        markers: MARKERS_TROD,
+        default: DEFAULT_TROD_TEMPLATE,
+    },
+    Doc {
+        key: "trod_cr",
+        label: "tpl_target_trod_cr",
+        markers: MARKERS_TROD_CR,
+        default: DEFAULT_TROD_CR_TEMPLATE,
+    },
+    Doc {
+        key: "vaccin",
+        label: "tpl_target_vaccin",
+        markers: MARKERS_VACCIN,
+        default: DEFAULT_VACCIN_TEMPLATE,
+    },
+    Doc {
         key: "carnet",
         label: "tpl_target_carnet",
         markers: MARKERS_CARNET,
@@ -4512,24 +4530,6 @@ pub const DOCS: &[Doc] = &[
         label: "tpl_target_surveillance",
         markers: MARKERS_SURVEILLANCE,
         default: DEFAULT_SURVEILLANCE_TEMPLATE,
-    },
-    Doc {
-        key: "trod",
-        label: "tpl_target_trod",
-        markers: MARKERS_TROD,
-        default: DEFAULT_TROD_TEMPLATE,
-    },
-    Doc {
-        key: "vaccin",
-        label: "tpl_target_vaccin",
-        markers: MARKERS_VACCIN,
-        default: DEFAULT_VACCIN_TEMPLATE,
-    },
-    Doc {
-        key: "trod_cr",
-        label: "tpl_target_trod_cr",
-        markers: MARKERS_TROD_CR,
-        default: DEFAULT_TROD_CR_TEMPLATE,
     },
 ];
 

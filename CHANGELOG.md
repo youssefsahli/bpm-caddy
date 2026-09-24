@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.298.0] - 2026-09-24
+
+### Changed
+- **Modèles…** : la feuille et le courrier de TROD et la fiche de
+  vaccination se rangent à côté de la fiche d'entretien et du courrier,
+  au lieu de la fin d'une liste de trente-six.
+- `eyeball.sh` lance, comme `smoke.sh`, une copie figée du binaire.
+
+### Fixed
+- **« Aller à… » : « Chercher … dans le texte des fiches » reste en vue**
+  sous la liste, qui défile ; des rangées plus serrées en montrent
+  davantage.
+- **Fenêtre « ? »** : titrée « Raccourcis et outils », puisqu'elle liste
+  les deux.
+- **Trame ouverte depuis « Aller à… »** : sans personne choisie, elle
+  prend l'opérateur du poste s'il est de l'équipe, sinon le premier de
+  l'équipe, au lieu d'un menu « Qui » vide.
+
 ## [0.297.0] - 2026-09-24
 
 ### Added

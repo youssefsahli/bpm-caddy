@@ -92,6 +92,12 @@ if [ -z "$fresh" ]; then
     BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null
 fi
 cargo build
+# Le binaire figé, comme dans `smoke.sh` : une passe dure un quart
+# d'heure, et un `cargo build` fait entre-temps changerait le code
+# qu'elle regarde au milieu des captures.
+bin="$tmp/bpm-caddy"
+cp ./target/debug/bpm-caddy "$bin" || exit 1
+export bin
 
 card="$tmp/vitale.bin"
 demo_vitale_card "$card"
@@ -124,7 +130,7 @@ for view in "${views[@]}"; do
         # scripts de capture. `shot.sh` ne les connaissait pas, et rendait
         # l ecran d accueil pour chacune des quatre.
         demo_view_env "$view" "$card"
-        ./target/debug/bpm-caddy &
+        "$bin" &
         app=$!
         sleep 3
         import -window root +repage -crop "${w}x${h}+0+0" +repage \

@@ -35,7 +35,7 @@ toolbar_goto_tooltip = "Chercher dans toute la base — patient, fiche, table, p
 
 # --- Aide-mémoire des raccourcis ---
 keys_tools = "Outils, par usage"
-keys_title = "Raccourcis clavier"
+keys_title = "Raccourcis et outils"
 keys_goto = "Aller à… : recherche globale dans la base"
 keys_guide = "Mode d'emploi (PDF)…"
 keys_guide_tooltip = "Imprimer le mode d'emploi : rôle de chaque vue, sur une page"
