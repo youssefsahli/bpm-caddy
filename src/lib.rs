@@ -29,6 +29,7 @@ pub mod dosing;
 pub mod elderly;
 pub mod entretien;
 pub mod facets;
+pub mod favorites;
 pub mod fuzzy;
 pub mod graph;
 pub mod gravidity;

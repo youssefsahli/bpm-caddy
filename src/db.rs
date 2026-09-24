@@ -383,6 +383,16 @@ CREATE TABLE IF NOT EXISTS trod_lines (
     -- renommée reste la même ligne chez les autres.
     origin      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS favorites (
+    id          INTEGER PRIMARY KEY,
+    -- Les initiales de qui a épinglé ; vide : le poste sans opérateur.
+    operator    TEXT NOT NULL DEFAULT '',
+    -- `drug`, `patient`, `tool`, `view`, `contact` (`favorites::Kind`).
+    kind        TEXT NOT NULL,
+    target      TEXT NOT NULL,
+    label       TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
     name         TEXT NOT NULL,
@@ -1206,6 +1216,15 @@ const MIGRATIONS: &[&str] = &[
         max_age     INTEGER,
         sex         TEXT NOT NULL DEFAULT '',
         pregnancy   INTEGER NOT NULL DEFAULT 1
+    )",
+    // Les favoris de chaque opérateur — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS favorites (
+        id          INTEGER PRIMARY KEY,
+        operator    TEXT NOT NULL DEFAULT '',
+        kind        TEXT NOT NULL,
+        target      TEXT NOT NULL,
+        label       TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
     // L'identité réseau d'une ligne et d'un vaccin — voir `SCHEMA`.
     "ALTER TABLE trod_lines ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
@@ -30936,6 +30955,88 @@ impl Db {
 
     /// Append a note. For [`NoteSubject::Operator`], `subject_id` is 0
     /// and the operator string itself is the key.
+    /// Les favoris d'un opérateur (initiales ; vide : le poste), dans
+    /// l'ordre où on les montre.
+    pub fn favorites(&self, operator: &str) -> Result<Vec<crate::favorites::Favorite>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, kind, target, label FROM favorites WHERE operator = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([operator.trim()], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, String>(1)?,
+                    r.get::<_, String>(2)?,
+                    r.get::<_, String>(3)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        for row in rows {
+            let (id, kind, target, label) = row.map_err(|e| e.to_string())?;
+            // Une sorte inconnue — écrite par une version plus récente sur
+            // un autre poste — ne s'affiche pas plutôt que de casser la
+            // liste.
+            if let Some(kind) = crate::favorites::Kind::from_key(&kind) {
+                out.push(crate::favorites::Favorite {
+                    id,
+                    kind,
+                    target,
+                    label,
+                });
+            }
+        }
+        Ok(crate::favorites::ordered(out))
+    }
+
+    /// Épingler (`on`) ou désépingler. Idempotent : épingler deux fois
+    /// ne fait qu'un favori, désépingler ce qui ne l'est pas ne fait rien.
+    /// Un favori épinglé deux fois sur deux postes avant qu'ils ne se
+    /// parlent est désépinglé en entier.
+    pub fn set_favorite(
+        &self,
+        operator: &str,
+        kind: crate::favorites::Kind,
+        target: &str,
+        label: &str,
+        on: bool,
+    ) -> Result<(), String> {
+        let operator = operator.trim();
+        if !on {
+            self.conn
+                .execute(
+                    "DELETE FROM favorites WHERE operator = ?1 AND kind = ?2 AND target = ?3",
+                    (operator, kind.key(), target),
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM favorites
+                 WHERE operator = ?1 AND kind = ?2 AND target = ?3)",
+                (operator, kind.key(), target),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if exists {
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO favorites (id, operator, kind, target, label)
+                     VALUES ({next}, ?1, ?2, ?3, ?4)",
+                    next = next_id("favorites")
+                ),
+                (operator, kind.key(), target, label),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
     pub fn add_note(
         &self,
         subject: NoteSubject,
@@ -31915,6 +32016,7 @@ impl Db {
             tx.execute(sql, []).map_err(|e| e.to_string())?;
         }
         for table in [
+            "favorites",
             "notes",
             "patient_drugs",
             "posologies",
@@ -47289,6 +47391,35 @@ mod tests {
         );
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// **Un favori est à une personne**, épinglé une fois même si l'on
+    /// insiste, et désépinglé sans trace.
+    #[test]
+    fn favorites_are_per_operator_and_idempotent() {
+        use crate::favorites::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-fav-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("fav.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.set_favorite("CL", Kind::Drug, "12", "Eliquis", true)
+            .unwrap();
+        db.set_favorite("CL", Kind::Drug, "12", "Eliquis", true)
+            .unwrap();
+        db.set_favorite("CL", Kind::Patient, "3", "Dupont Jean", true)
+            .unwrap();
+        db.set_favorite("YS", Kind::Tool, "trame", "Trame", true)
+            .unwrap();
+        let cl = db.favorites("CL").unwrap();
+        assert_eq!(cl.len(), 2, "deux fois épinglé, une fois rangé");
+        assert_eq!(cl[0].kind, Kind::Patient, "les dossiers d'abord");
+        assert_eq!(db.favorites(" YS ").unwrap().len(), 1);
+        assert!(db.favorites("").unwrap().is_empty());
+        db.set_favorite("CL", Kind::Drug, "12", "", false).unwrap();
+        db.set_favorite("CL", Kind::Drug, "99", "", false).unwrap();
+        assert_eq!(db.favorites("CL").unwrap().len(), 1);
     }
 
     #[test]

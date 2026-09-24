@@ -108,6 +108,9 @@ pub const TABLES: &[Table] = &[
     t("access_log", Main, Dossiers, false, true),
     t("patient_drugs", Main, Dossiers, false, false),
     t("notes", Main, Dossiers, false, true),
+    // Un favori peut nommer un dossier : il voyage sous la clé des
+    // dossiers.
+    t("favorites", Main, Dossiers, false, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
     t("drugs", Main, Fiches, false, true),

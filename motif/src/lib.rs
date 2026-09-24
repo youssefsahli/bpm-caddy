@@ -1094,6 +1094,10 @@ pub enum Pict {
     /// Trois nœuds reliés — les connexions entre les postes et les
     /// officines.
     Link,
+    /// Une étoile vide — pas en favori.
+    Star,
+    /// Une étoile pleine — en favori.
+    StarFull,
 }
 
 /// Paint `pict` inside `rect` (a square of roughly 11 px) in `color`.
@@ -1296,6 +1300,40 @@ pub fn pictogram(painter: &egui::Painter, rect: egui::Rect, pict: Pict, color: C
             painter.rect_filled(node(b), 0.0, color);
             painter.rect_filled(node(c), 0.0, color);
         }
+        Pict::Star | Pict::StarFull => {
+            // Cinq branches : dix sommets, alternés sur deux cercles.
+            let c = r.center();
+            let (outer, inner) = (w.min(h) * 0.5, w.min(h) * 0.2);
+            let points: Vec<egui::Pos2> = (0..10)
+                .map(|i| {
+                    let a = std::f32::consts::PI * (i as f32 / 5.0) - std::f32::consts::FRAC_PI_2;
+                    let rad = if i % 2 == 0 { outer } else { inner };
+                    egui::pos2(c.x + rad * a.cos(), c.y + rad * a.sin())
+                })
+                .collect();
+            if pict == Pict::StarFull {
+                // Un polygone concave ne se remplit pas d'un seul tenant :
+                // cinq triangles de branche et le pentagone du cœur.
+                let inner_ring: Vec<egui::Pos2> =
+                    points.iter().skip(1).step_by(2).copied().collect();
+                painter.add(egui::Shape::convex_polygon(
+                    inner_ring.clone(),
+                    color,
+                    Stroke::NONE,
+                ));
+                for i in 0..5 {
+                    let tip = points[i * 2];
+                    let a = points[(i * 2 + 9) % 10];
+                    let b = points[i * 2 + 1];
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![a, tip, b],
+                        color,
+                        Stroke::NONE,
+                    ));
+                }
+            }
+            painter.add(egui::Shape::closed_line(points, s));
+        }
         Pict::Cog => {
             // A hub with four teeth: distinct from the calendar grid.
             painter.rect_stroke(r.shrink(w * 0.3), 0.0, s);
@@ -1365,6 +1403,24 @@ pub fn icon_button_enabled(
         egui::vec2(size, size),
     );
     pictogram(ui.painter(), square, pict, ink);
+    resp
+}
+
+/// Le libellé muet du bouton étoile — ce qu'une rangée mesure pour lui.
+pub const STAR_LABEL: &str = "   ";
+
+/// **L'étoile d'un favori** : un petit bouton carré, étoile pleine dans
+/// la teinte d'accent quand l'élément est en favori, vide sinon. La
+/// forme dit l'état autant que la couleur.
+pub fn star(ui: &mut egui::Ui, on: bool) -> egui::Response {
+    let resp = button_enabled(ui, STAR_LABEL, true);
+    let size = (resp.rect.height() * 0.5).clamp(8.0, 16.0);
+    let square = egui::Rect::from_center_size(resp.rect.center(), egui::vec2(size, size));
+    if on {
+        pictogram(ui.painter(), square, Pict::StarFull, crate::accent());
+    } else {
+        pictogram(ui.painter(), square, Pict::Star, crate::text_dim());
+    }
     resp
 }
 

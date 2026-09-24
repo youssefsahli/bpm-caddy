@@ -66,6 +66,14 @@ facturation ne s'y propose pas : il se tape (« facturation »). La
 fenêtre « ? » (F12) a deux pages : « Raccourcis », et « Outils, par
 usage », qui liste les outils avec leur usage ; un clic ouvre l'outil.
 
+**Favoris.** L'étoile d'un dossier (à côté du nom), d'une fiche
+médicament (en tête des boutons de la fiche) ou d'un outil (page
+« Outils, par usage ») l'épingle ; dans « Aller à… », Ctrl+D épingle ou
+retire la ligne choisie. Les favoris passent en tête de la boîte ouverte
+à vide, avant les récents, marqués d'une étoile. Ils sont à la personne
+choisie dans le volet (« Opérateur ») et la suivent d'un poste à
+l'autre ; sans opérateur, ce sont ceux du poste.
+
 La recherche ignore la casse et les accents, et accepte des lettres non
 contiguës dans l'ordre : « jndp » retrouve Jean Dupont.
 

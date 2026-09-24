@@ -2939,6 +2939,39 @@ enum Tool {
 }
 
 impl Tool {
+    /// La clé sous laquelle un outil se range en favori. Écrite ici, et
+    /// jamais dérivée du nom de la variante : un renommage dans le code
+    /// ne doit pas perdre les favoris de l'équipe.
+    fn key(self) -> &'static str {
+        match self {
+            Tool::Trame => "trame",
+            Tool::Planning => "planning",
+            Tool::Reseau => "reseau",
+            Tool::Postes => "postes",
+            Tool::Codex => "codex",
+            Tool::Dispositifs => "dispositifs",
+            Tool::Ordonnancier => "ordonnancier",
+            Tool::Vigilance => "vigilance",
+            Tool::Destruction => "destruction",
+            Tool::Pieces => "pieces",
+            Tool::Textes => "textes",
+            Tool::Libelles => "libelles",
+            Tool::Listes => "listes",
+            Tool::Croisement => "croisement",
+            Tool::TrodLines => "trod",
+            Tool::Modeles => "modeles",
+            Tool::Options => "options",
+            Tool::Sauvegarde => "sauvegarde",
+            Tool::Regles => "regles",
+            Tool::Appels => "appels",
+            Tool::Facturation => "facturation",
+        }
+    }
+
+    fn from_key(key: &str) -> Option<Tool> {
+        Tool::ALL.into_iter().find(|t| t.key() == key)
+    }
+
     const ALL: [Tool; 21] = [
         Tool::Trame,
         Tool::Planning,
@@ -3847,6 +3880,10 @@ struct Session {
     /// Les dernières destinations choisies dans la boîte, la plus récente
     /// en tête : elles ouvrent la liste quand la boîte est vide.
     goto_recent: Vec<GotoHit>,
+    /// Les favoris de l'opérateur au poste — voir `src/favorites.rs`.
+    favorites: Vec<crate::favorites::Favorite>,
+    /// À qui sont les favoris chargés : l'opérateur choisi dans le volet.
+    favorites_of: Option<String>,
     /// The last patient search, and the question it answered.
     patient_hits: Vec<Patient>,
     patient_hits_key: Option<(String, u64)>,
@@ -5152,6 +5189,8 @@ impl Session {
             goto_hits: Vec::new(),
             goto_hits_key: None,
             goto_recent: Vec::new(),
+            favorites: Vec::new(),
+            favorites_of: None,
             patient_hits: Vec::new(),
             patient_hits_key: None,
             pending,
@@ -5925,7 +5964,14 @@ impl Session {
                 })
                 .cloned()
                 .collect();
-            let mut menu: Vec<GotoHit> = recent;
+            // **Les favoris avant tout** : ce qu'on a épinglé exprès passe
+            // devant ce qu'on a seulement visité.
+            let mut menu: Vec<GotoHit> = self.favorite_hits();
+            for h in recent {
+                if !menu.iter().any(|r| r.dest == h.dest) {
+                    menu.push(h);
+                }
+            }
             for (_, h) in out {
                 if !menu.iter().any(|r| r.dest == h.dest) {
                     menu.push(h);
@@ -6107,6 +6153,90 @@ impl Session {
     /// Retenir une destination de la boîte : en tête, sans doublon,
     /// cinq au plus. La liste à vide se recalcule à la prochaine
     /// ouverture.
+    /// Relire les favoris de `operator` (initiales ; vide : le poste).
+    fn load_favorites(&mut self, operator: &str) {
+        self.favorites = self.db.favorites(operator).unwrap_or_default();
+        self.favorites_of = Some(operator.trim().to_owned());
+        self.goto_hits_key = None;
+    }
+
+    /// Ce qu'une destination de la boîte serait comme favori — s'il y a
+    /// lieu : un dossier, une fiche, un outil, une vue permanente.
+    fn fav_target(dest: &Goto) -> Option<(crate::favorites::Kind, String)> {
+        use crate::favorites::Kind;
+        match dest {
+            Goto::Patient(id) => Some((Kind::Patient, id.to_string())),
+            Goto::Drug(id) => Some((Kind::Drug, id.to_string())),
+            Goto::Tool(t) => Some((Kind::Tool, t.key().to_owned())),
+            Goto::Tab(tab) => view_fav_key(tab).map(|k| (Kind::View, k.to_owned())),
+            _ => None,
+        }
+    }
+
+    fn is_favorite(&self, dest: &Goto) -> bool {
+        Self::fav_target(dest).is_some_and(|(k, t)| crate::favorites::has(&self.favorites, k, &t))
+    }
+
+    /// Épingler ou désépingler une destination, pour l'opérateur au poste.
+    fn toggle_favorite(&mut self, dest: &Goto, label: &str) {
+        let Some((kind, target)) = Self::fav_target(dest) else {
+            return;
+        };
+        let on = !crate::favorites::has(&self.favorites, kind, &target);
+        let who = self.favorites_of.clone().unwrap_or_default();
+        match self.db.set_favorite(&who, kind, &target, label, on) {
+            Ok(()) => self.load_favorites(&who),
+            Err(e) => self.error = Some(e),
+        }
+    }
+
+    /// Les favoris comme lignes de la boîte, avec leur nom **d'aujourd'hui**
+    /// — un dossier renommé se montre sous son nouveau nom — et sans ceux
+    /// dont la cible a disparu.
+    fn favorite_hits(&self) -> Vec<GotoHit> {
+        use crate::favorites::Kind;
+        self.favorites
+            .iter()
+            .filter_map(|f| match f.kind {
+                Kind::Patient => {
+                    let id: i64 = f.target.parse().ok()?;
+                    let p = self.patients.iter().find(|p| p.id == id)?;
+                    Some(GotoHit {
+                        dest: Goto::Patient(id),
+                        label: format!("{} {}", p.first_name, p.last_name),
+                        kind: tr("goto_kind_patient"),
+                    })
+                }
+                Kind::Drug => {
+                    let id: i64 = f.target.parse().ok()?;
+                    let d = self.drugs.iter().find(|d| d.id == id)?;
+                    Some(GotoHit {
+                        dest: Goto::Drug(id),
+                        label: d.name.clone(),
+                        kind: tr("goto_kind_drug"),
+                    })
+                }
+                Kind::Tool => {
+                    let t = Tool::from_key(&f.target).filter(|t| t.available())?;
+                    Some(GotoHit {
+                        dest: Goto::Tool(t),
+                        label: t.title().to_owned(),
+                        kind: tr("goto_kind_tool"),
+                    })
+                }
+                Kind::View => {
+                    let tab = view_from_fav_key(&f.target)?;
+                    Some(GotoHit {
+                        label: self.tab_label(&tab),
+                        dest: Goto::Tab(tab),
+                        kind: tr("goto_kind_view"),
+                    })
+                }
+                Kind::Contact => None,
+            })
+            .collect()
+    }
+
     fn remember_goto(&mut self, hit: GotoHit) {
         self.goto_recent.retain(|h| h.dest != hit.dest);
         self.goto_recent.insert(0, hit);
@@ -6645,6 +6775,10 @@ impl Session {
         }
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
+        }
+        // Un favori épinglé sur l'autre poste arrive ici.
+        if let Some(op) = self.favorites_of.clone() {
+            self.load_favorites(&op);
         }
         // Les phrases que l'officine a réécrites : une correction faite
         // au comptoir doit atteindre l'imprimante de l'autre poste.
@@ -11682,7 +11816,48 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// opens, Échap gives up and leaves the view exactly where it was.
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
-fn goto_row(ui: &mut egui::Ui, hit: &GotoHit, active: bool, row_h: f32) -> egui::Response {
+/// Les vues permanentes qu'on peut épingler, et leur clé en base.
+fn standing_views() -> [(WorkTab, &'static str); 15] {
+    [
+        (WorkTab::Dashboard, "tableau"),
+        (WorkTab::Search, "recherche"),
+        (WorkTab::Drugs, "medicaments"),
+        (WorkTab::Agenda, "agenda"),
+        (WorkTab::Carnet, "carnet"),
+        (WorkTab::Map, "carte"),
+        (WorkTab::Registres, "registres"),
+        (WorkTab::Explorer, "explorateur"),
+        (WorkTab::Classes, "classes"),
+        (WorkTab::Stats, "statistiques"),
+        (WorkTab::Ruptures, "ruptures"),
+        (WorkTab::Connexions, "connexions"),
+        (WorkTab::Script, "console"),
+        (WorkTab::Caisse, "caisse"),
+        (WorkTab::Finances, "recettes"),
+    ]
+}
+
+fn view_fav_key(tab: &WorkTab) -> Option<&'static str> {
+    standing_views()
+        .into_iter()
+        .find(|(t, _)| t == tab)
+        .map(|(_, k)| k)
+}
+
+fn view_from_fav_key(key: &str) -> Option<WorkTab> {
+    standing_views()
+        .into_iter()
+        .find(|(_, k)| *k == key)
+        .map(|(t, _)| t)
+}
+
+fn goto_row(
+    ui: &mut egui::Ui,
+    hit: &GotoHit,
+    active: bool,
+    row_h: f32,
+    fav: bool,
+) -> egui::Response {
     let row = ui.available_width();
     let (rect, resp) = ui.allocate_exact_size(egui::vec2(row, row_h), egui::Sense::click());
     if active || resp.hovered() {
@@ -11705,6 +11880,10 @@ fn goto_row(ui: &mut egui::Ui, hit: &GotoHit, active: bool, row_h: f32) -> egui:
             .size()
             .x
     });
+    // L'étoile d'un favori, devant la nature : la place est prise sur le
+    // libellé, comme la nature.
+    let star = if fav { kind_font.size } else { 0.0 };
+    let kind_w = kind_w + if fav { star + 6.0 } else { 0.0 };
     let mut job = egui::text::LayoutJob::single_section(
         hit.label.clone(),
         egui::TextFormat {
@@ -11725,6 +11904,18 @@ fn goto_row(ui: &mut egui::Ui, hit: &GotoHit, active: bool, row_h: f32) -> egui:
         galley,
         fg,
     );
+    if fav {
+        let at = egui::Rect::from_center_size(
+            egui::pos2(rect.right() - 6.0 - kind_w + star / 2.0, rect.center().y),
+            egui::vec2(star, star),
+        );
+        motif::pictogram(
+            ui.painter(),
+            at,
+            motif::Pict::StarFull,
+            if active { motif::bg() } else { motif::accent() },
+        );
+    }
     ui.painter().text(
         rect.right_center() - egui::vec2(6.0, 0.0),
         egui::Align2::RIGHT_CENTER,
@@ -11742,11 +11933,12 @@ fn goto_row(ui: &mut egui::Ui, hit: &GotoHit, active: bool, row_h: f32) -> egui:
 fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
     // The arrows and Entrée are claimed before the field is drawn, or
     // the text cursor would eat them and the list would never move.
-    let (down, up, enter) = ctx.input_mut(|i| {
+    let (down, up, enter, pin) = ctx.input_mut(|i| {
         (
             i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowDown),
             i.consume_key(egui::Modifiers::NONE, egui::Key::ArrowUp),
             i.consume_key(egui::Modifiers::NONE, egui::Key::Enter),
+            i.consume_key(egui::Modifiers::COMMAND, egui::Key::D),
         )
     });
     session.refresh_goto_hits(12);
@@ -11838,7 +12030,8 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                     ui.spacing_mut().item_spacing.y = 0.0;
                     for (i, hit) in hits.iter().take(listed).enumerate() {
                         let active = i == selected;
-                        let resp = goto_row(ui, hit, active, row_h);
+                        let fav = session.is_favorite(&hit.dest);
+                        let resp = goto_row(ui, hit, active, row_h, fav);
                         // Les flèches font défiler jusqu'à la rangée choisie.
                         if active && (down || up) {
                             resp.scroll_to_me(None);
@@ -11848,10 +12041,17 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
                         }
                     }
                 });
+            // Le geste qui épingle, dit sous la liste : c'est ici qu'on
+            // le cherche.
+            ui.label(
+                egui::RichText::new(tr("goto_pin_hint"))
+                    .size(motif::pt(ui, 10.0))
+                    .color(motif::text_dim()),
+            );
             if pinned {
                 if let Some(hit) = hits.last() {
                     ui.spacing_mut().item_spacing.y = 0.0;
-                    if goto_row(ui, hit, selected + 1 == hits.len(), row_h).clicked() {
+                    if goto_row(ui, hit, selected + 1 == hits.len(), row_h, false).clicked() {
                         chosen = Some(hit.dest.clone());
                     }
                 }
@@ -11861,6 +12061,12 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
     if enter {
         if let Some(hit) = hits.get(session.goto_selected) {
             chosen = Some(hit.dest.clone());
+        }
+    }
+    // Ctrl+D : la rangée choisie entre dans les favoris, ou en sort.
+    if pin {
+        if let Some(hit) = hits.get(session.goto_selected) {
+            session.toggle_favorite(&hit.dest, &hit.label);
         }
     }
     // Ce qu'on vient de choisir remonte en tête des récents — sauf une
@@ -16074,6 +16280,11 @@ impl App {
         let mut print_guide = false;
         let mut open_tool: Option<Tool> = None;
         let mut keys_tools = self.keys_tools;
+        let favs = match &self.state {
+            State::Unlocked(s) => s.favorites.clone(),
+            _ => Vec::new(),
+        };
+        let mut pin: Option<Tool> = None;
         let shown = egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
@@ -16127,7 +16338,7 @@ impl App {
                     .min_scrolled_height(body)
                     .show(ui, |ui| {
                         if keys_tools {
-                            Self::keys_tools_page(ui, &mut open_tool);
+                            Self::keys_tools_page(ui, &mut open_tool, &favs, &mut pin);
                             return;
                         }
                         egui::Grid::new("keys")
@@ -16175,6 +16386,9 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         self.keys_tools = keys_tools;
+        if let (Some(tool), State::Unlocked(s)) = (pin, &mut self.state) {
+            s.toggle_favorite(&Goto::Tool(tool), tool.title());
+        }
         if let Some(tool) = open_tool {
             if let State::Unlocked(session) = &mut self.state {
                 session.go_to(Goto::Tool(tool));
@@ -16202,7 +16416,12 @@ impl App {
     /// apprendre l'application disait le clavier et taisait les outils
     /// qu'aucun onglet ne montre. Un clic l'ouvre ; le propos est celui
     /// que « Aller à… » compare à ce qu'on tape.
-    fn keys_tools_page(ui: &mut egui::Ui, open_tool: &mut Option<Tool>) {
+    fn keys_tools_page(
+        ui: &mut egui::Ui,
+        open_tool: &mut Option<Tool>,
+        favs: &[crate::favorites::Favorite],
+        pin: &mut Option<Tool>,
+    ) {
         let tools: Vec<Tool> = Tool::ALL
             .into_iter()
             .filter(|t| t.available() && t.listed())
@@ -16232,10 +16451,21 @@ impl App {
         // demi-ligne sous son propos.
         let row_h = Self::row_height(ui);
         egui::Grid::new("keys_tools")
-            .num_columns(2)
+            .num_columns(3)
             .spacing([18.0, 3.0])
             .show(ui, |ui| {
                 for tool in tools {
+                    let fav = crate::favorites::has(favs, crate::favorites::Kind::Tool, tool.key());
+                    if motif::star(ui, fav)
+                        .on_hover_text(if fav {
+                            tr("fav_remove_tooltip")
+                        } else {
+                            tr("fav_add_tooltip")
+                        })
+                        .clicked()
+                    {
+                        *pin = Some(tool);
+                    }
                     let row = ui
                         .allocate_ui(egui::vec2(title_w, row_h), |ui| {
                             ui.set_width(title_w);
@@ -23140,6 +23370,9 @@ impl App {
             tr("patient_back"),
             // Le pli est sur cette rangée dans les deux états : il compte.
             tr("patient_band_fold"),
+            // L'étoile du favori : un bouton sans libellé, de la largeur
+            // que `motif::star` lui donne.
+            motif::STAR_LABEL,
         ]
         .into_iter()
         .map(|l| Self::button_width(ui, l) + gap)
@@ -24612,6 +24845,20 @@ impl App {
                 .clicked()
             {
                 session.patient_band_folded = !session.patient_band_folded;
+            }
+            // L'étoile du dossier : en favori, il passe en tête de
+            // « Aller à… ».
+            let dest = Goto::Patient(patient.id);
+            let fav = session.is_favorite(&dest);
+            if motif::star(ui, fav)
+                .on_hover_text(if fav {
+                    tr("fav_remove_tooltip")
+                } else {
+                    tr("fav_add_tooltip")
+                })
+                .clicked()
+            {
+                session.toggle_favorite(&dest, &patient.full_name());
             }
             ui.add_space(6.0);
             // **Le nom tient dans ce que les boutons laissent.** Posés
@@ -50285,6 +50532,13 @@ impl App {
             session.refresh_drug_supply(card.id, &card.name);
             session.refresh_drug_pk(&card);
         }
+        // L'étoile de la fiche, lue avant que la fiche n'emprunte la
+        // session ; le geste s'applique à la fin.
+        let card_fav = session
+            .drug_form
+            .as_ref()
+            .map(|f| (f.id, f.name.clone(), session.is_favorite(&Goto::Drug(f.id))));
+        let mut toggle_fav = false;
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
             let reading = session.drug_reading;
@@ -50363,6 +50617,18 @@ impl App {
                     .show(ui, |ui| {
                         ui.horizontal_wrapped(|ui| {
                             if reading {
+                                if let Some((_, _, fav)) = &card_fav {
+                                    if motif::star(ui, *fav)
+                                        .on_hover_text(if *fav {
+                                            tr("fav_remove_tooltip")
+                                        } else {
+                                            tr("fav_add_tooltip")
+                                        })
+                                        .clicked()
+                                    {
+                                        toggle_fav = true;
+                                    }
+                                }
                                 if motif::button(ui, tr("drug_edit")).clicked() {
                                     edit = true;
                                 }
@@ -51219,6 +51485,11 @@ impl App {
                 if let Some(d) = session.drugs.iter().find(|d| d.id == id).cloned() {
                     session.open_drug_card(d);
                     session.error = None;
+                }
+            }
+            if toggle_fav {
+                if let Some((id, name, _)) = &card_fav {
+                    session.toggle_favorite(&Goto::Drug(*id), name);
                 }
             }
             return;
@@ -63195,6 +63466,15 @@ impl eframe::App for App {
             motif::apply(ctx);
             motif::apply_scale(ctx, self.config.ui.text_scale, self.config.density());
             self.applied_look = Some(look);
+        }
+        // **Les favoris suivent la personne au poste** : l'opérateur
+        // choisi dans le volet. Relus seulement quand il change.
+        if let State::Unlocked(s) = &mut self.state {
+            let op = self.operator.trim();
+            if s.favorites_of.as_deref() != Some(op) {
+                let op = op.to_owned();
+                s.load_favorites(&op);
+            }
         }
         // Track the shape the workspace is in, so the next session opens
         // in it: the window's size, the docks, the right pane's content,
@@ -75230,6 +75510,52 @@ mod tests {
             .filter(|n| n.tie == crate::graph::Tie::Interaction)
         {
             assert!(!super::graph_substitute_meets_any(&s, n, &map.centre.1));
+        }
+    }
+
+    /// **Un favori passe en tête de « Aller à… »**, pour la personne au
+    /// poste seulement, et en sort d'un second geste.
+    #[test]
+    fn a_favorite_leads_the_jump_box_for_its_operator() {
+        let (mut s, _swept) = scratch_session("favs");
+        s.load_favorites("CL");
+        let trame = super::Goto::Tool(super::Tool::Trame);
+        let agenda = super::Goto::Tab(super::WorkTab::Agenda);
+        s.toggle_favorite(&trame, "Trame");
+        s.toggle_favorite(&agenda, "Agenda");
+        assert!(s.is_favorite(&trame) && s.is_favorite(&agenda));
+        s.goto_query.clear();
+        let hits = s.goto_results(100);
+        let firsts: Vec<&super::Goto> = hits.iter().take(2).map(|h| &h.dest).collect();
+        assert!(
+            firsts.contains(&&trame) && firsts.contains(&&agenda),
+            "{firsts:?}"
+        );
+        // Une destination qui ne se range pas en favori ne fait rien.
+        s.toggle_favorite(&super::Goto::Calc, "Calculs");
+        assert_eq!(s.favorites.len(), 2);
+        // Un autre opérateur n'a pas ces favoris.
+        s.load_favorites("YS");
+        assert!(!s.is_favorite(&trame));
+        s.load_favorites("CL");
+        s.toggle_favorite(&trame, "Trame");
+        assert!(!s.is_favorite(&trame));
+        assert!(s.is_favorite(&agenda));
+    }
+
+    /// Les clés des outils et des vues sont uniques et se relisent.
+    #[test]
+    fn tool_and_view_favorite_keys_round_trip() {
+        let mut keys: Vec<&str> = super::Tool::ALL.iter().map(|t| t.key()).collect();
+        for t in super::Tool::ALL {
+            assert_eq!(super::Tool::from_key(t.key()), Some(t));
+        }
+        keys.sort_unstable();
+        keys.dedup();
+        assert_eq!(keys.len(), super::Tool::ALL.len());
+        for (tab, key) in super::standing_views() {
+            assert_eq!(super::view_fav_key(&tab), Some(key));
+            assert_eq!(super::view_from_fav_key(key), Some(tab));
         }
     }
 

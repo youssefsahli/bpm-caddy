@@ -5,6 +5,16 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.310.0] - 2026-09-24
+
+### Added
+- **Favoris.** Une étoile épingle un dossier patient, une fiche
+  médicament ou un outil ; dans « Aller à… », Ctrl+D épingle ou retire la
+  ligne choisie, vues comprises. Les favoris passent en tête de
+  « Aller à… » ouvert à vide, marqués d'une étoile. Ils sont à la
+  personne choisie comme opérateur et la suivent sur tous les postes de
+  l'officine.
+
 ## [0.309.0] - 2026-09-24
 
 ### Fixed
