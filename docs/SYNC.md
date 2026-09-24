@@ -415,6 +415,25 @@ enregistrements), la télémétrie du poste, le journal du réseau
 d'officines et ce que ce poste en a déjà envoyé, et tout `sync_*` propre
 au poste.
 
+### 7.6 bis Plusieurs réseaux
+
+Le réseau principal garde son rangement d'origine (`settings.net_trousseau`,
+`net_records` à `network` vide, clés de `net_published` telles quelles) :
+rien n'a été migré. Les réseaux de plus vivent dans `net_networks`
+(empreinte de la clé, clé, nom, trois interrupteurs de partage ; voyage
+entre les postes comme `settings`, écrit contre ce que l'écran montrait) ;
+le dossier d'échange de chacun, propre au poste, dans `net_folders` ; qui
+est de quel réseau, dans `net_memberships` (local, comme `net_peers`, avec
+un compte d'enregistrements par réseau) — une officine sans ligne est du
+principal. Rejoindre un réseau de plus se fait sur un journal vide (rien
+du principal ne passe à celle qui invite) ; rejoindre un réseau dont on
+est déjà ne range rien. Chaque réseau a son journal ; ce qui est parti se note
+`<réseau>|<clé>`. Un dossier d'échange peut servir à plusieurs réseaux :
+chacun y lit tous les fichiers `.bpmnet` et ne garde que les
+enregistrements **que sa clé ouvre**. L'identité de l'appareil et sa clé
+de boîte sont les mêmes partout. Un message part par chaque réseau qui
+compte un de ses destinataires, scellé pour ceux de ce réseau.
+
 ### 7.7 La boîte scellée : un message pour quelques officines
 
 Le trousseau du réseau ouvre tout ce que le réseau transporte, et toutes

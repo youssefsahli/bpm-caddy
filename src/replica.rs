@@ -140,6 +140,9 @@ pub const TABLES: &[Table] = &[
     t("settings", Main, Officine, false, false),
     t("prescribers", Main, Officine, false, true),
     t("colleague_groups", Main, Officine, false, true),
+    // Les réseaux de plus : leur clé suit l'officine d'un poste à l'autre,
+    // comme celle du principal dans `settings`.
+    t("net_networks", Main, Officine, false, false),
     t("vaccine_catalogue", Main, Officine, false, true),
     t("trod_lines", Main, Officine, false, true),
     t("content_overrides", Main, Officine, false, false),
@@ -166,6 +169,16 @@ pub const LOCAL: &[(File, &str, &str)] = &[
         "le journal du réseau d'officines, par poste",
     ),
     (Main, "net_peers", "les officines que ce poste compose"),
+    (
+        Main,
+        "net_memberships",
+        "de quel réseau est chaque officine que ce poste compose",
+    ),
+    (
+        Main,
+        "net_folders",
+        "le dossier d'échange de chaque réseau, sur ce poste",
+    ),
     (
         Main,
         "net_published",

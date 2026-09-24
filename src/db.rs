@@ -305,7 +305,43 @@ CREATE TABLE IF NOT EXISTS net_records (
     -- scellés du flux « Réseau », tels qu'ils ont été reçus ou écrits.
     -- Opaques ici ; seule la clé du réseau les ouvre.
     id     TEXT PRIMARY KEY,
-    bytes  BLOB NOT NULL
+    bytes  BLOB NOT NULL,
+    -- Le réseau qui l'a scellé : vide pour le réseau principal, l'`id` de
+    -- `net_networks` pour les autres.
+    network TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS net_networks (
+    -- Les réseaux d'officines **en plus du principal** (dont la clé reste
+    -- dans `settings.net_trousseau`) : leur clé, leur nom, leur dossier
+    -- d'échange et ce que l'officine y partage. `fingerprint` : l'empreinte de la
+    -- clé, la même chez chaque membre.
+    fingerprint     TEXT PRIMARY KEY,
+    secret          TEXT NOT NULL,
+    label           TEXT NOT NULL DEFAULT '',
+    folder          TEXT NOT NULL DEFAULT '',
+    share_ruptures  INTEGER NOT NULL DEFAULT 1,
+    share_versions  INTEGER NOT NULL DEFAULT 1,
+    share_pk        INTEGER NOT NULL DEFAULT 1,
+    created         TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS net_memberships (
+    -- Qui est de quel réseau. Une officine appairée **sans** ligne ici est
+    -- du réseau principal (ce qu'elles étaient toutes avant) ; une ligne
+    -- à `network` vide l'y met explicitement.
+    network TEXT NOT NULL,
+    device  TEXT NOT NULL,
+    -- Combien d'enregistrements de cette officine ce réseau tient : un
+    -- compte par réseau, pour qu'une officine de deux réseaux ne semble
+    -- pas écrire à chaque synchronisation.
+    received INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (network, device)
+);
+CREATE TABLE IF NOT EXISTS net_folders (
+    -- Le dossier d'échange d'un réseau de plus, **propre à ce poste** :
+    -- un chemin n'a de sens que sur la machine qui le lit (celui du
+    -- principal est dans `config.toml`).
+    network TEXT PRIMARY KEY,
+    folder  TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_peers (
     -- Les officines appairées : leur clé publique, le nom qu'on leur
@@ -1233,6 +1269,28 @@ const MIGRATIONS: &[&str] = &[
         added   TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS net_published (uid TEXT PRIMARY KEY)",
+    // Plusieurs réseaux — voir `SCHEMA`.
+    "ALTER TABLE net_records ADD COLUMN network TEXT NOT NULL DEFAULT ''",
+    "CREATE TABLE IF NOT EXISTS net_networks (
+        fingerprint     TEXT PRIMARY KEY,
+        secret          TEXT NOT NULL,
+        label           TEXT NOT NULL DEFAULT '',
+        folder          TEXT NOT NULL DEFAULT '',
+        share_ruptures  INTEGER NOT NULL DEFAULT 1,
+        share_versions  INTEGER NOT NULL DEFAULT 1,
+        share_pk        INTEGER NOT NULL DEFAULT 1,
+        created         TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS net_memberships (
+        network TEXT NOT NULL,
+        device  TEXT NOT NULL,
+        PRIMARY KEY (network, device)
+    )",
+    "ALTER TABLE net_memberships ADD COLUMN received INTEGER NOT NULL DEFAULT 0",
+    "CREATE TABLE IF NOT EXISTS net_folders (
+        network TEXT PRIMARY KEY,
+        folder  TEXT NOT NULL DEFAULT ''
+    )",
     // Le suivi des échanges avec chaque officine — voir `SCHEMA`.
     "ALTER TABLE net_peers ADD COLUMN seen_as TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE net_peers ADD COLUMN received INTEGER NOT NULL DEFAULT 0",
@@ -2671,6 +2729,40 @@ fn with_trod_field(
         _ => return None,
     }
     Some(new)
+}
+
+/// Ce qu'une officine partage dans un réseau. Les messages et les
+/// fichiers ne sont pas ici : ils vont toujours aux seules officines
+/// choisies.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct NetShares {
+    /// Ruptures, levées et substitutions.
+    pub ruptures: bool,
+    /// Versions des fiches, préparations, protocoles, lignes de TROD et
+    /// vaccins.
+    pub versions: bool,
+    /// Valeurs de pharmacocinétique sourcées.
+    pub pk: bool,
+}
+
+impl Default for NetShares {
+    fn default() -> Self {
+        Self {
+            ruptures: true,
+            versions: true,
+            pk: true,
+        }
+    }
+}
+
+/// Un réseau en plus du principal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct NetNetwork {
+    pub id: String,
+    pub secret: String,
+    pub label: String,
+    pub folder: String,
+    pub shares: NetShares,
 }
 
 /// Une officine appairée, telle que ce poste la connaît.
@@ -34600,12 +34692,17 @@ impl Db {
 
     /// Les enregistrements du réseau, tels que la base les garde.
     pub fn net_records(&self) -> Result<Vec<Vec<u8>>, String> {
+        self.net_records_of("")
+    }
+
+    /// Les enregistrements d'un réseau (vide : le principal).
+    pub fn net_records_of(&self, network: &str) -> Result<Vec<Vec<u8>>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT bytes FROM net_records")
+            .prepare("SELECT bytes FROM net_records WHERE network = ?1")
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |r| r.get::<_, Vec<u8>>(0))
+            .query_map([network], |r| r.get::<_, Vec<u8>>(0))
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
@@ -34613,6 +34710,15 @@ impl Db {
     /// Garder des enregistrements du réseau — ceux qu'on a déjà sont
     /// ignorés. Rend combien étaient nouveaux.
     pub fn keep_net_records(&self, records: &[(String, Vec<u8>)]) -> Result<usize, String> {
+        self.keep_net_records_of("", records)
+    }
+
+    /// Garder les enregistrements d'un réseau.
+    pub fn keep_net_records_of(
+        &self,
+        network: &str,
+        records: &[(String, Vec<u8>)],
+    ) -> Result<usize, String> {
         let tx = self
             .conn
             .unchecked_transaction()
@@ -34621,8 +34727,8 @@ impl Db {
         for (id, bytes) in records {
             added += tx
                 .execute(
-                    "INSERT OR IGNORE INTO net_records (id, bytes) VALUES (?1, ?2)",
-                    rusqlite::params![id, bytes],
+                    "INSERT OR IGNORE INTO net_records (id, bytes, network) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![id, bytes, network],
                 )
                 .map_err(|e| e.to_string())?;
         }
@@ -34775,6 +34881,282 @@ impl Db {
         Ok(true)
     }
 
+    /// Une écriture brute, pour qu'un test pose un état.
+    #[cfg(test)]
+    pub fn conn_exec_for_tests(&self, sql: &str) -> Result<(), String> {
+        self.conn
+            .execute(sql, [])
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Les réseaux en plus du principal.
+    pub fn net_networks(&self) -> Result<Vec<NetNetwork>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT n.fingerprint, n.secret, n.label,
+                        COALESCE((SELECT f.folder FROM net_folders f WHERE f.network = n.fingerprint), ''),
+                        n.share_ruptures, n.share_versions, n.share_pk
+                 FROM net_networks n ORDER BY n.created, n.fingerprint",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(NetNetwork {
+                    id: r.get(0)?,
+                    secret: r.get(1)?,
+                    label: r.get(2)?,
+                    folder: r.get(3)?,
+                    shares: NetShares {
+                        ruptures: r.get::<_, i64>(4)? != 0,
+                        versions: r.get::<_, i64>(5)? != 0,
+                        pk: r.get::<_, i64>(6)? != 0,
+                    },
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ranger un réseau de plus. Un réseau déjà rangé (même clé) n'est pas
+    /// doublé ; rend vrai quand il est nouveau.
+    pub fn add_net_network(
+        &self,
+        id: &str,
+        secret: &str,
+        label: &str,
+        day: &str,
+    ) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "INSERT OR IGNORE INTO net_networks (fingerprint, secret, label, created)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (id, secret, label.trim(), day),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n > 0)
+    }
+
+    /// Renommer un réseau, changer son dossier d'échange ou ce que
+    /// l'officine y partage.
+    /// Écrire le nom et le partage d'un réseau **contre ce que l'écran
+    /// montrait** (`was`) — la ligne voyage entre les postes. `false`
+    /// quand un autre poste l'a changée entre-temps. Le dossier, lui, est
+    /// propre à ce poste.
+    pub fn set_net_network(
+        &self,
+        id: &str,
+        label: &str,
+        folder: &str,
+        shares: NetShares,
+        was: (&str, NetShares),
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE net_networks SET label = ?2,
+                 share_ruptures = ?3, share_versions = ?4, share_pk = ?5
+                 WHERE fingerprint = ?1 AND label = ?6
+                   AND share_ruptures = ?7 AND share_versions = ?8 AND share_pk = ?9",
+                rusqlite::params![
+                    id,
+                    label.trim(),
+                    i64::from(shares.ruptures),
+                    i64::from(shares.versions),
+                    i64::from(shares.pk),
+                    was.0,
+                    i64::from(was.1.ruptures),
+                    i64::from(was.1.versions),
+                    i64::from(was.1.pk),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute(
+                "INSERT INTO net_folders (network, folder) VALUES (?1, ?2)
+                 ON CONFLICT(network) DO UPDATE SET folder = excluded.folder",
+                (id, folder.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed > 0)
+    }
+
+    /// Quitter un réseau de plus : sa clé, ses appartenances et ses
+    /// enregistrements partent ; les officines restent au carnet si elles
+    /// sont d'un autre réseau.
+    pub fn leave_net_network(&self, id: &str) -> Result<(), String> {
+        if id.is_empty() {
+            return Err("le réseau principal se quitte autrement".to_owned());
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        // Les officines qui n'étaient que de ce réseau partent du carnet :
+        // sans appartenance, elles passeraient pour des membres du principal.
+        tx.execute(
+            "DELETE FROM net_peers WHERE device IN (
+                 SELECT device FROM net_memberships WHERE network = ?1
+             ) AND device NOT IN (
+                 SELECT device FROM net_memberships WHERE network <> ?1
+             )",
+            [id],
+        )
+        .map_err(|e| e.to_string())?;
+        for sql in [
+            "DELETE FROM net_networks WHERE fingerprint = ?1",
+            "DELETE FROM net_memberships WHERE network = ?1",
+            "DELETE FROM net_records WHERE network = ?1",
+            "DELETE FROM net_folders WHERE network = ?1",
+        ] {
+            tx.execute(sql, [id]).map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Ce que l'officine partage dans le réseau principal (réglages de
+    /// l'officine ; tout, tant que rien n'est dit).
+    pub fn principal_shares(&self) -> NetShares {
+        let on = |k: &str| self.setting(k).is_none_or(|v| v != "0");
+        NetShares {
+            ruptures: on("net_share_ruptures"),
+            versions: on("net_share_versions"),
+            pk: on("net_share_pk"),
+        }
+    }
+
+    pub fn set_principal_shares(&self, shares: NetShares) -> Result<(), String> {
+        for (k, v) in [
+            ("net_share_ruptures", shares.ruptures),
+            ("net_share_versions", shares.versions),
+            ("net_share_pk", shares.pk),
+        ] {
+            self.conn
+                .execute(
+                    "INSERT INTO settings (key, value) VALUES (?1, ?2)
+                     ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+                    (k, if v { "1" } else { "0" }),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Retirer une officine d'**un** réseau de plus. Elle quitte le carnet
+    /// si elle n'était d'aucun autre ; du principal, elle reste.
+    pub fn remove_net_membership(&self, network: &str, device: &str) -> Result<(), String> {
+        if network.is_empty() {
+            // Du principal seulement : une officine d'autres réseaux y reste.
+            let elsewhere: bool = self
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM net_memberships WHERE device = ?1 AND network <> '')",
+                    [device],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if !elsewhere {
+                return self.remove_net_peer(device);
+            }
+            self.conn
+                .execute(
+                    "DELETE FROM net_memberships WHERE network = '' AND device = ?1",
+                    [device],
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                "DELETE FROM net_memberships WHERE network = ?1 AND device = ?2",
+                (network, device),
+            )
+            .map_err(|e| e.to_string())?;
+        let left: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM net_memberships WHERE device = ?1)",
+                [device],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !left {
+            self.conn
+                .execute("DELETE FROM net_peers WHERE device = ?1", [device])
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Mettre une officine appairée dans un réseau. `was_principal` : elle
+    /// était déjà appairée avant, au réseau principal, et y reste — une
+    /// officine sans appartenance est du principal, et la première
+    /// appartenance à un autre réseau ne doit pas l'en retirer.
+    pub fn add_net_membership(
+        &self,
+        network: &str,
+        device: &str,
+        was_principal: bool,
+    ) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        let has_any: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM net_memberships WHERE device = ?1)",
+                [device],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !has_any && was_principal && !network.is_empty() {
+            tx.execute(
+                "INSERT OR IGNORE INTO net_memberships (network, device) VALUES ('', ?1)",
+                [device],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO net_memberships (network, device) VALUES (?1, ?2)",
+            (network, device),
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Les officines appairées d'un réseau (vide : le principal — celles
+    /// qui n'ont aucune appartenance, ou une au principal).
+    pub fn net_members(&self, network: &str) -> Result<Vec<NetPeerRow>, String> {
+        let all = self.net_peers()?;
+        let rows: Vec<(String, String)> = {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT network, device FROM net_memberships")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        Ok(all
+            .into_iter()
+            .filter(|p| {
+                let mine: Vec<&str> = rows
+                    .iter()
+                    .filter(|(_, d)| *d == p.device)
+                    .map(|(n, _)| n.as_str())
+                    .collect();
+                if network.is_empty() {
+                    mine.is_empty() || mine.contains(&"")
+                } else {
+                    mine.contains(&network)
+                }
+            })
+            .collect())
+    }
+
     /// Les officines appairées : (clé, nom, adresse, date).
     pub fn net_peers(&self) -> Result<Vec<NetPeerRow>, String> {
         let mut stmt = self
@@ -34809,6 +35191,48 @@ impl Db {
     /// du jour où ce nombre a augmenté** — par une conversation directe
     /// ou par le dossier d'échange, peu importe le chemin.
     pub fn note_net_heard(&self, device: &str, seen_as: &str, received: i64) -> Result<(), String> {
+        self.note_net_heard_in("", device, seen_as, received)
+    }
+
+    /// Le même, pour un réseau : le compte d'un réseau de plus se tient
+    /// dans son appartenance, et « dernières nouvelles » avance quand l'un
+    /// des comptes monte.
+    pub fn note_net_heard_in(
+        &self,
+        network: &str,
+        device: &str,
+        seen_as: &str,
+        received: i64,
+    ) -> Result<(), String> {
+        if !network.is_empty() {
+            let before: i64 = self
+                .conn
+                .query_row(
+                    "SELECT COALESCE((SELECT received FROM net_memberships
+                                      WHERE network = ?1 AND device = ?2), 0)",
+                    (network, device),
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            self.conn
+                .execute(
+                    "UPDATE net_memberships SET received = ?3 WHERE network = ?1 AND device = ?2",
+                    (network, device, received),
+                )
+                .map_err(|e| e.to_string())?;
+            self.conn
+                .execute(
+                    "UPDATE net_peers SET
+                         seen_as = CASE WHEN ?2 <> '' THEN ?2 ELSE seen_as END,
+                         last_heard = CASE WHEN ?3 > ?4
+                             THEN strftime('%Y-%m-%d %H:%M', 'now', 'localtime')
+                             ELSE last_heard END
+                     WHERE device = ?1",
+                    (device, seen_as.trim(), received, before),
+                )
+                .map_err(|e| e.to_string())?;
+            return Ok(());
+        }
         self.conn
             .execute(
                 "UPDATE net_peers SET
@@ -34880,6 +35304,9 @@ impl Db {
     pub fn remove_net_peer(&self, device: &str) -> Result<(), String> {
         self.conn
             .execute("DELETE FROM net_peers WHERE device = ?1", [device])
+            .map_err(|e| e.to_string())?;
+        self.conn
+            .execute("DELETE FROM net_memberships WHERE device = ?1", [device])
             .map_err(|e| e.to_string())?;
         Ok(())
     }

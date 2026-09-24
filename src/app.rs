@@ -7187,7 +7187,24 @@ impl Session {
                     }
                 }
             }
+            // Les officines de chaque réseau, chacune rangée dans le premier
+            // qui la compte.
+            let mut map_groups = Vec::new();
+            let mut map_peers: Vec<(crate::network::Peer, usize)> = Vec::new();
+            if let Ok(all) = NetSummary::read(&self.db).map(|s| s.networks) {
+                for (id, label) in all {
+                    let g = map_groups.len();
+                    map_groups.push(label);
+                    for p in self.db.net_members(&id).unwrap_or_default() {
+                        if !map_peers.iter().any(|(q, _)| q.device == p.device) {
+                            map_peers.push((p, g));
+                        }
+                    }
+                }
+            }
             self.conn_summary = Some(ConnSummary {
+                map_peers,
+                map_groups,
                 feed: network_feed(&self.supply_events, &self.card_edits, 12),
                 posts: PostsSummary::read(&self.db),
                 net: NetSummary::read(&self.db),
@@ -10466,6 +10483,11 @@ struct ConnSummary {
     entries: Vec<(crate::versions::Kind, String, usize)>,
     /// Ce que les autres officines ont envoyé, le plus récent d'abord.
     feed: Vec<FeedRow>,
+    /// Pour la carte : chaque officine appairée, **tous réseaux
+    /// confondus**, avec le rang du réseau où la ranger ; et le nom de
+    /// chaque réseau.
+    map_peers: Vec<(crate::network::Peer, usize)>,
+    map_groups: Vec<String>,
 }
 
 /// Une ligne de « Derniers reçus » : le jour, l'officine, ce qu'elle a
@@ -10612,7 +10634,16 @@ impl NetWindow {
     }
 
     fn reread(&mut self, db: &Db) {
-        match NetSummary::read(db) {
+        // Le réseau montré a disparu (quitté sur un autre poste) : la
+        // fenêtre revient au principal plutôt que de rester sur l'erreur.
+        if !self.network.is_empty()
+            && !db
+                .net_networks()
+                .is_ok_and(|n| n.iter().any(|n| n.id == self.network))
+        {
+            self.network.clear();
+        }
+        match NetSummary::read_for(db, &self.network) {
             Ok(s) => {
                 self.summary = Some(s);
                 self.read_error = None;
@@ -10696,6 +10727,8 @@ enum MessagesTo {
 #[cfg(feature = "sync")]
 #[derive(Default)]
 struct NetWindow {
+    /// Le réseau montré (vide : le principal).
+    network: String,
     summary: Option<NetSummary>,
     /// Pourquoi `summary` manque, quand la lecture a échoué — dit à
     /// l'écran plutôt que « illisible dans cette base ».
@@ -10712,6 +10745,14 @@ struct NetWindow {
     join_address: String,
     /// A peer's name and address as typed, by device.
     edits: std::collections::HashMap<String, (String, String)>,
+    /// Le nom d'un réseau à créer, et le formulaire ouvert.
+    new_label: String,
+    new_open: bool,
+    /// Ce qu'on tape pour le réseau montré : son nom, son dossier.
+    edit_label: String,
+    edit_folder: String,
+    /// « Quitter ce réseau » attend un second clic.
+    confirm_leave: bool,
 }
 
 /// What the base says about the network, read when the window opens and
@@ -10723,6 +10764,13 @@ struct NetSummary {
     network: Option<String>,
     peers: Vec<crate::network::Peer>,
     records: usize,
+    /// Tous les réseaux de l'officine : `(id, nom)`, le principal (id
+    /// vide) d'abord quand il existe.
+    networks: Vec<(String, String)>,
+    /// Le réseau lu : son nom, son dossier et ce qu'on y partage.
+    label: String,
+    folder: String,
+    shares: db::NetShares,
 }
 
 /// Une messagerie de démonstration : une conversation de toute l'équipe,
@@ -10871,13 +10919,34 @@ fn net_peer_status(p: &crate::network::Peer) -> Vec<(bool, String)> {
 #[cfg(feature = "sync")]
 impl NetSummary {
     fn read(db: &Db) -> Result<Self, String> {
-        let net = crate::network::Net::load(db)?;
+        Self::read_for(db, "")
+    }
+
+    /// Ce que la fenêtre montre d'un réseau (vide : le principal).
+    fn read_for(db: &Db, network: &str) -> Result<Self, String> {
+        let net = crate::network::Net::load_network(db, network)?;
+        let mut networks = Vec::new();
+        if db.setting("net_trousseau").is_some() {
+            networks.push((String::new(), tr("net_principal").to_owned()));
+        }
+        for n in db.net_networks()? {
+            let label = if n.label.trim().is_empty() {
+                trf("net_unnamed", crate::network::network_groups_of(&n.id))
+            } else {
+                n.label.trim().to_owned()
+            };
+            networks.push((n.id, label));
+        }
         Ok(Self {
             in_network: net.in_network(),
             groups: net.groups(),
             network: net.network_groups(),
             records: net.record_count(),
             peers: net.peers.clone(),
+            networks,
+            label: net.label.clone(),
+            folder: net.folder.clone(),
+            shares: net.shares,
         })
     }
 }
@@ -13718,6 +13787,27 @@ impl App {
                             // La carte, une officine choisie : le volet
                             // montre ses gestes.
                             if key == "connexions_carte" {
+                                // Un second réseau, avec une officine : la carte
+                                // montre deux arcs et leurs noms.
+                                if session.db.net_networks().is_ok_and(|n| n.is_empty()) {
+                                    if let Ok(id) = crate::network::Net::create_network(
+                                        &session.db,
+                                        "Garde du secteur",
+                                        &session.today,
+                                    ) {
+                                        let device = "7".repeat(64);
+                                        let _ =
+                                            session.db.add_net_peer(&device, "", &session.today);
+                                        let _ = session.db.set_net_peer(
+                                            &device,
+                                            "Pharmacie des Arceaux",
+                                            "",
+                                            ("", ""),
+                                        );
+                                        let _ = session.db.add_net_membership(&id, &device, false);
+                                    }
+                                }
+                                session.reload_connections();
                                 session.conn_map = true;
                                 session.conn_pick =
                                     session.db.net_peers().ok().and_then(|p| {
@@ -56101,11 +56191,11 @@ impl App {
             .map(|p| p.posts.clone())
             .unwrap_or_default();
         let my_post = sum.posts.as_ref().ok().and_then(|p| p.post);
-        let peers: Vec<crate::network::Peer> = sum
-            .net
-            .as_ref()
-            .map(|n| n.peers.clone())
-            .unwrap_or_default();
+        // Toutes les officines de tous les réseaux, chacune avec le sien.
+        let peers: Vec<crate::network::Peer> =
+            sum.map_peers.iter().map(|(p, _)| p.clone()).collect();
+        let groups_of: Vec<usize> = sum.map_peers.iter().map(|(_, g)| *g).collect();
+        let group_names = sum.map_groups.clone();
         let heard = session.posts_peers.clone();
         let nodes = crate::netmap::nodes(
             tr("conn_map_me"),
@@ -56128,7 +56218,9 @@ impl App {
                 .collect::<Vec<_>>(),
             &peers
                 .iter()
-                .map(|p| crate::netmap::OfficineIn {
+                .zip(&groups_of)
+                .map(|(p, g)| crate::netmap::OfficineIn {
+                    group: *g,
                     device: &p.device,
                     name: &p.name,
                     seen_as: &p.seen_as,
@@ -56286,6 +56378,26 @@ impl App {
                 job.halign = egui::Align::Center;
                 let g = ui.fonts(|f| f.layout_job(job));
                 painter.galley(c + egui::vec2(0.0, r * 1.4), g, motif::text());
+            }
+            // Le nom de chaque réseau, de son côté du cercle — quand il y en
+            // a plus d'un : seul, il n'apprend rien.
+            if group_names.len() > 1 {
+                for (g, x, y) in crate::netmap::group_labels(&nodes, &places) {
+                    let Some(name) = group_names.get(g) else {
+                        continue;
+                    };
+                    let p = egui::pos2(
+                        square.left() + (x - 0.1) / 0.8 * square.width(),
+                        square.top() + (y - 0.1) / 0.8 * square.height(),
+                    );
+                    painter.text(
+                        p,
+                        egui::Align2::CENTER_CENTER,
+                        name,
+                        egui::FontId::proportional(motif::pt(ui, 11.0)),
+                        motif::accent(),
+                    );
+                }
             }
             // Le survol dit l'état ; le clic choisit — au plus près, en
             // pixels.
@@ -57116,6 +57228,11 @@ impl App {
         let mut peer_stale = false;
         let mut remove_peer: Option<String> = None;
         let mut open_folder_options = false;
+        let mut pick_net: Option<String> = None;
+        let mut create_net: Option<String> = None;
+        let mut save_shares: Option<db::NetShares> = None;
+        let mut save_meta = false;
+        let mut leave = false;
         let busy = w.job.is_some();
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("net_title"))
@@ -57169,6 +57286,46 @@ impl App {
                         };
                         ui.label(trf("net_you", &sum.groups))
                             .on_hover_text(tr("net_you_tooltip"));
+                        // **Les réseaux de l'officine**, un onglet chacun, et
+                        // de quoi en créer un de plus — un lien avec une
+                        // seule officine est un réseau à deux.
+                        ui.add_space(4.0);
+                        ui.horizontal_wrapped(|ui| {
+                            for (id, label) in &sum.networks {
+                                if motif::toggle(ui, label, *id == w.network).clicked() {
+                                    pick_net = Some(id.clone());
+                                }
+                            }
+                            if !sum.networks.is_empty()
+                                && motif::button_enabled(ui, tr("net_new"), !busy)
+                                    .on_hover_text(tr("net_new_tooltip"))
+                                    .clicked()
+                            {
+                                w.new_open = !w.new_open;
+                            }
+                        });
+                        if w.new_open {
+                            ui.horizontal_wrapped(|ui| {
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 26.0),
+                                    egui::TextEdit::singleline(&mut w.new_label)
+                                        .hint_text(motif::hint(tr("net_new_hint"))),
+                                );
+                                if motif::button_enabled(ui, tr("net_new_create"), !busy).clicked()
+                                {
+                                    create_net = Some(w.new_label.trim().to_owned());
+                                }
+                            });
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("net_new_note"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        }
                         if !sum.in_network {
                             ui.add_space(6.0);
                             ui.label(tr("net_none"));
@@ -57206,6 +57363,75 @@ impl App {
                         if let Some(n) = &sum.network {
                             ui.label(trf("net_network", n));
                         }
+                        // Le nom et le dossier d'un réseau de plus ; ce que
+                        // l'officine partage dans celui-ci.
+                        if !w.network.is_empty() {
+                            ui.horizontal_wrapped(|ui| {
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 22.0),
+                                    egui::TextEdit::singleline(&mut w.edit_label)
+                                        .hint_text(motif::hint(tr("net_new_hint"))),
+                                );
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 26.0),
+                                    egui::TextEdit::singleline(&mut w.edit_folder)
+                                        .hint_text(motif::hint(tr("net_folder_hint"))),
+                                )
+                                .on_hover_text(tr("net_folder_own_tooltip"));
+                                let changed = w.edit_label.trim() != sum.label.trim()
+                                    || w.edit_folder.trim() != sum.folder.trim();
+                                if motif::button_enabled(ui, tr("form_save"), changed).clicked() {
+                                    save_meta = true;
+                                }
+                            });
+                        }
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(tr("net_shares"))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            );
+                            let mut sh = sum.shares;
+                            let mut moved = false;
+                            moved |=
+                                motif::checkbox(ui, &mut sh.ruptures, tr("net_share_ruptures"))
+                                    .changed();
+                            moved |=
+                                motif::checkbox(ui, &mut sh.versions, tr("net_share_versions"))
+                                    .changed();
+                            moved |= motif::checkbox(ui, &mut sh.pk, tr("net_share_pk")).changed();
+                            if moved {
+                                save_shares = Some(sh);
+                            }
+                        });
+                        // Rejoindre un réseau de plus, sans quitter celui-ci.
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(tr("net_join_other"))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                            );
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 22.0),
+                                egui::TextEdit::singleline(&mut w.join_address)
+                                    .hint_text(motif::hint(tr("net_join_hint"))),
+                            );
+                            if motif::button_enabled(
+                                ui,
+                                tr("net_join"),
+                                !busy && !w.join_address.trim().is_empty(),
+                            )
+                            .on_hover_text(tr("net_join_other_tooltip"))
+                            .clicked()
+                            {
+                                start = Some(Job::Join {
+                                    address: w.join_address.trim().to_owned(),
+                                });
+                            }
+                        });
                         ui.label(
                             egui::RichText::new(trn("net_records", &[&sum.records]))
                                 .size(motif::pt(ui, 10.5))
@@ -57364,7 +57590,25 @@ impl App {
                         {
                             start = Some(Job::Invite {
                                 port: config.reseau.port,
+                                network: w.network.clone(),
                             });
+                        }
+                        if !w.network.is_empty() {
+                            let label = if w.confirm_leave {
+                                tr("net_leave_confirm")
+                            } else {
+                                tr("net_leave")
+                            };
+                            if motif::button_enabled(ui, label, !busy)
+                                .on_hover_text(tr("net_leave_tooltip"))
+                                .clicked()
+                            {
+                                if w.confirm_leave {
+                                    leave = true;
+                                } else {
+                                    w.confirm_leave = true;
+                                }
+                            }
                         }
                     }
                     if motif::button(ui, tr("trod_edit_done")).clicked() {
@@ -57378,6 +57622,78 @@ impl App {
                 let _ = tx.send(yes);
             }
             w.code = None;
+        }
+        if let Some(id) = pick_net {
+            w.network = id;
+            w.confirm_leave = false;
+            w.edits.clear();
+            w.reread(&session.db);
+            if let Some(sum) = &w.summary {
+                w.edit_label = sum.label.clone();
+                w.edit_folder = sum.folder.clone();
+            }
+        }
+        if let Some(label) = create_net {
+            match crate::network::Net::create_network(&session.db, &label, &session.today) {
+                Ok(id) => {
+                    w.network = id;
+                    w.new_open = false;
+                    w.new_label.clear();
+                    w.edit_label = label;
+                    w.edit_folder.clear();
+                    w.note = Some((false, tr("net_new_done").to_owned()));
+                    w.reread(&session.db);
+                }
+                Err(e) => w.note = Some((true, e)),
+            }
+        }
+        // Le nom et le partage d'un réseau de plus voyagent entre les
+        // postes : écrits contre ce que la fenêtre montrait.
+        let was = w
+            .summary
+            .as_ref()
+            .map(|s| (s.label.clone(), s.folder.clone(), s.shares))
+            .unwrap_or_default();
+        let mut network_stale = false;
+        if let Some(sh) = save_shares {
+            let saved = if w.network.is_empty() {
+                session.db.set_principal_shares(sh).map(|()| true)
+            } else {
+                session
+                    .db
+                    .set_net_network(&w.network, &was.0, &was.1, sh, (&was.0, was.2))
+            };
+            match saved {
+                Ok(true) => {}
+                Ok(false) => network_stale = true,
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.reread(&session.db);
+        }
+        if save_meta {
+            match session.db.set_net_network(
+                &w.network,
+                &w.edit_label,
+                &w.edit_folder,
+                was.2,
+                (&was.0, was.2),
+            ) {
+                Ok(true) => {}
+                Ok(false) => network_stale = true,
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.reread(&session.db);
+        }
+        if leave {
+            match session.db.leave_net_network(&w.network) {
+                Ok(()) => {
+                    w.network.clear();
+                    w.confirm_leave = false;
+                    w.note = Some((false, tr("net_left").to_owned()));
+                }
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.reread(&session.db);
         }
         if create {
             w.note = Some(match crate::network::Net::create(&session.db) {
@@ -57399,7 +57715,8 @@ impl App {
             w.reread(&session.db);
         }
         if let Some(device) = remove_peer {
-            if let Err(e) = session.db.remove_net_peer(&device) {
+            // Dans un réseau de plus, l'officine ne quitte que lui.
+            if let Err(e) = session.db.remove_net_membership(&w.network, &device) {
                 w.note = Some((true, e));
             }
             w.edits.remove(&device);
@@ -57427,6 +57744,9 @@ impl App {
         }
         if peer_stale {
             session.stale("net_peer_stale");
+        }
+        if network_stale {
+            session.stale("net_network_stale");
         }
         if open_folder_options {
             session.open_options = Some(OptionsPage::Database);

@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.315.0] - 2026-09-24
+
+### Added
+- **Plusieurs réseaux d'officines.** Une officine peut être de plusieurs
+  réseaux à la fois : son groupement, une garde de secteur, ou un lien
+  avec une seule autre officine (un réseau à deux). « Nouveau réseau… »
+  en crée un, « Rejoindre un autre réseau » rejoint celui d'une officine
+  qui invite sans quitter les autres. Chaque réseau a ses officines, son
+  dossier d'échange et ses réglages de partage (ruptures, versions,
+  valeurs sourcées) ; messages et fichiers passent par le réseau qui
+  réunit les destinataires. La carte des connexions montre chaque réseau
+  sur son arc.
+
 ## [0.314.0] - 2026-09-24
 
 ### Added

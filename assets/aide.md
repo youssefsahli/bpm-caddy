@@ -859,6 +859,20 @@ chiffrées.
 Retirer une officine arrête ses envois ; ses envois antérieurs restent
 au journal.
 
+**Plusieurs réseaux.** Une officine peut être de plusieurs réseaux à la
+fois — son groupement, une garde de secteur, ou un simple lien avec une
+autre officine, qui est un réseau à deux. « Nouveau réseau… » en crée un
+(puis « Inviter une officine… » y fait entrer chacune, avec le code lu au
+téléphone) ; « Rejoindre un autre réseau » rejoint celui d'une officine
+qui invite, sans quitter les autres. Un onglet par réseau : ses
+officines, son dossier d'échange (plusieurs réseaux peuvent partager le
+même dossier sans se lire), et **ce qui y est partagé** — ruptures,
+versions des fiches et du contenu, valeurs sourcées — réglé réseau par
+réseau. Les messages et les fichiers vont toujours aux seules officines
+choisies, par le réseau qui les réunit. « Quitter ce réseau » retire sa
+clé et ses enregistrements ; les autres réseaux ne bougent pas. La carte
+des connexions montre chaque réseau sur son arc, avec son nom.
+
 **Suivi de chaque officine.** Sous chaque officine appairée, la liste
 indique le nom sous lequel elle signe, le nombre d'enregistrements reçus
 d'elle et la date des dernières nouvelles, qu'elles soient arrivées par

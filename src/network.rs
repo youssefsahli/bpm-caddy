@@ -66,6 +66,14 @@ fn random32() -> [u8; 32] {
 /// elle — voir [`crate::db::NetPeerRow`].
 pub type Peer = crate::db::NetPeerRow;
 
+/// Le nom d'un réseau par son `id` (l'empreinte de sa clé, en hex), en
+/// cinq groupes.
+pub fn network_groups_of(id: &str) -> String {
+    unhex::<10>(id)
+        .map(|b| bpm_sync::Fingerprint::from_bytes(b).groups())
+        .unwrap_or_else(|| id.chars().take(10).collect())
+}
+
 /// L'empreinte d'une officine appairée, en cinq groupes — ce qu'on se
 /// lit au téléphone.
 pub fn peer_groups(device: &str) -> String {
@@ -76,10 +84,20 @@ pub fn peer_groups(device: &str) -> String {
 
 /// Ce que cette officine sait du réseau, lu dans la base.
 pub struct Net {
+    /// Vide pour le réseau principal ; l'empreinte de sa clé pour les
+    /// autres (`net_networks`).
+    pub id: String,
+    pub label: String,
     device: Device,
     trousseau: Option<Trousseau>,
     journal: Journal,
+    /// Les officines de **ce** réseau.
     pub peers: Vec<Peer>,
+    /// Ce que l'officine partage dans ce réseau.
+    pub shares: crate::db::NetShares,
+    /// Le dossier d'échange propre à ce réseau (les autres que le
+    /// principal) ; celui du principal vient de la configuration.
+    pub folder: String,
 }
 
 impl Net {
@@ -95,17 +113,106 @@ impl Net {
             .and_then(|t| unhex::<32>(&t))
             .map(Trousseau::from_secret);
         let mut journal = Journal::new();
-        for bytes in db.net_records()? {
+        for bytes in db.net_records_of("")? {
             if let Ok(record) = Record::decode(&bytes) {
                 journal.insert(record);
             }
         }
-        let peers = db.net_peers()?;
+        let peers = db.net_members("")?;
         Ok(Self {
+            id: String::new(),
+            label: String::new(),
             device: Device::from_seed(seed),
             trousseau,
             journal,
             peers,
+            shares: db.principal_shares(),
+            folder: String::new(),
+        })
+    }
+
+    /// Un réseau de plus, par son `id`.
+    pub fn load_network(db: &Db, id: &str) -> Result<Self, String> {
+        if id.is_empty() {
+            return Self::load(db);
+        }
+        let n = db
+            .net_networks()?
+            .into_iter()
+            .find(|n| n.id == id)
+            .ok_or_else(|| crate::strings::tr("net_err_no_network").to_owned())?;
+        let seed = db.net_key("net_seed", &hex(&random32()))?;
+        let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
+        let mut journal = Journal::new();
+        for bytes in db.net_records_of(id)? {
+            if let Ok(record) = Record::decode(&bytes) {
+                journal.insert(record);
+            }
+        }
+        Ok(Self {
+            id: n.id.clone(),
+            label: n.label.clone(),
+            device: Device::from_seed(seed),
+            trousseau: unhex::<32>(&n.secret).map(Trousseau::from_secret),
+            journal,
+            peers: db.net_members(id)?,
+            shares: n.shares,
+            folder: n.folder.clone(),
+        })
+    }
+
+    /// Tous les réseaux dont l'officine est : le principal s'il existe,
+    /// puis les autres.
+    pub fn load_all(db: &Db) -> Result<Vec<Self>, String> {
+        let mut out = Vec::new();
+        let principal = Self::load(db)?;
+        if principal.in_network() {
+            out.push(principal);
+        }
+        for n in db.net_networks()? {
+            out.push(Self::load_network(db, &n.id)?);
+        }
+        Ok(out)
+    }
+
+    /// Créer un réseau de plus — pour un lien avec une seule officine, ou
+    /// un second groupement. Rend son `id`.
+    pub fn create_network(db: &Db, label: &str, day: &str) -> Result<String, String> {
+        let secret = random32();
+        let id = hex(&Trousseau::from_secret(secret).name().bytes());
+        db.add_net_network(&id, &hex(&secret), label, day)?;
+        Ok(id)
+    }
+
+    /// La clé sous laquelle ce réseau note ce qui est parti : telle quelle
+    /// pour le principal (ce qu'elle a toujours été), préfixée pour les
+    /// autres — un même événement part une fois **par réseau**.
+    fn done_key(&self, key: &str) -> String {
+        if self.id.is_empty() {
+            key.to_owned()
+        } else {
+            format!("{}|{key}", self.id)
+        }
+    }
+
+    /// Ce que ce réseau a déjà publié, sans son préfixe.
+    fn already(&self, db: &Db) -> Result<std::collections::HashSet<String>, String> {
+        let all = db.published()?;
+        // Une clé préfixée commence par l'empreinte d'un réseau (vingt
+        // chiffres hexadécimaux) et `|` ; une valeur sourcée peut contenir
+        // `|` dans son texte sans appartenir à un autre réseau.
+        let prefixed = |k: &str| {
+            k.len() > 21
+                && k.as_bytes()[20] == b'|'
+                && k[..20].bytes().all(|b| b.is_ascii_hexdigit())
+        };
+        Ok(if self.id.is_empty() {
+            all.into_iter().filter(|k| !prefixed(k)).collect()
+        } else {
+            let prefix = format!("{}|", self.id);
+            all.into_iter()
+                .filter_map(|k| k.strip_prefix(&prefix).map(str::to_owned))
+                .collect()
         })
     }
 
@@ -151,7 +258,18 @@ impl Net {
         let Some(trousseau) = &self.trousseau else {
             return Ok(0);
         };
-        let pending = db.unpublished_supply_events()?;
+        // Ce que **ce** réseau a déjà reçu d'ici, et ce que l'officine y
+        // partage : un événement part une fois par réseau, et pas du tout
+        // dans un réseau où son genre n'est pas partagé.
+        let already = self.already(db)?;
+        let pending: Vec<crate::ruptures::Event> = if self.shares.ruptures {
+            db.supply_events()?
+                .into_iter()
+                .filter(|e| e.source.is_empty() && !already.contains(&e.uid))
+                .collect()
+        } else {
+            Vec::new()
+        };
         let mut done = Vec::new();
         for e in &pending {
             let payload = crate::ruptures::encode(e, officine);
@@ -172,12 +290,15 @@ impl Net {
         // versionné, puis chaque version locale part une fois, et c'est
         // chez les autres qu'elle s'applique — ou attend.
         db.version_shared_entries("")?;
-        let already_versions = db.published()?;
-        for e in db
-            .card_edits()?
-            .into_iter()
-            .filter(|e| e.source.is_empty() && !already_versions.contains(&e.uid))
-        {
+        let versions: Vec<crate::versions::Edit> = if self.shares.versions {
+            db.card_edits()?
+                .into_iter()
+                .filter(|e| e.source.is_empty() && !already.contains(&e.uid))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        for e in versions {
             let payload = crate::versions::encode(&e, officine);
             self.journal
                 .write(
@@ -194,8 +315,12 @@ impl Net {
         // Les valeurs de pharmacocinétique sourcées : chacune part une
         // fois par valeur — la clé porte le texte et la source, donc une
         // valeur corrigée repart, et c'est la dernière reçue qui compte.
-        let already = db.published()?;
-        for (name, dci, fact) in db.all_drug_facts()? {
+        let facts = if self.shares.pk {
+            db.all_drug_facts()?
+        } else {
+            Vec::new()
+        };
+        for (name, dci, fact) in facts {
             let key = format!(
                 "fait:{}:{}:{}:{}",
                 crate::ruptures::key(&name),
@@ -254,21 +379,35 @@ impl Net {
             .filter_map(|(device, k)| unhex::<32>(&k).map(|b| (device, b)))
             .collect();
         let mine = self.device.box_public();
+        let members: std::collections::HashSet<&str> =
+            self.peers.iter().map(|p| p.device.as_str()).collect();
         for m in db.outgoing_net_messages()? {
             let key = format!("msg:{}", m.uid);
             if already.contains(&key) {
                 continue;
             }
-            let Some(mut recipients) = m
+            // **Par ce réseau, à ses seuls membres** : une conversation qui
+            // réunit des officines de deux réseaux part par chacun, chacun
+            // portant la boîte de ses membres.
+            let here: Vec<&String> = m
                 .peers
                 .iter()
-                .map(|p| keys.get(p).copied())
+                .filter(|p| members.contains(p.as_str()))
+                .collect();
+            if here.is_empty() {
+                continue;
+            }
+            let Some(mut recipients) = here
+                .iter()
+                .map(|p| keys.get(*p).copied())
                 .collect::<Option<Vec<[u8; 32]>>>()
             else {
                 continue;
             };
             recipients.push(mine);
-            let mut all_peers = m.peers.clone();
+            // Les participants que **ce** réseau connaît : les membres d'un
+            // autre réseau n'y sont pas nommés.
+            let mut all_peers: Vec<String> = here.iter().map(|p| (*p).clone()).collect();
             all_peers.push(hex(&self.device.id().0));
             let attached: Vec<crate::messages::FileMeta> = files
                 .iter()
@@ -340,7 +479,8 @@ impl Net {
             done.push(key);
         }
         self.keep(db)?;
-        db.mark_published(&done)?;
+        let keys: Vec<String> = done.iter().map(|k| self.done_key(k)).collect();
+        db.mark_published(&keys)?;
         Ok(done.len())
     }
 
@@ -351,7 +491,7 @@ impl Net {
             .records()
             .map(|r| (hex(&r.id().0), r.encode()))
             .collect();
-        db.keep_net_records(&all)
+        db.keep_net_records_of(&self.id, &all)
     }
 
     /// Ce que les officines appairées ont écrit, rangé dans le journal des
@@ -391,7 +531,8 @@ impl Net {
                         .map(str::to_owned)
                 })
                 .unwrap_or_default();
-            db.note_net_heard(
+            db.note_net_heard_in(
+                &self.id,
                 &hex(&author.0),
                 &name,
                 i64::try_from(theirs.len()).unwrap_or(i64::MAX),
@@ -479,7 +620,13 @@ impl Net {
                 framed
             })
             .collect();
-        let name = hex(&me.0[..10]);
+        // Un fichier par officine **et par réseau** : deux réseaux peuvent
+        // partager un dossier sans que l'un lise l'autre.
+        let name = if self.id.is_empty() {
+            hex(&me.0[..10])
+        } else {
+            format!("{}-{}", hex(&me.0[..10]), self.id)
+        };
         let target = folder.join(format!("{name}.bpmnet"));
         let part = folder.join(format!("{name}.bpmnet.part"));
         std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
@@ -494,6 +641,7 @@ impl Net {
             if path == target || path.extension().and_then(|e| e.to_str()) != Some("bpmnet") {
                 continue;
             }
+
             let Ok(bytes) = std::fs::read(&path) else {
                 continue;
             };
@@ -507,10 +655,16 @@ impl Net {
                     break;
                 };
                 at += len;
-                // Signé par son auteur, et d'une officine appairée : le
-                // reste du dossier n'est lu par personne.
+                // Signé par son auteur, d'une officine appairée, et **scellé
+                // sous la clé de ce réseau** : un dossier partagé par deux
+                // réseaux — ou le principal d'une officine qui est le second
+                // d'une autre — ne mêle pas leurs enregistrements.
                 if let Ok(record) = Record::decode(chunk) {
-                    if known.contains(&record.author()) && self.journal.insert(record) {
+                    let ours = self
+                        .trousseau
+                        .as_ref()
+                        .is_some_and(|t| record.open(t).is_ok());
+                    if ours && known.contains(&record.author()) && self.journal.insert(record) {
                         added += 1;
                     }
                 }
@@ -573,8 +727,9 @@ pub enum Progress {
 /// Ce qu'on demande au fil du réseau.
 #[derive(Clone, Debug)]
 pub enum Job {
-    /// Ouvrir une porte le temps d'une invitation.
-    Invite { port: u16 },
+    /// Ouvrir une porte le temps d'une invitation — dans ce réseau (vide :
+    /// le principal).
+    Invite { port: u16, network: String },
     /// Rejoindre un réseau en composant l'adresse de l'officine qui
     /// invite.
     Join { address: String },
@@ -626,13 +781,16 @@ pub fn run(
 ) -> Result<String, String> {
     use crate::strings::{tr, trn};
     let db = Db::open(path, password)?;
-    let mut net = Net::load(&db)?;
+    let mut net = match job {
+        Job::Invite { network, .. } => Net::load_network(&db, network)?,
+        _ => Net::load(&db)?,
+    };
     let mut confirm = |code: bpm_sync::Fingerprint| {
         let _ = tx.send(Progress::Code(code.groups()));
         answers.recv().unwrap_or(false)
     };
     match job {
-        Job::Invite { port } => {
+        Job::Invite { port, .. } => {
             let trousseau = net
                 .trousseau
                 .clone()
@@ -661,74 +819,125 @@ pub fn run(
             )
             .map_err(|_| tr("net_err_refused").to_owned())?;
             if let Some(peer) = session.peer() {
-                db.add_net_peer(&hex(&peer.0), "", today)?;
+                let device = hex(&peer.0);
+                let was = db.net_members("")?.iter().any(|p| p.device == device);
+                db.add_net_peer(&device, "", today)?;
+                // Au principal aussi, l'appartenance s'écrit : une officine
+                // déjà d'un autre réseau n'y serait pas comptée sinon.
+                db.add_net_membership(&net.id, &device, was)?;
             }
             net.keep(&db)?;
             Ok(tr("net_done_invited").to_owned())
         }
         Job::Join { address } => {
-            if net.in_network() {
-                return Err(tr("net_err_already").to_owned());
-            }
+            // **Déjà d'un réseau, on en rejoint un de plus** : la clé reçue
+            // devient celle d'un réseau à part, le principal ne bouge pas.
+            let second = net.in_network();
             let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
                 .map_err(|_| tr("net_err_unreachable").to_owned())?;
             let mut session = Session::new(&net.device, None, Intent::Join, true, &[])
                 .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
-            bpm_sync::drive(
-                &mut session,
-                &mut link,
-                &mut net.journal,
-                &mut meter,
-                &mut confirm,
-            )
-            .map_err(|_| tr("net_err_refused").to_owned())?;
+            // **Pour un réseau de plus, un journal vide** : l'appairage
+            // échange des enregistrements, et ceux du principal n'ont rien
+            // à faire chez l'officine qui invite dans un autre réseau.
+            let mut fresh = Journal::new();
+            let journal = if second { &mut fresh } else { &mut net.journal };
+            bpm_sync::drive(&mut session, &mut link, journal, &mut meter, &mut confirm)
+                .map_err(|_| tr("net_err_refused").to_owned())?;
             let joined = session
                 .joined()
                 .cloned()
                 .ok_or_else(|| tr("net_err_refused").to_owned())?;
-            db.net_key("net_trousseau", &hex(&joined.secret()))?;
-            if let Some(peer) = session.peer() {
-                db.add_net_peer(&hex(&peer.0), address, today)?;
+            // Un réseau dont l'officine est déjà — principal ou autre — ne
+            // se range pas une seconde fois sous un autre nom.
+            let fingerprint = hex(&joined.name().bytes());
+            let principal = net.trousseau.as_ref().map(|t| hex(&t.name().bytes()));
+            if principal.as_deref() == Some(fingerprint.as_str())
+                || db.net_networks()?.iter().any(|n| n.id == fingerprint)
+            {
+                return Ok(tr("net_done_already_member").to_owned());
             }
-            net.keep(&db)?;
-            let net = Net::load(&db)?;
+            let id = if second {
+                let id = fingerprint;
+                db.add_net_network(&id, &hex(&joined.secret()), "", today)?;
+                id
+            } else {
+                db.net_key("net_trousseau", &hex(&joined.secret()))?;
+                String::new()
+            };
+            if let Some(peer) = session.peer() {
+                let device = hex(&peer.0);
+                let was = db.net_members("")?.iter().any(|p| p.device == device);
+                db.add_net_peer(&device, address, today)?;
+                db.add_net_membership(&id, &device, was)?;
+            }
+            // Les enregistrements reçus pendant l'appairage — et seulement
+            // ceux que la clé du réseau rejoint ouvre.
+            let source = if second { &fresh } else { &net.journal };
+            let all: Vec<(String, Vec<u8>)> = source
+                .records()
+                .filter(|r| r.open(&joined).is_ok())
+                .map(|r| (hex(&r.id().0), r.encode()))
+                .collect();
+            db.keep_net_records_of(&id, &all)?;
+            let net = Net::load_network(&db, &id)?;
             let received = net.absorb(&db)?;
             Ok(trn("net_done_joined", &[&received]))
         }
         Job::Sync { folder } => {
-            if !net.in_network() {
+            let nets = Net::load_all(&db)?;
+            if nets.is_empty() {
                 return Err(tr("net_err_no_network").to_owned());
             }
-            let sent = net.publish(&db, officine)?;
+            let (mut sent, mut received) = (0, 0);
             let mut failed = Vec::new();
-            if let Some(folder) = folder {
-                if let Err(e) = net.exchange_folder(&db, folder) {
-                    failed.push(format!("{} : {e}", folder.display()));
+            for mut net in nets {
+                // Un réseau qui échoue n'arrête pas les autres.
+                match net.publish(&db, officine) {
+                    Ok(n) => sent += n,
+                    Err(e) => failed.push(e),
                 }
-            }
-            let peers = net.peers.clone();
-            for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
-                // Chaque conversation est notée, réussie ou non, avec sa
-                // raison : « injoignable » sans date ni cause ne dit pas
-                // si c'est la box d'en face ou celle d'ici.
-                // Une note qui ne s'écrit pas n'arrête pas les autres
-                // conversations : c'est un état affiché, pas une donnée.
-                match net.sync_with(&db, &p.address, TALK_PATIENCE) {
-                    Ok(answered) => {
-                        let _ = db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
-                    }
-                    Err(e) => {
-                        let _ = db.note_net_dial(&p.device, Some(&dial_reason(&e)));
-                        failed.push(if p.name.trim().is_empty() {
-                            p.address.clone()
-                        } else {
-                            p.name.clone()
-                        });
+                // Le principal prend le dossier de la configuration ; les
+                // autres, le leur.
+                let dir = if net.id.is_empty() {
+                    folder.clone()
+                } else {
+                    (!net.folder.trim().is_empty()).then(|| PathBuf::from(net.folder.trim()))
+                };
+                if let Some(dir) = &dir {
+                    if let Err(e) = net.exchange_folder(&db, dir) {
+                        failed.push(format!("{} : {e}", dir.display()));
                     }
                 }
+                let peers = net.peers.clone();
+                for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
+                    // Chaque conversation est notée, réussie ou non, avec sa
+                    // raison ; une note qui ne s'écrit pas n'arrête pas les
+                    // autres conversations.
+                    match net.sync_with(&db, &p.address, TALK_PATIENCE) {
+                        Ok(answered) => {
+                            let _ =
+                                db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
+                        }
+                        Err(e) => {
+                            let _ = db.note_net_dial(&p.device, Some(&dial_reason(&e)));
+                            let who = if p.name.trim().is_empty() {
+                                p.address.clone()
+                            } else {
+                                p.name.clone()
+                            };
+                            if !failed.contains(&who) {
+                                failed.push(who);
+                            }
+                        }
+                    }
+                }
+                match net.absorb(&db) {
+                    Ok(n) => received += n,
+                    Err(e) => failed.push(e),
+                }
             }
-            let received = net.absorb(&db)?;
             let mut said = trn("net_done_synced", &[&sent, &received]);
             if !failed.is_empty() {
                 said.push_str(&crate::strings::trf(
@@ -739,6 +948,13 @@ pub fn run(
             Ok(said)
         }
         Job::Dial { device } => {
+            // Le réseau où cette officine est : le premier qui la compte.
+            if let Some(found) = Net::load_all(&db)?
+                .into_iter()
+                .find(|n| n.peers.iter().any(|p| p.device == *device))
+            {
+                net = found;
+            }
             if !net.in_network() {
                 return Err(tr("net_err_no_network").to_owned());
             }
@@ -1401,6 +1617,188 @@ mod tests {
         assert!(v.file_chunks("gros").unwrap().is_empty());
     }
 
+    /// **Une officine dans deux réseaux.** A est du principal avec B, et
+    /// d'un second réseau avec C (où les ruptures ne sont pas partagées) —
+    /// réseau qui est le principal de C. Un dossier d'échange commun aux
+    /// trois. La rupture de A va à B, pas à C ; un message pour C passe par
+    /// le second réseau ; un message pour B et C passe par les deux.
+    #[test]
+    fn an_officine_in_two_networks_shares_what_each_allows() {
+        use crate::messages::Channel;
+        let (dir_a, _sa, a) = officine("multi-a");
+        let (_db, _sb, b) = officine("multi-b");
+        let (_dc, _sc, c) = officine("multi-c");
+        let folder = dir_a.join("echange");
+        // Le principal de A, partagé avec B.
+        Net::create(&a).unwrap();
+        b.net_key("net_trousseau", &a.setting("net_trousseau").unwrap())
+            .unwrap();
+        let id = |d: &Db| hex(&Net::load(d).unwrap().device.id().0);
+        let (ia, ib, ic) = (id(&a), id(&b), id(&c));
+        a.add_net_peer(&ib, "", "2026-09-24").unwrap();
+        b.add_net_peer(&ia, "", "2026-09-24").unwrap();
+        // Le second réseau de A, principal de C, sans les ruptures.
+        let n2 = Net::create_network(&a, "Garde du secteur", "2026-09-24").unwrap();
+        let secret = a.net_networks().unwrap()[0].secret.clone();
+        c.net_key("net_trousseau", &secret).unwrap();
+        a.add_net_peer(&ic, "", "2026-09-24").unwrap();
+        a.add_net_membership(&n2, &ic, false).unwrap();
+        c.add_net_peer(&ia, "", "2026-09-24").unwrap();
+        a.set_net_network(
+            &n2,
+            "Garde du secteur",
+            "",
+            crate::db::NetShares {
+                ruptures: false,
+                ..Default::default()
+            },
+            ("Garde du secteur", crate::db::NetShares::default()),
+        )
+        .unwrap();
+        // Contre ce que l'écran montrait : une valeur périmée n'écrit rien.
+        assert!(!a
+            .set_net_network(
+                &n2,
+                "Autre nom",
+                "",
+                crate::db::NetShares::default(),
+                ("Garde du secteur", crate::db::NetShares::default()),
+            )
+            .unwrap());
+        // C est au second réseau de A, pas au principal ; B l'inverse.
+        let members = |n: &str| -> Vec<String> {
+            a.net_members(n)
+                .unwrap()
+                .into_iter()
+                .map(|p| p.device)
+                .collect()
+        };
+        assert_eq!(members(""), vec![ib.clone()]);
+        assert_eq!(members(&n2), vec![ic.clone()]);
+        let round = |d: &Db, name: &str| {
+            for mut n in Net::load_all(d).unwrap() {
+                n.publish(d, name).unwrap();
+                n.exchange_folder(d, &folder).unwrap();
+            }
+        };
+        let take = |d: &Db| {
+            for mut n in Net::load_all(d).unwrap() {
+                n.exchange_folder(d, &folder).unwrap();
+                n.absorb(d).unwrap();
+            }
+        };
+        // Un tour pour les clés de boîte.
+        for (d, name) in [(&a, "A"), (&b, "B"), (&c, "C")] {
+            round(d, name);
+        }
+        for d in [&a, &b, &c] {
+            take(d);
+        }
+        a.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        let to_c = a
+            .create_conversation(
+                "",
+                Channel::Officines,
+                "",
+                &[],
+                None,
+                std::slice::from_ref(&ic),
+                "CL",
+            )
+            .unwrap();
+        a.post_message(
+            to_c,
+            "",
+            "CL",
+            "Pour C seule",
+            None,
+            "",
+            Some("2026-09-24 10:00:00"),
+        )
+        .unwrap();
+        let to_both = a
+            .create_conversation(
+                "",
+                Channel::Officines,
+                "Tous",
+                &[],
+                None,
+                &[ib.clone(), ic.clone()],
+                "CL",
+            )
+            .unwrap();
+        a.post_message(
+            to_both,
+            "",
+            "CL",
+            "Pour B et C",
+            None,
+            "",
+            Some("2026-09-24 10:01:00"),
+        )
+        .unwrap();
+        round(&a, "A");
+        take(&b);
+        take(&c);
+        assert_eq!(b.supply_events().unwrap().len(), 1, "B reçoit la rupture");
+        assert!(
+            c.supply_events().unwrap().is_empty(),
+            "le second réseau ne la partage pas"
+        );
+        let bodies = |d: &Db| -> Vec<String> {
+            d.conversations()
+                .unwrap()
+                .iter()
+                .flat_map(|cv| d.conversation_messages(cv.id).unwrap())
+                .map(|m| m.body)
+                .collect()
+        };
+        let mut got_c = bodies(&c);
+        got_c.sort();
+        assert_eq!(got_c, ["Pour B et C", "Pour C seule"]);
+        assert_eq!(
+            bodies(&b),
+            ["Pour B et C"],
+            "B ne lit pas ce qui est pour C"
+        );
+        // B, déjà du principal, rejoint aussi le second réseau : il reste
+        // du principal. Quitter le second réseau n'y touche pas non plus.
+        a.add_net_membership(&n2, &ib, true).unwrap();
+        assert!(members("").contains(&ib) && members(&n2).contains(&ib));
+        // Retirée du principal seul, B reste du second réseau.
+        a.remove_net_membership("", &ib).unwrap();
+        assert!(!members("").contains(&ib) && members(&n2).contains(&ib));
+        a.add_net_membership("", &ib, false).unwrap();
+        // **Un compte par réseau** : une officine de deux réseaux ne semble
+        // pas écrire à chaque synchronisation.
+        a.note_net_heard_in(&n2, &ib, "B", 5).unwrap();
+        a.note_net_heard(&ib, "B", 50).unwrap();
+        let heard = |d: &Db| {
+            d.net_peers()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.device == ib)
+                .unwrap()
+                .last_heard
+        };
+        a.conn_exec_for_tests("UPDATE net_peers SET last_heard = 'avant'")
+            .unwrap();
+        a.note_net_heard_in(&n2, &ib, "B", 5).unwrap();
+        a.note_net_heard(&ib, "B", 50).unwrap();
+        assert_eq!(heard(&a), "avant", "rien de neuf dans aucun des deux");
+        // Retirée du second réseau seul, B reste du principal.
+        a.remove_net_membership(&n2, &ib).unwrap();
+        assert!(members("").contains(&ib) && !members(&n2).contains(&ib));
+        a.add_net_membership(&n2, &ib, true).unwrap();
+        a.leave_net_network(&n2).unwrap();
+        assert_eq!(members(""), vec![ib.clone()]);
+        assert!(a.net_networks().unwrap().is_empty());
+        assert!(
+            a.leave_net_network("").is_err(),
+            "le principal ne se quitte pas ainsi"
+        );
+    }
+
     #[test]
     fn two_officines_share_a_substitution_through_a_folder_and_nothing_readable_crosses() {
         let (dir_a, _sa, a) = officine("a");
@@ -1678,6 +2076,122 @@ mod tests {
         assert_eq!(a.protocol_tree(proto).unwrap(), "[]");
     }
 
+    /// Une invitation de A dans `network`, que B rejoint : les deux fils,
+    /// les codes acceptés des deux côtés. Rend ce que chacun a dit.
+    fn pair(
+        dir_a: &std::path::Path,
+        dir_b: &std::path::Path,
+        network: &str,
+    ) -> (Option<Progress>, Option<Progress>) {
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (yes_a, answers_a) = std::sync::mpsc::channel();
+        let (yes_b, answers_b) = std::sync::mpsc::channel();
+        let inviting = spawn(
+            Job::Invite {
+                port,
+                network: network.to_owned(),
+            },
+            dir_a.join("net.db"),
+            "secret".to_owned(),
+            "A".to_owned(),
+            "2026-09-24".to_owned(),
+            answers_a,
+        );
+        match inviting.recv().unwrap() {
+            Progress::Waiting(_) => {}
+            other => return (Some(other), None),
+        }
+        let joining = spawn(
+            Job::Join {
+                address: format!("127.0.0.1:{port}"),
+            },
+            dir_b.join("net.db"),
+            "secret".to_owned(),
+            "B".to_owned(),
+            "2026-09-24".to_owned(),
+            answers_b,
+        );
+        let (mut done_a, mut done_b) = (None, None);
+        while done_a.is_none() || done_b.is_none() {
+            if done_a.is_none() {
+                if let Ok(p) = inviting.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(_) => yes_a.send(true).unwrap(),
+                        other => done_a = Some(other),
+                    }
+                }
+            }
+            if done_b.is_none() {
+                if let Ok(p) = joining.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(_) => yes_b.send(true).unwrap(),
+                        other => done_b = Some(other),
+                    }
+                }
+            }
+        }
+        (done_a, done_b)
+    }
+
+    /// **Rejoindre un second réseau pour de vrai** : B a déjà son principal
+    /// (avec ses enregistrements) ; il rejoint celui de A comme réseau de
+    /// plus. Son principal ne bouge pas, rien de son principal ne passe à
+    /// A, et rejoindre une seconde fois ne double rien.
+    #[test]
+    fn joining_a_second_network_keeps_the_first_to_itself() {
+        let (dir_a, _sa, a) = officine("second-a");
+        let (dir_b, _sb, b) = officine("second-b");
+        Net::create(&a).unwrap();
+        Net::create(&b).unwrap();
+        let b_key = b.setting("net_trousseau").unwrap();
+        b.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        Net::load(&b).unwrap().publish(&b, "B").unwrap();
+        let b_records = b.net_records().unwrap().len();
+        assert!(b_records > 0);
+        drop(a);
+        drop(b);
+        let (done_a, done_b) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(done_a, Some(Progress::Done(_))), "{done_a:?}");
+        assert!(matches!(done_b, Some(Progress::Done(_))), "{done_b:?}");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        assert_eq!(
+            b.setting("net_trousseau").unwrap(),
+            b_key,
+            "le principal de B ne bouge pas"
+        );
+        let second = b.net_networks().unwrap();
+        assert_eq!(second.len(), 1, "le réseau de A est un réseau de plus");
+        assert_eq!(second[0].secret, a.setting("net_trousseau").unwrap());
+        assert_eq!(
+            b.net_records().unwrap().len(),
+            b_records,
+            "principal intact"
+        );
+        // Rien du principal de B n'est chez A.
+        let b_device = Net::load(&b).unwrap().device.id();
+        let from_b = a
+            .net_records()
+            .unwrap()
+            .iter()
+            .filter_map(|bytes| Record::decode(bytes).ok())
+            .filter(|r| r.author() == b_device)
+            .count();
+        assert_eq!(from_b, 0, "aucun enregistrement du principal de B chez A");
+        // A voit B membre de son principal.
+        assert_eq!(a.net_members("").unwrap().len(), 1);
+        drop(a);
+        drop(b);
+        let (_, again) = pair(&dir_a, &dir_b, "");
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        assert!(matches!(again, Some(Progress::Done(_))), "{again:?}");
+        assert_eq!(b.net_networks().unwrap().len(), 1, "pas de doublon");
+    }
+
     /// **L'appairage réel** : une porte, un lien, le code des deux côtés —
     /// et la clé du réseau passe, avec ce qui était déjà au journal.
     #[test]
@@ -1701,7 +2215,10 @@ mod tests {
         let (yes_a, answers_a) = std::sync::mpsc::channel();
         let (yes_b, answers_b) = std::sync::mpsc::channel();
         let inviting = spawn(
-            Job::Invite { port },
+            Job::Invite {
+                port,
+                network: String::new(),
+            },
             dir_a.join("net.db"),
             "secret".to_owned(),
             "Pharmacie du Centre".to_owned(),

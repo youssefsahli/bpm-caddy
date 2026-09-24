@@ -46,6 +46,9 @@ pub struct Node {
     pub state: LinkState,
     /// L'empreinte de l'appareil (hex), pour agir sur lui.
     pub device: String,
+    /// Le réseau où la carte range une officine (son rang dans la liste
+    /// des réseaux) ; 0 pour ce poste et les postes.
+    pub group: usize,
 }
 
 /// Ce qu'on sait d'un poste de l'officine.
@@ -73,6 +76,8 @@ pub struct OfficineIn<'a> {
     pub last_ok: &'a str,
     pub last_try: &'a str,
     pub last_error: &'a str,
+    /// Le réseau où la ranger (rang dans la liste des réseaux).
+    pub group: usize,
 }
 
 /// L'état du lien avec une officine, d'après ce que `net_peers` garde.
@@ -118,6 +123,7 @@ pub fn nodes(
         label: me_label.to_owned(),
         state: LinkState::Ok,
         device: String::new(),
+        group: 0,
     }];
     for p in posts.iter().filter(|p| !p.left && Some(p.post) != my_post) {
         out.push(Node {
@@ -130,9 +136,14 @@ pub fn nodes(
             },
             state: post_state(p.device, heard),
             device: p.device.to_owned(),
+            group: 0,
         });
     }
-    for o in officines {
+    // **Un réseau, un arc** : les officines rangées par réseau se suivent
+    // sur le cercle extérieur.
+    let mut sorted: Vec<&OfficineIn<'_>> = officines.iter().collect();
+    sorted.sort_by_key(|o| o.group);
+    for o in sorted {
         let label = [o.name, o.seen_as]
             .into_iter()
             .map(str::trim)
@@ -145,6 +156,7 @@ pub fn nodes(
             label,
             state: officine_state(o),
             device: o.device.to_owned(),
+            group: o.group,
         });
     }
     out
@@ -183,6 +195,39 @@ pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
         .collect()
 }
 
+/// Où écrire le nom de chaque réseau : l'angle moyen de ses officines,
+/// un peu au-delà du cercle extérieur (mêmes unités que `layout`). Rend
+/// `(rang du réseau, x, y)` pour chaque réseau qui a des officines.
+pub fn group_labels(nodes: &[Node], places: &[(f32, f32)]) -> Vec<(usize, f32, f32)> {
+    let mut groups: Vec<usize> = nodes
+        .iter()
+        .filter(|n| n.kind == NodeKind::Officine)
+        .map(|n| n.group)
+        .collect();
+    groups.dedup();
+    groups
+        .into_iter()
+        .map(|g| {
+            let (sx, sy, k) = nodes
+                .iter()
+                .zip(places)
+                .filter(|(n, _)| n.kind == NodeKind::Officine && n.group == g)
+                .fold((0.0_f32, 0.0_f32, 0.0_f32), |(sx, sy, k), (_, (x, y))| {
+                    (sx + (x - 0.5), sy + (y - 0.5), k + 1.0)
+                });
+            let (dx, dy) = (sx / k.max(1.0), sy / k.max(1.0));
+            let len = dx.hypot(dy);
+            // Un seul réseau qui fait tout le tour : son nom en haut.
+            let (ux, uy) = if len < 1e-3 {
+                (0.0, -1.0)
+            } else {
+                (dx / len, dy / len)
+            };
+            (g, 0.5 + ux * 0.47, 0.5 + uy * 0.47)
+        })
+        .collect()
+}
+
 /// Le nœud le plus proche d'un point (mêmes unités que `layout`), à moins
 /// de `reach` — ce qu'un clic a touché.
 pub fn hit(places: &[(f32, f32)], x: f32, y: f32, reach: f32) -> Option<usize> {
@@ -214,6 +259,7 @@ mod tests {
             last_ok: ok,
             last_try: try_,
             last_error: err,
+            group: 0,
         }
     }
 
@@ -332,6 +378,49 @@ mod tests {
             labels,
             ["Ce poste", "Poste 2", "[n1]", "Pharmacie du Port", "Gare"]
         );
+    }
+
+    /// **Un réseau, un arc** : les officines d'un même réseau se suivent
+    /// sur le cercle, et le nom de chaque réseau se pose de son côté.
+    #[test]
+    fn each_network_takes_its_own_arc() {
+        let net = [
+            OfficineIn {
+                group: 1,
+                ..officine("b1", "", "", "", 0)
+            },
+            OfficineIn {
+                group: 0,
+                ..officine("a1", "", "", "", 0)
+            },
+            OfficineIn {
+                group: 1,
+                ..officine("b2", "", "", "", 0)
+            },
+            OfficineIn {
+                group: 0,
+                ..officine("a2", "", "", "", 0)
+            },
+        ];
+        let list = nodes("me", None, &[], &[], &net, &|n| n.to_string(), &|d| {
+            d.to_owned()
+        });
+        let groups: Vec<usize> = list.iter().skip(1).map(|n| n.group).collect();
+        assert_eq!(groups, [0, 0, 1, 1], "contigus");
+        let places = layout(&list);
+        let labels = group_labels(&list, &places);
+        assert_eq!(labels.len(), 2);
+        // Chaque nom est plus près des siens que des autres.
+        for (g, x, y) in &labels {
+            let near = |want: bool| {
+                list.iter()
+                    .zip(&places)
+                    .filter(|(n, _)| n.kind == NodeKind::Officine && (n.group == *g) == want)
+                    .map(|(_, (px, py))| (px - x).hypot(py - y))
+                    .fold(f32::MAX, f32::min)
+            };
+            assert!(near(true) < near(false), "réseau {g}");
+        }
     }
 
     /// Les places : au centre, sur deux cercles, dans le carré ; un clic
