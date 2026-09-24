@@ -36028,6 +36028,37 @@ impl Db {
     }
 
     /// Copier le fichier des pièces, comme `backup_to` copie la base.
+    /// Copier la base **par petites étapes**, qui la rendent entre deux.
+    ///
+    /// `VACUUM INTO` tient la base en lecture le temps de toute la copie :
+    /// en journal classique — celui d'une base posée sur un partage, où le
+    /// WAL n'est pas sûr —, une écriture du comptoir attend la fin de la
+    /// copie, et échoue au bout de son délai quand la copie dure (base
+    /// volumineuse, partage lent, poste chargé). C'est ce que la copie
+    /// quotidienne faisait juste après le déverrouillage, au moment où
+    /// l'on commence à travailler.
+    ///
+    /// L'API de sauvegarde de SQLite copie un paquet de pages, rend la
+    /// main, recommence : une écriture passe entre deux paquets. Une base
+    /// modifiée par une autre connexion en cours de route fait reprendre
+    /// la copie — c'est SQLite qui le gère, et la copie finie est
+    /// cohérente. La destination est chiffrée avec le même mot de passe :
+    /// SQLCipher copie alors les pages telles quelles.
+    pub fn backup_stepwise(&self, path: &Path, password: &str) -> Result<(), String> {
+        let mut out = Connection::open(path).map_err(|e| format!("sauvegarde impossible : {e}"))?;
+        out.pragma_update(None, "key", password)
+            .map_err(|e| format!("sauvegarde impossible : {e}"))?;
+        {
+            let backup = rusqlite::backup::Backup::new(&self.conn, &mut out)
+                .map_err(|e| format!("sauvegarde impossible : {e}"))?;
+            backup
+                .run_to_completion(128, std::time::Duration::from_millis(15), None)
+                .map_err(|e| format!("sauvegarde impossible : {e}"))?;
+        }
+        crate::telemetry::tally(crate::telemetry::Signal::Backup);
+        Ok(())
+    }
+
     pub fn backup_scans_to(&self, path: &Path) -> Result<(), String> {
         let path_str = path
             .to_str()
@@ -41385,6 +41416,45 @@ mod tests {
     /// **Les lignes TROD sont celles de l'officine** : semées une fois,
     /// réécrites sous compare-and-set, et une ligne supprimée ne revient
     /// pas au lancement suivant.
+    /// **La copie par étapes est une vraie copie** — chiffrée du même mot
+    /// de passe, avec ce que la base tenait — **et ne bloque pas une
+    /// écriture concurrente** : un autre poste écrit pendant qu'elle
+    /// tourne, sans attendre la fin.
+    #[test]
+    fn a_stepwise_backup_is_a_whole_copy_and_lets_writers_through() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-stepwise-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+        let db = Db::open(&path, "secret").unwrap();
+        for n in 0..200 {
+            db.add_patient(&format!("Patient{n}"), "Test", "1960-01-01")
+                .unwrap();
+        }
+        let other = Db::open(&path, "secret").unwrap();
+        let copy = dir.join("copie.db");
+        let writer = std::thread::spawn(move || {
+            let t = std::time::Instant::now();
+            other
+                .add_patient("Pendant", "La Copie", "1970-01-01")
+                .unwrap();
+            t.elapsed()
+        });
+        db.backup_stepwise(&copy, "secret").unwrap();
+        let waited = writer.join().unwrap();
+        assert!(
+            waited < std::time::Duration::from_secs(4),
+            "l'écriture a attendu {waited:?}"
+        );
+        let copied = Db::open(&copy, "secret").unwrap();
+        assert!(
+            copied.patients().unwrap().len() >= 200,
+            "la copie tient les dossiers"
+        );
+        assert!(Db::open(&copy, "autre").is_err(), "et elle est chiffrée");
+    }
+
     #[test]
     fn the_trod_lines_are_seeded_once_and_then_the_team_s() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-trod-{}", std::process::id()));

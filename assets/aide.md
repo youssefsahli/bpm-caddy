@@ -56,13 +56,15 @@ Les outils se trouvent **par leur usage** et non par le nom de leur
 l'adaptation rénale, « demi-vie » à la décroissance, « horaires » à la
 trame de la semaine, « périmés » aux retours et à la destruction,
 « sauvegarde » à la page de la base, « angine » aux lignes du protocole
-TROD. Champ vide, la boîte liste les vues puis tous les outils : trame,
+TROD. Champ vide, la boîte liste les vues puis les outils : trame,
 planning, réseau d'officines, postes, codex, dispositifs, ordonnancier,
 vigilance, retours, pièces, textes imprimés, libellés, listes de
 contrôle, croisement, lignes du TROD, modèles, options, base et
-sauvegardes, règles et quotas — précédés des cinq dernières
-destinations choisies dans la boîte. La fenêtre « ? » (F12) les liste aussi
-sous les raccourcis, avec leur usage ; un clic ouvre l'outil.
+sauvegardes, règles et quotas, liste d'appel — précédés des cinq
+dernières destinations choisies dans la boîte. Le récapitulatif de
+facturation ne s'y propose pas : il se tape (« facturation »). La
+fenêtre « ? » (F12) liste aussi les outils sous les raccourcis, avec
+leur usage ; un clic ouvre l'outil.
 
 La recherche ignore la casse et les accents, et accepte des lettres non
 contiguës dans l'ordre : « jndp » retrouve Jean Dupont.

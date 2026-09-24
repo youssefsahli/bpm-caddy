@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.297.0] - 2026-09-24
+
+### Added
+- **« Aller à… » : deux outils de plus** — « rappeler » mène à la liste
+  d'appel (tableau de bord), « facturation » au récapitulatif de
+  facturation, qui se tape et ne se propose pas.
+- **Réseau d'officines : « Dossier d'échange… »** ouvre directement
+  Options › Base, où il se choisit.
+
+### Fixed
+- **La copie quotidienne de la base ne bloque plus le comptoir.** Elle
+  tenait la base le temps de toute la copie, juste après le
+  déverrouillage : sur un partage lent ou un poste chargé, une écriture
+  pouvait échouer (« base verrouillée »). Elle copie désormais par
+  petites étapes et laisse passer les écritures entre deux.
+
 ## [0.296.0] - 2026-09-24
 
 ### Added

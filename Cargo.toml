@@ -3,7 +3,7 @@ members = ["motif", "launcher", "sync"]
 
 [package]
 name = "bpm-caddy"
-version = "0.296.0"
+version = "0.297.0"
 edition = "2021"
 description = "Clinical pharmacy workflow & analytics — fast, local, encrypted."
 license-file = "LICENSE"
@@ -14,7 +14,7 @@ publish = false
 eframe = "0.29"
 motif = { path = "motif" }
 dirs = "5"
-rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl"] }
+rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
 typst = "0.13"

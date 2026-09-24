@@ -70,7 +70,7 @@ fn spawn_daily_backup(
     }
     std::thread::spawn(move || {
         if let Ok(db) = Db::open(&db_path, &password) {
-            daily_backup(&db, &db_path, keep);
+            daily_backup(&db, &db_path, &password, keep);
             daily_scans_backup(&db, &db_path, scans_keep);
             daily_stups_backup(&db, &db_path, keep.max(scans_keep));
         }
@@ -247,7 +247,7 @@ fn daily_scans_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
 /// Failures only go to stderr: a failed backup must never block the
 /// counter workflow, and on a shared drive another PC may have made
 /// today's copy already.
-fn daily_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
+fn daily_backup(db: &Db, db_path: &std::path::Path, password: &str, keep: usize) {
     if keep == 0 {
         return;
     }
@@ -255,7 +255,11 @@ fn daily_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     let dir = db::backup_dir(db_path);
     let prefix = db::backup_prefix(db_path, None);
     let target = dir.join(format!("{prefix}{today}.db"));
-    daily_copy(&dir, &target, &prefix, keep, |to| db.backup_to(to));
+    // Par étapes : la copie du matin ne bloque pas les écritures du
+    // comptoir (voir `Db::backup_stepwise`).
+    daily_copy(&dir, &target, &prefix, keep, |to| {
+        db.backup_stepwise(to, password)
+    });
 }
 
 /// Build the billing-reconciliation CSV: BOM + semicolons for French
@@ -2930,10 +2934,12 @@ enum Tool {
     Options,
     Sauvegarde,
     Regles,
+    Appels,
+    Facturation,
 }
 
 impl Tool {
-    const ALL: [Tool; 19] = [
+    const ALL: [Tool; 21] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
@@ -2953,6 +2959,8 @@ impl Tool {
         Tool::Options,
         Tool::Sauvegarde,
         Tool::Regles,
+        Tool::Appels,
+        Tool::Facturation,
     ];
 
     fn title(self) -> &'static str {
@@ -2976,6 +2984,8 @@ impl Tool {
             Tool::Options => tr("tool_options"),
             Tool::Sauvegarde => tr("tool_sauvegarde"),
             Tool::Regles => tr("tool_regles"),
+            Tool::Appels => tr("tool_appels"),
+            Tool::Facturation => tr("tool_facturation"),
         }
     }
 
@@ -3002,6 +3012,8 @@ impl Tool {
             Tool::Options => tr("tool_options_purpose"),
             Tool::Sauvegarde => tr("tool_sauvegarde_purpose"),
             Tool::Regles => tr("tool_regles_purpose"),
+            Tool::Appels => tr("tool_appels_purpose"),
+            Tool::Facturation => tr("tool_facturation_purpose"),
         }
     }
 
@@ -3013,6 +3025,14 @@ impl Tool {
             Tool::Reseau | Tool::Postes => cfg!(feature = "sync"),
             _ => true,
         }
+    }
+
+    /// Proposé dans la liste de la boîte vide — tous, sauf la
+    /// facturation : les recettes sont un écran « pour soi », qu'on
+    /// rejoint en tapant ce qu'on cherche et jamais en passant (voir
+    /// [`MainView::Finances`]).
+    fn listed(self) -> bool {
+        self != Tool::Facturation
     }
 }
 
@@ -5913,7 +5933,10 @@ impl Session {
             }
             // À vide, la boîte est un menu : les vues, puis les outils —
             // c'est ici qu'on apprend qu'ils existent.
-            for tool in Tool::ALL.into_iter().filter(|t| t.available()) {
+            for tool in Tool::ALL
+                .into_iter()
+                .filter(|t| t.available() && t.listed())
+            {
                 if menu.iter().any(|r| r.dest == Goto::Tool(tool)) {
                     continue;
                 }
@@ -6274,6 +6297,10 @@ impl Session {
             Tool::Options => self.open_options = Some(OptionsPage::Pharmacy),
             Tool::Sauvegarde => self.open_options = Some(OptionsPage::Database),
             Tool::Regles => self.open_options = Some(OptionsPage::Rules),
+            // La liste d'appel s'imprime depuis le tableau de bord, où
+            // elle se lit ; la facturation, depuis l'écran des recettes.
+            Tool::Appels => self.activate_tab(&WorkTab::Dashboard),
+            Tool::Facturation => self.activate_tab(&WorkTab::Finances),
         }
     }
 
@@ -16045,7 +16072,10 @@ impl App {
                             .num_columns(2)
                             .spacing([18.0, 3.0])
                             .show(ui, |ui| {
-                                for tool in Tool::ALL.into_iter().filter(|t| t.available()) {
+                                for tool in Tool::ALL
+                                    .into_iter()
+                                    .filter(|t| t.available() && t.listed())
+                                {
                                     if motif::list_row(
                                         ui,
                                         egui::RichText::new(tool.title()).size(motif::pt(ui, 12.0)),
@@ -54739,6 +54769,7 @@ impl App {
         let mut save_peer: Option<PeerEdit> = None;
         let mut peer_stale = false;
         let mut remove_peer: Option<String> = None;
+        let mut open_folder_options = false;
         let busy = w.job.is_some();
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("net_title"))
@@ -54913,15 +54944,26 @@ impl App {
                             }
                         }
                         ui.add_space(6.0);
-                        ui.label(
-                            egui::RichText::new(if config.reseau.dossier.trim().is_empty() {
-                                tr("net_folder_none").to_owned()
-                            } else {
-                                trf("net_folder", config.reseau.dossier.trim())
-                            })
-                            .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(if config.reseau.dossier.trim().is_empty() {
+                                    tr("net_folder_none").to_owned()
+                                } else {
+                                    trf("net_folder", config.reseau.dossier.trim())
+                                })
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                            )
+                            .wrap(),
                         );
+                        // Le réglage, d'un clic : la phrase disait où il
+                        // se trouve et laissait le chercher.
+                        if motif::button(ui, tr("net_folder_set"))
+                            .on_hover_text(tr("net_folder_set_tooltip"))
+                            .clicked()
+                        {
+                            open_folder_options = true;
+                        }
                         if let Some(at) = &w.waiting {
                             ui.label(
                                 egui::RichText::new(trf("net_waiting", at))
@@ -55019,6 +55061,9 @@ impl App {
         }
         if peer_stale {
             session.stale("net_peer_stale");
+        }
+        if open_folder_options {
+            session.open_options = Some(OptionsPage::Database);
         }
     }
 
@@ -74857,6 +74902,8 @@ mod tests {
             ("checklist", super::Tool::Listes),
             ("mise en page", super::Tool::Modeles),
             ("angine", super::Tool::TrodLines),
+            ("rappeler", super::Tool::Appels),
+            ("facturation", super::Tool::Facturation),
         ] {
             s.goto_query = words.to_owned();
             let hits = s.goto_results(30);
@@ -74880,6 +74927,12 @@ mod tests {
                 "{t:?} : un propos de trois mots au moins"
             );
         }
+        // La facturation se tape, elle ne se propose pas.
+        s.goto_query.clear();
+        assert!(!s
+            .goto_results(100)
+            .iter()
+            .any(|h| h.dest == super::Goto::Tool(super::Tool::Facturation)));
         // Et ils ouvrent ce qu'ils disent.
         s.go_to(super::Goto::Tool(super::Tool::Trame));
         assert!(s.frame.open, "la trame s'ouvre");
@@ -75834,7 +75887,7 @@ mod tests {
             std::fs::write(bdir.join(format!("bpm_caddy-2000-01-{day:02}.db")), b"old").unwrap();
         }
 
-        super::daily_backup(&db, &db_path, 14);
+        super::daily_backup(&db, &db_path, "secret", 14);
         let today = db.today_iso().unwrap();
         let todays = bdir.join(format!("bpm_caddy-{today}.db"));
         assert!(todays.exists());
@@ -75845,7 +75898,7 @@ mod tests {
 
         // Running again the same day is a no-op (no duplicate, no churn).
         let before = std::fs::metadata(&todays).unwrap().modified().unwrap();
-        super::daily_backup(&db, &db_path, 14);
+        super::daily_backup(&db, &db_path, "secret", 14);
         assert_eq!(
             std::fs::metadata(&todays).unwrap().modified().unwrap(),
             before
@@ -75853,7 +75906,7 @@ mod tests {
 
         // keep = 0 disables backups entirely.
         std::fs::remove_dir_all(&bdir).unwrap();
-        super::daily_backup(&db, &db_path, 0);
+        super::daily_backup(&db, &db_path, "secret", 0);
         assert!(!bdir.exists());
 
         let _ = std::fs::remove_dir_all(&dir);

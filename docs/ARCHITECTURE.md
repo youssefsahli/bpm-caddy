@@ -2654,6 +2654,34 @@ frame (`#set page`, `#set text`, the `#let sec` helper) plus one
 edits, and a body whose structure is computed from a file cannot be
 re-columned from a template.
 
+## Trouver un outil : le registre `Tool`, l'aide de la vue, les nouveautés
+
+Three doors, each held by a test, lead to what no tab shows:
+
+- **`Tool`** (src/app.rs) is the register of tools reached by the
+  question they answer: a title and a *purpose* written in the counter's
+  words (`tool_<key>` / `tool_<key>_purpose` in the strings file, spelled
+  out per variant — `every_key_in_the_file_is_used_somewhere` refuses
+  keys built with `format!`). The jump box scores both; on an empty
+  query it lists the recent destinations (`remember_goto`, five, pruned
+  of files that no longer exist), then the views, then the listed tools.
+  `Tool::listed` keeps the billing recap out of that menu — the recettes
+  view has no door on purpose (see `finances` above) — while typing still
+  finds it. `open_tool` does what the long way does; the three Options
+  pages go through `session.open_options`, since the window belongs to
+  the App. The F12 window and the empty base's « Premiers pas » panel
+  read the same register.
+- **« Sur cette vue »**: `help_title_for` maps the open view to a
+  first-level section of `assets/aide.md`, which the Aide tab shows first
+  while its search is empty. `every_view_s_help_section_exists_in_the_manual`
+  refuses a mapping to a title that was renamed.
+- **« Nouveautés »**: `release::notes_since` parses the `CHANGELOG.md`
+  compiled into the binary; the window opens once per post after an
+  update (`[ui] seen_notes`), with every skipped version, and never under
+  a start-view key but its own (`nouveautes`) — the demo config marks
+  notes as seen so no capture gets it. `the_shipped_changelog_describes_this_version`
+  fails a release whose changelog was not retitled.
+
 ## L'aide : un volet, et des listes lues dans le code
 
 `assets/aide.md` is the prose — French, markdown, cut at its
