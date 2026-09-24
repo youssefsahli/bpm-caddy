@@ -92,7 +92,7 @@ mod wire;
 pub mod link;
 
 pub use journal::{Fact, Journal, Reading};
-pub use keys::{Device, DeviceId, Fingerprint, Trousseau};
+pub use keys::{Device, DeviceId, Fingerprint, Ticket, Trousseau};
 pub use link::Link;
 pub use meter::{Meter, Refusal, Report, Signal};
 pub use seal::{Hash, Record, Stream, MAX_PAYLOAD};

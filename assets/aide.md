@@ -843,10 +843,23 @@ TROD et des vaccins du catalogue — **jamais un patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 
-Une officine **crée** le réseau, puis **invite** les autres : elle
-accepte une connexion le temps que l'autre saisisse son adresse, et les
-deux se lisent par téléphone un code de cinq groupes. Un code identique
-des deux côtés garantit l'absence d'intermédiaire.
+Une officine **crée** le réseau, puis **invite** les autres : « Inviter
+une officine… » ouvre une invitation de cinq minutes et affiche son
+**code d'invitation** (`K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`), à
+transmettre par téléphone ou en personne. L'autre officine le colle dans
+« Rejoindre » : rien d'autre à saisir ni à comparer. Le code sert une
+fois ; un code faux ferme l'invitation, et une officine qui se présente
+sans lui est refusée. Les deux officines doivent être à jour.
+
+**Les officines voisines.** Chaque officine s'annonce sur le réseau
+local — son nom et son empreinte, rien d'autre ; Options › Base,
+« Annoncer l'officine », pour ne pas le faire. La carte des connexions
+les montre sur un arc « À portée ». Un clic sur l'une d'elles propose
+**Inviter cette officine** — l'invitation apparaît sur sa carte —, ou
+**Rejoindre son réseau** quand c'est elle qui invite. Ce nom est celui
+qu'elle se donne : ces invitations-là n'ont pas de code, et les deux
+officines se lisent par téléphone un code de cinq groupes. Un code
+identique des deux côtés garantit l'absence d'intermédiaire.
 
 La **synchronisation** se fait par un bouton, et à la fermeture si le
 poste est configuré ainsi (Options › Base). Deux modes : connexion
@@ -862,8 +875,8 @@ au journal.
 **Plusieurs réseaux.** Une officine peut être de plusieurs réseaux à la
 fois — son groupement, une garde de secteur, ou un simple lien avec une
 autre officine, qui est un réseau à deux. « Nouveau réseau… » en crée un
-(puis « Inviter une officine… » y fait entrer chacune, avec le code lu au
-téléphone) ; « Rejoindre un autre réseau » rejoint celui d'une officine
+(puis « Inviter une officine… » y fait entrer chacune, avec son code
+d'invitation) ; « Rejoindre un autre réseau » rejoint celui d'une officine
 qui invite, sans quitter les autres. Un onglet par réseau : ses
 officines, son dossier d'échange (plusieurs réseaux peuvent partager le
 même dossier sans se lire), et **ce qui y est partagé** — ruptures,
@@ -932,8 +945,8 @@ données.
 
 Un poste **fonde** le groupe : sa base est conservée, avec sa
 numérotation des dossiers. Il **invite** ensuite les autres, comme pour
-le réseau : connexion acceptée, adresse saisie, code de cinq groupes lu
-des deux côtés. **Rejoindre remplace le contenu du poste** par les
+le réseau : « Inviter… » affiche un code d'invitation, que l'autre poste
+colle dans « Rejoindre ». **Rejoindre remplace le contenu du poste** par les
 données du groupe : faire une copie au préalable si nécessaire.
 
 Sur le réseau local, les postes se découvrent et se synchronisent
@@ -1022,15 +1035,16 @@ gestes : pour une officine, **Écrire**, **Envoyer un fichier…** (la
 conversation s'ouvre, le fichier joint au prochain message) et
 **Essayer** (une connexion directe, quand elle a une adresse) ; pour un
 poste, le synchroniser ; pour ce poste, tout synchroniser, relier un
-poste ou inviter une officine.
+poste ou inviter une officine. Les **officines voisines**, qui
+s'annoncent sur le réseau local sans être d'aucun réseau de celle-ci,
+sont sur l'arc « À portée », en cercle pointillé (plein au centre quand
+elle invite), sans lien dessiné : Inviter, ou Rejoindre son réseau.
 
 **Connexion au lancement** : les postes du groupe se découvrent et se
 synchronisent sur le réseau local ; le réseau d'officines se synchronise
 au lancement puis toutes les quinze minutes (Options › Base). Un poste
-isolé écoute seulement : la vue liste les postes détectés, avec leur
-adresse, et « Rejoindre… » la reprend. Rejoindre demande toujours le
-code de cinq groupes, lu des deux côtés, qui garantit l'absence
-d'intermédiaire.
+isolé écoute seulement : la vue liste les postes détectés. Rejoindre
+demande le code d'invitation affiché par le poste qui invite.
 
 Quatre panneaux : postes (en ligne, hors ligne, retirés), réseau
 d'officines (officines appairées, dernière et prochaine

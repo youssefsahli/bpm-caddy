@@ -4627,6 +4627,10 @@ struct Session {
     /// The posts heard on the local network, as the thread last said.
     #[cfg(feature = "sync")]
     posts_peers: Vec<crate::postes::PeerSeen>,
+    /// Les officines qui s'annoncent sur le réseau local, d'après le fil
+    /// automatique — la carte des connexions les pose « à portée ».
+    #[cfg(feature = "sync")]
+    near_officines: Vec<crate::network::Nearby>,
     /// The officines' network synchronisation running in the background,
     /// at launch and then at its interval.
     #[cfg(feature = "sync")]
@@ -4741,9 +4745,16 @@ struct Session {
     /// What the tables say of each pair (centre, card), for the centre
     /// and base revision they were read on.
     graph_reasons: Option<GraphReasons>,
-    /// Every card as the review reads it, for the base revision it was
-    /// read on — see `revue::Folded`.
-    graph_folded: Option<(u64, Vec<crate::revue::Folded>)>,
+    /// Every card as the map reads it, for the base revision it was read
+    /// on — see [`GraphIndex`]. The path without a worker (tests).
+    graph_index: Option<GraphIndex>,
+    /// The map's own thread, started by the view — see [`GraphWorker`].
+    graph_worker: Option<GraphWorker>,
+    /// The base as the worker reads it: one copy per revision, shared.
+    graph_base: Option<(u64, std::sync::Arc<Vec<Drug>>)>,
+    /// What the worker was last asked, so a frame does not ask again.
+    graph_asked: Option<(i64, u64)>,
+    graph_meet_asked: Option<(Vec<i64>, u64)>,
     /// The rings the operator hid by clicking their key in the legend.
     graph_hidden: Vec<crate::graph::Tie>,
     /// The centres walked through by clicking, most recent last — what
@@ -5454,6 +5465,8 @@ impl Session {
             #[cfg(feature = "sync")]
             posts_peers: Vec::new(),
             #[cfg(feature = "sync")]
+            near_officines: Vec::new(),
+            #[cfg(feature = "sync")]
             net_auto: None,
             #[cfg(feature = "sync")]
             net_next: None,
@@ -5495,7 +5508,11 @@ impl Session {
             graph_unnamed: 0,
             graph_offscreen: 0,
             graph_reasons: None,
-            graph_folded: None,
+            graph_index: None,
+            graph_worker: None,
+            graph_base: None,
+            graph_asked: None,
+            graph_meet_asked: None,
             graph_hidden: Vec::new(),
             graph_trail: Vec::new(),
             graph_file_meet: None,
@@ -7102,6 +7119,10 @@ impl Session {
             config.postes.port,
             (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
             config.postes.adresses.clone(),
+            config
+                .reseau
+                .annoncer
+                .then(|| config.pharmacy.name.trim().to_owned()),
             crate::postes::Pace::default(),
         ));
     }
@@ -7438,6 +7459,7 @@ impl Session {
                     self.posts_status = Some((false, line));
                 }
                 crate::postes::Progress::Peers(peers) => self.posts_peers = peers,
+                crate::postes::Progress::Officines(near) => self.near_officines = near,
                 crate::postes::Progress::Failed(line) => {
                     self.log_connection(true, &line);
                     self.posts_status = Some((true, line));
@@ -7449,6 +7471,7 @@ impl Session {
         if gone {
             self.posts_auto = None;
             self.posts_peers.clear();
+            self.near_officines.clear();
         } else {
             // Often enough that another post's writing shows here within
             // seconds; rarely enough to cost nothing.
@@ -8224,6 +8247,39 @@ impl Session {
         if self.graph_key == Some(key) {
             return;
         }
+        // Ce que les tables savent de chaque paire — lu **une fois par
+        // centre**, pas par grossissement : les plafonds changent avec la
+        // place, les raisons non.
+        let want = (centre, self.drugs_rev);
+        if self.graph_reasons.as_ref().map(|(k, _)| *k) != Some(want) {
+            if self.graph_worker.is_some() {
+                // **Au fil de la carte**, une fois par centre : l'image
+                // d'avant reste jusqu'à la réponse, qui la remplace d'un
+                // coup — voir `poll_graph`.
+                if self.graph_asked != Some(want) {
+                    let base = self.graph_snapshot();
+                    if let Some(w) = &self.graph_worker {
+                        let _ = w.asks.send((want.1, base, GraphAsk::Reasons(centre)));
+                    }
+                    self.graph_asked = Some(want);
+                }
+                if self.graph_map.is_some() {
+                    return;
+                }
+                // Rien à garder : la carte s'ouvre sans l'anneau des
+                // interactions, qui arrive avec la réponse.
+            } else {
+                let found = {
+                    let ix = self.graph_index_now();
+                    ix.drugs
+                        .iter()
+                        .find(|d| d.id == centre)
+                        .map(|c| graph_reasons(c, ix))
+                        .unwrap_or_default()
+                };
+                self.graph_reasons = Some((want, found));
+            }
+        }
         let known: Vec<crate::graph::Known> = self
             .drugs
             .iter()
@@ -8236,30 +8292,12 @@ impl Session {
                 toxicity_noted: !d.toxicity.trim().is_empty(),
             })
             .collect();
-        // Ce que les tables savent de chaque paire — lu **une fois par
-        // centre**, pas par grossissement : les plafonds changent avec la
-        // place, les raisons non.
-        if self.graph_reasons.as_ref().map(|(k, _)| *k) != Some((centre, self.drugs_rev)) {
-            // Each card read by the review once per base revision, not
-            // once per centre: moving the centre only reads pairs.
-            if self.graph_folded.as_ref().map(|(r, _)| *r) != Some(self.drugs_rev) {
-                let lines = ordonnance_terms(&self.drugs)
-                    .iter()
-                    .map(crate::revue::Folded::of)
-                    .collect();
-                self.graph_folded = Some((self.drugs_rev, lines));
-            }
-            let folded = self.graph_folded.as_ref().map_or(&[][..], |(_, l)| &l[..]);
-            let reasons = self
-                .drugs
-                .iter()
-                .find(|d| d.id == centre)
-                .map(|c| graph_reasons(c, &self.drugs, folded))
-                .unwrap_or_default();
-            self.graph_reasons = Some(((centre, self.drugs_rev), reasons));
-        }
         let empty = std::collections::HashMap::new();
-        let reasons = self.graph_reasons.as_ref().map_or(&empty, |(_, r)| r);
+        let reasons = self
+            .graph_reasons
+            .as_ref()
+            .filter(|(k, _)| *k == want)
+            .map_or(&empty, |(_, r)| r);
         self.graph_map = known
             .iter()
             .find(|k| k.id == centre)
@@ -8275,33 +8313,91 @@ impl Session {
         // **Ce que chaque fiche rencontrerait sur l'ordonnance du dossier
         // ouvert** — la question d'une substitution : lequel des voisins
         // de classe se prend sans heurter le reste. Une lecture par ligne
-        // du dossier, une fois par dossier et par révision de la base.
+        // du dossier, une fois par dossier et par révision de la base —
+        // au fil de la carte quand il tourne.
         let file_key = (
             self.patient_treats.iter().map(|d| d.id).collect::<Vec<_>>(),
             self.drugs_rev,
         );
-        if self.graph_file_meet.as_ref().map(|(k, _)| k) != Some(&file_key) {
-            let mut meet: std::collections::HashMap<i64, Vec<(String, crate::graph::Why)>> =
-                std::collections::HashMap::new();
-            if self.viewing.is_some() {
-                if self.graph_folded.as_ref().map(|(r, _)| *r) != Some(self.drugs_rev) {
-                    let lines = ordonnance_terms(&self.drugs)
-                        .iter()
-                        .map(crate::revue::Folded::of)
-                        .collect();
-                    self.graph_folded = Some((self.drugs_rev, lines));
+        if self.graph_file_meet.as_ref().map(|(k, _)| k) == Some(&file_key) {
+            return;
+        }
+        if self.viewing.is_none() {
+            self.graph_file_meet = Some((file_key, std::collections::HashMap::new()));
+            return;
+        }
+        if self.graph_worker.is_some() {
+            if self.graph_meet_asked.as_ref() != Some(&file_key) {
+                let base = self.graph_snapshot();
+                let lines = self.patient_treats.clone();
+                if let Some(w) = &self.graph_worker {
+                    let _ = w.asks.send((file_key.1, base, GraphAsk::Meet(lines)));
                 }
-                let folded = self.graph_folded.as_ref().map_or(&[][..], |(_, l)| &l[..]);
-                for line in &self.patient_treats {
-                    for (id, whys) in graph_reasons(line, &self.drugs, folded) {
-                        let slot = meet.entry(id).or_default();
-                        for w in whys {
-                            slot.push((line.name.trim().to_owned(), w));
-                        }
+                self.graph_meet_asked = Some(file_key.clone());
+            }
+            // Un autre dossier : ses marques ne sont pas celles d'avant.
+            // La même ordonnance sur une base relue garde les siennes
+            // jusqu'à la réponse.
+            if self
+                .graph_file_meet
+                .as_ref()
+                .is_some_and(|((ids, _), _)| *ids != file_key.0)
+            {
+                self.graph_file_meet = None;
+            }
+            return;
+        }
+        let meet = graph_meet(&self.patient_treats.clone(), self.graph_index_now());
+        self.graph_file_meet = Some((file_key, meet));
+    }
+
+    /// The base as the map's thread reads it — copied once per revision
+    /// and shared, never once per question.
+    fn graph_snapshot(&mut self) -> std::sync::Arc<Vec<Drug>> {
+        if self.graph_base.as_ref().map(|(r, _)| *r) != Some(self.drugs_rev) {
+            self.graph_base = Some((self.drugs_rev, std::sync::Arc::new(self.drugs.clone())));
+        }
+        self.graph_base
+            .as_ref()
+            .map(|(_, b)| std::sync::Arc::clone(b))
+            .unwrap_or_default()
+    }
+
+    /// The index for the base on screen, built here when there is no
+    /// thread to build it — the tests' path.
+    fn graph_index_now(&mut self) -> &GraphIndex {
+        if self.graph_index.as_ref().map(|i| i.rev) != Some(self.drugs_rev) {
+            let base = self.graph_snapshot();
+            self.graph_index = Some(GraphIndex::build(self.drugs_rev, base));
+        }
+        self.graph_index.get_or_insert_with(|| {
+            GraphIndex::build(self.drugs_rev, std::sync::Arc::new(Vec::new()))
+        })
+    }
+
+    /// What the map's thread has answered since the last frame. An answer
+    /// to a question no longer asked — a centre left since — is dropped.
+    fn poll_graph(&mut self) {
+        let Some(w) = &self.graph_worker else {
+            return;
+        };
+        let answers: Vec<GraphDone> = w.done.try_iter().collect();
+        for a in answers {
+            match a {
+                GraphDone::Reasons(r) => {
+                    if Some(r.0) == self.graph_centre.map(|c| (c, self.drugs_rev)) {
+                        self.graph_reasons = Some(r);
+                        // The map is laid out again, with its reasons.
+                        self.graph_key = None;
+                        self.graph_map = None;
+                    }
+                }
+                GraphDone::Meet(m) => {
+                    if self.graph_meet_asked.as_ref() == Some(&m.0) {
+                        self.graph_file_meet = Some(m);
                     }
                 }
             }
-            self.graph_file_meet = Some((file_key, meet));
         }
     }
 
@@ -10067,45 +10163,36 @@ fn graph_why_line(w: &crate::graph::Why) -> String {
 /// ordonnance qui ne porte que le centre.
 fn graph_reasons(
     centre: &Drug,
-    drugs: &[Drug],
-    folded: &[crate::revue::Folded],
+    ix: &GraphIndex,
 ) -> std::collections::HashMap<i64, Vec<crate::graph::Why>> {
     use crate::graph::Why;
     let mut out: std::collections::HashMap<i64, Vec<Why>> = std::collections::HashMap::new();
-    let centre_cyp = crate::cyp::of(&centre.name, &centre.dci, &centre.class, &centre.tags)
-        .is_some_and(|p| !p.actions.is_empty());
-    let me = centre.name.trim().to_owned();
-    // Read once per base revision by the caller, one per card and in the
-    // same order: see `revue::Folded`.
-    let Some(centre_folded) = drugs
-        .iter()
-        .position(|d| d.id == centre.id)
-        .and_then(|i| folded.get(i))
-    else {
+    let drugs = &ix.drugs[..];
+    // Read once per base revision, one per card and in the same order:
+    // see [`GraphIndex`].
+    let Some(ci) = drugs.iter().position(|d| d.id == centre.id) else {
         return out;
     };
+    let me = centre.name.trim().to_owned();
+    fn term(d: &Drug) -> crate::revue::Treatment<'_> {
+        crate::revue::Treatment {
+            name: d.name.as_str(),
+            dci: d.dci.as_str(),
+            class: d.class.as_str(),
+            tags: d.tags.as_str(),
+        }
+    }
     // **Un tri sûr avant la lecture exacte.** Une fiche ne peut être
     // liée à une autre que si son nom ou sa DCI, repliés, figurent dans
     // le texte replié de l'autre : c'est la condition nécessaire de
     // `link_segments`. Les paires qui la passent sont lues par
     // `interactions_paired` — la même lecture que le dossier et la barre,
     // pas une seconde écriture.
-    let keys = |d: &Drug| -> Vec<String> {
-        [d.name.as_str(), d.dci.as_str()]
-            .iter()
-            .map(|t| crate::fuzzy::sort_key(t.trim()))
-            .filter(|k| k.chars().count() >= 4)
-            .collect()
-    };
-    let centre_ddi = crate::fuzzy::sort_key(&centre.ddi);
-    let centre_keys = keys(centre);
+    let (centre_ddi, centre_keys) = (&ix.ddi[ci], &ix.keys[ci]);
     for (i, d) in drugs.iter().enumerate().filter(|(_, d)| d.id != centre.id) {
         let mut why: Vec<Why> = Vec::new();
-        let named_here = keys(d).iter().any(|k| centre_ddi.contains(k.as_str()));
-        let named_there = !d.ddi.trim().is_empty() && {
-            let there = crate::fuzzy::sort_key(&d.ddi);
-            centre_keys.iter().any(|k| there.contains(k.as_str()))
-        };
+        let named_here = ix.keys[i].iter().any(|k| centre_ddi.contains(k.as_str()));
+        let named_there = centre_keys.iter().any(|k| ix.ddi[i].contains(k.as_str()));
         if named_here || named_there {
             for (a, _, _, sentence) in interactions_paired(&[centre.clone(), d.clone()]) {
                 let by = if a == centre.id {
@@ -10119,15 +10206,10 @@ fn graph_reasons(
                 });
             }
         }
-        let pair = [centre.clone(), d.clone()];
-        let terms = ordonnance_terms(&pair);
         // Only when both lines are in the table: the others cannot
         // cross, and asking costs a fold of four fields.
-        if centre_cyp
-            && crate::cyp::of(&d.name, &d.dci, &d.class, &d.tags)
-                .is_some_and(|p| !p.actions.is_empty())
-        {
-            for c in crate::cyp::cross(&terms).crossings {
+        if ix.cyp[ci] && ix.cyp[i] {
+            for c in crate::cyp::cross(&[term(centre), term(d)]).crossings {
                 why.push(Why::Enzyme {
                     actor: c.actor.clone(),
                     enzyme: c.enzyme.label().to_owned(),
@@ -10137,10 +10219,7 @@ fn graph_reasons(
             }
         }
         let other = d.name.trim().to_owned();
-        let Some(line) = folded.get(i) else {
-            continue;
-        };
-        for p in crate::revue::review_folded(&[centre_folded, line]) {
+        for p in crate::revue::review_folded(&[&ix.folded[ci], &ix.folded[i]]) {
             if p.drugs.contains(&me) && p.drugs.contains(&other) {
                 why.push(Why::Effect {
                     title: p.title.to_owned(),
@@ -10154,6 +10233,162 @@ fn graph_reasons(
         }
     }
     out
+}
+
+/// **Ce que chaque fiche rencontrerait sur une ordonnance** : pour chaque
+/// ligne, ses raisons contre toute la base, rangées sous la fiche
+/// rencontrée — (ligne, raison).
+fn graph_meet(
+    lines: &[Drug],
+    ix: &GraphIndex,
+) -> std::collections::HashMap<i64, Vec<(String, crate::graph::Why)>> {
+    let mut meet: std::collections::HashMap<i64, Vec<(String, crate::graph::Why)>> =
+        std::collections::HashMap::new();
+    for line in lines {
+        for (id, whys) in graph_reasons(line, ix) {
+            let slot = meet.entry(id).or_default();
+            for w in whys {
+                slot.push((line.name.trim().to_owned(), w));
+            }
+        }
+    }
+    meet
+}
+
+/// **Ce que la carte lit de chaque fiche, une fois par révision de la
+/// base** : la ligne telle que la revue la lit, le texte des interactions
+/// replié, le nom et la DCI repliés, et si les cytochromes la
+/// connaissent. `graph_reasons` refaisait ces replis pour chaque paire —
+/// huit cent soixante fois par centre, et autant par ligne du dossier.
+struct GraphIndex {
+    rev: u64,
+    drugs: std::sync::Arc<Vec<Drug>>,
+    folded: Vec<crate::revue::Folded>,
+    ddi: Vec<String>,
+    keys: Vec<Vec<String>>,
+    cyp: Vec<bool>,
+}
+
+impl GraphIndex {
+    fn build(rev: u64, drugs: std::sync::Arc<Vec<Drug>>) -> Self {
+        let folded = ordonnance_terms(&drugs)
+            .iter()
+            .map(crate::revue::Folded::of)
+            .collect();
+        let ddi = drugs
+            .iter()
+            .map(|d| crate::fuzzy::sort_key(&d.ddi))
+            .collect();
+        let keys = drugs
+            .iter()
+            .map(|d| {
+                [d.name.as_str(), d.dci.as_str()]
+                    .iter()
+                    .map(|t| crate::fuzzy::sort_key(t.trim()))
+                    .filter(|k| k.chars().count() >= 4)
+                    .collect()
+            })
+            .collect();
+        let cyp = drugs
+            .iter()
+            .map(|d| {
+                crate::cyp::of(&d.name, &d.dci, &d.class, &d.tags)
+                    .is_some_and(|p| !p.actions.is_empty())
+            })
+            .collect();
+        Self {
+            rev,
+            drugs,
+            folded,
+            ddi,
+            keys,
+            cyp,
+        }
+    }
+}
+
+/// Ce qu'on demande au fil de la carte.
+enum GraphAsk {
+    /// Les raisons de chaque fiche contre ce centre.
+    Reasons(i64),
+    /// Ce que chaque fiche rencontrerait sur ces lignes d'ordonnance.
+    Meet(Vec<Drug>),
+}
+
+/// Ce que le fil de la carte rend.
+enum GraphDone {
+    Reasons(GraphReasons),
+    Meet(GraphFileMeet),
+}
+
+/// **Le fil de la carte des médicaments.** Recentrer lisait la base
+/// entière sur le fil de l'écran — une trentaine de millisecondes par
+/// clic, cent vingt à la première ouverture, et une passe par ligne du
+/// dossier ouvert : dix lignes, un quart de seconde figé à chaque
+/// changement de dossier ou de base. Le fil fait ces lectures ; l'écran
+/// garde l'image d'avant jusqu'à la réponse, et la remplace d'un coup.
+///
+/// **La dernière question gagne** : dix clics rapides font une lecture,
+/// celle du dernier centre. Le fil garde l'index de la révision qu'il a
+/// lue et ne le refait qu'à la suivante.
+struct GraphWorker {
+    asks: std::sync::mpsc::Sender<(u64, std::sync::Arc<Vec<Drug>>, GraphAsk)>,
+    done: std::sync::mpsc::Receiver<GraphDone>,
+}
+
+impl GraphWorker {
+    /// `ctx` : l'écran à repeindre quand une réponse arrive ; aucun dans
+    /// un test.
+    fn spawn(ctx: Option<egui::Context>) -> Self {
+        let (asks, inbox) =
+            std::sync::mpsc::channel::<(u64, std::sync::Arc<Vec<Drug>>, GraphAsk)>();
+        let (tell, done) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            let mut ix: Option<GraphIndex> = None;
+            while let Ok(first) = inbox.recv() {
+                let (mut reasons, mut meet) = (None, None);
+                for (rev, base, ask) in std::iter::once(first).chain(inbox.try_iter()) {
+                    match ask {
+                        GraphAsk::Reasons(centre) => reasons = Some((rev, base, centre)),
+                        GraphAsk::Meet(lines) => meet = Some((rev, base, lines)),
+                    }
+                }
+                let mut said = Vec::new();
+                if let Some((rev, base, centre)) = reasons {
+                    if ix.as_ref().map(|i| i.rev) != Some(rev) {
+                        ix = Some(GraphIndex::build(rev, base));
+                    }
+                    if let Some(ix) = &ix {
+                        let found = ix
+                            .drugs
+                            .iter()
+                            .find(|d| d.id == centre)
+                            .map(|c| graph_reasons(c, ix))
+                            .unwrap_or_default();
+                        said.push(GraphDone::Reasons(((centre, rev), found)));
+                    }
+                }
+                if let Some((rev, base, lines)) = meet {
+                    if ix.as_ref().map(|i| i.rev) != Some(rev) {
+                        ix = Some(GraphIndex::build(rev, base));
+                    }
+                    if let Some(ix) = &ix {
+                        let ids = lines.iter().map(|d| d.id).collect();
+                        said.push(GraphDone::Meet(((ids, rev), graph_meet(&lines, ix))));
+                    }
+                }
+                for d in said {
+                    if tell.send(d).is_err() {
+                        return;
+                    }
+                }
+                if let Some(ctx) = &ctx {
+                    ctx.request_repaint();
+                }
+            }
+        });
+        Self { asks, done }
+    }
 }
 
 /// The sentence of `text` containing the span at `from`, so a quoted
@@ -10753,6 +10988,9 @@ struct NetWindow {
     edit_folder: String,
     /// « Quitter ce réseau » attend un second clic.
     confirm_leave: bool,
+    /// Une tâche demandée d'ailleurs — la carte, pour une officine
+    /// voisine — que la fenêtre lance dès qu'elle est libre.
+    pending: Option<crate::network::Job>,
 }
 
 /// What the base says about the network, read when the window opens and
@@ -10869,6 +11107,46 @@ fn conn_state_text(s: crate::netmap::LinkState) -> &'static str {
         crate::netmap::LinkState::Heard => tr("conn_map_heard_long"),
         crate::netmap::LinkState::Failing => tr("conn_map_failing_long"),
         crate::netmap::LinkState::Silent => tr("conn_map_silent_long"),
+    }
+}
+
+/// Le trait d'un lien de la carte des connexions — **la forme dit l'état
+/// autant que la couleur** : plein, fin, tirets, pointillés. Le même pour
+/// la carte et pour sa légende.
+fn conn_link_stroke(painter: &egui::Painter, line: [egui::Pos2; 2], st: crate::netmap::LinkState) {
+    use crate::netmap::LinkState;
+    let c = match st {
+        LinkState::Ok => motif::accent(),
+        LinkState::Heard => motif::text_dim(),
+        LinkState::Failing => motif::alert(),
+        LinkState::Silent => motif::text_faint(),
+    };
+    match st {
+        LinkState::Ok => {
+            painter.line_segment(line, egui::Stroke::new(2.5_f32, c));
+        }
+        LinkState::Heard => {
+            painter.line_segment(line, egui::Stroke::new(1.0_f32, c));
+        }
+        LinkState::Failing => {
+            painter.extend(egui::Shape::dashed_line(
+                &line,
+                egui::Stroke::new(2.0_f32, c),
+                8.0,
+                5.0,
+            ));
+        }
+        LinkState::Silent => {
+            painter.extend(egui::Shape::dotted_line(&line, c, 6.0, 1.2));
+        }
+    }
+}
+
+/// Ce qu'on sait d'une officine voisine : elle invite, ou elle s'annonce.
+fn conn_nearby_text(s: crate::netmap::LinkState) -> &'static str {
+    match s {
+        crate::netmap::LinkState::Ok => tr("conn_near_inviting"),
+        _ => tr("conn_near_heard"),
     }
 }
 
@@ -13809,10 +14087,22 @@ impl App {
                                 }
                                 session.reload_connections();
                                 session.conn_map = true;
-                                session.conn_pick =
-                                    session.db.net_peers().ok().and_then(|p| {
-                                        p.last().map(|p| format!("net:{}", p.device))
-                                    });
+                                // Deux officines voisines, l'une qui
+                                // invite : l'arc « À portée » et, choisie,
+                                // ce que le volet propose pour se lier.
+                                session.near_officines = vec![
+                                    crate::network::Nearby {
+                                        device: "5".repeat(64),
+                                        name: "Pharmacie de la Mairie".to_owned(),
+                                        invite: Some("192.168.1.31:7742".to_owned()),
+                                    },
+                                    crate::network::Nearby {
+                                        device: "6".repeat(64),
+                                        name: "Pharmacie du Marché".to_owned(),
+                                        invite: None,
+                                    },
+                                ];
+                                session.conn_pick = Some(format!("near:{}", "5".repeat(64)));
                             }
                         }
                         Ok(key @ ("ruptures" | "reseau")) => {
@@ -56208,6 +56498,8 @@ impl App {
             .as_ref()
             .map(|p| p.posts.clone())
             .unwrap_or_default();
+        let unreadable: Option<String> =
+            sum.posts.as_ref().err().or(sum.net.as_ref().err()).cloned();
         let my_post = sum.posts.as_ref().ok().and_then(|p| p.post);
         // Toutes les officines de tous les réseaux, chacune avec le sien.
         let peers: Vec<crate::network::Peer> =
@@ -56248,14 +56540,33 @@ impl App {
                     last_error: &p.last_error,
                 })
                 .collect::<Vec<_>>(),
+            &session
+                .near_officines
+                .iter()
+                .map(|n| crate::netmap::NearIn {
+                    device: &n.device,
+                    name: &n.name,
+                    inviting: n.invite.is_some(),
+                })
+                .collect::<Vec<_>>(),
             &|n| trf("conn_map_post", n),
             &crate::network::peer_groups,
         );
         let places = crate::netmap::layout(&nodes);
+        // Les voisines ont leur arc, et leur nom d'arc.
+        let mut group_names = group_names;
+        if let Some(g) = crate::netmap::nearby_group(&nodes) {
+            group_names.resize(g, String::new());
+            group_names.push(tr("conn_map_nearby").to_owned());
+        }
         // La carte à gauche, le volet du nœud à droite ; l'un sur l'autre
         // quand la vue est étroite.
-        let side_w = chars_wide(ui, 34.0);
-        let (map_rect, side_rect) = if rect.width() >= side_w * 2.2 {
+        // **Côte à côte tant que la carte garde de quoi se lire** : à
+        // 1024 en texte 1,6, l'une sur l'autre écrasaient la carte en une
+        // bande où les noms se couvraient — la hauteur y est plus rare que
+        // la largeur.
+        let side_w = chars_wide(ui, 34.0).min(rect.width() * 0.42);
+        let (map_rect, side_rect) = if rect.width() - side_w - 8.0 >= chars_wide(ui, 24.0) {
             (
                 egui::Rect::from_min_max(
                     rect.min,
@@ -56271,57 +56582,62 @@ impl App {
             (parts[0], parts[1])
         };
         let mut picked: Option<Option<String>> = None;
+        let mut legend_aside = false;
         motif::panel(ui, map_rect, Some(tr("conn_map_title")), |ui| {
-            let color = |s: LinkState| match s {
-                LinkState::Ok => motif::accent(),
-                LinkState::Heard => motif::text_dim(),
-                LinkState::Failing => motif::alert(),
-                LinkState::Silent => motif::text_faint(),
-            };
-            // **La légende montre les traits**, pas des pastilles : c'est
-            // la forme qui dit l'état autant que la couleur.
-            let draw_stroke = |painter: &egui::Painter, line: [egui::Pos2; 2], st: LinkState| {
-                let c = color(st);
-                match st {
-                    LinkState::Ok => {
-                        painter.line_segment(line, egui::Stroke::new(2.5_f32, c));
-                    }
-                    LinkState::Heard => {
-                        painter.line_segment(line, egui::Stroke::new(1.0_f32, c));
-                    }
-                    LinkState::Failing => {
-                        painter.extend(egui::Shape::dashed_line(
-                            &line,
-                            egui::Stroke::new(2.0_f32, c),
-                            8.0,
-                            5.0,
-                        ));
-                    }
-                    LinkState::Silent => {
-                        painter.extend(egui::Shape::dotted_line(&line, c, 6.0, 1.2));
-                    }
-                }
-            };
-            ui.horizontal_wrapped(|ui| {
-                for (st, label) in [
-                    (LinkState::Ok, tr("conn_map_ok")),
-                    (LinkState::Heard, tr("conn_map_heard")),
-                    (LinkState::Failing, tr("conn_map_failing")),
-                    (LinkState::Silent, tr("conn_map_silent")),
-                ] {
-                    let (r, _) = ui.allocate_exact_size(
-                        egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
-                        egui::Sense::hover(),
-                    );
-                    draw_stroke(ui.painter(), [r.left_center(), r.right_center()], st);
-                    ui.label(
-                        egui::RichText::new(label)
+            let draw_stroke = conn_link_stroke;
+            // **Une ligne de légende, ou aucune** : repliée sur trois
+            // rangées à 1024 en texte 1,6, elle prenait la moitié de la
+            // carte. Quand elle ne tient pas sur une, elle passe au volet.
+            let keys = [
+                (LinkState::Ok, tr("conn_map_ok")),
+                (LinkState::Heard, tr("conn_map_heard")),
+                (LinkState::Failing, tr("conn_map_failing")),
+                (LinkState::Silent, tr("conn_map_silent")),
+            ];
+            let key_font = egui::FontId::proportional(motif::pt(ui, 10.5));
+            let legend_w: f32 = keys
+                .iter()
+                .map(|(_, l)| {
+                    chars_wide(ui, 3.0)
+                        + 6.0
+                        + ui.fonts(|f| {
+                            f.layout_no_wrap((*l).to_owned(), key_font.clone(), motif::text())
+                                .size()
+                                .x
+                        })
+                        + 3.0 * ui.spacing().item_spacing.x
+                })
+                .sum();
+            legend_aside = legend_w > ui.available_width() * 2.0;
+            // Ce que la base n'a pas pu dire — une synchronisation la
+            // tient : la carte le dit plutôt que de montrer ce poste seul.
+            if let Some(e) = unreadable.as_ref() {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(trf("conn_unreadable", e))
                             .size(motif::pt(ui, 10.5))
-                            .color(motif::text_dim()),
-                    );
-                    ui.add_space(6.0);
-                }
-            });
+                            .color(motif::alert()),
+                    )
+                    .wrap(),
+                );
+            }
+            if !legend_aside {
+                ui.horizontal_wrapped(|ui| {
+                    for (st, label) in keys {
+                        let (r, _) = ui.allocate_exact_size(
+                            egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
+                            egui::Sense::hover(),
+                        );
+                        draw_stroke(ui.painter(), [r.left_center(), r.right_center()], st);
+                        ui.label(
+                            egui::RichText::new(label)
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add_space(6.0);
+                    }
+                });
+            }
             let field = ui.available_rect_before_wrap();
             // **Les cercles prennent toute la place** : en ellipses quand la
             // carte est large et basse, plutôt qu'en un carré qui entasse
@@ -56346,9 +56662,12 @@ impl App {
                 })
                 .collect();
             let r = motif::pt(ui, 9.0);
-            // Les liens d'abord, sous les nœuds.
+            // Les liens d'abord, sous les nœuds — et aucun vers une
+            // voisine : il n'y en a pas.
             for (i, n) in nodes.iter().enumerate().skip(1) {
-                draw_stroke(&painter, [at(0), at(i)], n.state);
+                if n.kind != NodeKind::Nearby {
+                    draw_stroke(&painter, [at(0), at(i)], n.state);
+                }
             }
             let label_font = egui::FontId::proportional(motif::pt(ui, 10.5));
             let label_w = chars_wide(ui, 16.0);
@@ -56377,6 +56696,32 @@ impl App {
                     NodeKind::Officine => {
                         painter.circle_filled(c, r, motif::bg_light());
                         painter.circle_stroke(c, r, ring);
+                    }
+                    // Une voisine : un cercle creux en pointillés, plein
+                    // au centre quand elle invite.
+                    NodeKind::Nearby => {
+                        let dots: Vec<egui::Pos2> = (0..=24)
+                            .map(|k| {
+                                let a = std::f32::consts::TAU * k as f32 / 24.0;
+                                c + egui::vec2(a.cos(), a.sin()) * r
+                            })
+                            .collect();
+                        painter.extend(egui::Shape::dashed_line(
+                            &dots,
+                            egui::Stroke::new(
+                                if chosen { 3.0_f32 } else { 1.5_f32 },
+                                if chosen {
+                                    motif::accent()
+                                } else {
+                                    motif::text_dim()
+                                },
+                            ),
+                            r * 0.35,
+                            r * 0.25,
+                        ));
+                        if n.state == LinkState::Ok {
+                            painter.circle_filled(c, r * 0.45, motif::accent());
+                        }
                     }
                 }
                 let mut job = egui::text::LayoutJob::single_section(
@@ -56425,7 +56770,11 @@ impl App {
                     resp.clone().on_hover_text(format!(
                         "{} — {}",
                         nodes[i].label,
-                        conn_state_text(nodes[i].state)
+                        if nodes[i].kind == NodeKind::Nearby {
+                            conn_nearby_text(nodes[i].state)
+                        } else {
+                            conn_state_text(nodes[i].state)
+                        }
                     ));
                 }
             }
@@ -56449,6 +56798,9 @@ impl App {
         let mut write_net: Option<String> = None;
         let mut file_net: Option<String> = None;
         let mut dial: Option<String> = None;
+        let mut join_near: Option<String> = None;
+        let mut invite_near = false;
+        let in_network = sum.net.as_ref().is_ok_and(|n| n.in_network);
         motif::panel(
             ui,
             side_rect,
@@ -56469,6 +56821,31 @@ impl App {
                                 .size(motif::pt(ui, 10.5))
                                 .color(motif::text_dim())
                         };
+                        // La légende, quand la carte n'avait pas la
+                        // place de l'écrire sur une ligne.
+                        if legend_aside {
+                            ui.horizontal_wrapped(|ui| {
+                                for (st, label) in [
+                                    (LinkState::Ok, tr("conn_map_ok")),
+                                    (LinkState::Heard, tr("conn_map_heard")),
+                                    (LinkState::Failing, tr("conn_map_failing")),
+                                    (LinkState::Silent, tr("conn_map_silent")),
+                                ] {
+                                    let (r, _) = ui.allocate_exact_size(
+                                        egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
+                                        egui::Sense::hover(),
+                                    );
+                                    conn_link_stroke(
+                                        ui.painter(),
+                                        [r.left_center(), r.right_center()],
+                                        st,
+                                    );
+                                    ui.label(small(ui, label.to_owned()));
+                                    ui.add_space(6.0);
+                                }
+                            });
+                            ui.add_space(4.0);
+                        }
                         let Some(n) = &chosen else {
                             ui.add(
                                 egui::Label::new(small(ui, tr("conn_map_pick").to_owned())).wrap(),
@@ -56476,12 +56853,16 @@ impl App {
                             return;
                         };
                         ui.label(
-                            egui::RichText::new(conn_state_text(n.state))
-                                .size(motif::pt(ui, 11.0))
-                                .color(match n.state {
-                                    LinkState::Failing => motif::alert(),
-                                    _ => motif::text(),
-                                }),
+                            egui::RichText::new(if n.kind == NodeKind::Nearby {
+                                conn_nearby_text(n.state)
+                            } else {
+                                conn_state_text(n.state)
+                            })
+                            .size(motif::pt(ui, 11.0))
+                            .color(match n.state {
+                                LinkState::Failing => motif::alert(),
+                                _ => motif::text(),
+                            }),
                         );
                         match n.kind {
                             NodeKind::Me => {
@@ -56584,10 +56965,70 @@ impl App {
                                     }
                                 }
                             }
+                            // **Une voisine** : ce qu'elle dit d'elle, et
+                            // les deux façons de se lier — la rejoindre
+                            // quand elle invite, l'inviter sinon. Dans les
+                            // deux cas, le code se compare au téléphone :
+                            // une annonce ne prouve rien de qui l'envoie.
+                            NodeKind::Nearby => {
+                                let near =
+                                    session.near_officines.iter().find(|x| x.device == n.device);
+                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.add(
+                                    egui::Label::new(small(ui, tr("conn_near_note").to_owned()))
+                                        .wrap(),
+                                );
+                                ui.add_space(4.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    if let Some(address) = near.and_then(|x| x.invite.clone()) {
+                                        if motif::button(ui, tr("conn_near_join"))
+                                            .on_hover_text(tr("conn_near_join_tooltip"))
+                                            .clicked()
+                                        {
+                                            join_near = Some(address);
+                                        }
+                                    }
+                                    if in_network
+                                        && motif::button(ui, tr("conn_near_invite"))
+                                            .on_hover_text(tr("conn_near_invite_tooltip"))
+                                            .clicked()
+                                    {
+                                        invite_near = true;
+                                    }
+                                });
+                                if !in_network && near.is_some_and(|x| x.invite.is_none()) {
+                                    ui.add(
+                                        egui::Label::new(small(ui, tr("conn_near_ask").to_owned()))
+                                            .wrap(),
+                                    );
+                                }
+                            }
                         }
                     });
             },
         );
+        // Se lier à une voisine passe par la fenêtre du réseau : c'est là
+        // que le code se compare, et que la tâche se suit.
+        if join_near.is_some() || invite_near {
+            if session.net_window.is_none() {
+                session.net_window = Some(NetWindow::opened(&session.db));
+            }
+            if let Some(w) = &mut session.net_window {
+                if let Some(address) = join_near {
+                    w.join_address = address.clone();
+                    w.pending = Some(crate::network::Job::Join {
+                        address,
+                        ticket: None,
+                    });
+                } else {
+                    w.pending = Some(crate::network::Job::Invite {
+                        port: config.reseau.port,
+                        network: w.network.clone(),
+                        nearby: true,
+                    });
+                }
+            }
+        }
         if let Some(device) = write_net {
             session.write_to_officine(&device);
             session.activate_tab(&WorkTab::Messages);
@@ -56723,7 +57164,7 @@ impl App {
                     Ok(Progress::Waiting(at)) => w.waiting = Some(at),
                     Ok(Progress::Code(code)) => w.code = Some(code),
                     Ok(Progress::Status(said)) => w.note = Some((false, said)),
-                    Ok(Progress::Peers(_)) => {}
+                    Ok(Progress::Peers(_) | Progress::Officines(_)) => {}
                     Ok(Progress::Done(said)) => {
                         w.note = Some((false, said));
                         finished = true;
@@ -56850,40 +57291,25 @@ impl App {
                                     .clicked()
                                 {
                                     w.join_armed = false;
-                                    start = Some(Job::Join {
-                                        address: w.join_address.trim().to_owned(),
-                                        name: String::new(),
-                                    });
-                                }
-                            });
-                            // **Les postes que ce poste entend** : un poste
-                            // seul écoute les annonces du groupe sur le
-                            // réseau local. Leur adresse se choisit d'un
-                            // clic au lieu de se recopier depuis l'autre
-                            // écran.
-                            let heard: Vec<String> = session
-                                .posts_peers
-                                .iter()
-                                .map(|h| h.address.clone())
-                                .collect();
-                            if !heard.is_empty() {
-                                ui.horizontal_wrapped(|ui| {
-                                    ui.label(
-                                        egui::RichText::new(tr("posts_heard_pick"))
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
-                                    );
-                                    for address in heard {
-                                        if motif::button(ui, &address)
-                                            .on_hover_text(tr("posts_heard_pick_tooltip"))
-                                            .clicked()
-                                        {
-                                            w.join_address = address;
-                                            w.join_armed = false;
+                                    // Un code d'invitation, ou une adresse
+                                    // seule — un code abîmé est dit.
+                                    match crate::network::read_join(&w.join_address) {
+                                        Some((address, ticket)) => {
+                                            start = Some(Job::Join {
+                                                address,
+                                                name: String::new(),
+                                                ticket,
+                                            })
+                                        }
+                                        None => {
+                                            w.note = Some((true, tr("net_join_bad").to_owned()))
                                         }
                                     }
-                                });
-                            }
+                                }
+                            });
+                            // L'adresse voyage dans le code d'invitation :
+                            // choisir celle d'un poste entendu ne suffit plus,
+                            // une invitation à code refuse qui vient sans.
                             if w.join_armed {
                                 ui.add(
                                     egui::Label::new(
@@ -57031,12 +57457,26 @@ impl App {
                                 said.as_str(),
                             );
                         }
-                        if let Some(at) = &w.waiting {
-                            ui.label(
-                                egui::RichText::new(trf("posts_waiting", at))
-                                    .strong()
-                                    .color(motif::accent()),
+                        if let Some(code) = &w.waiting {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("posts_waiting"))
+                                        .strong()
+                                        .color(motif::accent()),
+                                )
+                                .wrap(),
                             );
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(code.as_str())
+                                        .size(motif::pt(ui, 16.0))
+                                        .monospace()
+                                        .strong(),
+                                );
+                                if motif::button(ui, tr("net_code_copy")).clicked() {
+                                    ui.ctx().copy_text(code.clone());
+                                }
+                            });
                         }
                     });
                 if let Some((bad, note)) = &w.note {
@@ -57227,6 +57667,9 @@ impl App {
             w.code = None;
             w.waiting = None;
             w.reread(&session.db);
+            if let Some((_, poke)) = &session.posts_auto {
+                let _ = poke.send(crate::postes::Poke::Inviting(0));
+            }
             session.reload_supply();
             // La vue des connexions promet de se relire à la fin d'une
             // tâche : celles de cette fenêtre comprises.
@@ -57251,7 +57694,11 @@ impl App {
         let mut save_shares: Option<db::NetShares> = None;
         let mut save_meta = false;
         let mut leave = false;
+        let mut join_typed = false;
         let busy = w.job.is_some();
+        if !busy {
+            start = w.pending.take();
+        }
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("net_title"))
             .collapsible(false)
@@ -57371,9 +57818,7 @@ impl App {
                                 )
                                 .clicked()
                                 {
-                                    start = Some(Job::Join {
-                                        address: w.join_address.trim().to_owned(),
-                                    });
+                                    join_typed = true;
                                 }
                             });
                             return;
@@ -57445,9 +57890,7 @@ impl App {
                             .on_hover_text(tr("net_join_other_tooltip"))
                             .clicked()
                             {
-                                start = Some(Job::Join {
-                                    address: w.join_address.trim().to_owned(),
-                                });
+                                join_typed = true;
                             }
                         });
                         ui.label(
@@ -57571,12 +58014,40 @@ impl App {
                         {
                             open_folder_options = true;
                         }
-                        if let Some(at) = &w.waiting {
-                            ui.label(
-                                egui::RichText::new(trf("net_waiting", at))
-                                    .strong()
-                                    .color(motif::accent()),
+                        // **Le code d'invitation, en grand** : c'est lui
+                        // que l'autre officine colle dans « Rejoindre » —
+                        // et rien à comparer ensuite.
+                        // Une invitation à une voisine n'a pas de code : elle
+                        // est annoncée, et l'on comparera les cinq groupes.
+                        if let Some(at) = w.waiting.as_ref().filter(|c| !c.contains('@')) {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(trf("net_waiting_near", at))
+                                        .strong()
+                                        .color(motif::accent()),
+                                )
+                                .wrap(),
                             );
+                        } else if let Some(code) = &w.waiting {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("net_waiting"))
+                                        .strong()
+                                        .color(motif::accent()),
+                                )
+                                .wrap(),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(code.as_str())
+                                        .size(motif::pt(ui, 16.0))
+                                        .monospace()
+                                        .strong(),
+                                );
+                                if motif::button(ui, tr("net_code_copy")).clicked() {
+                                    ui.ctx().copy_text(code.clone());
+                                }
+                            });
                         }
                     });
                 if let Some((bad, note)) = &w.note {
@@ -57609,6 +58080,7 @@ impl App {
                             start = Some(Job::Invite {
                                 port: config.reseau.port,
                                 network: w.network.clone(),
+                                nearby: false,
                             });
                         }
                         if !w.network.is_empty() {
@@ -57740,7 +58212,30 @@ impl App {
             w.edits.remove(&device);
             w.reread(&session.db);
         }
+        // Un code d'invitation, ou une adresse seule ; un code abîmé est
+        // dit, jamais changé en comparaison de code à l'insu de qui l'a
+        // tapé.
+        if join_typed {
+            match crate::network::read_join(&w.join_address) {
+                Some((address, ticket)) => start = Some(Job::Join { address, ticket }),
+                None => w.note = Some((true, tr("net_join_bad").to_owned())),
+            }
+        }
         if let Some(job) = start {
+            // Une invitation ouverte se dit dans l'annonce de l'officine :
+            // une voisine la rejoint d'un clic sur sa carte.
+            // Seule l'invitation faite à une voisine s'annonce : une
+            // invitation à code n'a rien à dire au réseau local, et une
+            // porte annoncée est une porte qu'on peut devancer.
+            if let (
+                Job::Invite {
+                    port, nearby: true, ..
+                },
+                Some((_, poke)),
+            ) = (&job, &session.posts_auto)
+            {
+                let _ = poke.send(crate::postes::Poke::Inviting(*port));
+            }
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
             let rx = crate::network::spawn(
@@ -59947,6 +60442,13 @@ impl App {
     /// and not a pass over eight hundred and fifty fiches.
     fn graph_view(ui: &mut egui::Ui, session: &mut Session) {
         use crate::graph::Tie;
+        // Les lectures de la base se font au fil de la carte, démarré à
+        // la première image ; ce qu'il a répondu entre deux images est
+        // relevé ici.
+        if session.graph_worker.is_none() {
+            session.graph_worker = Some(GraphWorker::spawn(Some(ui.ctx().clone())));
+        }
+        session.poll_graph();
         let work = motif::visible_rect(ui);
         // The command band's height is measured, never a constant: a
         // button row that wrapped into two on a narrow window would draw
@@ -67526,6 +68028,12 @@ impl eframe::App for App {
                                     );
                                     ui.label(dim(tr("opts_reseau_minutes")));
                                 });
+                                motif::checkbox(
+                                    ui,
+                                    &mut editor.cfg.reseau.annoncer,
+                                    tr("opts_reseau_announce"),
+                                )
+                                .on_hover_text(tr("opts_reseau_announce_tooltip"));
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.
@@ -77502,12 +78010,9 @@ mod tests {
             .find(|d| d.name.trim() == "Voltarène")
             .expect("Voltarène livré")
             .clone();
-        let folded: Vec<crate::revue::Folded> = super::ordonnance_terms(&s.drugs)
-            .iter()
-            .map(crate::revue::Folded::of)
-            .collect();
+        let ix = super::GraphIndex::build(0, std::sync::Arc::new(s.drugs.clone()));
         let t = std::time::Instant::now();
-        let reasons = super::graph_reasons(&volta, &s.drugs, &folded);
+        let reasons = super::graph_reasons(&volta, &ix);
         let spent = t.elapsed();
         assert!(
             spent < std::time::Duration::from_millis(1500),
@@ -79162,5 +79667,142 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// **Le fil de la carte répond ce que la lecture directe répond** —
+    /// les mêmes raisons pour un centre, les mêmes rencontres pour une
+    /// ordonnance —, et la dernière question gagne : dix centres demandés
+    /// d'affilée, la réponse qui compte est celle du dernier.
+    #[test]
+    fn the_map_thread_answers_what_the_direct_reading_answers() {
+        let (s, _swept) = scratch_session("graph-thread");
+        let base = std::sync::Arc::new(s.drugs.clone());
+        let ix = super::GraphIndex::build(7, std::sync::Arc::clone(&base));
+        let pick = |n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .clone()
+        };
+        let volta = pick("Voltarène");
+        let w = super::GraphWorker::spawn(None);
+        for d in s.drugs.iter().take(9) {
+            w.asks
+                .send((
+                    7,
+                    std::sync::Arc::clone(&base),
+                    super::GraphAsk::Reasons(d.id),
+                ))
+                .unwrap();
+        }
+        w.asks
+            .send((
+                7,
+                std::sync::Arc::clone(&base),
+                super::GraphAsk::Reasons(volta.id),
+            ))
+            .unwrap();
+        let lines = vec![pick("Advil"), pick("Eliquis")];
+        w.asks
+            .send((
+                7,
+                std::sync::Arc::clone(&base),
+                super::GraphAsk::Meet(lines.clone()),
+            ))
+            .unwrap();
+        let (mut last, mut meet) = (None, None);
+        while last.as_ref().map(|((c, _), _)| *c) != Some(volta.id) || meet.is_none() {
+            match w
+                .done
+                .recv_timeout(std::time::Duration::from_secs(60))
+                .expect("une réponse")
+            {
+                super::GraphDone::Reasons(r) => last = Some(r),
+                super::GraphDone::Meet(m) => meet = Some(m),
+            }
+        }
+        let (_, reasons) = last.unwrap();
+        assert_eq!(
+            format!("{:?}", sorted(&reasons)),
+            format!("{:?}", sorted(&super::graph_reasons(&volta, &ix)))
+        );
+        let ((ids, rev), found) = meet.unwrap();
+        assert_eq!(ids, lines.iter().map(|d| d.id).collect::<Vec<_>>());
+        assert_eq!(rev, 7);
+        assert_eq!(
+            format!("{:?}", sorted(&found)),
+            format!("{:?}", sorted(&super::graph_meet(&lines, &ix)))
+        );
+        fn sorted<T: std::fmt::Debug>(m: &std::collections::HashMap<i64, T>) -> Vec<(i64, String)> {
+            let mut v: Vec<(i64, String)> = m.iter().map(|(k, v)| (*k, format!("{v:?}"))).collect();
+            v.sort();
+            v
+        }
+    }
+
+    /// **Avec le fil, l'écran n'attend pas** : recentrer garde la carte
+    /// d'avant jusqu'à la réponse, puis la carte du nouveau centre porte
+    /// son anneau d'interactions — le même que sans fil.
+    #[test]
+    fn with_the_map_thread_a_recentre_keeps_the_old_map_until_the_answer() {
+        let (mut s, _swept) = scratch_session("graph-async");
+        let id = |s: &super::Session, n: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == n)
+                .unwrap_or_else(|| panic!("{n} livré"))
+                .id
+        };
+        let (volta, eliquis) = (id(&s, "Voltarène"), id(&s, "Eliquis"));
+        // Ce que la lecture directe dessine pour l'Eliquis.
+        s.open_graph(eliquis);
+        s.refresh_graph(crate::graph::Caps::default());
+        let direct = s.graph_map.clone().expect("carte");
+        s.graph_key = None;
+        s.graph_reasons = None;
+        s.graph_map = None;
+
+        s.graph_worker = Some(super::GraphWorker::spawn(None));
+        s.open_graph(volta);
+        s.refresh_graph(crate::graph::Caps::default());
+        // Rien à garder : la carte s'ouvre tout de suite, sans attendre.
+        assert_eq!(s.graph_map.as_ref().map(|m| m.centre.0), Some(volta));
+        let wait = |s: &mut super::Session| {
+            let t = std::time::Instant::now();
+            while s.graph_reasons.as_ref().map(|(k, _)| k.0) != s.graph_centre {
+                assert!(
+                    t.elapsed() < std::time::Duration::from_secs(60),
+                    "pas de réponse"
+                );
+                std::thread::sleep(std::time::Duration::from_millis(5));
+                s.poll_graph();
+            }
+            s.refresh_graph(crate::graph::Caps::default());
+        };
+        wait(&mut s);
+        // Recentrer : l'image d'avant reste tant que la réponse n'est pas là.
+        s.open_graph(eliquis);
+        s.refresh_graph(crate::graph::Caps::default());
+        assert_eq!(
+            s.graph_map.as_ref().map(|m| m.centre.0),
+            Some(volta),
+            "l'image d'avant reste"
+        );
+        wait(&mut s);
+        let map = s.graph_map.clone().expect("carte");
+        assert_eq!(map.centre.0, eliquis);
+        let ring = |m: &crate::graph::Map| {
+            let mut v: Vec<i64> = m
+                .nodes
+                .iter()
+                .filter(|n| n.tie == crate::graph::Tie::Interaction)
+                .map(|n| n.id)
+                .collect();
+            v.sort();
+            v
+        };
+        assert!(!ring(&map).is_empty(), "l'anneau des interactions est là");
+        assert_eq!(ring(&map), ring(&direct), "le même que sans fil");
     }
 }

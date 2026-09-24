@@ -1,6 +1,6 @@
 //! What two posts actually say to each other.
 //!
-//! Six frames, and that is the whole vocabulary. Everything but the
+//! Seven frames, and that is the whole vocabulary. Everything but the
 //! first two is about one question — *which records do you not have* —
 //! and the design that keeps it to one question is [`Frame::Want`]
 //! carrying both halves: what I need, and what I already hold. The peer
@@ -75,6 +75,12 @@ pub enum Frame {
     /// got round to sending, and it must then either give up early —
     /// losing records, silently — or ask for ever. It is told instead.
     EndRound { more: bool },
+    /// « I hold the invitation's ticket », proved over this handshake —
+    /// or `None`, « I have none, show the operators the code ». A
+    /// joining post always sends one, first thing once it knows who it
+    /// is talking to; an inviting post answers with its own only once
+    /// the joiner's has checked. See [`crate::Ticket`].
+    Proof(Option<[u8; 32]>),
 }
 
 impl Frame {
@@ -86,6 +92,7 @@ impl Frame {
             Frame::Want { .. } => 4,
             Frame::Give(_) => 5,
             Frame::EndRound { .. } => 6,
+            Frame::Proof(_) => 7,
         }
     }
 
@@ -124,6 +131,14 @@ impl Frame {
             Frame::EndRound { more } => {
                 w.u8(u8::from(*more));
             }
+            Frame::Proof(proof) => match proof {
+                Some(p) => {
+                    w.u8(1).raw(p);
+                }
+                None => {
+                    w.u8(0).raw(&[0u8; 32]);
+                }
+            },
         }
         w.finish()
     }
@@ -165,6 +180,15 @@ impl Frame {
                     _ => return Err(Error::Malformed),
                 },
             },
+            7 => {
+                let flag = r.u8()?;
+                let proof = r.array::<32>()?;
+                Frame::Proof(match flag {
+                    0 => None,
+                    1 => Some(proof),
+                    _ => return Err(Error::Malformed),
+                })
+            }
             // Not `Malformed`: a tag this version does not know is a
             // peer speaking a protocol this one did not agree to, and
             // that is what `Hello` exists to settle before anything is
@@ -222,6 +246,8 @@ mod tests {
             Frame::Give(vec![0, 1, 2, 3]),
             Frame::EndRound { more: false },
             Frame::EndRound { more: true },
+            Frame::Proof(None),
+            Frame::Proof(Some([6; 32])),
         ]
     }
 
@@ -258,7 +284,7 @@ mod tests {
     /// so that the pane can say « mettez les deux postes à jour ».
     #[test]
     fn a_frame_this_version_does_not_know_is_a_protocol_refusal() {
-        for tag in [0u8, 7, 200, 255] {
+        for tag in [0u8, 8, 200, 255] {
             assert_eq!(Frame::decode(&[tag]), Err(Error::Protocol), "tag {tag}");
         }
     }

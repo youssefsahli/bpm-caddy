@@ -5,6 +5,37 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.317.0] - 2026-09-24
+
+### Added
+- **Code d'invitation.** « Inviter une officine… » et « Inviter… » (postes)
+  affichent un code à usage unique, par exemple
+  `K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`, avec un bouton « Copier ».
+  L'autre officine, ou l'autre poste, le colle dans « Rejoindre » : plus
+  d'adresse à saisir, plus de code à comparer. Le code vaut cinq
+  minutes, pour une seule connexion ; un code faux ferme l'invitation, et
+  qui se présente sans lui est refusé. Les deux côtés doivent être à jour.
+- **Officines voisines sur la carte.** Chaque officine s'annonce sur le
+  réseau local (son nom et son empreinte, rien d'autre ; réglable dans
+  Options › Base). La carte des connexions les montre sur un arc « À
+  portée », en cercle pointillé. Un clic : « Inviter cette officine » —
+  l'invitation apparaît sur sa carte — ou « Rejoindre son réseau » quand
+  elle invite ; le code de cinq groupes se compare alors au téléphone.
+
+### Changed
+- **Carte des médicaments plus fluide.** Les lectures de la base se font
+  hors de l'écran : recentrer ne fige plus l'affichage, et la carte d'un
+  dossier ouvert ne se recalcule plus ligne par ligne à chaque
+  changement. Chaque lecture est environ dix fois plus rapide.
+- La carte des connexions reste côte à côte avec son volet sur un écran
+  de comptoir, et sa légende passe au volet quand elle ne tient pas.
+
+### Fixed
+- La carte des connexions pouvait perdre le réseau d'officines pendant
+  une synchronisation ; elle dit désormais quand la base est occupée.
+- Le nom d'un réseau en bas de la carte ne recouvre plus celui de
+  l'officine.
+
 ## [0.316.0] - 2026-09-24
 
 ### Fixed

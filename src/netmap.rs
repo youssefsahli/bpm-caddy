@@ -19,6 +19,10 @@ pub enum NodeKind {
     Post,
     /// Une officine du réseau.
     Officine,
+    /// Une officine qui s'annonce sur le réseau local et n'est d'aucun
+    /// réseau de celle-ci : **aucun lien** n'est dessiné vers elle, il
+    /// n'y en a pas.
+    Nearby,
 }
 
 /// L'état d'un lien, du meilleur au pire.
@@ -80,6 +84,14 @@ pub struct OfficineIn<'a> {
     pub group: usize,
 }
 
+/// Une officine entendue sur le réseau local.
+pub struct NearIn<'a> {
+    pub device: &'a str,
+    pub name: &'a str,
+    /// Elle a une invitation ouverte.
+    pub inviting: bool,
+}
+
 /// L'état du lien avec une officine, d'après ce que `net_peers` garde.
 pub fn officine_state(o: &OfficineIn<'_>) -> LinkState {
     let failed = !o.last_error.trim().is_empty() && o.last_try >= o.last_ok;
@@ -107,13 +119,17 @@ pub fn post_state(device: &str, heard: &[HeardIn<'_>]) -> LinkState {
 }
 
 /// Les nœuds de la carte : ce poste, les autres postes du groupe (sans
-/// ceux qui l'ont quitté), puis les officines — chacun avec son état.
+/// ceux qui l'ont quitté), puis les officines — chacun avec son état —,
+/// puis les officines voisines qui ne sont d'aucun réseau d'ici, sur un
+/// arc à elles, le rang qui suit le dernier réseau.
+#[allow(clippy::too_many_arguments)]
 pub fn nodes(
     me_label: &str,
     my_post: Option<i64>,
     posts: &[PostIn<'_>],
     heard: &[HeardIn<'_>],
     officines: &[OfficineIn<'_>],
+    nearby: &[NearIn<'_>],
     unnamed_post: &dyn Fn(i64) -> String,
     unnamed_officine: &dyn Fn(&str) -> String,
 ) -> Vec<Node> {
@@ -159,7 +175,44 @@ pub fn nodes(
             group: o.group,
         });
     }
+    let near_group = officines.iter().map(|o| o.group + 1).max().unwrap_or(0);
+    for n in nearby {
+        if officines.iter().any(|o| o.device == n.device)
+            || out.iter().any(|x| x.device == n.device)
+        {
+            continue;
+        }
+        out.push(Node {
+            key: format!("near:{}", n.device),
+            kind: NodeKind::Nearby,
+            label: if n.name.trim().is_empty() {
+                unnamed_officine(n.device)
+            } else {
+                n.name.trim().to_owned()
+            },
+            state: if n.inviting {
+                LinkState::Ok
+            } else {
+                LinkState::Heard
+            },
+            device: n.device.to_owned(),
+            group: near_group,
+        });
+    }
     out
+}
+
+/// Le rang qu'occupent les officines voisines, quand il y en a.
+pub fn nearby_group(nodes: &[Node]) -> Option<usize> {
+    nodes
+        .iter()
+        .find(|n| n.kind == NodeKind::Nearby)
+        .map(|n| n.group)
+}
+
+/// Le cercle extérieur : les officines du réseau et les voisines.
+fn outer(kind: NodeKind) -> bool {
+    matches!(kind, NodeKind::Officine | NodeKind::Nearby)
 }
 
 /// La place de chaque nœud, en fraction du carré qui porte la carte
@@ -169,7 +222,10 @@ pub fn nodes(
 /// que ses nœuds ne tombent pas derrière ceux du premier.
 pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
     let ring = |kind: NodeKind| nodes.iter().filter(|n| n.kind == kind).count();
-    let (n_posts, n_net) = (ring(NodeKind::Post), ring(NodeKind::Officine));
+    let (n_posts, n_net) = (
+        ring(NodeKind::Post),
+        ring(NodeKind::Officine) + ring(NodeKind::Nearby),
+    );
     let (mut i_post, mut i_net) = (0usize, 0usize);
     let tau = std::f32::consts::TAU;
     nodes
@@ -186,7 +242,7 @@ pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
                     i_post += 1;
                     at(i_post - 1, n_posts, 0.22, 0.0)
                 }
-                NodeKind::Officine => {
+                NodeKind::Officine | NodeKind::Nearby => {
                     i_net += 1;
                     at(i_net - 1, n_net, 0.40, 0.5)
                 }
@@ -201,7 +257,7 @@ pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
 pub fn group_labels(nodes: &[Node], places: &[(f32, f32)]) -> Vec<(usize, f32, f32)> {
     let mut groups: Vec<usize> = nodes
         .iter()
-        .filter(|n| n.kind == NodeKind::Officine)
+        .filter(|n| outer(n.kind))
         .map(|n| n.group)
         .collect();
     groups.dedup();
@@ -211,7 +267,7 @@ pub fn group_labels(nodes: &[Node], places: &[(f32, f32)]) -> Vec<(usize, f32, f
             let (sx, sy, k) = nodes
                 .iter()
                 .zip(places)
-                .filter(|(n, _)| n.kind == NodeKind::Officine && n.group == g)
+                .filter(|(n, _)| outer(n.kind) && n.group == g)
                 .fold((0.0_f32, 0.0_f32, 0.0_f32), |(sx, sy, k), (_, (x, y))| {
                     (sx + (x - 0.5), sy + (y - 0.5), k + 1.0)
                 });
@@ -223,7 +279,11 @@ pub fn group_labels(nodes: &[Node], places: &[(f32, f32)]) -> Vec<(usize, f32, f
             } else {
                 (dx / len, dy / len)
             };
-            (g, 0.5 + ux * 0.47, 0.5 + uy * 0.47)
+            // **En bas, le nom passe à l'intérieur du cercle** : le nom
+            // d'un nœud s'écrit sous lui, et celui du réseau posé au-delà
+            // tombait dessus.
+            let radius = if uy > 0.3 { 0.31 } else { 0.47 };
+            (g, 0.5 + ux * radius, 0.5 + uy * radius)
         })
         .collect()
 }
@@ -368,6 +428,7 @@ mod tests {
             &posts,
             &[],
             &net,
+            &[],
             &|n| format!("Poste {n}"),
             &|d| format!("[{d}]"),
         );
@@ -402,7 +463,7 @@ mod tests {
                 ..officine("a2", "", "", "", 0)
             },
         ];
-        let list = nodes("me", None, &[], &[], &net, &|n| n.to_string(), &|d| {
+        let list = nodes("me", None, &[], &[], &net, &[], &|n| n.to_string(), &|d| {
             d.to_owned()
         });
         let groups: Vec<usize> = list.iter().skip(1).map(|n| n.group).collect();
@@ -446,9 +507,16 @@ mod tests {
             officine("n2", "", "", "", 0),
             officine("n3", "", "", "", 0),
         ];
-        let list = nodes("me", Some(1), &posts, &[], &net, &|n| n.to_string(), &|d| {
-            d.to_owned()
-        });
+        let list = nodes(
+            "me",
+            Some(1),
+            &posts,
+            &[],
+            &net,
+            &[],
+            &|n| n.to_string(),
+            &|d| d.to_owned(),
+        );
         let places = layout(&list);
         assert_eq!(places[0], (0.5, 0.5));
         for (n, (x, y)) in list.iter().zip(&places) {
@@ -457,7 +525,7 @@ mod tests {
             match n.kind {
                 NodeKind::Me => assert!(r < 1e-6),
                 NodeKind::Post => assert!((r - 0.22).abs() < 1e-4),
-                NodeKind::Officine => assert!((r - 0.40).abs() < 1e-4),
+                NodeKind::Officine | NodeKind::Nearby => assert!((r - 0.40).abs() < 1e-4),
             }
         }
         assert_eq!(hit(&places, 0.51, 0.5, 0.05), Some(0));
@@ -471,10 +539,65 @@ mod tests {
                 &[],
                 &[],
                 &[],
+                &[],
                 &|n| n.to_string(),
                 &|d| d.to_owned()
             )),
             vec![(0.5, 0.5)]
         );
+    }
+
+    /// **Les officines voisines** : sur leur arc, après le dernier réseau ;
+    /// une voisine déjà du réseau n'y figure qu'une fois, comme officine
+    /// du réseau ; sans nom, son empreinte.
+    #[test]
+    fn nearby_officines_take_the_arc_after_the_networks() {
+        let net = [
+            OfficineIn {
+                group: 1,
+                ..officine("b1", "", "", "", 0)
+            },
+            officine("a1", "", "", "", 0),
+        ];
+        let near = [
+            NearIn {
+                device: "a1",
+                name: "Déjà du réseau",
+                inviting: false,
+            },
+            NearIn {
+                device: "v1",
+                name: "Pharmacie voisine",
+                inviting: true,
+            },
+            NearIn {
+                device: "v2",
+                name: " ",
+                inviting: false,
+            },
+        ];
+        let list = nodes(
+            "me",
+            None,
+            &[],
+            &[],
+            &net,
+            &near,
+            &|n| n.to_string(),
+            &|d| format!("[{d}]"),
+        );
+        let keys: Vec<&str> = list.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["me", "net:a1", "net:b1", "near:v1", "near:v2"]);
+        assert_eq!(nearby_group(&list), Some(2));
+        assert_eq!(list[3].state, LinkState::Ok, "invitation ouverte");
+        assert_eq!(list[4].state, LinkState::Heard);
+        assert_eq!(list[4].label, "[v2]");
+        let places = layout(&list);
+        let labels = group_labels(&list, &places);
+        assert_eq!(labels.len(), 3, "deux réseaux et les voisines");
+        // Toutes sur le cercle extérieur.
+        for (n, (x, y)) in list.iter().zip(&places).skip(1) {
+            assert!(((x - 0.5).hypot(y - 0.5) - 0.40).abs() < 1e-4, "{}", n.key);
+        }
     }
 }

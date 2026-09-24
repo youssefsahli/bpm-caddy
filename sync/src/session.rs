@@ -46,7 +46,9 @@
 use std::collections::{BTreeSet, VecDeque};
 
 use crate::journal::Journal;
-use crate::keys::{short_code, Device, DeviceId, Fingerprint, Trousseau};
+use crate::keys::{
+    short_code, Device, DeviceId, Fingerprint, Ticket, Trousseau, ROLE_INVITE, ROLE_JOIN,
+};
 use crate::meter::{Meter, Signal};
 use crate::seal::{Hash, Record};
 use crate::wire::{Frame, MAX_HASHES, MAX_WIRE, PROTOCOL};
@@ -117,6 +119,12 @@ pub struct Session {
 
     peer: Option<DeviceId>,
     accepted: bool,
+    /// The invitation's ticket, when the pairing came with a code. See
+    /// [`Ticket`].
+    ticket: Option<Ticket>,
+    /// The inviting side has not yet read the joiner's [`Frame::Proof`]:
+    /// it neither shows a code nor hands over a key until it has.
+    proof_due: bool,
     welcome: Option<[u8; 32]>,
     adopted: bool,
 
@@ -184,6 +192,8 @@ impl Session {
             code: None,
             peer: None,
             accepted: false,
+            ticket: None,
+            proof_due: false,
             welcome: None,
             adopted: false,
             phase: Phase::Handshake,
@@ -198,6 +208,23 @@ impl Session {
             peer_end: false,
             rounds: 0,
         })
+    }
+
+    /// A pairing that came with an invitation code: each end proves it
+    /// holds the ticket over this handshake, and neither operator is
+    /// shown a code to compare — the ticket, handed over by a channel
+    /// the inviter trusts, is what the comparison would have proved.
+    ///
+    /// **Strict**: an inviter holding a ticket refuses a joiner that has
+    /// none, rather than falling back to the comparison.
+    ///
+    /// Only a pairing takes one. An ordinary sync already knows its peer.
+    pub fn with_ticket(mut self, ticket: Ticket) -> Result<Self> {
+        if self.intent == Intent::Sync {
+            return Err(Error::Protocol);
+        }
+        self.ticket = Some(ticket);
+        Ok(self)
     }
 
     /// Which post is at the other end, once it has proved it.
@@ -243,7 +270,14 @@ impl Session {
             // Returning `Confirm` again here is what would stop the
             // caller ever reading from the link — the conversation then
             // spins on a question already answered.
+            Phase::Confirm if !self.out.is_empty() => self.emit(meter),
             Phase::Confirm if self.accepted => Ok(Step::Await),
+            // Waiting on the joiner's proof, or — joining with a ticket —
+            // on the inviter's: no code is shown in either case.
+            Phase::Confirm if self.proof_due => Ok(Step::Await),
+            Phase::Confirm if self.intent == Intent::Join && self.ticket.is_some() => {
+                Ok(Step::Await)
+            }
             Phase::Confirm => match self.code {
                 Some(code) => Ok(Step::Confirm(code)),
                 None => Err(Error::Handshake),
@@ -257,7 +291,7 @@ impl Session {
     ///
     /// This is the whole of the authorisation. Nothing else calls it.
     pub fn accept(&mut self, journal: &Journal, meter: &mut Meter) -> Result<()> {
-        if self.phase != Phase::Confirm {
+        if self.phase != Phase::Confirm || self.accepted || self.proof_due {
             return Err(Error::Protocol);
         }
         self.accepted = true;
@@ -395,6 +429,7 @@ impl Session {
                 }
                 Ok(())
             }
+            (Phase::Confirm, Frame::Proof(proof)) => self.proved(proof, journal, meter),
             (Phase::Exchange, Frame::Heads(heads)) => {
                 self.peer_heads = heads;
                 self.begin_round(journal);
@@ -473,6 +508,8 @@ impl Session {
                     return Err(Error::Protocol);
                 }
                 self.phase = Phase::Confirm;
+                // The joiner speaks first: its proof, or its « none ».
+                self.proof_due = true;
                 Ok(())
             }
             Intent::Join => {
@@ -482,7 +519,64 @@ impl Session {
                     return Err(Error::Protocol);
                 }
                 self.phase = Phase::Confirm;
+                let hash = self.hash.ok_or(Error::Handshake)?;
+                let proof = self.ticket.map(|t| *t.proof(ROLE_JOIN, &hash).as_bytes());
+                self.out.push_back(Frame::Proof(proof));
                 Ok(())
+            }
+        }
+    }
+
+    /// The other end's [`Frame::Proof`].
+    ///
+    /// The inviter reads the joiner's: a proof that checks is the
+    /// operator's « same code », and the inviter answers with its own
+    /// before the key; `None` falls back to the comparison; a proof that
+    /// does not check — or one for a ticket this post never issued — ends
+    /// the conversation. The joiner reads the inviter's, and only when it
+    /// sent one itself.
+    fn proved(
+        &mut self,
+        proof: Option<[u8; 32]>,
+        journal: &Journal,
+        meter: &mut Meter,
+    ) -> Result<()> {
+        let hash = self.hash.ok_or(Error::Handshake)?;
+        match self.intent {
+            Intent::Invite if self.proof_due => {
+                self.proof_due = false;
+                match (proof, self.ticket) {
+                    // Without a ticket of its own, the comparison.
+                    (None, None) => Ok(()),
+                    // **An invitation with a code takes no « none ».**
+                    // Falling back would hand the inviter's operator a
+                    // comparison while the post holding the code sees a
+                    // connection that never answers — somebody quicker to
+                    // the open door than the invited post is then one hurried
+                    // « same code » away from the key.
+                    (Some(p), Some(t)) if blake3::Hash::from(p) == t.proof(ROLE_JOIN, &hash) => {
+                        let mine = *t.proof(ROLE_INVITE, &hash).as_bytes();
+                        self.out.push_back(Frame::Proof(Some(mine)));
+                        self.accept(journal, meter)
+                    }
+                    _ => {
+                        meter.refuse(Error::Unknown);
+                        Err(Error::Unknown)
+                    }
+                }
+            }
+            Intent::Join if !self.accepted => match (proof, self.ticket) {
+                (Some(p), Some(t)) if blake3::Hash::from(p) == t.proof(ROLE_INVITE, &hash) => {
+                    self.accept(journal, meter)
+                }
+                _ => {
+                    meter.refuse(Error::Unknown);
+                    Err(Error::Unknown)
+                }
+            },
+            _ => {
+                meter.refuse(Error::Protocol);
+                Err(Error::Protocol)
             }
         }
     }
@@ -1162,5 +1256,99 @@ mod tests {
         pair_posts(&mut a, &mut b);
         assert_eq!(b.journal.len(), many);
         assert_eq!(a.lines(), b.lines());
+    }
+
+    /// **With an invitation code, nobody compares anything** — and the
+    /// key still crosses only to the post that holds the ticket. Neither
+    /// operator is shown a code; the ticket is not on the wire.
+    #[test]
+    fn a_ticket_pairs_two_posts_without_a_code_to_compare() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        a.write(b"12 comprimes");
+        let ticket = Ticket::generate(&mut Counted(21));
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+            .unwrap()
+            .with_ticket(ticket)
+            .unwrap();
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[])
+            .unwrap()
+            .with_ticket(ticket)
+            .unwrap();
+        // `agree: false` would stop at the first code shown: there is none.
+        let talked = converse(&mut a, &mut b, sa, sb, false).unwrap();
+        assert!(talked.code_a.is_none() && talked.code_b.is_none());
+        assert!(talked.sb.joined().expect("la clé").same(&t));
+        assert_eq!(b.journal.len(), 1);
+        for frame in &talked.wire {
+            assert!(!contains(frame, &ticket.bytes()), "le ticket a traversé");
+        }
+    }
+
+    /// A wrong ticket ends the pairing, from either side's point of view,
+    /// and no key crosses.
+    #[test]
+    fn a_wrong_ticket_hands_over_no_key() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+            .unwrap()
+            .with_ticket(Ticket::from_bytes([1; 10]))
+            .unwrap();
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[])
+            .unwrap()
+            .with_ticket(Ticket::from_bytes([2; 10]))
+            .unwrap();
+        assert!(converse(&mut a, &mut b, sa, sb, true).is_err());
+        assert_eq!(a.meter.report().pairings, 0);
+        assert_eq!(b.meter.report().pairings, 0);
+        assert!(b.trousseau.is_none());
+    }
+
+    /// An inviter that issued a ticket does **not** fall back to the
+    /// comparison for a post that came without it: whoever reached the
+    /// open door first is refused, and no key crosses.
+    #[test]
+    fn an_invitation_with_a_code_refuses_a_joiner_without_it() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+            .unwrap()
+            .with_ticket(Ticket::from_bytes([1; 10]))
+            .unwrap();
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[]).unwrap();
+        // The joiner is shown its code, the inviter never is: the
+        // conversation stops at the joiner's comparison or at the refusal.
+        match converse(&mut a, &mut b, sa, sb, true) {
+            Err(_) => {}
+            Ok(talked) => {
+                assert!(talked.code_a.is_none(), "l'invitant ne compare rien");
+                assert!(talked.sb.joined().is_none(), "aucune clé n'est passée");
+            }
+        }
+        assert_eq!(a.meter.report().pairings, 0);
+        assert!(b.trousseau.is_none());
+    }
+
+    /// A joiner holding a ticket the inviter never issued gets nothing:
+    /// a ticket is not something a joiner can bring on its own.
+    #[test]
+    fn a_ticket_the_inviter_never_issued_is_refused() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[]).unwrap();
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[])
+            .unwrap()
+            .with_ticket(Ticket::from_bytes([2; 10]))
+            .unwrap();
+        assert!(converse(&mut a, &mut b, sa, sb, true).is_err());
+        assert_eq!(b.meter.report().pairings, 0);
+        // And an ordinary sync takes no ticket at all.
+        let sync = Session::new(&a.device, a.trousseau.as_ref(), Intent::Sync, true, &[]).unwrap();
+        assert!(sync.with_ticket(Ticket::from_bytes([1; 10])).is_err());
     }
 }

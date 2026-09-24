@@ -443,6 +443,8 @@ pub enum Progress {
     /// Les postes entendus sur le réseau local à cet instant — ceux du
     /// groupe et les autres.
     Peers(Vec<PeerSeen>),
+    /// Les officines qui s'annoncent sur le réseau local à cet instant.
+    Officines(Vec<crate::network::Nearby>),
     Done(String),
     Failed(String),
 }
@@ -467,7 +469,13 @@ pub enum Job {
     Invite { port: u16 },
     /// Rejoindre le groupe en composant l'adresse du poste qui invite.
     /// **Ce que ce poste contenait est remplacé.**
-    Join { address: String, name: String },
+    /// Avec le ticket du code d'invitation quand on l'a : rien à
+    /// comparer alors.
+    Join {
+        address: String,
+        name: String,
+        ticket: Option<bpm_sync::Ticket>,
+    },
     /// Synchroniser une fois : le dossier d'échange, puis chaque adresse.
     Sync {
         folder: Option<PathBuf>,
@@ -545,7 +553,12 @@ pub fn run(
             posts.publish(&db, today)?;
             let door = bpm_sync::link::Door::open(&format!("0.0.0.0:{port}"))
                 .map_err(|_| tr("posts_err_port").to_owned())?;
-            let _ = tx.send(Progress::Waiting(format!("{}:{port}", local_address())));
+            // Un ticket par invitation, comme entre officines.
+            let ticket = bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy);
+            let _ = tx.send(Progress::Waiting(crate::network::invitation_code(
+                &ticket,
+                &format!("{}:{port}", local_address()),
+            )));
             let mut link = door
                 .accept(INVITE_PATIENCE)
                 .map_err(|_| tr("posts_err_nobody").to_owned())?;
@@ -556,6 +569,7 @@ pub fn run(
                 false,
                 &posts.known(&db),
             )
+            .and_then(|s| s.with_ticket(ticket))
             .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
             bpm_sync::drive(
@@ -572,7 +586,11 @@ pub fn run(
             posts.keep(&db)?;
             Ok(tr("posts_done_invited").to_owned())
         }
-        Job::Join { address, name } => {
+        Job::Join {
+            address,
+            name,
+            ticket,
+        } => {
             if posts.in_group() || db.sync_post().is_some() {
                 return Err(tr("posts_err_already").to_owned());
             }
@@ -584,6 +602,10 @@ pub fn run(
             let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
                 .map_err(|_| tr("posts_err_unreachable").to_owned())?;
             let mut session = Session::new(&posts.device, None, Intent::Join, true, &[])
+                .and_then(|s| match ticket {
+                    Some(t) => s.with_ticket(*t),
+                    None => Ok(s),
+                })
                 .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
             bpm_sync::drive(
@@ -647,6 +669,10 @@ pub fn run(
 pub enum Poke {
     /// Synchroniser maintenant : quelqu'un a appuyé sur le bouton.
     Now,
+    /// Une invitation d'officine est ouverte sur ce port (0 : plus
+    /// aucune) — l'annonce de l'officine le dit, pour qu'une voisine la
+    /// rejoigne d'un clic au lieu de recopier une adresse.
+    Inviting(u16),
     Stop,
 }
 
@@ -669,14 +695,14 @@ pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
     if parts.next()? != "BPMPOSTE1" {
         return None;
     }
-    let device = parts.next()?;
-    unhex::<32>(device)?;
+    // Réécrite : une clé, une écriture — voir `network::heard_officine`.
+    let device = hex(&unhex::<32>(parts.next()?)?);
     let port: u16 = parts.next()?.parse().ok()?;
     if parts.next().is_some() {
         return None;
     }
     Some(Heard {
-        device: device.to_owned(),
+        device,
         address: std::net::SocketAddr::new(from, port).to_string(),
     })
 }
@@ -717,6 +743,7 @@ pub fn spawn_auto(
     port: u16,
     folder: Option<PathBuf>,
     addresses: Vec<String>,
+    announce: Option<String>,
     pace: Pace,
 ) -> (
     std::sync::mpsc::Receiver<Progress>,
@@ -726,7 +753,16 @@ pub fn spawn_auto(
     let (poke_tx, poke_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         if let Err(e) = auto(
-            &path, &password, &today, port, folder, &addresses, &pace, &tx, &poke_rx,
+            &path,
+            &password,
+            &today,
+            port,
+            folder,
+            &addresses,
+            announce.as_deref(),
+            &pace,
+            &tx,
+            &poke_rx,
         ) {
             let _ = tx.send(Progress::Failed(e));
         }
@@ -744,6 +780,11 @@ struct Seen {
 /// Combien de temps un poste reste « en ligne » sans s'annoncer.
 const SEEN_FOR: Duration = Duration::from_secs(15);
 
+/// Combien d'officines voisines on retient au plus : les annonces
+/// viennent de n'importe qui sur le réseau local, et n'importe qui ne
+/// choisit pas la mémoire de ce poste.
+const MOST_NEARBY: usize = 32;
+
 #[allow(clippy::too_many_arguments)]
 fn auto(
     path: &Path,
@@ -752,12 +793,25 @@ fn auto(
     port: u16,
     folder: Option<PathBuf>,
     addresses: &[String],
+    announce: Option<&str>,
     pace: &Pace,
     tx: &std::sync::mpsc::Sender<Progress>,
     pokes: &std::sync::mpsc::Receiver<Poke>,
 ) -> Result<(), String> {
     use crate::strings::tr;
     let db = Db::open(path, password)?;
+    // **L'officine s'annonce aussi**, quand elle le veut : son identité
+    // de réseau et son nom, pour que les officines voisines la voient sur
+    // leur carte. Tirée de la base, comme l'identité elle-même.
+    let officine = announce.and_then(|name| {
+        crate::network::device_hex(&db)
+            .ok()
+            .map(|d| (d, name.to_owned()))
+    });
+    let mut inviting: u16 = 0;
+    // Chaque voisine, l'adresse d'où elle s'est annoncée, et quand.
+    let mut near: Vec<(crate::network::Nearby, std::net::IpAddr, Instant)> = Vec::new();
+    let mut told_near: Vec<crate::network::Nearby> = Vec::new();
     let mut posts = Posts::load(&db)?;
     let trousseau = posts.trousseau.clone();
     // A post on its own listens and opens nothing.
@@ -784,6 +838,11 @@ fn auto(
         match pokes.try_recv() {
             Ok(Poke::Stop) | Err(std::sync::mpsc::TryRecvError::Disconnected) => break,
             Ok(Poke::Now) => now_asked = true,
+            Ok(Poke::Inviting(port)) => {
+                inviting = port;
+                // Dit tout de suite, pas au prochain tour d'annonce.
+                last_beacon = long_ago;
+            }
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
         let mut talked = false;
@@ -800,12 +859,23 @@ fn auto(
         }
         // Who announced themselves.
         if let Some(u) = &udp {
-            let mut buf = [0u8; 256];
+            let mut buf = [0u8; 1024];
             while let Ok((n, from)) = u.recv_from(&mut buf) {
-                if let Some(h) = std::str::from_utf8(&buf[..n])
-                    .ok()
-                    .and_then(|t| heard(t, from.ip()))
-                {
+                let text = std::str::from_utf8(&buf[..n]).ok();
+                if let Some(o) = text.and_then(|t| crate::network::heard_officine(t, from.ip())) {
+                    let mine = officine.as_ref().is_some_and(|(d, _)| *d == o.device);
+                    // **La première adresse tient** jusqu'à ce qu'elle se
+                    // taise : une annonce venue d'ailleurs sous la même
+                    // identité ne détourne pas l'invitation d'une voisine.
+                    let held = near.iter().find(|(x, _, _)| x.device == o.device);
+                    let elsewhere = held.is_some_and(|(_, ip, _)| *ip != from.ip());
+                    if !mine && !elsewhere && (held.is_some() || near.len() < MOST_NEARBY) {
+                        near.retain(|(x, _, _)| x.device != o.device);
+                        near.push((o, from.ip(), Instant::now()));
+                    }
+                    continue;
+                }
+                if let Some(h) = text.and_then(|t| heard(t, from.ip())) {
                     if h.device != me {
                         let talked = seen
                             .iter()
@@ -820,12 +890,25 @@ fn auto(
                     }
                 }
             }
-            if trousseau.is_some() && last_beacon.elapsed() >= pace.beacon {
-                let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
+            if last_beacon.elapsed() >= pace.beacon {
+                if trousseau.is_some() {
+                    let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
+                }
+                if let Some((device, name)) = &officine {
+                    let b = crate::network::officine_beacon(device, name, inviting);
+                    let _ = u.send_to(b.as_bytes(), ("255.255.255.255", port));
+                }
                 last_beacon = Instant::now();
             }
         }
         seen.retain(|x| x.at.elapsed() < SEEN_FOR);
+        near.retain(|(_, _, at)| at.elapsed() < SEEN_FOR);
+        let near_now: Vec<crate::network::Nearby> =
+            near.iter().map(|(n, _, _)| n.clone()).collect();
+        if near_now != told_near {
+            let _ = tx.send(Progress::Officines(near_now.clone()));
+            told_near = near_now;
+        }
         let known: Vec<String> = posts.known(&db).iter().map(|d| hex(&d.0)).collect();
         if trousseau.is_some() {
             let pending = db
@@ -909,7 +992,7 @@ mod tests {
         (dir, swept, db)
     }
 
-    /// **Deux postes, une porte, le code des deux côtés** : B rejoint le
+    /// **Deux postes, une porte, le code d'invitation** : B rejoint le
     /// groupe de A et reçoit ses dossiers ; ce que B avait est remplacé ;
     /// chacun écrit, et un dossier d'échange porte le reste. Rien de
     /// lisible dans le dossier.
@@ -939,14 +1022,18 @@ mod tests {
             "2026-09-23".to_owned(),
             answers_a,
         );
-        match inviting.recv().unwrap() {
-            Progress::Waiting(_) => {}
+        // Le code d'invitation, collé tel qu'affiché — avec l'adresse de
+        // la boucle locale à la place de celle du réseau.
+        let ticket = match inviting.recv().unwrap() {
+            Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
             other => panic!("{other:?}"),
-        }
+        };
+        assert!(ticket.is_some(), "une invitation porte son code");
         let joining = spawn(
             Job::Join {
                 address: format!("127.0.0.1:{port}"),
                 name: "Comptoir 2".to_owned(),
+                ticket,
             },
             dir_b.join("poste.db"),
             "secret".to_owned(),
@@ -981,8 +1068,7 @@ mod tests {
         }
         assert!(matches!(done_a, Some(Progress::Done(_))), "{done_a:?}");
         assert!(matches!(done_b, Some(Progress::Done(_))), "{done_b:?}");
-        assert_eq!(codes.len(), 2);
-        assert_eq!(codes[0], codes[1]);
+        assert!(codes.is_empty(), "rien à comparer avec le code : {codes:?}");
 
         let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
         let b = Db::open(&dir_b.join("poste.db"), "secret").unwrap();
@@ -1087,6 +1173,7 @@ mod tests {
             port,
             None,
             Vec::new(),
+            None,
             Pace::default(),
         );
         let other = hex(&[9u8; 32]);
@@ -1121,5 +1208,52 @@ mod tests {
         assert_eq!(stream(Flux::Registre), Stream::Registre);
         assert!(!STREAMS.contains(&Stream::Reseau));
         assert_eq!(groups_of("zz"), "");
+    }
+
+    /// **Les officines voisines** : le fil entend une officine qui
+    /// s'annonce, avec son invitation ouverte ; il ne se compte pas
+    /// lui-même — sa propre annonce lui revient par la diffusion.
+    #[test]
+    fn the_auto_thread_reports_the_officines_that_announce() {
+        let (dir, _s, db) = post("near");
+        let me = crate::network::device_hex(&db).unwrap();
+        drop(db);
+        let port = std::net::UdpSocket::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (rx, poke) = spawn_auto(
+            dir.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-24".to_owned(),
+            port,
+            None,
+            Vec::new(),
+            Some("Pharmacie du Centre".to_owned()),
+            Pace::default(),
+        );
+        let other = hex(&[9u8; 32]);
+        let sender = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        let mut found = None;
+        for _ in 0..40 {
+            for b in [
+                crate::network::officine_beacon(&other, "Pharmacie du Port", 7742),
+                crate::network::officine_beacon(&me, "Moi-même", 0),
+            ] {
+                let _ = sender.send_to(b.as_bytes(), ("127.0.0.1", port));
+            }
+            if let Ok(Progress::Officines(list)) = rx.recv_timeout(Duration::from_millis(250)) {
+                assert!(list.iter().all(|n| n.device != me), "pas soi-même");
+                found = list.into_iter().find(|n| n.device == other);
+                if found.is_some() {
+                    break;
+                }
+            }
+        }
+        poke.send(Poke::Stop).unwrap();
+        let n = found.expect("entendue");
+        assert_eq!(n.name, "Pharmacie du Port");
+        assert_eq!(n.invite.as_deref(), Some("127.0.0.1:7742"));
     }
 }

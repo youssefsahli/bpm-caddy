@@ -72,7 +72,7 @@ view="$view" out="$out" w="$w" h="$h" card="$card" \
         # Les quatre vues qui demandent autre chose qu une cle : ecrites
         # une fois, dans `demo-config.sh`, et lues par les deux scripts.
         demo_view_env "$view" "$card"
-        ./target/debug/bpm-caddy &
+        ./target/debug/bpm-caddy 2>"${SHOT_ERR:-/dev/null}" &
         pid=$!
         # SHOT_WAIT : plus long quand la machine est chargée (une
         # couverture qui tourne à côté) — six secondes ne suffisent plus

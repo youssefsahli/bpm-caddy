@@ -35349,6 +35349,14 @@ impl Db {
     /// Écrire une clé du réseau (en hexadécimal) si elle n'existe pas
     /// encore, et la rendre.
     pub fn net_key(&self, key: &str, fresh: &str) -> Result<String, String> {
+        // **Lue d'abord, écrite seulement si elle manque.** Un `INSERT OR
+        // IGNORE` prend le verrou d'écriture même quand il n'écrit rien :
+        // chaque lecture de l'identité attendait la fin d'une
+        // synchronisation en cours, et la vue des connexions perdait le
+        // réseau le temps qu'elle dure.
+        if let Some(v) = self.setting(key) {
+            return Ok(v);
+        }
         self.conn
             .execute(
                 "INSERT OR IGNORE INTO settings (key, value) VALUES (?1, ?2)",

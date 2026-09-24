@@ -261,6 +261,113 @@ pub fn short_code(handshake_hash: &[u8]) -> Fingerprint {
     Fingerprint::of("bpm-caddy/pairing-code/v1", handshake_hash)
 }
 
+/// A one-time pairing ticket: the secret an invitation code carries.
+///
+/// The five-group comparison is what authenticates a pairing when the
+/// two ends met on a channel nobody vouches for. An invitation code is
+/// the other way to the same guarantee: the inviting officine draws ten
+/// random bytes, hands them over by a channel it trusts — read down the
+/// telephone, given in person — and each end then proves it holds them
+/// **over this handshake's own hash**. Somebody in the middle holds two
+/// handshakes with two hashes, and a proof for neither without the
+/// ticket; a recording of one pairing proves nothing in the next.
+///
+/// Eighty bits, drawn fresh for every invitation and good for one
+/// conversation: a wrong proof ends the invitation, so the ticket is
+/// guessed once or not at all.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub struct Ticket([u8; 10]);
+
+/// The alphabet a ticket is written in: Crockford's base 32 — no I, L,
+/// O or U, so nothing read down a telephone is two letters at once.
+const TICKET_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/// Which end a proof comes from. Two roles, so a proof sent back to its
+/// author is not a proof from the other end.
+pub(crate) const ROLE_JOIN: u8 = 1;
+pub(crate) const ROLE_INVITE: u8 = 2;
+
+impl Ticket {
+    pub fn generate(e: &mut dyn Entropy) -> Self {
+        let mut b = [0u8; 10];
+        e.fill(&mut b);
+        Self(b)
+    }
+
+    pub fn from_bytes(bytes: [u8; 10]) -> Self {
+        Self(bytes)
+    }
+
+    pub fn bytes(&self) -> [u8; 10] {
+        self.0
+    }
+
+    /// « K7QM-2XPA-9D3F-7H1Q » : sixteen characters of five bits, in four
+    /// groups.
+    pub fn text(&self) -> String {
+        let mut bits: u128 = 0;
+        for b in self.0 {
+            bits = (bits << 8) | u128::from(b);
+        }
+        let mut out = String::with_capacity(19);
+        for i in 0..16 {
+            if i % 4 == 0 && i != 0 {
+                out.push('-');
+            }
+            let v = ((bits >> (75 - 5 * i)) & 0x1f) as usize;
+            out.push(TICKET_ALPHABET[v] as char);
+        }
+        out
+    }
+
+    /// The text read back, forgiving what a person does to it: case,
+    /// dashes and spaces, and the letters Crockford reads as digits
+    /// (O for 0, I and L for 1). Anything else is `None`.
+    pub fn parse(text: &str) -> Option<Self> {
+        let mut bits: u128 = 0;
+        let mut n = 0;
+        for c in text.chars() {
+            let c = match c.to_ascii_uppercase() {
+                '-' | ' ' => continue,
+                'O' => '0',
+                'I' | 'L' => '1',
+                c => c,
+            };
+            let v = TICKET_ALPHABET.iter().position(|a| *a as char == c)?;
+            bits = (bits << 5) | v as u128;
+            n += 1;
+            if n > 16 {
+                return None;
+            }
+        }
+        if n != 16 {
+            return None;
+        }
+        let mut b = [0u8; 10];
+        for (i, byte) in b.iter_mut().enumerate() {
+            *byte = (bits >> (72 - 8 * i)) as u8;
+        }
+        Some(Self(b))
+    }
+
+    /// What an end sends to show it holds the ticket, for this handshake
+    /// and this role.
+    pub(crate) fn proof(&self, role: u8, handshake_hash: &[u8; 32]) -> blake3::Hash {
+        let key = blake3::derive_key("bpm-caddy/pairing-ticket/v1", &self.0);
+        let mut h = blake3::Hasher::new_keyed(&key);
+        h.update(&[role]);
+        h.update(handshake_hash);
+        h.finalize()
+    }
+}
+
+/// Never the secret in a log.
+impl std::fmt::Debug for Ticket {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Ticket(…)")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,5 +452,41 @@ mod tests {
     #[test]
     fn a_pairing_code_follows_the_handshake_it_comes_from() {
         assert_ne!(short_code(b"une poignee"), short_code(b"une autre"));
+    }
+
+    /// A ticket is written in four groups and read back as itself —
+    /// through the mistakes a telephone makes.
+    #[test]
+    fn a_ticket_is_written_and_read_back_as_itself() {
+        let mut e = Counted(11);
+        for _ in 0..64 {
+            let t = Ticket::generate(&mut e);
+            let text = t.text();
+            assert_eq!(text.len(), 19, "{text}");
+            assert_eq!(Ticket::parse(&text), Some(t));
+            assert_eq!(Ticket::parse(&text.to_lowercase()), Some(t));
+            assert_eq!(Ticket::parse(&text.replace('-', " ")), Some(t));
+            assert_eq!(
+                Ticket::parse(&text.replace('0', "O").replace('1', "l")),
+                Some(t)
+            );
+        }
+        let t = Ticket::from_bytes([0xff; 10]);
+        assert_eq!(Ticket::parse(&t.text()), Some(t));
+        assert_eq!(Ticket::parse("K7QM-2XPA-9D3F"), None, "trop court");
+        assert_eq!(Ticket::parse("K7QM-2XPA-9D3F-7H1Q-A"), None, "trop long");
+        assert_eq!(Ticket::parse("K7QM-2XPA-9D3F-7H1U"), None, "U n'en est pas");
+        assert!(!format!("{t:?}").contains("FF"), "le secret ne s'écrit pas");
+    }
+
+    /// A proof names its ticket, its handshake and its end.
+    #[test]
+    fn a_ticket_proof_is_bound_to_ticket_handshake_and_role() {
+        let a = Ticket::from_bytes([1; 10]);
+        let b = Ticket::from_bytes([2; 10]);
+        let (h1, h2) = ([7u8; 32], [8u8; 32]);
+        assert_ne!(a.proof(ROLE_JOIN, &h1), b.proof(ROLE_JOIN, &h1));
+        assert_ne!(a.proof(ROLE_JOIN, &h1), a.proof(ROLE_JOIN, &h2));
+        assert_ne!(a.proof(ROLE_JOIN, &h1), a.proof(ROLE_INVITE, &h1));
     }
 }

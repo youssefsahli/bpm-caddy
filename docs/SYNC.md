@@ -259,7 +259,26 @@ facultative.
    Différents : quelqu'un au milieu, et l'appairage est refusé. On ne
    peut pas sauter l'étape — un poste non déjà connu n'est pas écouté
    tant que `accept()` n'a pas été appelé, et la seule chose qui appelle
-   `accept()` est une personne.
+   `accept()` est une personne — ou un ticket.
+3. **Le code d'invitation remplace la comparaison, sans l'affaiblir.**
+   L'officine qui invite tire un `Ticket` (dix octets) pour cette seule
+   porte et le montre dans son code d'invitation, transmis par un canal
+   qu'elle choisit (téléphone, en personne). Une fois les `Hello`
+   échangés, le poste qui rejoint envoie `Proof` : BLAKE3 à clé (dérivée
+   du ticket) sur son rôle et **l'empreinte de cette poignée de main** —
+   ou `Proof(None)`, sans ticket. L'invitant vérifie, répond par sa
+   propre preuve (l'autre rôle), puis seulement envoie la clé. Un
+   intermédiaire tient deux poignées de main, donc deux empreintes, et
+   n'a de preuve pour aucune sans le ticket. **Une invitation à ticket
+   est stricte** : `Proof(None)` y est refusé, sans repli sur la
+   comparaison — une porte ouverte qu'un tiers devance ne doit pas
+   devenir une comparaison bâclée. Une preuve fausse ferme l'invitation :
+   quatre-vingts bits, une tentative. `Sync` ne prend pas de ticket.
+
+Les invitations faites **à une officine voisine** depuis la carte (vue
+par son annonce UDP `BPMOFFICINE1`, nom déclaré par elle-même) n'ont pas
+de ticket, sont les seules annoncées sur le réseau local, et passent
+par la comparaison des cinq groupes.
 
 **L'échange**, ensuite : les têtes, puis des tours. À chaque tour les
 deux postes envoient un `Want` — *ce qu'il me manque et ce que j'ai* —,

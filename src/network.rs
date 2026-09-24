@@ -728,17 +728,133 @@ pub enum Progress {
 #[derive(Clone, Debug)]
 pub enum Job {
     /// Ouvrir une porte le temps d'une invitation — dans ce réseau (vide :
-    /// le principal).
-    Invite { port: u16, network: String },
+    /// le principal). D'ordinaire avec un code d'invitation, **strict** :
+    /// qui vient sans lui est refusé. `nearby` : l'invitation faite à une
+    /// officine voisine depuis la carte, annoncée sur le réseau local,
+    /// **sans code** — on compare alors les cinq groupes au téléphone.
+    Invite {
+        port: u16,
+        network: String,
+        nearby: bool,
+    },
     /// Rejoindre un réseau en composant l'adresse de l'officine qui
-    /// invite.
-    Join { address: String },
+    /// invite — avec le ticket de son code d'invitation quand on l'a :
+    /// aucun code à comparer alors. Sans lui, la comparaison.
+    Join {
+        address: String,
+        ticket: Option<bpm_sync::Ticket>,
+    },
     /// Synchroniser : le dossier d'échange s'il y en a un, puis chaque
     /// officine qui a une adresse.
     Sync { folder: Option<PathBuf> },
     /// Composer l'adresse d'**une** officine : savoir si elle répond,
     /// sans attendre toutes les autres ni le dossier d'échange.
     Dial { device: String },
+}
+
+/// Le code d'invitation : le ticket, puis où composer —
+/// « K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742 ». Une seule chaîne à lire
+/// ou à coller, et rien à comparer ensuite.
+pub fn invitation_code(ticket: &bpm_sync::Ticket, address: &str) -> String {
+    format!("{}@{}", ticket.text(), address.trim())
+}
+
+/// Ce qu'on a tapé dans « Rejoindre » : un code d'invitation, ou une
+/// adresse seule. `None` quand cela ressemble à un code sans en être un
+/// — un ticket mal recopié ne doit pas devenir une comparaison de code
+/// à l'insu de l'opérateur.
+pub fn read_join(text: &str) -> Option<(String, Option<bpm_sync::Ticket>)> {
+    let text = text.trim();
+    if text.is_empty() {
+        return None;
+    }
+    match text.rsplit_once('@') {
+        Some((code, address)) => {
+            let ticket = bpm_sync::Ticket::parse(code)?;
+            let address = address.trim();
+            (!address.is_empty() && !address.contains(char::is_whitespace))
+                .then(|| (address.to_owned(), Some(ticket)))
+        }
+        None => (!text.contains(char::is_whitespace)).then(|| (text.to_owned(), None)),
+    }
+}
+
+/// L'identité de l'officine sur le réseau, en hexadécimal — sans lire
+/// son journal : ce qu'une annonce sur le réseau local a besoin de dire.
+pub fn device_hex(db: &Db) -> Result<String, String> {
+    let seed = db.net_key("net_seed", &hex(&random32()))?;
+    let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
+    Ok(hex(&Device::from_seed(seed).id().0))
+}
+
+/// Une officine entendue sur le réseau local.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Nearby {
+    /// Son identité sur le réseau (hex).
+    pub device: String,
+    /// Le nom **qu'elle se donne** — rien ne le prouve : c'est la
+    /// comparaison du code, à l'appairage, qui dit à qui l'on parle.
+    pub name: String,
+    /// L'adresse de son invitation, quand elle en a une ouverte.
+    pub invite: Option<String>,
+}
+
+/// Le plus long nom qu'une annonce porte, en caractères.
+const NEARBY_NAME: usize = 48;
+
+/// L'annonce d'une officine sur le réseau local : son identité, le port
+/// d'une invitation ouverte (0 : aucune) et son nom, en hexadécimal pour
+/// que l'annonce reste une ligne de mots. **Rien d'autre** : ni réseau,
+/// ni membre, ni donnée — une officine est un commerce qui a pignon sur
+/// rue, et son nom sur le réseau local n'apprend rien de plus.
+pub fn officine_beacon(device: &str, name: &str, invite_port: u16) -> String {
+    let name: String = clean_name(name);
+    format!(
+        "BPMOFFICINE1 {device} {invite_port} {}",
+        hex(name.as_bytes())
+    )
+}
+
+/// Un nom tel qu'une annonce peut le porter : sans caractère de
+/// commande, sans blanc aux bords, au plus [`NEARBY_NAME`] caractères.
+fn clean_name(name: &str) -> String {
+    name.chars()
+        .map(|c| if c.is_control() { ' ' } else { c })
+        .collect::<String>()
+        .trim()
+        .chars()
+        .take(NEARBY_NAME)
+        .collect()
+}
+
+/// L'inverse, avec l'adresse d'où l'annonce est venue. Tout ce qui n'est
+/// pas exactement une annonce est `None` — l'annonce vient de n'importe
+/// qui sur le réseau local.
+pub fn heard_officine(text: &str, from: std::net::IpAddr) -> Option<Nearby> {
+    let mut parts = text.split(' ');
+    if parts.next()? != "BPMOFFICINE1" {
+        return None;
+    }
+    // **Réécrite, jamais reprise telle quelle** : `unhex` lit aussi les
+    // majuscules, et une même clé écrite de deux façons passerait pour
+    // deux officines — une voisine inconnue portant l'empreinte d'un
+    // membre.
+    let device = hex(&unhex::<32>(parts.next()?)?);
+    let port: u16 = parts.next()?.parse().ok()?;
+    let name_hex = parts.next()?;
+    if parts.next().is_some() || name_hex.len() > NEARBY_NAME * 8 || name_hex.len() % 2 != 0 {
+        return None;
+    }
+    let bytes: Option<Vec<u8>> = (0..name_hex.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(name_hex.get(i..i + 2)?, 16).ok())
+        .collect();
+    let name = clean_name(&String::from_utf8(bytes?).ok()?);
+    Some(Nearby {
+        device,
+        name,
+        invite: (port != 0).then(|| std::net::SocketAddr::new(from, port).to_string()),
+    })
 }
 
 /// Combien d'attente pour une invitation, et pour une conversation.
@@ -790,14 +906,21 @@ pub fn run(
         answers.recv().unwrap_or(false)
     };
     match job {
-        Job::Invite { port, .. } => {
+        Job::Invite { port, nearby, .. } => {
             let trousseau = net
                 .trousseau
                 .clone()
                 .ok_or_else(|| tr("net_err_no_network").to_owned())?;
             let door = bpm_sync::link::Door::open(&format!("0.0.0.0:{port}"))
                 .map_err(|_| tr("net_err_port").to_owned())?;
-            let _ = tx.send(Progress::Waiting(format!("{}:{port}", local_address())));
+            // **Un ticket par invitation**, tiré ici et jamais écrit : il
+            // vit le temps de cette porte, et une preuve fausse la ferme.
+            let ticket = (!nearby).then(|| bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy));
+            let at = format!("{}:{port}", local_address());
+            let _ = tx.send(Progress::Waiting(match &ticket {
+                Some(t) => invitation_code(t, &at),
+                None => at,
+            }));
             let mut link = door
                 .accept(INVITE_PATIENCE)
                 .map_err(|_| tr("net_err_nobody").to_owned())?;
@@ -808,6 +931,10 @@ pub fn run(
                 false,
                 &net.known(),
             )
+            .and_then(|s| match ticket {
+                Some(t) => s.with_ticket(t),
+                None => Ok(s),
+            })
             .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
             bpm_sync::drive(
@@ -829,13 +956,17 @@ pub fn run(
             net.keep(&db)?;
             Ok(tr("net_done_invited").to_owned())
         }
-        Job::Join { address } => {
+        Job::Join { address, ticket } => {
             // **Déjà d'un réseau, on en rejoint un de plus** : la clé reçue
             // devient celle d'un réseau à part, le principal ne bouge pas.
             let second = net.in_network();
             let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
                 .map_err(|_| tr("net_err_unreachable").to_owned())?;
             let mut session = Session::new(&net.device, None, Intent::Join, true, &[])
+                .and_then(|s| match ticket {
+                    Some(t) => s.with_ticket(*t),
+                    None => Ok(s),
+                })
                 .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
             // **Pour un réseau de plus, un journal vide** : l'appairage
@@ -2094,6 +2225,7 @@ mod tests {
             Job::Invite {
                 port,
                 network: network.to_owned(),
+                nearby: true,
             },
             dir_a.join("net.db"),
             "secret".to_owned(),
@@ -2108,6 +2240,7 @@ mod tests {
         let joining = spawn(
             Job::Join {
                 address: format!("127.0.0.1:{port}"),
+                ticket: None,
             },
             dir_b.join("net.db"),
             "secret".to_owned(),
@@ -2218,6 +2351,7 @@ mod tests {
             Job::Invite {
                 port,
                 network: String::new(),
+                nearby: true,
             },
             dir_a.join("net.db"),
             "secret".to_owned(),
@@ -2234,6 +2368,7 @@ mod tests {
         let joining = spawn(
             Job::Join {
                 address: format!("127.0.0.1:{port}"),
+                ticket: None,
             },
             dir_b.join("net.db"),
             "secret".to_owned(),
@@ -2283,5 +2418,144 @@ mod tests {
         assert_eq!(unhex::<32>(&hex(&k)), Some(k));
         assert_eq!(unhex::<32>("zz"), None);
         assert_eq!(unhex::<32>(&"0".repeat(63)), None);
+    }
+
+    /// **Avec le code d'invitation, rien à comparer** : B colle le code
+    /// que A affiche, aucun des deux fils ne montre de code, et la clé du
+    /// réseau passe. Le même code recopié avec une faute ne rejoint rien.
+    #[test]
+    fn an_officine_joins_with_the_invitation_code_and_compares_nothing() {
+        for spoil in [false, true] {
+            let tag = if spoil { "ticket-bad" } else { "ticket" };
+            let (dir_a, _sa, a) = officine(&format!("{tag}-a"));
+            let (dir_b, _sb, b) = officine(&format!("{tag}-b"));
+            Net::create(&a).unwrap();
+            drop(a);
+            drop(b);
+            let port = std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port();
+            let (_yes_a, answers_a) = std::sync::mpsc::channel();
+            let (_yes_b, answers_b) = std::sync::mpsc::channel();
+            let inviting = spawn(
+                Job::Invite {
+                    port,
+                    network: String::new(),
+                    nearby: false,
+                },
+                dir_a.join("net.db"),
+                "secret".to_owned(),
+                "A".to_owned(),
+                "2026-09-24".to_owned(),
+                answers_a,
+            );
+            let Progress::Waiting(code) = inviting.recv().unwrap() else {
+                panic!("porte fermée");
+            };
+            let (_, ticket) = read_join(&code).expect("un code");
+            let mut ticket = ticket.expect("un ticket");
+            if spoil {
+                let mut b = ticket.bytes();
+                b[0] ^= 1;
+                ticket = bpm_sync::Ticket::from_bytes(b);
+            }
+            let joining = spawn(
+                Job::Join {
+                    address: format!("127.0.0.1:{port}"),
+                    ticket: Some(ticket),
+                },
+                dir_b.join("net.db"),
+                "secret".to_owned(),
+                "B".to_owned(),
+                "2026-09-24".to_owned(),
+                answers_b,
+            );
+            let wait = |rx: &std::sync::mpsc::Receiver<Progress>| loop {
+                match rx.recv_timeout(Duration::from_secs(20)).expect("une fin") {
+                    Progress::Code(_) => panic!("aucun code à comparer"),
+                    Progress::Waiting(_) => {}
+                    done => break done,
+                }
+            };
+            let (done_a, done_b) = (wait(&inviting), wait(&joining));
+            let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+            if spoil {
+                assert!(matches!(done_a, Progress::Failed(_)), "{done_a:?}");
+                assert!(matches!(done_b, Progress::Failed(_)), "{done_b:?}");
+                assert!(!Net::load(&b).unwrap().in_network(), "aucune clé");
+            } else {
+                assert!(matches!(done_a, Progress::Done(_)), "{done_a:?}");
+                assert!(matches!(done_b, Progress::Done(_)), "{done_b:?}");
+                assert!(Net::load(&b).unwrap().in_network());
+                assert_eq!(b.net_peers().unwrap().len(), 1);
+            }
+        }
+    }
+
+    /// Ce que « Rejoindre » accepte : un code entier, ou une adresse seule.
+    /// Un code abîmé n'est pas une adresse.
+    #[test]
+    fn the_join_field_reads_a_code_or_an_address() {
+        let t = bpm_sync::Ticket::from_bytes([9; 10]);
+        let code = invitation_code(&t, "192.168.1.20:7742");
+        assert_eq!(
+            read_join(&code),
+            Some(("192.168.1.20:7742".to_owned(), Some(t)))
+        );
+        assert_eq!(
+            read_join(&format!("  {}  ", code.to_lowercase())),
+            Some(("192.168.1.20:7742".to_owned(), Some(t)))
+        );
+        assert_eq!(
+            read_join("192.168.1.20:7742"),
+            Some(("192.168.1.20:7742".to_owned(), None))
+        );
+        assert_eq!(read_join("K7QM-2XPA@192.168.1.20:7742"), None);
+        assert_eq!(read_join(&format!("{}@", t.text())), None);
+        assert_eq!(read_join("192.168.1.20 7742"), None);
+        assert_eq!(read_join(""), None);
+    }
+
+    /// **Une annonce dit qui, où inviter, et comment elle s'appelle —
+    /// rien de plus**, et ce qui n'en est pas une exactement est refusé :
+    /// l'annonce vient de n'importe qui sur le réseau local.
+    #[test]
+    fn an_officine_beacon_names_itself_and_nothing_else() {
+        let d = hex(&[7u8; 32]);
+        let ip: std::net::IpAddr = "192.168.1.30".parse().unwrap();
+        let b = officine_beacon(&d, "  Pharmacie de la Gare\n", 0);
+        assert!(!b.contains("Gare"), "le nom voyage en hexadécimal : {b}");
+        let n = heard_officine(&b, ip).unwrap();
+        assert_eq!(n.device, d);
+        assert_eq!(n.name, "Pharmacie de la Gare");
+        assert_eq!(n.invite, None);
+        let n = heard_officine(&officine_beacon(&d, "Épinal — Centre", 7742), ip).unwrap();
+        assert_eq!(n.name, "Épinal — Centre");
+        assert_eq!(n.invite.as_deref(), Some("192.168.1.30:7742"));
+        // Une identité s'écrit d'une seule façon : en majuscules, elle
+        // revient en minuscules — la même que celle du réseau.
+        let upper = format!("BPMOFFICINE1 {} 0 41", d.to_uppercase());
+        assert_eq!(heard_officine(&upper, ip).unwrap().device, d);
+        // Un nom trop long est coupé, pas refusé.
+        let long = "x".repeat(200);
+        let n = heard_officine(&officine_beacon(&d, &long, 0), ip).unwrap();
+        assert_eq!(n.name.chars().count(), NEARBY_NAME);
+        for bad in [
+            String::new(),
+            "BPMOFFICINE1".to_owned(),
+            format!("BPMOFFICINE1 {d} 0"),
+            "BPMOFFICINE1 zz 0 41".to_owned(),
+            format!("BPMOFFICINE1 {d} 70000 41"),
+            format!("BPMOFFICINE1 {d} 0 4"),
+            format!("BPMOFFICINE1 {d} 0 zz"),
+            format!("BPMOFFICINE1 {d} 0 ff"),
+            format!("BPMOFFICINE1 {d} 0 41 de-trop"),
+            format!("BPMPOSTE1 {d} 7743"),
+            format!("BPMOFFICINE1 {d} 0 {}", "41".repeat(NEARBY_NAME * 4 + 1)),
+        ] {
+            assert_eq!(heard_officine(&bad, ip), None, "{bad}");
+        }
     }
 }

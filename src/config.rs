@@ -514,6 +514,10 @@ pub struct ReseauConfig {
     /// Synchroniser au lancement, puis toutes les `intervalle_minutes`.
     pub automatique: bool,
     pub intervalle_minutes: u32,
+    /// Annoncer l'officine sur le réseau local — son nom et son identité
+    /// de réseau, rien d'autre — pour que les officines voisines la
+    /// voient sur leur carte des connexions.
+    pub annoncer: bool,
 }
 
 impl Default for ReseauConfig {
@@ -524,6 +528,7 @@ impl Default for ReseauConfig {
             a_la_fermeture: true,
             automatique: true,
             intervalle_minutes: 15,
+            annoncer: true,
         }
     }
 }
