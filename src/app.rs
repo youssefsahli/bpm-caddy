@@ -54263,13 +54263,16 @@ impl App {
                         } else if let Some((bad, said, at)) = &net_status {
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(trn("conn_net_last", &[at, said])).color(
-                                        if *bad {
+                                    // L'heure, puis ce que la tâche a dit :
+                                    // « Dernière synchronisation à 15:56 :
+                                    // Synchronisé : … » le disait deux fois.
+                                    egui::RichText::new(trn("conn_net_last", &[at, said]))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(if *bad {
                                             motif::alert()
                                         } else {
                                             motif::text_dim()
-                                        },
-                                    ),
+                                        }),
                                 )
                                 .wrap(),
                             );
