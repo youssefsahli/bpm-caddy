@@ -25978,10 +25978,12 @@ impl App {
                     .id_salt("vcat_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
+                        let mut picked = false;
                         ui.horizontal_wrapped(|ui| {
                             for v in list {
                                 let on = edit.base.as_ref().is_some_and(|b| b.id == v.id);
                                 if motif::toggle(ui, &v.label, on).clicked() {
+                                    picked = true;
                                     edit.base = Some(v.clone());
                                     edit.draft = v.clone();
                                     edit.confirm_delete = false;
@@ -26002,7 +26004,7 @@ impl App {
                             return;
                         }
                         let wide = ui.available_width();
-                        egui::Grid::new("vcat_form")
+                        let form = egui::Grid::new("vcat_form")
                             .num_columns(2)
                             .spacing([12.0, 6.0])
                             .show(ui, |ui| {
@@ -26032,6 +26034,13 @@ impl App {
                                 );
                                 ui.end_row();
                             });
+                        // **Choisir un vaccin montre ses champs.** À
+                        // `text_scale` 1,6 les vingt boutons remplissaient
+                        // la fenêtre : le clic ne changeait rien de visible,
+                        // les champs étaient sous le pli.
+                        if picked {
+                            ui.scroll_to_rect(form.response.rect, Some(egui::Align::Max));
+                        }
                     });
                 if let Some((bad, note)) = &edit.note {
                     ui.colored_label(
@@ -26230,10 +26239,12 @@ impl App {
                     .id_salt("trod_edit_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
+                        let mut picked = false;
                         ui.horizontal_wrapped(|ui| {
                             for line in &lines {
                                 let on = edit.base.as_ref().is_some_and(|b| b.id == line.id);
                                 if motif::toggle(ui, &line.name, on).clicked() {
+                                    picked = true;
                                     edit.open(line);
                                     edit.note = None;
                                 }
@@ -26252,7 +26263,7 @@ impl App {
                             return;
                         }
                         let wide = ui.available_width();
-                        egui::Grid::new("trod_edit_form")
+                        let form = egui::Grid::new("trod_edit_form")
                             .num_columns(2)
                             .spacing([12.0, 6.0])
                             .show(ui, |ui| {
@@ -26321,6 +26332,11 @@ impl App {
                                 );
                                 ui.end_row();
                             });
+                        // Choisir une ligne montre ses champs, depuis le
+                        // premier : même défaut que les vaccins proposés.
+                        if picked {
+                            ui.scroll_to_rect(form.response.rect, Some(egui::Align::Min));
+                        }
                     });
                 if let Some((bad, note)) = &edit.note {
                     ui.colored_label(

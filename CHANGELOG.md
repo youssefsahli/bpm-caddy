@@ -5,6 +5,14 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.307.0] - 2026-09-24
+
+### Fixed
+- **Vaccins proposés** et **Lignes du protocole TROD**, en grande taille
+  de texte : choisir un vaccin ou une ligne fait défiler la fenêtre
+  jusqu'à ses champs, qui restaient sous la liste des boutons — le clic
+  semblait ne rien faire.
+
 ## [0.306.0] - 2026-09-24
 
 ### Fixed
