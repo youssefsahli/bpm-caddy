@@ -58,22 +58,16 @@ fn random32() -> [u8; 32] {
     out
 }
 
-/// Une officine appairée.
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Peer {
-    pub device: String,
-    pub name: String,
-    pub address: String,
-    pub added: String,
-}
+/// Une officine appairée, et ce que ce poste sait de ses échanges avec
+/// elle — voir [`crate::db::NetPeerRow`].
+pub type Peer = crate::db::NetPeerRow;
 
-impl Peer {
-    /// Son empreinte, en cinq groupes — ce qu'on se lit au téléphone.
-    pub fn groups(&self) -> String {
-        unhex::<32>(&self.device)
-            .map(|b| DeviceId::from_bytes(b).fingerprint().groups())
-            .unwrap_or_default()
-    }
+/// L'empreinte d'une officine appairée, en cinq groupes — ce qu'on se
+/// lit au téléphone.
+pub fn peer_groups(device: &str) -> String {
+    unhex::<32>(device)
+        .map(|b| DeviceId::from_bytes(b).fingerprint().groups())
+        .unwrap_or_default()
 }
 
 /// Ce que cette officine sait du réseau, lu dans la base.
@@ -102,16 +96,7 @@ impl Net {
                 journal.insert(record);
             }
         }
-        let peers = db
-            .net_peers()?
-            .into_iter()
-            .map(|(device, name, address, added)| Peer {
-                device,
-                name,
-                address,
-                added,
-            })
-            .collect();
+        let peers = db.net_peers()?;
         Ok(Self {
             device: Device::from_seed(seed),
             trousseau,
@@ -262,6 +247,32 @@ impl Net {
             .into_iter()
             .filter(|f| f.author != me && known.contains(&f.author))
             .collect();
+        // **Ce que chaque officine a envoyé, et sous quel nom.** Le
+        // compte de ses enregistrements au journal, et le nom qu'elle
+        // écrit dans chacun — le dernier lu. Un compte qui monte, ce sont
+        // des nouvelles : c'est ce qui dit, dans la liste, qu'une
+        // officine est vivante même quand on ne la joint jamais
+        // directement.
+        for author in &known {
+            let theirs: Vec<&bpm_sync::Fact> =
+                facts.iter().filter(|f| f.author == *author).collect();
+            let name = theirs
+                .iter()
+                .rev()
+                .find_map(|f| {
+                    serde_json::from_slice::<serde_json::Value>(&f.payload)
+                        .ok()?
+                        .get("officine")?
+                        .as_str()
+                        .map(str::to_owned)
+                })
+                .unwrap_or_default();
+            db.note_net_heard(
+                &hex(&author.0),
+                &name,
+                i64::try_from(theirs.len()).unwrap_or(i64::MAX),
+            )?;
+        }
         let events: Vec<crate::ruptures::Event> = facts
             .iter()
             .filter_map(|f| crate::ruptures::decode(&f.payload))
@@ -529,12 +540,19 @@ pub fn run(
             }
             let peers = net.peers.clone();
             for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
-                if net.sync_with(&db, &p.address, TALK_PATIENCE).is_err() {
-                    failed.push(if p.name.trim().is_empty() {
-                        p.address.clone()
-                    } else {
-                        p.name.clone()
-                    });
+                // Chaque conversation est notée, réussie ou non, avec sa
+                // raison : « injoignable » sans date ni cause ne dit pas
+                // si c'est la box d'en face ou celle d'ici.
+                match net.sync_with(&db, &p.address, TALK_PATIENCE) {
+                    Ok(()) => db.note_net_dial(&p.device, None)?,
+                    Err(e) => {
+                        db.note_net_dial(&p.device, Some(&dial_reason(&e)))?;
+                        failed.push(if p.name.trim().is_empty() {
+                            p.address.clone()
+                        } else {
+                            p.name.clone()
+                        });
+                    }
                 }
             }
             let received = net.absorb(&db)?;
@@ -548,6 +566,28 @@ pub fn run(
             Ok(said)
         }
     }
+}
+
+/// Pourquoi une conversation directe a échoué, en une phrase qu'on peut
+/// lire au comptoir : l'erreur brute de la couche réseau
+/// (`Io(Custom { kind: TimedOut … })`) ne dit rien à personne.
+fn dial_reason(raw: &str) -> String {
+    use crate::strings::tr;
+    let low = raw.to_lowercase();
+    tr(
+        if low.contains("timedout") || low.contains("timed out") || low.contains("wouldblock") {
+            "net_dial_timeout"
+        } else if low.contains("refused") {
+            "net_dial_refused"
+        } else if low.contains("unreachable") || low.contains("no route") {
+            "net_dial_unreachable"
+        } else if low.contains("resolve") || low.contains("lookup") || low.contains("invalid") {
+            "net_dial_address"
+        } else {
+            "net_dial_other"
+        },
+    )
+    .to_owned()
 }
 
 /// L'adresse de ce poste sur le réseau local, à lire à l'autre officine.
@@ -593,6 +633,48 @@ mod tests {
             source: String::new(),
             refers: String::new(),
         }
+    }
+
+    /// **Une officine qu'on ne joint pas le dit, avec l'heure et la
+    /// raison** — et une réussite ultérieure effacerait la raison.
+    #[test]
+    fn a_refused_dial_is_noted_with_its_reason() {
+        let (dir, _s, a) = officine("dial");
+        Net::create(&a).unwrap();
+        let other = Device::from_seed([7; 32]);
+        // Le port 1 de la boucle locale : personne n'y écoute, la
+        // connexion est refusée tout de suite.
+        a.add_net_peer(&hex(&other.id().0), "127.0.0.1:1", "2026-09-24")
+            .unwrap();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let (_atx, arx) = std::sync::mpsc::channel();
+        let said = run(
+            &Job::Sync { folder: None },
+            &dir.join("net.db"),
+            "secret",
+            "Pharmacie du Centre",
+            "2026-09-24",
+            &tx,
+            &arx,
+        )
+        .unwrap();
+        assert!(
+            said.contains("127.0.0.1:1"),
+            "l'officine injoignable est nommée : {said}"
+        );
+        let peer = &a.net_peers().unwrap()[0];
+        assert!(!peer.last_try.is_empty(), "la tentative est datée");
+        assert!(peer.last_ok.is_empty());
+        assert!(!peer.last_error.is_empty(), "et sa raison écrite");
+        assert!(
+            !peer.last_error.contains("Io(") && !peer.last_error.contains("Custom"),
+            "une raison lisible, pas l'erreur brute : {}",
+            peer.last_error
+        );
+        // Une réussite efface l'erreur d'avant.
+        a.note_net_dial(&peer.device, None).unwrap();
+        let peer = &a.net_peers().unwrap()[0];
+        assert!(peer.last_error.is_empty() && !peer.last_ok.is_empty());
     }
 
     /// **Deux officines, un dossier d'échange, et ce qui en sort.**
@@ -682,6 +764,17 @@ mod tests {
         assert_eq!(facts[0].fact.low, Some(87.0));
         // Relu : rien de neuf.
         assert_eq!(nb.absorb(&b).unwrap(), 0);
+        // **Et B sait qui lui a écrit, combien, et depuis quand** : le nom
+        // sous lequel A signe, ses trois enregistrements, des nouvelles
+        // datées — arrivées par le dossier, sans conversation directe.
+        let peer = &b.net_peers().unwrap()[0];
+        assert_eq!(peer.seen_as, "Pharmacie du Centre");
+        assert_eq!(peer.received, 3);
+        assert!(!peer.last_heard.is_empty(), "des nouvelles datées");
+        assert!(
+            peer.last_ok.is_empty() && peer.last_try.is_empty(),
+            "jamais jointe"
+        );
 
         // Retirée, A n'est plus lue — ce qu'elle a déjà envoyé reste.
         b.remove_net_peer(&hex(&Net::load(&a).unwrap().device.id().0))

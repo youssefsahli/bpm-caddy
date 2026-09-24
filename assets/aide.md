@@ -38,7 +38,14 @@ fragment du nom ou les initiales.
 
 Les outils se trouvent **par leur usage** et non par le nom de leur
 écran : « enfant » ou « mg/kg » mène à la dose au poids, « DFG bas » à
-l'adaptation rénale, « demi-vie » à la décroissance.
+l'adaptation rénale, « demi-vie » à la décroissance, « horaires » à la
+trame de la semaine, « périmés » aux retours et à la destruction,
+« sauvegarde » à la page de la base, « angine » aux lignes du protocole
+TROD. Champ vide, la boîte liste les vues puis tous les outils : trame,
+planning, réseau d'officines, postes, codex, dispositifs, ordonnancier,
+vigilance, retours, pièces, textes imprimés, libellés, listes de
+contrôle, croisement, lignes du TROD, modèles, options, base et
+sauvegardes, règles et quotas.
 
 La recherche ignore la casse et les accents, et accepte des lettres non
 contiguës dans l'ordre : « jndp » retrouve Jean Dupont.
@@ -584,6 +591,14 @@ Pour une alternance, deux onglets : semaine paire et semaine impaire.
 Une journée identique sur les deux est enregistrée une fois, en
 hebdomadaire.
 
+La dernière colonne dessine chaque journée sur l'échelle des heures :
+les postes en barres, sur le fond des horaires d'ouverture quand
+l'officine les a déclarés. En alternance, deux pistes par jour — paires
+au-dessus, impaires en dessous — : un jour présent une semaine sur deux
+se voit comme un vide sur l'une des deux pistes. Une astreinte est un
+cadre, une absence une bande pâle. Le survol détaille la journée. La
+colonne s'efface quand la fenêtre est trop étroite.
+
 Une trame qui ne tient pas sur deux semaines de sept jours n'est pas
 approximée : l'écran le signale et ne propose pas de remplacement.
 
@@ -772,6 +787,20 @@ chiffrées.
 
 Retirer une officine arrête ses envois ; ses envois antérieurs restent
 au journal.
+
+**Suivi de chaque officine.** Sous chaque officine appairée, la liste
+indique le nom sous lequel elle signe, le nombre d'enregistrements reçus
+d'elle et la date des dernières nouvelles, qu'elles soient arrivées par
+une connexion directe ou par le dossier d'échange. Pour une officine à
+adresse, la dernière connexion directe réussie, ou, en rouge, l'heure du
+dernier échec et sa raison : pas de réponse dans le délai, connexion
+refusée, adresse hors d'atteinte. Le nom sous lequel elle signe sert
+d'invite au champ du nom.
+
+**Au tableau de bord**, « Ruptures en cours » liste les produits en
+rupture — signalés par l'officine ou par le réseau —, depuis quand, par
+combien d'officines, et le substitut le plus pratiqué. Un clic ouvre la
+fiche. Le panneau n'apparaît que s'il y a une rupture en cours.
 
 **Le codex et les protocoles sont aussi partagés**, selon les mêmes
 règles que les fiches : une préparation modifiée ou créée dans une

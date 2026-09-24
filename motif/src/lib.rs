@@ -2404,6 +2404,27 @@ fn popup_relief(ui: &egui::Ui) {
 /// Écrit une fois et partagé par [`select`] et [`menu`] : deux dessins
 /// du même objet finiraient par ne plus se ressembler, et c'est
 /// justement l'objet dont tout l'intérêt est de se reconnaître.
+/// La largeur qu'un menu déroulant demande pour montrer **en entier**
+/// le plus long de ses libellés, marque comprise — mesurée dans la
+/// fonte qui le dessine, avec les marges que [`menu_head`] laisse.
+pub fn select_width<'a>(ui: &egui::Ui, labels: impl Iterator<Item = &'a str>) -> f32 {
+    let font = egui::TextStyle::Button.resolve(ui.style());
+    let height = ui.spacing().interact_size.y;
+    let text = ui.fonts(|f| {
+        labels.fold(0.0_f32, |w, t| {
+            w.max(
+                f.layout_no_wrap(t.to_owned(), font.clone(), crate::text())
+                    .size()
+                    .x,
+            )
+        })
+    });
+    // Ce que `menu_head` retranche au libellé : la marque (deux fois
+    // `m`), son retrait de six points, et douze de marge — plus un
+    // point, pour que l'arrondi ne coupe pas la dernière lettre.
+    text + height * 0.22 * 2.0 + 6.0 + 12.0 + 1.0
+}
+
 fn menu_head(ui: &mut egui::Ui, id: egui::Id, width: f32, shown: &str) -> egui::Response {
     let font = egui::TextStyle::Button.resolve(ui.style());
     let height = ui.spacing().interact_size.y;

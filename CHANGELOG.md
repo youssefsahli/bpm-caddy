@@ -5,6 +5,48 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.293.0] - 2026-09-24
+
+### Added
+- **Trame de la semaine : la semaine dessinée.** Une colonne trace
+  chaque journée sur l'échelle des heures — postes en barres, horaires
+  d'ouverture en fond. En alternance, deux pistes par jour (paires,
+  impaires) : ce qui change d'une semaine à l'autre se voit d'un regard.
+  Astreinte en cadre, absence en bande pâle ; le survol détaille la
+  journée et l'ouverture.
+
+- **« Aller à… » trouve les outils par leur usage.** Dix-neuf outils
+  jusqu'ici cachés derrière un onglet, un dialogue ou une page d'options
+  s'atteignent par un mot du comptoir : « horaires » (trame),
+  « périmés » (retours et destruction), « sauvegarde » (base),
+  « nomadisme » (vigilance), « préparatoire » (codex), « angine »
+  (lignes du TROD), « mise en page » (modèles)… Champ vide, la boîte
+  liste les vues puis les outils.
+- **Lignes du protocole TROD** ouvrables sans ordonnance en cours, avec
+  le choix Angine / Cystite.
+- **Réseau d'officines : le suivi de chaque officine.** Sous chaque
+  officine appairée : le nom sous lequel elle signe, le nombre
+  d'enregistrements reçus, la date des dernières nouvelles (connexion
+  directe ou dossier d'échange), et pour une officine à adresse la
+  dernière connexion réussie ou, en rouge, le dernier échec daté avec sa
+  raison lisible (pas de réponse, connexion refusée, adresse hors
+  d'atteinte). Dans la fenêtre du réseau comme dans « Connexions ».
+- **Tableau de bord : « Ruptures en cours »**, celles de l'officine et
+  celles du réseau, avec le nombre d'officines qui les signalent et le
+  substitut le plus pratiqué ; un clic ouvre la fiche.
+
+### Fixed
+- **« Aller à… » à vide sortait de l'écran** : la liste défile désormais
+  dans la boîte au lieu de la faire grandir, et les flèches font défiler
+  jusqu'à la rangée choisie.
+
+### Changed
+- **Trame de la semaine** : en-têtes de colonnes (Nature, Début, Fin,
+  Pause, Reprise, Fin, Durée) — le « 45 » grisé ne se lisait qu'au
+  survol ; libellé « Rythme : » devant le menu du rythme ; le menu
+  « Qui » est mesuré sur les noms de l'équipe et ne coupe plus le nom ;
+  fenêtre plus large par défaut.
+
 ## [0.292.0] - 2026-09-24
 
 ### Added

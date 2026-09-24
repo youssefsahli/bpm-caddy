@@ -2247,6 +2247,15 @@ add clicking and typing; it is not the price of entry.
   second row of the same day (and the same nature) into the second half;
   two *different* natures on one day, or a third shift, stay
   « illisible » rather than lose one in silence.
+  The dialog's last column **draws the week** (`frame_week`,
+  `frame_strip`): each day on one hour scale, the opening hours as its
+  background, one lane per page — even weeks above odd ones — so a day
+  present one week in two reads as a hole in one lane. The scale is
+  `planning::preview_span` over shifts *and* opening hours, whole hours,
+  clamped to the day. The column is the first thing to go when the
+  window narrows (after the day totals, before any field), and the
+  second page's lane is series colour 2, not 1: colour 1 is a grey that
+  vanished into the trough.
   In `planning` the arrow keys walk the **grid** — days left/right,
   people up/down, rolling the week over at the edges — rather than
   stepping the week, which stays on the ‹ › buttons; the keys stand down

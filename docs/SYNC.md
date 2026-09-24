@@ -386,6 +386,16 @@ capturée ; un **dossier d'échange** (`<empreinte>.bpmposte`) ; des
 **adresses écrites** ; plus le bouton et la fermeture. `link.rs` ne
 décide toujours de rien : c'est l'application qui a un fil.
 
+Réseau d'officines (`src/network.rs`) : chaque conversation directe
+est notée sur la ligne de l'officine (`net_peers.last_try`, `last_ok`,
+`last_error` — la raison en français, jamais l'erreur brute du lien), et
+chaque lecture du journal note ce que l'officine a envoyé : le nom sous
+lequel elle signe (`seen_as`, le champ `officine` de ses charges), le
+compte de ses enregistrements (`received`) et, quand ce compte monte,
+l'heure des dernières nouvelles (`last_heard`). Les heures viennent de
+SQLite (`strftime(…, 'localtime')`) : aucune horloge dans le module. Ces
+colonnes sont locales au poste, comme la table.
+
 ### 7.6 Données non répliquées
 
 Les pièces scannées (§ 7.6 d'origine : des fichiers, pas des

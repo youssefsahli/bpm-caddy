@@ -313,7 +313,17 @@ CREATE TABLE IF NOT EXISTS net_peers (
     device  TEXT PRIMARY KEY,
     name    TEXT NOT NULL DEFAULT '',
     address TEXT NOT NULL DEFAULT '',
-    added   TEXT NOT NULL DEFAULT ''
+    added   TEXT NOT NULL DEFAULT '',
+    -- Ce que ce poste sait des échanges avec elle : le nom sous lequel
+    -- elle signe, combien de ses enregistrements il tient, quand il en a
+    -- reçu de nouveaux, et la dernière conversation directe — réussie,
+    -- tentée, et pourquoi elle a échoué. Heures locales `AAAA-MM-JJ HH:MM`.
+    seen_as    TEXT NOT NULL DEFAULT '',
+    received   INTEGER NOT NULL DEFAULT 0,
+    last_heard TEXT NOT NULL DEFAULT '',
+    last_ok    TEXT NOT NULL DEFAULT '',
+    last_try   TEXT NOT NULL DEFAULT '',
+    last_error TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_published (
     -- Les événements du journal des ruptures déjà scellés vers le
@@ -1143,6 +1153,13 @@ const MIGRATIONS: &[&str] = &[
         added   TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS net_published (uid TEXT PRIMARY KEY)",
+    // Le suivi des échanges avec chaque officine — voir `SCHEMA`.
+    "ALTER TABLE net_peers ADD COLUMN seen_as TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE net_peers ADD COLUMN received INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE net_peers ADD COLUMN last_heard TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE net_peers ADD COLUMN last_ok TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE net_peers ADD COLUMN last_try TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE net_peers ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
     // Le journal des ruptures et des substitutions — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS supply_events (
         id          INTEGER PRIMARY KEY,
@@ -2440,6 +2457,21 @@ pub struct Appointment {
     /// « non attribué » of the agenda, and it is a fact, not a gap to
     /// be filled in.
     pub operator: String,
+}
+
+/// Une officine appairée, telle que ce poste la connaît.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct NetPeerRow {
+    pub device: String,
+    pub name: String,
+    pub address: String,
+    pub added: String,
+    pub seen_as: String,
+    pub received: i64,
+    pub last_heard: String,
+    pub last_ok: String,
+    pub last_try: String,
+    pub last_error: String,
 }
 
 #[derive(Clone, Debug)]
@@ -33754,15 +33786,70 @@ impl Db {
     }
 
     /// Les officines appairées : (clé, nom, adresse, date).
-    pub fn net_peers(&self) -> Result<Vec<(String, String, String, String)>, String> {
+    pub fn net_peers(&self) -> Result<Vec<NetPeerRow>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT device, name, address, added FROM net_peers ORDER BY added, device")
+            .prepare(
+                "SELECT device, name, address, added, seen_as, received, last_heard,
+                        last_ok, last_try, last_error
+                 FROM net_peers ORDER BY added, device",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
-            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .query_map([], |r| {
+                Ok(NetPeerRow {
+                    device: r.get(0)?,
+                    name: r.get(1)?,
+                    address: r.get(2)?,
+                    added: r.get(3)?,
+                    seen_as: r.get(4)?,
+                    received: r.get(5)?,
+                    last_heard: r.get(6)?,
+                    last_ok: r.get(7)?,
+                    last_try: r.get(8)?,
+                    last_error: r.get(9)?,
+                })
+            })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ce que le journal tient d'une officine : le nom sous lequel elle
+    /// signe et le nombre de ses enregistrements. **Les nouvelles datent
+    /// du jour où ce nombre a augmenté** — par une conversation directe
+    /// ou par le dossier d'échange, peu importe le chemin.
+    pub fn note_net_heard(&self, device: &str, seen_as: &str, received: i64) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE net_peers SET
+                     seen_as = CASE WHEN ?2 <> '' THEN ?2 ELSE seen_as END,
+                     last_heard = CASE WHEN ?3 > received
+                         THEN strftime('%Y-%m-%d %H:%M', 'now', 'localtime')
+                         ELSE last_heard END,
+                     received = ?3
+                 WHERE device = ?1",
+                (device, seen_as.trim(), received),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Une conversation directe avec une officine : tentée maintenant,
+    /// réussie ou non, et pourquoi. Une réussite efface l'erreur d'avant.
+    pub fn note_net_dial(&self, device: &str, error: Option<&str>) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE net_peers SET
+                     last_try = strftime('%Y-%m-%d %H:%M', 'now', 'localtime'),
+                     last_ok = CASE WHEN ?2 IS NULL
+                         THEN strftime('%Y-%m-%d %H:%M', 'now', 'localtime')
+                         ELSE last_ok END,
+                     last_error = COALESCE(?2, '')
+                 WHERE device = ?1",
+                (device, error),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
     }
 
     /// Ajouter une officine appairée, ou compléter son adresse.

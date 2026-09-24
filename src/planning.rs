@@ -732,6 +732,32 @@ pub fn opening_slots<'a>(
     out
 }
 
+/// Les heures qu'un aperçu de semaine doit montrer : de l'heure pleine
+/// avant le plus tôt à l'heure pleine après le plus tard, sur ce qui est
+/// dessiné — postes et horaires d'ouverture ensemble.
+///
+/// **Rien d'écrit, c'est la plage de la journée** (`fallback`) : un
+/// aperçu vide garde son échelle plutôt que de se réduire à un point.
+/// Une garde qui passe minuit s'arrête au bord de la journée — l'aperçu
+/// montre une semaine de jours, pas la nuit du lendemain.
+pub fn preview_span(slots: impl IntoIterator<Item = Slot>, fallback: (u16, u16)) -> (u16, u16) {
+    const DAY: u16 = 24 * 60;
+    let mut span: Option<(u16, u16)> = None;
+    for s in slots {
+        let (lo, hi) = (s.start.min(DAY), s.end.clamp(s.start, DAY));
+        span = Some(span.map_or((lo, hi), |(a, b)| (a.min(lo), b.max(hi))));
+    }
+    let (lo, hi) = span.unwrap_or(fallback);
+    let lo = lo / 60 * 60;
+    let hi = hi.div_ceil(60).saturating_mul(60).min(DAY);
+    if hi > lo {
+        (lo, hi)
+    } else {
+        // Un seul instant écrit : une heure autour, pour qu'il se voie.
+        (lo, (lo + 60).min(DAY).max(lo.saturating_add(1)))
+    }
+}
+
 /// « 7 h 35 » : des minutes entières rendues lisibles, à l'affichage et
 /// nulle part ailleurs.
 ///
@@ -751,6 +777,30 @@ pub fn hhmm_or_dash(minutes: Option<u16>) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **L'aperçu couvre ce qu'il dessine**, à l'heure pleine, et garde
+    /// son échelle quand rien n'est écrit.
+    #[test]
+    fn the_preview_spans_whole_hours_around_what_it_draws() {
+        let s = |a, b| Slot::new(a, b);
+        // 9 h – 12 h 30 et 14 h – 19 h 30 : de 9 h à 20 h.
+        assert_eq!(
+            preview_span([s(540, 750), s(840, 1170)], (480, 1200)),
+            (540, 1200)
+        );
+        // Une ouverture à 8 h 45 tire l'aperçu à 8 h.
+        assert_eq!(
+            preview_span([s(525, 750), s(540, 600)], (480, 1200)),
+            (480, 780)
+        );
+        // Rien d'écrit : la plage de la journée.
+        assert_eq!(preview_span([], (480, 1200)), (480, 1200));
+        // Une garde qui passe minuit s'arrête à minuit.
+        assert_eq!(preview_span([s(1200, 1980)], (480, 1200)), (1200, 1440));
+        // Un seul instant : une heure autour, jamais un aperçu nul.
+        let (lo, hi) = preview_span([Slot::point(600)], (480, 1200));
+        assert!(hi > lo && lo <= 600 && 600 <= hi);
+    }
 
     fn shift(id: i64, who: &str, start: u16, end: Option<u16>, kind: ShiftKind) -> Shift {
         Shift {
