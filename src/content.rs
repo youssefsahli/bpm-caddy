@@ -230,6 +230,11 @@ pub fn documents() -> Vec<Document> {
         phrases: crate::entretien::phrases(),
     });
     out.push(Document {
+        subject: crate::trod::DOC.to_owned(),
+        label: crate::strings::tr("textes_doc_trod").to_owned(),
+        phrases: crate::trod::phrases(),
+    });
+    out.push(Document {
         subject: crate::crush::DOC.to_owned(),
         label: crate::strings::tr("textes_doc_ecraser").to_owned(),
         phrases: crate::crush::phrases(),

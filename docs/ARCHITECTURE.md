@@ -24,6 +24,10 @@ are read verbatim by tests in `src/strings.rs`.
   `src/codex.rs` (reading a preparation's formula and rescaling it —
   pure and tested; the preparations themselves live in the base),
   `src/entretien.rs` (what each thematic covers, printed on the fiche),
+  `src/trod.rs` (the TROD sheet: orientation signs, the angine score,
+  the test's reading and traceability, what to do on each result — a
+  TROD act prints this instead of the entretien fiche; the age and sex
+  bounds stay in `trod_lines`, the sheet only lists the lines that fit),
   `src/biology.rs` (the analytes, their usual intervals, and the rules
   that read a value against the patient's treatments — static, pure,
   tested. `read` takes **whole treatments**, like every other clinical
@@ -275,7 +279,7 @@ are read verbatim by tests in `src/strings.rs`.
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be 35 chances to forget one.
+  `pdf::open_*` call sites would be 37 chances to forget one.
 The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
@@ -409,7 +413,7 @@ The one that was missing — « combien de fois un autre poste avait
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1006 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1044 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),

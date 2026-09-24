@@ -3193,6 +3193,9 @@ struct ActsOut {
     cr_req: Option<(InterviewKind, Option<String>, String, String)>,
     /// La liasse de fin d'entretien : fiche, bilan et plan de prise.
     bundle_req: Option<(InterviewKind, Option<String>, String, String)>,
+    /// La feuille d'un TROD, par l'identifiant de l'acte — seule ou en
+    /// tête de la liasse (`true`).
+    trod_req: Option<(i64, bool)>,
     bulletin_req: Option<InterviewKind>,
     set_trod: Option<(i64, String, String)>,
     open_ordonnance: Option<(i64, InterviewKind)>,
@@ -25794,19 +25797,75 @@ impl App {
         });
     }
 
+    /// La feuille d'un TROD, seule ou en tête de la liasse.
+    ///
+    /// Datée du rendez-vous quand il y en a un, du jour sinon — comme la
+    /// fiche d'entretien. L'âge, le sexe et une grossesse en cours
+    /// viennent du dossier : ce qu'il ne dit pas reste non renseigné, et
+    /// la feuille le montre plutôt que de le supposer.
+    fn print_trod(
+        session: &mut Session,
+        patient: &Patient,
+        config: &Config,
+        itv: &Interview,
+        bundle: bool,
+    ) -> Result<std::path::PathBuf, String> {
+        let on = itv
+            .scheduled_date
+            .clone()
+            .unwrap_or_else(|| session.today.clone());
+        let date = db::format_french_date(&on);
+        let offers = crate::ordonnance::protocol_id(itv.kind)
+            .map(|p| session.db.trod_lines(p).unwrap_or_default())
+            .unwrap_or_default();
+        let signature = config.pharmacy.signature_for(&itv.operator);
+        let paper = crate::pdf::TrodPaper {
+            patient,
+            kind: itv.kind,
+            date: &date,
+            age: db::age_on(&patient.birth_date, &on),
+            result: &itv.trod_result,
+            signature: &signature,
+            treats: &session.patient_treats,
+            offers: &offers,
+            pregnant: crate::vaccines::weeks_of_amenorrhea(&patient.pregnancy_ddr, &on).is_some(),
+            content: &session.content,
+        };
+        let path = config.doc_template_path("trod");
+        if !bundle {
+            return crate::pdf::open_trod_sheet(&paper, &config.pharmacy, &path);
+        }
+        let sheet = crate::pdf::trod_source(&paper, &config.pharmacy, &path);
+        let bilan = Self::bilan_body(session, patient, config, &itv.operator, true);
+        let plan = Self::plan_body(session, patient, config, &itv.operator, true);
+        crate::pdf::open_bundle(&[sheet, bilan, plan], &format!("liasse_{}", patient.id))
+    }
+
     /// Ce que l'acte imprime, et ce qu'un TROD a lu.
     fn acts_sheet(ui: &mut egui::Ui, row: &ActsRow, out: &mut ActsOut) {
         ui.horizontal(|ui| {
+            // Un TROD imprime sa propre feuille — signes, score, lecture,
+            // lot, conduite — et n'a pas de points d'entretien à choisir :
+            // la fenêtre d'export n'aurait rien à lui proposer.
+            let trod = crate::trod::sheet(row.itv.kind).is_some();
             if motif::button(ui, tr("itv_pdf"))
-                .on_hover_text(tr("itv_pdf_tooltip"))
+                .on_hover_text(tr(if trod {
+                    "itv_pdf_trod_tooltip"
+                } else {
+                    "itv_pdf_tooltip"
+                }))
                 .clicked()
             {
-                out.print_req = Some((
-                    row.itv.kind,
-                    row.itv.scheduled_date.clone(),
-                    row.itv.theme.clone(),
-                    row.itv.operator.clone(),
-                ));
+                if trod {
+                    out.trod_req = Some((row.itv.id, false));
+                } else {
+                    out.print_req = Some((
+                        row.itv.kind,
+                        row.itv.scheduled_date.clone(),
+                        row.itv.theme.clone(),
+                        row.itv.operator.clone(),
+                    ));
+                }
             }
             if motif::button(ui, tr("itv_cr"))
                 .on_hover_text(tr("itv_cr_tooltip"))
@@ -25825,12 +25884,16 @@ impl App {
                 .on_hover_text(tr("itv_bundle_tooltip"))
                 .clicked()
             {
-                out.bundle_req = Some((
-                    row.itv.kind,
-                    row.itv.scheduled_date.clone(),
-                    row.itv.theme.clone(),
-                    row.itv.operator.clone(),
-                ));
+                if trod {
+                    out.trod_req = Some((row.itv.id, true));
+                } else {
+                    out.bundle_req = Some((
+                        row.itv.kind,
+                        row.itv.scheduled_date.clone(),
+                        row.itv.theme.clone(),
+                        row.itv.operator.clone(),
+                    ));
+                }
             }
             // Only the themes under the accompaniment
             // convention have an adhésion to sign.
@@ -26228,6 +26291,7 @@ impl App {
             mut print_req,
             mut cr_req,
             mut bundle_req,
+            trod_req,
             bulletin_req,
             set_trod,
             open_ordonnance,
@@ -26467,16 +26531,25 @@ impl App {
             // ligne — et par la ligne de l'officine quand la liste de
             // l'équipe ne les connaît pas.
             let signature = config.pharmacy.signature_for(&by);
+            let age = db::age_on(
+                &patient.birth_date,
+                scheduled.as_deref().unwrap_or(&session.today),
+            );
+            let paper = crate::pdf::InterviewPaper {
+                patient,
+                kind,
+                date: &date,
+                age,
+                theme: &theme,
+                signature: &signature,
+                treats: &session.patient_treats,
+                checklist: &lines,
+            };
             let done = match target {
                 ExportTarget::Fiche => crate::pdf::open_interview_sheet(
-                    patient,
-                    kind,
-                    &date,
-                    &theme,
+                    &paper,
+                    &config.pharmacy,
                     &config.template_path(),
-                    &signature,
-                    &session.patient_treats,
-                    &lines,
                 ),
                 // La liasse : les trois documents remplis puis
                 // compilés d'un coup. Chacun est **construit par la
@@ -26485,14 +26558,9 @@ impl App {
                 // c'est celui qu'on regarde le moins qui a tort.
                 ExportTarget::Liasse => {
                     let fiche = crate::pdf::interview_source(
-                        patient,
-                        kind,
-                        &date,
-                        &theme,
+                        &paper,
+                        &config.pharmacy,
                         &config.template_path(),
-                        &signature,
-                        &session.patient_treats,
-                        &lines,
                     );
                     match fiche {
                         Ok(fiche) => {
@@ -26520,6 +26588,18 @@ impl App {
             };
             if let Err(e) = done {
                 session.error = Some(e);
+            }
+        }
+        if let Some((id, bundle)) = trod_req {
+            let itv = session
+                .viewing_interviews
+                .iter()
+                .find(|i| i.id == id)
+                .cloned();
+            if let Some(itv) = itv {
+                if let Err(e) = Self::print_trod(session, patient, config, &itv, bundle) {
+                    session.error = Some(e);
+                }
             }
         }
         if let Some(kind) = bulletin_req {

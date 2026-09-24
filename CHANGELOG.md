@@ -5,6 +5,31 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.292.0] - 2026-09-24
+
+### Added
+- **Feuille de TROD.** Sur un acte TROD angine ou cystite, « PDF »
+  imprime désormais une feuille propre au test, et non la fiche
+  d'entretien : signes qui orientent vers le médecin sans tester, score
+  de Mac Isaac (angine), lecture du test avec test utilisé, lot,
+  péremption et heure, résultat retenu, conduite si positif et si
+  négatif, lignes du protocole qui s'appliquent au patient (âge, sexe,
+  grossesse), traitements connus. L'âge connu coche l'item d'âge du
+  score et un résultat déjà enregistré arrive coché ; le reste se coche
+  devant le patient. « Tout imprimer » met la feuille en tête de la
+  liasse.
+- Les phrases de la feuille se réécrivent dans « Textes imprimés »
+  (« Feuille de TROD »), sa mise en page dans « Modèles… » (clé `trod`).
+
+### Changed
+- **Fiche d'entretien** : en-tête de l'officine, âge du patient à côté
+  de la date de naissance, pharmacien dans le cadre patient, points à
+  couvrir en retrait suspendu, et les trois cadres de notes se partagent
+  la place restante de la page au lieu de hauteurs fixes.
+- **Apostrophe typographique** sur tous les imprimés : le texte des
+  données gardait l'apostrophe droite à côté de celle, courbe, des
+  modèles.
+
 ## [0.291.0] - 2026-09-24
 
 ### Added

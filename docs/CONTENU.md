@@ -1040,6 +1040,24 @@ conseils à tenir à jour deux fois.
 - **Test** : chaque thème de `db::THEMES` a sa liste, de cinq à neuf
   points. Une liste de vingt lignes est une liste que personne ne coche.
 
+## La feuille de TROD
+
+- **Où** : `src/trod.rs` — une feuille par protocole (angine, cystite) :
+  signes qui orientent vers le médecin sans tester, score (Mac Isaac pour
+  l'angine, aucun pour la cystite), lectures du test, conduite si positif
+  et si négatif. Imprimée par `pdf::open_trod_sheet`, clé `trod` dans
+  `pdf::DOCS`.
+- Les **bornes** (âge, sexe, grossesse) ne sont pas dans ce module : la
+  feuille liste les lignes de `trod_lines` qui s'appliquent au patient,
+  celles que l'officine tient dans sa base. Une seule source de bornes.
+- Seuls l'item d'âge du score (âge **connu**) et le résultat déjà
+  enregistré arrivent cochés. Une case cochée par le logiciel se lit
+  comme une case constatée.
+- **Test** : `every_trod_phrase_is_editable_and_every_rewrite_arrives`
+  (les deux sens), `the_trod_sheet_reads_the_person_and_the_recorded_result`
+  (un homme ne reçoit aucune ligne de la cystite, la feuille tient sur
+  une page).
+
 ## Le calendrier vaccinal et les voyages
 
 - **Où** : `src/vaccines.rs` — le catalogue des vaccins, les règles du

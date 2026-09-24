@@ -493,6 +493,20 @@ Le bilan partagé de médication comporte une section consacrée au sujet
 le document transmis au prescripteur. Chaque ligne indique le risque et
 l'alternative ; aucune ne prescrit un arrêt.
 
+## Feuille de TROD
+
+Sur un acte TROD, « PDF » imprime la feuille du test et non la fiche
+d'entretien : signes qui orientent vers le médecin sans tester, score de
+Mac Isaac pour l'angine, lecture du test avec lot, péremption et heure,
+conduite selon le résultat, et les lignes du protocole qui s'appliquent
+au patient d'après son âge, son sexe et une grossesse en cours. L'âge
+connu coche l'item d'âge du score ; un résultat déjà enregistré arrive
+coché. Le reste se coche à la main, devant le patient.
+
+Les phrases de la feuille se réécrivent dans l'écran « Textes
+imprimés », sous « Feuille de TROD » ; sa mise en page, par
+« Modèles… ».
+
 ## Ordonnance sous protocole
 
 Après un test rapide positif — angine à streptocoque, cystite simple —,

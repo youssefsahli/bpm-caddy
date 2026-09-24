@@ -61,6 +61,7 @@ pub mod surveillance;
 pub mod tables;
 pub mod telemetry;
 pub mod timeline;
+pub mod trod;
 pub mod vaccines;
 pub mod versions;
 pub mod vigilance;

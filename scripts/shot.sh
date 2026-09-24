@@ -66,7 +66,10 @@ view="$view" out="$out" w="$w" h="$h" card="$card" \
         demo_view_env "$view" "$card"
         ./target/debug/bpm-caddy &
         pid=$!
-        sleep 6
+        # SHOT_WAIT : plus long quand la machine est chargée (une
+        # couverture qui tourne à côté) — six secondes ne suffisent plus
+        # et la capture revient noire.
+        sleep ${SHOT_WAIT:-6}
         import -window root -crop "${w}x${h}+0+0" +repage "$out" 2>/dev/null
         kill $pid 2>/dev/null || true
         wait $pid 2>/dev/null || true

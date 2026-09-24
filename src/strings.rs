@@ -742,6 +742,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("revue.rs", include_str!("revue.rs")),
             ("selfcheck.rs", include_str!("selfcheck.rs")),
             ("surveillance.rs", include_str!("surveillance.rs")),
+            ("trod.rs", include_str!("trod.rs")),
             ("vaccines.rs", include_str!("vaccines.rs")),
         ];
         // Autant de sources que le registre en cite : les carnets
@@ -1850,6 +1851,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("selfcheck.rs", include_str!("selfcheck.rs")),
             ("surveillance.rs", include_str!("surveillance.rs")),
             ("tables.rs", include_str!("tables.rs")),
+            ("trod.rs", include_str!("trod.rs")),
             ("vaccines.rs", include_str!("vaccines.rs")),
             ("vigilance.rs", include_str!("vigilance.rs")),
         ];

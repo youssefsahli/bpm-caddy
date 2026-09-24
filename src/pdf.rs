@@ -49,55 +49,60 @@ const DEFAULT_TRANS_TEMPLATE: &str = r##"
 {{ENTRIES}}
 "##;
 
-/// Default A4 interview sheet: patient header plus rounded boxes sized for
-/// handwritten notes during the interview.
+/// Default A4 interview sheet: letterhead, the patient and who holds
+/// the entretien, what the officine knows, the points of the theme as
+/// tick-boxes, and three note boxes that **share what is left of the
+/// page** — a long checklist shrinks them instead of pushing the
+/// signature onto a second sheet, a short one leaves room to write.
 const DEFAULT_TEMPLATE: &str = r#"
-#set page(paper: "a4", margin: 1.5cm)
-#set text(size: 11pt)
+#set page(paper: "a4", margin: (x: 1.5cm, y: 1.3cm))
+#set text(size: 10.5pt, lang: "fr")
 #set block(spacing: 2.5mm)
 
-#let note-box(title, h) = [
-  #v(3mm)
+#let sec(title) = block(above: 4mm, below: 2mm)[
   #text(weight: "bold")[#title]
-  #v(1.5mm)
-  #box(width: 100%, height: h, stroke: 0.8pt, radius: 5pt)
+  #v(-1.5mm)
+  #line(length: 100%, stroke: 0.4pt)
+]
+#let note-box(title) = [
+  #sec(title)
+  #block(width: 100%, height: 1fr, stroke: 0.7pt)
 ]
 
-#align(center)[
-  #text(17pt, weight: "bold")[Entretien pharmaceutique — {{KIND}}]
-]
-#v(4mm)
-
-#box(width: 100%, stroke: 0.8pt, radius: 5pt, inset: 9pt)[
-  #text(weight: "bold")[Patient :] {{PATIENT_NAME}} \
-  #text(weight: "bold")[Date de naissance :] {{BIRTH_DATE}} \
-  #text(weight: "bold")[Date de l'entretien :] {{DATE}} \
-  #text(weight: "bold")[Thème :] {{THEME}}
-]
-
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold")[{{PHARMACY_NAME}}] \ #text(size: 9pt)[{{PHARMACY_PHONE}}]],
+  [#align(right)[Le {{DATE}}]],
+)
 #v(3mm)
-#text(weight: "bold")[Traitements connus à l'officine]
-#v(1.5mm)
+#align(center)[
+  #text(15pt, weight: "bold")[Entretien pharmaceutique — {{KIND}}]
+]
+#v(2mm)
+#box(width: 100%, stroke: 0.7pt, inset: 7pt)[
+  #grid(columns: (1fr, 1fr), row-gutter: 1.5mm,
+    [*Patient :* {{PATIENT_NAME}}], [*Né(e) le :* {{BIRTH_DATE}} ({{AGE}})],
+    [*Thème :* {{THEME}}], [*Pharmacien :* {{PHARMACIST}}],
+  )
+]
+
+#sec[Traitements connus à l'officine]
 {{TREATMENTS}}
 
-#v(3mm)
-#text(weight: "bold")[À couvrir pendant l'entretien]
-#v(1.5mm)
+#sec[À couvrir pendant l'entretien]
 {{CHECKLIST}}
 
-#note-box("Propos du patient", 2.2cm)
-#note-box("Points d'attention / interactions", 2cm)
-#note-box("Conclusion et plan d'action", 2.2cm)
+#note-box[Propos du patient]
+#note-box[Points d'attention, interactions]
+#note-box[Conclusion et plan d'action]
 
 #v(3mm)
-#grid(columns: (1fr, 1fr), gutter: 1cm,
-  [#text(weight: "bold")[Signature du pharmacien] \
-   #text(9pt)[{{PHARMACIST}}]
-   #v(1.5mm)
-   #box(width: 100%, height: 1.6cm, stroke: 0.8pt, radius: 5pt)],
+#grid(columns: (1fr, 1fr), column-gutter: 6mm,
   [#text(weight: "bold")[Prochain rendez-vous]
-   #v(1.5mm)
-   #box(width: 100%, height: 1.6cm, stroke: 0.8pt, radius: 5pt)],
+   #v(1mm)
+   #box(width: 100%, height: 1.8cm, stroke: 0.7pt)],
+  [#text(weight: "bold")[Signature du pharmacien]
+   #v(1mm)
+   #box(width: 100%, height: 1.8cm, stroke: 0.7pt)],
 )
 "#;
 
@@ -249,46 +254,43 @@ impl World for PdfWorld {
     }
 }
 
+/// Ce que la fiche d'entretien reçoit.
+pub struct InterviewPaper<'a> {
+    pub patient: &'a Patient,
+    pub kind: InterviewKind,
+    /// La date imprimée, déjà au format `JJ/MM/AAAA`.
+    pub date: &'a str,
+    /// L'âge à cette date, quand la naissance est connue.
+    pub age: Option<u32>,
+    pub theme: &'a str,
+    pub signature: &'a str,
+    pub treats: &'a [Drug],
+    pub checklist: &'a [&'a str],
+}
+
 /// Compile the interview sheet for a patient and hand it to the OS PDF
 /// viewer. `template_path` is [`crate::config::Config::template_path`]:
 /// when the file does not exist, the embedded template is used.
-#[allow(clippy::too_many_arguments)]
 pub fn open_interview_sheet(
-    patient: &Patient,
-    kind: InterviewKind,
-    today: &str,
-    theme: &str,
+    paper: &InterviewPaper,
+    pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-    signature: &str,
-    treats: &[Drug],
-    checklist: &[&str],
 ) -> Result<PathBuf, String> {
-    let filled = interview_source(
-        patient,
-        kind,
-        today,
-        theme,
-        template_path,
-        signature,
-        treats,
-        checklist,
-    )?;
-    let stem = format!("fiche_{}_{}", patient.id, kind.as_str().to_lowercase());
+    let filled = interview_source(paper, pharmacy, template_path)?;
+    let stem = format!(
+        "fiche_{}_{}",
+        paper.patient.id,
+        paper.kind.as_str().to_lowercase()
+    );
     compile_and_open(filled, &stem)
 }
 
 /// La fiche d'entretien, remplie mais pas encore compilée. Voir
 /// [`bilan_source`].
-#[allow(clippy::too_many_arguments)]
 pub fn interview_source(
-    patient: &Patient,
-    kind: InterviewKind,
-    today: &str,
-    theme: &str,
+    paper: &InterviewPaper,
+    pharmacy: &PharmacyConfig,
     template_path: &std::path::Path,
-    signature: &str,
-    treats: &[Drug],
-    checklist: &[&str],
 ) -> Result<String, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -296,9 +298,7 @@ pub fn interview_source(
     } else {
         DEFAULT_TEMPLATE.to_owned()
     };
-    Ok(fill_interview_template(
-        &template, patient, kind, today, theme, signature, treats, checklist,
-    ))
+    Ok(fill_interview_template(&template, paper, pharmacy))
 }
 
 /// Plusieurs documents en un seul PDF, dans l'ordre reçu.
@@ -1174,7 +1174,12 @@ const GUIDE_SHORTCUTS: &str = "Ctrl+K aller à… · Ctrl+F chercher un patient 
 /// les fontes d'egui — celles-là n'ont pas le glyphe, et c'est pourquoi
 /// le volet se contente de l'insécable ordinaire.
 fn bind_french(text: &str) -> String {
-    text.replace(" »", "\u{202f}»")
+    // L'apostrophe typographique : la prose des modèles la reçoit de
+    // Typst, qui courbe celle du balisage, mais une chaîne passée ici
+    // est du texte brut et gardait la droite — une même page imprimait
+    // « l’officine » dans son titre et « l'état » deux lignes plus bas.
+    text.replace('\'', "\u{2019}")
+        .replace(" »", "\u{202f}»")
         .replace("« ", "«\u{202f}")
         .replace(" :", "\u{202f}:")
         .replace(" ;", "\u{202f};")
@@ -1238,7 +1243,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Documents imprimés par l'acte",
-        "Sur chaque ligne : « PDF » sort la fiche d'entretien à remplir, « CR » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Un TROD positif ouvre en plus l'ordonnance protocolisée.",
+        "Sur chaque ligne : « PDF » sort la fiche d'entretien à remplir, « CR » le courrier au médecin traitant avec les traitements connus, « Adhésion » le bulletin officiel de l'Assurance Maladie pré-rempli — les cases, la date et les signatures restent à faire devant le patient. Sur un TROD, « PDF » sort la feuille du test — signes d'orientation, score, lecture, lot et conduite —, et un TROD positif ouvre en plus l'ordonnance protocolisée.",
     ),
     (
         "Le bilan et le plan de prise",
@@ -3563,69 +3568,80 @@ fn typst_str(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
+/// The points of a theme, as tick-boxes: the sheet in the pharmacist's
+/// hand carries what the entretien is for. The box in its own column,
+/// so a point that wraps continues under its text and not under the
+/// box.
+fn checklist_markup(points: &[&str]) -> String {
+    points
+        .iter()
+        .map(|point| {
+            format!(
+                "#grid(columns: (auto, 1fr), column-gutter: 2mm, [#box(width: 3.4mm, height: 3.4mm, stroke: 0.7pt)], [#{}])",
+                typst_str(point)
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Substitute the interview-sheet placeholders. Values are spliced as
 /// Typst string literals (`#"…"`), so a patient name containing markup
 /// ('#', '*', brackets…) can neither break compilation nor restyle the
 /// sheet.
-#[allow(clippy::too_many_arguments)]
 fn fill_interview_template(
     template: &str,
-    patient: &Patient,
-    kind: InterviewKind,
-    today: &str,
-    theme: &str,
-    signature: &str,
-    treats: &[Drug],
-    checklist: &[&str],
+    paper: &InterviewPaper,
+    pharmacy: &PharmacyConfig,
 ) -> String {
-    // The points of this theme, as tick-boxes: the sheet in the
-    // pharmacist's hand carries what the entretien is for.
-    let ticks = if checklist.is_empty() {
-        String::new()
+    fill(template, &interview_values(paper, pharmacy))
+}
+
+/// Les valeurs de la fiche d'entretien — celles de l'impression et
+/// celles de l'aperçu, par la même fonction.
+fn interview_values(
+    paper: &InterviewPaper,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let s = |v: &str| format!("#{}", typst_str(v));
+    let kind = paper.kind;
+    let birth = if paper.patient.birth_date.trim().is_empty() {
+        "—".to_owned()
     } else {
-        checklist
-            .iter()
-            .map(|point| {
-                format!(
-                    "#block(below: 2mm)[#box(width: 3.4mm, height: 3.4mm, stroke: 0.7pt) #h(2mm) #{}]",
-                    typst_str(point)
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
+        crate::db::format_french_date(&paper.patient.birth_date)
     };
-    template
-        .replace(
-            "{{PATIENT_NAME}}",
-            &format!("#{}", typst_str(&patient.full_name())),
-        )
-        .replace(
-            "{{BIRTH_DATE}}",
-            &format!(
-                "#{}",
-                typst_str(&crate::db::format_french_date(&patient.birth_date))
-            ),
-        )
-        .replace("{{KIND}}", &format!("#{}", typst_str(kind.label())))
-        .replace("{{DATE}}", &format!("#{}", typst_str(today)))
-        .replace(
+    let age = paper.age.map_or_else(
+        || crate::strings::tr("trod_pdf_no_age").to_owned(),
+        |a| format!("{a} ans"),
+    );
+    vec![
+        ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+        ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+        ("{{PATIENT_NAME}}", s(&paper.patient.full_name())),
+        ("{{BIRTH_DATE}}", s(&birth)),
+        ("{{AGE}}", s(&age)),
+        ("{{KIND}}", s(kind.label())),
+        ("{{DATE}}", s(paper.date)),
+        (
             "{{THEME}}",
             // Un acte qui ne porte pas de thème n'en imprime pas, même
             // si la base en garde un : jusqu'à la 0.145 le thème armé
             // par le choix rapide était écrit sur les actes qui n'en ont
             // pas, et il ressortait ici. La source est corrigée ; ceci
             // couvre les lignes déjà écrites, sans réécrire la base.
-            &format!(
-                "#{}",
-                typst_str(theme_or_dash(if kind.has_theme() { theme } else { "" }))
-            ),
-        )
+            s(theme_or_dash(if kind.has_theme() {
+                paper.theme
+            } else {
+                ""
+            })),
+        ),
         // Whoever held the entretien signs the sheet. A template
         // written before the team list simply has no such marker, and
         // loses nothing.
-        .replace("{{PHARMACIST}}", &format!("#{}", typst_str(signature)))
-        .replace("{{TREATMENTS}}", &treatments_markup(treats))
-        .replace("{{CHECKLIST}}", &ticks)
+        ("{{PHARMACIST}}", s(paper.signature)),
+        ("{{TREATMENTS}}", treatments_markup(paper.treats)),
+        ("{{CHECKLIST}}", checklist_markup(paper.checklist)),
+    ]
 }
 
 /// An empty thematic prints as a dash rather than a blank.
@@ -4430,9 +4446,18 @@ pub const DOCS: &[Doc] = &[
         markers: MARKERS_SURVEILLANCE,
         default: DEFAULT_SURVEILLANCE_TEMPLATE,
     },
+    Doc {
+        key: "trod",
+        label: "tpl_target_trod",
+        markers: MARKERS_TROD,
+        default: DEFAULT_TROD_TEMPLATE,
+    },
 ];
 
 const MARKERS_FICHE: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{AGE}}",
     "{{PATIENT_NAME}}",
     "{{BIRTH_DATE}}",
     "{{DATE}}",
@@ -4587,31 +4612,19 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
     let pharmacy = sample_pharmacy();
     let s = |v: &str| format!("#{}", typst_str(v));
     match key {
-        "fiche" => vec![
-            ("{{PATIENT_NAME}}", s(&patient.full_name())),
-            (
-                "{{BIRTH_DATE}}",
-                s(&crate::db::format_french_date(&patient.birth_date)),
-            ),
-            ("{{DATE}}", s("24/08/2026")),
-            ("{{KIND}}", s(InterviewKind::Bpm.label())),
-            ("{{THEME}}", s("Observance")),
-            ("{{TREATMENTS}}", treatments_markup(&sample_treatments())),
-            (
-                "{{CHECKLIST}}",
-                crate::entretien::checklist("Observance")
-                    .iter()
-                    .map(|p| {
-                        format!(
-                            "#block(below: 2mm)[#box(width: 3.4mm, height: 3.4mm, stroke: 0.7pt) #h(2mm) #{}]",
-                            typst_str(p)
-                        )
-                    })
-                    .collect::<Vec<_>>()
-                    .join("\n"),
-            ),
-            ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
-        ],
+        "fiche" => interview_values(
+            &InterviewPaper {
+                patient: &patient,
+                kind: InterviewKind::Bpm,
+                date: "24/08/2026",
+                age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
+                theme: "Observance",
+                signature: &pharmacy.pharmacist,
+                treats: &sample_treatments(),
+                checklist: crate::entretien::checklist("Observance"),
+            },
+            &pharmacy,
+        ),
         "cr" => vec![
             (
                 "{{POINTS}}",
@@ -5842,6 +5855,24 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // L'angine : le score se montre, l'âge connu le coche, et un
+        // résultat enregistré arrive coché — tout ce que la feuille sait
+        // faire, pour qu'on voie où ses propres phrases tomberaient.
+        "trod" => trod_values(
+            &TrodPaper {
+                patient: &patient,
+                kind: InterviewKind::TrodAngine,
+                date: "24/08/2026",
+                age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
+                result: crate::ordonnance::POSITIF,
+                signature: &pharmacy.pharmacist,
+                treats: &sample_treatments(),
+                offers: &crate::ordonnance::starter("angine"),
+                pregnant: false,
+                content: &crate::content::Overrides::default(),
+            },
+            &pharmacy,
+        ),
         // L'ordonnance : son aperçu montre les deux mentions remplies,
         // pour qu'on voie où les siennes tomberaient.
         _ => vec![
@@ -6745,6 +6776,305 @@ pub fn open_watch_sheet(
         ),
         "surveillance",
     )
+}
+
+/// Ce que la feuille d'un TROD reçoit : la personne, l'acte tel qu'il
+/// est enregistré, et les lignes du protocole que l'officine tient.
+pub struct TrodPaper<'a> {
+    pub patient: &'a Patient,
+    pub kind: InterviewKind,
+    /// La date imprimée, déjà au format `JJ/MM/AAAA`.
+    pub date: &'a str,
+    /// L'âge à la date du test, quand la naissance est connue.
+    pub age: Option<u32>,
+    /// Ce que l'acte a enregistré : `POSITIF`, `NEGATIF` ou vide.
+    pub result: &'a str,
+    pub signature: &'a str,
+    pub treats: &'a [Drug],
+    /// Les lignes du protocole, telles que la base les tient.
+    pub offers: &'a [crate::ordonnance::Offer],
+    pub pregnant: bool,
+    pub content: &'a crate::content::Overrides,
+}
+
+const MARKERS_TROD: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{TITLE}}",
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{AGE}}",
+    "{{SEX}}",
+    "{{DATE}}",
+    "{{SIGNS}}",
+    "{{SCORE}}",
+    "{{READINGS}}",
+    "{{RESULT}}",
+    "{{POSITIVE}}",
+    "{{NEGATIVE}}",
+    "{{LINES}}",
+    "{{TREATMENTS}}",
+    "{{PHARMACIST}}",
+];
+
+/// La feuille d'un TROD, A4 : ce qui oriente sans tester, le score,
+/// la lecture et sa traçabilité, la conduite selon le résultat.
+///
+/// Les cases sont des cadres vides — ce qui se constate devant le
+/// patient se coche à la main. Seuls l'âge connu et le résultat déjà
+/// enregistré arrivent cochés, en plein.
+const DEFAULT_TROD_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: (x: 1.5cm, y: 1.3cm))
+#set text(size: 10pt, lang: "fr")
+#set block(spacing: 2mm)
+
+#let sec(title) = block(above: 4mm, below: 2mm)[
+  #text(weight: "bold", size: 10.5pt)[#title]
+  #v(-1.5mm)
+  #line(length: 100%, stroke: 0.4pt)
+]
+#let blank(w) = box(width: w, height: 0.9em, stroke: (bottom: 0.5pt))
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold")[{{PHARMACY_NAME}}] \ #text(size: 9pt)[{{PHARMACY_PHONE}}]],
+  [#align(right)[Le {{DATE}}]],
+)
+#v(3mm)
+#align(center)[#text(14pt, weight: "bold")[{{TITLE}}]]
+#v(2mm)
+#box(width: 100%, stroke: 0.7pt, inset: 7pt)[
+  #grid(columns: (1fr, 1fr), row-gutter: 1.5mm,
+    [*Patient :* {{PATIENT_NAME}}], [*Né(e) le :* {{BIRTH_DATE}} ({{AGE}})],
+    [*Sexe :* {{SEX}}], [*Pharmacien :* {{PHARMACIST}}],
+  )
+]
+
+#sec[Signes qui orientent vers le médecin, sans tester]
+{{SIGNS}}
+
+{{SCORE}}
+
+#sec[Test]
+#grid(columns: (1fr, 1fr), row-gutter: 3mm, column-gutter: 6mm,
+  [Test utilisé : #blank(1fr)], [N° de lot : #blank(1fr)],
+  [Péremption : #blank(1fr)], [Heure de lecture : #blank(1fr)],
+)
+#v(2mm)
+{{READINGS}}
+#v(1mm)
+{{RESULT}}
+
+#sec[Conduite]
+#grid(columns: (1fr, 1fr), column-gutter: 6mm,
+  [#text(weight: "bold")[Test positif] #v(1mm) {{POSITIVE}}],
+  [#text(weight: "bold")[Test négatif] #v(1mm) {{NEGATIVE}}],
+)
+
+#sec[Lignes du protocole pour ce patient]
+{{LINES}}
+
+#sec[Traitements connus à l'officine]
+{{TREATMENTS}}
+
+#v(1fr)
+#grid(columns: (1fr, 1fr), column-gutter: 6mm,
+  [#text(weight: "bold")[Observations]
+   #v(1mm)
+   #box(width: 100%, height: 2cm, stroke: 0.7pt)],
+  [#text(weight: "bold")[Signature du pharmacien]
+   #v(1mm)
+   #box(width: 100%, height: 2cm, stroke: 0.7pt)],
+)
+"##;
+
+/// Une case : vide, ou pleine quand le logiciel sait déjà.
+fn tick_box(done: bool) -> String {
+    if done {
+        "#box(width: 3.2mm, height: 3.2mm, stroke: 0.7pt, inset: 0.7mm)[#box(width: 100%, height: 100%, fill: black)]".to_owned()
+    } else {
+        "#box(width: 3.2mm, height: 3.2mm, stroke: 0.7pt)".to_owned()
+    }
+}
+
+/// Une liste de cases, sur deux colonnes quand elle est longue — une
+/// feuille de test se tient sur une page.
+fn tick_list(items: &[String], columns: usize) -> String {
+    if items.is_empty() {
+        return String::new();
+    }
+    let cells: Vec<String> = items
+        .iter()
+        // La case à part et le texte dans sa propre colonne : une ligne
+        // qui passe à la suivante reprend sous le texte, pas sous la case.
+        .map(|p| {
+            format!(
+                "grid(columns: (auto, 1fr), column-gutter: 1.5mm, [{}], [#{}])",
+                tick_box(false),
+                typst_str(p)
+            )
+        })
+        .collect();
+    format!(
+        "#grid(columns: ({}), row-gutter: 1.8mm, column-gutter: 6mm, {})",
+        vec!["1fr"; columns.max(1)].join(", "),
+        cells.join(", ")
+    )
+}
+
+/// Les valeurs de la feuille d'un TROD. Séparées de l'ouverture pour
+/// que l'aperçu de l'éditeur remplisse **la même** feuille.
+fn trod_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let s = |v: &str| format!("#{}", typst_str(v));
+    let Some(sheet) = crate::trod::sheet(p.kind) else {
+        return Vec::new();
+    };
+    let filled = crate::trod::fill(sheet, p.content, p.age);
+    let known = crate::trod::result(p.result);
+    let score = if filled.score.is_empty() {
+        String::new()
+    } else {
+        let rows: Vec<String> = filled
+            .score
+            .iter()
+            .map(|(label, points, ticked)| {
+                let points = if *points > 0 {
+                    format!("+{points}")
+                } else {
+                    // Le moins typographique : c'est ce que le papier
+                    // porte ailleurs (les cellules de la caisse).
+                    format!("\u{2212}{}", points.unsigned_abs())
+                };
+                format!(
+                    "{}, [#{}], [#{}]",
+                    format_args!("[{}]", tick_box(*ticked)),
+                    typst_str(label),
+                    typst_str(&points)
+                )
+            })
+            .collect();
+        format!(
+            "#block(above: 4mm, below: 2mm)[#text(weight: \"bold\", size: 10.5pt)[#{}] #v(-1.5mm) #line(length: 100%, stroke: 0.4pt)]\n\
+             #grid(columns: (auto, 9cm, auto), row-gutter: 1.8mm, column-gutter: 2mm, {}, [], [#text(weight: \"bold\")[#{}]], [#box(width: 8mm, height: 0.9em, stroke: (bottom: 0.5pt))])\n\
+             #v(1mm)\n#text(size: 9pt)[#{}]",
+            typst_str(crate::strings::tr("trod_pdf_score")),
+            rows.join(", "),
+            typst_str(crate::strings::tr("trod_pdf_total")),
+            typst_str(&filled.score_rule),
+        )
+    };
+    let readings = filled
+        .readings
+        .iter()
+        .map(|r| {
+            format!(
+                "#grid(columns: (1fr, auto, auto, auto), column-gutter: 5mm, [#{}], [{} #h(1mm) #{}], [{} #h(1mm) #{}], [{} #h(1mm) #{}])",
+                typst_str(r),
+                tick_box(false),
+                typst_str(crate::strings::tr("trod_pdf_positive")),
+                tick_box(false),
+                typst_str(crate::strings::tr("trod_pdf_negative")),
+                tick_box(false),
+                typst_str(crate::strings::tr("trod_pdf_invalid")),
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n#v(1.5mm)\n");
+    let result = format!(
+        "#text(weight: \"bold\")[#{}] #h(3mm) {} #h(1mm) #{} #h(5mm) {} #h(1mm) #{}",
+        typst_str(crate::strings::tr("trod_pdf_result")),
+        tick_box(known == Some(true)),
+        typst_str(crate::strings::tr("trod_pdf_positive")),
+        tick_box(known == Some(false)),
+        typst_str(crate::strings::tr("trod_pdf_negative")),
+    );
+    let who = crate::ordonnance::Who {
+        age: p.age,
+        sex: p.patient.known_sex(),
+        pregnant: p.pregnant,
+    };
+    let fits: Vec<&crate::ordonnance::Offer> = p
+        .offers
+        .iter()
+        .filter(|o| o.protocol == sheet.protocol && o.barrier(&who).is_none())
+        .collect();
+    let lines = if fits.is_empty() {
+        format!("#{}", typst_str(crate::strings::tr("trod_pdf_no_line")))
+    } else {
+        fits.iter()
+            .map(|o| {
+                let mut line = o.name.clone();
+                if !o.situation.trim().is_empty() {
+                    line.push_str(&format!(" — {}", o.situation.trim()));
+                }
+                if let Some(first) = o.posologies.first() {
+                    line.push_str(&format!(" : {first}"));
+                }
+                format!("- #{}", typst_str(&line))
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let sex = match p.patient.known_sex() {
+        Some(crate::ordonnance::Sex::F) => "F",
+        Some(crate::ordonnance::Sex::M) => "M",
+        None => "—",
+    };
+    let age = p.age.map_or_else(
+        || crate::strings::tr("trod_pdf_no_age").to_owned(),
+        |a| format!("{a} ans"),
+    );
+    let birth = if p.patient.birth_date.trim().is_empty() {
+        "—".to_owned()
+    } else {
+        crate::db::format_french_date(&p.patient.birth_date)
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+        ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+        ("{{TITLE}}", s(&filled.title)),
+        ("{{PATIENT_NAME}}", s(&p.patient.full_name())),
+        ("{{BIRTH_DATE}}", s(&birth)),
+        ("{{AGE}}", s(&age)),
+        ("{{SEX}}", s(sex)),
+        ("{{DATE}}", s(p.date)),
+        ("{{SIGNS}}", tick_list(&filled.signs, 2)),
+        ("{{SCORE}}", score),
+        ("{{READINGS}}", readings),
+        ("{{RESULT}}", result),
+        ("{{POSITIVE}}", tick_list(&filled.positive, 1)),
+        ("{{NEGATIVE}}", tick_list(&filled.negative, 1)),
+        ("{{LINES}}", lines),
+        ("{{TREATMENTS}}", treatments_markup(p.treats)),
+        ("{{PHARMACIST}}", s(p.signature)),
+    ]
+}
+
+/// La feuille d'un TROD, remplie mais pas encore compilée — pour la
+/// liasse, qui la met en tête.
+pub fn trod_source(
+    paper: &TrodPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("trod", template_path),
+        &trod_values(paper, pharmacy),
+    )
+}
+
+/// La feuille d'un TROD : ce qui se vérifie, se lit et se trace, dans
+/// l'ordre où cela se fait au comptoir. Voir `trod.rs`.
+pub fn open_trod_sheet(
+    paper: &TrodPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    let stem = format!(
+        "trod_{}_{}",
+        paper.patient.id,
+        paper.kind.as_str().to_lowercase()
+    );
+    compile_and_open(trod_source(paper, pharmacy, template_path), &stem)
 }
 
 #[cfg(test)]
@@ -8048,14 +8378,18 @@ mod tests {
         };
         let filled = fill_interview_template(
             DEFAULT_TEMPLATE,
-            &patient,
-            InterviewKind::Bpm,
-            "22/08/2026",
-            "Initiation / bon usage",
-            // The signature goes through the same escaping.
-            "Claire #strike[Leroy]",
-            &sample_treatments(),
-            crate::entretien::checklist("Initiation / bon usage"),
+            &InterviewPaper {
+                patient: &patient,
+                kind: InterviewKind::Bpm,
+                date: "22/08/2026",
+                age: Some(68),
+                theme: "Initiation / bon usage",
+                // The signature goes through the same escaping.
+                signature: "Claire #strike[Leroy]",
+                treats: &sample_treatments(),
+                checklist: crate::entretien::checklist("Initiation / bon usage"),
+            },
+            &sample_pharmacy(),
         );
         let world = PdfWorld::new(filled);
         let document: PagedDocument = typst::compile(&world)
@@ -8075,6 +8409,91 @@ mod tests {
         // For manual inspection: BPM_CADDY_TEST_PDF_OUT=/some/dir cargo test
         if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
             let _ = std::fs::write(std::path::Path::new(&dir).join("fiche_exemple.pdf"), &pdf);
+        }
+    }
+
+    /// **La feuille d'un TROD lit la personne et l'acte**, et ne
+    /// suppose rien : les lignes du protocole sont celles qui
+    /// s'appliquent à ce dossier, le résultat enregistré arrive coché,
+    /// et un homme au comptoir d'une cystite ne se voit proposer aucune
+    /// ligne — la feuille dit d'orienter.
+    #[test]
+    fn the_trod_sheet_reads_the_person_and_the_recorded_result() {
+        let offers = crate::ordonnance::starter("cystite");
+        let none = crate::content::Overrides::default();
+        let woman = Patient {
+            id: 3,
+            last_name: "Martin".to_owned(),
+            first_name: "Léa".to_owned(),
+            birth_date: "1990-02-11".to_owned(),
+            sex: "F".to_owned(),
+            ..Default::default()
+        };
+        let man = Patient {
+            sex: "M".to_owned(),
+            ..woman.clone()
+        };
+        let paper = |p: &'static Patient, result: &'static str| TrodPaper {
+            patient: p,
+            kind: InterviewKind::TrodCystite,
+            date: "24/08/2026",
+            age: crate::db::age_on(&p.birth_date, "2026-08-24"),
+            result,
+            signature: "Claire Leroy",
+            treats: &[],
+            offers: &offers,
+            pregnant: false,
+            content: &none,
+        };
+        let woman: &'static Patient = Box::leak(Box::new(woman));
+        let man: &'static Patient = Box::leak(Box::new(man));
+        let her = trod_source(
+            &paper(woman, crate::ordonnance::NEGATIF),
+            &sample_pharmacy(),
+            std::path::Path::new(""),
+        );
+        assert!(her.contains(&bind_french("Fosfomycine trométamol 3 g (Monuril)")));
+        assert!(her.contains(&typst_str("36 ans")));
+        assert!(!her.contains("{{"), "un marqueur est resté");
+        // Pas de score pour la cystite : la section n'est pas imprimée.
+        assert!(!her.contains(&typst_str(crate::strings::tr("trod_pdf_score"))));
+        // Le négatif enregistré est la seule case pleine du résultat.
+        assert_eq!(her.matches("fill: black").count(), 1);
+        let him = trod_source(
+            &paper(man, ""),
+            &sample_pharmacy(),
+            std::path::Path::new(""),
+        );
+        assert!(
+            !him.contains("Fosfomycine"),
+            "une ligne réservée aux femmes"
+        );
+        assert!(him.contains(&typst_str(crate::strings::tr("trod_pdf_no_line"))));
+        assert_eq!(
+            him.matches("fill: black").count(),
+            0,
+            "rien d'enregistré, rien de coché"
+        );
+        // L'angine, la plus longue des deux (score, six lignes) : c'est
+        // l'aperçu de l'éditeur, et il doit tenir sur une page lui aussi.
+        let angine = fill(DEFAULT_TROD_TEMPLATE, &sample_values("trod"));
+        for (n, source) in [her, him, angine].into_iter().enumerate() {
+            let world = PdfWorld::new(source);
+            let document: PagedDocument = typst::compile(&world)
+                .output
+                .expect("la feuille de TROD doit compiler");
+            assert_eq!(
+                document.pages.len(),
+                1,
+                "une feuille de TROD tient sur une page"
+            );
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()).unwrap();
+                let _ = std::fs::write(
+                    std::path::Path::new(&dir).join(format!("trod_exemple_{n}.pdf")),
+                    &pdf,
+                );
+            }
         }
     }
 
@@ -8360,14 +8779,18 @@ mod tests {
                     "09/09/2026",
                 ),
             );
-            assert!(source.contains(&sheet.title), "{} : sans titre", sheet.key);
+            assert!(
+                source.contains(&bind_french(&sheet.title)),
+                "{} : sans titre",
+                sheet.key
+            );
             for step in &sheet.protocol {
                 // La ponctuation française passe par `typst_str` ; on
                 // vérifie le début de la consigne, qui suffit à dire
                 // qu'elle est là.
                 let head: String = step.chars().take(24).collect();
                 assert!(
-                    source.contains(&head),
+                    source.contains(&bind_french(&head)),
                     "{} : la consigne « {head}… » n'atteint pas le papier",
                     sheet.key
                 );
@@ -8760,7 +9183,7 @@ mod tests {
             // soit la façon dont la grille l'a lue.
             for p in posologies {
                 assert!(
-                    source.contains(p),
+                    source.contains(&bind_french(p)),
                     "« {p} » a disparu de la feuille ({viz:?})"
                 );
             }
@@ -9214,7 +9637,7 @@ mod tests {
         // tout le monde, et l'attendu doit donc passer par la même
         // fonction.
         assert!(source.contains(&bind_french("Prochaine : 18/11/2026 — Carnet papier")));
-        assert!(source.contains("Mention de l'officine"));
+        assert!(source.contains(&bind_french("Mention de l'officine")));
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output
