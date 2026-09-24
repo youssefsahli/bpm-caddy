@@ -10160,7 +10160,22 @@ fn network_feed(
                     what: trn(
                         "conn_feed_edit",
                         &[
-                            &e.card_name,
+                            // **Ce qui a changé, et de quelle sorte** : un
+                            // vaccin « Grippe » ou une ligne de TROD se
+                            // lisaient comme une fiche médicament.
+                            &match e.kind {
+                                crate::versions::Kind::Fiche => e.card_name.clone(),
+                                crate::versions::Kind::Codex => {
+                                    trf("conn_feed_codex", &e.card_name)
+                                }
+                                crate::versions::Kind::Protocole => {
+                                    trf("conn_feed_protocole", &e.card_name)
+                                }
+                                crate::versions::Kind::Trod => trf("conn_feed_trod", &e.card_name),
+                                crate::versions::Kind::Vaccin => {
+                                    trf("conn_feed_vaccin", &e.card_name)
+                                }
+                            },
                             &match e.kind {
                                 crate::versions::Kind::Fiche => App::field_label(&e.field),
                                 _ => App::entry_field_label(&e.field),
@@ -31800,29 +31815,7 @@ impl App {
             session.planning_notice = None;
         }
         if open_frame {
-            // La trame s'ouvre sur **ce qui est déjà sous les yeux** :
-            // la personne du formulaire et la semaine affichée. Un
-            // écran qui redemande deux choses qu'on vient de choisir
-            // est un écran de plus.
-            session.frame.open = true;
-            session.frame.operator = session.shift_form.operator.clone();
-            if session.frame.from.is_empty() {
-                session.frame.from = session
-                    .agenda_week
-                    .first()
-                    .cloned()
-                    .unwrap_or_else(|| session.agenda_day.clone());
-                // Le champ porte la date **écrite**, en français : sans
-                // cette ligne la fenêtre s'ouvrait sur une case vide
-                // au-dessus d'une phrase qui, elle, nommait déjà la
-                // semaine — deux affirmations contraires à l'écran.
-                session.frame.from_text = db::format_french_date(&session.frame.from);
-            }
-            // Ouvrir, c'est ouvrir **sa** trame : ce qui est en base est
-            // relu à chaque fois, plutôt que de retrouver ce qu'on avait
-            // tapé la fois d'avant et qui ne dit plus rien de l'état
-            // actuel.
-            Self::frame_load(session);
+            Self::open_frame_on_view(session);
         }
         if copy_week {
             Self::planning_copy_week(session);
@@ -32491,6 +32484,8 @@ impl App {
         // part sur un mur, et rien n'y dit qu'un poste n'avait pas de
         // fin quand elle a été tirée.
         let mut grand_total_partial = false;
+        // Un nom cliqué : sa trame s'ouvre une fois la grille lâchée.
+        let mut open_frame = false;
         // Une deuxième région défilante sans nom dans la même vue peint
         // ses deux bannières rouges en travers de l'écran.
         motif::inside(ui, rect, |ui| {
@@ -32605,12 +32600,22 @@ impl App {
                             // défilement horizontal l'emporterait
                             // en premier, et « 9 h – 19 h 30 » sans
                             // le nom de qui ne dit rien.
-                            let cell = ui
-                                .allocate_exact_size(
-                                    egui::vec2(name_w, ui.text_style_height(&body_style(ui))),
-                                    egui::Sense::hover(),
-                                )
-                                .0;
+                            let (cell, name_resp) = ui.allocate_exact_size(
+                                egui::vec2(name_w, ui.text_style_height(&body_style(ui))),
+                                egui::Sense::click(),
+                            );
+                            // **Le nom ouvre sa trame.** « Trame… » est
+                            // au bas du volet, sous un menu « Qui » à
+                            // régler d'abord ; la ligne de la personne
+                            // est là où l'on regarde ses horaires.
+                            if r < known
+                                && name_resp
+                                    .on_hover_text(trf("planning_name_frame_tooltip", who))
+                                    .clicked()
+                            {
+                                session.shift_form.operator = key.to_owned();
+                                open_frame = true;
+                            }
                             let x = frozen_left(clip_left, cell.left(), 4.0);
                             let (band, at) = frozen_cell(x, name_w, 4.0, cell);
                             ui.painter().rect_filled(band, 0.0, motif::bg());
@@ -32913,6 +32918,9 @@ impl App {
                     });
             });
         });
+        if open_frame {
+            Self::open_frame_on_view(session);
+        }
         if std::mem::take(&mut session.planning_print) {
             let heads: Vec<String> = week
                 .iter()
@@ -32945,6 +32953,34 @@ impl App {
     /// qui rend le changement sans conséquence — et les exceptions, qui
     /// pointent vers *leur* ligne rangée, sont réécrites avec le nouvel
     /// identifiant plutôt que laissées à nommer une ligne disparue.
+    /// Ouvrir la trame de la personne du formulaire, sur la semaine
+    /// affichée — « Trame… », et un clic sur un nom de la grille.
+    fn open_frame_on_view(session: &mut Session) {
+        // La trame s'ouvre sur **ce qui est déjà sous les yeux** :
+        // la personne du formulaire et la semaine affichée. Un
+        // écran qui redemande deux choses qu'on vient de choisir
+        // est un écran de plus.
+        session.frame.open = true;
+        session.frame.operator = session.shift_form.operator.clone();
+        if session.frame.from.is_empty() {
+            session.frame.from = session
+                .agenda_week
+                .first()
+                .cloned()
+                .unwrap_or_else(|| session.agenda_day.clone());
+            // Le champ porte la date **écrite**, en français : sans
+            // cette ligne la fenêtre s'ouvrait sur une case vide
+            // au-dessus d'une phrase qui, elle, nommait déjà la
+            // semaine — deux affirmations contraires à l'écran.
+            session.frame.from_text = db::format_french_date(&session.frame.from);
+        }
+        // Ouvrir, c'est ouvrir **sa** trame : ce qui est en base est
+        // relu à chaque fois, plutôt que de retrouver ce qu'on avait
+        // tapé la fois d'avant et qui ne dit plus rien de l'état
+        // actuel.
+        Self::frame_load(session);
+    }
+
     fn planning_undo(session: &mut Session) {
         let Some(what) = session.planning_undo.pop() else {
             return;
@@ -75307,26 +75343,70 @@ mod tests {
                 "c:1",
             ),
         ];
-        let edits = vec![crate::versions::Edit {
-            kind: crate::versions::Kind::Fiche,
-            uid: "a:3".to_owned(),
-            day: "2026-09-14".to_owned(),
-            card: "eliquis".to_owned(),
-            card_name: "Eliquis".to_owned(),
-            field: "dosage".to_owned(),
-            value: "5 mg".to_owned(),
+        let edit = |kind, day: &str, name: &str, field: &str| crate::versions::Edit {
+            kind,
+            uid: format!("a:{day}"),
+            day: day.to_owned(),
+            card: name.to_lowercase(),
+            card_name: name.to_owned(),
+            field: field.to_owned(),
+            value: "x".to_owned(),
             previous: String::new(),
             corrects: String::new(),
             revert: false,
             operator: String::new(),
             source: "Pharmacie du Port".to_owned(),
-        }];
+        };
+        let mut edits = vec![edit(
+            crate::versions::Kind::Fiche,
+            "2026-09-14",
+            "Eliquis",
+            "dosage",
+        )];
         let feed = super::network_feed(&events, &edits, 10);
         let days: Vec<&str> = feed.iter().map(|r| r.day.as_str()).collect();
         assert_eq!(days, ["2026-09-14", "2026-09-12", "2026-09-10"]);
         assert!(feed.iter().all(|r| r.officine == "Pharmacie du Port"));
         assert!(feed[0].what.contains("Eliquis"));
         assert_eq!(super::network_feed(&events, &edits, 2).len(), 2, "borné");
+        // Une fiche se nomme seule ; les autres sortes disent la leur.
+        assert!(feed[0].what.starts_with("Eliquis"), "{}", feed[0].what);
+        edits.push(edit(
+            crate::versions::Kind::Vaccin,
+            "2026-09-18",
+            "Grippe",
+            "schedule",
+        ));
+        edits.push(edit(
+            crate::versions::Kind::Trod,
+            "2026-09-17",
+            "Angine · Amoxicilline 1 g",
+            "posologies",
+        ));
+        let feed = super::network_feed(&events, &edits, 10);
+        assert_eq!(
+            feed[0].what.split(" — ").next().unwrap(),
+            crate::strings::trf("conn_feed_vaccin", "Grippe")
+        );
+        assert_eq!(
+            feed[1].what.split(" — ").next().unwrap(),
+            crate::strings::trf("conn_feed_trod", "Angine · Amoxicilline 1 g")
+        );
+    }
+
+    /// **Un nom de la grille ouvre sa trame**, sur la semaine affichée,
+    /// comme « Trame… » la personne du formulaire : un seul chemin.
+    #[test]
+    fn a_name_in_the_planning_opens_its_frame_on_the_shown_week() {
+        let (mut s, _swept) = scratch_session("frame_by_name");
+        s.agenda_week = vec!["2026-09-21".to_owned(), "2026-09-22".to_owned()];
+        s.shift_form.operator = "YS".to_owned();
+        s.frame.from.clear();
+        super::App::open_frame_on_view(&mut s);
+        assert!(s.frame.open);
+        assert_eq!(s.frame.operator, "YS");
+        assert_eq!(s.frame.from, "2026-09-21");
+        assert_eq!(s.frame.from_text, "21/09/2026");
     }
 
     /// **« Lundi à vendredi » recopie la journée qu'on vient de

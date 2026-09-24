@@ -630,7 +630,9 @@ La date de fin est alors obligatoire.
 ## Trame hebdomadaire
 
 « Trame… » saisit la semaine complète d'une personne en une fois. Elle
-s'ouvre sur la trame existante, pour correction comme pour ajout.
+s'ouvre sur la trame existante, pour correction comme pour ajout. Un
+clic sur le nom d'une personne, dans la grille du planning, ouvre aussi
+sa trame.
 
 Une journée coupée se saisit en **deux postes** — 9 h – 12 h 30 puis
 14 h – 19 h 30 — et non en un poste avec pause : la pause n'a pas
