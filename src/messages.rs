@@ -1,0 +1,327 @@
+//! La messagerie : des conversations entre collègues de l'officine, et
+//! avec d'autres officines du réseau.
+//!
+//! **Deux canaux, deux clés.** Une conversation d'équipe vit dans la base
+//! et voyage entre les postes de l'officine avec le reste des dossiers,
+//! sous la clé des postes : elle peut nommer un patient, comme une note.
+//! Une conversation avec d'autres officines passe par le journal du
+//! réseau, **scellée pour ses seuls destinataires** (`bpm_sync::boxed`) :
+//! les autres officines du réseau la transportent sans pouvoir la lire.
+//! Y joindre un patient demande un consentement explicite, que le journal
+//! des accès garde.
+//!
+//! **Un groupe de collègues** est un nom et des initiales
+//! (« Préparateurs » : AM, JB). Une conversation adressée à un groupe en
+//! suit la composition : qui y entre voit l'historique, qui en sort ne
+//! le voit plus.
+//!
+//! Pur et testé : qui voit quoi, ce qui reste à lire, comment une
+//! conversation se nomme. La base range, l'écran montre.
+
+use std::collections::BTreeSet;
+
+/// Sur quel canal une conversation passe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Channel {
+    /// Entre collègues, par les postes de l'officine.
+    Equipe,
+    /// Avec d'autres officines, par le réseau.
+    Officines,
+}
+
+impl Channel {
+    pub fn key(self) -> &'static str {
+        match self {
+            Channel::Equipe => "equipe",
+            Channel::Officines => "officines",
+        }
+    }
+
+    pub fn from_key(key: &str) -> Channel {
+        if key == "officines" {
+            Channel::Officines
+        } else {
+            Channel::Equipe
+        }
+    }
+}
+
+/// Un groupe de collègues.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Group {
+    pub id: i64,
+    pub name: String,
+    /// Des initiales.
+    pub members: Vec<String>,
+}
+
+/// Une conversation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Conversation {
+    pub id: i64,
+    /// L'identité qui voyage entre officines — la même chez chacune.
+    pub uid: String,
+    pub channel: Channel,
+    pub title: String,
+    /// Entre collègues : des initiales ; vide, toute l'équipe.
+    pub members: Vec<String>,
+    /// Entre collègues : le groupe dont la conversation suit la
+    /// composition, quand elle est adressée à un groupe.
+    pub group_id: Option<i64>,
+    /// Avec d'autres officines : leurs empreintes (appareil, en hex).
+    pub peers: Vec<String>,
+    pub created_by: String,
+    pub created_at: String,
+}
+
+/// Un message.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Message {
+    pub id: i64,
+    pub conversation_id: i64,
+    /// Initiales entre collègues ; nom de l'officine pour un message reçu
+    /// du réseau (`source` non vide).
+    pub author: String,
+    pub body: String,
+    /// Le dossier lié, entre collègues.
+    pub patient_id: Option<i64>,
+    /// Pour un message venu d'une autre officine : son nom.
+    pub source: String,
+    pub sent_at: String,
+}
+
+/// Les initiales d'une liste, rangées et sans doublon, sans les vides.
+pub fn normalize(members: &[String]) -> Vec<String> {
+    let set: BTreeSet<String> = members
+        .iter()
+        .map(|m| m.trim().to_uppercase())
+        .filter(|m| !m.is_empty())
+        .collect();
+    set.into_iter().collect()
+}
+
+/// Les membres d'une conversation d'équipe **aujourd'hui** : ceux de son
+/// groupe s'il en a un (et que le groupe existe encore), sinon ceux
+/// qu'elle nomme. Vide : toute l'équipe.
+pub fn members_of(c: &Conversation, groups: &[Group]) -> Vec<String> {
+    if let Some(g) = c.group_id.and_then(|id| groups.iter().find(|g| g.id == id)) {
+        return normalize(&g.members);
+    }
+    normalize(&c.members)
+}
+
+/// Est-ce que `operator` voit cette conversation ?
+///
+/// Une conversation avec d'autres officines se voit de toute l'équipe :
+/// c'est l'officine qui parle. Une conversation d'équipe se voit de ses
+/// membres, et de tous quand elle s'adresse à toute l'équipe ; son
+/// auteur la voit toujours. Sans opérateur choisi, on ne voit que ce qui
+/// s'adresse à tous.
+pub fn visible_to(c: &Conversation, groups: &[Group], operator: &str) -> bool {
+    if c.channel == Channel::Officines {
+        return true;
+    }
+    let members = members_of(c, groups);
+    if members.is_empty() {
+        return true;
+    }
+    let me = operator.trim().to_uppercase();
+    !me.is_empty() && (members.contains(&me) || c.created_by.trim().to_uppercase() == me)
+}
+
+/// Combien de messages restent à lire dans une conversation, pour qui a
+/// lu jusqu'à `read_at` (l'heure d'envoi du dernier message vu, ISO).
+/// Ses propres messages ne comptent pas.
+///
+/// **L'heure, pas l'identifiant** : chaque poste tire ses identifiants
+/// de son propre bloc, si bien qu'un message écrit après peut porter un
+/// numéro plus petit.
+pub fn unread(messages: &[Message], conversation_id: i64, read_at: &str, operator: &str) -> usize {
+    let me = operator.trim().to_uppercase();
+    messages
+        .iter()
+        .filter(|m| m.conversation_id == conversation_id && m.sent_at.as_str() > read_at)
+        .filter(|m| {
+            !(m.source.is_empty() && m.author.trim().to_uppercase() == me && !me.is_empty())
+        })
+        .count()
+}
+
+/// Le nom d'une conversation : son titre, ou à défaut ce qu'elle réunit
+/// — « Toute l'équipe », le groupe, les initiales, les officines.
+pub fn title_of(
+    c: &Conversation,
+    groups: &[Group],
+    officine_name: &dyn Fn(&str) -> String,
+    everyone: &str,
+) -> String {
+    if !c.title.trim().is_empty() {
+        return c.title.trim().to_owned();
+    }
+    match c.channel {
+        Channel::Officines => c
+            .peers
+            .iter()
+            .map(|p| officine_name(p))
+            .collect::<Vec<_>>()
+            .join(", "),
+        Channel::Equipe => {
+            if let Some(g) = c.group_id.and_then(|id| groups.iter().find(|g| g.id == id)) {
+                return g.name.clone();
+            }
+            let m = normalize(&c.members);
+            if m.is_empty() {
+                everyone.to_owned()
+            } else {
+                m.join(", ")
+            }
+        }
+    }
+}
+
+/// La conversation d'équipe qui réunit exactement ces membres, si elle
+/// existe — écrire à Claire rouvre la conversation avec Claire au lieu
+/// d'en ouvrir une deuxième.
+pub fn find_direct<'a>(list: &'a [Conversation], members: &[String]) -> Option<&'a Conversation> {
+    let want = normalize(members);
+    list.iter().find(|c| {
+        c.channel == Channel::Equipe
+            && c.group_id.is_none()
+            && c.title.trim().is_empty()
+            && normalize(&c.members) == want
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn conv(id: i64, members: &[&str], group: Option<i64>, by: &str) -> Conversation {
+        Conversation {
+            id,
+            uid: format!("u{id}"),
+            channel: Channel::Equipe,
+            title: String::new(),
+            members: members.iter().map(|m| (*m).to_owned()).collect(),
+            group_id: group,
+            peers: Vec::new(),
+            created_by: by.to_owned(),
+            created_at: String::new(),
+        }
+    }
+
+    fn msg(id: i64, conv: i64, author: &str, source: &str) -> Message {
+        Message {
+            id,
+            conversation_id: conv,
+            author: author.to_owned(),
+            body: "x".to_owned(),
+            patient_id: None,
+            source: source.to_owned(),
+            sent_at: format!("2026-09-24 10:0{id}:00"),
+        }
+    }
+
+    /// **Qui voit quoi** : les membres et l'auteur ; toute l'équipe quand
+    /// la conversation s'adresse à tous ; personne d'autre.
+    #[test]
+    fn a_conversation_is_seen_by_its_members_only() {
+        let groups = vec![Group {
+            id: 1,
+            name: "Préparateurs".into(),
+            members: vec!["am".into(), "JB".into()],
+        }];
+        let team = conv(1, &[], None, "CL");
+        let pair = conv(2, &["CL", "YS"], None, "CL");
+        let grp = conv(3, &[], Some(1), "CL");
+        assert!(visible_to(&team, &groups, "MB"));
+        assert!(
+            visible_to(&team, &groups, ""),
+            "à tous, même sans opérateur"
+        );
+        assert!(visible_to(&pair, &groups, "ys"));
+        assert!(!visible_to(&pair, &groups, "MB"));
+        assert!(!visible_to(&pair, &groups, ""));
+        // Le groupe décide, pas la liste figée.
+        assert!(visible_to(&grp, &groups, "AM"));
+        assert!(visible_to(&grp, &groups, "CL"), "l'auteur la voit");
+        assert!(!visible_to(&grp, &groups, "YS"));
+        // Un groupe supprimé : la conversation revient à sa liste (vide :
+        // toute l'équipe).
+        assert!(visible_to(&grp, &[], "YS"));
+        let mut net = conv(4, &["CL"], None, "CL");
+        net.channel = Channel::Officines;
+        assert!(visible_to(&net, &groups, "MB"), "l'officine parle");
+    }
+
+    #[test]
+    fn unread_skips_one_s_own_messages() {
+        let list = vec![
+            msg(1, 7, "CL", ""),
+            msg(2, 7, "YS", ""),
+            msg(3, 7, "CL", ""),
+            msg(4, 8, "YS", ""),
+            // Une officine qui signe « CL » n'est pas moi.
+            msg(5, 7, "CL", "Pharmacie du Port"),
+        ];
+        assert_eq!(unread(&list, 7, "", "CL"), 2);
+        assert_eq!(unread(&list, 7, "2026-09-24 10:02:00", "CL"), 1);
+        assert_eq!(unread(&list, 7, "", "YS"), 3);
+        assert_eq!(unread(&list, 7, "", ""), 4);
+        // Un numéro plus petit écrit plus tard, sur un autre poste, reste
+        // à lire.
+        let mut late = msg(0, 7, "YS", "");
+        late.sent_at = "2026-09-24 11:00:00".into();
+        assert_eq!(unread(&[late], 7, "2026-09-24 10:05:00", "CL"), 1);
+    }
+
+    #[test]
+    fn a_conversation_is_named_by_what_it_gathers() {
+        let groups = vec![Group {
+            id: 1,
+            name: "Préparateurs".into(),
+            members: vec![],
+        }];
+        let name = |p: &str| format!("Officine {p}");
+        assert_eq!(
+            title_of(&conv(1, &[], None, "CL"), &groups, &name, "Toute l'équipe"),
+            "Toute l'équipe"
+        );
+        assert_eq!(
+            title_of(&conv(2, &["ys", "CL"], None, "CL"), &groups, &name, "-"),
+            "CL, YS"
+        );
+        assert_eq!(
+            title_of(&conv(3, &[], Some(1), "CL"), &groups, &name, "-"),
+            "Préparateurs"
+        );
+        let mut net = conv(4, &[], None, "CL");
+        net.channel = Channel::Officines;
+        net.peers = vec!["ab".into(), "cd".into()];
+        assert_eq!(
+            title_of(&net, &groups, &name, "-"),
+            "Officine ab, Officine cd"
+        );
+        let mut titled = conv(5, &["CL"], None, "CL");
+        titled.title = " Garde du dimanche ".into();
+        assert_eq!(title_of(&titled, &groups, &name, "-"), "Garde du dimanche");
+    }
+
+    #[test]
+    fn writing_to_the_same_people_reopens_their_conversation() {
+        let list = vec![
+            conv(1, &["CL", "YS"], None, "CL"),
+            conv(2, &["CL", "YS"], Some(3), "CL"),
+        ];
+        assert_eq!(
+            find_direct(&list, &["ys".into(), "CL".into()]).map(|c| c.id),
+            Some(1)
+        );
+        assert!(find_direct(&list, &["MB".into()]).is_none());
+        assert_eq!(
+            Channel::from_key(Channel::Officines.key()),
+            Channel::Officines
+        );
+        assert_eq!(Channel::from_key("?"), Channel::Equipe);
+    }
+}

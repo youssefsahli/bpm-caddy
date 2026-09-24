@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.311.0] - 2026-09-24
+
+### Added
+- **Messagerie de l'équipe.** Une vue « Messages » : des conversations
+  entre collègues, d'un poste à l'autre de l'officine — à quelques
+  collègues, à un groupe ou à toute l'équipe. Chacun lit et écrit en son
+  nom (l'opérateur choisi dans le volet) ; la barre d'état compte les
+  messages non lus. Un message peut lier le dossier ouvert, qu'un clic
+  rouvre. Ctrl+Entrée envoie.
+- **Groupes de collègues** (« Préparateurs », « Garde ») : une
+  conversation adressée à un groupe en suit la composition.
+- **Contacts favoris** : une étoile devant un collègue le met en tête des
+  destinataires, et un bouton en haut des conversations lui écrit d'un
+  clic.
+
 ## [0.310.0] - 2026-09-24
 
 ### Added

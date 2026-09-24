@@ -38,6 +38,7 @@ pub mod insulin;
 pub mod intake;
 pub mod location;
 pub mod maintenance;
+pub mod messages;
 #[cfg(feature = "sync")]
 pub mod network;
 pub mod ordonnance;

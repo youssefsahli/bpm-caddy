@@ -946,6 +946,31 @@ jour.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
+# Messagerie
+
+La vue **Messages** (barre d'état, « Aller à… » : « messages ») réunit
+les conversations de l'équipe. Elles passent d'un poste à l'autre de
+l'officine avec les dossiers, chiffrées sous la clé des postes.
+
+Chacun lit et écrit **en son nom** : le nom choisi dans le volet
+(« Opérateur »). Sans nom choisi, seules les conversations de toute
+l'équipe s'affichent. La barre d'état compte les messages non lus.
+
+« Nouvelle conversation » s'adresse à **des collègues**, à **un groupe**
+ou à **toute l'équipe**, avec un titre facultatif. Écrire aux mêmes
+collègues sans titre rouvre leur conversation plutôt que d'en ouvrir une
+seconde. Une étoile devant un collègue en fait un **contact favori** :
+en tête des destinataires, et un bouton en haut de la liste des
+conversations pour lui écrire d'un clic.
+
+« Groupes… » crée des **groupes de collègues** (« Préparateurs »,
+« Garde »). Une conversation adressée à un groupe en suit la
+composition : qui y entre la voit, qui en sort ne la voit plus.
+
+Un message peut **lier le dossier ouvert** : son nom s'affiche dans le
+fil, et un clic ouvre le dossier. Ctrl+Entrée envoie ; un message envoyé
+ne se modifie pas.
+
 # Connexions
 
 L'icône à trois nœuds, en bas à droite de la barre d'état, indique le

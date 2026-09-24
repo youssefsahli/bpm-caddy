@@ -111,6 +111,11 @@ pub const TABLES: &[Table] = &[
     // Un favori peut nommer un dossier : il voyage sous la clé des
     // dossiers.
     t("favorites", Main, Dossiers, false, true),
+    // La messagerie d'équipe : elle peut nommer un patient. Un message
+    // ne se réécrit pas.
+    t("conversations", Main, Dossiers, false, true),
+    t("messages", Main, Dossiers, true, true),
+    t("message_reads", Main, Dossiers, false, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
     t("drugs", Main, Fiches, false, true),
@@ -131,6 +136,7 @@ pub const TABLES: &[Table] = &[
     t("seed_state", Main, Officine, false, false),
     t("settings", Main, Officine, false, false),
     t("prescribers", Main, Officine, false, true),
+    t("colleague_groups", Main, Officine, false, true),
     t("vaccine_catalogue", Main, Officine, false, true),
     t("trod_lines", Main, Officine, false, true),
     t("content_overrides", Main, Officine, false, false),

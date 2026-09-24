@@ -92,7 +92,7 @@ views=(
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
     vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance ordonnance_lignes vaccins_grossesse vaccins_catalogue ruptures reseau versions postes connexions
     protocols protocol_open codex codex_open dispositifs dispositif_open graph graph_zoom graph_wide graph_ordonnance graph_filtre stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans patient_dose fil registres regles explorer explorer_organ classes classes_outside export finances stats companion companion_poso companion_conseils companion_soins companion_dossier companion_vide companion_doublon companion_boite script carnets carnets_edit textes caisse caisses aide
-    template options about base peaux keys keys_outils nouveautes act_picker vitale
+    template options about base peaux keys keys_outils nouveautes messages act_picker vitale
     goto goto_jump mono_search mono_patient
 )
 

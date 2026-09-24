@@ -383,6 +383,43 @@ CREATE TABLE IF NOT EXISTS trod_lines (
     -- renommée reste la même ligne chez les autres.
     origin      TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS conversations (
+    id          INTEGER PRIMARY KEY,
+    -- La même chez chaque officine d'une conversation du réseau.
+    uid         TEXT NOT NULL DEFAULT '',
+    -- `equipe` ou `officines` (`messages::Channel`).
+    channel     TEXT NOT NULL DEFAULT 'equipe',
+    title       TEXT NOT NULL DEFAULT '',
+    -- Des initiales séparées par des virgules ; vide : toute l'équipe.
+    members     TEXT NOT NULL DEFAULT '',
+    group_id    INTEGER,
+    -- Les empreintes des officines, séparées par des virgules.
+    peers       TEXT NOT NULL DEFAULT '',
+    created_by  TEXT NOT NULL DEFAULT '',
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS messages (
+    id              INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    uid             TEXT NOT NULL DEFAULT '',
+    author          TEXT NOT NULL DEFAULT '',
+    body            TEXT NOT NULL DEFAULT '',
+    patient_id      INTEGER,
+    -- Le nom de l'officine d'où vient un message reçu du réseau.
+    source          TEXT NOT NULL DEFAULT '',
+    sent_at         TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
+CREATE TABLE IF NOT EXISTS message_reads (
+    id              INTEGER PRIMARY KEY,
+    conversation_id INTEGER NOT NULL,
+    operator        TEXT NOT NULL DEFAULT '',
+    read_at         TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS colleague_groups (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    members     TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS favorites (
     id          INTEGER PRIMARY KEY,
     -- Les initiales de qui a épinglé ; vide : le poste sans opérateur.
@@ -1216,6 +1253,39 @@ const MIGRATIONS: &[&str] = &[
         max_age     INTEGER,
         sex         TEXT NOT NULL DEFAULT '',
         pregnancy   INTEGER NOT NULL DEFAULT 1
+    )",
+    // La messagerie — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS conversations (
+        id          INTEGER PRIMARY KEY,
+        uid         TEXT NOT NULL DEFAULT '',
+        channel     TEXT NOT NULL DEFAULT 'equipe',
+        title       TEXT NOT NULL DEFAULT '',
+        members     TEXT NOT NULL DEFAULT '',
+        group_id    INTEGER,
+        peers       TEXT NOT NULL DEFAULT '',
+        created_by  TEXT NOT NULL DEFAULT '',
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS messages (
+        id              INTEGER PRIMARY KEY,
+        conversation_id INTEGER NOT NULL,
+        uid             TEXT NOT NULL DEFAULT '',
+        author          TEXT NOT NULL DEFAULT '',
+        body            TEXT NOT NULL DEFAULT '',
+        patient_id      INTEGER,
+        source          TEXT NOT NULL DEFAULT '',
+        sent_at         TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    )",
+    "CREATE TABLE IF NOT EXISTS message_reads (
+        id              INTEGER PRIMARY KEY,
+        conversation_id INTEGER NOT NULL,
+        operator        TEXT NOT NULL DEFAULT '',
+        read_at         TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS colleague_groups (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL,
+        members     TEXT NOT NULL DEFAULT ''
     )",
     // Les favoris de chaque opérateur — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS favorites (
@@ -30953,8 +31023,324 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
-    /// Append a note. For [`NoteSubject::Operator`], `subject_id` is 0
-    /// and the operator string itself is the key.
+    // ---- La messagerie (voir `src/messages.rs`) ----
+
+    /// Les groupes de collègues, par nom.
+    pub fn colleague_groups(&self) -> Result<Vec<crate::messages::Group>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name, members FROM colleague_groups ORDER BY name, id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::messages::Group {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    members: split_list(&r.get::<_, String>(2)?),
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Créer (`id` absent) ou réécrire un groupe. Rend son identifiant.
+    pub fn save_colleague_group(
+        &self,
+        id: Option<i64>,
+        name: &str,
+        members: &[String],
+    ) -> Result<i64, String> {
+        let members = crate::messages::normalize(members).join(",");
+        match id {
+            Some(id) => {
+                self.conn
+                    .execute(
+                        "UPDATE colleague_groups SET name = ?1, members = ?2 WHERE id = ?3",
+                        (name.trim(), members, id),
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(id)
+            }
+            None => {
+                self.conn
+                    .execute(
+                        &format!(
+                            "INSERT INTO colleague_groups (id, name, members)
+                             VALUES ({next}, ?1, ?2)",
+                            next = next_id("colleague_groups")
+                        ),
+                        (name.trim(), members),
+                    )
+                    .map_err(|e| e.to_string())?;
+                Ok(self.conn.last_insert_rowid())
+            }
+        }
+    }
+
+    pub fn delete_colleague_group(&self, id: i64) -> Result<(), String> {
+        self.conn
+            .execute("DELETE FROM colleague_groups WHERE id = ?1", [id])
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Toutes les conversations, la plus récemment active d'abord.
+    pub fn conversations(&self) -> Result<Vec<crate::messages::Conversation>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT c.id, c.uid, c.channel, c.title, c.members, c.group_id, c.peers,
+                        c.created_by, c.created_at
+                 FROM conversations c
+                 ORDER BY COALESCE((SELECT MAX(sent_at) FROM messages m
+                                    WHERE m.conversation_id = c.id), c.created_at) DESC,
+                          c.id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::messages::Conversation {
+                    id: r.get(0)?,
+                    uid: r.get(1)?,
+                    channel: crate::messages::Channel::from_key(&r.get::<_, String>(2)?),
+                    title: r.get(3)?,
+                    members: split_list(&r.get::<_, String>(4)?),
+                    group_id: r.get(5)?,
+                    peers: split_list(&r.get::<_, String>(6)?),
+                    created_by: r.get(7)?,
+                    created_at: r.get(8)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ouvrir une conversation. `uid` vide : tirée ici ; donnée : celle
+    /// qu'une autre officine a ouverte. Rend l'identifiant local.
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_conversation(
+        &self,
+        uid: &str,
+        channel: crate::messages::Channel,
+        title: &str,
+        members: &[String],
+        group_id: Option<i64>,
+        peers: &[String],
+        created_by: &str,
+    ) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO conversations
+                     (id, uid, channel, title, members, group_id, peers, created_by)
+                     VALUES ({next},
+                             CASE WHEN ?1 = '' THEN lower(hex(randomblob(12))) ELSE ?1 END,
+                             ?2, ?3, ?4, ?5, ?6, ?7)",
+                    next = next_id("conversations")
+                ),
+                (
+                    uid.trim(),
+                    channel.key(),
+                    title.trim(),
+                    crate::messages::normalize(members).join(","),
+                    group_id,
+                    peers.join(","),
+                    created_by.trim(),
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// La conversation locale qui porte cet `uid`.
+    pub fn conversation_by_uid(&self, uid: &str) -> Result<Option<i64>, String> {
+        use rusqlite::OptionalExtension;
+        self.conn
+            .query_row(
+                "SELECT id FROM conversations WHERE uid = ?1 ORDER BY id LIMIT 1",
+                [uid],
+                |r| r.get(0),
+            )
+            .optional()
+            .map_err(|e| e.to_string())
+    }
+
+    /// Les messages d'une conversation, dans l'ordre où ils ont été écrits.
+    pub fn conversation_messages(
+        &self,
+        conversation_id: i64,
+    ) -> Result<Vec<crate::messages::Message>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, conversation_id, author, body, patient_id, source, sent_at
+                 FROM messages WHERE conversation_id = ?1 ORDER BY sent_at, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([conversation_id], |r| {
+                Ok(crate::messages::Message {
+                    id: r.get(0)?,
+                    conversation_id: r.get(1)?,
+                    author: r.get(2)?,
+                    body: r.get(3)?,
+                    patient_id: r.get(4)?,
+                    source: r.get(5)?,
+                    sent_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire un message — **en ajout seul** : un message envoyé ne se
+    /// réécrit pas. `uid` vide : tiré ici. Un `uid` déjà rangé (le même
+    /// message reçu deux fois du réseau) n'écrit rien. Rend l'identifiant,
+    /// ou `None` pour un doublon.
+    #[allow(clippy::too_many_arguments)]
+    pub fn post_message(
+        &self,
+        conversation_id: i64,
+        uid: &str,
+        author: &str,
+        body: &str,
+        patient_id: Option<i64>,
+        source: &str,
+        sent_at: Option<&str>,
+    ) -> Result<Option<i64>, String> {
+        if !uid.trim().is_empty() {
+            let seen: bool = self
+                .conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM messages WHERE uid = ?1)",
+                    [uid.trim()],
+                    |r| r.get(0),
+                )
+                .map_err(|e| e.to_string())?;
+            if seen {
+                return Ok(None);
+            }
+        }
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO messages
+                     (id, conversation_id, uid, author, body, patient_id, source, sent_at)
+                     VALUES ({next}, ?1,
+                             CASE WHEN ?2 = '' THEN lower(hex(randomblob(12))) ELSE ?2 END,
+                             ?3, ?4, ?5, ?6,
+                             COALESCE(?7, datetime('now', 'localtime')))",
+                    next = next_id("messages")
+                ),
+                (
+                    conversation_id,
+                    uid.trim(),
+                    author.trim(),
+                    body,
+                    patient_id,
+                    source.trim(),
+                    sent_at,
+                ),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(Some(self.conn.last_insert_rowid()))
+    }
+
+    /// Jusqu'où `operator` a lu, conversation par conversation.
+    pub fn read_marks(
+        &self,
+        operator: &str,
+    ) -> Result<std::collections::HashMap<i64, String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT conversation_id, MAX(read_at) FROM message_reads
+                 WHERE operator = ?1 GROUP BY conversation_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([operator.trim()], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ce qui reste à lire pour `operator`, conversation par conversation
+    /// — ses propres messages exceptés.
+    pub fn unread_counts(
+        &self,
+        operator: &str,
+    ) -> Result<std::collections::HashMap<i64, usize>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT m.conversation_id, COUNT(*) FROM messages m
+                 WHERE m.sent_at > COALESCE((SELECT MAX(read_at) FROM message_reads r
+                                             WHERE r.conversation_id = m.conversation_id
+                                               AND r.operator = ?1), '')
+                   AND NOT (m.source = '' AND ?1 <> '' AND upper(m.author) = upper(?1))
+                 GROUP BY m.conversation_id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([operator.trim()], |r| {
+                Ok((r.get::<_, i64>(0)?, r.get::<_, i64>(1)?))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut out = std::collections::HashMap::new();
+        for row in rows {
+            let (id, n) = row.map_err(|e| e.to_string())?;
+            out.insert(id, usize::try_from(n).unwrap_or(0));
+        }
+        Ok(out)
+    }
+
+    /// Noter que `operator` a lu `conversation_id` jusqu'à `read_at`. La
+    /// marque n'avance que vers l'avant : un poste en retard ne fait pas
+    /// réapparaître ce qu'un autre a déjà lu.
+    pub fn mark_read(
+        &self,
+        conversation_id: i64,
+        operator: &str,
+        read_at: &str,
+    ) -> Result<(), String> {
+        let op = operator.trim();
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE message_reads SET read_at = ?3
+                 WHERE conversation_id = ?1 AND operator = ?2 AND read_at < ?3",
+                (conversation_id, op, read_at),
+            )
+            .map_err(|e| e.to_string())?;
+        if changed > 0 {
+            return Ok(());
+        }
+        let exists: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM message_reads
+                 WHERE conversation_id = ?1 AND operator = ?2)",
+                (conversation_id, op),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !exists {
+            self.conn
+                .execute(
+                    &format!(
+                        "INSERT INTO message_reads (id, conversation_id, operator, read_at)
+                         VALUES ({next}, ?1, ?2, ?3)",
+                        next = next_id("message_reads")
+                    ),
+                    (conversation_id, op, read_at),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
     /// Les favoris d'un opérateur (initiales ; vide : le poste), dans
     /// l'ordre où on les montre.
     pub fn favorites(&self, operator: &str) -> Result<Vec<crate::favorites::Favorite>, String> {
@@ -31037,6 +31423,8 @@ impl Db {
         Ok(())
     }
 
+    /// Append a note. For [`NoteSubject::Operator`], `subject_id` is 0
+    /// and the operator string itself is the key.
     pub fn add_note(
         &self,
         subject: NoteSubject,
@@ -32016,6 +32404,9 @@ impl Db {
             tx.execute(sql, []).map_err(|e| e.to_string())?;
         }
         for table in [
+            "messages",
+            "message_reads",
+            "conversations",
             "favorites",
             "notes",
             "patient_drugs",
@@ -39657,6 +40048,14 @@ impl Db {
         })?;
         self.mark_published(&[uid])
     }
+}
+
+/// Une liste rangée « a,b,c » en base, relue sans les vides.
+fn split_list(text: &str) -> Vec<String> {
+    text.split(',')
+        .map(|p| p.trim().to_owned())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 /// L'identifiant qu'une création tire du bloc de ce poste, à écrire dans
@@ -47354,6 +47753,77 @@ mod tests {
         assert!(db.drugs().unwrap().iter().all(|d| d.name != "Eliquis"));
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// **La messagerie d'équipe** : une conversation, des messages dans
+    /// l'ordre de leur envoi, ce qui reste à lire pour chacun, un doublon
+    /// reçu deux fois écrit une fois.
+    #[test]
+    fn team_messages_are_ordered_counted_and_read() {
+        use crate::messages::Channel;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-msg-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("msg.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let g = db
+            .save_colleague_group(None, "Préparateurs", &["jb".into(), "AM".into()])
+            .unwrap();
+        assert_eq!(db.colleague_groups().unwrap()[0].members, ["AM", "JB"]);
+        let c = db
+            .create_conversation(
+                "",
+                Channel::Equipe,
+                "",
+                &["YS".into(), "cl".into()],
+                None,
+                &[],
+                "CL",
+            )
+            .unwrap();
+        let conv = &db.conversations().unwrap()[0];
+        assert_eq!(conv.members, ["CL", "YS"]);
+        assert_eq!(conv.uid.len(), 24, "un uid tiré au hasard");
+        db.post_message(
+            c,
+            "",
+            "CL",
+            "Tu peux rappeler M. Dupont ?",
+            Some(3),
+            "",
+            Some("2026-09-24 09:00:00"),
+        )
+        .unwrap();
+        db.post_message(
+            c,
+            "u-1",
+            "YS",
+            "C'est fait.",
+            None,
+            "",
+            Some("2026-09-24 09:05:00"),
+        )
+        .unwrap();
+        assert_eq!(
+            db.post_message(c, "u-1", "YS", "C'est fait.", None, "", None)
+                .unwrap(),
+            None,
+            "le même message reçu deux fois"
+        );
+        let thread = db.conversation_messages(c).unwrap();
+        assert_eq!(thread.len(), 2);
+        assert_eq!(thread[0].patient_id, Some(3));
+        assert_eq!(db.unread_counts("CL").unwrap().get(&c), Some(&1));
+        assert_eq!(db.unread_counts("YS").unwrap().get(&c), Some(&1));
+        db.mark_read(c, "CL", "2026-09-24 09:05:00").unwrap();
+        assert_eq!(db.unread_counts("CL").unwrap().get(&c), None);
+        // La marque ne recule pas.
+        db.mark_read(c, "CL", "2026-09-24 08:00:00").unwrap();
+        assert_eq!(db.read_marks("CL").unwrap()[&c], "2026-09-24 09:05:00");
+        db.delete_colleague_group(g).unwrap();
+        assert!(db.colleague_groups().unwrap().is_empty());
+        assert_eq!(db.conversation_by_uid(&conv.uid).unwrap(), Some(c));
     }
 
     #[test]

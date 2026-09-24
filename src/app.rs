@@ -1589,6 +1589,7 @@ fn help_title_for(
         MainView::Search => "Recherche",
         MainView::Dashboard => "Plan de travail",
         MainView::Connexions => "Connexions",
+        MainView::Messages => "Messagerie",
         MainView::Ruptures => "Ruptures",
         MainView::Drugs if graph => "La carte pharmacologique",
         MainView::Drugs if calc => "Calculs",
@@ -2600,6 +2601,9 @@ enum MainView {
     /// arbitré et ce qui vient de se passer. L'icône de la barre d'état y
     /// mène.
     Connexions,
+    /// La messagerie : les conversations de l'équipe et avec d'autres
+    /// officines — voir `src/messages.rs`.
+    Messages,
     Dashboard,
     /// Les ruptures en cours, et ce que les pharmaciens ont donné à la
     /// place — le journal de `ruptures.rs`, lu pour toute l'officine et
@@ -2756,6 +2760,7 @@ impl MainView {
             MainView::UiTexts => "libelles",
             MainView::Checklists => "listes",
             MainView::Connexions => "connexions",
+            MainView::Messages => "messages",
         }
     }
 
@@ -2780,6 +2785,7 @@ impl MainView {
             "libelles" => Some(MainView::UiTexts),
             "listes" => Some(MainView::Checklists),
             "connexions" => Some(MainView::Connexions),
+            "messages" => Some(MainView::Messages),
             _ => None,
         }
     }
@@ -2849,6 +2855,8 @@ enum WorkTab {
     Ruptures,
     /// Les connexions entre les postes et les officines.
     Connexions,
+    /// La messagerie.
+    Messages,
     Search,
     Agenda,
     Carnet,
@@ -4638,6 +4646,9 @@ struct Session {
     conn_summary: Option<ConnSummary>,
     /// Something moved since it was read.
     conn_dirty: bool,
+    /// La messagerie : ce que la vue « Messages » montre, relu quand
+    /// quelque chose bouge — jamais à chaque image.
+    msg: MessagesState,
     /// What the status bar's connection mark counts, refreshed with the
     /// view's reading: the other active posts of the group, and whether
     /// the officine is in a network.
@@ -5448,6 +5459,7 @@ impl Session {
             conn_log: std::collections::VecDeque::new(),
             #[cfg(feature = "sync")]
             conn_summary: None,
+            msg: MessagesState::default(),
             conn_dirty: false,
             #[cfg(feature = "sync")]
             conn_badge: (0, false),
@@ -5695,6 +5707,7 @@ impl Session {
             MainView::Stats => WorkTab::Stats,
             MainView::Ruptures => WorkTab::Ruptures,
             MainView::Connexions => WorkTab::Connexions,
+            MainView::Messages => WorkTab::Messages,
             MainView::Script => WorkTab::Script,
             MainView::Caisse | MainView::CaisseHistory => WorkTab::Caisse,
             MainView::Ddi => WorkTab::Ddi,
@@ -5779,6 +5792,10 @@ impl Session {
             WorkTab::Ruptures => {
                 self.view = MainView::Ruptures;
                 self.reload_supply();
+            }
+            WorkTab::Messages => {
+                self.view = MainView::Messages;
+                self.msg.dirty = true;
             }
             WorkTab::Connexions => {
                 self.view = MainView::Connexions;
@@ -5920,6 +5937,7 @@ impl Session {
             WorkTab::Stats,
             WorkTab::Ruptures,
             WorkTab::Connexions,
+            WorkTab::Messages,
             WorkTab::Script,
             WorkTab::Caisse,
         ] {
@@ -6153,6 +6171,114 @@ impl Session {
     /// Retenir une destination de la boîte : en tête, sans doublon,
     /// cinq au plus. La liste à vide se recalcule à la prochaine
     /// ouverture.
+    /// Relire la messagerie pour `operator` : les conversations qu'il
+    /// voit, ce qui lui reste à lire, et la conversation ouverte.
+    fn reload_messages(&mut self, operator: &str) {
+        let op = operator.trim().to_owned();
+        let groups = self.db.colleague_groups().unwrap_or_default();
+        let all = self.db.conversations().unwrap_or_default();
+        self.msg.conversations = all
+            .into_iter()
+            .filter(|c| crate::messages::visible_to(c, &groups, &op))
+            .collect();
+        self.msg.groups = groups;
+        self.msg.peer_names = self
+            .db
+            .net_peers()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|p| (p.device.clone(), p.name.clone()))
+            .collect();
+        self.msg.unread = self.db.unread_counts(&op).unwrap_or_default();
+        if self
+            .msg
+            .open
+            .is_some_and(|id| !self.msg.conversations.iter().any(|c| c.id == id))
+        {
+            self.msg.open = None;
+        }
+        self.msg.thread = match self.msg.open {
+            Some(id) => self.db.conversation_messages(id).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        self.msg.loaded_for = Some(op);
+        self.msg.dirty = false;
+    }
+
+    /// Ce qui reste à lire en tout, dans les conversations qu'on voit.
+    fn unread_total(&self) -> usize {
+        self.msg
+            .conversations
+            .iter()
+            .map(|c| self.msg.unread.get(&c.id).copied().unwrap_or(0))
+            .sum()
+    }
+
+    /// Ouvrir une conversation, et la marquer lue jusqu'à son dernier
+    /// message.
+    fn open_conversation(&mut self, id: i64) {
+        self.msg.open = Some(id);
+        self.msg.pane = MessagesPane::Thread;
+        self.msg.thread = self.db.conversation_messages(id).unwrap_or_default();
+        let op = self.msg.loaded_for.clone().unwrap_or_default();
+        if let Some(last) = self.msg.thread.last() {
+            let _ = self.db.mark_read(id, &op, &last.sent_at);
+        }
+        self.msg.unread = self.db.unread_counts(&op).unwrap_or_default();
+    }
+
+    /// Envoyer ce qui est tapé dans la conversation ouverte.
+    fn send_message(&mut self, patient: Option<i64>) {
+        let Some(id) = self.msg.open else {
+            return;
+        };
+        let body = self.msg.draft.trim().to_owned();
+        if body.is_empty() {
+            return;
+        }
+        let op = self.msg.loaded_for.clone().unwrap_or_default();
+        match self.db.post_message(id, "", &op, &body, patient, "", None) {
+            Ok(_) => {
+                self.msg.draft.clear();
+                self.msg.with_patient = false;
+                self.open_conversation(id);
+                self.reload_messages(&op);
+            }
+            Err(e) => self.msg.note = Some((true, e)),
+        }
+    }
+
+    /// Écrire à ces collègues : leur conversation si elle existe, une
+    /// nouvelle sinon.
+    fn write_to(&mut self, people: &[String]) {
+        let op = self.msg.loaded_for.clone().unwrap_or_default();
+        let mut members: Vec<String> = people.to_vec();
+        if !op.is_empty() {
+            members.push(op.clone());
+        }
+        let all = self.db.conversations().unwrap_or_default();
+        let id = match crate::messages::find_direct(&all, &members) {
+            Some(c) => Some(c.id),
+            None => self
+                .db
+                .create_conversation(
+                    "",
+                    crate::messages::Channel::Equipe,
+                    "",
+                    &members,
+                    None,
+                    &[],
+                    &op,
+                )
+                .map_err(|e| self.msg.note = Some((true, e)))
+                .ok(),
+        };
+        if let Some(id) = id {
+            self.reload_messages(&op);
+            self.open_conversation(id);
+        }
+    }
+
     /// Relire les favoris de `operator` (initiales ; vide : le poste).
     fn load_favorites(&mut self, operator: &str) {
         self.favorites = self.db.favorites(operator).unwrap_or_default();
@@ -6776,9 +6902,11 @@ impl Session {
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
         }
-        // Un favori épinglé sur l'autre poste arrive ici.
+        // Un favori épinglé sur l'autre poste arrive ici, comme un
+        // message d'un collègue.
         if let Some(op) = self.favorites_of.clone() {
             self.load_favorites(&op);
+            self.reload_messages(&op);
         }
         // Les phrases que l'officine a réécrites : une correction faite
         // au comptoir doit atteindre l'imprimante de l'autre poste.
@@ -8172,6 +8300,7 @@ impl Session {
             WorkTab::Stats => tr("tab_stats").to_owned(),
             WorkTab::Ruptures => tr("tab_ruptures").to_owned(),
             WorkTab::Connexions => tr("tab_connexions").to_owned(),
+            WorkTab::Messages => tr("tab_messages").to_owned(),
             WorkTab::Script => tr("tab_script").to_owned(),
             WorkTab::Caisse => tr("tab_caisse").to_owned(),
             WorkTab::Drugs => tr("tab_drugs").to_owned(),
@@ -10403,6 +10532,59 @@ impl NetWindow {
     }
 }
 
+/// Ce que la vue « Messages » a sous les yeux.
+#[derive(Default)]
+struct MessagesState {
+    /// Les conversations que l'opérateur voit, la plus active d'abord.
+    conversations: Vec<crate::messages::Conversation>,
+    groups: Vec<crate::messages::Group>,
+    /// Ce qui reste à lire, par conversation.
+    unread: std::collections::HashMap<i64, usize>,
+    /// La conversation ouverte, et ses messages.
+    open: Option<i64>,
+    thread: Vec<crate::messages::Message>,
+    /// Ce qu'on tape.
+    draft: String,
+    /// Lier le dossier ouvert au message.
+    with_patient: bool,
+    /// Le panneau de droite : une conversation, une nouvelle, les groupes.
+    pane: MessagesPane,
+    /// Le formulaire d'une nouvelle conversation.
+    new_title: String,
+    new_to: MessagesTo,
+    new_group: Option<i64>,
+    new_people: std::collections::BTreeSet<String>,
+    /// L'éditeur des groupes : le groupe choisi, son nom et ses membres.
+    group_pick: Option<i64>,
+    group_name: String,
+    group_members: std::collections::BTreeSet<String>,
+    /// Qui lit : les initiales relues avec la liste.
+    loaded_for: Option<String>,
+    /// Les noms des officines du réseau, par empreinte — relus avec la
+    /// liste, pas à chaque image.
+    peer_names: Vec<(String, String)>,
+    /// Quelque chose a bougé depuis la dernière lecture.
+    dirty: bool,
+    note: Option<(bool, String)>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum MessagesPane {
+    #[default]
+    Thread,
+    New,
+    Groups,
+}
+
+/// À qui s'adresse une nouvelle conversation d'équipe.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+enum MessagesTo {
+    #[default]
+    People,
+    Everyone,
+    Group,
+}
+
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
 /// en cours sur son fil, et ce que l'écran a sous les doigts.
 #[cfg(feature = "sync")]
@@ -10435,6 +10617,38 @@ struct NetSummary {
     network: Option<String>,
     peers: Vec<crate::network::Peer>,
     records: usize,
+}
+
+/// Une messagerie de démonstration : une conversation de toute l'équipe,
+/// un groupe et sa conversation. Rien quand la base en a déjà.
+fn demo_messages(db: &Db) {
+    use crate::messages::Channel;
+    if !db.conversations().unwrap_or_default().is_empty() {
+        return;
+    }
+    let pid = db.patients().ok().and_then(|p| p.first().map(|p| p.id));
+    if let Ok(team) = db.create_conversation("", Channel::Equipe, "", &[], None, &[], "CL") {
+        for (who, body, patient, at) in [
+            ("CL", "Livraison du grossiste décalée à 14 h ; prévenir les patients qui passent ce matin.", None, "2026-09-24 08:40:00"),
+            ("YS", "Noté. M. Bernard attend son Eliquis : je l'appelle.", pid, "2026-09-24 08:52:00"),
+            ("MB", "Le réfrigérateur 2 affiche 9 °C, je surveille et je note le relevé.", None, "2026-09-24 09:10:00"),
+        ] {
+            let _ = db.post_message(team, "", who, body, patient, "", Some(at));
+        }
+    }
+    if let Ok(g) = db.save_colleague_group(None, "Préparateurs", &["YS".into(), "MB".into()]) {
+        if let Ok(c) = db.create_conversation("", Channel::Equipe, "", &[], Some(g), &[], "CL") {
+            let _ = db.post_message(
+                c,
+                "",
+                "CL",
+                "Inventaire des stupéfiants vendredi 18 h.",
+                None,
+                "",
+                Some("2026-09-23 17:30:00"),
+            );
+        }
+    }
 }
 
 /// Deux officines appairées pour les captures : l'une lue par le dossier
@@ -11158,6 +11372,28 @@ fn bio_level_color(level: crate::biology::Level) -> egui::Color32 {
 /// adapted as a set (`AS_TEXT`), never colour by colour, or the ones
 /// that already stood off the background would stay where they are while
 /// their neighbours came up to meet them.
+/// « 2026-09-24 09:05:00 » → « 24/09 09:05 ».
+fn stamp_fr(sent_at: &str) -> String {
+    let (day, time) = sent_at.split_once(' ').unwrap_or((sent_at, ""));
+    let d = db::format_french_date(day);
+    let short = d.get(..5).unwrap_or(&d).to_owned();
+    format!("{short} {}", time.get(..5).unwrap_or(time))
+}
+
+/// Le nom d'une officine du réseau par son empreinte, lu une fois —
+/// l'empreinte courte quand elle n'a pas de nom ici.
+fn net_names(session: &Session) -> impl Fn(&str) -> String + '_ {
+    let peers = &session.msg.peer_names;
+    move |device: &str| {
+        peers
+            .iter()
+            .find(|(d, _)| d == device)
+            .map(|(_, n)| n.trim().to_owned())
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| device.chars().take(8).collect())
+    }
+}
+
 fn operator_color(operator: &str) -> egui::Color32 {
     const PALETTE: [egui::Color32; 6] = [
         egui::Color32::from_rgb(0x3a, 0x54, 0x7e),
@@ -11817,7 +12053,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 15] {
+fn standing_views() -> [(WorkTab, &'static str); 16] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -11831,6 +12067,7 @@ fn standing_views() -> [(WorkTab, &'static str); 15] {
         (WorkTab::Stats, "statistiques"),
         (WorkTab::Ruptures, "ruptures"),
         (WorkTab::Connexions, "connexions"),
+        (WorkTab::Messages, "messages"),
         (WorkTab::Script, "console"),
         (WorkTab::Caisse, "caisse"),
         (WorkTab::Finances, "recettes"),
@@ -13324,6 +13561,17 @@ impl App {
                                 summary: PostsSummary::read(&session.db).ok(),
                                 ..PostsWindow::default()
                             });
+                        }
+                        // La messagerie, avec une conversation d'équipe
+                        // ouverte et un groupe : la liste et le fil ont de
+                        // quoi montrer.
+                        Ok("messages") => {
+                            demo_messages(&session.db);
+                            session.view = MainView::Messages;
+                            session.reload_messages("");
+                            if let Some(first) = session.msg.conversations.first().map(|c| c.id) {
+                                session.open_conversation(first);
+                            }
                         }
                         // Les connexions, sur une base qui a fondé son
                         // groupe et créé son réseau : les quatre panneaux
@@ -15120,6 +15368,7 @@ impl App {
                             // Les connexions ne trient rien : le dock
                             // qu'on avait devant soi reste.
                             | MainView::Connexions
+                            | MainView::Messages
                             | MainView::Registres
                             | MainView::Finances
                             // Le comptage de caisse ne trie ni le
@@ -16797,6 +17046,10 @@ impl App {
             }
             if session.view == MainView::Connexions {
                 Self::connexions_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Messages {
+                Self::messages_view(ui, session, &config);
                 return;
             }
             if session.view == MainView::Script {
@@ -54276,6 +54529,619 @@ impl App {
     /// attend d'être arbitré, ce qui vient de se passer. Tout ce qui est
     /// lu dans la base l'est à l'ouverture et après un geste ou une
     /// synchronisation (`reload_connections`), jamais par image.
+    /// La messagerie : les conversations à gauche, la conversation
+    /// ouverte à droite — ou le formulaire d'une nouvelle, ou les groupes.
+    fn messages_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let me = session.favorites_of.clone().unwrap_or_default();
+        if session.msg.dirty || session.msg.loaded_for.as_deref() != Some(me.as_str()) {
+            session.reload_messages(&me);
+        }
+        let body = motif::visible_rect(ui);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("msg_title")),
+                Self::button_width(ui, tr("msg_new")),
+                Self::button_width(ui, tr("msg_groups")),
+            ]
+            .into_iter(),
+            tr("msg_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("msg_title"));
+                if motif::button(ui, tr("msg_new")).clicked() {
+                    session.msg.pane = MessagesPane::New;
+                    session.msg.new_title.clear();
+                    session.msg.new_people.clear();
+                    session.msg.new_group = None;
+                    session.msg.new_to = MessagesTo::People;
+                }
+                if motif::button(ui, tr("msg_groups"))
+                    .on_hover_text(tr("msg_groups_tooltip"))
+                    .clicked()
+                {
+                    session.msg.pane = MessagesPane::Groups;
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(if me.is_empty() {
+                        tr("msg_no_operator")
+                    } else {
+                        tr("msg_subtitle")
+                    })
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+        // Côte à côte quand la vue est large, l'une sur l'autre sinon ; la
+        // liste prend un tiers, jamais moins qu'un nom lisible.
+        let area = rows[1];
+        let (list_rect, pane_rect) = if area.width() >= chars_wide(ui, 80.0) {
+            let w = (area.width() * 0.34).max(chars_wide(ui, 26.0));
+            (
+                egui::Rect::from_min_max(area.min, egui::pos2(area.left() + w, area.bottom())),
+                egui::Rect::from_min_max(egui::pos2(area.left() + w + 8.0, area.top()), area.max),
+            )
+        } else {
+            // L'une sur l'autre, la liste cède : le fil est ce qu'on lit.
+            let parts = motif::split_rows(
+                area,
+                &[(area.height() * 0.26).max(Self::row_height(ui) * 2.5), 0.0],
+                8.0,
+            );
+            (parts[0], parts[1])
+        };
+        let team: Vec<(String, String)> = config
+            .pharmacy
+            .operators
+            .iter()
+            .map(|o| (o.initials.trim().to_uppercase(), o.short_label()))
+            .filter(|(i, _)| !i.is_empty())
+            .collect();
+        let mut open: Option<i64> = None;
+        let mut write_to: Option<String> = None;
+        motif::panel(ui, list_rect, Some(tr("msg_list")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("msg_list")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // **Les contacts favoris d'abord** : un clic écrit à
+                    // la personne, dans sa conversation si elle existe.
+                    let starred: Vec<&(String, String)> = team
+                        .iter()
+                        .filter(|(i, _)| {
+                            *i != me
+                                && crate::favorites::has(
+                                    &session.favorites,
+                                    crate::favorites::Kind::Contact,
+                                    &format!("op:{i}"),
+                                )
+                        })
+                        .collect();
+                    if !starred.is_empty() {
+                        ui.horizontal_wrapped(|ui| {
+                            for (i, label) in starred {
+                                if motif::icon_button(ui, Some(motif::Pict::StarFull), i)
+                                    .on_hover_text(trf("msg_write_to", label))
+                                    .clicked()
+                                {
+                                    write_to = Some(i.clone());
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                    if session.msg.conversations.is_empty() {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(tr("msg_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                    }
+                    let names = net_names(session);
+                    for c in &session.msg.conversations {
+                        let title = crate::messages::title_of(
+                            c,
+                            &session.msg.groups,
+                            &|p: &str| names(p),
+                            tr("msg_everyone"),
+                        );
+                        let n = session.msg.unread.get(&c.id).copied().unwrap_or(0);
+                        let label = if n > 0 {
+                            egui::RichText::new(trn("msg_row_unread", &[&title, &n])).strong()
+                        } else {
+                            egui::RichText::new(title)
+                        };
+                        let picked = session.msg.open == Some(c.id)
+                            && session.msg.pane == MessagesPane::Thread;
+                        if motif::list_row(ui, label, picked).clicked() {
+                            open = Some(c.id);
+                        }
+                    }
+                });
+        });
+        if let Some(id) = open {
+            session.open_conversation(id);
+        }
+        if let Some(who) = write_to {
+            session.write_to(&[who]);
+        }
+        match session.msg.pane {
+            MessagesPane::Thread => Self::messages_thread(ui, session, pane_rect),
+            MessagesPane::New => Self::messages_new(ui, session, pane_rect, &team),
+            MessagesPane::Groups => Self::messages_groups(ui, session, pane_rect, &team),
+        }
+    }
+
+    /// La conversation ouverte : ses messages, puis ce qu'on écrit.
+    fn messages_thread(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        let Some(id) = session.msg.open else {
+            motif::panel(ui, rect, None, |ui| {
+                ui.label(
+                    egui::RichText::new(tr("msg_pick"))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        };
+        let title = {
+            let names = net_names(session);
+            session
+                .msg
+                .conversations
+                .iter()
+                .find(|c| c.id == id)
+                .map(|c| {
+                    crate::messages::title_of(
+                        c,
+                        &session.msg.groups,
+                        &|p: &str| names(p),
+                        tr("msg_everyone"),
+                    )
+                })
+                .unwrap_or_default()
+        };
+        // La rédaction a sa rangée à elle, sous la liste qui défile :
+        // trois lignes de texte et la rangée de boutons.
+        // Deux lignes quand la place manque : le fil doit garder au moins
+        // la moitié du panneau.
+        let lines = if rect.height() < Self::row_height(ui) * 10.0 {
+            2.0
+        } else {
+            3.0
+        };
+        let compose_h = Self::label_line(ui) * lines + Self::row_height(ui) + 16.0;
+        let parts = motif::split_rows(rect, &[0.0, compose_h], 6.0);
+        let mut open_patient: Option<i64> = None;
+        motif::panel(ui, parts[0], Some(&title), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("msg_thread")
+                .auto_shrink([false, false])
+                .stick_to_bottom(true)
+                .show(ui, |ui| {
+                    if session.msg.thread.is_empty() {
+                        ui.label(
+                            egui::RichText::new(tr("msg_empty_thread"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        );
+                    }
+                    for m in &session.msg.thread {
+                        let who = if m.source.is_empty() {
+                            if m.author.is_empty() {
+                                "—".to_owned()
+                            } else {
+                                m.author.clone()
+                            }
+                        } else {
+                            m.source.clone()
+                        };
+                        ui.horizontal_wrapped(|ui| {
+                            ui.label(
+                                egui::RichText::new(&who)
+                                    .strong()
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(if m.source.is_empty() {
+                                        operator_color(&m.author)
+                                    } else {
+                                        motif::accent()
+                                    }),
+                            );
+                            ui.label(
+                                egui::RichText::new(stamp_fr(&m.sent_at))
+                                    .size(motif::pt(ui, 10.0))
+                                    .color(motif::text_faint()),
+                            );
+                            if let Some(pid) = m.patient_id {
+                                let name = session
+                                    .patients
+                                    .iter()
+                                    .find(|p| p.id == pid)
+                                    .map(|p| format!("{} {}", p.first_name, p.last_name));
+                                if let Some(name) = name {
+                                    if motif::button(ui, &name)
+                                        .on_hover_text(tr("msg_patient_open"))
+                                        .clicked()
+                                    {
+                                        open_patient = Some(pid);
+                                    }
+                                }
+                            }
+                        });
+                        ui.add(egui::Label::new(egui::RichText::new(&m.body)).wrap());
+                        ui.add_space(6.0);
+                    }
+                });
+        });
+        if let Some(pid) = open_patient {
+            session.activate_tab(&WorkTab::Patient(pid));
+            return;
+        }
+        let viewing = session
+            .viewing
+            .as_ref()
+            .map(|p| (p.id, format!("{} {}", p.first_name, p.last_name)));
+        let mut send = false;
+        motif::inside(ui, parts[1], |ui| {
+            let w = ui.available_width();
+            let resp = motif::area(
+                ui,
+                egui::vec2(w, Self::label_line(ui) * lines + 8.0),
+                egui::TextEdit::multiline(&mut session.msg.draft)
+                    .hint_text(motif::hint(tr("msg_draft_hint"))),
+            );
+            // Ctrl+Entrée envoie ; Entrée seule passe à la ligne.
+            if resp.has_focus()
+                && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::Enter))
+            {
+                send = true;
+            }
+            ui.horizontal_wrapped(|ui| {
+                if motif::button_enabled(ui, tr("msg_send"), !session.msg.draft.trim().is_empty())
+                    .on_hover_text(tr("msg_send_tooltip"))
+                    .clicked()
+                {
+                    send = true;
+                }
+                if let Some((_, name)) = &viewing {
+                    if motif::toggle(ui, &trf("msg_link_patient", name), session.msg.with_patient)
+                        .on_hover_text(tr("msg_link_patient_tooltip"))
+                        .clicked()
+                    {
+                        session.msg.with_patient = !session.msg.with_patient;
+                    }
+                }
+                if let Some((bad, note)) = &session.msg.note {
+                    ui.label(
+                        egui::RichText::new(note.as_str())
+                            .size(motif::pt(ui, 10.5))
+                            .color(if *bad {
+                                motif::alert()
+                            } else {
+                                motif::text_dim()
+                            }),
+                    );
+                }
+            });
+        });
+        if send {
+            let patient = if session.msg.with_patient {
+                viewing.map(|(id, _)| id)
+            } else {
+                None
+            };
+            session.send_message(patient);
+        }
+    }
+
+    /// Une nouvelle conversation d'équipe : à toute l'équipe, à un groupe,
+    /// ou à quelques collègues.
+    fn messages_new(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        team: &[(String, String)],
+    ) {
+        let me = session.msg.loaded_for.clone().unwrap_or_default();
+        let mut create = false;
+        let mut cancel = false;
+        let mut star: Option<String> = None;
+        motif::panel(ui, rect, Some(tr("msg_new")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("msg_new")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        Self::form_label(ui, tr("msg_new_title"));
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 30.0),
+                            egui::TextEdit::singleline(&mut session.msg.new_title)
+                                .hint_text(motif::hint(tr("msg_new_title_hint"))),
+                        );
+                    });
+                    ui.add_space(4.0);
+                    ui.horizontal_wrapped(|ui| {
+                        for (to, label) in [
+                            (MessagesTo::People, tr("msg_to_people")),
+                            (MessagesTo::Group, tr("msg_to_group")),
+                            (MessagesTo::Everyone, tr("msg_to_everyone")),
+                        ] {
+                            if motif::toggle(ui, label, session.msg.new_to == to).clicked() {
+                                session.msg.new_to = to;
+                            }
+                        }
+                    });
+                    ui.add_space(4.0);
+                    match session.msg.new_to {
+                        MessagesTo::Everyone => {
+                            ui.label(
+                                egui::RichText::new(tr("msg_to_everyone_note"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        MessagesTo::Group => {
+                            if session.msg.groups.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("msg_no_group"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            for g in &session.msg.groups {
+                                let label = format!("{} — {}", g.name, g.members.join(", "));
+                                if motif::list_row(
+                                    ui,
+                                    egui::RichText::new(label),
+                                    session.msg.new_group == Some(g.id),
+                                )
+                                .clicked()
+                                {
+                                    session.msg.new_group = Some(g.id);
+                                }
+                            }
+                        }
+                        MessagesTo::People => {
+                            if team.is_empty() {
+                                ui.label(
+                                    egui::RichText::new(tr("msg_no_team"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            // Les favoris en tête, puis l'ordre de l'équipe.
+                            let mut people: Vec<&(String, String)> =
+                                team.iter().filter(|(i, _)| *i != me).collect();
+                            let fav = |i: &str| {
+                                crate::favorites::has(
+                                    &session.favorites,
+                                    crate::favorites::Kind::Contact,
+                                    &format!("op:{i}"),
+                                )
+                            };
+                            people.sort_by_key(|(i, _)| !fav(i));
+                            for (i, label) in people {
+                                ui.horizontal(|ui| {
+                                    let on = fav(i);
+                                    if motif::star(ui, on)
+                                        .on_hover_text(if on {
+                                            tr("fav_remove_tooltip")
+                                        } else {
+                                            tr("fav_contact_tooltip")
+                                        })
+                                        .clicked()
+                                    {
+                                        star = Some(i.clone());
+                                    }
+                                    let mut picked = session.msg.new_people.contains(i);
+                                    if motif::checkbox(ui, &mut picked, label).changed() {
+                                        if picked {
+                                            session.msg.new_people.insert(i.clone());
+                                        } else {
+                                            session.msg.new_people.remove(i);
+                                        }
+                                    }
+                                });
+                            }
+                        }
+                    }
+                    ui.add_space(6.0);
+                    let ready = match session.msg.new_to {
+                        MessagesTo::Everyone => true,
+                        MessagesTo::Group => session.msg.new_group.is_some(),
+                        MessagesTo::People => !session.msg.new_people.is_empty(),
+                    };
+                    ui.horizontal_wrapped(|ui| {
+                        if motif::button_enabled(ui, tr("msg_create"), ready).clicked() {
+                            create = true;
+                        }
+                        if motif::button(ui, tr("msg_cancel")).clicked() {
+                            cancel = true;
+                        }
+                    });
+                });
+        });
+        if let Some(i) = star {
+            let label = team
+                .iter()
+                .find(|(x, _)| *x == i)
+                .map(|(_, l)| l.clone())
+                .unwrap_or_else(|| i.clone());
+            let on = !crate::favorites::has(
+                &session.favorites,
+                crate::favorites::Kind::Contact,
+                &format!("op:{i}"),
+            );
+            let who = session.favorites_of.clone().unwrap_or_default();
+            let _ = session.db.set_favorite(
+                &who,
+                crate::favorites::Kind::Contact,
+                &format!("op:{i}"),
+                &label,
+                on,
+            );
+            session.load_favorites(&who);
+        }
+        if cancel {
+            session.msg.pane = MessagesPane::Thread;
+        }
+        if create {
+            let (members, group) = match session.msg.new_to {
+                MessagesTo::Everyone => (Vec::new(), None),
+                MessagesTo::Group => (Vec::new(), session.msg.new_group),
+                MessagesTo::People => {
+                    let mut m: Vec<String> = session.msg.new_people.iter().cloned().collect();
+                    if !me.is_empty() {
+                        m.push(me.clone());
+                    }
+                    (m, None)
+                }
+            };
+            let title = session.msg.new_title.trim().to_owned();
+            // Deux collègues sans titre : leur conversation, si elle
+            // existe déjà.
+            if title.is_empty() && session.msg.new_to == MessagesTo::People {
+                let people: Vec<String> = session.msg.new_people.iter().cloned().collect();
+                session.write_to(&people);
+                return;
+            }
+            match session.db.create_conversation(
+                "",
+                crate::messages::Channel::Equipe,
+                &title,
+                &members,
+                group,
+                &[],
+                &me,
+            ) {
+                Ok(id) => {
+                    session.reload_messages(&me);
+                    session.open_conversation(id);
+                }
+                Err(e) => session.msg.note = Some((true, e)),
+            }
+        }
+    }
+
+    /// Les groupes de collègues : un nom et des membres.
+    fn messages_groups(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        team: &[(String, String)],
+    ) {
+        let mut pick: Option<Option<i64>> = None;
+        let mut save = false;
+        let mut delete = false;
+        let mut close = false;
+        motif::panel(ui, rect, Some(tr("msg_groups_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("msg_groups")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        for g in &session.msg.groups {
+                            if motif::toggle(ui, &g.name, session.msg.group_pick == Some(g.id))
+                                .clicked()
+                            {
+                                pick = Some(Some(g.id));
+                            }
+                        }
+                        if motif::button(ui, tr("msg_group_new")).clicked() {
+                            pick = Some(None);
+                        }
+                    });
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        Self::form_label(ui, tr("msg_group_name"));
+                        motif::field(
+                            ui,
+                            chars_wide(ui, 24.0),
+                            egui::TextEdit::singleline(&mut session.msg.group_name)
+                                .hint_text(motif::hint(tr("msg_group_name_hint"))),
+                        );
+                    });
+                    for (i, label) in team {
+                        let mut on = session.msg.group_members.contains(i);
+                        if motif::checkbox(ui, &mut on, label).changed() {
+                            if on {
+                                session.msg.group_members.insert(i.clone());
+                            } else {
+                                session.msg.group_members.remove(i);
+                            }
+                        }
+                    }
+                    ui.add_space(6.0);
+                    ui.horizontal_wrapped(|ui| {
+                        let ready = !session.msg.group_name.trim().is_empty()
+                            && !session.msg.group_members.is_empty();
+                        if motif::button_enabled(ui, tr("form_save"), ready).clicked() {
+                            save = true;
+                        }
+                        if session.msg.group_pick.is_some()
+                            && motif::button(ui, tr("msg_group_delete"))
+                                .on_hover_text(tr("msg_group_delete_tooltip"))
+                                .clicked()
+                        {
+                            delete = true;
+                        }
+                        if motif::button(ui, tr("msg_cancel")).clicked() {
+                            close = true;
+                        }
+                    });
+                });
+        });
+        let me = session.msg.loaded_for.clone().unwrap_or_default();
+        if let Some(p) = pick {
+            session.msg.group_pick = p;
+            let g = p.and_then(|id| session.msg.groups.iter().find(|g| g.id == id).cloned());
+            session.msg.group_name = g.as_ref().map(|g| g.name.clone()).unwrap_or_default();
+            session.msg.group_members = g
+                .map(|g| g.members.into_iter().collect())
+                .unwrap_or_default();
+        }
+        if save {
+            let members: Vec<String> = session.msg.group_members.iter().cloned().collect();
+            match session.db.save_colleague_group(
+                session.msg.group_pick,
+                &session.msg.group_name,
+                &members,
+            ) {
+                Ok(id) => {
+                    session.msg.group_pick = Some(id);
+                    session.reload_messages(&me);
+                }
+                Err(e) => session.msg.note = Some((true, e)),
+            }
+        }
+        if delete {
+            if let Some(id) = session.msg.group_pick.take() {
+                let _ = session.db.delete_colleague_group(id);
+                session.msg.group_name.clear();
+                session.msg.group_members.clear();
+                session.reload_messages(&me);
+            }
+        }
+        if close {
+            session.msg.pane = MessagesPane::Thread;
+        }
+    }
+
     fn connexions_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
@@ -63474,6 +64340,7 @@ impl eframe::App for App {
             if s.favorites_of.as_deref() != Some(op) {
                 let op = op.to_owned();
                 s.load_favorites(&op);
+                s.reload_messages(&op);
             }
         }
         // Track the shape the workspace is in, so the next session opens
@@ -63964,6 +64831,7 @@ impl eframe::App for App {
                 .iter()
                 .filter(|s| s.state == InterviewState::ReportSent)
                 .count();
+            let unread_msgs = session.unread_total();
             let operator = self.operator.trim().to_owned();
             // Un autre poste vient d'écrire et les listes ont été
             // relues : la bande le dit quelques secondes, puis s'efface.
@@ -64037,6 +64905,15 @@ impl eframe::App for App {
                             motif::accent(),
                             tr("status_to_bill_tooltip"),
                             WorkTab::Dashboard,
+                        );
+                    }
+                    if unread_msgs > 0 {
+                        flag(
+                            ui,
+                            trf("status_messages", unread_msgs),
+                            motif::accent(),
+                            tr("status_messages_tooltip"),
+                            WorkTab::Messages,
                         );
                     }
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -64183,6 +65060,7 @@ impl eframe::App for App {
                     | MainView::Stats
                     | MainView::Ruptures
                     | MainView::Connexions
+                    | MainView::Messages
                     | MainView::Script
                     | MainView::Caisse
                     | MainView::CaisseHistory
@@ -75511,6 +76389,49 @@ mod tests {
         {
             assert!(!super::graph_substitute_meets_any(&s, n, &map.centre.1));
         }
+    }
+
+    /// **La messagerie d'équipe, de bout en bout** : écrire à un collègue
+    /// rouvre sa conversation, le message lie le dossier ouvert, l'autre
+    /// le voit non lu, un tiers ne voit pas la conversation.
+    #[test]
+    fn a_team_message_reaches_its_colleague_only() {
+        let (mut s, _swept) = scratch_session("msgs");
+        s.reload_messages("CL");
+        s.write_to(&["YS".to_owned()]);
+        let first = s.msg.open.expect("conversation ouverte");
+        s.write_to(&["ys".to_owned()]);
+        assert_eq!(s.msg.open, Some(first), "la même conversation rouvre");
+        s.msg.draft = "Rappeler M. Dupont avant midi.".to_owned();
+        s.send_message(Some(42));
+        assert!(s.msg.draft.is_empty());
+        assert_eq!(s.msg.thread.len(), 1);
+        assert_eq!(s.msg.thread[0].patient_id, Some(42));
+        assert_eq!(s.unread_total(), 0, "ses propres messages sont lus");
+        s.reload_messages("YS");
+        assert_eq!(s.unread_total(), 1);
+        s.open_conversation(first);
+        assert_eq!(s.unread_total(), 0);
+        s.reload_messages("MB");
+        assert!(s.msg.conversations.is_empty(), "un tiers ne la voit pas");
+        // Un groupe : ses membres voient, les autres non.
+        let g =
+            s.db.save_colleague_group(None, "Préparateurs", &["MB".to_owned()])
+                .unwrap();
+        s.db.create_conversation(
+            "",
+            crate::messages::Channel::Equipe,
+            "",
+            &[],
+            Some(g),
+            &[],
+            "CL",
+        )
+        .unwrap();
+        s.reload_messages("MB");
+        assert_eq!(s.msg.conversations.len(), 1);
+        s.reload_messages("YS");
+        assert_eq!(s.msg.conversations.len(), 1, "YS garde la sienne seulement");
     }
 
     /// **Un favori passe en tête de « Aller à… »**, pour la personne au
