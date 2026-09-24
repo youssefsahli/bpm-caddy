@@ -11195,11 +11195,13 @@ impl Default for FrameForm {
 }
 
 impl FrameForm {
-    /// Les rythmes que la trame propose : tous, **sauf « ce jour-là »**.
-    const RHYTHMS: [planning::Cadence; 6] = [
+    /// Les rythmes que la trame propose : tous, **sauf « ce jour-là »**,
+    /// et l'alternance **une fois** — « Semaines paires » et « Semaines
+    /// impaires » ouvraient toutes deux les deux semaines, et le menu
+    /// affichait « Semaines paires » au-dessus d'un onglet des impaires.
+    const RHYTHMS: [planning::Cadence; 5] = [
         planning::Cadence::Hebdomadaire,
         planning::Cadence::Paires,
-        planning::Cadence::Impaires,
         planning::Cadence::UneSurDeux,
         planning::Cadence::UneSurTrois,
         planning::Cadence::UneSurQuatre,
@@ -23180,6 +23182,27 @@ impl App {
             });
     }
 
+    /// La largeur des deux champs d'une officine appairée (nom,
+    /// adresse) : dix-huit caractères quand la rangée les tient avec
+    /// « Enregistrer » et « × », sinon ce qui reste, partagé — à
+    /// `text_scale` 1,6 la croix qui retire l'officine tombait seule à
+    /// la ligne. Jamais moins de dix caractères : en deçà, la rangée
+    /// enveloppe plutôt que d'écrire dans une fente.
+    fn net_peer_field_width(ui: &egui::Ui, width: f32) -> f32 {
+        let buttons = Self::group_width(
+            ui,
+            [
+                Self::button_width(ui, tr("form_save")),
+                Self::button_width(ui, "×"),
+            ]
+            .into_iter(),
+        );
+        // Un pixel de jeu : au pixel près, l'arrondi des tailles suffit à
+        // faire envelopper la rangée.
+        let left = ((width - buttons - 2.0 * ui.spacing().item_spacing.x) / 2.0).floor() - 1.0;
+        chars_wide(ui, 18.0).min(left).max(chars_wide(ui, 10.0))
+    }
+
     fn button_width(ui: &egui::Ui, label: &str) -> f32 {
         let font = egui::TextStyle::Button.resolve(ui.style());
         ui.fonts(|f| {
@@ -33287,12 +33310,32 @@ impl App {
                                     .size(motif::pt(ui, 11.0))
                                     .color(motif::text_dim()),
                             );
+                            // Les impaires sont l'autre page des paires :
+                            // une seule entrée, qui dit les deux.
+                            if session.frame.cadence == planning::Cadence::Impaires {
+                                session.frame.cadence = planning::Cadence::Paires;
+                            }
                             let rhythm = session.frame.cadence;
                             let cadences: Vec<(planning::Cadence, String, String)> =
                                 FrameForm::RHYTHMS
                                     .into_iter()
-                                    .map(|c| (c, c.label().to_owned(), c.hint().to_owned()))
+                                    .map(|c| {
+                                        if c == planning::Cadence::Paires {
+                                            (
+                                                c,
+                                                tr("frame_rhythm_alternate").to_owned(),
+                                                tr("frame_rhythm_alternate_hint").to_owned(),
+                                            )
+                                        } else {
+                                            (c, c.label().to_owned(), c.hint().to_owned())
+                                        }
+                                    })
                                     .collect();
+                            let rhythm_hint = cadences
+                                .iter()
+                                .find(|(c, _, _)| *c == rhythm)
+                                .map(|(_, _, h)| h.clone())
+                                .unwrap_or_default();
                             motif::select_hinted(
                                 ui,
                                 "frame_cadence",
@@ -33300,7 +33343,7 @@ impl App {
                                 &mut session.frame.cadence,
                                 &cadences,
                             )
-                            .on_hover_text(rhythm.hint());
+                            .on_hover_text(rhythm_hint);
                             // **Partir de la trame d'un collègue** : une
                             // nouvelle recrue qui fait les horaires de
                             // Claire se saisissait jour par jour.
@@ -54948,15 +54991,16 @@ impl App {
                                 } else {
                                     p.seen_as.trim()
                                 };
+                                let field_w = Self::net_peer_field_width(ui, ui.available_width());
                                 motif::field(
                                     ui,
-                                    chars_wide(ui, 18.0),
+                                    field_w,
                                     egui::TextEdit::singleline(&mut edit.0)
                                         .hint_text(motif::hint(hint)),
                                 );
                                 motif::field(
                                     ui,
-                                    chars_wide(ui, 18.0),
+                                    field_w,
                                     egui::TextEdit::singleline(&mut edit.1)
                                         .hint_text(motif::hint(tr("net_peer_address_hint"))),
                                 );
@@ -67275,6 +67319,50 @@ mod tests {
         assert_eq!(seen[2], "Dupont");
         assert!(seen[..3].iter().all(|f| !f.contains('…')));
         assert!(seen[3].ends_with('…'));
+    }
+
+    /// **La rangée d'une officine appairée tient sur une ligne** quand
+    /// ses champs peuvent céder : deux champs, « Enregistrer » et « × »
+    /// dessinés comme la fenêtre du réseau les dessine, et la croix sur
+    /// la ligne du nom — à 1024 et `text_scale = 1,6`, elle tombait seule
+    /// en dessous.
+    #[test]
+    fn a_paired_officine_row_keeps_its_cross_on_its_line() {
+        for scale in [1.0_f32, 1.25, 1.6] {
+            for width in [520.0_f32, 700.0, 706.0, 720.0, 960.0] {
+                let ctx = egui::Context::default();
+                motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+                let seen = std::cell::RefCell::new(None);
+                let _ = ctx.run(Default::default(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        let rect =
+                            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 200.0));
+                        motif::inside(ui, rect, |ui| {
+                            let floor = super::chars_wide(ui, 10.0);
+                            let w = App::net_peer_field_width(ui, ui.available_width());
+                            let (mut a, mut b) = (String::new(), String::new());
+                            let rows = ui.horizontal_wrapped(|ui| {
+                                let first =
+                                    motif::field(ui, w, egui::TextEdit::singleline(&mut a)).rect;
+                                motif::field(ui, w, egui::TextEdit::singleline(&mut b));
+                                motif::button(ui, tr("form_save"));
+                                let cross = motif::button(ui, "×").rect;
+                                (first, cross)
+                            });
+                            *seen.borrow_mut() = Some((w, floor, rows.inner));
+                        });
+                    });
+                });
+                let (w, floor, (first, cross)) = seen.into_inner().expect("dessinée");
+                assert!(w >= floor, "{scale} × {width} : champ {w} sous {floor}");
+                if w > floor {
+                    assert!(
+                        (cross.center().y - first.center().y).abs() < 1.0,
+                        "{scale} × {width} : la croix est tombée à la ligne ({first:?} / {cross:?})"
+                    );
+                }
+            }
+        }
     }
 
     /// **La barre du haut tient dans la rangée qu'on lui donne.**

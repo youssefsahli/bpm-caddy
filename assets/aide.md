@@ -637,7 +637,8 @@ Une journée coupée se saisit en **deux postes** — 9 h – 12 h 30 puis
 d'horaire, et la couverture compterait la personne présente pendant sa
 coupure.
 
-Pour une alternance, deux onglets : semaine paire et semaine impaire.
+Pour une alternance, le rythme « Paires et impaires » ouvre deux
+onglets : semaine paire et semaine impaire.
 Une journée identique sur les deux est enregistrée une fois, en
 hebdomadaire.
 
@@ -825,9 +826,11 @@ reste enregistré.
 # Réseau d'officines
 
 Les officines d'un groupement peuvent partager ce journal : « Réseau
-d'officines… », dans la vue Ruptures. **Seules les ruptures et les
-substitutions sont partagées** — jamais un patient, un dossier, le
-registre ou la caisse —, chiffrées et signées, sous une clé propre au
+d'officines… », dans la vue Ruptures. **Sont partagés** les ruptures et
+les substitutions, les valeurs de pharmacocinétique sourcées, et les
+versions des fiches, des préparations, des protocoles, des lignes de
+TROD et des vaccins du catalogue — **jamais un patient**, un dossier, le
+registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 
 Une officine **crée** le réseau, puis **invite** les autres : elle

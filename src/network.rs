@@ -1,6 +1,8 @@
 //! Le réseau d'officines : ce qu'une officine partage avec les autres
 //! officines de son groupement — **les ruptures et ce qu'on a donné à la
-//! place, et rien d'autre**.
+//! place**, les valeurs de pharmacocinétique sourcées, et les versions du
+//! contenu partageable (fiches, préparations, protocoles, lignes de TROD,
+//! vaccins du catalogue, `versions.rs`) — **jamais un patient**.
 //!
 //! Construit sur `bpm-sync` (voir `docs/SYNC.md`), avec deux choix qui
 //! en font un outil entre officines et non entre postes :
@@ -25,8 +27,10 @@
 //! fait que le **projeter** vers le réseau (un événement local, un
 //! enregistrement scellé, une seule fois) et **ranger** ce qui en vient
 //! (un enregistrement d'une officine appairée, un événement dont la
-//! source est son nom). Aucune fonction ici n'écrit dans une autre
-//! table de la base que celles du réseau et le journal des ruptures.
+//! source est son nom). Une version reçue ne s'applique qu'à un contenu
+//! qui dit encore ce qu'elle remplaçait ; sinon elle attend l'arbitrage.
+//! Les valeurs de pharmacocinétique se rangent à part, sous le nom de
+//! l'officine qui les a sourcées.
 
 use crate::db::Db;
 use bpm_sync::{Device, DeviceId, Intent, Journal, Meter, Record, Session, Stream, Trousseau};

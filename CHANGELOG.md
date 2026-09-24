@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.300.0] - 2026-09-24
+
+### Fixed
+- **Réseau d'officines** : la fenêtre et l'aide disaient que seules les
+  ruptures et les substitutions étaient partagées ; elles listent
+  désormais tout ce qui circule — valeurs de pharmacocinétique, versions
+  des fiches, préparations, protocoles, lignes de TROD et vaccins —, et
+  toujours jamais un patient.
+- **Réseau d'officines, à `text_scale` 1,6** : la croix qui retire une
+  officine appairée ne tombe plus seule à la ligne ; les deux champs
+  cèdent la largeur qu'il faut.
+- **Trame** : le menu « Rythme » proposait « Semaines paires » et
+  « Semaines impaires », qui ouvraient tous deux les deux semaines ;
+  une seule entrée, « Paires et impaires », dit ce qu'elle fait.
+
 ## [0.299.0] - 2026-09-24
 
 ### Added
