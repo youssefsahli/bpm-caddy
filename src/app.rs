@@ -38189,7 +38189,9 @@ impl App {
         let total = section.offsets.last().copied().unwrap_or(0.0);
         ui.add_space(section.offsets.get(range.start).copied().unwrap_or(0.0));
         for i in range.clone() {
-            let row = &section.rows[i];
+            let Some(row) = section.rows.get(i) else {
+                break;
+            };
             // La zébrure est peinte **avant** la ligne, à la hauteur que
             // la ligne a prise lors de la mesure — qui est la même
             // fonction que le dessin, donc la même hauteur. Peinte après,
@@ -38216,9 +38218,20 @@ impl App {
     /// Ce qui, en changeant, oblige à remesurer : l'axe, les trois
     /// largeurs et la taille du corps. Les facettes, elles, sont
     /// `'static`.
-    fn explorer_key(ui: &egui::Ui, axis: usize, widths: (f32, f32, f32)) -> [u32; 5] {
+    ///
+    /// **L'axe est l'organe lui-même, jamais son rang dans la bande.**
+    /// Le rang est lu après le clic et l'organe avant : clé au rang, un
+    /// clic sur une porte mesurait l'ancien organe sous la clé du
+    /// nouveau, l'image suivante trouvait la clé juste et gardait des
+    /// sections trop courtes, et le premier défilement indexait au-delà
+    /// — l'explorateur tombait.
+    fn explorer_key(
+        ui: &egui::Ui,
+        axis: Option<crate::facets::Organ>,
+        widths: (f32, f32, f32),
+    ) -> [u32; 5] {
         [
-            axis as u32,
+            axis.map_or(0, |o| o as u32 + 1),
             widths.0.to_bits(),
             widths.1.to_bits(),
             widths.2.to_bits(),
@@ -38238,7 +38251,6 @@ impl App {
     fn explorer_table(
         ui: &mut egui::Ui,
         axis: Option<crate::facets::Organ>,
-        axis_ix: usize,
         widths: (f32, f32, f32),
         gapx: f32,
         table: &mut ExplorerTable,
@@ -38253,8 +38265,8 @@ impl App {
         // `EXPLORER_ROW_GAP`. À zéro, `ui.cursor()` est exactement le
         // haut de ce qui vient, et la zébrure tombe sur sa ligne.
         ui.spacing_mut().item_spacing = egui::vec2(gapx, 0.0);
-        if table.key != Self::explorer_key(ui, axis_ix, widths) {
-            table.key = Self::explorer_key(ui, axis_ix, widths);
+        if table.key != Self::explorer_key(ui, axis, widths) {
+            table.key = Self::explorer_key(ui, axis, widths);
             table.sections = match axis {
                 None => {
                     let rows = crate::facets::by_half_life_desc()
@@ -38290,7 +38302,9 @@ impl App {
                         "demi-vie",
                         rows,
                         |ui, i, row| {
-                            Self::explorer_row_half_life(ui, &facets[i], row, widths, &mut sink);
+                            if let Some(f) = facets.get(i) {
+                                Self::explorer_row_half_life(ui, f, row, widths, &mut sink);
+                            }
                         },
                     )]
                 }
@@ -38314,7 +38328,9 @@ impl App {
                             effect.label(),
                             rows,
                             |ui, i, row| {
-                                Self::explorer_row_organ(ui, &entries[i], row, widths, &mut sink);
+                                if let Some(e) = entries.get(i) {
+                                    Self::explorer_row_organ(ui, e, row, widths, &mut sink);
+                                }
                             },
                         )
                     })
@@ -38361,7 +38377,9 @@ impl App {
                 let facets = crate::facets::by_half_life_desc();
                 if let Some(section) = table.sections.first() {
                     Self::explorer_section(ui, section, viewport, origin, |ui, i, row| {
-                        Self::explorer_row_half_life(ui, &facets[i], row, widths, open);
+                        if let Some(f) = facets.get(i) {
+                            Self::explorer_row_half_life(ui, f, row, widths, open);
+                        }
                     });
                 }
             }
@@ -38387,7 +38405,9 @@ impl App {
                     );
                     ui.add_space(Self::EXPLORER_ROW_GAP);
                     Self::explorer_section(ui, section, viewport, origin, |ui, i, row| {
-                        Self::explorer_row_organ(ui, &entries[i], row, widths, open);
+                        if let Some(e) = entries.get(i) {
+                            Self::explorer_row_organ(ui, e, row, widths, open);
+                        }
                     });
                     ui.add_space(8.0);
                 }
@@ -40487,7 +40507,6 @@ impl App {
         // Le cache du tableau est emprunté ici : la fermeture du panneau
         // n'a plus besoin de la session entière, et c'est la seule chose
         // qu'elle lui prend.
-        let session_axis = session.explorer_axis;
         let table = &mut session.explorer_table;
         motif::panel(ui, strip[2], None, |ui| {
             // **Ce tableau se replie, il ne défile pas de côté.** Ses
@@ -40519,7 +40538,6 @@ impl App {
                     Self::explorer_table(
                         ui,
                         axis,
-                        session_axis,
                         (name_w, value_w, rest_w),
                         gap * 2.0,
                         table,
@@ -69612,7 +69630,6 @@ mod tests {
     fn the_explorer_table_is_as_tall_whatever_it_draws() {
         let widths = (200.0, 140.0, 300.0);
         let draw = |axis: Option<crate::facets::Organ>,
-                    axis_ix: usize,
                     viewport_h: f32|
          -> (f32, usize, std::time::Duration) {
             let ctx = egui::Context::default();
@@ -69631,7 +69648,6 @@ mod tests {
                         App::explorer_table(
                             ui,
                             axis,
-                            axis_ix,
                             widths,
                             12.0,
                             &mut table,
@@ -69656,8 +69672,8 @@ mod tests {
             let (drawn, promised) = out.into_inner();
             (drawn, promised as usize, spent)
         };
-        let (whole, promised, t_whole) = draw(None, 0, 1_000_000.0);
-        let (window, _, t_window) = draw(None, 0, 600.0);
+        let (whole, promised, t_whole) = draw(None, 1_000_000.0);
+        let (window, _, t_window) = draw(None, 600.0);
         println!(
             "demi-vies : {} lignes, annoncé {promised}, tout {whole} en {t_whole:?}, fenêtre {window} en {t_window:?}",
             crate::facets::by_half_life_desc().len()
@@ -69667,8 +69683,8 @@ mod tests {
         // seconde, posée après un intitulé et l'espace qui va avec, qui
         // dit si le repère du contenu a été tenu jusqu'au bout.
         let organ = crate::facets::Organ::Neuro;
-        let (o_whole, _, o_t_whole) = draw(Some(organ), 9, 1_000_000.0);
-        let (o_window, _, o_t_window) = draw(Some(organ), 9, 600.0);
+        let (o_whole, _, o_t_whole) = draw(Some(organ), 1_000_000.0);
+        let (o_window, _, o_t_window) = draw(Some(organ), 600.0);
         println!(
             "neurologique : {} + {} lignes, tout {o_whole} en {o_t_whole:?}, fenêtre {o_window} en {o_t_window:?}",
             crate::facets::on_organ(organ, crate::facets::Effect::Altere).len(),
@@ -79058,6 +79074,93 @@ mod tests {
         for (up, down) in [(false, false), (true, false), (false, true)] {
             assert_eq!(list_step(0, 1, up, down), 0);
             assert_eq!(list_step(9, 1, up, down), 0);
+        }
+    }
+
+    /// **Cliquer une porte puis défiler ne fait pas tomber
+    /// l'explorateur.** Le tableau était mis en cache sous le rang de
+    /// l'axe lu *après* le clic, mais mesuré pour l'organe lu *avant* :
+    /// l'image suivante gardait les lignes de l'ancien organe, et le
+    /// premier défilement sur un organe plus peuplé indexait au-delà —
+    /// `index out of bounds`, l'application fermée au comptoir.
+    ///
+    /// La vue entière est jouée comme on s'en sert : des clics un peu
+    /// partout (les portes comprises), la molette dans les deux sens, à
+    /// deux formes d'écran.
+    #[test]
+    fn the_explorer_survives_switching_axes_and_scrolling() {
+        let (mut s, _sw) = scratch_session("explorer");
+        let config = Config::default();
+        for (w, h, scale) in [(1024.0, 700.0, 1.6), (1280.0, 800.0, 1.0)] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            for axis in 0..14 {
+                s.explorer_axis = axis;
+                for frame in 0..24 {
+                    let x = (frame as f32 * 37.0) % w;
+                    let y = (frame as f32 * 53.0) % h;
+                    let mut input = egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(w, h),
+                        )),
+                        ..Default::default()
+                    };
+                    input
+                        .events
+                        .push(egui::Event::PointerMoved(egui::pos2(x, y)));
+                    if frame % 3 == 0 {
+                        input.events.push(egui::Event::MouseWheel {
+                            unit: egui::MouseWheelUnit::Point,
+                            delta: egui::vec2(0.0, if frame < 12 { -900.0 } else { 700.0 }),
+                            modifiers: Default::default(),
+                        });
+                    }
+                    if frame % 5 == 0 {
+                        for pressed in [true, false] {
+                            input.events.push(egui::Event::PointerButton {
+                                pos: egui::pos2(x, y),
+                                button: egui::PointerButton::Primary,
+                                pressed,
+                                modifiers: Default::default(),
+                            });
+                        }
+                    }
+                    s.view = super::MainView::Explorer;
+                    // L'axe que l'image lit en entrant : un clic pendant
+                    // l'image ne compte qu'à la suivante.
+                    let shown = s.explorer_axis;
+                    let _ = ctx.run(input, |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            App::explorer_view(ui, &mut s, &config);
+                        });
+                    });
+                    // Et ce qui est en cache est bien le tableau de
+                    // l'axe montré, pas celui d'avant le clic.
+                    if s.view != super::MainView::Explorer {
+                        continue;
+                    }
+                    let organs: Vec<_> = crate::facets::Organ::ALL
+                        .iter()
+                        .copied()
+                        .filter(|o| crate::facets::coverage(*o) > 0)
+                        .collect();
+                    let cached: Vec<usize> = s
+                        .explorer_table
+                        .sections
+                        .iter()
+                        .map(|sec| sec.rows.len())
+                        .collect();
+                    let want: Vec<usize> = match shown.checked_sub(1).and_then(|i| organs.get(i)) {
+                        None => vec![crate::facets::by_half_life_desc().len()],
+                        Some(o) => [crate::facets::Effect::Altere, crate::facets::Effect::Traite]
+                            .into_iter()
+                            .map(|e| crate::facets::on_organ(*o, e).len())
+                            .collect(),
+                    };
+                    assert_eq!(cached, want, "axe {shown} : tableau d'un autre axe");
+                }
+            }
         }
     }
 }
