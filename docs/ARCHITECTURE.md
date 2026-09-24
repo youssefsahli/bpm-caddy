@@ -2632,7 +2632,7 @@ frame (`#set page`, `#set text`, the `#let sec` helper) plus one
 edits, and a body whose structure is computed from a file cannot be
 re-columned from a template.
 
-## L'aide est un volet, et ce qu'elle énumère est lu
+## L'aide : un volet, et des listes lues dans le code
 
 `assets/aide.md` is the prose — French, markdown, cut at its
 first-level headings by `help_sections()` (memoised in a `OnceLock`: the

@@ -731,7 +731,7 @@ mod tests {
         activity.till_expected_evenings = 0;
         activity.till_gap_cents = None;
         let text = render(&head, &activity, &access, &conformity);
-        assert!(text.contains("il n'y a pas d'écart à dire"), "{text}");
+        assert!(text.contains("pas d'écart calculé"), "{text}");
         assert!(!text.contains("Écart cumulé"));
     }
 

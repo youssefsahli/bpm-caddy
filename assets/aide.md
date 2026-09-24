@@ -1,1127 +1,1007 @@
 # BPM-Caddy
 
-Le suivi des entretiens pharmaceutiques au comptoir : les dossiers, les
-actes, l'agenda de l'équipe, le registre des stupéfiants, la caisse — et
-ce qui s'imprime au nom de l'officine.
+Suivi des entretiens pharmaceutiques au comptoir : dossiers, actes,
+agenda de l'équipe, registre des stupéfiants, caisse, et documents
+imprimés au nom de l'officine.
 
-Tout est local. La base est chiffrée et ne sort pas du poste ; rien n'y
-est envoyé nulle part. L'application ne fait que **deux** requêtes
-réseau, et aucune ne part toute seule : la recherche d'une mise à jour,
-et la mise à jour de l'annuaire des prescripteurs — cette dernière
-seulement si l'officine a écrit une adresse, sans quoi le bouton
-n'existe pas. Les deux vont chercher, aucune n'envoie.
+Données locales. La base est chiffrée et reste sur le poste. L'application
+n'émet que **deux** requêtes réseau, toutes deux à la demande : la
+recherche d'une mise à jour, et la mise à jour de l'annuaire des
+prescripteurs — uniquement si l'officine a renseigné une adresse ; sinon
+le bouton n'apparaît pas. Les deux téléchargent, aucune n'envoie de
+données.
 
-# Le plan de travail
+# Plan de travail
 
 Trois volets autour d'un cahier d'onglets.
 
 - À gauche, la navigation : le mois, les prochains rendez-vous, la liste
-  qu'on cherche.
+  en cours de recherche.
 - Au centre, la vue ouverte. Les onglets du haut en gardent plusieurs
   ouvertes à la fois.
-- À droite, ce volet-ci : les notes d'équipe, le carnet du jour, les
-  notes personnelles, et cette aide.
+- À droite, ce volet : notes d'équipe, carnet du jour, notes
+  personnelles et aide.
 
-Les deux volets latéraux se ferment et se redimensionnent ; leur largeur
-et la vue ouverte sont retrouvées à la session suivante.
+Les volets latéraux se ferment et se redimensionnent ; leur largeur et
+la vue ouverte sont conservées d'une session à l'autre.
 
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
-clavier.
-C'est la liste à jour : elle est tenue par l'application elle-même, et
-non recopiée ici.
+clavier. Cette liste est tenue par l'application et toujours à jour.
 
-# Trouver quelque chose
+# Recherche
 
 « Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
 dossiers, les fiches, les tables de conversion, les préparations, les
 protocoles, les dispositifs, le registre, les carnets de suivi, les
-scripts, les outils de calcul et les textes imprimés. Tapez ce dont vous
-vous souvenez — le nom, un bout du nom, ou les initiales.
+scripts, les outils de calcul et les textes imprimés. Saisir le nom, un
+fragment du nom ou les initiales.
 
-Les outils se cherchent par **la question qu'ils répondent** et non par
-le nom de l'écran qui les porte : « enfant » ou « mg/kg » trouve la dose
-au poids, « DFG bas » ce que le rein change, « demi-vie » la
-décroissance.
+Les outils se trouvent **par leur usage** et non par le nom de leur
+écran : « enfant » ou « mg/kg » mène à la dose au poids, « DFG bas » à
+l'adaptation rénale, « demi-vie » à la décroissance.
 
-La recherche ignore la casse et les accents, et accepte les lettres dans
-l'ordre sans qu'elles se suivent : « jndp » retrouve Jean Dupont.
+La recherche ignore la casse et les accents, et accepte des lettres non
+contiguës dans l'ordre : « jndp » retrouve Jean Dupont.
 
-Dans les monographies, « Dans le texte… » cherche les **mots** des
-fiches et non leur titre : il rend chaque fiche qui dit le mot, avec la
-phrase qui le porte.
+Dans les monographies, « Dans le texte… » cherche dans le **contenu**
+des fiches et non dans leur titre : chaque fiche trouvée s'affiche avec
+la phrase qui contient le terme.
 
-**Une monographie se lit de trois façons**, au choix dans Options ›
-Interface : « Feuille » la pose sur du papier au milieu du volet — ce
-qu'on imprimerait ; « Dense » enlève la feuille et les marges, et on en
-voit deux fois plus d'un coup d'œil ; « Lecture » resserre la colonne et
-met de l'air autour, pour une fiche qu'on lit d'un bout à l'autre.
-Aucune des trois ne change la taille des lettres : celle-là se règle une
-fois, à « Taille du texte », pour toute l'application.
+**Trois affichages de la monographie**, au choix dans Options ›
+Interface : « Feuille » présente la fiche comme une page imprimée ;
+« Dense » supprime la feuille et les marges pour afficher davantage ;
+« Lecture » resserre la colonne pour une lecture suivie. Aucun ne
+modifie la taille du texte, réglée une fois pour toute l'application à
+« Taille du texte ».
 
-# Le dossier
+# Dossier patient
 
 Le bandeau porte l'identité et les traitements ; en dessous, les actes,
 le journal, la biologie, les vaccins et les pièces scannées.
 
-Les dates s'écrivent court : `230826` ou `2308` suffisent, et la case
-affiche `23/08/2026`. Les heures aussi : `9`, `930`, `9h30`.
+Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Des
+heures : `9`, `930`, `9h30`.
 
-Ce qui est partagé entre les postes — l'identité, les états d'acte, les
-rendez-vous — est écrit contre ce que l'écran affichait. Si un autre
-poste a modifié la même ligne entre-temps, l'écriture est refusée et
-l'écran se recharge plutôt que d'écraser le travail de quelqu'un.
+Les données partagées entre postes — identité, états d'acte,
+rendez-vous — sont écrites par comparaison avec la valeur affichée. Si
+un autre poste a modifié la même ligne entre-temps, l'écriture est
+refusée et l'écran se recharge, sans écraser la saisie de l'autre poste.
 
 ## Lecture d'ordonnance
 
-Sous la biologie, six lectures de la même ordonnance : l'interprétation
-des résultats, ce qui n'a pas été demandé depuis trop longtemps, ce que
-la clairance du jour change, ce que la grossesse et l'allaitement
-changent, ce que l'âge du dossier change, et les croisements sur les
+Sous la biologie, six lectures de la même ordonnance : interprétation
+des résultats, surveillance biologique en retard, adaptation à la
+clairance, grossesse et allaitement, sujet âgé, et interactions sur les
 cytochromes.
 
-Celle de l'âge est la seule dont le chiffre soit **déjà au dossier** :
-la date de naissance y est depuis la création de la fiche, rien n'est à
-taper, et c'est pour cela que personne ne la regarde. Le rein change la
-dose, l'âge change le choix — les lignes viennent de la liste française
-de Laroche, des critères STOPP/START et de ceux de Beers, et chacune
-nomme deux choses : ce que l'âge fait courir, et ce qu'on met à la
-place. Un « non » sans alternative laisse le problème entier. Rien ne
-s'arrête d'un coup : arrêter brutalement un psychotrope chez un sujet
-âgé expose davantage que de le poursuivre, et le remplacement se prépare
-avec le prescripteur.
+La lecture du sujet âgé est la seule dont la donnée est **déjà au
+dossier** : la date de naissance, saisie à la création. Le rein modifie
+la dose, l'âge modifie le choix. Les lignes viennent de la liste
+française de Laroche, des critères STOPP/START et des critères de Beers ;
+chacune indique le risque et l'alternative. Aucun arrêt brutal : l'arrêt
+d'un psychotrope chez le sujet âgé expose davantage que sa poursuite, et
+le remplacement se prépare avec le prescripteur.
 
-**Une forme locale n'est pas lue comme la voie générale.** Un collyre,
-une pommade, un gel ou une pulvérisation nasale ne reçoivent ni palier
-rénal, ni niveau de grossesse, ni demande d'examen : ces tables sont
-rangées par molécule, et la même molécule ne fait pas la même chose
-selon la voie. Un collyre à la ciclosporine ne croise rien, un gel au
-lithium ne demande pas de lithiémie. Ce qui vaut pour la voie locale
-reste écrit sur la fiche du produit, qui est l'endroit où le lire.
+**Une forme locale n'est pas traitée comme la voie générale.** Collyres,
+pommades, gels et pulvérisations nasales ne reçoivent ni palier rénal,
+ni niveau de grossesse, ni demande d'examen : les tables sont indexées
+par molécule, et une même molécule n'a pas les mêmes effets selon la
+voie. La ciclosporine en collyre ne génère aucune interaction ; le
+lithium en gel ne demande pas de lithiémie. Les précautions de la voie
+locale figurent sur la fiche du produit.
 
-Le dernier répond à « ces deux lignes se rencontrent-elles sur une
-enzyme ? ». Il **ne connaît que sept cytochromes** : ni la glycoprotéine
-P, ni les transporteurs hépatiques, ni les additions d'effets — deux
-sédatifs ne se rencontrent sur aucune enzyme et s'additionnent quand
-même. Une ordonnance sans croisement n'est pas une ordonnance sans
-interaction, et les lignes que la table ne connaît pas sont **nommées**
-plutôt que passées sous silence.
+La dernière lecture recherche les interactions par voie enzymatique.
+Elle **ne connaît que sept cytochromes** : ni la glycoprotéine P, ni les
+transporteurs hépatiques, ni les effets additifs — deux sédatifs
+n'interagissent sur aucune enzyme et leurs effets s'additionnent. Une
+absence d'interaction enzymatique n'est pas une absence d'interaction ;
+les lignes absentes de la table sont **listées**.
 
-Une prodrogue s'y lit à l'envers, et c'est écrit sur la ligne : freiner
-l'enzyme qui fabrique le métabolite actif du clopidogrel, de la codéine,
-du tramadol, du losartan ou du tamoxifène ne les fait pas s'accumuler,
-cela supprime leur effet.
+Une prodrogue s'y lit à l'envers, et la ligne le précise : inhiber
+l'enzyme qui produit le métabolite actif du clopidogrel, de la codéine,
+du tramadol, du losartan ou du tamoxifène ne les fait pas s'accumuler :
+leur effet est supprimé.
 
-Trois réponses et non deux. Une ligne peut croiser, être **sans voie
-connue** — la table la connaît et elle ne passe par aucune des enzymes
-suivies, ce qui est la réponse qu'on cherche en se demandant par quoi
-remplacer un traitement —, ou être **inconnue de la table**, ce qui
-n'est pas la même chose et ne l'innocente pas.
+Trois réponses possibles : interaction, **sans voie connue** (molécule
+présente dans la table, métabolisée par aucune des enzymes suivies —
+critère utile pour choisir un traitement de remplacement), ou **absente
+de la table**, ce qui ne permet aucune conclusion.
 
-## La fiche de traitement
+## Fiche de traitement
 
-« Fiche traitement… », en haut du dossier, imprime la feuille que le
-patient emporte quand son ordonnance change. Elle répond dans l'ordre
-aux quatre questions qu'on se pose sur le trottoir en sortant.
+« Fiche traitement… », en haut du dossier, imprime la fiche remise au
+patient lors d'un changement d'ordonnance. Trois parties.
 
-**Les prises de la journée.** Une grille de quatre moments — matin, midi,
-soir, coucher — lue sur la posologie que le dossier retient pour **ce**
-patient. Un chiffre quand l'ordonnance donne la quantité, une pastille
-quand elle donne le moment sans le nombre : la feuille n'invente pas un
-comprimé que personne n'a prescrit.
+**Plan de prise.** Une grille de quatre moments — matin, midi, soir,
+coucher — établie à partir de la posologie retenue au dossier pour
+**ce** patient. Un chiffre quand l'ordonnance précise la quantité, une
+pastille quand elle précise le moment sans la quantité : la fiche
+n'ajoute aucune unité non prescrite.
 
-Une posologie que la grille ne sait pas lire garde ses quatre colonnes
-en une seule case et dit sa phrase : quatre cases blanches se liraient
-« rien à prendre ». Un « si besoin » sort de la grille avec sa
-condition — un pilulier dit **quand** prendre, et y déposer un antalgique
-à la demande le transforme en prise systématique. Une prise
-hebdomadaire en sort aussi, en toutes lettres : une croix dans la
-colonne « matin » d'une grille dont l'en-tête est une journée se lit
-« tous les matins », et le méthotrexate est hebdomadaire.
+Une posologie non interprétée occupe une seule case sur les quatre
+colonnes et est imprimée telle quelle : quatre cases vides se liraient
+« rien à prendre ». Une prise « si besoin » est sortie de la grille avec
+sa condition, pour ne pas devenir systématique au pilulier. Une prise
+hebdomadaire est également sortie de la grille et écrite en toutes
+lettres : le méthotrexate est hebdomadaire.
 
-**Le renouvellement.** La délivrance en cours sur le total, la période
-que couvre la boîte du jour, le jour où l'ordonnance est épuisée, et la
-ligne qui compte : le jour avant lequel il faut avoir **vu** le
-prescripteur — quelques jours plus tôt, parce qu'un rendez-vous ne se
-prend pas le matin pour le soir. Le délai et la façon de dessiner
-l'avancement — pastilles, jauge, dates, ou la phrase seule — se règlent
-dans Options › Règles.
+**Renouvellement.** Le rang de la délivrance sur le total, la période
+couverte par la délivrance en cours, la date de fin de l'ordonnance, et
+la date limite de consultation du prescripteur, fixée quelques jours
+avant l'échéance pour laisser le temps d'obtenir un rendez-vous. Ce
+délai et l'affichage de l'avancement — pastilles, jauge, dates ou texte
+seul — se règlent dans Options › Règles.
 
-Le rang de la délivrance se **compte**, il ne se déduit pas du
-calendrier : un patient qui revient trois semaines en retard en est à sa
-deuxième délivrance, tard, et non à sa quatrième. Il se note dans le
-dossier, sur la puce du traitement, avec le jour de l'ordonnance, la
-durée qu'une délivrance couvre et le nombre de renouvellements. Rien
-n'est obligatoire : une ligne dont rien n'est noté imprime qu'elle ne
-l'est pas, ce qui est une information.
+Le rang de la délivrance est **saisi**, non déduit du calendrier : un
+patient qui revient avec trois semaines de retard en est à sa deuxième
+délivrance, et non à sa quatrième. Il se note sur la puce du traitement,
+avec la date de l'ordonnance, la durée couverte par délivrance et le
+nombre de renouvellements. Aucun champ n'est obligatoire : une ligne non
+renseignée l'indique à l'impression.
 
-**Le détail par médicament.** Indication, posologie, conseils, conduite
-en cas d'oubli, et dans un cadre à part les signes d'alerte. Tout vient
-des fiches du référentiel, que l'équipe corrige là où elles sont : il
-n'y a pas de seconde table de conseils à tenir à jour.
+**Détail par médicament.** Indication, posologie, conseils, conduite en
+cas d'oubli et, dans un cadre distinct, signes d'alerte. Le contenu vient
+des fiches du référentiel, corrigées par l'équipe à la source : il n'y a
+pas de seconde table de conseils.
 
-## Peut-on écraser ?
+## Écrasement des formes orales
 
-Le bouton « Écraser ? » du dossier imprime une feuille pour l'EHPAD ou
-l'infirmière : toute l'ordonnance, ligne par ligne, la conduite pour
-chaque forme et l'alternative quand il y en a une.
+Le bouton « Écrasement » du dossier imprime une fiche pour l'EHPAD ou
+l'infirmier : toute l'ordonnance, ligne par ligne, la conduite pour
+chaque forme et l'alternative lorsqu'elle existe.
 
-**Le silence n'est pas une permission.** Un produit que la table ne
-connaît pas reçoit « à vérifier », et jamais une ligne absente : une
-feuille qui ne montrerait que les interdits se lirait « tout le reste,
-oui ».
+**L'absence de donnée n'est pas une autorisation.** Un produit absent de
+la table reçoit « à vérifier », jamais une ligne vide : une fiche qui ne
+listerait que les interdictions se lirait « tout le reste est permis ».
 
-Trois réponses et non deux, pour ce que la table connaît : oui, non, et
-« oui en ouvrant la gélule » — les microgranules s'avalent et ne se
-croquent pas, c'est le cas le plus fréquent en gériatrie, et le réduire
-à « non » ferait changer une ordonnance qui n'en avait pas besoin.
+Trois réponses pour les produits connus : oui, non, et « oui, gélule
+ouverte » — les microgranules s'avalent sans être croqués. C'est le cas
+le plus fréquent en gériatrie ; le classer en « non » ferait modifier
+une ordonnance sans nécessité.
 
-**C'est la forme qui décide, pas la molécule.** La morphine s'écrase ou
-ne s'écrase pas selon la boîte : Moscontin jamais, Skenan en ouvrant la
-gélule. Une forme qui ne passe pas par la bouche — injectable,
-implantable — reçoit sa ligne elle aussi, pour dire qu'il n'y a rien à
-écraser.
+**La forme galénique décide, non la molécule.** Pour la morphine :
+Moscontin jamais, Skenan en ouvrant la gélule. Les formes non orales —
+injectables, implants — ont aussi leur ligne, qui indique l'absence
+d'objet.
 
-Chaque refus dit par quoi remplacer, ou dit qu'il n'y a rien et qu'il
-faut appeler le prescripteur. Certains refus protègent celui qui écrase
-plutôt que le patient : un cytotoxique, un tératogène — c'est la
-poussière qui est le danger, et la feuille le dit.
+Chaque refus indique l'alternative, ou l'absence d'alternative et le
+recours au prescripteur. Certains refus protègent le soignant :
+cytotoxiques et tératogènes exposent par la poussière, et la fiche le
+mentionne.
 
-## La conciliation de sortie
+## Conciliation de sortie
 
-L'onglet « Conciliation » compare l'ordonnance du dossier à celle qu'un
-patient rapporte de l'hôpital. On colle la liste de sortie ; chaque
-ligne est rapprochée d'une fiche, et l'écran dit ce qui a été arrêté,
-changé, ajouté ou remplacé.
+L'onglet « Conciliation » compare l'ordonnance du dossier à l'ordonnance
+de sortie d'hospitalisation. La liste de sortie est collée ; chaque
+ligne est rapprochée d'une fiche, et l'écran indique les arrêts,
+modifications, ajouts et remplacements.
 
-Six lectures, et la première passe avant les autres : la ligne que
-personne n'a pu rapprocher, parce que personne ne l'a vérifiée. Puis le
-remplacement dans la même classe — la divergence dont le patient repart
-avec les deux boîtes —, l'arrêt, le changement de posologie, l'ajout, et
-ce qui est reconduit sans changement.
+Six lectures, et la première passe avant les autres : la ligne non
+rapprochée, donc non vérifiée. Puis le remplacement dans la même classe
+— risque de doublon, le patient gardant les deux boîtes —, l'arrêt, la
+modification de posologie, l'ajout, et la reconduction à l'identique.
 
-La feuille s'imprime à l'attention du prescripteur, avec un cadre laissé
-pour sa réponse. Elle ne vaut pas avis médical, et elle l'écrit.
+La feuille s'imprime à l'attention du prescripteur, avec un cadre
+réservé à sa réponse. Elle ne constitue pas un avis médical et le
+mentionne.
 
-# Croiser une liste
+# Croisement
 
-L'écran « Croisement » pose les mêmes questions à une liste qu'on
-compose soi-même, sans dossier : depuis le dossier ouvert, ou en tapant
-des noms.
+L'écran « Croisement » applique les mêmes analyses à une liste libre,
+sans dossier : reprise du dossier ouvert ou saisie des noms.
 
 Neuf chapitres sur la même liste : les **interactions citées** par les
-monographies les unes sur les autres, sans rien de déduit ; les
-croisements sur les **cytochromes** ; la **demi-vie plasmatique**, soit
-le délai de retour d'une exposition déplacée ; la **revue
+monographies, sans déduction ; les interactions sur les
+**cytochromes** ; la **demi-vie plasmatique**, soit le délai de retour à
+l'état antérieur après une modification d'exposition ; la **revue
 d'ordonnance** — doublons, associations, cascades ; l'**adaptation
 rénale** à la clairance saisie ; l'**adaptation hépatique** au stade
-désigné ; le **retentissement de l'âge** ; la **grossesse et
-l'allaitement** ; et « peut-on écraser ? ».
+choisi ; le **sujet âgé** ; la **grossesse et l'allaitement** ; et
+l'**écrasement des formes orales**.
 
-**Le foie n'a pas de DFG.** Le rein donne un chiffre qui se lit sur un
-compte rendu ; le foie donne un stade — Child-Pugh A, B ou C — qu'un
-clinicien attribue à partir de cinq éléments dont deux ne sont pas des
-valeurs de laboratoire. Le panneau offre donc trois boutons et non un
-champ : un champ inviterait à écrire un chiffre, et il n'y en a pas.
+**Le foie n'a pas de DFG.** La fonction rénale s'exprime par un chiffre
+de laboratoire ; la fonction hépatique par un stade — Child-Pugh A, B ou
+C — attribué par le clinicien sur cinq critères, dont deux cliniques.
+Le panneau propose donc trois boutons et non un champ numérique.
 
-Trois réponses et non deux, comme pour les cytochromes. « On ne sait
-pas » est en gris ; « on sait, et il n'y a rien à changer » est écrit en
-toutes lettres. L'oxazépam est le cas qui le justifie : sa fiche dit
-qu'aucune adaptation n'est nécessaire en insuffisance légère à modérée,
-et c'est précisément la benzodiazépine qu'on cherche chez un
-cirrhotique. Une liste qui la tairait la rendrait aussi muette qu'un
-produit dont personne n'a rien écrit.
+Trois réponses, comme pour les cytochromes. « Non documenté » est en
+gris ; « aucune adaptation » est écrit en toutes lettres. Exemple :
+l'oxazépam ne demande aucune adaptation en insuffisance hépatique légère
+à modérée, et c'est la benzodiazépine de choix chez le cirrhotique ; le
+passer sous silence le confondrait avec un produit non documenté.
 
 Une hépatopathie évolutive n'est pas un stade : les statines y sont
-contre-indiquées quel que soit le Child-Pugh, et les ranger sous un
-palier dirait la chose à un stade en la taisant aux autres. Leur fiche
-le dit là où c'est vrai.
+contre-indiquées quel que soit le score de Child-Pugh. Cette
+contre-indication figure sur leur fiche, et non sous un palier.
 
-La carte dessine une corde par croisement, de la ligne qui agit vers
-celle qui bouge. Sa couleur est l'ordre de lecture, et non une gravité
-clinique : le logiciel ne sait ni la dose, ni la durée, ni le terrain.
+La carte trace un arc par interaction, du produit en cause vers le
+produit affecté. La couleur indique l'ordre de lecture, non une gravité
+clinique : dose, durée et terrain ne sont pas connus du logiciel.
 
-**Le temps compte autant que le sens.** « Exposition augmentée » ne dit
-pas la même chose d'un produit dont la demi-vie est de deux heures et
-d'un autre dont elle est de cinquante jours, et un effet peut durer bien
-après le produit — l'effet antiplaquettaire du clopidogrel tient sept à
-dix jours quand sa demi-vie est de six heures.
+**La durée compte autant que le sens.** « Exposition augmentée » n'a pas
+la même portée pour une demi-vie de deux heures que pour une demi-vie de
+cinquante jours, et un effet peut survivre au produit : l'effet
+antiagrégant du clopidogrel dure sept à dix jours pour une demi-vie de
+six heures.
 
-# Les calculs du comptoir
+# Calculs
 
-Ils se trouvent en tapant ce qu'on cherche dans « Aller à… » — « enfant »,
-« mg/kg », « clairance », « DFG bas », « demi-vie » —, depuis « Calculs »
-au-dessus des tables de conversion, et depuis le bouton « Calculs… »
-d'une fiche ouverte, qui les ouvre **avec cette fiche en main**.
+Accès par « Aller à… » — « enfant », « mg/kg », « clairance », « DFG
+bas », « demi-vie » —, par « Calculs » au-dessus des tables de
+conversion, et par le bouton « Calculs… » d'une fiche, qui les ouvre
+**pour cette fiche**.
 
-Une fiche en main change tout : sans elle les outils restent généraux et
-il faut déjà connaître ses chiffres, c'est-à-dire ne pas avoir besoin
-d'eux. Avec elle, deux d'entre eux répondent pour ce médicament-là.
+Sans fiche, les outils sont génériques. Avec une fiche, deux d'entre eux
+répondent pour ce médicament.
 
-**La clairance de la créatinine**, par Cockcroft et Gault, avec le stade
-qui lui correspond. C'est un estimateur sur le poids réel : chez
-l'obèse, l'œdémateux ou le dénutri il s'écarte, et le laboratoire donne
-le DFG estimé sur la formule en vigueur.
+**Clairance de la créatinine**, selon Cockcroft et Gault, avec le stade
+correspondant. Estimation sur le poids réel : elle s'écarte chez
+l'obèse, l'œdémateux ou le dénutri ; le laboratoire rend le DFG estimé
+selon la formule en vigueur.
 
-**La dose par kilo.** Un poids, des milligrammes par kilo, un nombre de
-prises. Et, lorsqu'une fiche est en main, **ce qu'elle écrit au
-poids** : ses lignes par indication d'abord, chacune sous son titre,
-puis ce que sa posologie ajoute — chaque dose avec son rythme et avec la
-phrase d'où elle vient. Un plafond (« sans dépasser… ») s'écrit comme
-tel, une association nomme la molécule de chaque chiffre, et une dose
-cumulée sur toute une cure n'est pas lue. Le rythme n'est pas un détail, c'est la moitié de la
-dose — « 15 mg/kg par prise toutes les 6 heures » et « 60 mg/kg par
-24 heures » sont le même traitement, et quatre fois l'un de l'autre. La
-phrase non plus : une même fiche écrit souvent cinquante par jour pour
-l'angine et quatre-vingts pour l'otite, et rien dans les nombres ne dit
-laquelle. Une fiche qui n'écrit pas de dose au poids ne s'en voit pas
-proposer : l'écran le dit, et c'est le signe qu'il y a une posologie à
-compléter.
+**Dose au poids.** Poids, milligrammes par kilo, nombre de prises. Avec
+une fiche, **les doses au poids qu'elle indique** : ses lignes par
+indication d'abord, chacune sous son titre, puis celles de la posologie
+générale — chaque dose avec son rythme et la phrase source. Un plafond
+(« sans dépasser… ») est affiché comme tel, une association précise la
+molécule de chaque chiffre, et une dose cumulée par cure n'est pas
+reprise. Le rythme fait partie de la dose : « 15 mg/kg par prise toutes
+les 6 heures » et « 60 mg/kg par 24 heures » décrivent le même
+traitement. L'indication aussi : une même fiche indique souvent
+50 mg/kg/j pour l'angine et 80 pour l'otite. Une fiche sans dose au
+poids n'en propose pas, et l'écran le signale : posologie à compléter.
 
-**Ce que le rein change**, pour la fiche en main et un DFG qu'on saisit —
-celui qu'on vient de calculer, d'un bouton. C'est la même table que le
-panneau « Rein » du dossier, lue sur une fiche plutôt que sur une
-ordonnance : la question « la metformine, à trente, on fait quoi » se
-pose souvent pour quelqu'un dont le dossier n'est pas ouvert. Le palier
-qui parle est le plus bas de ceux qui sont franchis, les seuils viennent
-des RCP, et la décision reste celle du prescripteur.
+**Adaptation rénale**, pour la fiche ouverte et un DFG saisi, ou repris
+du calcul précédent d'un bouton. Même table que le panneau « Rein » du
+dossier, appliquée à une fiche plutôt qu'à une ordonnance — utile
+lorsque le dossier du patient n'est pas ouvert. Le palier retenu est le
+plus bas des paliers franchis ; les seuils viennent des RCP ; la
+décision revient au prescripteur.
 
-**La décroissance et l'accumulation** : une demi-vie, un intervalle
-entre deux prises, et le temps qu'il faut pour que le produit ait quitté
-l'organisme. La demi-vie se reprend d'une fiche de la base.
+**Décroissance et accumulation** : demi-vie, intervalle entre deux
+prises, et délai d'élimination. La demi-vie peut être reprise d'une
+fiche de la base.
 
-# La carte du voisinage
+# La carte pharmacologique
 
-Depuis une fiche, « Voisinage… » ouvre la base **en image** : la fiche au
-milieu, ce qu'il y a autour, et un clic pour déplacer le milieu. La liste
-et la recherche répondent à « où est telle fiche » ; celle-ci répond à
-« qu'est-ce qu'il y a autour », qui est la question d'une rupture de
-stock, d'une contre-indication trouvée au comptoir, et de qui apprend une
-classe.
+Depuis une fiche, « Carte… » affiche les produits liés sous forme de
+graphe : la fiche au centre, les fiches liées autour ; un clic change le
+centre. Usages : rupture de stock, contre-indication, apprentissage
+d'une classe.
 
-Trois anneaux, du plus proche au plus lointain, et ce ne sont pas trois
-fois la même chose. **La molécule** : une autre spécialité de la même
-DCI — la question de la substitution, et le seul lien où les deux boîtes
-contiennent le même médicament. **La classe** : une autre molécule du
-même groupe, ce que demandent une rupture ou une intolérance ; le groupe
-est celui du référentiel et non le libellé écrit sur la fiche, si bien
-que « bisphosphonate » et « biphosphonate » sont bien le même anneau.
-**L'interaction** : une fiche que le centre rencontre, et le seul lien
-qui traverse toute la base. Trois sources le disent : ce que les deux
-monographies écrivent l'une de l'autre, la table des cytochromes, et la
-revue d'ordonnance — deux allongeurs du QT, deux sédatifs, un
-anticoagulant et un AINS ne se citent pas toujours et se rencontrent
-quand même.
+Trois anneaux, du plus proche au plus éloigné. **Molécule** : une autre
+spécialité de la même DCI — la substitution, seul lien entre deux
+produits de même principe actif. **Classe** : une autre molécule du même
+groupe, en cas de rupture ou d'intolérance ; le groupe est celui du
+référentiel et non le libellé de la fiche (« bisphosphonate » et
+« biphosphonate » forment un seul anneau). **Interaction** : une fiche
+qui interagit avec le centre, dans toute la base. Trois sources : les
+interactions citées par les deux monographies, la table des cytochromes,
+et la revue d'ordonnance — deux médicaments allongeant le QT, deux
+sédatifs, un anticoagulant et un AINS interagissent même lorsque les
+fiches ne se citent pas.
 
-**Le trait dit ce que la paire pèse.** Épais et rouge, ce qu'on regarde
-d'abord : une association que la fiche écrit « contre-indiquée », une
-règle d'alerte de la revue. Jamais une enzyme seule — la table des
-cytochromes range ses croisements dans un ordre de lecture et refuse
-d'en faire une gravité. Quand l'anneau est trop plein, il garde **ce qui
-pèse le plus, et une place par raison avant une seconde** : dix
-anticoagulants qui rencontrent un AINS par la même règle ne cachent pas
-le lithium, qui le rencontre par une autre. Le pied compte le reste. La
-petite fiche du survol dit **pourquoi ce trait**, raison par raison, la
-source nommée — et **survoler le trait lui-même** le dit aussi, sans
-viser le carré : le trait s'éclaire, les autres s'estompent. Sur la carte
-de l'ordonnance, survoler une corde dit les deux lignes et leurs raisons.
+**Épaisseur et couleur du trait selon la gravité.** Trait épais et rouge
+pour une association « contre-indiquée » dans la fiche ou une règle
+d'alerte de la revue. Jamais pour une interaction enzymatique seule : la
+table des cytochromes classe par ordre de lecture, non par gravité.
+Quand un anneau est saturé, il retient **les liens les plus graves, et
+un par motif avant un second** : dix anticoagulants liés à un AINS par
+la même règle ne masquent pas le lithium, lié par une autre. Le pied de
+la carte indique le nombre de liens non affichés. L'infobulle d'un
+produit indique **le motif du lien**, source citée ; le survol du trait
+lui-même l'affiche aussi et estompe les autres. Sur la carte de
+l'ordonnance, le survol d'un arc indique les deux lignes et les motifs.
 
-Ce que la fiche documente d'une toxicité ou d'une marge thérapeutique se
-lit dans la petite fiche qui s'ouvre au survol d'un carré — plus d'une
-fiche sur deux en a une, et une marque sur la moitié des carrés ne
-désignait rien. Une coche dit que le dossier ouvert **prend déjà** ce
-médicament — la réponse à la question qu'on se pose en cherchant une
-substitution. Sous la figure, la légende nomme chaque couleur, et une
-phrase dit ce que les anneaux n'ont pas pu prendre : un anneau coupé se
-dit, il ne se devine pas.
+L'infobulle d'un produit reprend aussi la toxicité ou la marge
+thérapeutique documentée par sa fiche. Une coche indique que le dossier
+ouvert **comporte déjà** ce médicament. Sous la figure, la légende
+nomme chaque couleur, et une ligne indique les produits non affichés
+faute de place.
 
-**Le substitut qui heurterait l'ordonnance.** Un dossier ouvert, un
-petit triangle rouge marque, sur les anneaux de la molécule et de la
-classe, le voisin qui rencontrerait une autre ligne de l'ordonnance s'il
-y remplaçait le centre — la question d'une rupture. Son survol dit avec
-quelle ligne et pourquoi.
+**Substitut en interaction avec l'ordonnance.** Avec un dossier ouvert,
+un triangle rouge marque, sur les anneaux Molécule et Classe, le produit
+qui interagirait avec une autre ligne de l'ordonnance s'il remplaçait le
+centre. Son infobulle indique la ligne et le motif.
 
-**Revenir d'un pas.** La carte se parcourt en cliquant de voisin en
-voisin ; la touche Retour arrière — ou le bouton « précédent » de la
-souris — ramène au centre d'avant, et ainsi de suite.
+**Retour.** La touche Retour arrière — ou le bouton « précédent » de la
+souris — revient au centre précédent, et ainsi de suite.
 
-**Masquer un anneau.** Un clic sur une clé de la légende — « même
-classe », « interaction » — masque son anneau, et sa place revient aux
-autres : sur un AINS, masquer la classe laisse l'anneau des interactions
-en montrer davantage. La pastille de la clé se vide, la phrase du pied
-dit ce qui est masqué, et un second clic le rend.
+**Masquer un anneau.** Un clic sur une entrée de la légende — « même
+classe », « interaction » — masque l'anneau et libère sa place pour les
+autres : sur un AINS, masquer la classe affiche davantage
+d'interactions. La pastille se vide, le pied de la carte indique
+l'anneau masqué, et un second clic le rétablit.
 
-**La carte de l'ordonnance.** Un dossier ouvert qui porte au moins deux
-lignes, et « Ordonnance » change de carte : chaque ligne sur un cercle,
-et une corde entre celles qui se rencontrent — les mêmes trois tables,
-les mêmes poids, les mêmes couleurs. Une règle qui nomme trois lignes,
-comme la triade diurétique-IEC-AINS, les relie toutes les trois. Le
-survol d'une ligne dit avec qui elle se rencontre et pourquoi. Une ligne
-qui ne rencontre rien est en gris, et nommée sous la carte : elle ne
-rencontre rien **dans ces tables**, ce qui n'est pas une absence
-d'interaction. Un clic sur une ligne ouvre **son** voisinage ;
-« Voisinage » revient à la fiche au centre.
+**Carte de l'ordonnance.** Avec un dossier ouvert d'au moins deux
+lignes, le mode « Ordonnance » dispose chaque ligne sur un cercle et
+trace un arc entre les lignes qui interagissent — mêmes tables, même
+gravité, mêmes couleurs. Une règle portant sur trois lignes, comme
+l'association diurétique-IEC-AINS, relie les trois. Le survol d'une
+ligne indique ses interactions et leurs motifs. Une ligne sans
+interaction est grisée et listée sous la carte : sans interaction **dans
+ces tables**, ce qui n'exclut pas une interaction. Un clic sur une ligne
+la met au centre de la carte ; le mode « Fiche » revient à la fiche au
+centre.
 
-**Se déplacer et grossir.** La figure se glisse à la souris et se
-grossit à la molette — autour du pointeur, si bien que ce qu'on regarde
-reste où on le regarde. Au clavier, `+` et `−` font la même chose et `0`
-remet la carte à sa taille et à sa place ; les boutons `−` et `+` de la
-bande les doublent, un double-clic dans le vide la remet à plat, et le
-titre du cadre porte le grossissement dès qu'il n'est plus de cent pour
-cent — et combien de noms la place a refusés, qu'un survol fait lire.
+**Déplacement et zoom.** Glisser à la souris déplace la figure ; la
+molette zoome autour du pointeur. Au clavier, `+` et `−` zooment, `0`
+rétablit taille et position ; les boutons `−` et `+` de la barre font de
+même, et un double-clic dans le vide rétablit la vue. Le titre du cadre
+indique le facteur de zoom dès qu'il diffère de cent pour cent, et le
+nombre de noms non affichés, lisibles au survol.
 
-Le grossissement est le réglage entre **tout voir** et **tout lire**.
-Réduite, la carte prend davantage de voisins — jusqu'au plafond de
-lecture, qui ne bouge pas — au prix des noms, que la place ne peut plus
-tous écrire ; grossie, elle garde les siens et leur donne enfin de quoi
-s'écrire. Rien ne bouge en chemin : la place d'un voisin sur son anneau
-se compte sur tous ses candidats et non sur ceux qu'on en dessine, si
-bien qu'en ouvrir un de plus le fait venir **se poser dans un trou**
-sans déplacer les autres.
+Le zoom arbitre entre **vue d'ensemble** et **lisibilité**. Réduite, la
+carte affiche davantage de produits — dans la limite d'un plafond fixe —
+au détriment des noms ; agrandie, elle affiche les noms. La position
+d'un produit sur son anneau est calculée sur l'ensemble des candidats :
+un produit supplémentaire prend une place libre sans déplacer les
+autres.
 
-**Passer sur un nœud** ouvre cette petite fiche : le nom, la DCI, la
-classe, à quoi le médicament sert, ce que sa fiche écrit d'une toxicité,
-et son statut lorsqu'il dit autre chose que « commercialisé » — une
-rupture arrête une substitution avant tout le reste. Le rayon du nœud
-qu'on désigne se lit seul, les autres s'estompent sans disparaître.
+**Survol d'un produit** : nom, DCI, classe, indication, toxicité
+documentée, et statut s'il diffère de « commercialisé » — une rupture
+exclut une substitution. Le rayon du produit survolé reste net, les
+autres s'estompent.
 
-Elle dit aussi **ce que le trait veut dire**. La couleur donne la nature
-du lien ; ce qu'il implique se lit dessous, en pastilles : ce sont les
-mêmes que celles de la barre du comptoir, les mêmes tables et les mêmes
-réserves au survol. Un voisin se lit **contre le centre** — deux AINS
-font un doublon, deux molécules se croisent sur un cytochrome, et celui
-qu'on allait proposer demande peut-être une adaptation au rein que
-l'autre ne demandait pas. Le moyeu, lui, n'est relié à rien sur la
-figure : il se lit contre l'ordonnance du dossier ouvert.
+L'infobulle détaille aussi **la portée du lien**. La couleur donne la
+nature du lien ; les conséquences s'affichent dessous en pastilles,
+identiques à celles de la barre du comptoir, mêmes tables et mêmes
+réserves. Un produit lié s'évalue **par rapport au centre** : deux AINS
+forment un doublon, deux molécules interagissent sur un cytochrome, un
+substitut peut demander une adaptation rénale que le produit initial ne
+demandait pas. Le centre n'est relié à rien sur la figure : il s'évalue
+par rapport à l'ordonnance du dossier ouvert.
 
-# La barre au-dessus des autres fenêtres
+# Barre de comptoir
 
-`F9` réduit la fenêtre à une barre de quelques centaines de pixels,
-posée au-dessus des autres applications — c'est la forme qu'on garde
-dans un coin d'écran pendant qu'on travaille ailleurs. Elle n'a **pas
-de bordure** : on la déplace en la prenant par sa tête, et le menu à
-côté d'« Agrandir » la pose d'un coup — dans un coin, en bandeau sur
-toute la largeur en bas de l'écran, en colonne à droite, ou libre. On tape un nom
-ou une molécule ; les flèches parcourent les fiches qui répondent,
-Entrée ouvre celle qu'on lit, Échap efface la question puis, sur une
-question déjà vide, rend la fenêtre. Le champ garde le foyer, si bien
-qu'une douchette — qui est un clavier — tape dedans sans rien installer.
-**Alt et 1 à 5** appellent les cinq gestes du bas, dans leur ordre : la
-barre se conduit alors entièrement au clavier, ce qui est la façon dont
-on s'en sert pendant qu'on tient une boîte de l'autre main.
+`F9` réduit la fenêtre à une barre compacte, affichée au premier plan
+des autres applications, à garder dans un coin d'écran. Elle est **sans
+bordure** : elle se déplace par son en-tête, et le menu voisin
+d'« Agrandir » la positionne — dans un coin, en bandeau en bas de
+l'écran, en colonne à droite, ou librement. Saisir un nom ou une
+molécule ; les flèches parcourent les résultats, Entrée ouvre la fiche
+sélectionnée, Échap efface la saisie puis, sur une saisie vide, rétablit
+la fenêtre. Le champ garde le focus : une douchette, qui émule un
+clavier, y saisit directement. **Alt et 1 à 5** déclenchent les cinq
+actions du bas, dans l'ordre : la barre s'utilise entièrement au
+clavier, une boîte dans l'autre main.
 
-**Les puces portent une forme autant qu'une couleur** : un cercle barré
-pour ce qu'on ne fait pas, un triangle pour ce sur quoi on s'arrête, une
-coche pour ce que la table autorise, trois points quand il manque un
-chiffre pour conclure. On les reconnaît sans les lire, et sans voir la
-couleur. L'onglet « Signaux » porte, lui, la couleur de ce qui presse le
-plus : depuis « Conseils » ou « Posologie », on voit qu'il y a quelque
-chose à lire une page plus loin.
+**Pastilles à forme et couleur** : cercle barré pour une
+contre-indication, triangle pour une précaution, coche pour une
+utilisation autorisée par la table, points de suspension quand une
+donnée manque. Elles se lisent sans le texte et sans la couleur.
+L'onglet « Signaux » prend la couleur de l'alerte la plus grave : visible
+depuis « Conseils » ou « Posologie ».
 
-**Cinq pages, et les flèches gauche et droite pour tourner.** Haut et
-bas parcourent les fiches qui répondent, gauche et droite ce que la
-fiche lue dit : deux questions perpendiculaires, deux paires de flèches.
-« Signaux » porte les lectures des tables ; « Posologie » d'abord **la
-posologie du dossier, pour cette personne-là** — la fiche dit la
-référence, le dossier dit le sien —, puis la prose de la fiche, **ses
-lignes indication par indication** — parce que « combien » n'a pas de
-réponse sans « pour quoi » — et les formes et dosages disponibles, qu'on
-demande au comptoir aussi souvent que la dose — et **une courbe** : le profil
-d'action pour une insuline — « début 15 min, pic 1 à 3 h, durée 5 h »
-demande de se représenter une forme, et la forme se voit, le pic de
-l'après-midi d'une NPH se lisant d'un coup d'œil à côté de la ligne
-plate d'une glargine — et pour tout le reste la décroissance
-plasmatique, avec ce qu'il en reste à vingt-quatre heures. « Combien de
-temps ça reste » est une question de comptoir, et « demi-vie ≈ 12
-heures » demande une arithmétique dont la page dispense ; « Conseils »
-les explications à donner à la personne, la conduite en cas de prise
-oubliée, **les signes d'alerte en entier** — la page des signaux n'en montre que la première
-phrase, et « ce qui doit vous faire consulter » se dit en entier — et ce
-que l'équipe a écrit elle-même sur la fiche. Une page qui n'a rien à
-dire n'est pas offerte, et quand une seule parle il n'y a pas de bande
-d'onglets.
+**Cinq pages, parcourues avec les flèches gauche et droite.** Haut et
+bas parcourent les résultats, gauche et droite les pages de la fiche.
+« Signaux » regroupe les lectures des tables. « Posologie » affiche
+d'abord **la posologie du dossier, propre au patient** — la fiche donne
+la référence, le dossier la prescription —, puis la posologie de la
+fiche, **par indication**, les formes et dosages disponibles, et **une
+courbe** : le profil d'action pour une insuline (le pic de l'après-midi
+d'une NPH à côté du profil plat d'une glargine), et pour les autres
+produits la décroissance plasmatique avec la fraction restante à
+vingt-quatre heures. « Conseils » affiche les conseils au patient, la
+conduite en cas d'oubli, **les signes d'alerte en entier** — la page
+« Signaux » n'en affiche que la première phrase — et les notes de
+l'équipe sur la fiche. Une page vide n'est pas proposée ; avec une seule
+page, la bande d'onglets disparaît.
 
-**« Précautions » s'ouvre sur une rangée d'organes** : ce que ce produit
-peut abîmer, du plus grave au moins, en couleur. Sur la Cordarone,
-thyroïde et poumon en rouge, puis cœur, œil, foie, peau, puis le
-neurologique — le profil de l'amiodarone en un coup d'œil, là où trois
-paragraphes le disent en désordre. Le degré et la clause sont au survol.
-La rangée ne nomme que ce que le produit **abîme** : l'amiodarone traite
-le cœur et l'altère, et mêler les deux sens ferait paraître « Cœur »
-deux fois en sens contraires — le « traite » passerait même devant les
-deux atteintes qui font arrêter ce traitement-là. Un organe absent n'est
-pas une innocuité : la prose entière est juste dessous.
+**« Précautions » s'ouvre sur une rangée d'organes** : les organes
+exposés à une toxicité, du plus grave au moins grave, en couleur. Pour
+la Cordarone : thyroïde et poumon en rouge, puis cœur, œil, foie, peau,
+système nerveux — le profil de l'amiodarone d'un coup d'œil. Degré et
+source au survol. La rangée ne retient que la **toxicité** :
+l'amiodarone traite le cœur et l'altère, et mêler indication et
+toxicité afficherait deux fois « Cœur ». Un organe absent ne signifie
+pas une innocuité : le texte complet suit.
 
-Vient ensuite cette prose — ce qui contre-indique, ce qui arrive, ce
-qu'on surveille —, puis **la marge thérapeutique et l'antidote**, les
-deux choses qu'on cherche quand la question cesse d'être « est-ce que je
-délivre » pour devenir « qu'est-ce qui se passe si ». Et pour finir
-**les sources de la fiche** : cette page porte ses affirmations les plus
-fortes, et on les répète au comptoir.
+Viennent ensuite les contre-indications, effets indésirables et
+surveillance, puis **la marge thérapeutique et l'antidote**, pour la
+conduite en cas de surdosage, et enfin **les sources de la fiche**.
 
-La cinquième, « Dossier », est la seule qui ne parle pas de la fiche
-cherchée : c'est l'ordonnance ouverte, ligne par ligne **avec ce que le
-dossier retient de chacune** — « Zeclar · 500 mg matin et soir, 7
-jours », et non « Zeclar » —, et **une ligne cliquée devient la
-question**. Un liseré signale les lignes
-qu'une table demande de vérifier : le tri du comptoir, avant de les
-ouvrir une par une. Il ne marque que cela : « à vérifier » et
-« sans donnée » sont des réponses, pas des arrêts, et les marquer
-marquerait toute l'ordonnance. C'est le geste de la révision au
-comptoir — descendre une ordonnance en posant la même question à chaque
-ligne —, qui demandait jusqu'ici de retaper huit noms dont on ne se
-rappelle ni l'orthographe ni le dosage. Sans dossier ouvert, la page
-n'est pas là.
+La cinquième page, « Dossier », porte sur l'ordonnance ouverte et non
+sur la fiche recherchée : chaque ligne **avec la posologie du dossier**
+— « Zeclar · 500 mg matin et soir, 7 jours » —, et **un clic sur une
+ligne en fait la recherche en cours**. Un liseré signale les lignes
+qu'une table demande de vérifier, pour trier avant de les ouvrir. Seules
+ces lignes sont marquées : « à vérifier » et « sans donnée » sont des
+réponses, non des alertes, et les marquer marquerait toute l'ordonnance.
+Cette page permet la revue d'ordonnance au comptoir sans ressaisir les
+noms. Sans dossier ouvert, elle n'apparaît pas.
 
-Elle **rapporte ce que les tables disent**, en pastilles, et ne conclut
-rien à leur place : chaque pastille cite le mot de sa table, et son
-survol donne la portée du module avant la conduite. Dix lectures : ce
-que les fiches du dossier disent de celle-ci, ce que la revue
-d'ordonnance en dit une fois qu'on l'ajoute aux autres, **si le dossier
-porte déjà cette molécule sous un autre nom**, ce que les valeurs de
-biologie du dossier veulent dire sous ce traitement-là, ce que ce
-traitement demande qu'on mesure et depuis combien de temps personne ne
-l'a demandé, les cytochromes, « peut-on écraser ? », la grossesse et l'allaitement,
-ce que la clairance du dossier change, et ce que l'âge change — l'âge est au dossier depuis le jour où la fiche a été créée, et
-c'est bien pour cela que personne ne le regarde.
+La barre **reprend les réponses des tables**, en pastilles, sans
+conclure : chaque pastille cite le terme de sa table, et son infobulle
+précise la portée du module avant la conduite. Dix lectures : ce sont
+les interactions citées par les fiches du dossier, la revue d'ordonnance
+avec ce produit ajouté, **la même molécule déjà présente au dossier sous
+un autre nom**, l'interprétation de la biologie du dossier sous ce
+traitement, la surveillance biologique demandée et la date du dernier
+dosage, les cytochromes, l'écrasement, la grossesse et l'allaitement,
+l'adaptation à la clairance du dossier, et le sujet âgé, à partir de la
+date de naissance du dossier.
 
-**Ce qui arrête passe devant.** Les pastilles descendent du plus
-pressant au plus calme, et à ton égal l'ordre des tables ne bouge pas :
-sur une barre où le pli tombe après la troisième, une alerte rangée
-quatrième est une alerte manquée.
+**Alertes en premier.** Les pastilles sont classées de la plus grave à
+la moins grave ; à gravité égale, l'ordre des tables est fixe. Sur une
+barre repliée après la troisième pastille, une alerte en quatrième
+position serait manquée.
 
-Une table qui n'a rien à dire ne dessine pas de pastille : une rangée de
-« à vérifier » ne signale rien et apprend à ne plus regarder la bande.
-Quand elles se taisent toutes, une phrase le dit — **le silence n'est
-pas une autorisation**.
+Une table sans réponse n'affiche pas de pastille : une rangée de « à
+vérifier » ne signale rien. Quand aucune table ne répond, une ligne
+l'indique — **l'absence de donnée n'est pas une autorisation**.
 
-Le foie n'y est pas, et c'est voulu. Il demande un stade de Child-Pugh,
-qu'aucun dossier ne porte et ne portera : la pastille dirait « dépend du
-stade » sur une carte de deux, pour toujours. Le stade se désigne au
-croisement, où trois boutons l'attendent.
+Le foie n'y figure pas : il demande un stade de Child-Pugh, qu'aucun
+dossier ne porte. Le stade se choisit au croisement.
 
-Cliquer une pastille ouvre le croisement chargé de l'ordonnance du
-dossier **et** de la fiche cherchée, **sur le chapitre que la pastille
-nomme** : c'est la question du téléphone passée entière, et non un écran
-vide à recomposer ni un écran de neuf chapitres ouvert au mauvais. La
-surveillance fait exception et mène à l'onglet « À surveiller » du
-dossier : elle lit les **dates** de celui-ci, et « depuis combien de
-temps personne n'a demandé cet examen » n'a pas de sens sur une liste
-composée à la main.
+Un clic sur une pastille ouvre le croisement avec l'ordonnance du
+dossier **et** la fiche recherchée, **au chapitre de la pastille**.
+Exception : la surveillance ouvre l'onglet « À surveiller » du dossier,
+car elle lit les **dates** des résultats, absentes d'une liste libre.
 
-« Copier » met la page lue dans le presse-papier, pour la coller dans le
-logiciel de comptoir : une posologie ou une conduite en cas d'oubli
-finit souvent dans le commentaire d'une ligne, et la retaper depuis
-l'écran d'à côté est l'occasion de se tromper sur le chiffre qu'on vient
-de vérifier. Ce qui est copié est ce qui est lu, page comprise, le nom du
-produit en tête. La page « Dossier » fait exception et copie la fiche :
-une liste de traitements nominative sortie d'ici finirait collée dans un
-champ dont personne ne sait où il va.
+« Copier » place la page affichée dans le presse-papier, pour la coller
+dans le logiciel de dispensation (posologie ou conduite en cas d'oubli
+dans le commentaire d'une ligne) sans risque d'erreur de recopie. Le
+texte copié est celui de la page affichée, précédé du nom du produit.
+Sur la page « Dossier », la copie porte sur la fiche : une liste de
+traitements nominative ne sort pas de l'application.
 
-La tête porte le nom du dossier ouvert **et les deux chiffres que les
-pastilles lisent** : l'âge et la clairance. Sans eux on lisait « Rein ·
-dépend du DFG » sans savoir si le dossier en portait un ; le chiffre
-absent se voit maintenant à sa place vide, ce qui est la réponse.
+L'en-tête porte le nom du dossier ouvert **et les deux valeurs lues par
+les pastilles** : âge et clairance. Une valeur absente apparaît comme
+telle.
 
-Et sur une question vide, la barre montre **les dernières fiches lues**.
-Au comptoir on compare deux produits — celui de l'ordonnance et celui
-que le médecin propose — et taper le second effaçait le premier : Échap
-efface la question, donc il ramène à cette rangée, et il devient un
-retour en arrière.
+Sur une saisie vide, la barre affiche **les dernières fiches
+consultées** : pour comparer deux produits, Échap efface la saisie et
+ramène à cette liste.
 
-**Et quand aucun nom ne répond, la prose répond.** Le champ cherche un
-nom et une molécule ; tapez « pamplemousse » et il n'en trouve aucun,
-alors que cent seize passages le nomment. La barre ouvre alors le texte
-des fiches — les treize champs **et les lignes de posologie**, où
-s'écrivent « à jeun », « à distance du fer » et le pamplemousse
-justement —, et chaque fiche arrive avec la phrase qui l'a fait
-répondre : sans elle on ne saurait ni laquelle porte le mot, ni ce
-qu'elle en dit. Tant qu'un nom répond, c'est le nom qui répond.
+**Recherche dans le texte en l'absence de nom.** Le champ cherche un nom
+ou une molécule ; « pamplemousse » ne correspond à aucun produit mais
+figure dans cent seize passages. La barre cherche alors dans le texte
+des fiches — les treize champs **et les lignes de posologie** (« à
+jeun », « à distance du fer », pamplemousse) — et affiche chaque fiche
+avec la phrase trouvée. Un nom trouvé reste prioritaire.
 
-Un code-barres n'est pas un nom qu'on n'aurait pas trouvé, et la barre
-le dit plutôt que de répondre « aucun résultat ». Aucune fiche ne porte
-de code : le seul lien entre un code et une boîte est celui qu'un humain
-a posé au registre des stupéfiants, en présentant la boîte.
+Un code-barres saisi est reconnu comme tel et signalé, plutôt que
+« aucun résultat ». Aucune fiche ne porte de code : le seul lien entre
+un code et un produit est celui enregistré au registre des stupéfiants,
+boîte présentée.
 
-**Mais la boîte, elle, parle.** Son DataMatrix porte son code, son lot
-et sa péremption, et ceux-là ne demandent la permission d'aucune table :
-la barre les écrit sous le code lu. Une péremption passée est dite en
-rouge — le jour est calculé, et une boîte marquée 09/2026 est bonne
-jusqu'au trente inclus, parce qu'une péremption est un mois. Aucun seuil
-ne décide au-delà : « il reste onze jours » est un fait, « c'est trop
-peu » dépend de la durée du traitement, et c'est le comptoir qui
-tranche. Un lot que rien n'a fermé, ou une lecture arrêtée sur un champ
-inconnu, sont signalés comme tels : un lot faux affiché comme sûr est
-pire que pas de lot du tout, car c'est celui-là qu'on recopie sur un
-rappel de lot.
+**Données du DataMatrix.** Code, lot et péremption sont affichés sous
+le code lu. Une péremption dépassée s'affiche en rouge ; une boîte
+marquée 09/2026 est valable jusqu'au 30 inclus. Aucun seuil au-delà :
+le nombre de jours restants est affiché, et l'appréciation revient au
+pharmacien selon la durée du traitement. Un lot non terminé ou une
+lecture interrompue sur un champ inconnu sont signalés : un lot erroné
+affiché comme sûr serait recopié lors d'un rappel de lot.
 
-Et si le registre a appris ce code — en présentant la boîte, ce qui est
-le seul lien code-produit de ce logiciel —, la barre nomme le produit
-suivi et « Délivrance » ouvre le registre **sur lui**. Sinon elle ouvre
-le registre où il s'ouvre : c'est là qu'on lui apprend le code, et ce
-n'est pas un geste qu'un logiciel fait à votre place.
+Si le code est enregistré au registre, la barre nomme le produit suivi
+et « Délivrance » ouvre le registre **sur ce produit**. Sinon, elle
+ouvre le registre, où l'association du code se fait manuellement.
 
-# Les entretiens
+# Entretiens
 
 Un acte porte sa thématique, son état, sa date, sa durée et les
-initiales de qui l'a fait. « Tout imprimer » rend la fiche d'entretien,
-le bilan et le plan de prise en un seul document.
+initiales de l'intervenant. « Tout imprimer » produit la fiche
+d'entretien, le bilan et le plan de prise en un seul document.
 
-Le bilan porte une section **« Ce que l'âge change »** : le bilan
-partagé de médication est fait pour le patient polymédiqué,
-c'est-à-dire presque toujours pour un sujet âgé, et c'est la seule
-feuille de cette lecture qui parte avec lui chez le prescripteur.
-Chaque ligne y nomme le risque et ce qu'on met à la place ; aucune ne
-dit d'arrêter.
+Le bilan partagé de médication comporte une section consacrée au sujet
+âgé : il concerne le patient polymédiqué, le plus souvent âgé, et c'est
+le document transmis au prescripteur. Chaque ligne indique le risque et
+l'alternative ; aucune ne prescrit un arrêt.
 
-## L'ordonnance sous protocole
+## Ordonnance sous protocole
 
 Après un test rapide positif — angine à streptocoque, cystite simple —,
-l'écran compose l'ordonnance que le protocole autorise : l'antibiotique,
-sa posologie, l'adjuvant et les conseils.
+l'écran compose l'ordonnance autorisée par le protocole : antibiotique,
+posologie, adjuvant et conseils.
 
 Les lignes proposées sont **celles de l'officine** : livrées avec les
-protocoles en vigueur, elles se réécrivent avec « Modifier les
-lignes… » — une molécule ajoutée, une posologie changée, une borne
-d'âge déplacée le jour où le protocole change. Ce qui est réécrit vaut
-pour tous les postes.
+protocoles en vigueur, elles se modifient avec « Modifier les
+lignes… » — molécule ajoutée, posologie modifiée, borne d'âge déplacée
+lors d'une révision du protocole. Les modifications valent pour tous les
+postes.
 
-**L'âge, le sexe et la grossesse sont facultatifs.** Le dossier les
-donne quand il les connaît — la date de naissance, le sexe ou à défaut
-le NIR —, et la fenêtre les laisse corriger pour cette ordonnance. Sus,
-ils grisent les lignes que le protocole n'ouvre pas à cette personne,
-avec la raison ; inconnus, ils ne bloquent rien. Quand aucune ligne ne
-s'applique, l'écran le dit : c'est une orientation vers un médecin.
+**Âge, sexe et grossesse sont facultatifs.** Le dossier les fournit
+lorsqu'il les connaît — date de naissance, sexe ou à défaut NIR —, et la
+fenêtre permet de les corriger pour cette ordonnance. Renseignés, ils
+grisent les lignes exclues par le protocole, avec le motif ; inconnus,
+ils ne bloquent rien. Si aucune ligne ne s'applique, l'écran le signale :
+orientation médicale.
 
-Rien n'est jamais sélectionné d'office et toute posologie proposée est
-modifiable : l'application propose, le pharmacien décide.
+Aucune ligne n'est présélectionnée et toute posologie est modifiable :
+l'application propose, le pharmacien décide.
 
-Les adjuvants ne sont pas une liste du programme. Ce sont les fiches
-portant l'étiquette voulue, avec leurs propres lignes de posologie :
-ajouter un produit, c'est ajouter une fiche.
+Les adjuvants sont les fiches portant l'étiquette correspondante, avec
+leurs propres lignes de posologie : ajouter un produit revient à ajouter
+une fiche.
 
-Aucune mention n'est imprimée d'office ; celles que l'officine veut voir
-s'écrivent dans Options › Mentions.
+Aucune mention n'est imprimée par défaut ; les mentions souhaitées se
+saisissent dans Options › Mentions.
 
-# L'agenda et le planning
+# Agenda et planning
 
-L'agenda se lit par jour, par semaine ou par mois. Le filtre **n'efface
-pas** : ce qu'il écarte reste dessiné en trait contre la gouttière, et
-ce qui chevauche une entrée retenue reste dessiné en entier — sans quoi
-le filtre fabriquerait le conflit qu'il devait montrer.
+L'agenda s'affiche par jour, semaine ou mois. Le filtre **ne masque
+pas** : les entrées écartées restent tracées en trait contre la
+gouttière, et une entrée qui chevauche une entrée retenue reste affichée
+en entier, pour que les conflits restent visibles.
 
-Les quatre lectures parlent **du même moment** : changer de lecture
-recadre les autres sur le jour qu'on regardait. Le jour détaillé porte
-son liseré dans la grille de la semaine comme dans celle du mois, et
-« Imprimer la semaine » sort la semaine affichée.
+Les quatre affichages restent **synchronisés** : changer d'affichage
+conserve le jour consulté. Le jour détaillé est encadré dans la grille
+de la semaine comme dans celle du mois, et « Imprimer la semaine »
+imprime la semaine affichée.
 
-Le plan de journée porte **un pointillé à l'heure qu'il est**, avec un
-point rouge dans la marge. Il ne se dessine que sur la journée
-d'aujourd'hui : posé sur un autre jour, il dirait l'heure d'un jour
-qu'on ne regarde pas.
+Le plan de journée affiche **un pointillé à l'heure courante**, avec un
+point rouge dans la marge, uniquement sur la journée du jour.
 
-« Planning » est la quatrième lecture : l'équipe, une ligne par
+« Planning » est le quatrième affichage : l'équipe, une ligne par
 personne, sept colonnes de jours. Le total d'un jour passe au rouge dès
-qu'un **creux reste pendant l'ouverture** — pas seulement quand
-personne n'est inscrit : une journée tenue le matin et vide l'après-midi
-est un creux, et c'est celui-là qu'on ne voit pas en lisant la grille.
+qu'une **plage d'ouverture n'est pas couverte**, y compris partiellement
+(matin couvert, après-midi vide).
 
-## Les rythmes
+## Récurrences
 
-Un poste revient selon un rythme : ce jour-là, tous les jours jusqu'à
-une date, chaque semaine, les semaines paires, les semaines impaires,
+Un poste se répète selon une récurrence : jour unique, tous les jours
+jusqu'à une date, chaque semaine, semaines paires, semaines impaires,
 une semaine sur deux, sur trois, sur quatre.
 
-**« Les semaines paires » n'est pas « une semaine sur deux ».** L'une se
-lit sur le calendrier, l'autre se compte depuis le jour posé. Elles
-tombent ensemble pendant des années et se séparent pour toujours au
-premier passage d'une année de 53 semaines.
+**Semaines paires et une semaine sur deux diffèrent.** Les premières
+suivent le numéro de semaine du calendrier, la seconde se compte depuis
+la date de départ. Elles coïncident pendant des années et divergent
+définitivement après une année de 53 semaines.
 
-Un congé se pose comme une plage : « tous les jours », du 12 au 26. Une
-date de fin est alors obligatoire.
+Un congé se saisit comme une plage : « tous les jours », du 12 au 26.
+La date de fin est alors obligatoire.
 
-## La trame de la semaine
+## Trame hebdomadaire
 
-« Trame… » écrit la semaine entière d'une personne en une fois. Elle
-s'ouvre sur la trame déjà posée : c'est un écran pour corriger, pas
-seulement pour ajouter.
+« Trame… » saisit la semaine complète d'une personne en une fois. Elle
+s'ouvre sur la trame existante, pour correction comme pour ajout.
 
-Une journée coupée s'y écrit en **deux postes** — 9 h – 12 h 30 puis
-14 h – 19 h 30 — et non en un poste à longue pause : une pause n'a pas
-d'heure, si bien que la bande de couverture compterait la personne au
-comptoir pendant sa coupure.
+Une journée coupée se saisit en **deux postes** — 9 h – 12 h 30 puis
+14 h – 19 h 30 — et non en un poste avec pause : la pause n'a pas
+d'horaire, et la couverture compterait la personne présente pendant sa
+coupure.
 
-Sur une alternance, deux onglets : la semaine paire et l'impaire. Une
-journée identique sur les deux est écrite une fois, hebdomadaire.
+Pour une alternance, deux onglets : semaine paire et semaine impaire.
+Une journée identique sur les deux est enregistrée une fois, en
+hebdomadaire.
 
-Ce que deux semaines de sept jours ne portent pas n'est pas approximé :
-l'écran le dit et ne propose pas de remplacer ce qu'il ne montre pas.
+Une trame qui ne tient pas sur deux semaines de sept jours n'est pas
+approximée : l'écran le signale et ne propose pas de remplacement.
 
-## Corriger un jour sans effacer la série
+## Modification d'une occurrence
 
-« Ce jour seulement » fait porter « Modifier » et « Supprimer » sur une
-seule occurrence. La trame reste écrite, une ligne la contredit ce
-jour-là, et la semaine dit la vérité.
+« Ce jour seulement » applique « Modifier » et « Supprimer » à une seule
+occurrence. La trame est conservée, une exception s'applique ce jour-là.
 
-# Les listes de contrôle
+# Listes de contrôle
 
-« Listes » tient les suites de choses à cocher : l'ouverture, la
-fermeture, le retour de vacances, ce qu'on vérifie avant de délivrer.
-Elles s'impriment en A4, une case par ligne, la date et la personne
-laissées à remplir.
+« Listes » regroupe les listes à cocher : ouverture, fermeture, retour
+de congés, vérifications avant délivrance. Impression A4, une case par
+ligne, date et intervenant à remplir.
 
-Ce n'est pas un protocole. Un protocole répond à « que fait-on dans ce
-cas-là » et se lit en descendant un arbre ; une liste répond à
-« qu'est-ce qu'on n'a pas oublié » et se lit en cochant.
+Une liste n'est pas un protocole : un protocole est un arbre de
+décision ; une liste est une vérification d'exhaustivité.
 
-**Rien n'est livré** : une base neuve n'a aucune liste. Une liste
-d'ouverture écrite ailleurs qu'à l'officine est une liste que personne
-ne coche.
+**Aucune liste livrée** : une base neuve n'en comporte aucune. Chaque
+officine rédige les siennes.
 
-# La carte vaccinale
+# Carte vaccinale
 
-Deux tables, toutes deux **indicatives**, et chacune nomme sa source à
-l'écran : le calendrier vaccinal, qui dit ce qu'un adulte doit
-aujourd'hui, et la table du voyageur, qui porte les recommandations du
-BEH par pays.
+Deux tables **indicatives**, chacune avec sa source à l'écran : le
+calendrier vaccinal (vaccinations dues chez l'adulte) et la table du
+voyageur (recommandations du BEH par pays).
 
-Ni l'une ni l'autre ne remplace le texte dont elle vient. Elles rendent
-d'un coup d'œil une question que le comptoir pose vingt fois par jour,
-et c'est tout ce qu'elles prétendent.
+Aucune ne remplace le texte source ; elles servent de rappel rapide au
+comptoir.
 
-La carte est un **cartogramme et non une projection** : chaque pays
-reçoit le même carré, rangé dans le bloc de sa région. C'est ce qu'on
-demande à une table de référence — trouver un pays, pas mesurer une
-distance.
+La carte est un **cartogramme**, non une projection : chaque pays occupe
+une case de même taille, regroupée par région. Elle sert à trouver un
+pays, non à mesurer une distance.
 
-Le carnet de vaccination d'un dossier s'imprime avec ses doses, leurs
-dates, le lot et le site d'injection, et la date du prochain rappel
-quand elle est connue. Ce qui **manque**, c'est l'écran du dossier qui
-le dit, en lisant le calendrier contre les doses déjà portées.
+Le carnet de vaccination d'un dossier s'imprime avec les doses, leurs
+dates, le lot, le site d'injection et la date du prochain rappel
+lorsqu'elle est connue. Les vaccinations **manquantes** s'affichent dans
+le dossier, par comparaison du calendrier et des doses enregistrées.
 
-# Les carnets que le patient emporte
+# Carnets de suivi du patient
 
-Six feuilles à remplir chez soi : automesure tensionnelle, glycémie,
-poids, débit de pointe, INR, douleur.
+Six feuilles d'automesure à domicile : pression artérielle, glycémie,
+poids, débit expiratoire de pointe, INR, douleur.
 
-**Ce qui manque à une grille photocopiée n'est pas la grille, c'est le
-protocole.** Une tension prise après le café, debout, sur le bras qui
-traîne ne veut rien dire ; une glycémie notée le soir de mémoire non
-plus. Chaque feuille porte donc quatre choses, et la grille n'est que la
-quatrième : comment mesurer, ce qu'on vise, ce qui s'appelle sans
-attendre, et où écrire.
+**Chaque feuille porte le protocole de mesure.** Une pression prise
+après un café, debout, ou une glycémie notée de mémoire n'ont pas de
+valeur. Chaque feuille comporte donc quatre parties : technique de
+mesure, objectif, signes justifiant un appel immédiat, et grille de
+relevés.
 
-**Aucun chiffre inventé.** Là où l'objectif est individuel — la
-glycémie, la zone d'INR, la meilleure valeur personnelle de souffle —,
-la feuille dit qu'il est individuel et laisse la ligne à remplir,
-plutôt que d'imprimer une valeur que le patient prendrait pour la
-sienne. La seule cible chiffrée est celle de l'automesure tensionnelle,
-qui est une recommandation publique et non la décision d'un médecin.
+**Aucun chiffre inventé.** Lorsque l'objectif est individuel —
+glycémie, zone d'INR, meilleure valeur personnelle de DEP —, la feuille
+l'indique et laisse la ligne à remplir. Seule l'automesure tensionnelle
+porte une cible chiffrée, issue d'une recommandation publique.
 
-**Rien qui remplace le prescripteur.** Aucune feuille n'adapte une
-dose ; toutes disent à qui téléphoner et quand.
+**Aucune adaptation de dose.** Chaque feuille indique qui contacter et
+quand.
 
-Le texte de chaque feuille se réécrit, comme tout ce qui part sur du
-papier au nom de l'officine.
+Le texte de chaque feuille est modifiable, comme tout document imprimé
+au nom de l'officine.
 
-# Le registre des stupéfiants
+# Registre des stupéfiants
 
-Il vit dans son propre fichier, chiffré comme la base, et **il ne
-s'efface pas**. Une ligne fautive reste écrite ; une seconde ligne la
-nomme et défait exactement ce qu'elle avait fait.
+Fichier dédié, chiffré comme la base, **sans suppression possible**. Une
+ligne erronée reste écrite ; une ligne d'annulation la désigne et en
+annule exactement l'effet.
 
-Le solde est deux nombres et non un : ce qui est délivrable, et ce qu'un
-patient a rapporté et qui attend sa destruction.
+Le solde comporte deux valeurs : le stock délivrable, et les retours
+patients en attente de destruction.
 
-Une case vide n'est pas un zéro. Sur une feuille de comptage, seuls les
-produits qu'on a réellement comptés sont inscrits.
+Une case vide n'est pas un zéro. Une feuille de comptage ne porte que
+les produits effectivement comptés.
 
-Une ligne porte le **numéro de dossier** et jamais le nom : un registre
-s'imprime et se laisse sur un comptoir.
+Une ligne porte le **numéro de dossier**, jamais le nom : le registre
+est imprimé et consultable au comptoir.
 
-Le numéro d'ordonnancier est attribué au moment de l'écriture et n'est
-jamais réattribué : une ligne annulée garde le sien, et la suite
-continue après lui.
+Le numéro d'ordonnancier est attribué à l'enregistrement et jamais
+réattribué : une ligne annulée conserve le sien.
 
-**Une seule suite, continue.** Elle ne repart pas au premier janvier :
-« le 18950 » désigne une délivrance et une seule, ce qui est la
-condition pour l'écrire sur une ordonnance et la retrouver.
+**Numérotation continue.** Elle ne repart pas au 1er janvier : un numéro
+désigne une seule délivrance, condition pour le reporter sur
+l'ordonnance.
 
-Une officine qui s'installe continue son registre de papier : Options ›
-Base, « Premier numéro d'ordonnancier », une fois. Déclaré trop bas
-après coup, il ne fait rien — un numéro posé est posé.
+Reprise d'un registre papier : Options › Base, « Premier numéro
+d'ordonnancier », une seule fois. Un numéro inférieur saisi après coup
+est sans effet.
 
-## Les questions que le registre pose
+## Vigilance
 
-L'onglet « Vigilance » relit le registre et pose trois questions :
-rapprochement des délivrances, pluralité de prescripteurs, escalade des
-quantités. Ce sont **des questions et non des verdicts** : chacune cite
-les lignes qui la motivent, et se vérifie en les relisant.
+L'onglet « Vigilance » analyse le registre selon trois critères :
+rapprochement des délivrances, multiplicité des prescripteurs,
+augmentation des quantités. Ce sont **des signalements, non des
+conclusions** : chacun cite les lignes en cause, à vérifier.
 
-Ce que le registre ne sait pas, il ne l'invente pas. Une ligne porte un
-jour, une quantité, un dossier et un prescripteur — ni la dose
-quotidienne, ni la durée prescrite. « Ce traitement aurait dû durer
-jusqu'au » ne se calcule donc pas.
+Le registre ne porte ni dose quotidienne ni durée prescrite : la date de
+fin théorique d'un traitement n'est donc pas calculée.
 
-La durée maximale de la famille ne sert qu'à **se taire** : au-delà,
-deux ordonnances ne peuvent pas se chevaucher, et la question ne se pose
-pas. Elle ne sert jamais à déduire un rythme — une ordonnance de sept
-jours sous un plafond de vingt-huit passerait pour quatre fois trop
-lente, et chaque délivrance légitime deviendrait un signalement. Une
-règle qui crie au loup est une règle qu'on éteint.
+La durée maximale de prescription de la famille sert uniquement à
+**exclure** : au-delà, deux ordonnances ne peuvent pas se chevaucher.
+Elle ne sert jamais à estimer un rythme — une ordonnance de sept jours
+sous un plafond de vingt-huit paraîtrait quatre fois trop lente, et
+chaque délivrance légitime serait signalée.
 
-Sous trois délivrances précédentes, rien n'est dit : il n'y a pas encore
-de cadence à laquelle comparer.
+En deçà de trois délivrances antérieures, aucun signalement : pas de
+rythme de référence.
 
 # Pharmacocinétique et pharmacodynamie
 
 La colonne technique d'une fiche porte un tableau : biodisponibilité,
-pic plasmatique, liaison aux protéines, volume de distribution, part
+pic plasmatique, liaison aux protéines, volume de distribution, fraction
 éliminée inchangée, demi-vie, cible, délai et durée d'action, marge
 thérapeutique étroite.
 
-**Aucun chiffre n'y est inventé.** Une valeur vient de la fiche — lue
-dans sa prose, et la phrase se lit au survol — ou de l'officine, qui la
-saisit avec « Compléter… » et **sa source** (le RCP, section 5.1 ou
-5.2) : une valeur sans source est refusée. Ce que personne n'a chiffré
-s'écrit « non chiffré ». Une valeur sourcée l'emporte sur la lecture de
-la prose, s'affiche sur la monographie et s'imprime avec elle.
+**Aucun chiffre inventé.** Une valeur provient de la fiche — extraite du
+texte, phrase source au survol — ou de l'officine, qui la saisit avec
+« Compléter… » et **sa source** (RCP, section 5.1 ou 5.2) : une valeur
+sans source est refusée. Une valeur non documentée s'affiche « non
+chiffré ». Une valeur sourcée prime sur l'extraction du texte, s'affiche
+sur la monographie et s'imprime avec elle.
 
-Quand l'officine fait partie d'un réseau, les valeurs qu'elle a sourcées
-y voyagent aussi, et celles des autres officines s'affichent avec leur
-source et leur nom — après les siennes, avant la prose.
+En réseau d'officines, les valeurs sourcées sont partagées ; celles des
+autres officines s'affichent avec leur source et leur nom, après celles
+de l'officine et avant l'extraction du texte.
 
-# Les versions d'une fiche
+# Versions d'une fiche
 
-Chaque modification d'un champ d'une fiche est une **version** : qui,
-quand, quelle valeur, et ce qu'elle remplaçait. « Historique… », dans la
-colonne technique, les montre champ par champ, la plus récente en haut ;
-« Revenir à cette version » en écrit une de plus avec l'ancienne valeur.
-Rien ne s'efface.
+Chaque modification d'un champ crée une **version** : auteur, date,
+valeur, valeur remplacée. « Historique… », dans la colonne technique,
+les liste champ par champ, la plus récente en premier ; « Revenir à
+cette version » crée une nouvelle version avec l'ancienne valeur. Aucune
+suppression.
 
-Quand l'officine fait partie d'un réseau, les versions voyagent : une
-fiche corrigée dans une officine se corrige chez les autres — **si leur
-fiche dit encore ce que la version remplaçait**. Sinon la version attend,
-« à arbitrer » : « Adopter » la prend, « Garder la mienne » la laisse,
-et rien n'est écrasé en silence. Chaque officine peut revenir à
-n'importe quelle version de n'importe quel champ. Les notes de l'équipe
-ne voyagent pas, et aucune fiche ne porte de patient.
+En réseau d'officines, les versions sont partagées : une fiche corrigée
+dans une officine est corrigée dans les autres — **si leur fiche porte
+encore la valeur remplacée**. Sinon, la version est « à arbitrer » :
+« Adopter » l'applique, « Garder la mienne » la refuse ; aucun écrasement
+silencieux. Chaque officine peut revenir à toute version de tout champ.
+Les notes de l'équipe ne sont pas partagées, et aucune fiche ne porte de
+donnée patient.
 
-# Les ruptures
+# Ruptures
 
-Quand un produit manque, sa fiche le signale : « Signaler une rupture »,
-dans la colonne technique, et « Rupture levée » quand il revient. Une
-rupture signalée s'affiche en tête de la fiche, avec ce que les
-collègues ont donné à la place.
+Une rupture se déclare sur la fiche : « Signaler une rupture », dans la
+colonne technique, puis « Rupture levée » au retour du produit. Une
+rupture signalée s'affiche en tête de fiche, avec les substitutions
+pratiquées par l'équipe.
 
-« Noter une substitution… » garde ce qui a été délivré à la place, et
-comment ça s'est passé : a tenu, refusé par le patient, refusé par le
-prescripteur, revenu. Les propositions viennent d'abord de la même
-molécule, puis de la même classe. **Aucun patient n'est noté** — un
-produit, un autre, une date et des initiales.
+« Noter une substitution… » enregistre le produit délivré à la place et
+l'issue : maintenu, refusé par le patient, refusé par le prescripteur,
+retour au produit initial. Les propositions viennent d'abord de la même
+molécule, puis de la même classe. **Aucun patient n'est enregistré** :
+un produit, un substitut, une date et des initiales.
 
-La vue **Ruptures** (« Aller à… ») rassemble ce qui manque en ce moment
-et tout le journal. Un nouveau pharmacien y lit ce que l'équipe sait
-depuis des mois ; quand l'officine est reliée à d'autres, ce qu'elles
-ont noté s'y lit aussi, avec leur nom.
+La vue **Ruptures** (« Aller à… ») regroupe les ruptures en cours et
+l'historique complet, y compris celui des officines du réseau, avec
+leur nom.
 
-**Ce qui a été tenté n'est pas une équivalence.** Quand le substitut
-n'est pas de la même classe — un dermocorticoïde modéré pour un fort —,
-la ligne le dit ; le dosage, la forme et le patient se vérifient devant
-l'ordonnance. Une rupture signalée depuis plus de quatre-vingt-dix jours
-sans nouvelle n'est plus « en cours » : quelqu'un a oublié de la lever.
+**Une substitution pratiquée n'est pas une équivalence.** Quand le
+substitut est d'une autre classe — dermocorticoïde modéré pour un
+dermocorticoïde fort —, la ligne le signale ; dosage, forme et patient
+se vérifient sur l'ordonnance. Une rupture signalée depuis plus de
+quatre-vingt-dix jours sans mise à jour n'est plus « en cours ».
 
-Le journal ne se réécrit pas ; une erreur se retire, et le retrait reste
-écrit.
+Le journal n'est pas modifiable ; une erreur se retire, et le retrait
+reste enregistré.
 
-# Le réseau d'officines
+# Réseau d'officines
 
 Les officines d'un groupement peuvent partager ce journal : « Réseau
-d'officines… », dans la vue Ruptures. **Seuls les ruptures et les
-substitutions voyagent** — jamais un patient, un dossier, le registre ou
-la caisse —, chiffrés et signés, sous une clé propre au réseau.
+d'officines… », dans la vue Ruptures. **Seules les ruptures et les
+substitutions sont partagées** — jamais un patient, un dossier, le
+registre ou la caisse —, chiffrées et signées, sous une clé propre au
+réseau.
 
-Une officine **crée** le réseau, puis **invite** les autres : elle ouvre
-une porte le temps que l'autre compose son adresse, et les deux se
-lisent au téléphone un code de cinq groupes. S'il est le même des deux
-côtés, personne n'est entre elles.
+Une officine **crée** le réseau, puis **invite** les autres : elle
+accepte une connexion le temps que l'autre saisisse son adresse, et les
+deux se lisent par téléphone un code de cinq groupes. Un code identique
+des deux côtés garantit l'absence d'intermédiaire.
 
-Ensuite on **synchronise** sur un bouton, et à la fermeture si le poste
-le veut (Options › Base). Deux chemins : composer l'adresse des
-officines qui ont une porte ouverte, ou un **dossier d'échange** — un
-partage réseau, un dossier synchronisé — où chacune dépose ses
-enregistrements et lit ceux des autres, ce qui traverse les box sans
-rien ouvrir. Qui tient le dossier ne lit rien.
+La **synchronisation** se fait par un bouton, et à la fermeture si le
+poste est configuré ainsi (Options › Base). Deux modes : connexion
+directe aux officines qui acceptent les connexions, ou **dossier
+d'échange** — partage réseau, dossier synchronisé — où chaque officine
+dépose ses enregistrements et lit ceux des autres, sans ouverture de
+port sur la box. Le dossier d'échange ne contient que des données
+chiffrées.
 
-Retirer une officine arrête ce qu'elle enverra ; ce qu'elle a déjà
-envoyé reste au journal.
+Retirer une officine arrête ses envois ; ses envois antérieurs restent
+au journal.
 
-**Le codex et les protocoles voyagent aussi**, sous les mêmes règles
-que les fiches : une préparation corrigée ou créée dans une officine se
-corrige ou se crée chez les autres, champ par champ ; un protocole
-voyage avec son sujet et son **arbre entier**. Une version reçue ne
-s'applique que si votre entrée dit encore ce qu'elle remplaçait ; sinon
-elle attend, et « Historique… » — sur la fiche d'une préparation comme
-sur un protocole — propose « Adopter » ou « Garder la mienne », et le
-retour à n'importe quelle version. Dans un groupe de postes, c'est le
-poste de référence qui versionne ce que les autres postes modifient.
+**Le codex et les protocoles sont aussi partagés**, selon les mêmes
+règles que les fiches : une préparation modifiée ou créée dans une
+officine l'est chez les autres, champ par champ ; un protocole est
+partagé avec son sujet et son **arbre complet**. Une version reçue ne
+s'applique que si l'entrée locale porte encore la valeur remplacée ;
+sinon elle est à arbitrer, et « Historique… » — sur une préparation
+comme sur un protocole — propose « Adopter » ou « Garder la mienne »,
+ainsi que le retour à toute version. Dans un groupe de postes, le poste
+de référence versionne les modifications des autres postes.
 
-Les valeurs de pharmacocinétique sourcées voyagent par le même chemin :
-ce qu'une officine a lu dans un RCP profite aux autres, avec sa source.
-Et la barre du comptoir (F9) dit une rupture avant tout le reste, avec
-ce que les collègues ont donné à la place.
+Les valeurs de pharmacocinétique sourcées sont partagées de la même
+façon, avec leur source. La barre de comptoir (F9) affiche une rupture
+en priorité, avec les substitutions pratiquées.
 
-# Les postes de l'officine
+# Postes de l'officine
 
-Chaque poste peut garder **sa propre base**, et recevoir tout ce que les
-autres écrivent : dossiers, registre, caisse, planning, agenda, fiches,
-réglages. « Postes de l'officine… », dans Options › Base. Tout voyage
-chiffré sous une clé que seuls les postes de l'officine détiennent ; le
-réseau d'officines a la sienne et n'ouvre rien de tout cela.
+Chaque poste peut disposer de **sa propre base** et recevoir toutes les
+écritures des autres : dossiers, registre, caisse, planning, agenda,
+fiches, réglages. « Postes de l'officine… », dans Options › Base. Les
+échanges sont chiffrés sous une clé réservée aux postes de l'officine ;
+le réseau d'officines a sa propre clé et n'accède à aucune de ces
+données.
 
-Un poste **fonde** le groupe : sa base garde tout, et ses numéros de
-dossier. Il **invite** ensuite les autres, comme pour le réseau : une
-porte ouverte, une adresse composée, un code de cinq groupes lu des deux
-côtés. **Rejoindre remplace ce que le poste contenait** par les données
-du groupe — faites une copie avant si elle compte.
+Un poste **fonde** le groupe : sa base est conservée, avec sa
+numérotation des dossiers. Il **invite** ensuite les autres, comme pour
+le réseau : connexion acceptée, adresse saisie, code de cinq groupes lu
+des deux côtés. **Rejoindre remplace le contenu du poste** par les
+données du groupe : faire une copie au préalable si nécessaire.
 
-Ensuite, sur le réseau local, les postes se trouvent et se synchronisent
-**tout seuls**, quelques secondes après chaque écriture. S'ils ne se
-voient pas (réseau cloisonné, deux sites), un dossier d'échange ou des
-adresses écrites dans Options › Base font le chemin ; le bouton
-« Synchroniser » et la fermeture restent là.
+Sur le réseau local, les postes se découvrent et se synchronisent
+**automatiquement**, quelques secondes après chaque écriture. S'ils ne
+se voient pas (réseau cloisonné, deux sites), un dossier d'échange ou
+des adresses saisies dans Options › Base assurent la liaison ; le bouton
+« Synchroniser » et la synchronisation à la fermeture restent
+disponibles.
 
-Deux postes ne donnent jamais le même numéro de dossier : chacun a son
-bloc (le deuxième poste commence à 100 000). Une modification reçue ne
-s'applique que sur la valeur qu'elle remplaçait : deux postes qui
-modifient deux champs d'un dossier ne se gênent pas ; le même champ des
-deux côtés attend « à arbitrer » — « Garder la mienne » ou « Prendre la
-leur ». Rien n'est écrasé en silence.
+Deux postes n'attribuent jamais le même numéro de dossier : chacun a sa
+plage (le deuxième poste commence à 100 000). Une modification reçue ne
+s'applique que sur la valeur qu'elle remplace : deux postes modifiant
+deux champs d'un même dossier ne se gênent pas ; le même champ modifié
+des deux côtés est « à arbitrer » — « Garder la mienne » ou « Prendre la
+leur ». Aucun écrasement silencieux.
 
-**L'ordonnancier n'a qu'une suite** : seul le poste de référence
-numérote. Une délivrance écrite sur un autre poste se lit « en attente »
-jusqu'à ce qu'il la reçoive — quelques secondes sur le réseau local. Le
-registre, la caisse et les journaux restent en ajout seul en voyageant :
-une modification reçue pour eux est refusée, et le refus se voit. Le
-poste de référence est aussi celui qui installe le contenu livré avec
-les mises à jour.
+**Une seule numérotation d'ordonnancier** : seul le poste de référence
+numérote. Une délivrance saisie sur un autre poste est « en attente »
+jusqu'à sa réception, quelques secondes sur le réseau local. Le
+registre, la caisse et les journaux restent en ajout seul : une
+modification reçue pour eux est refusée, et le refus est affiché. Le
+poste de référence installe aussi le contenu livré avec les mises à
+jour.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
-# Les connexions
+# Connexions
 
-La marque à trois nœuds, en bas à droite de la barre d'état, dit combien
-de postes du groupe on entend (« 2/3 poste(s) ») et si l'officine fait
-partie d'un réseau ; un clic ouvre la vue « Connexions ». Elle est
-bleue quand tous les postes répondent, rouge quand une synchronisation
-a échoué.
+L'icône à trois nœuds, en bas à droite de la barre d'état, indique le
+nombre de postes du groupe joignables (« 2/3 poste(s) ») et
+l'appartenance à un réseau d'officines ; un clic ouvre la vue
+« Connexions ». Bleue quand tous les postes répondent, rouge après un
+échec de synchronisation.
 
-**Tout se connecte au lancement** : les postes du groupe se cherchent et
-se synchronisent sur le réseau local, et le réseau d'officines se
-synchronise au lancement puis toutes les quinze minutes (Options ›
-Base). Un poste seul écoute seulement : la vue montre les postes qui
-s'annoncent, avec leur adresse, et « Rejoindre… » la reprend. Rejoindre
-demande toujours le code de cinq groupes, lu des deux côtés — c'est ce
-qui garantit que personne ne s'est glissé entre les deux postes.
+**Connexion au lancement** : les postes du groupe se découvrent et se
+synchronisent sur le réseau local ; le réseau d'officines se synchronise
+au lancement puis toutes les quinze minutes (Options › Base). Un poste
+isolé écoute seulement : la vue liste les postes détectés, avec leur
+adresse, et « Rejoindre… » la reprend. Rejoindre demande toujours le
+code de cinq groupes, lu des deux côtés, qui garantit l'absence
+d'intermédiaire.
 
-La vue a quatre panneaux : les postes (en ligne, hors ligne, retirés),
-le réseau d'officines (les officines appairées, la dernière
-synchronisation, la prochaine), ce qui attend d'être arbitré (entre
-postes, et les versions de fiches reçues d'autres officines), et
-l'activité depuis le lancement. « Tout synchroniser » parle tout de
-suite aux postes entendus et aux officines du réseau.
+Quatre panneaux : postes (en ligne, hors ligne, retirés), réseau
+d'officines (officines appairées, dernière et prochaine
+synchronisation), éléments à arbitrer (entre postes, et versions de
+fiches reçues d'autres officines), et activité depuis le lancement.
+« Tout synchroniser » contacte immédiatement les postes joignables et
+les officines du réseau.
 
-# La caisse
+# Caisse
 
-Le comptage se fait en centimes entiers, jamais en flottants. L'écart
-avec la recette attendue est **énoncé, jamais résorbé** : le compte
-n'est pas recalculé depuis ce qui était attendu.
+Le comptage se fait en centimes entiers. L'écart avec la recette
+attendue est **affiché, jamais compensé** : le compte n'est pas recalculé
+à partir de la recette attendue.
 
-Sans recette attendue, il n'y a pas d'écart et la ligne reste vide.
+Sans recette attendue, pas d'écart : la ligne reste vide.
 
-La recette encaissée est le tiroir **moins le fond trouvé à
-l'ouverture**, plus la carte et les chèques. Ce fond est pré-rempli avec
-celui que le dernier comptage a laissé ; il se corrige s'il a changé
-entre-temps.
+La recette encaissée est le tiroir **moins le fond de caisse à
+l'ouverture**, plus carte et chèques. Le fond est prérempli avec celui
+du dernier comptage et se corrige s'il a changé.
 
-Un soir recompté est une **seconde ligne**, pas une correction : le mois
-garde le dernier comptage de chaque soir et montre les autres barrés.
+Un recomptage crée une **seconde ligne**, non une correction : le mois
+retient le dernier comptage de chaque soir et affiche les autres barrés.
 
-# Ce qui s'imprime
+# Documents imprimés
 
-Chaque document imprimable a un modèle éditable — le bouton
-« Modèles… » de la barre du haut. Un
-modèle est du Typst ; les `{{MARQUEURS}}` qu'il accepte sont listés dans
-l'éditeur, et l'aperçu passe par la même fonction que l'impression.
+Chaque document imprimable a un modèle modifiable — bouton « Modèles… »
+de la barre du haut. Les modèles sont écrits en Typst ; les
+`{{MARQUEURS}}` acceptés sont listés dans l'éditeur, et l'aperçu utilise
+le même rendu que l'impression.
 
-Les phrases qui partent sur du papier au nom de l'officine se
-réécrivent, dans la vue qui montre le document ou dans l'écran « Textes
-imprimés ». Ce qui est réécrit est rangé dans la base et vaut donc pour
-tous les postes.
+Les textes imprimés au nom de l'officine se modifient dans la vue du
+document ou dans l'écran « Textes imprimés ». Les modifications sont
+enregistrées dans la base et valent pour tous les postes.
 
-Les **libellés de l'interface** — ce que l'application dit d'elle-même :
-boutons, invites, infobulles — se relisent et se réécrivent dans
-« Libellés ». Ils vivent dans un fichier à côté de la configuration,
-donc par poste, et une réécriture s'affiche à la prochaine ouverture.
+Les **libellés de l'interface** — boutons, invites, infobulles — se
+consultent et se modifient dans « Libellés ». Ils sont enregistrés dans
+un fichier à côté de la configuration, donc par poste, et s'appliquent
+au prochain lancement.
 
-Une réécriture se souvient de la phrase qu'elle remplaçait. Si la phrase
-livrée change, la réécriture est montrée à relire plutôt que posée sur
-une autre phrase.
+Chaque modification garde la trace du texte d'origine. Si le texte livré
+change, la modification est signalée pour relecture.
 
-# La base
+# Base de données
 
-Un seul fichier chiffré, que plusieurs postes peuvent partager. Le
-registre des stupéfiants et les pièces scannées ont chacun le leur, à
-côté.
+Un fichier chiffré, partageable entre postes. Le registre des
+stupéfiants et les pièces scannées ont chacun leur fichier, à côté.
 
-Les sauvegardes sont quotidiennes et gardées en nombre fixé ; « Copier
-la base… » emporte les trois fichiers. Changer le mot de passe rechiffre
-les trois.
+Sauvegardes quotidiennes, en nombre fixé ; « Copier la base… » copie les
+trois fichiers. Le changement de mot de passe rechiffre les trois.
 
-Supprimer des pièces ne rend pas la place : seul « Compacter » le fait.
+La suppression de pièces ne libère pas l'espace : seul « Compacter » le
+fait.
 
-Ce qui appartient à l'officine — son identité, l'équipe, les horaires —
-est rangé dans la base et vaut pour tous les postes. Le reste de
-`config.toml` appartient au poste. Ce qu'un autre poste y change arrive
-tout seul, sans qu'on ait à se reverrouiller — sauf pendant qu'un
-dialogue est ouvert, où l'on n'écrit pas sous les doigts de quelqu'un.
+Les données de l'officine — identité, équipe, horaires — sont
+enregistrées dans la base et valent pour tous les postes. Le reste de
+`config.toml` est propre au poste. Les modifications d'un autre poste
+s'appliquent automatiquement, sans reverrouillage, sauf pendant qu'une
+boîte de dialogue est ouverte.
 
-**Les trois fichiers en un seul.** « Exporter en un fichier… » écrit la
-base, les pièces et le registre dans un seul paquet chiffré du même mot
-de passe, à emporter ou à archiver. « Importer un paquet… » les rend
+**Export en un seul fichier.** « Exporter en un fichier… » regroupe la
+base, les pièces et le registre dans un paquet chiffré du même mot de
+passe, pour transport ou archivage. « Importer un paquet… » les restaure
 dans un dossier **vide** : rien n'est écrasé, et la base y pointe au
 redémarrage.
 
-# L'annuaire des prescripteurs
+# Annuaire des prescripteurs
 
 Options › Base, « Importer un annuaire… » : un fichier de prescripteurs
-exporté de l'annuaire santé ou de votre propre logiciel. Les colonnes y
-sont trouvées **par leur nom** et non par leur rang — ces fichiers
-changent d'ordre d'une version à l'autre —, et un fichier qui ne porte
-pas de colonne de nom est refusé en disant ce qu'il portait.
+exporté de l'annuaire santé ou du logiciel de l'officine. Les colonnes
+sont identifiées **par leur nom** et non par leur position, qui varie
+d'une version à l'autre ; un fichier sans colonne de nom est refusé,
+avec la liste des colonnes trouvées.
 
-L'annuaire précédent est remplacé et non complété : c'est une
-photographie à une date, et importer par-dessus laisserait les
-praticiens partis sous ceux qui les remplacent.
+Un import remplace l'annuaire précédent : c'est un état à une date, et
+un import cumulatif conserverait les praticiens partis.
 
-Sous le champ « prescripteur » du registre, taper deux lettres propose
-les praticiens qui correspondent — par le nom, la ville, la spécialité
-ou le numéro, qui est écrit sur l'ordonnance. **Il propose, il ne décide
-pas** : ce qui est tapé reste ce qui sera écrit tant que personne n'a
-choisi une ligne, et un prescripteur que l'annuaire ne connaît pas
-s'écrit comme avant.
+Dans le champ « prescripteur » du registre, deux lettres suffisent à
+proposer les praticiens correspondants — par nom, ville, spécialité ou
+numéro RPPS. **Suggestion seulement** : la saisie reste inchangée tant
+qu'aucune ligne n'est choisie, et un prescripteur absent de l'annuaire
+se saisit librement.
 
-**Le mettre à jour depuis une adresse.** Si l'officine en a une — un
-export de son propre logiciel, un fichier posé sur son serveur, un jeu
-public décompressé —, elle l'écrit dans `[prescribers] source_url` de
-`config.toml` et un second bouton apparaît : « Mettre à jour depuis
-l'adresse… ». Tant qu'aucune adresse n'est écrite, **le bouton n'existe
-pas** et l'application n'ouvre aucune connexion pour cela.
+**Mise à jour depuis une adresse.** L'officine peut indiquer une
+adresse — export de son logiciel, fichier sur son serveur, jeu public
+décompressé — dans `[prescribers] source_url` de `config.toml` ; un
+second bouton apparaît alors : « Mettre à jour depuis l'adresse… ». Sans
+adresse, **le bouton n'existe pas** et aucune connexion n'est ouverte.
 
-Rien ne part tant que personne n'appuie, rien n'est envoyé — on demande
-un fichier, on ne raconte rien —, et l'adresse doit être en `https` :
-un annuaire de noms propres ne traverse pas le réseau en clair. Une
-archive est reconnue et refusée, avec la consigne de la décompresser.
+Aucune requête sans action de l'utilisateur, aucune donnée envoyée, et
+adresse obligatoirement en `https`. Une archive est détectée et refusée,
+avec la consigne de la décompresser.
 
-Le RPPS est vérifié par sa clé — onze chiffres dont le dernier prouve
-les dix autres. Un numéro qui ne se prouve pas est **gardé** et compté à
-part : c'est à l'officine de regarder, pas au logiciel de trancher.
+Le RPPS est contrôlé par sa clé (onze chiffres, le dernier de contrôle).
+Un numéro invalide est **conservé** et compté à part, pour vérification
+par l'officine.
 
-# Les compteurs d'usage
+# Compteurs d'usage
 
-Quelques nombres : combien de dossiers ouverts, de fiches consultées, de
-documents imprimés, de lignes au registre, sur combien de journées. Ils
-se lisent dans **bpm-audit**, la fenêtre d'audit de l'officine.
+Quelques totaux : dossiers ouverts, fiches consultées, documents
+imprimés, lignes au registre, nombre de journées. Consultables dans
+**bpm-audit**, la fenêtre d'audit de l'officine.
 
-Le plus utile est le dernier : « écritures concurrentes signalées »
-compte les fois où un autre poste avait écrit le premier et où celui-ci
-s'est rechargé plutôt que d'écraser. C'est ainsi qu'on découvre que deux
-personnes travaillent sur la même chose au même moment, et aucun autre
-écran ne le dit.
+Le plus utile : « écritures concurrentes signalées », soit le nombre de
+rechargements provoqués par l'écriture préalable d'un autre poste. Il
+révèle deux personnes travaillant sur la même donnée au même moment.
 
-Ils ne sortent pas. Il n'y a pas d'adresse à régler et il n'y en aura
-pas : ils vivent dans la base chiffrée de l'officine et se lisent dans
-bpm-audit.
+Aucun envoi : les compteurs restent dans la base chiffrée de l'officine
+et se consultent dans bpm-audit.
 
-Ils comptent le logiciel, jamais la personne — aucun opérateur, aucune
-initiale. « Combien de dossiers ont été ouverts » est une question sur
-laquelle on décide ; « combien un tel en a ouverts » n'en est pas une.
+Ils mesurent l'usage du logiciel, jamais celui d'une personne : aucun
+opérateur, aucune initiale.
 
-Allumés au départ, éteints en un clic dans Options › À propos, et poste
-par poste. Décocher arrête le comptage tout de suite et ne perd rien :
-effacer est un bouton à part, qui demande deux fois.
+Actifs par défaut, désactivables dans Options › À propos, poste par
+poste. La désactivation arrête le comptage sans rien effacer ;
+l'effacement est un bouton distinct, avec double confirmation.
 
-# Le journal des accès
+# Journal des accès
 
-Qui a ouvert quel dossier, et quand — lu lui aussi dans bpm-audit. C'est l'exact contraire des compteurs — ceux-là comptent le
-logiciel et jamais la personne, celui-ci nomme la personne et jamais le
-logiciel, parce qu'il n'existe que pour répondre à « qui a regardé ce
-dossier-là, le 12 mars ».
+Qui a ouvert quel dossier, et quand — consultable dans bpm-audit.
+Contrairement aux compteurs, le journal nomme la personne : il répond
+à « qui a consulté ce dossier, le 12 mars ».
 
-Une ligne porte un **numéro** de dossier et jamais un nom : ce qui
-s'imprime doit permettre de remonter au patient, pas de l'afficher.
-Sans initiales déclarées dans Options › Interface, la ligne écrit un
-tiret — elle ne devine pas.
+Une ligne porte le **numéro** de dossier, jamais le nom. Sans initiales
+déclarées dans Options › Interface, la ligne porte un tiret.
 
-Trois gestes sont tracés : ouvrir un dossier, exporter, et lire la liste
-des patients depuis la console — qui la rend noms compris. L'impression
-ne l'est pas, et mieux vaut le savoir que le croire.
+Trois actions sont tracées : ouverture d'un dossier, export, et lecture
+de la liste des patients depuis la console (noms compris). L'impression
+n'est pas tracée.
 
-La durée de conservation est dans `[audit] keep_days` de `config.toml`,
-un an au départ ; au-delà, les lignes sont purgées à l'ouverture de la
-séance, et la purge s'écrit dans le journal qu'elle purge. `0` ne purge
-rien.
+Durée de conservation : `[audit] keep_days` de `config.toml`, un an par
+défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
+la purge est elle-même journalisée. `0` désactive la purge.
 
-# La fenêtre d'audit
+# Fenêtre d'audit
 
-**bpm-audit** est un second programme, livré à côté de l'application :
-on l'ouvre depuis l'arrière-boutique, il demande le mot de passe de la
-base (ou le trouve dans le trousseau), et il lit quatre volets sur la
-période choisie — 7, 30, 90 ou 365 jours : l'activité, les accès aux
-dossiers, l'usage du logiciel et les contrôles. Il n'écrit rien dans la
-base. « Copier le rapport » et « Enregistrer le rapport… » rendent le
-relevé en texte, le même que la commande ci-dessous.
+**bpm-audit** est un second programme, livré avec l'application. Il
+demande le mot de passe de la base (ou le lit dans le trousseau) et
+affiche quatre volets sur la période choisie — 7, 30, 90 ou 365 jours :
+activité, accès aux dossiers, usage du logiciel, contrôles. Il n'écrit
+rien dans la base. « Copier le rapport » et « Enregistrer le rapport… »
+produisent le relevé texte, identique à la commande ci-dessous.
 
-Les deux programmes partagent le même code de lecture de la base : il
-n'y a pas deux écritures du schéma, et donc pas de jour où elles
-divergent.
+Les deux programmes partagent le même code d'accès à la base.
 
-# Le rapport d'audit
+# Rapport d'audit
 
-`bpm-caddy audit` écrit ce relevé sur la sortie standard, au lieu
-d'ouvrir une fenêtre.
+`bpm-caddy audit` écrit ce relevé sur la sortie standard, sans ouvrir de
+fenêtre.
 
     bpm-caddy audit --jours 90 > audit-septembre.txt
 
-Trois sections. **L'activité** : les actes par nature et par opérateur,
-les lignes portées au registre, les caisses comptées et l'écart cumulé —
-annoncé sur les soirs où il est calculé, qui ne sont pas tous ceux qui
-ont été comptés. **Les accès** : ce que le journal ci-dessus contient
-sur la période. **La conformité** : les libellés de classe que le
-référentiel ne sait pas replier, les phrases réécrites que la version
-livrée a périmées, les fiches sans DCI ou sans classe, les produits du
-registre à aller compter, et les locations dont le renouvellement est
-dépassé.
+Trois sections. **Activité** : actes par nature et par opérateur, lignes
+au registre, caisses comptées et écart cumulé (sur les soirs où il est
+calculé). **Accès** : contenu du journal des accès sur la période.
+**Conformité** : libellés de classe non reconnus par le référentiel,
+textes modifiés rendus obsolètes par la version livrée, fiches sans DCI
+ou sans classe, produits du registre à recompter, locations dont le
+renouvellement est dépassé.
 
-Il ne nomme que les opérateurs : un dossier y est désigné par son
+Seuls les opérateurs sont nommés : un dossier est désigné par son
 numéro, comme au registre.
 
-Il ne demande rien et n'ouvre rien : le mot de passe vient de
-`BPM_CADDY_PASSWORD` ou du trousseau du système, ce qui le rend posable
-dans une tâche de nuit. Sous Linux seulement ; ailleurs il le dit.
+Aucune saisie ni fenêtre : le mot de passe vient de
+`BPM_CADDY_PASSWORD` ou du trousseau du système, ce qui permet une
+exécution planifiée. Linux uniquement ; sur les autres systèmes, la
+commande le signale.
 
-# La console
+# Console
 
-Un endroit pour poser à la base une question que personne n'a prévue, en
-quelques lignes. Le détail de ce qu'elle sait lire est plus bas, dans
-« L'API de la console ».
+Interrogation libre de la base, en quelques lignes de script. Les
+fonctions disponibles sont détaillées plus bas, dans « L'API de la
+console ».
 
-**Ce qu'on tape est coloré**, et cinq natures se distinguent : les
-commentaires, les chaînes, les nombres, les mots du langage et les
-appels que la console connaît vraiment. Ce dernier point est le plus
-utile : un nom d'appel qui reste de la couleur ordinaire est un nom que
-le moteur ne connaît pas — une faute de frappe se voit avant d'exécuter.
+**Coloration syntaxique** en cinq catégories : commentaires, chaînes,
+nombres, mots-clés et fonctions reconnues par la console. Un nom de
+fonction non coloré est inconnu du moteur : la faute de frappe se voit
+avant l'exécution.
 
-**Et elle propose.** Dès qu'un mot est commencé, une liste s'ouvre sous
-le curseur : les flèches haut et bas la parcourent, la tabulation écrit
-ce qui est pointé, Échap la referme. Rien ne s'ouvre sur un mot déjà
-fini ni sur le vide.
+**Complétion.** Dès le début d'un mot, une liste s'ouvre sous le
+curseur : flèches haut et bas pour parcourir, tabulation pour insérer,
+Échap pour fermer. Rien ne s'ouvre sur un mot complet ni sur une ligne
+vide.

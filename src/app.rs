@@ -12487,7 +12487,7 @@ impl App {
                                 .db
                                 .add_checklist(
                                     "Ouverture de l'officine",
-                                    "Ce qu'on vérifie avant d'ouvrir",
+                                    "Contrôles avant ouverture",
                                 )
                                 .unwrap_or(0);
                             for (text, note) in [
@@ -12498,7 +12498,7 @@ impl App {
                                 ("Compter le fonds de caisse", ""),
                                 (
                                     "Vérifier le coffre des stupéfiants",
-                                    "Solde du registre contre ce qui est dedans",
+                                    "Rapprochement du solde du registre et du contenu",
                                 ),
                                 ("Relever les messages du répondeur", ""),
                             ] {
@@ -12508,8 +12508,7 @@ impl App {
                             session.checklist_open = Some(id);
                             session.checklist_items =
                                 session.db.checklist_items(id).unwrap_or_default();
-                            session.checklist_subject =
-                                "Ce qu'on vérifie avant d'ouvrir".to_owned();
+                            session.checklist_subject = "Contrôles avant ouverture".to_owned();
                         }
                         Ok("libelles") => {
                             session.view = MainView::UiTexts;
@@ -68719,7 +68718,7 @@ mod tests {
         let signals = super::companion_signals(&skenan, &[], None, None, &[], &[]);
         let crush = signals
             .iter()
-            .find(|s| s.chip.starts_with("Écraser"))
+            .find(|s| s.chip.starts_with("Écrasement"))
             .expect("la table de l'écrasement nomme le Skenan");
         assert!(
             crush
@@ -68884,8 +68883,8 @@ mod tests {
         const SIGNALS: [&str; 6] = [
             "Ordonnance · 2 croisement(s)",
             "Revue · 1 point(s)",
-            "Cytochromes · 1 rencontre(s)",
-            "Écraser · Ne pas écraser",
+            "Cytochromes · 1 interaction(s)",
+            "Écrasement · Ne pas écraser",
             "Grossesse · Contre-indiqué",
             "Rein · Dose à réduire sous 60 mL/min",
         ];

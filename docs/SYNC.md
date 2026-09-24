@@ -1,4 +1,4 @@
-# La synchronisation pair-à-pair — ce qui est construit, ce qui reste
+# Synchronisation pair-à-pair — état de la construction
 
 `ROADMAP.md` portait depuis le début une ligne restée seule :
 
@@ -31,7 +31,7 @@ Il s'adresse à qui reprend le sujet, y compris à moi-même dans six mois.
 
 ---
 
-## 1. La règle d'entrée : optionnel veut dire absent
+## 1. Règle d'entrée : optionnel signifie absent
 
 `bpm-sync` est un crate séparé, dépendance **optionnelle** de
 l'application, derrière `--features sync`, éteint par défaut. Ce n'est
@@ -55,7 +55,7 @@ surveillé.
 
 ## 2. Le modèle de menace
 
-### Ce qu'on protège
+### Périmètre protégé
 
 Le journal clinique d'une officine : ce qui a été délivré, à qui, par
 qui, et les corrections. Contre trois choses.
@@ -71,7 +71,7 @@ qui, et les corrections. Contre trois choses.
 * **Qui rejoue.** Une conversation enregistrée ne se rejoue pas : la
   signature d'identité porte sur l'empreinte de *cette* poignée de main.
 
-### Ce qu'on ne protège pas, et c'est écrit
+### Hors périmètre
 
 * **Pas de confidentialité persistante (forward secrecy) au repos.** Le
   trousseau est de longue durée, parce qu'un poste qui rejoint
@@ -103,7 +103,7 @@ qui, et les corrections. Contre trois choses.
   d'en changer le mot de passe. **La révocation est affaire d'avenir ;
   la re-clé est affaire de passé.**
 
-### Re-clé : ce que ça coûte, et ce que ça ne coûte pas
+### Re-clé : coût
 
 Une officine ne jette pas quatre ans de registre parce qu'un poste a été
 volé. Re-sceller tous les enregistrements sous la nouvelle clé les
@@ -125,7 +125,7 @@ mot de passe d'une base dont quelqu'un a pris une copie.
 
 ---
 
-## 3. Les quatre garanties, et la règle qui va avec chacune
+## 3. Les quatre garanties et leurs règles
 
 ### « Un pair ne voit jamais de clair »
 
@@ -281,7 +281,7 @@ Deux détails qui ne sont pas des détails :
 
 ---
 
-## 6. La télémétrie, et ce que le mot a le droit de vouloir dire ici
+## 6. Télémétrie : définition et limites
 
 `meter.rs` tient des nombres : combien de conversations, combien
 d'enregistrements ont traversé, combien d'octets, combien de refus et de
@@ -308,7 +308,7 @@ module et refuse le jour où l'un ou l'autre change.
 
 ---
 
-## 7. Ce que l'application en a fait (0.277)
+## 7. Intégration dans l'application (0.277)
 
 Les décisions que cette section laissait à l'officine ont été prises
 avec elle le 23/09/2026 ; ce qui suit est ce qui est construit, et où.
@@ -324,7 +324,7 @@ propre clé dans `settings` (`net_trousseau`), qui ne scelle que
 `Stream::Reseau` : les deux clés n'ouvrent rien l'une de l'autre, et un
 test le vérifie sur les octets (`the_posts_key_and_the_network_key_open_nothing_of_each_other`).
 
-### 7.2 Ligne ou opération : **l'opération, champ par champ, partout**
+### 7.2 Ligne ou opération : l'opération, champ par champ
 
 `src/replica.rs` tient la liste des tables qui voyagent (`TABLES`, avec
 leur flux) et de celles qui restent (`LOCAL`, avec la raison) ; un test
@@ -386,14 +386,14 @@ capturée ; un **dossier d'échange** (`<empreinte>.bpmposte`) ; des
 **adresses écrites** ; plus le bouton et la fermeture. `link.rs` ne
 décide toujours de rien : c'est l'application qui a un fil.
 
-### 7.6 Ce qui ne voyage pas
+### 7.6 Données non répliquées
 
 Les pièces scannées (§ 7.6 d'origine : des fichiers, pas des
 enregistrements), la télémétrie du poste, le journal du réseau
 d'officines et ce que ce poste en a déjà envoyé, et tout `sync_*` propre
 au poste.
 
-## 8. Ce qui reste
+## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
    été écrit depuis la fondation, et le relit en mémoire à chaque

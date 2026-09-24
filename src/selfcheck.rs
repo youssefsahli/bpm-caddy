@@ -79,7 +79,7 @@ pub const SHEETS: &[Sheet] = &[
     Sheet {
         key: "tension",
         title: "Automesure tensionnelle",
-        purpose: "Trois jours avant la consultation, pour savoir si la tension est vraiment haute : celle du cabinet ne suffit pas à le dire.",
+        purpose: "Trois jours avant la consultation, pour confirmer ou écarter une hypertension : la mesure au cabinet ne suffit pas.",
         protocol: &[
             "Trois jours de suite, dans les jours qui précèdent la consultation.",
             "Le matin, avant le petit-déjeuner et avant de prendre vos médicaments : trois mesures, à une minute d'intervalle.",
@@ -96,7 +96,7 @@ pub const SHEETS: &[Sheet] = &[
         totals: &[
             "Moyenne des neuf mesures du matin",
             "Moyenne des neuf mesures du soir",
-            "Moyenne générale — c'est le chiffre que le médecin lit",
+            "Moyenne générale (valeur retenue par le médecin)",
         ],
     },
     Sheet {
@@ -106,7 +106,7 @@ pub const SHEETS: &[Sheet] = &[
         protocol: &[
             "Lavez-vous les mains à l'eau tiède et au savon, puis séchez-les. Pas d'alcool : il fausse la mesure.",
             "Piquez sur le côté de la pulpe du doigt, jamais au centre, et changez de doigt à chaque fois.",
-            "Notez le chiffre tout de suite : reconstitué le soir de mémoire, il n'a aucune valeur.",
+            "Notez le chiffre tout de suite : une valeur notée de mémoire n'est pas fiable.",
             "Notez à côté tout événement inhabituel : un repas sauté, un effort, une infection, un oubli de médicament.",
             "Ne modifiez jamais vos doses de vous-même à partir de ces chiffres.",
         ],
@@ -162,7 +162,7 @@ pub const SHEETS: &[Sheet] = &[
     Sheet {
         key: "inr",
         title: "Carnet d'INR",
-        purpose: "Les INR et les doses dans l'ordre : la seule façon de voir une dérive avant qu'elle ne devienne un saignement.",
+        purpose: "Les INR et les doses dans l'ordre, pour repérer une dérive avant la survenue d'un saignement.",
         protocol: &[
             "Notez la date du prélèvement, le résultat, et la dose que le médecin a fixée ensuite.",
             "Notez la date du prochain contrôle dès qu'elle vous est donnée.",
@@ -178,18 +178,18 @@ pub const SHEETS: &[Sheet] = &[
         columns: &["INR", "Dose fixée", "Prochain contrôle", "Remarque"],
         rows: 14,
         alert: "INR supérieur à 5, saignement qui ne s'arrête pas, selles noires, urines rouges, hématome important, ou chute avec choc à la tête même sans douleur : appelez sans attendre le prochain contrôle.",
-        bring_back: "Gardez ce carnet sur vous : il fait partie de votre traitement, comme la carte d'anticoagulant.",
+        bring_back: "Gardez ce carnet sur vous, avec votre carte de porteur d'anticoagulant.",
         totals: &[],
     },
     Sheet {
         key: "douleur",
         title: "Suivi de la douleur",
-        purpose: "L'intensité et le nombre d'interdoses : c'est ce nombre qui indique qu'il faut revoir le traitement de fond, et il ne se retient pas de mémoire.",
+        purpose: "L'intensité et le nombre d'interdoses : ce nombre indique s'il faut revoir le traitement de fond.",
         protocol: &[
             "Notez l'intensité de 0 — aucune douleur — à 10 — la pire que vous puissiez imaginer —, quatre fois par jour.",
             "Notez chaque interdose prise, et son heure : c'est le nombre par jour qui compte.",
             "Notez les circonstances qui déclenchent la douleur et celles qui la soulagent.",
-            "Ne modifiez pas les doses de vous-même, et n'attendez pas que la douleur soit insupportable pour prendre une interdose : plus on attend, plus il en faut.",
+            "Ne modifiez pas les doses de vous-même, et n'attendez pas que la douleur soit insupportable pour prendre une interdose : une douleur installée se soulage moins bien.",
         ],
         target: "Il n'y a pas de chiffre à atteindre. L'objectif est que la douleur vous laisse dormir, bouger et poursuivre vos activités.",
         columns: &["Matin", "Midi", "Soir", "Nuit", "Interdoses", "Remarque"],

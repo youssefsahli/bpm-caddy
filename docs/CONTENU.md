@@ -1,4 +1,4 @@
-# Le contenu clinique de BPM-Caddy — où il vit, comment on l'étend
+# Contenu clinique de BPM-Caddy — emplacement et extension
 
 L'application porte plus de contenu que de code. Ce document dit où
 chaque chose est écrite, ce qui la contrôle, et ce qui se passe quand on
@@ -105,7 +105,7 @@ Deux règles valent partout :
   « deux prises par jour » pour qu'une règle automatique ne crie pas au
   loup, et un test qui crie au loup finit désactivé.
 
-## Les facettes : le référentiel trié par ce qu'il contient
+## Les facettes : le référentiel trié par contenu
 
 - **Où** : `src/facets.rs` — `HALF_LIVES` et `NO_HALF_LIFE` (la demi-vie
   plasmatique en heures, ou la raison pour laquelle il n'y en a pas),
@@ -130,7 +130,7 @@ Deux règles valent partout :
   n'a pas de sens (produit non absorbé, ion, vaccin), 54 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.
-- **Ce que l'extraction automatique a fait de faux** : lue au premier
+- **Erreurs de l'extraction automatique** : lue au premier
   nombre venu, la prose donne un classement faux en tête. « Demi-vie
   d'environ 5 jours, l'effet persistant plusieurs semaines » se lit
   quatre-vingt-quatre jours ; la demi-vie osseuse d'un bisphosphonate se
@@ -248,7 +248,7 @@ Deux règles valent partout :
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où
   elle se voit.
-- **Ce que la dérive coûtait** : `anti-TNF` et `anti-TNF alpha` étaient
+- **Coût de la dérive** : `anti-TNF` et `anti-TNF alpha` étaient
   deux classes. La pastille de Humira annonçait sept voisins au lieu de
   dix, et Remicade n'était nulle part — sans que rien n'ait l'air cassé.
   C'est la question du comptoir un jour de rupture, et une réponse
@@ -313,7 +313,7 @@ imprime est déjà dans la base, et la corriger, c'est corriger la fiche
 du médicament ou la ligne du dossier — jamais une seconde table de
 conseils à tenir à jour deux fois.
 
-- **Ce qu'elle lit** : la posologie que le dossier retient pour *ce*
+- **Source** : la posologie que le dossier retient pour *ce*
   patient (`patient_drugs.posology`), son dosage
   (`patient_drugs.dosage`), l'indication de la première ligne de
   posologie de la fiche, et trois champs de la fiche elle-même — `iup`
@@ -483,7 +483,7 @@ conseils à tenir à jour deux fois.
   56, et les quatorze sauvegardes quotidiennes à 840. La base garde la
   **fiche** de chaque pièce, pas ses octets : une base copiée seule
   montre encore ce qui existait.
-- **Ce que la séparation impose** : `change_password` rechiffre les deux
+- **Conséquences de la séparation** : `change_password` rechiffre les deux
   fichiers (un test le tient), « Copier la base… » copie les deux,
   `[scans] backups_keep` est à part (2 par défaut, contre 14 pour la
   base), et la lecture retombe sur l'ancienne colonne `bytes` pour qu'une
@@ -536,7 +536,7 @@ conseils à tenir à jour deux fois.
 - **Semé par** : `Db::seed_protocols`, une fois, par titre. Un arbre
   réécrit par l'équipe n'est jamais remplacé ; un titre supprimé ne
   revient pas.
-- **Ce que c'est** : pas seulement les ruptures. Un protocole vaut aussi
+- **Définition** : pas seulement les ruptures. Un protocole vaut aussi
   pour ce qui entre sans ordonnance — un oubli de pilule, une piqûre de
   tique, une brûlure, une douleur thoracique — c'est-à-dire pour les
   situations où la bonne conduite est une suite de questions, pas une
@@ -596,7 +596,7 @@ conseils à tenir à jour deux fois.
   deux moitiés), un `Duplicate` (N traitements distincts portant l'un de
   ces mots), ou un `Without` (tous les groupes matchent **et** rien sur
   l'ordonnance ne répond au dernier).
-- **Ce que `Without` sert** : ce qui *manque* est la moitié de ce qu'un
+- **Rôle de `Without`** : ce qui *manque* est la moitié de ce qu'un
   bilan trouve — un opioïde sans laxatif, une corticothérapie sans rien
   pour l'os. Le point nomme les traitements qui *sont* là, puisqu'une
   absence n'a pas de nom, et la phrase dit ce qui n'y est pas. La règle
@@ -616,7 +616,7 @@ conseils à tenir à jour deux fois.
   Il est vide pour six des sept règles et le restera :
   `a_veto_takes_a_line_out_of_the_group_and_gives_it_back_its_voice`
   tient les quatre cas, et mord sur le troisième.
-- **Ce que le veto ne règle pas** : un mot de l'absence se cherche sur
+- **Limite du veto** : un mot de l'absence se cherche sur
   toute la ligne, donc il peut nommer des produits qui ne font pas la
   même chose. « calcium » nomme ici un supplément (Orocal, Cacit), un
   antiacide (Rennie) et une résine échangeuse de cations (Resikali) —
@@ -647,7 +647,7 @@ conseils à tenir à jour deux fois.
   l'autre. Il a fallu le faire pour de vrai : la lévothyroxine avait
   deux règles, l'une en information et l'autre en avertissement, et un
   dossier Levothyrox + calcium levait les deux.
-- **Ce qu'une règle ne peut pas savoir.** Un traitement, ici, est un
+- **Limites d'une règle.** Un traitement, ici, est un
   nom, une DCI, une classe et des étiquettes. Ni âge, ni dose, ni durée,
   ni diagnostic — c'est écrit en tête du module. « Benzodiazépine à
   demi-vie longue après 75 ans » demande un âge, « digoxine au-delà de
@@ -669,7 +669,7 @@ conseils à tenir à jour deux fois.
   sulfamide, le gemfibrozil sur répaglinide, l'aminoside avec un
   diurétique de l'anse. Le même gisement alimente `surveillance.rs`.
 
-## Ce qu'un traitement demande de surveiller
+## La surveillance biologique des traitements
 
 - **Où** : `src/surveillance.rs`, `WATCHES` : les mots qui désignent le
   traitement, le code d'un analyte de `biology::CATALOGUE`, le rythme en
@@ -694,11 +694,11 @@ conseils à tenir à jour deux fois.
 - **Ajouter une surveillance** : une entrée `Watch`. Si l'analyte n'existe
   pas encore, il faut d'abord l'ajouter à `biology::CATALOGUE` — avec sa
   règle, que ce catalogue-là exige.
-- **Ce qui ne s'y met pas** : un rythme que le prescripteur seul décide.
+- **Exclusions** : un rythme que le prescripteur seul décide.
   Les rythmes sont ceux des RCP et des recommandations usuelles ; c'est
   un aide-mémoire de comptoir, et l'application le dit.
 
-## Ce que la fonction rénale fait à une ordonnance
+## Adaptation à la fonction rénale
 
 - **Où** : `src/renal.rs`, `TABLE` : les mots qui désignent la molécule
   ou la classe, un libellé, des **paliers** (un DFG, un niveau, une
@@ -758,11 +758,11 @@ conseils à tenir à jour deux fois.
   garde son « à éviter » en grossesse parce que sa propre fiche le
   déconseille. Le veto se pose donc **boîte par boîte**, avec sa raison
   écrite à côté.
-- **Ce qui ne s'y met pas** : une molécule dont le RCP dit « prudence »
+- **Exclusions** : une molécule dont le RCP dit « prudence »
   sans chiffre. Une ligne sans seuil n'est pas une règle, et la fiche
   dit déjà « prudence » dans sa prose.
 
-## Ce que la fonction hépatique fait à une ordonnance
+## Adaptation à la fonction hépatique
 
 - **Où** : `src/hepatic.rs`, `TABLE` : les mots qui désignent la
   molécule, un libellé, des **paliers** (un stade, un niveau, une
@@ -771,7 +771,7 @@ conseils à tenir à jour deux fois.
   Deux cents fiches livrées nomment le foie dans leurs
   contre-indications, et il fallait les ouvrir une par une pour savoir
   ce que devient l'ordonnance d'un cirrhotique.
-- **Ce qui le sépare de son voisin rénal, et qui décide de tout** :
+- **Différence avec le volet rénal** :
   *le foie n'a pas de DFG*. Le rein donne un chiffre que l'officine lit
   sur un compte rendu ; le foie donne un **stade** de Child-Pugh qu'un
   clinicien attribue à partir de cinq éléments dont deux ne sont pas des
@@ -800,7 +800,7 @@ conseils à tenir à jour deux fois.
   qu'aucune fiche livrée n'atteint — même règle qu'au rein, et pour la
   même raison : une ligne inatteignable ne se distingue pas d'une ligne
   correcte, elle ne fait simplement jamais rien.
-- **Ce qui ne s'y met pas** : une molécule contre-indiquée en
+- **Exclusions** : une molécule contre-indiquée en
   « affection hépatique évolutive » — les statines, le léflunomide,
   l'agomélatine, et le valproate, dont la fiche parle d'« hépatite aiguë
   ou chronique ». C'est une maladie en cours, quel que soit le
@@ -824,13 +824,13 @@ conseils à tenir à jour deux fois.
 - **Le cliquet** : `the_table_only_ever_grows`, un plancher sur le
   nombre de molécules, écrit une fois dans une constante que le message
   relit. Il monte quand on ajoute, jamais pour faire passer un test.
-- **Ce qui reste ouvert** : il n'y a pas de volet hépatique côté
+- **Question ouverte** : il n'y a pas de volet hépatique côté
   dossier, parce qu'il faudrait un Child-Pugh rangé par patient — et un
   stade tapé une fois, contrairement à un chiffre de laboratoire daté,
   se relit comme actuel un an plus tard. S'il est un jour rangé, il
   portera sa date et le volet dira son âge.
 
-## Ce que l'âge fait à une ordonnance
+## Le sujet âgé
 
 - **Où** : `src/elderly.rs`, `TABLE` : les mots qui désignent la
   molécule ou la classe, un veto, un libellé, un seuil d'âge, un niveau,
@@ -844,7 +844,7 @@ conseils à tenir à jour deux fois.
   compte rendu, le foie de cliquer un stade ; l'âge ne demande rien.
   Pendant ce temps les fiches livrées écrivent « chez le sujet âgé »
   **889 fois**, et les lire demandait de les ouvrir une par une.
-- **Ce qui le sépare de son voisin rénal, et qui décide de tout** :
+- **Différence avec le volet rénal** :
   *le rein change la dose, l'âge change le choix*. Une conduite rénale
   dit « réduire de moitié » ; une conduite d'âge dit « il existe
   mieux ». D'où un champ que `renal` n'a pas et ne peut pas avoir —
@@ -909,7 +909,7 @@ conseils à tenir à jour deux fois.
   fiche dit « niveau de preuve modeste » et ne dit rien de l'âge. Un
   niveau sans membre est un niveau qui attire la mauvaise ligne
   suivante.
-- **Ce qu'il ne dit jamais** : « arrêtez ». Arrêter brutalement un
+- **Pas d'arrêt conseillé** : le module n'écrit jamais « arrêtez ». Arrêter brutalement un
   psychotrope chez un sujet âgé expose davantage que de le poursuivre,
   et le pied du panneau l'écrit.
 - **Ajouter une ligne** : une entrée `Inappropriate`, sa source, son
@@ -926,7 +926,7 @@ conseils à tenir à jour deux fois.
   nombre de lignes, écrit une fois dans une constante que le message
   relit.
 
-## Ce qu'on peut écraser
+## Écrasement des formes orales
 
 - **Où** : `src/crush.rs`, `TABLE` : les mots qui désignent la
   **présentation**, un libellé, un verdict, la raison, le remplaçant et
@@ -992,7 +992,7 @@ conseils à tenir à jour deux fois.
   porte **aucun contenu** : ni catalogue, ni règles écrites à la main.
   Tout ce qu'il sait, il le tient de ce qu'on lui passe — les
   traitements du dossier, la feuille collée, et la base de fiches.
-- **Ce qui s'ajuste quand même** : la lecture d'une ligne
+- **Ajustements** : la lecture d'une ligne
   (`split_line`), qui doit survivre aux vingt façons dont une ordonnance
   de sortie est écrite, et le rapprochement (`scored_match`), qui refuse
   de deviner sur moins de trois lettres. Une feuille d'un format que le
@@ -1017,7 +1017,7 @@ conseils à tenir à jour deux fois.
   autres — `InterviewKind::has_theme` l'exclut, comme les TROD mais pour
   la raison inverse : le TROD n'a pas de sujet, celui-ci en a trop pour
   un seul champ.
-- **Ce qu'il couvre se choisit à l'impression.** La fenêtre d'export
+- **Période choisie à l'impression.** La fenêtre d'export
   propose la liste de `[prevention] subjects`, décochée : sur ce
   rendez-vous-là, choisir *est* la question. Pour tous les autres actes,
   elle propose la liste du thème, cochée — c'est ce que la feuille
@@ -1065,24 +1065,24 @@ avertissement de son propre chef. Ajouter une mention, c'est ajouter une
 clé dans `DisclaimersConfig`, un champ dans Options › Mentions, et
 l'endroit qui l'imprime — jamais un texte en dur.
 
-## Deux modules qui ne livrent **aucun** contenu, exprès
+## Deux modules sans contenu livré
 
 `src/vigilance.rs` et `src/codebar.rs` sont des règles et des lectures,
 pas des catalogues, et cela mérite d'être écrit ici pour que personne ne
 vienne un jour « compléter » ce qui est vide à dessein.
 
-### `src/vigilance.rs` — les questions que le registre pose
+### `src/vigilance.rs` — contrôles du registre
 
 - **Où** : le module entier ; il ne connaît ni la base ni egui, et tout
   ce qu'il sait vient des lignes du registre de l'officine.
-- **Ce qu'il ne saura jamais** : une ligne de délivrance porte un jour,
+- **Limite** : une ligne de délivrance porte un jour,
   une quantité en unités de comptage, un dossier et un prescripteur en
   texte libre. **Ni dose quotidienne, ni durée prescrite, ni à quelle
   ordonnance elle se rattache.** Donc « ce traitement aurait dû durer
   jusqu'au » ne se calcule pas, et `quantité / max_days` est faux dans
   le sens dangereux — le plafond est légal et non posologique, et
   l'utiliser ainsi ferait de chaque délivrance légitime un signalement.
-- **Ce qu'il fait** : le dossier contre lui-même, sous **deux** silences
+- **Fonction** : le dossier contre lui-même, sous **deux** silences
   qu'il faut tous deux franchir — le plafond de la famille, qui ne sert
   qu'à se taire, et la médiane des intervalles antérieurs de ce dossier.
   Sous trois délivrances antérieures, il ne dit rien.
@@ -1093,12 +1093,12 @@ vienne un jour « compléter » ce qui est vide à dessein.
   qu'une question cite les lignes qui la posent. Ajouter un signal, c'est
   ajouter une variante, sa question dans `strings.fr.toml`, et les lignes
   qui l'étayent — les deux tests refusent le reste.
-- **Ce qu'on n'y mettra pas**, et le module le dit : un score de mésusage
+- **Exclu**, et le module le dit : un score de mésusage
   attaché à une personne, une dose quotidienne déduite, et l'équivalent
   morphine — le plus séduisant et le pire, puisque le registre ne connaît
   aucune dose quotidienne.
 
-### `src/codebar.rs` — ce qu'une douchette a tapé
+### `src/codebar.rs` — lecture de la douchette
 
 - **Où** : le module lit une chaîne de caractères. Une douchette USB est
   un clavier ; il n'y a ici ni pilote, ni image, ni décodage optique.

@@ -1002,7 +1002,7 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
 
     // --- What the age changes ---------------------------------------
     if !data.elderly.is_empty() {
-        src.push_str("#sec[Ce que l'âge change]\n");
+        src.push_str("#sec[Sujet âgé]\n");
         for (head, risk, instead) in &data.elderly {
             src.push_str(&format!(
                 "#block(below: 2.4mm)[#text(10pt, weight: \"bold\")[#{}] \\\n#text(9pt)[#{}] \\\n#text(9pt, style: \"italic\")[#{}]]\n",
@@ -1011,7 +1011,7 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
                 typst_str(instead)
             ));
         }
-        src.push_str("#text(8.5pt, style: \"italic\")[Listes de Laroche, STOPP/START et Beers, rapprochées de la date de naissance du dossier. Elles ne savent ni la dose, ni la durée, ni l'indication, et rien ne s'arrête d'un coup : un remplacement se prépare avec le prescripteur.]\n");
+        src.push_str("#text(8.5pt, style: \"italic\")[Listes de Laroche, STOPP/START et Beers, rapprochées de la date de naissance du dossier, sans tenir compte de la dose, de la durée ni de l'indication. Pas d'arrêt brutal : tout remplacement se prépare avec le prescripteur.]\n");
     }
 
     // --- Biology ----------------------------------------------------
@@ -1064,7 +1064,7 @@ fn bilan_values(data: &BilanData, pharmacy: &PharmacyConfig) -> Vec<(&'static st
 
     // --- Vaccines and acts ------------------------------------------
     if !data.vaccines.is_empty() {
-        src.push_str("#sec[Vaccinations à jour ?]\n");
+        src.push_str("#sec[Vaccinations à faire]\n");
         for line in &data.vaccines {
             src.push_str(&format!(
                 "#block(below: 1.2mm)[#text(9.5pt)[— #{}]]\n",
@@ -1197,7 +1197,7 @@ fn guide_values(pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
             format!(
                 "#{}",
                 typst_str(if pharmacy.name.trim().is_empty() {
-                    "Un exemplaire près du poste, un dans le classeur."
+                    "Aide-mémoire de l'officine"
                 } else {
                     pharmacy.name.trim()
                 })
@@ -1222,7 +1222,7 @@ pub fn guide_section_count() -> usize {
 const GUIDE_SECTIONS: &[(&str, &str)] = &[
     (
         "Ouvrir la base",
-        "L'application demande le mot de passe de la base au démarrage : la base est chiffrée, et rien n'en sort. « Verrouiller » (en haut à droite) ferme l'écran sans quitter, et l'inactivité le fait toute seule au bout du délai réglé dans les Options. Une sauvegarde du jour est écrite à chaque déverrouillage, dans le dossier « backups » à côté de la base.",
+        "L'application demande le mot de passe de la base au démarrage : la base est chiffrée. « Verrouiller » (en haut à droite) ferme l'écran sans quitter ; le verrouillage est aussi automatique après le délai d'inactivité réglé dans les Options. Une sauvegarde du jour est écrite à chaque déverrouillage, dans le dossier « backups » à côté de la base.",
     ),
     (
         "Trouver ou créer un patient",
@@ -1234,7 +1234,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Créer et suivre un entretien",
-        "Ctrl+N ouvre le choix rapide : un chiffre par acte, le thème si vous en voulez un. La ligne créée se lit de gauche à droite — le code de l'acte et son rang dans la séquence, le thème, le jour où il a été fait (modifiable) et les initiales de qui l'a fait, l'état, puis « » » pour avancer d'un état. Un acte avance jusqu'à « Facturé » ; « « » revient à l'état précédent.",
+        "Ctrl+N ouvre le choix rapide : un chiffre par acte, le thème en option. La ligne créée porte, de gauche à droite, le code de l'acte et son rang dans la séquence, le thème, la date de réalisation (modifiable) et les initiales de l'opérateur, l'état, puis « » » pour avancer d'un état. Un acte avance jusqu'à « Facturé » ; « « » revient à l'état précédent.",
     ),
     (
         "Documents imprimés par l'acte",
@@ -1242,11 +1242,11 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le bilan et le plan de prise",
-        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication à partir du dossier : traitements, interactions, revue d'ordonnance, ce que l'âge change, biologie, examens à faire vérifier, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
+        "En haut du dossier, « Bilan… » imprime le bilan partagé de médication à partir du dossier : traitements, interactions, revue d'ordonnance, sujet âgé, biologie, examens à faire vérifier, vaccinations dues, actes de l'année, et les cadres à remplir pendant l'entretien. « Plan de prise… » imprime la feuille que le patient emporte : indication, posologie et conduite à tenir en cas d'oubli, médicament par médicament.",
     ),
     (
         "La biologie",
-        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Interprétation » la relit contre les traitements du dossier — une kaliémie à 5,4 n'a pas le même sens sous IEC. À côté, cinq autres lectures de la même ordonnance : ce qui n'a pas été demandé depuis trop longtemps, ce que la clairance change, ce que la grossesse et l'allaitement changent, ce que l'âge change, et les croisements sur les cytochromes. Cliquez le nom d'un analyte pour voir sa courbe.",
+        "L'onglet « Biologie » enregistre les résultats : choisissez l'analyte, tapez la valeur, la date si ce n'est pas aujourd'hui. Chaque valeur est lue contre son intervalle usuel, et le panneau « Interprétation » la relit contre les traitements du dossier (une kaliémie à 5,4 ne s'interprète pas de la même façon sous IEC). À côté, cinq autres analyses de la même ordonnance : surveillance biologique en retard, adaptation à la fonction rénale, grossesse et allaitement, sujet âgé, interactions par les cytochromes. Cliquez le nom d'un analyte pour voir sa courbe.",
     ),
     (
         "Le carnet de vaccination",
@@ -1254,31 +1254,31 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "Le référentiel médicaments (F3)",
-        "Plus de huit cents fiches, deux lettres suffisent à en trouver une. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et les textes de l'équipe ne sont jamais réécrits par une mise à jour. Options › Interface choisit comment elle se lit : « Feuille » la pose sur du papier, « Dense » enlève la feuille et les marges pour en voir deux fois plus d'un coup d'œil, « Lecture » resserre la colonne et donne de l'air. Aucune des trois ne change la taille des lettres.",
+        "Plus de huit cents fiches, trouvées dès deux lettres. La fiche s'ouvre comme une monographie imprimée ; les noms des autres médicaments y sont cliquables. À droite, la fiche technique repliable : demi-vie, élimination, adaptation rénale, grossesse. « Modifier » passe au formulaire — tout est modifiable, et les textes de l'équipe ne sont jamais réécrits par une mise à jour. Options › Interface choisit comment elle se lit : « Feuille » la pose sur du papier, « Dense » retire la feuille et les marges pour afficher deux fois plus de texte, « Lecture » resserre la colonne et espace les lignes. Aucune des trois ne change la taille des lettres.",
     ),
     (
         "La barre au-dessus des autres fenêtres (F9)",
-        "La fenêtre réduite à une barre sans bordure, posée par-dessus le logiciel de comptoir — on la déplace en la prenant par sa tête, et le menu à côté d'« Agrandir » la pose d'un coup dans un coin, en bandeau en bas, en colonne à droite, ou libre. On tape un nom ou une molécule — une douchette tape dedans aussi, c'est un clavier ; les flèches haut et bas parcourent les fiches qui répondent, gauche et droite tournent cinq pages : ce que les tables disent, la posologie, les conseils, les précautions, et l'ordonnance du dossier ouvert. Les pastilles rapportent dix lectures de la fiche cherchée — ce que les monographies du dossier en disent, la revue d'ordonnance, un doublon de molécule sous un autre nom, ce que les valeurs de biologie veulent dire sous ce traitement, les examens à refaire, les cytochromes, l'écrasement, la grossesse, le rein au DFG du dossier et l'âge. Chacune cite le mot de sa table et ne conclut rien ; cliquée, elle ouvre l'écran qui répond en entier. Quand aucun nom ne répond, la barre cherche dans le texte des fiches. « Copier » met la page lue dans le presse-papier.",
+        "La fenêtre réduite à une barre sans bordure, posée par-dessus le logiciel de comptoir. Elle se déplace par sa barre de titre ; le menu voisin d'« Agrandir » la place dans un coin, en bandeau en bas, en colonne à droite, ou libre. Saisie d'un nom ou d'une molécule, au clavier ou à la douchette ; les flèches haut et bas parcourent les fiches trouvées, gauche et droite tournent cinq pages : tables, posologie, conseils, précautions, ordonnance du dossier ouvert. Les pastilles rapportent dix analyses de la fiche cherchée : monographies du dossier, revue d'ordonnance, doublon de molécule sous un autre nom, interprétation de la biologie sous ce traitement, examens à refaire, cytochromes, écrasement, grossesse, rein au DFG du dossier et âge. Chacune cite le terme de sa table sans conclure ; un clic ouvre l'écran complet. Quand aucun nom ne répond, la barre cherche dans le texte des fiches. « Copier » met la page lue dans le presse-papier.",
     ),
     (
         "Les tables, le codex, les protocoles",
-        "Depuis les médicaments : « Tables de conversion » (les références de comptoir, chacune datée et sourcée, qu'une seule recherche traverse toutes), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
+        "Depuis les médicaments : « Tables de conversion » (les références de comptoir, datées et sourcées, interrogées par une seule recherche), « Codex… » (les préparations de l'officine, avec la formule mise à la quantité prescrite et la fiche de fabrication), « Protocoles… » (les arbres de décision, à dérouler question par question au comptoir).",
     ),
     (
         "Chercher partout : « Aller à… » et « Dans le texte… »",
-        "Ctrl+K ouvre une boîte au-dessus de tout : tapez trois lettres et elle rend les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches, où se trouve souvent la réponse. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », et chaque fiche qui le dit revient avec la phrase qui le porte, mot surligné, la posologie et sa remarque comprises. Lorsqu'une fiche patient est ouverte, un bouton limite la recherche à ses seuls traitements.",
+        "Ctrl+K ouvre la recherche globale : trois lettres suffisent pour lister les patients, les fiches, les tables, les préparations et les protocoles qui répondent, avec les flèches pour parcourir et Entrée pour ouvrir. Sa dernière ligne cherche le même mot dans le *texte* des fiches. Le même bouton se trouve dans les médicaments sous « Dans le texte… » : « pamplemousse », « allaitement », « QT », chaque fiche concernée s'affiche avec la phrase correspondante, mot surligné, la posologie et sa remarque comprises. Lorsqu'une fiche patient est ouverte, un bouton limite la recherche à ses seuls traitements.",
     ),
     (
         "L'agenda et le carnet de transmissions",
-        "F4 ouvre la semaine : un bloc par rendez-vous, la couleur dit l'acte, un clic ouvre le dossier. Le panneau du jour détaille les rendez-vous, les entrées qui ne sont pas des actes (formation, réunion, livraison, congé) et les notes du jour. F5 ouvre le carnet de transmissions : une page par jour, imprimable pour le classeur.",
+        "F4 ouvre la semaine : un bloc par rendez-vous, une couleur par acte, un clic ouvre le dossier. Le panneau du jour détaille les rendez-vous, les entrées qui ne sont pas des actes (formation, réunion, livraison, congé) et les notes du jour. F5 ouvre le carnet de transmissions : une page par jour, imprimable pour le classeur.",
     ),
     (
         "Le tableau de bord",
-        "Le chiffre d'affaires facturé et en attente, le taux horaire, la charge des 28 prochains jours. « À revoir » est la liste d'appel : les dossiers dont la biologie ou l'ordonnance appelle un rappel. « Récapitulatif de facturation… » imprime les actes à facturer ; « Exporter CSV » écrit l'ensemble dans un fichier directement lisible par un tableur.",
+        "Le chiffre d'affaires facturé et en attente, le taux horaire, la charge des 28 prochains jours. « À revoir » est la liste d'appel : dossiers à rappeler pour la biologie ou l'ordonnance. « Récapitulatif de facturation… » imprime les actes à facturer ; « Exporter CSV » écrit l'ensemble dans un fichier directement lisible par un tableur.",
     ),
     (
         "Régler l'application",
-        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées — vides par défaut, l'application n'ajoute aucun avertissement de son propre chef —, les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des documents imprimables — fiche d'entretien, courrier, carnet, ordonnance, registre… — modifiables avec aperçu.",
+        "« Options… » : l'identité de l'officine et l'équipe (les initiales signent les notes, le nom signe les documents), les mentions imprimées (vides par défaut : aucun avertissement n'est ajouté automatiquement), les honoraires par acte et par rang, les règles de quota, la base et les sauvegardes. « Modèles… » ouvre les sources des documents imprimables — fiche d'entretien, courrier, carnet, ordonnance, registre… — modifiables avec aperçu.",
     ),
     (
         "Raccourcis",
@@ -1286,7 +1286,7 @@ const GUIDE_SECTIONS: &[(&str, &str)] = &[
     ),
     (
         "En cas de doute",
-        "Rien n'est décidé par l'application : elle propose, elle rappelle, elle calcule. Les intervalles de biologie sont ceux de l'adulte et celui du laboratoire prime ; les tables portent leur date de relecture et leurs sources ; les préparations ne se font que sur ordonnance et selon les bonnes pratiques. La base est partagée entre les postes : si un message dit qu'une ligne a changé ailleurs, relisez-la avant de réécrire.",
+        "L'application propose, rappelle et calcule ; elle ne décide pas. Les intervalles de biologie sont ceux de l'adulte et celui du laboratoire prime ; les tables portent leur date de relecture et leurs sources ; les préparations ne se font que sur ordonnance et selon les bonnes pratiques. La base est partagée entre les postes : si un message dit qu'une ligne a changé ailleurs, relisez-la avant de réécrire.",
     ),
 ];
 
@@ -1997,7 +1997,7 @@ fn selfcheck_values(
     src.push_str("#v(4mm)\n");
 
     // --- Comment mesurer ------------------------------------------
-    src.push_str("#text(11pt, weight: \"bold\")[Comment faire]\n#v(1.5mm)\n");
+    src.push_str("#text(11pt, weight: \"bold\")[Méthode de mesure]\n#v(1.5mm)\n");
     for (i, step) in sheet.protocol.iter().enumerate() {
         src.push_str(&format!(
             "#text(10pt)[*{}.* #{}]\\\n",
@@ -2142,7 +2142,7 @@ const DEFAULT_APPELS_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(9pt, style: "italic")[Liste établie le {{DATE}} ; elle suit l'état de la base et se réimprime à chaque usage.]
+#text(9pt, style: "italic")[Liste établie le {{DATE}} d'après l'état de la base ; à réimprimer à chaque usage.]
 "##;
 
 fn call_list_values(
@@ -2245,7 +2245,7 @@ const DEFAULT_DESTRUCTION_TEMPLATE: &str = r##"
 #v(4mm)
 #text(9pt)[Le pharmacien : #box(width: 6cm, stroke: (bottom: 0.5pt))   Le témoin : #box(width: 6cm, stroke: (bottom: 0.5pt))]
 #v(3mm)
-#text(9pt, style: "italic")[Les quantités portées ci-dessus sont celles que le registre tient au compte « à détruire » : ce que des patients ont rapporté et qui n'a pas été remis au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]
+#text(9pt, style: "italic")[Les quantités ci-dessus sont celles du compte « à détruire » du registre : retours de patients non réintégrés au stock délivrable. La destruction se porte au registre ligne par ligne, en citant le numéro du présent procès-verbal. Un stupéfiant rapporté ne se redélivre jamais.]
 "##;
 
 fn destruction_list_values(
@@ -2540,7 +2540,7 @@ const DEFAULT_REGISTRE_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, comptées en {{UNIT}}. Une ligne écrite ne se rature pas : elle reste, barrée, et une ligne de plus la désigne et défait ce qu'elle avait fait au stock. Un inventaire *pose* le solde au lieu de s'y ajouter, si bien que les colonnes ne s'additionnent pas au solde final dès qu'un comptage a trouvé un écart — c'est le comptage qui l'explique. Deux soldes et non un : ce qu'un patient rapporte entre à l'officine et se justifie ici, mais ne se délivre plus, et reste au compte « à détruire » jusqu'au procès-verbal. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]
+#text(8pt, style: "italic")[{{COUNT}} ligne(s) au registre, comptées en {{UNIT}}. Aucune ligne n'est raturée : une ligne annulée reste imprimée, barrée, et la ligne d'annulation qui la désigne en inverse l'effet sur le stock. Un inventaire *fixe* le solde au lieu de s'y ajouter : lorsqu'un comptage a trouvé un écart, les colonnes ne s'additionnent plus au solde final. Deux soldes : les retours de patients sont justifiés ici, ne sont jamais redélivrés et restent au compte « à détruire » jusqu'au procès-verbal. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
 "##;
 
 pub fn open_ordonnancier(
@@ -2631,7 +2631,7 @@ const DEFAULT_ORDONNANCIER_TEMPLATE: &str = r##"
 {{ROWS}})
 
 #v(4mm)
-#text(8pt, style: "italic")[{{COUNT}} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée garde le sien, et la suite continue après lui. Le nom du patient se lit en ouvrant le dossier dont le numéro figure ci-dessus.]
+#text(8pt, style: "italic")[{{COUNT}} délivrance(s) inscrite(s) pour l'année. Un numéro n'est jamais réattribué : une ligne annulée conserve le sien. Le nom du patient figure dans le dossier dont le numéro est indiqué ci-dessus.]
 "##;
 
 pub struct ConciliationData<'a> {
@@ -2997,7 +2997,7 @@ fn checklist_values(
         body.push_str("],\n)\n#v(2.4mm)\n");
     }
     if items.is_empty() {
-        body.push_str("#text(fill: rgb(120, 120, 120))[Cette liste n'a pas encore de ligne.]\n");
+        body.push_str("#text(fill: rgb(120, 120, 120))[Liste vide.]\n");
     }
     vec![
         ("{{TITLE}}", format!("#{}", typst_str(title.trim()))),
@@ -3288,7 +3288,7 @@ const DEFAULT_CODEX_TEMPLATE: &str = r##"
 #set par(justify: true)
 #align(center)[#text(15pt, weight: "bold")[Codex des préparations]]
 #v(1mm)
-#align(center)[#text(9pt, style: "italic")[Une préparation ne se fait que sur ordonnance et selon les bonnes pratiques de préparation.]]
+#align(center)[#text(9pt, style: "italic")[Préparation sur ordonnance uniquement, selon les bonnes pratiques de préparation.]]
 #v(4mm)
 
 {{BODY}}
@@ -3351,7 +3351,7 @@ fn dispositif_values(
         ));
     }
     src.push_str(
-        "#v(2mm)\n#text(8pt, style: \"italic\")[La ligne LPP et son tarif se vérifient au moment de la délivrance : cette fiche en donne la règle, pas le prix.]\n",
+        "#v(2mm)\n#text(8pt, style: \"italic\")[Ligne LPP et tarif à vérifier lors de la délivrance : cette fiche indique les conditions de prise en charge, non le prix.]\n",
     );
     vec![("{{BODY}}", src)]
 }
@@ -4069,7 +4069,7 @@ fn billing_recap_values(
 #v(2mm)
 #text(weight: "bold")[{n} location(s) — total {sum}]
 #v(2mm)
-#text(9pt)[Forfaits tels qu'ils étaient enregistrés à la pose. La ligne LPP et son tarif se vérifient avant facturation.]
+#text(9pt)[Forfaits enregistrés à la pose. Ligne LPP et tarif à vérifier avant facturation.]
 "#,
             n = rentals.len()
         );
@@ -5959,7 +5959,7 @@ const DEFAULT_CAISSE_TEMPLATE: &str = r##"
 
 #v(4mm)
 #table(columns: (1fr, auto), inset: 5pt, stroke: 0.4pt,
-  [Fond de caisse laissé pour demain], [{{FLOAT}} €],
+  [Fond de caisse reporté], [{{FLOAT}} €],
   [*Sorti du tiroir*], [*{{BANKED}} €*],
 )
 
@@ -5972,7 +5972,7 @@ const DEFAULT_CAISSE_TEMPLATE: &str = r##"
 )
 
 #v(4mm)
-#text(8.5pt, style: "italic")[Un écart se note et s'explique ; il ne se corrige pas en changeant le comptage.]
+#text(8.5pt, style: "italic")[Tout écart est noté et justifié, sans modification du comptage.]
 "##;
 
 /// Les valeurs de la feuille de caisse.
@@ -6141,7 +6141,7 @@ const DEFAULT_CAISSES_TEMPLATE: &str = r##"
 ]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un soir recompté est une deuxième ligne : les deux figurent ici, et seule la dernière entre dans les totaux. Un écart se note et s'explique ; il ne se corrige pas en changeant le comptage.]
+#text(8pt, style: "italic")[Un recomptage ajoute une seconde ligne : les deux figurent ici, seule la dernière entre dans les totaux. Tout écart est noté et justifié, sans modification du comptage.]
 "##;
 
 fn caisse_history_values(
@@ -6224,7 +6224,7 @@ fn caisse_history_values(
             // toutes U+2212, et `caisse::euros` sert aux deux.
             let sign = if g > 0 { "+" } else { "\u{2212}" };
             format!(
-                "Écart cumulé : {sign}{} € — sur {n} {}, {} en moins, {} en plus, {} juste.",
+                "Écart cumulé : {sign}{} € — sur {n} {}, {} en moins, {} en plus, {} sans écart.",
                 euros(g.abs()),
                 if n > 1 { "soirs" } else { "soir" },
                 summary.short,
@@ -6233,7 +6233,7 @@ fn caisse_history_values(
             )
         }
         (None, _) => {
-            "Écart : aucune recette attendue n'a été saisie sur la période — il n'y a pas d'écart à établir.".to_owned()
+            "Écart : non calculable, aucune recette attendue saisie sur la période.".to_owned()
         }
     };
     let worst = match summary.worst.as_ref().filter(|_| want_expected) {
@@ -6241,7 +6241,7 @@ fn caisse_history_values(
             // Le même signe moins que le tableau, comme au-dessus.
             let sign = if *gap > 0 { "+" } else { "\u{2212}" };
             format!(
-                "Le soir le plus loin du compte : {} ({sign}{} €).",
+                "Écart maximal : {} ({sign}{} €).",
                 crate::db::format_french_date(day),
                 euros(gap.abs())
             )
@@ -6326,7 +6326,7 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.4cm)
 #set text(size: 9.5pt, lang: "fr", hyphenate: true)
 
-#align(center)[#text(15pt, weight: "bold")[Écraser les comprimés — que peut-on faire ?]]
+#align(center)[#text(15pt, weight: "bold")[Écrasement des comprimés]]
 #v(1mm)
 #align(center)[#text(11pt, weight: "bold")[{{PATIENT}}]]
 #align(center)[#text(9pt)[{{PHARMACY_NAME}} — {{TODAY}}]]
@@ -6334,16 +6334,16 @@ const DEFAULT_ECRASER_TEMPLATE: &str = r##"
 
 #table(columns: (auto, auto, 1fr), inset: 5pt, stroke: 0.4pt,
   align: (left, left, left),
-  [*Traitement*], [*Réponse*], [*Pourquoi, et par quoi remplacer*],
+  [*Traitement*], [*Réponse*], [*Motif et alternative*],
 {{ROWS}})
 
 #v(4mm)
 #block(width: 100%, stroke: 0.4pt, inset: 6pt)[
-  #text(weight: "bold")[Trois choses avant d'écraser quoi que ce soit.]   Un comprimé écrasé se donne *aussitôt* : broyé à l'avance, il s'oxyde et se perd.   Un mortier se lave entre deux traitements, sans quoi la poussière du précédent part avec le suivant.   Et « à vérifier » ne veut pas dire « oui » : cette ligne-là demande d'ouvrir le résumé des caractéristiques.
+  #text(weight: "bold")[Précautions.]   Administrer *aussitôt* après écrasement : broyé à l'avance, le principe actif s'oxyde.   Laver le mortier entre deux traitements pour éviter toute contamination croisée.   « À vérifier » n'est pas une autorisation : consulter le résumé des caractéristiques du produit.
 ]
 
 #v(3mm)
-#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : un traitement qu'on ne peut pas écraser se change, il ne se force pas.]
+#text(8pt, style: "italic")[Cette feuille reprend les résumés des caractéristiques des produits et la liste nationale des médicaments écrasables. Elle ne remplace pas l'avis du prescripteur : un traitement non écrasable se remplace, sur son accord.]
 "##;
 
 const MARKERS_PLANNING: &[&str] = &[
@@ -6374,7 +6374,7 @@ const DEFAULT_PLANNING_TEMPLATE: &str = r##"
 #text(9pt)[Total de la semaine : *{{TOTAL}}*]
 
 #v(3mm)
-#text(8pt, style: "italic")[Un poste dont la fin n'a pas été notée s'écrit « 9 h–… » et n'entre pas dans le total : « 34 h 15 +1 » se lit trente-quatre heures un quart, plus un poste sans fin. Un total « — » veut dire qu'aucune heure n'est connue — ce n'est pas zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
+#text(8pt, style: "italic")[Un poste dont la fin n'a pas été notée s'écrit « 9 h–… » et n'entre pas dans le total : « 34 h 15 +1 » signifie 34 h 15 et un poste sans heure de fin. Un total « — » signifie qu'aucune heure n'est connue, et non zéro heure. Une garde qui franchit minuit est comptée en entier au jour qui la commence.]
 "##;
 
 fn crush_values(
@@ -6661,7 +6661,7 @@ const DEFAULT_SURVEILLANCE_TEMPLATE: &str = r##"
 
 #table(columns: (auto, 1.1fr, auto, auto, 1.4fr, auto), inset: 5pt, stroke: 0.5pt,
   align: (center, left, left, left, left, left),
-  [], [*Analyse*], [*Rythme*], [*Dernier*], [*Ce qui la demande*], [*Résultat*],
+  [], [*Analyse*], [*Rythme*], [*Dernier*], [*Motif*], [*Résultat*],
 {{ROWS}})
 
 #v(5mm)
@@ -7153,7 +7153,7 @@ mod tests {
         // Une liste sans ligne le dit plutôt que de sortir une page
         // blanche qu'on croirait ratée.
         let empty = fill(DEFAULT_LISTE_TEMPLATE, &checklist_values("Vide", "", &[]));
-        assert!(empty.contains("pas encore de ligne"));
+        assert!(empty.contains("Liste vide."));
         assert!(typst::compile::<PagedDocument>(&PdfWorld::new(empty))
             .output
             .is_ok());

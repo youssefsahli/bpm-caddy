@@ -631,8 +631,8 @@ pub const TABLE: &[Rule] = &[
         ],
         label: "Forme injectable ou implantable",
         verdict: Verdict::No,
-        why: "Ce n'est pas une forme orale : il n'y a rien à écraser. La question ne se pose pas pour cette ligne-là.",
-        instead: "Rien à remplacer ici. Si le patient ne peut plus avaler, c'est le reste de l'ordonnance qu'il faut revoir — cette ligne-ci ne passe déjà pas par la bouche.",
+        why: "Forme non orale : la question de l'écrasement ne se pose pas.",
+        instead: "Aucun remplacement nécessaire. En cas de troubles de la déglutition, revoir les formes orales du reste de l'ordonnance.",
         source: "Règle générale des voies parentérales",
     },
     Rule {

@@ -160,7 +160,7 @@ impl Cadence {
     /// [`ShiftKind`] : c'est le vocabulaire du module.
     pub fn label(self) -> &'static str {
         match self {
-            Self::Unique => "Ce jour-là",
+            Self::Unique => "Jour unique",
             Self::Quotidien => "Tous les jours",
             Self::Hebdomadaire => "Chaque semaine",
             Self::Paires => "Semaines paires",
@@ -175,26 +175,26 @@ impl Cadence {
     /// survol, et qui dit surtout **d'où il compte**.
     pub fn hint(self) -> &'static str {
         match self {
-            Self::Unique => "Un seul jour. Rien ne revient.",
+            Self::Unique => "Un seul jour, sans répétition.",
             Self::Quotidien => {
-                "Tous les jours jusqu'à la date de fin, qui devient obligatoire. \
-                 C'est ainsi qu'on pose un congé : une ligne, et non quinze."
+                "Tous les jours jusqu'à la date de fin, alors obligatoire. \
+                 Pour un congé : une seule ligne."
             }
-            Self::Hebdomadaire => "Une ligne rangée, dépliée à la lecture — pas cinquante-deux.",
+            Self::Hebdomadaire => "Chaque semaine, le même jour. Une seule ligne enregistrée.",
             Self::Paires => {
-                "Les semaines dont le numéro ISO est pair. C'est le calendrier qui décide, \
-                 et non un cycle de quinze jours : une année de 53 semaines retourne la parité."
+                "Semaines de numéro ISO pair, selon le calendrier et non un cycle \
+                 de quinze jours : une année de 53 semaines inverse la parité."
             }
             Self::Impaires => {
-                "Les semaines dont le numéro ISO est impair. C'est le calendrier qui décide, \
-                 et non un cycle de quinze jours : une année de 53 semaines retourne la parité."
+                "Semaines de numéro ISO impair, selon le calendrier et non un cycle \
+                 de quinze jours : une année de 53 semaines inverse la parité."
             }
             Self::UneSurDeux => {
-                "Quinze jours après le jour posé, puis de quinze en quinze. \
-                 Ce n'est pas « les semaines paires » : le calendrier n'y entre pas."
+                "Tous les quinze jours à partir du jour saisi, \
+                 indépendamment de la parité des semaines."
             }
-            Self::UneSurTrois => "Trois semaines après le jour posé, puis de trois en trois.",
-            Self::UneSurQuatre => "Quatre semaines après le jour posé, puis de quatre en quatre.",
+            Self::UneSurTrois => "Toutes les trois semaines à partir du jour saisi.",
+            Self::UneSurQuatre => "Toutes les quatre semaines à partir du jour saisi.",
         }
     }
 

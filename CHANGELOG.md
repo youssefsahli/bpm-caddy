@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.290.0] - 2026-09-24
+
+### Changed
+- **Registre des textes** : libellés, infobulles, sous-titres, aide,
+  mode d'emploi imprimé, modèles Typst, tables, README et documentation
+  relus pour un français professionnel et concis. Titres en groupes
+  nominaux, sans tournure « ce que / ce qui », sans « on », sans
+  apartés ni métaphores ; environ 320 textes de l'interface réécrits.
+- La carte du voisinage devient la **Carte pharmacologique** (bouton
+  « Carte… », modes « Fiche » et « Ordonnance ») ; « se rencontrent »
+  devient « interagissent », et les degrés se lisent « prioritaire »,
+  « à examiner », « pour information ».
+- « Écraser ? » devient « Écrasement » ; les issues d'une substitution
+  se lisent « maintenu » / « abandonné ».
+
 ## [0.289.0] - 2026-09-24
 
 ### Added

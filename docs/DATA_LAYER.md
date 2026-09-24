@@ -1,9 +1,9 @@
-# Une couche de données structurée — proposition
+# Couche de données structurée — proposition
 
 *État : proposition, à relire avant toute ligne de code. Rien de ce qui suit
 n'est construit.*
 
-## 1. Le problème, mesuré
+## 1. Constat chiffré
 
 Aujourd'hui une fiche est de la **prose annotée** : un nom, une DCI, une
 classe en texte libre, et une dizaine de champs rédigés. Huit tables
@@ -31,7 +31,7 @@ Ce que cette lecture a coûté, et qui est écrit dans `ARCHITECTURE.md` :
 Toutes ces parades sont justes, et toutes sont la même chose : reconstruire,
 à la lecture, une identité que la donnée ne porte pas.
 
-## 2. Ce qu'on propose : deux couches, et la seconde porte les identités
+## 2. Proposition : deux couches, la seconde porte les identités
 
 **Couche 1 — la prose annotée (ce qui existe).** Inchangée. Elle reste ce
 qu'on lit, ce qu'on imprime, ce que l'officine réécrit. Elle est la
@@ -71,7 +71,7 @@ couche 1 ou à une source extérieure citée.
 molécule substrat majeur du CYP3A4 », et plus « les fiches dont le texte
 contient "3A4" ».
 
-## 3. Ce que ça change, concrètement
+## 3. Conséquences
 
 | Aujourd'hui | Avec la couche 2 |
 |---|---|
@@ -110,7 +110,7 @@ quand le livré change).
 préparation des données) — jamais d'appel depuis l'application. La posture
 « tout est local » ne bouge pas.
 
-## 5. Chemin de migration — par tranches, chacune tenue par un test de parité
+## 5. Migration par tranches, chacune tenue par un test de parité
 
 1. **Identité des molécules.** Extraire les DCI des 862 fiches en entités
    `M:` (les associations en deux ou trois), et relier chaque fiche à ses
@@ -134,7 +134,7 @@ préparation des données) — jamais d'appel depuis l'application. La posture
 Chaque tranche est livrable seule, et aucune ne change ce que l'écran dit —
 sauf là où le test de parité montre que l'ancien disait faux.
 
-## 6. Ce qui reste à décider — par vous
+## 6. Décisions en attente
 
 1. **Le périmètre des entités.** Molécules, présentations, classes et voies
    sont indispensables. Enzymes, axes et sources sont utiles tout de suite

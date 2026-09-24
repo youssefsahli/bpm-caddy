@@ -291,9 +291,9 @@ impl Weight {
 
     pub fn label(self) -> &'static str {
         match self {
-            Weight::Major => "à regarder d'abord",
-            Weight::Notable => "à regarder",
-            Weight::Minor => "pour mémoire",
+            Weight::Major => "prioritaire",
+            Weight::Notable => "à examiner",
+            Weight::Minor => "pour information",
         }
     }
 }
