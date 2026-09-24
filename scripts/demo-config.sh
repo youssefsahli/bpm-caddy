@@ -36,6 +36,9 @@ discreet_finances = false
 text_scale = $2
 theme = "$3"
 monograph = "${4:-feuille}"
+# Les nouveautés déjà vues : la fenêtre d'après mise à jour ne se pose
+# sur aucune capture, sauf celle de sa propre clé (`nouveautes`).
+seen_notes = "999.0.0"
 [pharmacy]
 # L'identité, parce qu'une capture d'Options › Officine sur cinq champs
 # vides ne montre rien de ce que l'écran fait, et que les documents

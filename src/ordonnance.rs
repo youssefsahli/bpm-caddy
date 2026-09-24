@@ -206,6 +206,11 @@ fn protocols() -> [(&'static str, &'static Protocol); 2] {
     [("angine", &ANGINE), ("cystite", &CYSTITE)]
 }
 
+/// Les clés des protocoles, celles des lignes de la base.
+pub fn protocol_keys() -> [&'static str; 2] {
+    protocols().map(|(id, _)| id)
+}
+
 /// Toutes les phrases imprimées sur l'ordonnance, avec leur adresse.
 ///
 /// Les conseils et les temps de prise : ce sont les lignes qui partent

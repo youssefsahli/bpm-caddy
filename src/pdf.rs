@@ -59,7 +59,7 @@ const DEFAULT_TEMPLATE: &str = r#"
 #set text(size: 10.5pt, lang: "fr")
 #set block(spacing: 2.5mm)
 
-#let sec(title) = block(above: 4mm, below: 2mm)[
+#let sec(title) = block(sticky: true, above: 4mm, below: 2mm)[
   #text(weight: "bold")[#title]
   #v(-1.5mm)
   #line(length: 100%, stroke: 0.4pt)
@@ -1108,7 +1108,7 @@ const DEFAULT_BILAN_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.6cm)
 #set text(size: 10pt, lang: "fr", hyphenate: true)
 
-#let sec(t) = [#v(3mm) #text(11pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt) #v(1.5mm)]
+#let sec(t) = block(sticky: true, above: 3mm, below: 1.5mm)[#text(11pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt)]
 
 {{BODY}}
 "##;
@@ -5127,9 +5127,12 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 // chose : un aperçu vide de sept d'entre elles ne dit
                 // rien de la mise en page qu'on vient y régler. Une
                 // ligne par section suffit.
+                // Entre deux traitements **de la liste** : l'aperçu
+                // montrait une interaction avec un macrolide que le
+                // tableau au-dessus ne portait pas.
                 interactions: vec![(
-                    "Eliquis ↔ Zeclar".to_owned(),
-                    "Les macrolides augmentent l'exposition à l'apixaban.".to_owned(),
+                    "Coversyl ↔ Advil".to_owned(),
+                    "Un AINS diminue l'effet antihypertenseur de l'IEC et majore le risque d'insuffisance rénale aiguë.".to_owned(),
                 )],
                 review: vec![(
                     "ALERTE".to_owned(),
@@ -6883,7 +6886,7 @@ const DEFAULT_TROD_TEMPLATE: &str = r##"
 #set text(size: 10pt, lang: "fr")
 #set block(spacing: 2mm)
 
-#let sec(title) = block(above: 4mm, below: 2mm)[
+#let sec(title) = block(sticky: true, above: 4mm, below: 2mm)[
   #text(weight: "bold", size: 10.5pt)[#title]
   #v(-1.5mm)
   #line(length: 100%, stroke: 0.4pt)
@@ -7283,7 +7286,7 @@ const DEFAULT_VACCIN_TEMPLATE: &str = r##"
 #set text(size: 10pt, lang: "fr")
 #set block(spacing: 2mm)
 
-#let sec(title) = block(above: 4mm, below: 2mm)[
+#let sec(title) = block(sticky: true, above: 4mm, below: 2mm)[
   #text(weight: "bold", size: 10.5pt)[#title]
   #v(-1.5mm)
   #line(length: 100%, stroke: 0.4pt)

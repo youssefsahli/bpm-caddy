@@ -89,6 +89,93 @@ pub fn is_newer(latest: &str, current: &str) -> bool {
     false
 }
 
+/// Ce qu'une ligne du journal des modifications annonce.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoteKind {
+    Added,
+    Changed,
+    Fixed,
+}
+
+/// Les nouveautés d'une version, telles que `CHANGELOG.md` les écrit.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Notes {
+    pub version: String,
+    /// ISO, tel qu'écrit après le numéro.
+    pub date: String,
+    pub items: Vec<(NoteKind, String)>,
+}
+
+/// Les versions **postérieures à `seen`, jusqu'à `upto` incluse**, la
+/// plus récente d'abord, lues dans le journal des modifications livré
+/// avec l'application.
+///
+/// C'est ce que la fenêtre « Nouveautés » montre une fois après une mise
+/// à jour : le lanceur met l'application à jour tout seul, et un outil
+/// ajouté la veille est un outil que personne ne sait là. Plusieurs
+/// versions sautées d'un coup se lisent toutes.
+///
+/// Une rubrique inconnue (« Removed », « Security »…) est lue comme une
+/// modification plutôt qu'écartée ; « Unreleased » ne se lit jamais. Les
+/// marques de mise en forme (`**`, les accents graves) sont retirées : la
+/// fenêtre écrit du texte, pas du Markdown.
+pub fn notes_since(changelog: &str, seen: &str, upto: &str) -> Vec<Notes> {
+    let mut out: Vec<Notes> = Vec::new();
+    let mut kind = NoteKind::Changed;
+    let mut item: Option<String> = None;
+    let flush = |out: &mut Vec<Notes>, item: &mut Option<String>, kind: NoteKind| {
+        if let (Some(text), Some(notes)) = (item.take(), out.last_mut()) {
+            let clean = text.replace("**", "").replace('`', "");
+            let clean = clean.split_whitespace().collect::<Vec<_>>().join(" ");
+            if !clean.is_empty() {
+                notes.items.push((kind, clean));
+            }
+        }
+    };
+    let mut keep = false;
+    for line in changelog.lines() {
+        if let Some(head) = line.strip_prefix("## [") {
+            flush(&mut out, &mut item, kind);
+            let (version, rest) = head.split_once(']').unwrap_or((head, ""));
+            keep = version != "Unreleased" && is_newer(version, seen) && !is_newer(version, upto);
+            // Une version ne prend pas la rubrique où la précédente
+            // s'arrêtait.
+            kind = NoteKind::Changed;
+            if keep {
+                out.push(Notes {
+                    version: version.to_owned(),
+                    date: rest.trim_start_matches([' ', '-']).trim().to_owned(),
+                    items: Vec::new(),
+                });
+            }
+            continue;
+        }
+        if !keep {
+            continue;
+        }
+        if let Some(section) = line.strip_prefix("### ") {
+            flush(&mut out, &mut item, kind);
+            kind = match section.trim() {
+                "Added" => NoteKind::Added,
+                "Fixed" => NoteKind::Fixed,
+                _ => NoteKind::Changed,
+            };
+        } else if let Some(text) = line.strip_prefix("- ") {
+            flush(&mut out, &mut item, kind);
+            item = Some(text.to_owned());
+        } else if line.starts_with("  ") && item.is_some() {
+            if let Some(text) = item.as_mut() {
+                text.push(' ');
+                text.push_str(line.trim());
+            }
+        } else if line.trim().is_empty() {
+            flush(&mut out, &mut item, kind);
+        }
+    }
+    flush(&mut out, &mut item, kind);
+    out
+}
+
 /// What a finished check found.
 pub enum Checked {
     /// The tag of the newest release, and whether it is ahead of us.
@@ -165,6 +252,56 @@ fn verdict(tag: &str) -> Checked {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Les nouveautés : les versions sautées, toutes, et rien d'autre.**
+    #[test]
+    fn the_notes_are_the_versions_since_the_one_seen() {
+        let log = "# Changelog\n\n## [Unreleased]\n\n### Added\n- pas encore\n\n\
+## [0.3.0] - 2026-09-24\n\n### Added\n- **Fiche** de vaccination.\n  Deux lignes.\n\n\
+### Fixed\n- Un `titre` seul.\n\n## [0.2.0] - 2026-09-23\n\n### Changed\n- Trame.\n\n\
+## [0.1.0] - 2026-09-01\n\n### Added\n- Ancien.\n";
+        let notes = notes_since(log, "0.1.0", "0.3.0");
+        let versions: Vec<&str> = notes.iter().map(|n| n.version.as_str()).collect();
+        assert_eq!(
+            versions,
+            ["0.3.0", "0.2.0"],
+            "la plus récente d'abord, sans celle vue"
+        );
+        assert_eq!(notes[0].date, "2026-09-24");
+        assert_eq!(
+            notes[0].items,
+            vec![
+                (
+                    NoteKind::Added,
+                    "Fiche de vaccination. Deux lignes.".to_owned()
+                ),
+                (NoteKind::Fixed, "Un titre seul.".to_owned()),
+            ]
+        );
+        assert_eq!(
+            notes[1].items,
+            vec![(NoteKind::Changed, "Trame.".to_owned())]
+        );
+        // Rien de plus récent que ce binaire, jamais « Unreleased ».
+        assert_eq!(notes_since(log, "0.1.0", "0.2.0").len(), 1);
+        assert!(notes_since(log, "0.3.0", "0.3.0").is_empty());
+    }
+
+    /// **Le journal livré parle de cette version** — sans quoi la fenêtre
+    /// d'après mise à jour n'aurait rien à dire de ce qui vient d'arriver.
+    #[test]
+    fn the_shipped_changelog_describes_this_version() {
+        let log = include_str!("../CHANGELOG.md");
+        let here = notes_since(log, "0.0.0", current());
+        let first = here.first().expect("au moins une version");
+        assert!(
+            !is_newer(current(), &first.version),
+            "le journal s'arrête à {} alors que ce binaire est {}",
+            first.version,
+            current()
+        );
+        assert!(!first.items.is_empty());
+    }
 
     #[test]
     fn versions_compare_as_numbers_not_as_text() {

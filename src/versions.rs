@@ -24,8 +24,11 @@
 //! Une fiche se reconnaît d'une officine à l'autre à son nom replié : les
 //! fiches livrées ont les mêmes partout. Pur, testé, sans base.
 //!
-//! **Trois sortes d'entrées** suivent les mêmes règles ([`Kind`]) : les
-//! fiches médicament, les préparations du codex, et les protocoles. Une
+//! **Cinq sortes d'entrées** suivent les mêmes règles ([`Kind`]) : les
+//! fiches médicament, les préparations du codex, les protocoles, les
+//! lignes proposées après un TROD — sous leur protocole et leur nom
+//! ([`trod_entry`]) — et les vaccins du catalogue, sous leur libellé ;
+//! le rang des deux dernières reste propre à chaque officine. Une
 //! préparation voyage champ par champ comme une fiche ; un protocole
 //! voyage en deux champs — son sujet et son **arbre entier**, écrit sous
 //! une forme canonique ([`tree_json`]) : deux officines qui ont le même
@@ -79,6 +82,41 @@ pub const CODEX_FIELDS: [&str; 9] = [
 /// Les champs d'un protocole : son sujet, et son arbre entier.
 pub const PROTOCOL_FIELDS: [&str; 2] = ["subject", "arbre"];
 
+/// Les champs d'une ligne de TROD que le réseau partage : tout ce que
+/// l'ordonnance propose, sauf son rang — l'ordre des lignes est celui de
+/// chaque officine. **Le nom en est un** : la ligne voyage sous son nom
+/// d'origine (`trod_lines.origin`), si bien qu'un renommage est une
+/// version comme une autre et non une ligne de plus chez les autres.
+pub const TROD_FIELDS: [&str; 8] = [
+    "name",
+    "situation",
+    "posologies",
+    "caution",
+    "min_age",
+    "max_age",
+    "sex",
+    "pregnancy",
+];
+
+/// Les champs d'un vaccin du catalogue que le réseau partage : le code
+/// que le calendrier lit et le schéma. Son libellé est ce qui le
+/// reconnaît d'une officine à l'autre ; son rang reste celui de chacune.
+pub const VACCIN_FIELDS: [&str; 3] = ["label", "code", "schedule"];
+
+/// Le nom sous lequel une ligne de TROD voyage : son protocole et son
+/// nom — « Amoxicilline 1 g » n'est pas la même ligne dans l'angine et
+/// dans une autre indication.
+pub fn trod_entry(protocol: &str, name: &str) -> String {
+    format!("{} · {}", protocol.trim(), name.trim())
+}
+
+/// Le protocole et le nom d'une ligne de TROD, depuis son nom de voyage.
+pub fn split_trod_entry(entry: &str) -> Option<(&str, &str)> {
+    let (protocol, name) = entry.split_once(" · ")?;
+    let (protocol, name) = (protocol.trim(), name.trim());
+    (!protocol.is_empty() && !name.is_empty()).then_some((protocol, name))
+}
+
 /// Ce qu'une version modifie.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
 pub enum Kind {
@@ -89,6 +127,10 @@ pub enum Kind {
     Codex,
     /// Un protocole, son arbre compris.
     Protocole,
+    /// Une ligne proposée après un TROD positif.
+    Trod,
+    /// Un vaccin du catalogue de l'officine.
+    Vaccin,
 }
 
 impl Kind {
@@ -97,6 +139,8 @@ impl Kind {
             Kind::Fiche => "fiche",
             Kind::Codex => "codex",
             Kind::Protocole => "protocole",
+            Kind::Trod => "trod",
+            Kind::Vaccin => "vaccin",
         }
     }
 
@@ -104,6 +148,8 @@ impl Kind {
         match key {
             "codex" => Kind::Codex,
             "protocole" => Kind::Protocole,
+            "trod" => Kind::Trod,
+            "vaccin" => Kind::Vaccin,
             _ => Kind::Fiche,
         }
     }
@@ -116,6 +162,8 @@ impl Kind {
             Kind::Fiche => "version",
             Kind::Codex => "codex",
             Kind::Protocole => "protocole",
+            Kind::Trod => "trod",
+            Kind::Vaccin => "vaccin",
         }
     }
 
@@ -124,6 +172,8 @@ impl Kind {
             "version" => Some(Kind::Fiche),
             "codex" => Some(Kind::Codex),
             "protocole" => Some(Kind::Protocole),
+            "trod" => Some(Kind::Trod),
+            "vaccin" => Some(Kind::Vaccin),
             _ => None,
         }
     }
@@ -134,6 +184,8 @@ impl Kind {
             Kind::Fiche => &SHARED_FIELDS,
             Kind::Codex => &CODEX_FIELDS,
             Kind::Protocole => &PROTOCOL_FIELDS,
+            Kind::Trod => &TROD_FIELDS,
+            Kind::Vaccin => &VACCIN_FIELDS,
         }
     }
 }

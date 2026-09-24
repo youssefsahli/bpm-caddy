@@ -5,6 +5,39 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.295.0] - 2026-09-24
+
+### Added
+- **Trame de la semaine : « Reprendre de… ».** La grille se remplit de
+  la trame d'un collègue — rythme et journées — pour la personne
+  choisie ; « Poser la trame » l'écrit pour elle seule.
+- **Réseau : les lignes du protocole TROD et le catalogue des vaccins
+  sont partagés**, comme le codex et les protocoles — pour une ligne,
+  posologies, bornes d'âge, sexe, grossesse, précautions ; pour un
+  vaccin, son code et son schéma —, champ par champ, avec arbitrage et
+  historique (« Historique… » dans chaque éditeur). L'ordre reste celui
+  de chaque officine. Une ligne ou un vaccin renommé reste le même chez
+  les autres (le nom voyage comme un champ) ; une ligne livrée qu'une
+  officine a retirée n'y revient pas.
+- **Fenêtre « Nouveautés »** après une mise à jour, une fois par poste :
+  ce que la version apporte, modifie et corrige, toutes les versions
+  sautées comprises ; Options › À propos › « Nouveautés… » la rouvre.
+- **« Aller à… » s'ouvre sur les récents** : les cinq dernières
+  destinations choisies, la plus récente en tête, avant les vues et les
+  outils.
+
+### Fixed
+- **Réseau : une conversation réussie est portée au compte de l'officine
+  qui a répondu**, et non de celle qu'on croyait trouver à cette adresse.
+- **Planning : les menus « Nature » et « Rythme » de la saisie ne sont
+  plus vides** tant qu'on n'a rien choisi — ils montrent « Journée » et
+  « Jour unique », ce que « Poser » écrit.
+- **Imprimés : un titre de section ne reste plus seul en bas de page**
+  (bilan partagé de médication, fiches d'entretien, de TROD et de
+  vaccination) — il passe à la page suivante avec ce qu'il annonce.
+- **Aperçu du bilan** : l'interaction d'exemple porte sur deux
+  traitements de la liste, et non sur un macrolide absent du tableau.
+
 ## [0.294.0] - 2026-09-24
 
 ### Added

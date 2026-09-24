@@ -362,10 +362,18 @@ impl Net {
         Ok(added)
     }
 
-    /// Converser avec une officine appairée qui a une porte ouverte.
-    pub fn sync_with(&mut self, db: &Db, address: &str, patience: Duration) -> Result<(), String> {
+    /// Converser avec une officine appairée qui a une porte ouverte. Rend
+    /// l'empreinte de **celle qui a répondu** — pas forcément celle qu'on
+    /// croyait trouver à cette adresse : deux adresses échangées par la
+    /// box, et c'est l'autre qui répond.
+    pub fn sync_with(
+        &mut self,
+        db: &Db,
+        address: &str,
+        patience: Duration,
+    ) -> Result<Option<String>, String> {
         let Some(trousseau) = self.trousseau.clone() else {
-            return Ok(());
+            return Ok(None);
         };
         let mut link = bpm_sync::link::dial(address, patience).map_err(|e| format!("{e:?}"))?;
         let mut session = Session::new(
@@ -386,7 +394,7 @@ impl Net {
         )
         .map_err(|e| format!("{e:?}"))?;
         self.keep(db)?;
-        Ok(())
+        Ok(session.peer().map(|p| hex(&p.0)))
     }
 }
 
@@ -543,10 +551,14 @@ pub fn run(
                 // Chaque conversation est notée, réussie ou non, avec sa
                 // raison : « injoignable » sans date ni cause ne dit pas
                 // si c'est la box d'en face ou celle d'ici.
+                // Une note qui ne s'écrit pas n'arrête pas les autres
+                // conversations : c'est un état affiché, pas une donnée.
                 match net.sync_with(&db, &p.address, TALK_PATIENCE) {
-                    Ok(()) => db.note_net_dial(&p.device, None)?,
+                    Ok(answered) => {
+                        let _ = db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
+                    }
                     Err(e) => {
-                        db.note_net_dial(&p.device, Some(&dial_reason(&e)))?;
+                        let _ = db.note_net_dial(&p.device, Some(&dial_reason(&e)));
                         failed.push(if p.name.trim().is_empty() {
                             p.address.clone()
                         } else {
@@ -631,6 +643,225 @@ mod tests {
             source: String::new(),
             refers: String::new(),
         }
+    }
+
+    /// **Les lignes du TROD voyagent** comme le codex : une posologie
+    /// corrigée dans une officine s'applique chez l'autre, qui avait la
+    /// même ligne livrée, et une ligne ajoutée y est créée.
+    #[test]
+    fn a_trod_line_edited_in_one_officine_applies_in_the_other() {
+        let (dir_a, _sa, a) = officine("trod-a");
+        let (_dir_b, _sb, b) = officine("trod-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        b.net_key("net_trousseau", &a.setting("net_trousseau").unwrap())
+            .unwrap();
+        let (na, nb) = (Net::load(&a).unwrap(), Net::load(&b).unwrap());
+        a.add_net_peer(&hex(&nb.device.id().0), "", "2026-09-24")
+            .unwrap();
+        b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-24")
+            .unwrap();
+        a.seed_trod_lines().unwrap();
+        b.seed_trod_lines().unwrap();
+
+        // A corrige la posologie de l'amoxicilline adulte, et ajoute une
+        // ligne au protocole de l'angine.
+        let amox = a.trod_lines("angine").unwrap()[0].clone();
+        let changed = crate::ordonnance::Offer {
+            posologies: vec!["1 g matin et soir pendant 6 jours".to_owned()],
+            ..amox.clone()
+        };
+        assert!(a.update_trod_line(&changed, &amox).unwrap());
+        let pristi = a.add_trod_line("angine", "Pristinamycine 500 mg").unwrap();
+        let blank = a
+            .trod_lines("angine")
+            .unwrap()
+            .into_iter()
+            .find(|o| o.id == pristi)
+            .unwrap();
+        assert!(a
+            .update_trod_line(
+                &crate::ordonnance::Offer {
+                    posologies: vec!["1 g deux fois par jour pendant 4 jours".to_owned()],
+                    ..blank.clone()
+                },
+                &blank,
+            )
+            .unwrap());
+
+        let mut na = Net::load(&a).unwrap();
+        assert!(na.publish(&a, "Pharmacie du Centre").unwrap() >= 2);
+        na.exchange_folder(&a, &folder).unwrap();
+        let mut nb = Net::load(&b).unwrap();
+        nb.exchange_folder(&b, &folder).unwrap();
+        nb.absorb(&b).unwrap();
+
+        let theirs = b.trod_lines("angine").unwrap();
+        let same = theirs.iter().find(|o| o.name == amox.name).unwrap();
+        assert_eq!(
+            same.posologies,
+            vec!["1 g matin et soir pendant 6 jours".to_owned()],
+            "la correction s'est appliquée"
+        );
+        assert!(
+            theirs.iter().any(|o| o.name == "Pristinamycine 500 mg"),
+            "la ligne ajoutée existe chez B"
+        );
+        // Et rien d'une autre indication n'a bougé.
+        let names = |db: &Db| -> Vec<(String, Vec<String>)> {
+            db.trod_lines("cystite")
+                .unwrap()
+                .into_iter()
+                .map(|o| (o.name, o.posologies))
+                .collect()
+        };
+        assert_eq!(names(&b), names(&a));
+    }
+
+    /// **Une ligne renommée reste une ligne** chez les autres : son nom
+    /// voyage comme un champ, sous son identité d'origine. Et une ligne
+    /// livrée que l'autre officine a retirée ne revient pas, vide, sur
+    /// son ordonnance.
+    #[test]
+    fn a_renamed_trod_line_stays_one_line_and_a_removed_one_stays_removed() {
+        let (dir_a, _sa, a) = officine("trod-id-a");
+        let (_dir_b, _sb, b) = officine("trod-id-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        b.net_key("net_trousseau", &a.setting("net_trousseau").unwrap())
+            .unwrap();
+        let (na, nb) = (Net::load(&a).unwrap(), Net::load(&b).unwrap());
+        a.add_net_peer(&hex(&nb.device.id().0), "", "2026-09-24")
+            .unwrap();
+        b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-24")
+            .unwrap();
+        a.seed_trod_lines().unwrap();
+        b.seed_trod_lines().unwrap();
+        let before = b.trod_lines("angine").unwrap().len();
+
+        // A renomme l'amoxicilline adulte et corrige la céfuroxime.
+        let lines = a.trod_lines("angine").unwrap();
+        let amox = lines[0].clone();
+        assert!(a
+            .update_trod_line(
+                &crate::ordonnance::Offer {
+                    name: "Amoxicilline 1 g (Clamoxyl)".to_owned(),
+                    ..amox.clone()
+                },
+                &amox
+            )
+            .unwrap());
+        let cefu = lines
+            .iter()
+            .find(|o| o.name.starts_with("Céfuroxime"))
+            .unwrap()
+            .clone();
+        assert!(a
+            .update_trod_line(
+                &crate::ordonnance::Offer {
+                    caution: "Précaution revue par le groupement.".to_owned(),
+                    ..cefu.clone()
+                },
+                &cefu
+            )
+            .unwrap());
+        // B, de son côté, a retiré la céfuroxime.
+        let b_cefu = b
+            .trod_lines("angine")
+            .unwrap()
+            .into_iter()
+            .find(|o| o.name == cefu.name)
+            .unwrap();
+        assert!(b.delete_trod_line(b_cefu.id, &b_cefu.name).unwrap());
+
+        let mut na = Net::load(&a).unwrap();
+        na.publish(&a, "Pharmacie du Centre").unwrap();
+        na.exchange_folder(&a, &folder).unwrap();
+        let mut nb = Net::load(&b).unwrap();
+        nb.exchange_folder(&b, &folder).unwrap();
+        nb.absorb(&b).unwrap();
+
+        let theirs = b.trod_lines("angine").unwrap();
+        assert_eq!(
+            theirs.len(),
+            before - 1,
+            "le renommage n'ajoute pas de ligne, la ligne retirée ne revient pas"
+        );
+        assert!(theirs
+            .iter()
+            .any(|o| o.name == "Amoxicilline 1 g (Clamoxyl)"));
+        assert!(
+            !theirs.iter().any(|o| o.name == amox.name),
+            "renommée, pas doublée"
+        );
+        assert!(!theirs.iter().any(|o| o.name == cefu.name));
+    }
+
+    /// **Le catalogue des vaccins voyage** : un schéma corrigé dans une
+    /// officine s'applique chez l'autre, un vaccin ajouté y est créé.
+    #[test]
+    fn a_vaccine_edited_in_one_officine_applies_in_the_other() {
+        let (dir_a, _sa, a) = officine("vacc-a");
+        let (_dir_b, _sb, b) = officine("vacc-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        b.net_key("net_trousseau", &a.setting("net_trousseau").unwrap())
+            .unwrap();
+        let (na, nb) = (Net::load(&a).unwrap(), Net::load(&b).unwrap());
+        a.add_net_peer(&hex(&nb.device.id().0), "", "2026-09-24")
+            .unwrap();
+        b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-24")
+            .unwrap();
+        a.seed_vaccine_catalogue().unwrap();
+        b.seed_vaccine_catalogue().unwrap();
+
+        let first = a.vaccine_catalogue().unwrap()[0].clone();
+        let changed = crate::vaccines::Vaccine {
+            schedule: "Schéma revu par le groupement".to_owned(),
+            ..first.clone()
+        };
+        assert!(a.update_vaccine(&changed, &first).unwrap());
+        let added = a.add_vaccine("Vaccin du groupement").unwrap();
+        let blank = a
+            .vaccine_catalogue()
+            .unwrap()
+            .into_iter()
+            .find(|v| v.id == added)
+            .unwrap();
+        assert!(a
+            .update_vaccine(
+                &crate::vaccines::Vaccine {
+                    schedule: "3 doses".to_owned(),
+                    ..blank.clone()
+                },
+                &blank
+            )
+            .unwrap());
+
+        let mut na = Net::load(&a).unwrap();
+        na.publish(&a, "Pharmacie du Centre").unwrap();
+        na.exchange_folder(&a, &folder).unwrap();
+        let mut nb = Net::load(&b).unwrap();
+        nb.exchange_folder(&b, &folder).unwrap();
+        nb.absorb(&b).unwrap();
+
+        let theirs = b.vaccine_catalogue().unwrap();
+        assert_eq!(
+            theirs
+                .iter()
+                .find(|v| v.label == first.label)
+                .unwrap()
+                .schedule,
+            "Schéma revu par le groupement"
+        );
+        assert_eq!(
+            theirs
+                .iter()
+                .find(|v| v.label == "Vaccin du groupement")
+                .map(|v| v.schedule.as_str()),
+            Some("3 doses"),
+            "le vaccin ajouté existe chez B, avec son schéma"
+        );
     }
 
     /// **Une officine qu'on ne joint pas le dit, avec l'heure et la

@@ -89,6 +89,23 @@ fn spawn_daily_backup(
 /// délogeait, et avec `keep = 1` chaque copie juste était effacée
 /// aussitôt écrite. Le fichier partiel porte `.part` jusqu'à ce qu'il
 /// soit complet, et l'élagage garde les plus récemment écrits.
+/// Les nouveautés à montrer à ce lancement.
+///
+/// Depuis la dernière version vue par ce poste ; sans version vue — un
+/// poste qui n'a jamais eu la fenêtre —, la version en cours seule, et
+/// `always` la montre même déjà vue (la clé de vue `nouveautes`).
+fn whatsnew_notes(seen: &str, always: bool) -> Vec<crate::release::Notes> {
+    let log = include_str!("../CHANGELOG.md");
+    let current = crate::release::current();
+    if always || seen.trim().is_empty() {
+        return crate::release::notes_since(log, "0.0.0", current)
+            .into_iter()
+            .take(1)
+            .collect();
+    }
+    crate::release::notes_since(log, seen.trim(), current)
+}
+
 fn daily_copy(
     dir: &std::path::Path,
     target: &std::path::Path,
@@ -2971,6 +2988,7 @@ enum Goto {
 /// One line of the jump box: where it goes, what it reads, and which
 /// kind of thing it is (a dim tag on the right, so « Coversyl » the
 /// fiche and « Coversyl » the treatment of a file never look alike).
+#[derive(Clone)]
 struct GotoHit {
     dest: Goto,
     label: String,
@@ -3739,6 +3757,9 @@ struct Session {
     /// The last ranking of the jump box, and the question it answered.
     goto_hits: Vec<GotoHit>,
     goto_hits_key: Option<(String, usize, u64, u64, u64, u64)>,
+    /// Les dernières destinations choisies dans la boîte, la plus récente
+    /// en tête : elles ouvrent la liste quand la boîte est vide.
+    goto_recent: Vec<GotoHit>,
     /// The last patient search, and the question it answered.
     patient_hits: Vec<Patient>,
     patient_hits_key: Option<(String, u64)>,
@@ -5043,6 +5064,7 @@ impl Session {
             stup_rev: 0,
             goto_hits: Vec::new(),
             goto_hits_key: None,
+            goto_recent: Vec::new(),
             patient_hits: Vec::new(),
             patient_hits_key: None,
             pending,
@@ -5802,17 +5824,39 @@ impl Session {
             }
         }
         if q.is_empty() {
+            // **Les récents d'abord** : on revient dix fois par jour aux
+            // trois mêmes dossiers et au même outil. Une destination
+            // disparue depuis — un dossier supprimé sur un autre poste —
+            // n'est pas proposée.
+            let recent: Vec<GotoHit> = self
+                .goto_recent
+                .iter()
+                .filter(|h| match h.dest {
+                    Goto::Patient(id) => self.patients.iter().any(|p| p.id == id),
+                    Goto::Drug(id) => self.drugs.iter().any(|d| d.id == id),
+                    _ => true,
+                })
+                .cloned()
+                .collect();
+            let mut menu: Vec<GotoHit> = recent;
+            for (_, h) in out {
+                if !menu.iter().any(|r| r.dest == h.dest) {
+                    menu.push(h);
+                }
+            }
             // À vide, la boîte est un menu : les vues, puis les outils —
             // c'est ici qu'on apprend qu'ils existent.
             for tool in Tool::ALL.into_iter().filter(|t| t.available()) {
-                push(
-                    0,
-                    Goto::Tool(tool),
-                    tool.title().to_owned(),
-                    tr("goto_kind_tool"),
-                );
+                if menu.iter().any(|r| r.dest == Goto::Tool(tool)) {
+                    continue;
+                }
+                menu.push(GotoHit {
+                    dest: Goto::Tool(tool),
+                    label: tool.title().to_owned(),
+                    kind: tr("goto_kind_tool"),
+                });
             }
-            return out.into_iter().map(|(_, h)| h).collect();
+            return menu;
         }
         for (p, (k1, k2)) in self.patients.iter().zip(self.search_keys.iter()) {
             let sc = fuzzy::score(q, k1).max(fuzzy::score(q, k2));
@@ -5968,6 +6012,16 @@ impl Session {
         let mut hits = goto_rank(out, limit.saturating_sub(1));
         hits.extend(goto_text_row(q));
         hits
+    }
+
+    /// Retenir une destination de la boîte : en tête, sans doublon,
+    /// cinq au plus. La liste à vide se recalcule à la prochaine
+    /// ouverture.
+    fn remember_goto(&mut self, hit: GotoHit) {
+        self.goto_recent.retain(|h| h.dest != hit.dest);
+        self.goto_recent.insert(0, hit);
+        self.goto_recent.truncate(5);
+        self.goto_hits_key = None;
     }
 
     /// Go where a jump-box result points, loading whatever that
@@ -6667,7 +6721,7 @@ impl Session {
                 .count();
             self.conn_badge = (others, self.db.setting("net_trousseau").is_some());
             let mut entries = Vec::new();
-            let names: Vec<(crate::versions::Kind, String)> = self
+            let mut names: Vec<(crate::versions::Kind, String)> = self
                 .preparations
                 .iter()
                 .map(|p| (crate::versions::Kind::Codex, p.name.clone()))
@@ -6677,6 +6731,22 @@ impl Session {
                         .map(|p| (crate::versions::Kind::Protocole, p.title.clone())),
                 )
                 .collect();
+            // Les vaccins et les lignes du TROD, par leur identité réseau
+            // — celle sous laquelle leurs versions voyagent.
+            names.extend(
+                self.db
+                    .vaccine_entries()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(_, e)| (crate::versions::Kind::Vaccin, e)),
+            );
+            names.extend(
+                self.db
+                    .trod_entries()
+                    .unwrap_or_default()
+                    .into_iter()
+                    .map(|(_, e)| (crate::versions::Kind::Trod, e)),
+            );
             for (kind, name) in names {
                 // Only entries some received version names: the others
                 // have nothing to settle, and reading a protocol's tree
@@ -11600,6 +11670,15 @@ fn goto_window(ctx: &egui::Context, session: &mut Session) -> Option<Goto> {
             chosen = Some(hit.dest.clone());
         }
     }
+    // Ce qu'on vient de choisir remonte en tête des récents — sauf une
+    // recherche dans le texte, qui est une question et pas un endroit.
+    if let Some(dest) = &chosen {
+        if !matches!(dest, Goto::Text(_)) {
+            if let Some(hit) = hits.iter().find(|h| &h.dest == dest) {
+                session.remember_goto(hit.clone());
+            }
+        }
+    }
     // Lent to the window, which needed the session mutably at the same
     // time, and handed straight back.
     session.goto_hits = hits;
@@ -11890,6 +11969,11 @@ pub struct App {
     show_nav: bool,
     /// The keyboard reference (F12), open or not.
     show_keys: bool,
+    /// Les nouveautés à montrer — une fois après une mise à jour, ou à la
+    /// demande depuis « À propos ».
+    whatsnew: Option<Vec<crate::release::Notes>>,
+    /// La vérification d'après mise à jour a eu lieu pour ce lancement.
+    whatsnew_checked: bool,
     /// Ctrl+F asked for the navigator's search field; consumed by the
     /// dock on the next frame it draws.
     focus_nav: bool,
@@ -13817,6 +13901,8 @@ impl App {
             show_docs,
             show_nav,
             show_keys: start_view == "keys",
+            whatsnew: None,
+            whatsnew_checked: false,
             focus_nav: false,
             layout_saved: layout.clone(),
             layout,
@@ -15659,6 +15745,102 @@ impl App {
     /// a counter — and until now the only way to learn a key was to be
     /// told. Every shortcut it answers to, on one page, grouped by what
     /// it acts on.
+    /// Les nouveautés : une rubrique par version, la plus récente
+    /// d'abord, ce qui est nouveau, modifié, corrigé.
+    fn whatsnew_window(&mut self, ctx: &egui::Context) {
+        // Empruntées le temps de l'image et rendues à la fin : pas de
+        // copie des notes à chaque image.
+        let Some(notes) = self.whatsnew.take() else {
+            return;
+        };
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let shown = egui::Window::new(tr("whatsnew_title"))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(720.0, 560.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                let footer = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("whatsnew_body")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        for n in &notes {
+                            motif::section(
+                                ui,
+                                &trn(
+                                    "whatsnew_version",
+                                    &[&n.version, &db::format_french_date(&n.date)],
+                                ),
+                            );
+                            for kind in [
+                                crate::release::NoteKind::Added,
+                                crate::release::NoteKind::Changed,
+                                crate::release::NoteKind::Fixed,
+                            ] {
+                                let items: Vec<&String> = n
+                                    .items
+                                    .iter()
+                                    .filter(|(k, _)| *k == kind)
+                                    .map(|(_, t)| t)
+                                    .collect();
+                                if items.is_empty() {
+                                    continue;
+                                }
+                                ui.label(
+                                    egui::RichText::new(tr(match kind {
+                                        crate::release::NoteKind::Added => "whatsnew_added",
+                                        crate::release::NoteKind::Changed => "whatsnew_changed",
+                                        crate::release::NoteKind::Fixed => "whatsnew_fixed",
+                                    }))
+                                    .size(motif::pt(ui, 11.0))
+                                    .strong()
+                                    .color(motif::text_dim()),
+                                );
+                                for item in items {
+                                    // La puce à part : une ligne qui
+                                    // passe à la suivante reprend sous le
+                                    // texte, pas sous la puce.
+                                    ui.horizontal_top(|ui| {
+                                        ui.label(
+                                            egui::RichText::new("•").size(motif::pt(ui, 11.0)),
+                                        );
+                                        ui.add(
+                                            egui::Label::new(
+                                                egui::RichText::new(item.as_str())
+                                                    .size(motif::pt(ui, 11.0)),
+                                            )
+                                            .wrap(),
+                                        );
+                                    });
+                                }
+                                ui.add_space(4.0);
+                            }
+                            ui.add_space(6.0);
+                        }
+                    });
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, tr("tpl_close")).clicked() {
+                        close = true;
+                    }
+                });
+            });
+        motif::dialog_relief(ctx, &shown);
+        self.whatsnew = Some(notes);
+        if close || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+            self.whatsnew = None;
+            // Vu : la prochaine mise à jour montrera ce qui la suit.
+            if self.config.ui.seen_notes != crate::release::current() {
+                self.config.ui.seen_notes = crate::release::current().to_owned();
+                let _ = self.config.save();
+            }
+        }
+    }
+
     fn keys_window(&mut self, ctx: &egui::Context) {
         let rows = key_rows();
         let mut open = true;
@@ -25469,6 +25651,7 @@ impl App {
         let mut save = false;
         let mut delete = false;
         let mut add = false;
+        let mut history: Option<i64> = None;
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("vcat_title"))
             .collapsible(false)
@@ -25570,12 +25753,32 @@ impl App {
                     if motif::button_enabled(ui, label, open).clicked() {
                         delete = true;
                     }
+                    // Les versions du vaccin, partagées avec le réseau.
+                    if let Some(base) = &edit.base {
+                        if motif::button(ui, tr("ver_open"))
+                            .on_hover_text(tr("ver_open_entry_tooltip"))
+                            .clicked()
+                        {
+                            history = Some(base.id);
+                        }
+                    }
                     if motif::button(ui, tr("trod_edit_done")).clicked() {
                         close = true;
                     }
                 });
             });
         motif::dialog_relief(ctx, &shown);
+        if let Some(id) = history {
+            if let Some((_, entry)) = session
+                .db
+                .vaccine_entries()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|(i, _)| *i == id)
+            {
+                session.entry_versions = Some((crate::versions::Kind::Vaccin, entry));
+            }
+        }
         let mut wrote = false;
         let mut stale = false;
         let mut open_id: Option<i64> = None;
@@ -25674,6 +25877,7 @@ impl App {
         // fixe son protocole : il le laisse choisir.
         let standalone = session.ordonnance.is_none();
         let mut switch: Option<&'static str> = None;
+        let mut history: Option<i64> = None;
         let Some(edit) = &mut session.trod_edit else {
             return;
         };
@@ -25838,6 +26042,16 @@ impl App {
                     if motif::button_enabled(ui, label, open).clicked() {
                         delete = true;
                     }
+                    // Les versions de la ligne, partagées avec le réseau
+                    // comme celles du codex et des protocoles.
+                    if let Some(base) = &edit.base {
+                        if motif::button(ui, tr("ver_open"))
+                            .on_hover_text(tr("ver_open_entry_tooltip"))
+                            .clicked()
+                        {
+                            history = Some(base.id);
+                        }
+                    }
                     if motif::button(ui, tr("trod_edit_done")).clicked() {
                         close = true;
                     }
@@ -25847,6 +26061,19 @@ impl App {
         if let Some(pid) = switch {
             session.trod_edit = Some(TrodEdit::new(pid));
             return;
+        }
+        // Par l'identité réseau de la ligne : c'est sous elle que ses
+        // versions sont rangées, quel que soit son nom d'aujourd'hui.
+        if let Some(id) = history {
+            if let Some((_, entry)) = session
+                .db
+                .trod_entries()
+                .unwrap_or_default()
+                .into_iter()
+                .find(|(i, _)| *i == id)
+            {
+                session.entry_versions = Some((crate::versions::Kind::Trod, entry));
+            }
         }
         let Some(edit) = &mut session.trod_edit else {
             return;
@@ -30860,6 +31087,15 @@ impl App {
                 .map(|o| o.initials.trim().to_owned())
                 .unwrap_or_default();
         }
+        // **Les menus montrent ce que « Poser » écrira.** Rien de choisi,
+        // c'est une journée, ce jour-là : deux cases vides disaient
+        // autre chose — un formulaire à moitié cassé.
+        if session.shift_form.kind.is_none() {
+            session.shift_form.kind = Some(planning::ShiftKind::Journee);
+        }
+        if session.shift_form.cadence.is_none() {
+            session.shift_form.cadence = Some(planning::Cadence::Unique);
+        }
         let mut write = false;
         let mut open_frame = false;
         let mut edit: Option<i64> = None;
@@ -32728,6 +32964,7 @@ impl App {
         let mut copy_week = false;
         let mut spread: Option<usize> = None;
         let mut clear = false;
+        let mut copy_from: Option<String> = None;
         let shown = egui::Window::new(tr("frame_title"))
             .collapsible(false)
             .resizable(true)
@@ -32847,6 +33084,33 @@ impl App {
                                 &cadences,
                             )
                             .on_hover_text(rhythm.hint());
+                            // **Partir de la trame d'un collègue** : une
+                            // nouvelle recrue qui fait les horaires de
+                            // Claire se saisissait jour par jour.
+                            let me = session.frame.operator.trim().to_owned();
+                            let others: Vec<(String, String)> = config
+                                .pharmacy
+                                .operators
+                                .iter()
+                                .filter(|o| {
+                                    !o.initials.trim().is_empty() && o.initials.trim() != me
+                                })
+                                .map(|o| (o.initials.trim().to_owned(), o.short_label()))
+                                .collect();
+                            if !others.is_empty() {
+                                let label = tr("frame_copy_from");
+                                let w = motif::select_width(
+                                    ui,
+                                    std::iter::once(label)
+                                        .chain(others.iter().map(|(_, l)| l.as_str())),
+                                )
+                                .min(chars_wide(ui, 24.0));
+                                let picked = motif::menu(ui, "frame_copy_from", w, label, &others);
+                                picked.response.on_hover_text(tr("frame_copy_from_tooltip"));
+                                if let Some(who) = picked.inner {
+                                    copy_from = Some(who);
+                                }
+                            }
                         });
                         // — À partir de quand, jusqu'à quand.
                         ui.horizontal_wrapped(|ui| {
@@ -33358,6 +33622,9 @@ impl App {
         if reload {
             Self::frame_load(session);
         }
+        if let Some(who) = copy_from {
+            Self::frame_copy_from(session, &who);
+        }
         let page = session.frame.page.min(1);
         if copy_week {
             let other = 1 - page;
@@ -33824,6 +34091,39 @@ impl App {
                 session.frame.notice = Some(trf("frame_too_rich", n));
             }
         }
+    }
+
+    /// Reprendre dans la grille la trame d'un collègue : son rythme et ses
+    /// journées, **pour la personne choisie** — ce que « Poser » remplacera
+    /// reste la trame de celle-ci, jamais celle du collègue, qui n'est
+    /// pas touchée.
+    fn frame_copy_from(session: &mut Session, other: &str) {
+        let ids = session
+            .db
+            .shift_patterns(other, &session.today)
+            .unwrap_or_default();
+        let rows: Vec<db::NewShift> = ids
+            .iter()
+            .filter_map(|id| {
+                session
+                    .db
+                    .shift_family(*id)
+                    .unwrap_or_default()
+                    .into_iter()
+                    .next()
+            })
+            .collect();
+        session.frame.touched = None;
+        session.frame.page = 0;
+        session.frame.notice = Some(match frame_from_patterns(&rows) {
+            FrameLoad::Trame(cadence, weeks) => {
+                session.frame.cadence = cadence;
+                session.frame.weeks = *weeks;
+                trf("frame_copied", other)
+            }
+            FrameLoad::Vide => trf("frame_copy_none", other),
+            FrameLoad::Illisible(n) => trf("frame_too_rich", n),
+        });
     }
 
     /// Retirer la trame d'une personne — **celle que la fenêtre a
@@ -47754,6 +48054,17 @@ impl App {
             "sources" => tr("ver_f_sources"),
             "subject" => tr("proto_f_subject"),
             "arbre" => tr("proto_f_tree"),
+            // Les champs d'une ligne de TROD, sous les mots de son éditeur.
+            "situation" => tr("trod_edit_situation"),
+            "posologies" => tr("trod_edit_posologies"),
+            "min_age" => tr("trod_f_min_age"),
+            "max_age" => tr("trod_f_max_age"),
+            "sex" => tr("trod_edit_for"),
+            "name" => tr("trod_edit_name"),
+            "label" => tr("ver_f_label"),
+            "code" => tr("ver_f_code"),
+            "schedule" => tr("ver_f_schedule"),
+            "pregnancy" => tr("trod_edit_pregnancy"),
             _ => tr("ver_f_other"),
         }
     }
@@ -47979,6 +48290,14 @@ impl App {
                         }
                     }
                 }
+                // Les lignes de l'éditeur se relisent ; l'ordonnance en
+                // cours relit les siennes à sa prochaine ouverture.
+                crate::versions::Kind::Trod => {
+                    if let Some(edit) = &mut session.trod_edit {
+                        edit.lines = None;
+                    }
+                }
+                crate::versions::Kind::Vaccin => session.reload_vacc_catalogue(),
                 crate::versions::Kind::Fiche => {}
             }
             session.conn_dirty = true;
@@ -53566,6 +53885,8 @@ impl App {
                             for (kind, name, n) in &sum.entries {
                                 let tag = match kind {
                                     crate::versions::Kind::Codex => tr("conn_entry_codex"),
+                                    crate::versions::Kind::Trod => tr("conn_entry_trod"),
+                                    crate::versions::Kind::Vaccin => tr("conn_entry_vaccin"),
                                     _ => tr("conn_entry_protocol"),
                                 };
                                 if motif::list_row_pair(
@@ -55567,7 +55888,7 @@ impl App {
                         // Le propos à droite du bouton, et **qui passe à
                         // la ligne sous lui-même** : dans une rangée
                         // enveloppée il repartait sous le bouton.
-                        ui.horizontal(|ui| {
+                        ui.horizontal_top(|ui| {
                             if motif::button(ui, tool.title()).clicked() {
                                 chosen = Some(tool);
                             }
@@ -63428,6 +63749,7 @@ impl eframe::App for App {
         // flag rather than as a call.
         let mut check_update = false;
         let mut open_releases = false;
+        let mut open_whatsnew = false;
         let mut sync_content = false;
         let mut clear_telemetry = false;
         // What that page states, read before the borrow.
@@ -64046,6 +64368,12 @@ impl eframe::App for App {
                                         .clicked()
                                     {
                                         open_releases = true;
+                                    }
+                                    if motif::button(ui, tr("whatsnew_open"))
+                                        .on_hover_text(tr("whatsnew_open_tooltip"))
+                                        .clicked()
+                                    {
+                                        open_whatsnew = true;
                                     }
                                     if motif::button_enabled(ui, tr("about_sync"), !maint_busy)
                                         .on_hover_text(tr("about_sync_tooltip"))
@@ -65480,6 +65808,19 @@ impl eframe::App for App {
             self.update_note = None;
             self.update_check = Some(crate::release::check_async());
         }
+        // Les trois dernières versions, à la demande.
+        if open_whatsnew {
+            self.whatsnew = Some(
+                crate::release::notes_since(
+                    include_str!("../CHANGELOG.md"),
+                    "0.0.0",
+                    crate::release::current(),
+                )
+                .into_iter()
+                .take(3)
+                .collect(),
+            );
+        }
         if open_releases {
             if let Err(e) = open::that_detached(crate::release::RELEASES_URL) {
                 self.update_note = Some((true, trf("drug_lookup_error", e)));
@@ -65808,6 +66149,24 @@ impl eframe::App for App {
             self.options = None;
         }
 
+        // **Une fois après une mise à jour** : le lanceur met
+        // l'application à jour sans rien demander, et ce qui vient
+        // d'arriver ne se découvre qu'en le cherchant. Jamais sous une clé
+        // de vue — une capture n'a pas de fenêtre de plus —, sauf la
+        // sienne.
+        if !self.whatsnew_checked && matches!(self.state, State::Unlocked(_)) {
+            self.whatsnew_checked = true;
+            let view = std::env::var("BPM_CADDY_START_VIEW").unwrap_or_default();
+            if view.is_empty() || view == "nouveautes" {
+                let notes = whatsnew_notes(&self.config.ui.seen_notes, view == "nouveautes");
+                if !notes.is_empty() {
+                    self.whatsnew = Some(notes);
+                }
+            }
+        }
+        if self.whatsnew.is_some() && matches!(self.state, State::Unlocked(_)) {
+            self.whatsnew_window(ctx);
+        }
         if self.show_keys && matches!(self.state, State::Unlocked(_)) {
             self.keys_window(ctx);
         }
@@ -74049,6 +74408,47 @@ mod tests {
         );
     }
 
+    /// **Reprendre la trame d'un collègue remplit la grille, et « Poser »
+    /// écrit pour la personne choisie** — la trame du collègue n'est pas
+    /// touchée.
+    #[test]
+    fn copying_a_colleague_s_trame_writes_for_the_chosen_person_only() {
+        let (mut s, _swept) = scratch_session("trame_copy");
+        let claire =
+            s.db.add_shift(&crate::db::NewShift {
+                operator: "AA".to_owned(),
+                day: "2026-09-21".to_owned(),
+                start_time: "09:00".to_owned(),
+                end_time: "12:30".to_owned(),
+                kind: "JOURNEE".to_owned(),
+                repeat_days: 7,
+                cadence: "HEBDO".to_owned(),
+                ..Default::default()
+            })
+            .unwrap();
+        s.today = "2026-09-23".to_owned();
+        s.frame.operator = "BB".to_owned();
+        s.frame.from = "2026-09-21".to_owned();
+        super::App::frame_load(&mut s);
+        assert!(s.frame.replacing.is_empty(), "BB n'a pas de trame");
+        super::App::frame_copy_from(&mut s, "AA");
+        assert!(
+            s.frame.weeks[0][0].written(),
+            "le lundi de AA est dans la grille"
+        );
+        assert!(s.frame.replacing.is_empty(), "rien de AA ne sera remplacé");
+        super::App::frame_apply(&mut s);
+        assert_eq!(s.db.shift_patterns("BB", "2026-09-23").unwrap().len(), 1);
+        assert_eq!(
+            s.db.shift_patterns("AA", "2026-09-23").unwrap(),
+            vec![claire],
+            "la trame de AA est intacte"
+        );
+        // Un collègue sans trame : la grille ne bouge pas, et c'est dit.
+        super::App::frame_copy_from(&mut s, "ZZ");
+        assert!(s.frame.notice.as_deref().is_some_and(|n| n.contains("ZZ")));
+    }
+
     /// **Une copie ne se croit pas faite quand elle a échoué, et
     /// l'élagage ne fait pas confiance à l'horloge d'un autre poste.**
     #[test]
@@ -74433,6 +74833,61 @@ mod tests {
         // Une journée vidée n'est pas un modèle : on retombe sur le premier.
         assert_eq!(model(Some(3)).as_deref(), Some("9"));
         assert!(super::frame_spread_model(&Default::default(), Some(0)).is_none());
+    }
+
+    /// **Les récents ouvrent la boîte vide**, le dernier choisi en tête,
+    /// sans doublon, et un dossier disparu n'y est plus proposé.
+    #[test]
+    fn the_empty_jump_box_opens_on_what_was_chosen_last() {
+        let (mut s, _swept) = scratch_session("recent");
+        let hit = |dest, label: &str| super::GotoHit {
+            dest,
+            label: label.to_owned(),
+            kind: "vue",
+        };
+        s.remember_goto(hit(super::Goto::Tool(super::Tool::Trame), "Trame"));
+        s.remember_goto(hit(super::Goto::Tool(super::Tool::Codex), "Codex"));
+        s.remember_goto(hit(super::Goto::Tool(super::Tool::Trame), "Trame"));
+        s.remember_goto(hit(super::Goto::Patient(987_654), "Disparu"));
+        s.goto_query.clear();
+        let menu = s.goto_results(100);
+        assert!(
+            menu[0].dest == super::Goto::Tool(super::Tool::Trame),
+            "le dernier choisi"
+        );
+        assert!(menu[1].dest == super::Goto::Tool(super::Tool::Codex));
+        assert!(
+            !menu.iter().any(|h| h.dest == super::Goto::Patient(987_654)),
+            "un dossier qui n'existe plus"
+        );
+        let trames = menu
+            .iter()
+            .filter(|h| h.dest == super::Goto::Tool(super::Tool::Trame))
+            .count();
+        assert_eq!(trames, 1, "sans doublon avec la liste des outils");
+    }
+
+    /// **Les nouveautés se montrent une fois** : rien quand la version
+    /// en cours est déjà vue, la version en cours seule pour un poste qui
+    /// n'a jamais eu la fenêtre, et toujours sous sa clé de vue.
+    #[test]
+    fn the_whats_new_window_shows_once_per_version() {
+        let current = crate::release::current();
+        assert!(super::whatsnew_notes(current, false).is_empty(), "déjà vue");
+        let first = super::whatsnew_notes("", false);
+        assert_eq!(first.len(), 1, "jamais vue : la version en cours seule");
+        assert_eq!(first[0].version, current);
+        assert_eq!(
+            super::whatsnew_notes(current, true).len(),
+            1,
+            "à la demande"
+        );
+        // Plusieurs versions sautées : toutes, la plus récente d'abord.
+        let skipped = super::whatsnew_notes("0.290.0", false);
+        assert!(skipped.len() >= 2);
+        assert!(skipped
+            .windows(2)
+            .all(|w| crate::release::is_newer(&w[0].version, &w[1].version)));
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {

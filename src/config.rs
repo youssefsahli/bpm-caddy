@@ -1419,6 +1419,9 @@ pub struct UiConfig {
     /// — parce que celui qui veut voir plus d'un coup n'est pas celui
     /// qui veut des lettres plus petites.
     pub monograph: String,
+    /// La dernière version dont ce poste a montré les nouveautés. Vide :
+    /// aucune encore — la version en cours se montre une fois.
+    pub seen_notes: String,
 }
 
 impl Default for UiConfig {
@@ -1438,6 +1441,7 @@ impl Default for UiConfig {
             operator: String::new(),
             caisse_expected: true,
             monograph: "feuille".to_owned(),
+            seen_notes: String::new(),
         }
     }
 }

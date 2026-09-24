@@ -355,7 +355,11 @@ CREATE TABLE IF NOT EXISTS vaccine_catalogue (
     code      TEXT NOT NULL DEFAULT '',
     label     TEXT NOT NULL,
     schedule  TEXT NOT NULL DEFAULT '',
-    rank      INTEGER NOT NULL DEFAULT 0
+    rank      INTEGER NOT NULL DEFAULT 0,
+    -- Le libellé sous lequel le vaccin voyage entre officines : le
+    -- libellé livré, ou celui qu'il portait à sa première publication.
+    -- Un vaccin renommé reste le même vaccin chez les autres.
+    origin    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS trod_lines (
     id          INTEGER PRIMARY KEY,
@@ -373,7 +377,11 @@ CREATE TABLE IF NOT EXISTS trod_lines (
     -- `F`, `M`, ou vide : pour qui la ligne est écrite.
     sex         TEXT NOT NULL DEFAULT '',
     -- 1 : délivrable pendant la grossesse.
-    pregnancy   INTEGER NOT NULL DEFAULT 1
+    pregnancy   INTEGER NOT NULL DEFAULT 1,
+    -- Le nom sous lequel la ligne voyage entre officines : le nom livré,
+    -- ou celui qu'elle portait à sa première publication. Une ligne
+    -- renommée reste la même ligne chez les autres.
+    origin      TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS preparations (
     id           INTEGER PRIMARY KEY,
@@ -1199,6 +1207,9 @@ const MIGRATIONS: &[&str] = &[
         sex         TEXT NOT NULL DEFAULT '',
         pregnancy   INTEGER NOT NULL DEFAULT 1
     )",
+    // L'identité réseau d'une ligne et d'un vaccin — voir `SCHEMA`.
+    "ALTER TABLE trod_lines ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE vaccine_catalogue ADD COLUMN origin TEXT NOT NULL DEFAULT ''",
     // Les postes de l'officine et ce qui est propre à chacun — voir
     // `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS sync_posts (
@@ -2457,6 +2468,73 @@ pub struct Appointment {
     /// « non attribué » of the agenda, and it is a fact, not a gap to
     /// be filled in.
     pub operator: String,
+}
+
+/// Un champ d'une ligne de TROD, tel qu'il voyage : du texte, les
+/// posologies une par ligne, un âge vide quand il ne borne rien, la
+/// grossesse en « oui » / « non ».
+pub fn trod_field(o: &crate::ordonnance::Offer, field: &str) -> String {
+    match field {
+        "name" => o.name.clone(),
+        "situation" => o.situation.clone(),
+        "posologies" => o.posologies.join("\n"),
+        "caution" => o.caution.clone(),
+        "min_age" => o.min_age.map(|a| a.to_string()).unwrap_or_default(),
+        "max_age" => o.max_age.map(|a| a.to_string()).unwrap_or_default(),
+        "sex" => o.sex.map_or("", crate::ordonnance::Sex::key).to_owned(),
+        "pregnancy" => if o.pregnancy { "oui" } else { "non" }.to_owned(),
+        _ => String::new(),
+    }
+}
+
+/// La même ligne, un champ remplacé — `None` quand la valeur reçue ne
+/// se lit pas (un âge qui n'est pas un nombre) : elle n'est pas écrite
+/// plutôt que d'être devinée.
+fn with_trod_field(
+    o: &crate::ordonnance::Offer,
+    field: &str,
+    value: &str,
+) -> Option<crate::ordonnance::Offer> {
+    let mut new = o.clone();
+    let age = |v: &str| -> Option<Option<u32>> {
+        let v = v.trim();
+        if v.is_empty() {
+            Some(None)
+        } else {
+            v.parse::<u32>().ok().filter(|a| *a <= 150).map(Some)
+        }
+    };
+    match field {
+        "name" if !value.trim().is_empty() => new.name = value.trim().to_owned(),
+        "name" => return None,
+        "situation" => new.situation = value.to_owned(),
+        "posologies" => {
+            new.posologies = value
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_owned)
+                .collect()
+        }
+        "caution" => new.caution = value.to_owned(),
+        "min_age" => new.min_age = age(value)?,
+        "max_age" => new.max_age = age(value)?,
+        "sex" => {
+            new.sex = match value.trim() {
+                "" => None,
+                v => Some(crate::ordonnance::Sex::from_key(v)?),
+            }
+        }
+        "pregnancy" => {
+            new.pregnancy = match value.trim() {
+                "oui" => true,
+                "non" => false,
+                _ => return None,
+            }
+        }
+        _ => return None,
+    }
+    Some(new)
 }
 
 /// Une officine appairée, telle que ce poste la connaît.
@@ -34536,11 +34614,79 @@ impl Db {
             if present.contains(&(o.protocol.clone(), o.name.clone())) {
                 continue;
             }
-            self.insert_trod_line(&o)?;
+            let id = self.insert_trod_line(&o)?;
+            // Livrée, la ligne voyage sous son nom livré — le même chez
+            // toutes les officines, quoi qu'elles en fassent ensuite.
+            self.set_origin("trod_lines", id, &o.name)?;
             added += 1;
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Poser l'identité réseau d'une ligne ou d'un vaccin — une fois :
+    /// une identité déjà posée ne bouge plus.
+    fn set_origin(&self, table: &str, id: i64, origin: &str) -> Result<(), String> {
+        // Le nom de table vient d'ici, jamais d'un pair.
+        let table = match table {
+            "trod_lines" => "trod_lines",
+            _ => "vaccine_catalogue",
+        };
+        self.conn
+            .execute(
+                &format!("UPDATE {table} SET origin = ?1 WHERE id = ?2 AND origin = ''"),
+                (origin.trim(), id),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Figer l'identité des lignes et des vaccins qui n'en ont pas encore :
+    /// le nom qu'ils portent au moment de leur première publication.
+    fn freeze_origins(&self) -> Result<(), String> {
+        for sql in [
+            "UPDATE trod_lines SET origin = name WHERE origin = '' AND trim(name) <> ''",
+            "UPDATE vaccine_catalogue SET origin = label WHERE origin = '' AND trim(label) <> ''",
+        ] {
+            self.conn.execute(sql, []).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    }
+
+    /// Les lignes de TROD par leur identité réseau : identifiant, nom de
+    /// voyage (`protocole · origine`).
+    pub fn trod_entries(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, protocol, CASE WHEN origin <> '' THEN origin ELSE name END
+                 FROM trod_lines ORDER BY protocol, rank, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    crate::versions::trod_entry(&r.get::<_, String>(1)?, &r.get::<_, String>(2)?),
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les vaccins du catalogue par leur identité réseau.
+    pub fn vaccine_entries(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, CASE WHEN origin <> '' THEN origin ELSE label END
+                 FROM vaccine_catalogue ORDER BY rank, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
     fn insert_trod_line(&self, o: &crate::ordonnance::Offer) -> Result<i64, String> {
@@ -34712,8 +34858,8 @@ impl Db {
             self.conn
                 .execute(
                     &format!(
-                        "INSERT INTO vaccine_catalogue (id, code, label, schedule, rank)
-                     VALUES ({next}, ?1, ?2, ?3, ?4)",
+                        "INSERT INTO vaccine_catalogue (id, code, label, schedule, rank, origin)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?2)",
                         next = next_id("vaccine_catalogue")
                     ),
                     (&v.code, &v.label, &v.schedule, v.rank),
@@ -38934,6 +39080,46 @@ impl Db {
                     vec![("subject", p.subject), ("arbre", tree)],
                 )))
             }
+            // Par l'identité réseau, jamais par le libellé affiché : un
+            // vaccin renommé ici reste celui que les autres connaissent.
+            Kind::Vaccin => {
+                let Some((id, entry)) = self
+                    .vaccine_entries()?
+                    .into_iter()
+                    .find(|(_, e)| key(e) == k)
+                else {
+                    return Ok(None);
+                };
+                Ok(self
+                    .vaccine_catalogue()?
+                    .into_iter()
+                    .find(|v| v.id == id)
+                    .map(|v| {
+                        (
+                            v.id,
+                            entry,
+                            vec![
+                                ("label", v.label.clone()),
+                                ("code", v.code.clone()),
+                                ("schedule", v.schedule.clone()),
+                            ],
+                        )
+                    }))
+            }
+            Kind::Trod => {
+                let Some((id, entry)) = self.trod_entries()?.into_iter().find(|(_, e)| key(e) == k)
+                else {
+                    return Ok(None);
+                };
+                let Some(line) = self.trod_lines_all()?.into_iter().find(|o| o.id == id) else {
+                    return Ok(None);
+                };
+                let fields = crate::versions::TROD_FIELDS
+                    .iter()
+                    .map(|f| (*f, trod_field(&line, f)))
+                    .collect();
+                Ok(Some((line.id, entry, fields)))
+            }
         }
     }
 
@@ -38959,6 +39145,40 @@ impl Db {
                     _ => String::new(),
                 }
             }
+            // Un vaccin livré part de ce qui est livré ; un vaccin de
+            // l'officine, de son libellé d'origine et de rien d'autre.
+            Kind::Vaccin => match crate::vaccines::starter_catalogue()
+                .into_iter()
+                .find(|v| v.label == name)
+            {
+                Some(v) => match field {
+                    "label" => v.label,
+                    "code" => v.code,
+                    "schedule" => v.schedule,
+                    _ => String::new(),
+                },
+                None if field == "label" => name.to_owned(),
+                None => String::new(),
+            },
+            // Une ligne livrée part de ce qui est livré ; une ligne de
+            // l'officine, de son nom d'origine et de la ligne vide
+            // qu'« Ajouter » écrit.
+            Kind::Trod => match crate::ordonnance::starters()
+                .into_iter()
+                .find(|o| crate::versions::trod_entry(&o.protocol, &o.name) == name)
+            {
+                Some(o) => trod_field(&o, field),
+                None if field == "name" => crate::versions::split_trod_entry(name)
+                    .map(|(_, n)| n.to_owned())
+                    .unwrap_or_default(),
+                None => trod_field(
+                    &crate::ordonnance::Offer {
+                        pregnancy: true,
+                        ..Default::default()
+                    },
+                    field,
+                ),
+            },
         }
     }
 
@@ -39020,6 +39240,9 @@ impl Db {
         if !self.numbers_here() {
             return Ok(0);
         }
+        // L'identité des lignes et des vaccins se fige à leur première
+        // publication : ce qui part sous un nom se reconnaît sous ce nom.
+        self.freeze_origins()?;
         let edits = self.card_edits()?;
         let mut names: Vec<(Kind, String)> = self
             .preparations()?
@@ -39031,6 +39254,21 @@ impl Db {
                 .into_iter()
                 .map(|p| (Kind::Protocole, p.title)),
         );
+        names.extend(
+            self.vaccine_entries()?
+                .into_iter()
+                .map(|(_, e)| (Kind::Vaccin, e)),
+        );
+        names.extend(
+            self.trod_entries()?
+                .into_iter()
+                .map(|(_, e)| (Kind::Trod, e)),
+        );
+        // **Une entrée, une fois.** Deux lignes encore nommées « Nouveau
+        // médicament » ont la même identité : la première serait
+        // versionnée deux fois et la seconde jamais.
+        let mut seen = std::collections::HashSet::new();
+        names.retain(|(kind, name)| seen.insert((*kind, crate::versions::key(name))));
         let mut written = 0;
         for (kind, name) in names {
             let Some((_, name, fields)) = self.entry_fields(kind, &name)? else {
@@ -39128,6 +39366,39 @@ impl Db {
                 self.replace_tree(id, &roots)?;
                 Ok(true)
             }
+            (Kind::Vaccin, "label" | "code" | "schedule") => {
+                let Some(v) = self.vaccine_catalogue()?.into_iter().find(|v| v.id == id) else {
+                    return Ok(false);
+                };
+                let mut new = v.clone();
+                let slot = match field {
+                    "label" => &mut new.label,
+                    "code" => &mut new.code,
+                    _ => &mut new.schedule,
+                };
+                if slot.as_str() != expected {
+                    return Ok(false);
+                }
+                // Un libellé vide n'est pas un vaccin : refusé plutôt
+                // qu'écrit.
+                if field == "label" && value.trim().is_empty() {
+                    return Ok(false);
+                }
+                *slot = value.to_owned();
+                self.update_vaccine(&new, &v)
+            }
+            (Kind::Trod, _) => {
+                let Some(line) = self.trod_lines_all()?.into_iter().find(|o| o.id == id) else {
+                    return Ok(false);
+                };
+                if trod_field(&line, field) != expected {
+                    return Ok(false);
+                }
+                let Some(new) = with_trod_field(&line, field, value) else {
+                    return Ok(false);
+                };
+                self.update_trod_line(&new, &line)
+            }
             _ => Ok(false),
         }
     }
@@ -39142,6 +39413,37 @@ impl Db {
             None if !e.card_name.trim().is_empty() => match e.kind {
                 Kind::Codex => self.add_preparation(e.card_name.trim())?,
                 Kind::Protocole => self.add_protocol(e.card_name.trim(), "")?,
+                // Une ligne d'un protocole que l'application connaît ; un
+                // nom qui n'en nomme aucun n'invente pas de protocole. **Et
+                // une ligne livrée absente ici ne revient pas** : c'est
+                // que l'officine l'a retirée, et la recréer vide la ferait
+                // reparaître sans posologie sur l'ordonnance.
+                Kind::Trod => match crate::versions::split_trod_entry(&e.card_name) {
+                    Some((protocol, name))
+                        if crate::ordonnance::protocol_keys().contains(&protocol)
+                            && !crate::ordonnance::starters().iter().any(|o| {
+                                crate::versions::trod_entry(&o.protocol, &o.name) == e.card_name
+                            }) =>
+                    {
+                        let id = self.add_trod_line(protocol, name)?;
+                        self.set_origin("trod_lines", id, name)?;
+                        id
+                    }
+                    _ => return Ok(false),
+                },
+                // Même règle : un vaccin livré retiré ici ne revient pas.
+                Kind::Vaccin => {
+                    let label = e.card_name.trim();
+                    if crate::vaccines::starter_catalogue()
+                        .iter()
+                        .any(|v| v.label == label)
+                    {
+                        return Ok(false);
+                    }
+                    let id = self.add_vaccine(label)?;
+                    self.set_origin("vaccine_catalogue", id, label)?;
+                    id
+                }
                 Kind::Fiche => return Ok(false),
             },
             None => return Ok(false),

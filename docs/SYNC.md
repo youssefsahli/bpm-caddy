@@ -386,6 +386,18 @@ capturée ; un **dossier d'échange** (`<empreinte>.bpmposte`) ; des
 **adresses écrites** ; plus le bouton et la fermeture. `link.rs` ne
 décide toujours de rien : c'est l'application qui a un fil.
 
+Réseau d'officines, contenu versionné : fiches, codex, protocoles et,
+depuis la 0.295, **lignes du TROD** (`versions::Kind::Trod`, nom de
+voyage `protocole · nom`, champs `versions::TROD_FIELDS` — tout sauf le
+rang) et **vaccins du catalogue** (`Kind::Vaccin`, champs `label`,
+`code` et `schedule`). Ces deux-là voyagent sous une **identité figée**
+(`origin`) : le nom livré pour une entrée livrée, sinon le nom porté à
+la première publication. Le nom affiché est un champ comme un autre — un
+renommage est une version, pas une entrée de plus chez les autres. Une
+entrée livrée absente chez celle qui reçoit (retirée par elle) n'est pas
+recréée ; deux entrées de même identité ne sont versionnées qu'une fois. Une ligne reçue inconnue est créée dans un protocole que
+l'application connaît, jamais dans un protocole inventé.
+
 Réseau d'officines (`src/network.rs`) : chaque conversation directe
 est notée sur la ligne de l'officine (`net_peers.last_try`, `last_ok`,
 `last_error` — la raison en français, jamais l'erreur brute du lien), et

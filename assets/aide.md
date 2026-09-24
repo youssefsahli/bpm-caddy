@@ -28,6 +28,12 @@ la vue ouverte sont conservées d'une session à l'autre.
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
 clavier. Cette liste est tenue par l'application et toujours à jour.
 
+Après une mise à jour, la fenêtre **« Nouveautés »** s'ouvre une fois
+sur ce poste : ce que la version apporte, modifie et corrige — toutes
+les versions sautées si plusieurs sont arrivées d'un coup. Elle se
+rouvre sur les trois dernières versions depuis
+Options › À propos › « Nouveautés… ».
+
 Sur une base neuve, le tableau de bord ouvre un panneau **« Premiers
 pas »** : la fiche de l'officine et son équipe, la trame de chaque
 personne, les sauvegardes, les autres postes, le réseau d'officines. Il
@@ -50,7 +56,8 @@ TROD. Champ vide, la boîte liste les vues puis tous les outils : trame,
 planning, réseau d'officines, postes, codex, dispositifs, ordonnancier,
 vigilance, retours, pièces, textes imprimés, libellés, listes de
 contrôle, croisement, lignes du TROD, modèles, options, base et
-sauvegardes, règles et quotas. La fenêtre « ? » (F12) les liste aussi
+sauvegardes, règles et quotas — précédés des cinq dernières
+destinations choisies dans la boîte. La fenêtre « ? » (F12) les liste aussi
 sous les raccourcis, avec leur usage ; un clic ouvre l'outil.
 
 La recherche ignore la casse et les accents, et accepte des lettres non
@@ -618,6 +625,10 @@ Pour une alternance, deux onglets : semaine paire et semaine impaire.
 Une journée identique sur les deux est enregistrée une fois, en
 hebdomadaire.
 
+« Reprendre de… » remplit la grille avec la trame d'un collègue — son
+rythme et ses journées — pour la personne choisie ; rien n'est écrit
+avant « Poser la trame », et la trame du collègue n'est pas touchée.
+
 « Lundi à vendredi » et « Lundi à samedi » recopient la journée
 modifiée en dernier (à défaut, la première écrite). Le « × » d'une
 rangée vide cette journée.
@@ -852,6 +863,14 @@ sinon elle est à arbitrer, et « Historique… » — sur une préparation
 comme sur un protocole — propose « Adopter » ou « Garder la mienne »,
 ainsi que le retour à toute version. Dans un groupe de postes, le poste
 de référence versionne les modifications des autres postes.
+
+**Les lignes du protocole TROD et le catalogue des vaccins** voyagent de
+même. Pour une ligne de TROD : posologies, bornes d'âge, sexe, grossesse
+et précaution ; pour un vaccin, sous son libellé : son code et son
+schéma. Une correction faite dans une officine s'applique chez les
+autres, un ajout y est créé ; l'ordre reste celui de chaque officine.
+« Historique… », dans l'éditeur des lignes comme dans celui du
+catalogue, montre les versions.
 
 Les valeurs de pharmacocinétique sourcées sont partagées de la même
 façon, avec leur source. La barre de comptoir (F9) affiche une rupture
