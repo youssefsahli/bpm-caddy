@@ -33958,7 +33958,17 @@ impl App {
                             );
                             if !legend.is_empty() {
                                 ui.add_space(ui.spacing().item_spacing.x);
-                                motif::chart::legend(ui, &legend);
+                                // Centrée sur la rangée des boutons : la
+                                // légende s'écrit depuis le haut du curseur,
+                                // et flottait au-dessus de leur milieu.
+                                let pad = ((Self::row_height(ui)
+                                    - motif::chart::legend_row_height(ui))
+                                    / 2.0)
+                                    .max(0.0);
+                                ui.vertical(|ui| {
+                                    ui.add_space(pad);
+                                    motif::chart::legend(ui, &legend);
+                                });
                             }
                         });
                         // — Ce que cela va poser, **avec les dates**.
