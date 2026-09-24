@@ -5,6 +5,28 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.301.0] - 2026-09-24
+
+### Added
+- **Réseau d'officines : « Essayer »** à côté de chaque officine à
+  adresse — compose celle-là seule, échange avec elle et dit si elle
+  répond, ou pourquoi non, sans synchroniser tout le réseau. Si une
+  autre officine du réseau répond à cette adresse, elle est nommée et
+  l'adresse est à corriger.
+
+### Fixed
+- **Connexions** : une lecture tombée pendant qu'une synchronisation
+  tenait la base affichait « Configuration du réseau illisible dans
+  cette base », comme une base abîmée ; la vue dit maintenant la raison,
+  qu'elle se relira à la fin de la tâche, et offre « Relire ».
+- **Raccourcis et outils** : deux pages, « Raccourcis » et « Outils, par
+  usage », choisies en tête — les outils suivaient vingt-sept raccourcis
+  et restaient sous le pli même sur un grand écran. La fenêtre prend la
+  hauteur que l'écran lui donne.
+- **Raccourcis et outils**, et la page des raccourcis du mode d'emploi :
+  `F1` et `F6` ne répètent plus leur touche entre parenthèses à côté de
+  la touche.
+
 ## [0.300.0] - 2026-09-24
 
 ### Fixed

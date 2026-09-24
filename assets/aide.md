@@ -63,8 +63,8 @@ contrôle, croisement, lignes du TROD, modèles, options, base et
 sauvegardes, règles et quotas, liste d'appel — précédés des cinq
 dernières destinations choisies dans la boîte. Le récapitulatif de
 facturation ne s'y propose pas : il se tape (« facturation »). La
-fenêtre « ? » (F12) liste aussi les outils sous les raccourcis, avec
-leur usage ; un clic ouvre l'outil.
+fenêtre « ? » (F12) a deux pages : « Raccourcis », et « Outils, par
+usage », qui liste les outils avec leur usage ; un clic ouvre l'outil.
 
 La recherche ignore la casse et les accents, et accepte des lettres non
 contiguës dans l'ordre : « jndp » retrouve Jean Dupont.
@@ -857,7 +857,9 @@ adresse, la dernière connexion directe réussie, ou, en rouge, l'heure du
 dernier échec et sa raison : pas de réponse à l'adresse (poste éteint,
 port fermé ou adresse hors d'atteinte), officine qui n'est pas celle
 appairée, ou clé de réseau différente. Le nom sous lequel elle signe sert
-d'invite au champ du nom.
+d'invite au champ du nom. « Essayer », à côté d'une officine à adresse,
+compose cette officine seule : on sait tout de suite si elle répond, sans
+synchroniser les autres.
 
 Dans « Connexions », **« Derniers reçus »** liste ce que les autres
 officines ont envoyé — ruptures, levées, substitutions, versions de

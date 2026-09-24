@@ -427,6 +427,9 @@ pub enum Job {
     /// Synchroniser : le dossier d'échange s'il y en a un, puis chaque
     /// officine qui a une adresse.
     Sync { folder: Option<PathBuf> },
+    /// Composer l'adresse d'**une** officine : savoir si elle répond,
+    /// sans attendre toutes les autres ni le dossier d'échange.
+    Dial { device: String },
 }
 
 /// Combien d'attente pour une invitation, et pour une conversation.
@@ -580,6 +583,56 @@ pub fn run(
                 ));
             }
             Ok(said)
+        }
+        Job::Dial { device } => {
+            if !net.in_network() {
+                return Err(tr("net_err_no_network").to_owned());
+            }
+            let Some(p) = net
+                .peers
+                .iter()
+                .find(|p| p.device == *device && !p.address.trim().is_empty())
+                .cloned()
+            else {
+                return Err(tr("net_err_no_address").to_owned());
+            };
+            let name = if p.name.trim().is_empty() {
+                p.address.clone()
+            } else {
+                p.name.clone()
+            };
+            let sent = net.publish(&db, officine)?;
+            match net.sync_with(&db, &p.address, TALK_PATIENCE) {
+                Ok(answered) => {
+                    let answered = answered.unwrap_or_else(|| p.device.clone());
+                    let _ = db.note_net_dial(&answered, None);
+                    let received = net.absorb(&db)?;
+                    if answered == p.device {
+                        return Ok(trn("net_done_dialed", &[&name, &sent, &received]));
+                    }
+                    // Une autre officine du réseau répond à cette adresse
+                    // (un bail DHCP qui a changé) : l'échange a eu lieu,
+                    // mais celle qu'on composait n'a pas répondu.
+                    let reason = dial_reason("Handshake");
+                    let _ = db.note_net_dial(&p.device, Some(&reason));
+                    let who = net
+                        .peers
+                        .iter()
+                        .find(|q| q.device == answered)
+                        .map(|q| q.name.trim().to_owned())
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or_else(|| crate::network::peer_groups(&answered));
+                    Ok(trn(
+                        "net_done_dialed_other",
+                        &[&who, &name, &sent, &received],
+                    ))
+                }
+                Err(e) => {
+                    let reason = dial_reason(&e);
+                    let _ = db.note_net_dial(&p.device, Some(&reason));
+                    Err(format!("{name} : {reason}"))
+                }
+            }
         }
     }
 }
@@ -865,6 +918,53 @@ mod tests {
                 .map(|v| v.schedule.as_str()),
             Some("3 doses"),
             "le vaccin ajouté existe chez B, avec son schéma"
+        );
+    }
+
+    /// **Composer une seule officine** : elle seule est tentée, l'échec
+    /// dit son nom et sa raison, et la tentative est notée comme pour
+    /// une synchronisation. Une officine sans adresse ne se compose pas.
+    #[test]
+    fn dialling_one_officine_tries_it_alone() {
+        let (dir, _s, a) = officine("dial_one");
+        Net::create(&a).unwrap();
+        let one = Device::from_seed([7; 32]);
+        let other = Device::from_seed([8; 32]);
+        a.add_net_peer(&hex(&one.id().0), "127.0.0.1:1", "2026-09-24")
+            .unwrap();
+        a.add_net_peer(&hex(&other.id().0), "127.0.0.1:2", "2026-09-24")
+            .unwrap();
+        a.add_net_peer(&hex(&[9; 32]), "", "2026-09-24").unwrap();
+        let (tx, _rx) = std::sync::mpsc::channel();
+        let (_atx, arx) = std::sync::mpsc::channel();
+        let go = |device: String| {
+            run(
+                &Job::Dial { device },
+                &dir.join("net.db"),
+                "secret",
+                "Pharmacie du Centre",
+                "2026-09-24",
+                &tx,
+                &arx,
+            )
+        };
+        let err = go(hex(&one.id().0)).unwrap_err();
+        assert!(err.starts_with("127.0.0.1:1 : "), "{err}");
+        assert!(err.contains(crate::strings::tr("net_dial_link")), "{err}");
+        let peers = a.net_peers().unwrap();
+        let tried = |d: &Device| {
+            !peers
+                .iter()
+                .find(|p| p.device == hex(&d.id().0))
+                .unwrap()
+                .last_try
+                .is_empty()
+        };
+        assert!(tried(&one), "la tentative est notée");
+        assert!(!tried(&other), "les autres ne sont pas composées");
+        assert_eq!(
+            go(hex(&[9; 32])).unwrap_err(),
+            crate::strings::tr("net_err_no_address")
         );
     }
 

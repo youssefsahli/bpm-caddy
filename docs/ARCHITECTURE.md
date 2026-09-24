@@ -2206,7 +2206,7 @@ add clicking and typing; it is not the price of entry.
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
-  codex_open|dispositifs|dispositif_open|locations|keys|nouveautes|vitale|
+  codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
@@ -2669,8 +2669,9 @@ Three doors, each held by a test, lead to what no tab shows:
   view has no door on purpose (see `finances` above) — while typing still
   finds it. `open_tool` does what the long way does; the three Options
   pages go through `session.open_options`, since the window belongs to
-  the App. The F12 window and the empty base's « Premiers pas » panel
-  read the same register.
+  the App. The F12 window (its « Outils, par usage » page, start-view key
+  `keys_outils`) and the empty base's « Premiers pas » panel read the
+  same register.
 - **« Sur cette vue »**: `help_title_for` maps the open view to a
   first-level section of `assets/aide.md`, which the Aide tab shows first
   while its search is empty. `every_view_s_help_section_exists_in_the_manual`

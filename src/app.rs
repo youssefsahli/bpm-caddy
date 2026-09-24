@@ -6865,8 +6865,8 @@ impl Session {
             }
             self.conn_summary = Some(ConnSummary {
                 feed: network_feed(&self.supply_events, &self.card_edits, 12),
-                posts: PostsSummary::read(&self.db).ok(),
-                net: NetSummary::read(&self.db).ok(),
+                posts: PostsSummary::read(&self.db),
+                net: NetSummary::read(&self.db),
                 cards,
                 entries,
             });
@@ -10084,11 +10084,29 @@ enum TechAction {
     NoteSubstitution,
 }
 
+/// Une lecture de la vue des connexions qui a échoué : la raison, et
+/// de quoi relire. Rend vrai quand on demande à relire.
+///
+/// Pas de nouvelle tentative à chaque image : une base tenue par une
+/// synchronisation fait attendre chaque lecture, et l'écran se
+/// figerait. La vue se relit d'elle-même quand la tâche finit.
+#[cfg(feature = "sync")]
+fn conn_unreadable(ui: &mut egui::Ui, error: &str) -> bool {
+    ui.add(
+        egui::Label::new(egui::RichText::new(trf("conn_unreadable", error)).color(motif::alert()))
+            .wrap(),
+    );
+    motif::button(ui, tr("conn_reread")).clicked()
+}
+
 /// Ce que la vue des connexions lit dans la base.
 #[cfg(feature = "sync")]
 struct ConnSummary {
-    posts: Option<PostsSummary>,
-    net: Option<NetSummary>,
+    /// L'erreur gardée plutôt qu'avalée : une lecture qui tombe pendant
+    /// qu'une synchronisation tient la base disait « illisible dans
+    /// cette base », ce qui se lit comme une base abîmée.
+    posts: Result<PostsSummary, String>,
+    net: Result<NetSummary, String>,
     /// Les fiches qui ont une version reçue à arbitrer : id, nom, combien.
     cards: Vec<(i64, String, usize)>,
     /// Les préparations et les protocoles qui en ont : sorte, nom, combien.
@@ -12107,6 +12125,8 @@ pub struct App {
     show_nav: bool,
     /// The keyboard reference (F12), open or not.
     show_keys: bool,
+    /// Sa page « Outils » plutôt que celle des raccourcis.
+    keys_tools: bool,
     /// Les nouveautés à montrer — une fois après une mise à jour, ou à la
     /// demande depuis « À propos ».
     whatsnew: Option<Vec<crate::release::Notes>>,
@@ -12459,8 +12479,10 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 pub fn key_rows() -> [(&'static str, &'static str); 27] {
     [
         ("", tr("keys_group_workspace")),
-        ("F1", tr("toolbar_docs_tooltip")),
-        ("F6", tr("toolbar_nav_tooltip")),
+        // Pas l'infobulle du bouton : elle dit sa touche entre
+        // parenthèses, et la touche est déjà dans la colonne d'à côté.
+        ("F1", tr("keys_docs")),
+        ("F6", tr("keys_nav")),
         ("F12", tr("keys_this")),
         ("Ctrl+Tab", tr("keys_next_tab")),
         ("Ctrl+Shift+Tab", tr("keys_prev_tab")),
@@ -14038,7 +14060,8 @@ impl App {
             remember_password,
             show_docs,
             show_nav,
-            show_keys: start_view == "keys",
+            show_keys: start_view == "keys" || start_view == "keys_outils",
+            keys_tools: start_view == "keys_outils",
             whatsnew: None,
             whatsnew_checked: false,
             focus_nav: false,
@@ -16016,6 +16039,7 @@ impl App {
         let mut open = true;
         let mut print_guide = false;
         let mut open_tool: Option<Tool> = None;
+        let mut keys_tools = self.keys_tools;
         let shown = egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
@@ -16023,15 +16047,28 @@ impl App {
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
-                // The shortcuts are half the answer; the other half is
-                // what the application is for, and that one is printed
-                // and kept beside the poste.
-                if motif::button(ui, tr("keys_guide"))
-                    .on_hover_text(tr("keys_guide_tooltip"))
-                    .clicked()
-                {
-                    print_guide = true;
-                }
+                // **Deux pages, choisies en tête** : les outils suivaient
+                // les vingt-sept raccourcis, et même à 1400x900 ils
+                // restaient sous le pli — la moitié qu'on vient chercher
+                // dans une fenêtre qui s'appelle « … et outils ».
+                ui.horizontal_wrapped(|ui| {
+                    if motif::toggle(ui, tr("keys_page_keys"), !keys_tools).clicked() {
+                        keys_tools = false;
+                    }
+                    if motif::toggle(ui, tr("keys_tools"), keys_tools).clicked() {
+                        keys_tools = true;
+                    }
+                    ui.add_space(12.0);
+                    // The shortcuts are half the answer; the other half is
+                    // what the application is for, and that one is printed
+                    // and kept beside the poste.
+                    if motif::button(ui, tr("keys_guide"))
+                        .on_hover_text(tr("keys_guide_tooltip"))
+                        .clicked()
+                    {
+                        print_guide = true;
+                    }
+                });
                 ui.add_space(6.0);
                 // La liste est plus longue qu'un écran de comptoir : à
                 // 1024x700 elle dépassait par le haut *et* par le bas,
@@ -16044,10 +16081,21 @@ impl App {
                 // en a que huit, sur l'écran même où l'on vient
                 // apprendre ce que le clavier sait faire.
                 ui.spacing_mut().scroll.floating = false;
+                // **Et toute la hauteur que l'écran donne**, pas moins :
+                // un plafond seul laissait egui replier la liste à sa
+                // taille par défaut, et à 1400x900 les outils — la
+                // moitié qu'on vient chercher — restaient sous le pli
+                // d'une fenêtre haute de la moitié de l'écran.
+                let body = (ctx.screen_rect().height() - 200.0).max(240.0);
                 egui::ScrollArea::vertical()
                     .id_salt("keys_body")
-                    .max_height((ctx.screen_rect().height() - 160.0).max(240.0))
+                    .max_height(body)
+                    .min_scrolled_height(body)
                     .show(ui, |ui| {
+                        if keys_tools {
+                            Self::keys_tools_page(ui, &mut open_tool);
+                            return;
+                        }
                         egui::Grid::new("keys")
                             .num_columns(2)
                             .spacing([18.0, 3.0])
@@ -16089,42 +16137,10 @@ impl App {
                                     ui.end_row();
                                 }
                             });
-                        // **Les outils, par ce qu'ils font.** La fenêtre
-                        // qu'on ouvre pour apprendre l'application disait
-                        // le clavier et taisait les dix-neuf outils
-                        // qu'aucun onglet ne montre. Un clic l'ouvre ; le
-                        // propos est celui que « Aller à… » compare à ce
-                        // qu'on tape.
-                        ui.add_space(8.0);
-                        motif::section(ui, tr("keys_tools"));
-                        egui::Grid::new("keys_tools")
-                            .num_columns(2)
-                            .spacing([18.0, 3.0])
-                            .show(ui, |ui| {
-                                for tool in Tool::ALL
-                                    .into_iter()
-                                    .filter(|t| t.available() && t.listed())
-                                {
-                                    if motif::list_row(
-                                        ui,
-                                        egui::RichText::new(tool.title()).size(motif::pt(ui, 12.0)),
-                                        false,
-                                    )
-                                    .clicked()
-                                    {
-                                        open_tool = Some(tool);
-                                    }
-                                    ui.label(
-                                        egui::RichText::new(tool.purpose())
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
-                                    );
-                                    ui.end_row();
-                                }
-                            });
                     });
             });
         motif::dialog_relief(ctx, &shown);
+        self.keys_tools = keys_tools;
         if let Some(tool) = open_tool {
             if let State::Unlocked(session) = &mut self.state {
                 session.go_to(Goto::Tool(tool));
@@ -16144,6 +16160,65 @@ impl App {
         if !open {
             self.show_keys = false;
         }
+    }
+
+    /// La page « Outils » de la fenêtre des raccourcis.
+    ///
+    /// **Les outils, par ce qu'ils font.** La fenêtre qu'on ouvre pour
+    /// apprendre l'application disait le clavier et taisait les outils
+    /// qu'aucun onglet ne montre. Un clic l'ouvre ; le propos est celui
+    /// que « Aller à… » compare à ce qu'on tape.
+    fn keys_tools_page(ui: &mut egui::Ui, open_tool: &mut Option<Tool>) {
+        let tools: Vec<Tool> = Tool::ALL
+            .into_iter()
+            .filter(|t| t.available() && t.listed())
+            .collect();
+        // **La colonne des noms à la mesure du plus long.** Une rangée de
+        // liste prend la largeur qu'on lui laisse, et une cellule de
+        // grille ne lui en laisse aucune : seule dans sa fenêtre, la page
+        // réduisait chaque nom à « Tra… ».
+        let size = motif::pt(ui, 12.0);
+        let title_w = tools
+            .iter()
+            .map(|t| {
+                ui.fonts(|f| {
+                    f.layout_no_wrap(
+                        t.title().to_owned(),
+                        egui::FontId::proportional(size),
+                        motif::text(),
+                    )
+                    .size()
+                    .x
+                })
+            })
+            .fold(0.0_f32, f32::max)
+            + chars_wide(ui, 1.5);
+        // La hauteur que `list_row` prendra : demandée à zéro, la cellule
+        // se centrait sur la rangée et chaque nom tombait d'une
+        // demi-ligne sous son propos.
+        let row_h = Self::row_height(ui);
+        egui::Grid::new("keys_tools")
+            .num_columns(2)
+            .spacing([18.0, 3.0])
+            .show(ui, |ui| {
+                for tool in tools {
+                    let row = ui
+                        .allocate_ui(egui::vec2(title_w, row_h), |ui| {
+                            ui.set_width(title_w);
+                            motif::list_row(ui, egui::RichText::new(tool.title()).size(size), false)
+                        })
+                        .inner;
+                    if row.clicked() {
+                        *open_tool = Some(tool);
+                    }
+                    ui.label(
+                        egui::RichText::new(tool.purpose())
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                    ui.end_row();
+                }
+            });
     }
 
     fn unlock_screen(&mut self, ctx: &egui::Context) {
@@ -33311,10 +33386,8 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                             // Les impaires sont l'autre page des paires :
-                            // une seule entrée, qui dit les deux.
-                            if session.frame.cadence == planning::Cadence::Impaires {
-                                session.frame.cadence = planning::Cadence::Paires;
-                            }
+                            // une seule entrée, qui dit les deux. (Une
+                            // trame relue part toujours des paires.)
                             let rhythm = session.frame.cadence;
                             let cadences: Vec<(planning::Cadence, String, String)> =
                                 FrameForm::RHYTHMS
@@ -53914,6 +53987,7 @@ impl App {
             let Some(sum) = &session.conn_summary else {
                 return;
             };
+            let mut reread = false;
             // 1 — Les postes.
             motif::panel(ui, panes[0], Some(tr("conn_posts")), |ui| {
                 ui.spacing_mut().scroll.floating = false;
@@ -53921,9 +53995,12 @@ impl App {
                     .id_salt("conn_posts")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let Some(p) = &sum.posts else {
-                            ui.label(tr("posts_unreadable"));
-                            return;
+                        let p = match &sum.posts {
+                            Ok(p) => p,
+                            Err(e) => {
+                                reread |= conn_unreadable(ui, e);
+                                return;
+                            }
                         };
                         let me = p.post;
                         if !p.in_group {
@@ -54040,9 +54117,12 @@ impl App {
                     .id_salt("conn_network")
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
-                        let Some(n) = &sum.net else {
-                            ui.label(tr("net_unreadable"));
-                            return;
+                        let n = match &sum.net {
+                            Ok(n) => n,
+                            Err(e) => {
+                                reread |= conn_unreadable(ui, e);
+                                return;
+                            }
                         };
                         if !n.in_network {
                             ui.add(egui::Label::new(tr("net_none")).wrap());
@@ -54186,7 +54266,7 @@ impl App {
                                     open_entry = Some((*kind, name.clone()));
                                 }
                             }
-                            if let Some(p) = &sum.posts {
+                            if let Ok(p) = &sum.posts {
                                 for c in p.conflicts.iter().take(60) {
                                     ui.add(egui::Label::new(Self::conflict_line(c)).wrap());
                                     ui.horizontal_wrapped(|ui| {
@@ -54236,6 +54316,9 @@ impl App {
             });
             if let Some((id, theirs)) = settle {
                 let _ = session.db.settle_conflict(id, theirs);
+                session.conn_dirty = true;
+            }
+            if reread {
                 session.conn_dirty = true;
             }
             if let Some(entry) = open_entry {
@@ -54846,6 +54929,9 @@ impl App {
             w.waiting = None;
             w.summary = NetSummary::read(&session.db).ok();
             session.reload_supply();
+            // La vue des connexions promet de se relire à la fin d'une
+            // tâche : celles de cette fenêtre comprises.
+            session.conn_dirty = true;
         }
         let Some(w) = &mut session.net_window else {
             return;
@@ -54980,6 +55066,17 @@ impl App {
                                         .color(motif::text_dim()),
                                 )
                                 .on_hover_text(tr("net_peer_groups_tooltip"));
+                                // Composer celle-ci seule : savoir si elle
+                                // répond sans synchroniser tout le réseau.
+                                if !p.address.trim().is_empty()
+                                    && motif::button_enabled(ui, tr("net_peer_dial"), !busy)
+                                        .on_hover_text(tr("net_peer_dial_tooltip"))
+                                        .clicked()
+                                {
+                                    start = Some(Job::Dial {
+                                        device: p.device.clone(),
+                                    });
+                                }
                             });
                             ui.horizontal_wrapped(|ui| {
                                 // L'invite est le nom sous lequel
@@ -75038,6 +75135,8 @@ mod tests {
             ("mise en page", super::Tool::Modeles),
             ("angine", super::Tool::TrodLines),
             ("rappeler", super::Tool::Appels),
+            ("injoignable", super::Tool::Reseau),
+            ("fiches partagées", super::Tool::Reseau),
             ("facturation", super::Tool::Facturation),
         ] {
             s.goto_query = words.to_owned();
