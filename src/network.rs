@@ -247,6 +247,7 @@ impl Net {
         // celle-ci, qui les relit comme les autres. Un message dont une
         // destinataire n'a pas encore annoncé sa clé attend la prochaine
         // synchronisation.
+        let files = db.outgoing_net_files()?;
         let keys: std::collections::HashMap<String, [u8; 32]> = db
             .net_box_keys()?
             .into_iter()
@@ -269,6 +270,44 @@ impl Net {
             recipients.push(mine);
             let mut all_peers = m.peers.clone();
             all_peers.push(hex(&self.device.id().0));
+            let attached: Vec<crate::messages::FileMeta> = files
+                .iter()
+                .filter(|f| f.message == m.uid)
+                .cloned()
+                .collect();
+            // Les morceaux de ses fichiers d'abord, scellés pour les mêmes
+            // officines : le message qui les annonce arrive après eux, ou
+            // avec eux.
+            for f in &attached {
+                for (n, d) in db.file_chunks(&f.uid)? {
+                    let key = format!("morceau:{}:{n}", f.uid);
+                    if already.contains(&key) {
+                        continue;
+                    }
+                    let chunk = crate::messages::Chunk {
+                        file: f.uid.clone(),
+                        n,
+                        d,
+                    };
+                    let bytes = serde_json::to_vec(&chunk).map_err(|e| e.to_string())?;
+                    let sealed =
+                        bpm_sync::boxed::seal(&recipients, &bytes, &mut bpm_sync::OsEntropy)
+                            .map_err(|e| format!("{e:?}"))?;
+                    let mut payload = crate::messages::BOX_TAG.to_vec();
+                    payload.extend(sealed);
+                    self.journal
+                        .write(
+                            &self.device,
+                            trousseau,
+                            Stream::Reseau,
+                            &payload,
+                            None,
+                            &mut bpm_sync::OsEntropy,
+                        )
+                        .map_err(|e| format!("{e:?}"))?;
+                    done.push(key);
+                }
+            }
             let inner = crate::messages::Incoming {
                 uid: m.uid.clone(),
                 conversation: m.conversation.clone(),
@@ -278,6 +317,7 @@ impl Net {
                 author: m.author.clone(),
                 body: m.body.clone(),
                 sent_at: m.sent_at.clone(),
+                files: attached,
             };
             let bytes = serde_json::to_vec(&inner).map_err(|e| e.to_string())?;
             let sealed = bpm_sync::boxed::seal(&recipients, &bytes, &mut bpm_sync::OsEntropy)
@@ -391,6 +431,10 @@ impl Net {
         }
         let secret = self.device.box_secret();
         let me_hex = hex(&me.0);
+        // Les messages d'abord — ils décrivent les fichiers —, les
+        // morceaux ensuite : un morceau n'est accepté que pour un fichier
+        // décrit, et de l'officine qui l'a décrit.
+        let mut chunks: Vec<(crate::messages::Chunk, String)> = Vec::new();
         for f in &facts {
             let Some(sealed) = f.payload.strip_prefix(crate::messages::BOX_TAG) else {
                 continue;
@@ -398,9 +442,15 @@ impl Net {
             let Ok(inner) = bpm_sync::boxed::open(&secret, sealed) else {
                 continue;
             };
+            let author = hex(&f.author.0);
             if let Ok(m) = serde_json::from_slice::<crate::messages::Incoming>(&inner) {
-                db.receive_net_message(&m, &me_hex)?;
+                db.receive_net_message(&m, &author, &me_hex)?;
+            } else if let Ok(c) = serde_json::from_slice::<crate::messages::Chunk>(&inner) {
+                chunks.push((c, author));
             }
+        }
+        for (c, author) in &chunks {
+            db.receive_chunk(c, author)?;
         }
         db.receive_supply_events(&events)
     }
@@ -1173,18 +1223,28 @@ mod tests {
                 "CL",
             )
             .unwrap();
-        a.post_message(
-            conv,
-            "",
-            "CL",
-            "Il vous en reste ? Patient : Jean Dupont",
-            None,
-            "",
-            Some("2026-09-24 10:00:00"),
-        )
-        .unwrap();
+        let sent = a
+            .post_message(
+                conv,
+                "",
+                "CL",
+                "Il vous en reste ? Patient : Jean Dupont",
+                None,
+                "",
+                Some("2026-09-24 10:00:00"),
+            )
+            .unwrap()
+            .unwrap();
+        // Et un fichier joint, en trois morceaux.
+        let doc: Vec<u8> = (0..30_000).map(|i| (i % 253) as u8).collect();
+        let muid = a.message_uid(sent).unwrap();
+        a.attach_file(&muid, "../ordonnance.pdf", &doc).unwrap();
         let mut na = Net::load(&a).unwrap();
-        assert_eq!(na.publish(&a, "Centre").unwrap(), 1);
+        assert_eq!(
+            na.publish(&a, "Centre").unwrap(),
+            4,
+            "trois morceaux et le message"
+        );
         na.exchange_folder(&a, &folder).unwrap();
         for entry in std::fs::read_dir(&folder).unwrap().flatten() {
             let text = String::from_utf8_lossy(&std::fs::read(entry.path()).unwrap()).to_string();
@@ -1201,6 +1261,11 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].source, "Centre");
         assert_eq!(got[0].author, "CL");
+        let files = b.conversation_files(theirs[0].id).unwrap();
+        assert_eq!(files.len(), 1);
+        assert_eq!(files[0].0.name, "ordonnance.pdf", "sans chemin");
+        assert_eq!(files[0].1, 3, "les trois morceaux");
+        assert_eq!(b.file_bytes(&files[0].0).unwrap(), Some(doc.clone()));
         // Absorber deux fois ne double rien.
         nb.absorb(&b).unwrap();
         assert_eq!(b.conversation_messages(theirs[0].id).unwrap().len(), 1);
@@ -1229,6 +1294,111 @@ mod tests {
         let thread = a.conversation_messages(conv).unwrap();
         assert_eq!(thread.len(), 2);
         assert_eq!(thread[1].source, "Port");
+    }
+
+    /// **Une officine du réseau ne se fait pas passer pour une autre**, ne
+    /// glisse rien dans une conversation dont elle s'absente, et ce qu'elle
+    /// envoie n'est jamais republié sous la signature de qui le reçoit ;
+    /// un morceau pour le fichier d'une autre est ignoré.
+    #[test]
+    fn a_hostile_member_cannot_forge_inject_or_launder() {
+        let (dir_m, _sm, m) = officine("hostile-m");
+        let (_dv, _sv, v) = officine("hostile-v");
+        let folder = dir_m.join("echange");
+        Net::create(&m).unwrap();
+        let key = m.setting("net_trousseau").unwrap();
+        v.net_key("net_trousseau", &key).unwrap();
+        let (im, iv) = (
+            hex(&Net::load(&m).unwrap().device.id().0),
+            hex(&Net::load(&v).unwrap().device.id().0),
+        );
+        m.add_net_peer(&iv, "", "2026-09-24").unwrap();
+        v.add_net_peer(&im, "", "2026-09-24").unwrap();
+        v.set_net_peer(&im, "Officine M", "", ("", "")).unwrap();
+        let v_box = Net::load(&v).unwrap().device.box_public();
+        // M écrit à la main dans son journal : ce qu'un poste modifié
+        // pourrait faire.
+        let send = |inner: &[u8]| {
+            let mut nm = Net::load(&m).unwrap();
+            let sealed = bpm_sync::boxed::seal(&[v_box], inner, &mut bpm_sync::OsEntropy).unwrap();
+            let mut payload = crate::messages::BOX_TAG.to_vec();
+            payload.extend(sealed);
+            let trousseau = nm.trousseau.clone().unwrap();
+            let device = Device::from_seed(nm.device.seed());
+            nm.journal
+                .write(
+                    &device,
+                    &trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap();
+            nm.keep(&m).unwrap();
+            nm.exchange_folder(&m, &folder).unwrap();
+            let mut nv = Net::load(&v).unwrap();
+            nv.exchange_folder(&v, &folder).unwrap();
+            nv.absorb(&v).unwrap();
+        };
+        let msg = |conv: &str,
+                   peers: Vec<String>,
+                   officine: &str,
+                   files: Vec<crate::messages::FileMeta>| {
+            serde_json::to_vec(&crate::messages::Incoming {
+                uid: format!("u-{conv}"),
+                conversation: conv.to_owned(),
+                title: "t".to_owned(),
+                peers,
+                officine: officine.to_owned(),
+                author: "XX".to_owned(),
+                body: "texte".to_owned(),
+                sent_at: "2026-09-24 12:00:00".to_owned(),
+                files,
+            })
+            .unwrap()
+        };
+        // 1 — Une conversation dont M s'absente : refusée.
+        send(&msg(
+            "sans-m",
+            vec![iv.clone(), "cafe".repeat(16)],
+            "Centre",
+            vec![],
+        ));
+        assert!(v.conversations().unwrap().is_empty(), "M s'absente : rien");
+        // 2 — Un nom d'officine usurpé, vide qui plus est : le message est
+        // rangé sous le nom que V connaît à M, et n'est pas à republier.
+        let big = crate::messages::FileMeta {
+            uid: "gros".to_owned(),
+            message: "u-avec-m".to_owned(),
+            name: "x".to_owned(),
+            size: i64::MAX,
+            hash: String::new(),
+            chunks: 1,
+        };
+        send(&msg("avec-m", vec![iv.clone(), im.clone()], "", vec![big]));
+        let convs = v.conversations().unwrap();
+        assert_eq!(convs.len(), 1);
+        let got = v.conversation_messages(convs[0].id).unwrap();
+        assert_eq!(got[0].source, "Officine M", "le nom que V lui connaît");
+        assert!(
+            v.outgoing_net_messages().unwrap().is_empty(),
+            "jamais republié par V"
+        );
+        assert!(
+            v.conversation_files(convs[0].id).unwrap().is_empty(),
+            "une taille démesurée n'est pas rangée"
+        );
+        // 3 — Un morceau pour un fichier inconnu : ignoré.
+        send(
+            &serde_json::to_vec(&crate::messages::Chunk {
+                file: "gros".to_owned(),
+                n: 0,
+                d: "00".to_owned(),
+            })
+            .unwrap(),
+        );
+        assert!(v.file_chunks("gros").unwrap().is_empty());
     }
 
     #[test]

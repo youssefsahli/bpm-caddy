@@ -983,6 +983,13 @@ la date de naissance du patient, et l'envoi est inscrit au journal des
 accès. Les officines favorites (étoile) ont leur bouton en tête des
 conversations.
 
+**Fichiers.** « Joindre un fichier… » ajoute un fichier au message
+(5 Mo au plus), chiffré comme lui. Il voyage en morceaux ; dans le fil,
+il s'enregistre d'un clic une fois entier, après vérification de son
+empreinte — un fichier incomplet ou altéré ne s'enregistre pas. Le nom
+reçu ne choisit pas où le fichier s'écrit. Un fichier pour une autre
+officine demande la même confirmation qu'un patient nommé.
+
 # Connexions
 
 L'icône à trois nœuds, en bas à droite de la barre d'état, indique le

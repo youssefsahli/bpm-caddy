@@ -436,6 +436,13 @@ dix passe donc sous un **second sceau**, `bpm_sync::boxed` :
 * dans le journal, la charge commence par `BOX1` : les lecteurs JSON
   (ruptures, versions, valeurs) la laissent passer.
 
+Un **fichier joint** voyage en morceaux de 12 Kio (en hex, dans la table
+`message_chunks` entre postes, un morceau par boîte entre officines),
+décrit par `message_files` (nom, taille, empreinte BLAKE3, nombre de
+morceaux). Il ne s'enregistre qu'entier et conforme à son empreinte ;
+5 Mio au plus, parce que chaque morceau reste au journal de chaque poste
+et de chaque officine du réseau.
+
 Un message qui nomme un patient ne part qu'après confirmation, et
 l'envoi est écrit au journal des accès (`transmis`). Un message dont une
 destinataire n'a pas encore annoncé sa clé attend la synchronisation

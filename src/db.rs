@@ -410,7 +410,11 @@ CREATE TABLE IF NOT EXISTS messages (
     patient_id      INTEGER,
     -- Le nom de l'officine d'où vient un message reçu du réseau.
     source          TEXT NOT NULL DEFAULT '',
-    sent_at         TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+    sent_at         TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    -- L'appareil qui a signé un message reçu du réseau ; vide : écrit
+    -- dans cette officine. **C'est ce vide, et lui seul, qui dit qu'un
+    -- message est à publier** — jamais un nom d'officine vide.
+    from_device     TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS message_reads (
     id              INTEGER PRIMARY KEY,
@@ -422,6 +426,24 @@ CREATE TABLE IF NOT EXISTS colleague_groups (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
     members     TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS message_files (
+    id          INTEGER PRIMARY KEY,
+    uid         TEXT NOT NULL DEFAULT '',
+    -- L'`uid` du message qui porte le fichier.
+    message_uid TEXT NOT NULL DEFAULT '',
+    name        TEXT NOT NULL DEFAULT '',
+    size        INTEGER NOT NULL DEFAULT 0,
+    -- BLAKE3 du contenu, en hex : vérifié avant d'enregistrer.
+    hash        TEXT NOT NULL DEFAULT '',
+    chunks      INTEGER NOT NULL DEFAULT 0
+);
+CREATE TABLE IF NOT EXISTS message_chunks (
+    id          INTEGER PRIMARY KEY,
+    file_uid    TEXT NOT NULL DEFAULT '',
+    n           INTEGER NOT NULL DEFAULT 0,
+    -- Les octets en hex : le JSON des postes ne porte pas d'octets bruts.
+    data        TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS favorites (
     id          INTEGER PRIMARY KEY,
@@ -1290,6 +1312,27 @@ const MIGRATIONS: &[&str] = &[
         id          INTEGER PRIMARY KEY,
         name        TEXT NOT NULL,
         members     TEXT NOT NULL DEFAULT ''
+    )",
+    // Qui a signé un message reçu — voir `SCHEMA`. Les messages reçus
+    // avant la colonne (0.312) sont marqués d'un appareil inconnu : reçus,
+    // donc jamais republiés.
+    "ALTER TABLE messages ADD COLUMN from_device TEXT NOT NULL DEFAULT ''",
+    "UPDATE messages SET from_device = '?' WHERE source <> '' AND from_device = ''",
+    // Les fichiers joints aux messages — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS message_files (
+        id          INTEGER PRIMARY KEY,
+        uid         TEXT NOT NULL DEFAULT '',
+        message_uid TEXT NOT NULL DEFAULT '',
+        name        TEXT NOT NULL DEFAULT '',
+        size        INTEGER NOT NULL DEFAULT 0,
+        hash        TEXT NOT NULL DEFAULT '',
+        chunks      INTEGER NOT NULL DEFAULT 0
+    )",
+    "CREATE TABLE IF NOT EXISTS message_chunks (
+        id          INTEGER PRIMARY KEY,
+        file_uid    TEXT NOT NULL DEFAULT '',
+        n           INTEGER NOT NULL DEFAULT 0,
+        data        TEXT NOT NULL DEFAULT ''
     )",
     // Les favoris de chaque opérateur — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS favorites (
@@ -31177,7 +31220,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT id, conversation_id, author, body, patient_id, source, sent_at
+                "SELECT id, conversation_id, author, body, patient_id, source, sent_at, uid
                  FROM messages WHERE conversation_id = ?1 ORDER BY sent_at, id",
             )
             .map_err(|e| e.to_string())?;
@@ -31191,6 +31234,7 @@ impl Db {
                     patient_id: r.get(4)?,
                     source: r.get(5)?,
                     sent_at: r.get(6)?,
+                    uid: r.get(7)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -31248,6 +31292,230 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(Some(self.conn.last_insert_rowid()))
+    }
+
+    /// L'`uid` d'un message.
+    pub fn message_uid(&self, id: i64) -> Result<String, String> {
+        self.conn
+            .query_row("SELECT uid FROM messages WHERE id = ?1", [id], |r| r.get(0))
+            .map_err(|e| e.to_string())
+    }
+
+    /// Joindre un fichier à un message : sa description et ses morceaux,
+    /// d'un tenant. Refuse un fichier plus lourd que
+    /// [`crate::messages::MAX_FILE`].
+    pub fn attach_file(
+        &self,
+        message_uid: &str,
+        name: &str,
+        bytes: &[u8],
+    ) -> Result<crate::messages::FileMeta, String> {
+        if bytes.len() > crate::messages::MAX_FILE {
+            return Err(crate::strings::trf(
+                "msg_file_too_big",
+                crate::messages::MAX_FILE / (1024 * 1024),
+            ));
+        }
+        let parts = crate::messages::chunks_of(bytes);
+        let uid: String = self
+            .conn
+            .query_row("SELECT lower(hex(randomblob(12)))", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let meta = crate::messages::FileMeta {
+            uid,
+            message: message_uid.to_owned(),
+            name: crate::messages::safe_name(name),
+            size: i64::try_from(bytes.len()).unwrap_or(i64::MAX),
+            hash: crate::messages::hash_of(bytes),
+            chunks: i64::try_from(parts.len()).unwrap_or(i64::MAX),
+        };
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        self.insert_file_meta(&tx, &meta)?;
+        for (n, d) in parts.iter().enumerate() {
+            tx.execute(
+                &format!(
+                    "INSERT INTO message_chunks (id, file_uid, n, data) VALUES ({next}, ?1, ?2, ?3)",
+                    next = next_id("message_chunks")
+                ),
+                (&meta.uid, i64::try_from(n).unwrap_or(i64::MAX), d),
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(meta)
+    }
+
+    fn insert_file_meta(
+        &self,
+        tx: &rusqlite::Transaction<'_>,
+        meta: &crate::messages::FileMeta,
+    ) -> Result<(), String> {
+        tx.execute(
+            &format!(
+                "INSERT INTO message_files (id, uid, message_uid, name, size, hash, chunks)
+                 VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                next = next_id("message_files")
+            ),
+            (
+                &meta.uid,
+                &meta.message,
+                crate::messages::safe_name(&meta.name),
+                meta.size,
+                &meta.hash,
+                meta.chunks,
+            ),
+        )
+        .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Les fichiers des messages d'une conversation, avec combien de
+    /// morceaux sont arrivés.
+    pub fn conversation_files(
+        &self,
+        conversation_id: i64,
+    ) -> Result<Vec<(crate::messages::FileMeta, i64)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT f.uid, f.message_uid, f.name, f.size, f.hash, f.chunks,
+                        (SELECT COUNT(DISTINCT c.n) FROM message_chunks c WHERE c.file_uid = f.uid)
+                 FROM message_files f JOIN messages m ON m.uid = f.message_uid
+                 WHERE m.conversation_id = ?1
+                 ORDER BY f.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([conversation_id], |r| {
+                Ok((
+                    crate::messages::FileMeta {
+                        uid: r.get(0)?,
+                        message: r.get(1)?,
+                        name: r.get(2)?,
+                        size: r.get(3)?,
+                        hash: r.get(4)?,
+                        chunks: r.get(5)?,
+                    },
+                    r.get::<_, i64>(6)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Le contenu d'un fichier, recollé et vérifié — `None` tant qu'il
+    /// n'est pas entier ou s'il ne correspond pas à son empreinte.
+    pub fn file_bytes(&self, meta: &crate::messages::FileMeta) -> Result<Option<Vec<u8>>, String> {
+        Ok(crate::messages::assemble(
+            meta,
+            &self.file_chunks(&meta.uid)?,
+        ))
+    }
+
+    /// Les morceaux d'un fichier, par numéro.
+    pub fn file_chunks(&self, file_uid: &str) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT n, data FROM message_chunks WHERE file_uid = ?1 ORDER BY n, id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([file_uid], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ranger la description d'un fichier reçu, une fois.
+    pub fn receive_file_meta(&self, meta: &crate::messages::FileMeta) -> Result<(), String> {
+        let seen: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM message_files WHERE uid = ?1)",
+                [&meta.uid],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if seen {
+            return Ok(());
+        }
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        self.insert_file_meta(&tx, meta)?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
+    /// Ranger un morceau reçu, une fois — **seulement de l'officine qui a
+    /// envoyé le message portant ce fichier**, et dans le nombre de
+    /// morceaux annoncé.
+    pub fn receive_chunk(&self, c: &crate::messages::Chunk, author: &str) -> Result<(), String> {
+        let allowed: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM message_files f
+                               JOIN messages m ON m.uid = f.message_uid
+                               WHERE f.uid = ?1 AND m.from_device = ?2
+                                 AND ?3 >= 0 AND ?3 < f.chunks)",
+                (&c.file, author, c.n),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !allowed || c.d.len() > crate::messages::CHUNK * 2 {
+            return Ok(());
+        }
+        let seen: bool = self
+            .conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM message_chunks WHERE file_uid = ?1 AND n = ?2)",
+                (&c.file, c.n),
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if seen {
+            return Ok(());
+        }
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO message_chunks (id, file_uid, n, data) VALUES ({next}, ?1, ?2, ?3)",
+                    next = next_id("message_chunks")
+                ),
+                (&c.file, c.n, &c.d),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Les fichiers joints à des messages écrits ici pour d'autres
+    /// officines — à sceller et publier.
+    pub fn outgoing_net_files(&self) -> Result<Vec<crate::messages::FileMeta>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT f.uid, f.message_uid, f.name, f.size, f.hash, f.chunks
+                 FROM message_files f
+                 JOIN messages m ON m.uid = f.message_uid
+                 JOIN conversations c ON c.id = m.conversation_id
+                 WHERE c.channel = 'officines' AND m.from_device = ''
+                 ORDER BY f.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::messages::FileMeta {
+                    uid: r.get(0)?,
+                    message: r.get(1)?,
+                    name: r.get(2)?,
+                    size: r.get(3)?,
+                    hash: r.get(4)?,
+                    chunks: r.get(5)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
     /// Jusqu'où `operator` a lu, conversation par conversation.
@@ -32408,6 +32676,8 @@ impl Db {
             tx.execute(sql, []).map_err(|e| e.to_string())?;
         }
         for table in [
+            "message_chunks",
+            "message_files",
             "messages",
             "message_reads",
             "conversations",
@@ -34391,7 +34661,7 @@ impl Db {
             .prepare(
                 "SELECT m.uid, c.uid, c.title, c.peers, m.author, m.body, m.sent_at
                  FROM messages m JOIN conversations c ON c.id = m.conversation_id
-                 WHERE c.channel = 'officines' AND m.source = ''
+                 WHERE c.channel = 'officines' AND m.from_device = ''
                  ORDER BY m.sent_at, m.id",
             )
             .map_err(|e| e.to_string())?;
@@ -34418,9 +34688,41 @@ impl Db {
     pub fn receive_net_message(
         &self,
         m: &crate::messages::Incoming,
+        author: &str,
         me: &str,
     ) -> Result<bool, String> {
-        let conv = match self.conversation_by_uid(&m.conversation)? {
+        // **Qui écrit est celui qui a signé**, et il doit être de la
+        // conversation : une officine du réseau ne glisse pas un message
+        // dans une conversation qui n'est pas la sienne, ni n'en ouvre une
+        // dont elle s'absente.
+        let existing = self
+            .conversations()?
+            .into_iter()
+            .find(|c| c.uid == m.conversation);
+        match &existing {
+            Some(c) if c.channel != crate::messages::Channel::Officines => return Ok(false),
+            Some(c) if !c.peers.iter().any(|p| p == author) => return Ok(false),
+            None if !m.peers.iter().any(|p| p == author) => return Ok(false),
+            _ => {}
+        }
+        // Son nom est celui que cette officine lui connaît — donné à
+        // l'appairage, sinon celui sous lequel il signe — jamais celui que
+        // la boîte prétend.
+        let source = self
+            .net_peers()?
+            .into_iter()
+            .find(|p| p.device == author)
+            .map(|p| {
+                if !p.name.trim().is_empty() {
+                    p.name.trim().to_owned()
+                } else if !p.seen_as.trim().is_empty() {
+                    p.seen_as.trim().to_owned()
+                } else {
+                    crate::network::peer_groups(author)
+                }
+            })
+            .unwrap_or_else(|| crate::network::peer_groups(author));
+        let conv = match existing.map(|c| c.id) {
             Some(id) => id,
             None => {
                 let peers: Vec<String> = m
@@ -34440,17 +34742,37 @@ impl Db {
                 )?
             }
         };
-        Ok(self
-            .post_message(
-                conv,
-                &m.uid,
-                &m.author,
-                &m.body,
-                None,
-                &m.officine,
-                Some(&m.sent_at),
-            )?
-            .is_some())
+        let Some(id) = self.post_message(
+            conv,
+            &m.uid,
+            &m.author,
+            &m.body,
+            None,
+            &source,
+            Some(&m.sent_at),
+        )?
+        else {
+            return Ok(false);
+        };
+        self.conn
+            .execute(
+                "UPDATE messages SET from_device = ?1 WHERE id = ?2",
+                (author, id),
+            )
+            .map_err(|e| e.to_string())?;
+        // Ses fichiers : décrits par lui, pour ce message, et dans les
+        // bornes — une taille annoncée n'alloue rien d'avance.
+        for f in m.files.iter().filter(|f| f.message == m.uid) {
+            let max_chunks =
+                i64::try_from(crate::messages::MAX_FILE.div_ceil(crate::messages::CHUNK))
+                    .unwrap_or(0);
+            let ok = (0..=i64::try_from(crate::messages::MAX_FILE).unwrap_or(0)).contains(&f.size)
+                && (1..=max_chunks).contains(&f.chunks);
+            if ok {
+                self.receive_file_meta(f)?;
+            }
+        }
+        Ok(true)
     }
 
     /// Les officines appairées : (clé, nom, adresse, date).

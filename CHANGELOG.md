@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.313.0] - 2026-09-24
+
+### Added
+- **Fichiers dans les messages.** « Joindre un fichier… » envoie un
+  fichier (5 Mo au plus) avec un message, entre collègues comme entre
+  officines, chiffré comme lui. Il s'enregistre d'un clic une fois
+  arrivé entier, après vérification de son empreinte ; un fichier pour
+  une autre officine demande une confirmation.
+
+### Fixed
+- **Sécurité de la messagerie entre officines (0.312.0).** Un message
+  reçu est attribué à l'officine qui l'a signé, sous le nom que cette
+  officine lui connaît — plus sous celui que le message prétend ; une
+  officine ne peut plus glisser un message dans une conversation dont
+  elle n'est pas, ni en ouvrir une dont elle s'absente ; un message reçu
+  n'est jamais republié sous la signature de qui l'a reçu. La
+  confirmation d'envoi, le dossier lié et le fichier choisi ne passent
+  plus d'une conversation à l'autre.
+
 ## [0.312.0] - 2026-09-24
 
 ### Added

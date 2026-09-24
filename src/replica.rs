@@ -116,6 +116,9 @@ pub const TABLES: &[Table] = &[
     t("conversations", Main, Dossiers, false, true),
     t("messages", Main, Dossiers, true, true),
     t("message_reads", Main, Dossiers, false, true),
+    // Un fichier joint : sa description et ses morceaux, en ajout seul.
+    t("message_files", Main, Dossiers, true, true),
+    t("message_chunks", Main, Dossiers, true, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
     t("drugs", Main, Fiches, false, true),

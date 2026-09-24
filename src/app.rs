@@ -6207,6 +6207,10 @@ impl Session {
             Some(id) => self.db.conversation_messages(id).unwrap_or_default(),
             None => Vec::new(),
         };
+        self.msg.files = match self.msg.open {
+            Some(id) => self.db.conversation_files(id).unwrap_or_default(),
+            None => Vec::new(),
+        };
         self.msg.loaded_for = Some(op);
         self.msg.dirty = false;
     }
@@ -6223,9 +6227,17 @@ impl Session {
     /// Ouvrir une conversation, et la marquer lue jusqu'à son dernier
     /// message.
     fn open_conversation(&mut self, id: i64) {
+        // Une confirmation, un dossier lié, un fichier choisi valent pour
+        // la conversation où on les a donnés — pas pour la suivante.
+        if self.msg.open != Some(id) {
+            self.msg.confirm_send = false;
+            self.msg.with_patient = false;
+            self.msg.attach = None;
+        }
         self.msg.open = Some(id);
         self.msg.pane = MessagesPane::Thread;
         self.msg.thread = self.db.conversation_messages(id).unwrap_or_default();
+        self.msg.files = self.db.conversation_files(id).unwrap_or_default();
         let op = self.msg.loaded_for.clone().unwrap_or_default();
         if let Some(last) = self.msg.thread.last() {
             let _ = self.db.mark_read(id, &op, &last.sent_at);
@@ -6239,12 +6251,21 @@ impl Session {
             return;
         };
         let body = self.msg.draft.trim().to_owned();
-        if body.is_empty() {
+        if body.is_empty() && self.msg.attach.is_none() {
             return;
         }
         let op = self.msg.loaded_for.clone().unwrap_or_default();
         match self.db.post_message(id, "", &op, &body, patient, "", None) {
-            Ok(_) => {
+            Ok(posted) => {
+                if let (Some(mid), Some((name, bytes))) = (posted, self.msg.attach.take()) {
+                    if let Err(e) = self
+                        .db
+                        .message_uid(mid)
+                        .and_then(|uid| self.db.attach_file(&uid, &name, &bytes))
+                    {
+                        self.msg.note = Some((true, e));
+                    }
+                }
                 self.msg.draft.clear();
                 self.msg.with_patient = false;
                 self.open_conversation(id);
@@ -10613,6 +10634,11 @@ struct MessagesState {
     /// Un message qui nomme un patient et part à d'autres officines
     /// attend qu'on confirme.
     confirm_send: bool,
+    /// Le fichier à joindre au prochain message : son nom et ses octets.
+    attach: Option<(String, Vec<u8>)>,
+    /// Les fichiers de la conversation ouverte, et combien de leurs
+    /// morceaux sont arrivés.
+    files: Vec<(crate::messages::FileMeta, i64)>,
     /// Quelque chose a bougé depuis la dernière lecture.
     dirty: bool,
     note: Option<(bool, String)>,
@@ -10683,7 +10709,15 @@ fn demo_messages(db: &Db) {
             ("YS", "Noté. M. Bernard attend son Eliquis : je l'appelle.", pid, "2026-09-24 08:52:00"),
             ("MB", "Le réfrigérateur 2 affiche 9 °C, je surveille et je note le relevé.", None, "2026-09-24 09:10:00"),
         ] {
-            let _ = db.post_message(team, "", who, body, patient, "", Some(at));
+            let posted = db.post_message(team, "", who, body, patient, "", Some(at));
+            // Le relevé du réfrigérateur, joint.
+            if who == "MB" {
+                if let Ok(Some(id)) = posted {
+                    if let Ok(uid) = db.message_uid(id) {
+                        let _ = db.attach_file(&uid, "releve-frigo-2.csv", b"heure;temperature\n08:00;6\n09:00;9\n");
+                    }
+                }
+            }
         }
     }
     if let Ok(g) = db.save_colleague_group(None, "Préparateurs", &["YS".into(), "MB".into()]) {
@@ -54812,6 +54846,7 @@ impl App {
         let compose_h = Self::label_line(ui) * lines + Self::row_height(ui) + 16.0;
         let parts = motif::split_rows(rect, &[0.0, compose_h], 6.0);
         let mut open_patient: Option<i64> = None;
+        let mut save_file: Option<crate::messages::FileMeta> = None;
         motif::panel(ui, parts[0], Some(&title), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
@@ -54865,7 +54900,37 @@ impl App {
                                 }
                             }
                         });
-                        ui.add(egui::Label::new(egui::RichText::new(&m.body)).wrap());
+                        if !m.body.is_empty() {
+                            ui.add(egui::Label::new(egui::RichText::new(&m.body)).wrap());
+                        }
+                        // Ses fichiers : à enregistrer quand ils sont
+                        // entiers, le compte des morceaux sinon.
+                        for (f, have) in
+                            session.msg.files.iter().filter(|(f, _)| f.message == m.uid)
+                        {
+                            let size = trf("msg_file_size", (f.size + 1023) / 1024);
+                            if *have >= f.chunks {
+                                if motif::icon_button(
+                                    ui,
+                                    Some(motif::Pict::Doc),
+                                    &format!("{} ({size})", f.name),
+                                )
+                                .on_hover_text(tr("msg_file_save_tooltip"))
+                                .clicked()
+                                {
+                                    save_file = Some(f.clone());
+                                }
+                            } else {
+                                ui.label(
+                                    egui::RichText::new(trn(
+                                        "msg_file_partial",
+                                        &[&f.name, have, &f.chunks],
+                                    ))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                                );
+                            }
+                        }
                         ui.add_space(6.0);
                     }
                 });
@@ -54874,11 +54939,28 @@ impl App {
             session.activate_tab(&WorkTab::Patient(pid));
             return;
         }
+        if let Some(f) = save_file {
+            // Recollé et vérifié d'abord : un fichier dont l'empreinte ne
+            // correspond pas ne s'écrit nulle part.
+            match session.db.file_bytes(&f) {
+                Ok(Some(bytes)) => {
+                    if let Some(path) = rfd::FileDialog::new().set_file_name(&f.name).save_file() {
+                        if let Err(e) = std::fs::write(&path, &bytes) {
+                            session.msg.note = Some((true, e.to_string()));
+                        }
+                    }
+                }
+                Ok(None) => session.msg.note = Some((true, tr("msg_file_corrupt").to_owned())),
+                Err(e) => session.msg.note = Some((true, e)),
+            }
+        }
         let viewing = session
             .viewing
             .as_ref()
             .map(|p| (p.id, format!("{} {}", p.first_name, p.last_name)));
         let mut send = false;
+        let mut pick_file = false;
+        let mut drop_file = false;
         motif::inside(ui, parts[1], |ui| {
             let w = ui.available_width();
             let resp = motif::area(
@@ -54894,11 +54976,41 @@ impl App {
                 send = true;
             }
             ui.horizontal_wrapped(|ui| {
-                if motif::button_enabled(ui, tr("msg_send"), !session.msg.draft.trim().is_empty())
+                let ready = !session.msg.draft.trim().is_empty() || session.msg.attach.is_some();
+                if motif::button_enabled(ui, tr("msg_send"), ready)
                     .on_hover_text(tr("msg_send_tooltip"))
                     .clicked()
                 {
                     send = true;
+                }
+                // Un fichier joint : choisi, montré, retirable.
+                match &session.msg.attach {
+                    None => {
+                        if motif::icon_button(ui, Some(motif::Pict::Doc), tr("msg_attach"))
+                            .on_hover_text(trf(
+                                "msg_attach_tooltip",
+                                crate::messages::MAX_FILE / (1024 * 1024),
+                            ))
+                            .clicked()
+                        {
+                            pick_file = true;
+                        }
+                    }
+                    Some((name, bytes)) => {
+                        ui.label(
+                            egui::RichText::new(format!(
+                                "{name} ({})",
+                                trf("msg_file_size", bytes.len().div_ceil(1024))
+                            ))
+                            .size(motif::pt(ui, 10.5)),
+                        );
+                        if motif::button(ui, "×")
+                            .on_hover_text(tr("msg_attach_remove"))
+                            .clicked()
+                        {
+                            drop_file = true;
+                        }
+                    }
                 }
                 if let Some((_, name)) = &viewing {
                     if motif::toggle(ui, &trf("msg_link_patient", name), session.msg.with_patient)
@@ -54922,16 +55034,21 @@ impl App {
             });
             if session.msg.confirm_send {
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(
-                        egui::RichText::new(trf(
+                    let said = if session.msg.with_patient {
+                        trf(
                             "msg_confirm_patient",
                             viewing
                                 .as_ref()
                                 .map(|(_, n)| n.as_str())
                                 .unwrap_or_default(),
-                        ))
-                        .size(motif::pt(ui, 10.5))
-                        .color(motif::warn()),
+                        )
+                    } else {
+                        tr("msg_confirm_file").to_owned()
+                    };
+                    ui.label(
+                        egui::RichText::new(said)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::warn()),
                     );
                     if motif::button(ui, tr("msg_confirm_send")).clicked() {
                         send = true;
@@ -54942,6 +55059,33 @@ impl App {
                 });
             }
         });
+        if drop_file {
+            session.msg.attach = None;
+        }
+        if pick_file {
+            if let Some(path) = rfd::FileDialog::new().pick_file() {
+                match std::fs::read(&path) {
+                    Ok(bytes) if bytes.len() > crate::messages::MAX_FILE => {
+                        session.msg.note = Some((
+                            true,
+                            trf(
+                                "msg_file_too_big",
+                                crate::messages::MAX_FILE / (1024 * 1024),
+                            ),
+                        ));
+                    }
+                    Ok(bytes) => {
+                        let name = path
+                            .file_name()
+                            .map(|n| n.to_string_lossy().to_string())
+                            .unwrap_or_default();
+                        session.msg.attach = Some((crate::messages::safe_name(&name), bytes));
+                        session.msg.note = None;
+                    }
+                    Err(e) => session.msg.note = Some((true, e.to_string())),
+                }
+            }
+        }
         let to_officines = session
             .msg
             .conversations
@@ -54956,7 +55100,9 @@ impl App {
             };
             // **Un patient ne sort de l'officine qu'après confirmation**,
             // et la sortie est écrite au journal des accès.
-            if to_officines && patient.is_some() && !session.msg.confirm_send {
+            // Un fichier aussi : ce qu'il contient, personne ici ne l'a lu.
+            let needs_consent = patient.is_some() || session.msg.attach.is_some();
+            if to_officines && needs_consent && !session.msg.confirm_send {
                 session.msg.confirm_send = true;
                 return;
             }
@@ -76694,6 +76840,21 @@ mod tests {
         assert_eq!(s.msg.conversations.len(), 1);
         s.reload_messages("YS");
         assert_eq!(s.msg.conversations.len(), 1, "YS garde la sienne seulement");
+        // Un fichier seul, sans texte : il part, entier, et se relit.
+        s.open_conversation(first);
+        s.msg.attach = Some(("releve frigo.csv".to_owned(), b"8,9,9,8".to_vec()));
+        s.send_message(None);
+        assert!(s.msg.attach.is_none());
+        assert_eq!(s.msg.files.len(), 1);
+        let (meta, have) = &s.msg.files[0];
+        assert_eq!(*have, meta.chunks);
+        assert_eq!(
+            s.db.file_bytes(meta).unwrap().as_deref(),
+            Some(&b"8,9,9,8"[..])
+        );
+        // Trop lourd : refusé, et dit.
+        let big = vec![0u8; crate::messages::MAX_FILE + 1];
+        assert!(s.db.attach_file("x", "gros.bin", &big).is_err());
     }
 
     /// **Un favori passe en tête de « Aller à… »**, pour la personne au
