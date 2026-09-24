@@ -1131,7 +1131,7 @@ const DEFAULT_BILAN_TEMPLATE: &str = r##"
 #set page(paper: "a4", margin: 1.6cm)
 #set text(size: 10pt, lang: "fr", hyphenate: true)
 
-#let sec(t) = block(sticky: true, above: 3mm, below: 1.5mm)[#text(11pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.6pt)]
+#let sec(t) = block(sticky: true, above: 5mm, below: 2mm)[#text(11pt, weight: "bold")[#t] #v(-1.5mm) #line(length: 100%, stroke: 0.6pt)]
 
 {{BODY}}
 "##;
@@ -3391,7 +3391,7 @@ const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
 #set text(size: 10pt, lang: "fr", hyphenate: true)
 #set par(justify: true)
 
-#let sec(t) = [#v(3mm) #text(10.5pt, weight: "bold")[#t] #v(1mm) #line(length: 100%, stroke: 0.5pt) #v(1.5mm)]
+#let sec(t) = block(sticky: true, above: 5mm, below: 2.5mm)[#text(10.5pt, weight: "bold")[#t] #v(-1.5mm) #line(length: 100%, stroke: 0.5pt)]
 
 {{BODY}}
 "##;
