@@ -1039,6 +1039,10 @@ conseils à tenir à jour deux fois.
   pour les thèmes que l'officine écrit elle-même.
 - **Test** : chaque thème de `db::THEMES` a sa liste, de cinq à neuf
   points. Une liste de vingt lignes est une liste que personne ne coche.
+- **Les tableaux des types d'acte** (`entretien::kind_table`) : INR (AVK),
+  suivi de l'anticoagulant (AOD), grades des effets (anticancéreux),
+  technique d'inhalation (asthme). Des cases vides — la feuille ne relève
+  rien d'elle-même ; phrases sous `entretien.tableau-<clé>.*`.
 
 ## La feuille de TROD
 

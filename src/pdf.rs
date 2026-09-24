@@ -91,6 +91,8 @@ const DEFAULT_TEMPLATE: &str = r#"
 #sec[À couvrir pendant l'entretien]
 {{CHECKLIST}}
 
+{{KIND_TABLE}}
+
 #note-box[Propos du patient]
 #note-box[Points d'attention, interactions]
 #note-box[Conclusion et plan d'action]
@@ -99,7 +101,7 @@ const DEFAULT_TEMPLATE: &str = r#"
 #grid(columns: (1fr, 1fr), column-gutter: 6mm,
   [#text(weight: "bold")[Prochain rendez-vous]
    #v(1mm)
-   #box(width: 100%, height: 1.8cm, stroke: 0.7pt)],
+   #box(width: 100%, height: 1.8cm, stroke: 0.7pt, inset: 6pt)[{{NEXT_RDV}}]],
   [#text(weight: "bold")[Signature du pharmacien]
    #v(1mm)
    #box(width: 100%, height: 1.8cm, stroke: 0.7pt)],
@@ -266,6 +268,12 @@ pub struct InterviewPaper<'a> {
     pub signature: &'a str,
     pub treats: &'a [Drug],
     pub checklist: &'a [&'a str],
+    /// Le prochain rendez-vous déjà posé pour ce patient, en toutes
+    /// lettres — vide quand il n'y en a pas, et le cadre reste à remplir.
+    pub next_rdv: &'a str,
+    /// Le tableau propre au type d'acte (INR, effets indésirables…),
+    /// avec les mots de l'officine.
+    pub table: Option<&'a crate::entretien::FilledTable>,
 }
 
 /// Compile the interview sheet for a patient and hand it to the OS PDF
@@ -3585,6 +3593,49 @@ fn checklist_markup(points: &[&str]) -> String {
         .join("\n")
 }
 
+/// Le tableau d'un type d'acte, en Typst : son titre en section, ses
+/// colonnes, et des cases vides — une ligne par libellé, ou des lignes à
+/// remplir. Rien quand l'acte n'en a pas.
+fn kind_table_markup(table: Option<&crate::entretien::FilledTable>) -> String {
+    let Some(t) = table else {
+        return String::new();
+    };
+    let n = t.columns.len().max(1);
+    // Une colonne de libellés large, des cases étroites ; sans libellés,
+    // des colonnes égales où l'on écrit.
+    let widths = if t.rows.is_empty() {
+        vec!["1fr"; n].join(", ")
+    } else {
+        std::iter::once("1fr")
+            .chain(std::iter::repeat_n("1.2cm", n - 1))
+            .collect::<Vec<_>>()
+            .join(", ")
+    };
+    let mut cells: Vec<String> = t
+        .columns
+        .iter()
+        .map(|c| format!("[#text(weight: \"bold\")[#{}]]", typst_str(c)))
+        .collect();
+    if t.rows.is_empty() {
+        for _ in 0..t.blank_rows.max(1) * n {
+            cells.push("[#v(4.5mm)]".to_owned());
+        }
+    } else {
+        for row in &t.rows {
+            cells.push(format!("[#{}]", typst_str(row)));
+            for _ in 1..n {
+                cells.push("[]".to_owned());
+            }
+        }
+    }
+    format!(
+        "#block(above: 4mm, below: 2mm, sticky: true)[#text(weight: \"bold\")[#{}] #v(-1.5mm) #line(length: 100%, stroke: 0.4pt)]\n\
+         #table(columns: ({widths}), inset: 4pt, stroke: 0.5pt, {})",
+        typst_str(&t.title),
+        cells.join(", ")
+    )
+}
+
 /// Substitute the interview-sheet placeholders. Values are spliced as
 /// Typst string literals (`#"…"`), so a patient name containing markup
 /// ('#', '*', brackets…) can neither break compilation nor restyle the
@@ -3641,6 +3692,8 @@ fn interview_values(
         ("{{PHARMACIST}}", s(paper.signature)),
         ("{{TREATMENTS}}", treatments_markup(paper.treats)),
         ("{{CHECKLIST}}", checklist_markup(paper.checklist)),
+        ("{{NEXT_RDV}}", s(paper.next_rdv)),
+        ("{{KIND_TABLE}}", kind_table_markup(paper.table)),
     ]
 }
 
@@ -4481,6 +4534,8 @@ pub const DOCS: &[Doc] = &[
 ];
 
 const MARKERS_FICHE: &[&str] = &[
+    "{{NEXT_RDV}}",
+    "{{KIND_TABLE}}",
     "{{PHARMACY_NAME}}",
     "{{PHARMACY_PHONE}}",
     "{{AGE}}",
@@ -4638,19 +4693,28 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
     let pharmacy = sample_pharmacy();
     let s = |v: &str| format!("#{}", typst_str(v));
     match key {
-        "fiche" => interview_values(
-            &InterviewPaper {
-                patient: &patient,
-                kind: InterviewKind::Bpm,
-                date: "24/08/2026",
-                age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
-                theme: "Observance",
-                signature: &pharmacy.pharmacist,
-                treats: &sample_treatments(),
-                checklist: crate::entretien::checklist("Observance"),
-            },
-            &pharmacy,
-        ),
+        // Un AOD — l'Eliquis de la liste — : son tableau de suivi montre
+        // où tombe le marqueur `{{KIND_TABLE}}`, qu'un bilan de médication
+        // laisserait vide.
+        "fiche" => {
+            let table =
+                crate::entretien::resolve_table(InterviewKind::Aod, &Default::default());
+            interview_values(
+                &InterviewPaper {
+                    patient: &patient,
+                    kind: InterviewKind::Aod,
+                    date: "24/08/2026",
+                    age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
+                    theme: "Observance",
+                    signature: &pharmacy.pharmacist,
+                    treats: &sample_treatments(),
+                    checklist: crate::entretien::checklist("Observance"),
+                    next_rdv: "15/10/2026 à 10:00 — AOD",
+                    table: table.as_ref(),
+                },
+                &pharmacy,
+            )
+        }
         "cr" => vec![
             (
                 "{{POINTS}}",
@@ -8764,6 +8828,8 @@ mod tests {
                 signature: "Claire #strike[Leroy]",
                 treats: &sample_treatments(),
                 checklist: crate::entretien::checklist("Initiation / bon usage"),
+                next_rdv: "",
+                table: None,
             },
             &sample_pharmacy(),
         );
@@ -8964,6 +9030,47 @@ mod tests {
             .output
             .expect("la liasse du TROD doit compiler");
         assert_eq!(document.pages.len(), 2, "une feuille, un courrier");
+    }
+
+    /// **La fiche d'un anticancéreux tient sur une page avec son tableau
+    /// des effets**, ses points et six traitements — les cadres de notes
+    /// cèdent la place, pas la signature.
+    #[test]
+    fn the_largest_kind_table_still_fits_one_sheet() {
+        let patient = sample_patient();
+        let table =
+            crate::entretien::resolve_table(InterviewKind::AnticancereuxLc, &Default::default());
+        let mut treats = sample_treatments();
+        while treats.len() < 6 {
+            treats.push(treats[0].clone());
+        }
+        let points = crate::entretien::checklist("Effets indésirables");
+        let filled = fill_interview_template(
+            DEFAULT_TEMPLATE,
+            &InterviewPaper {
+                patient: &patient,
+                kind: InterviewKind::AnticancereuxLc,
+                date: "24/09/2026",
+                age: Some(68),
+                theme: "Effets indésirables",
+                signature: "Claire Leroy",
+                treats: &treats,
+                checklist: points,
+                next_rdv: "15/10/2026 — Anticancéreux",
+                table: table.as_ref(),
+            },
+            &sample_pharmacy(),
+        );
+        assert!(filled.contains(&typst_str("Syndrome main-pied")));
+        let world = PdfWorld::new(filled);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la fiche doit compiler");
+        assert_eq!(
+            document.pages.len(),
+            1,
+            "une fiche d'entretien tient sur une page"
+        );
     }
 
     #[test]

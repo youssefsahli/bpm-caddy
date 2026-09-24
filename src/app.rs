@@ -77,18 +77,39 @@ fn spawn_daily_backup(
     });
 }
 
-/// Une copie quotidienne, **écrite à côté puis mise en place**, et un
-/// élagage **à l'âge du fichier**.
-///
-/// Deux fautes que trois copies de ce code partageaient. Un
-/// `VACUUM INTO` interrompu (disque plein) laissait un fichier partiel
-/// sous le nom du jour — et comme ce nom existait, la copie du jour ne
-/// se refaisait plus, et l'on croyait l'avoir. Et l'élagage triait par
-/// nom, c'est-à-dire par la date **de l'horloge du poste qui avait
-/// copié** : un poste en avance écrivait « 2030 », que plus rien ne
-/// délogeait, et avec `keep = 1` chaque copie juste était effacée
-/// aussitôt écrite. Le fichier partiel porte `.part` jusqu'à ce qu'il
-/// soit complet, et l'élagage garde les plus récemment écrits.
+/// Le prochain rendez-vous d'un dossier, après `after` (ISO) : l'acte
+/// encore à faire dont la date est la plus proche, en toutes lettres —
+/// « 15/10/2026 à 10:00 — BPM ». Vide quand rien n'est posé : la fiche
+/// garde alors son cadre à remplir, plutôt que d'inventer.
+fn next_rdv_text(interviews: &[Interview], after: &str) -> String {
+    interviews
+        .iter()
+        .filter(|i| {
+            matches!(
+                i.state,
+                db::InterviewState::Identified | db::InterviewState::Scheduled
+            )
+        })
+        .filter_map(|i| i.scheduled_date.as_deref().map(|d| (d, i)))
+        .filter(|(d, _)| *d > after)
+        .min_by(|a, b| {
+            a.0.cmp(b.0)
+                .then(a.1.scheduled_time.cmp(&b.1.scheduled_time))
+        })
+        .map(|(d, i)| {
+            let when = if i.scheduled_time.trim().is_empty() {
+                db::format_french_date(d)
+            } else {
+                trn(
+                    "itv_next_rdv_at",
+                    &[&db::format_french_date(d), &i.scheduled_time.trim()],
+                )
+            };
+            format!("{when} — {}", i.kind.label())
+        })
+        .unwrap_or_default()
+}
+
 /// Les nouveautés à montrer à ce lancement.
 ///
 /// Depuis la dernière version vue par ce poste ; sans version vue — un
@@ -106,6 +127,18 @@ fn whatsnew_notes(seen: &str, always: bool) -> Vec<crate::release::Notes> {
     crate::release::notes_since(log, seen.trim(), current)
 }
 
+/// Une copie quotidienne, **écrite à côté puis mise en place**, et un
+/// élagage **à l'âge du fichier**.
+///
+/// Deux fautes que trois copies de ce code partageaient. Un
+/// `VACUUM INTO` interrompu (disque plein) laissait un fichier partiel
+/// sous le nom du jour — et comme ce nom existait, la copie du jour ne
+/// se refaisait plus, et l'on croyait l'avoir. Et l'élagage triait par
+/// nom, c'est-à-dire par la date **de l'horloge du poste qui avait
+/// copié** : un poste en avance écrivait « 2030 », que plus rien ne
+/// délogeait, et avec `keep = 1` chaque copie juste était effacée
+/// aussitôt écrite. Le fichier partiel porte `.part` jusqu'à ce qu'il
+/// soit complet, et l'élagage garde les plus récemment écrits.
 fn daily_copy(
     dir: &std::path::Path,
     target: &std::path::Path,
@@ -1536,6 +1569,40 @@ struct HelpSection {
     blocks: Vec<HelpBlock>,
     /// Ce sur quoi la recherche porte, **déjà replié**.
     key: String,
+}
+
+/// La section du mode d'emploi qui parle de la vue ouverte, par son
+/// titre (`assets/aide.md`, premier niveau). `None` quand aucune n'en
+/// parle en propre — l'aide s'ouvre alors comme avant.
+fn help_title_for(
+    view: MainView,
+    patient_open: bool,
+    graph: bool,
+    calc: bool,
+) -> Option<&'static str> {
+    Some(match view {
+        MainView::Search if patient_open => "Dossier patient",
+        MainView::Search => "Recherche",
+        MainView::Dashboard => "Plan de travail",
+        MainView::Connexions => "Connexions",
+        MainView::Ruptures => "Ruptures",
+        MainView::Drugs if graph => "La carte pharmacologique",
+        MainView::Drugs if calc => "Calculs",
+        MainView::Drugs => "Recherche",
+        MainView::Agenda => "Agenda et planning",
+        MainView::VaccineMap => "Carte vaccinale",
+        MainView::Registres => "Registre des stupéfiants",
+        MainView::Script => "Console",
+        MainView::Caisse | MainView::CaisseHistory => "Caisse",
+        MainView::Ddi => "Croisement",
+        MainView::UiTexts => "Documents imprimés",
+        MainView::Checklists => "Listes de contrôle",
+        MainView::Transmissions
+        | MainView::Explorer
+        | MainView::Classes
+        | MainView::Finances
+        | MainView::Stats => return None,
+    })
 }
 
 /// Le mode d'emploi livré, découpé à son premier niveau de titre.
@@ -6855,8 +6922,23 @@ impl Session {
                     // voyait qu'en passant au tableau de bord.
                     let before = self.supply_events.clone();
                     self.reload_supply();
-                    let fresh =
+                    let mut fresh =
                         crate::ruptures::newly_short(&before, &self.supply_events, &self.today);
+                    // **Du réseau, et seulement du réseau** : une rupture
+                    // qu'un autre poste de l'officine vient de répliquer
+                    // n'est pas une nouvelle d'une autre officine.
+                    // Et **arrivée par cette synchronisation** : un signalement
+                    // d'une autre officine lors d'un épisode clos ne fait
+                    // pas d'une rupture locale d'aujourd'hui une nouvelle.
+                    fresh.retain(|product| {
+                        let k = crate::ruptures::key(product);
+                        self.supply_events.iter().any(|e| {
+                            e.kind == crate::ruptures::Kind::Rupture
+                                && !e.source.trim().is_empty()
+                                && crate::ruptures::key(&e.product) == k
+                                && !before.iter().any(|b| b.uid == e.uid)
+                        })
+                    });
                     if let Some(first) = fresh.first() {
                         self.net_news = Some((
                             Instant::now(),
@@ -14281,11 +14363,43 @@ impl App {
         ui.add_space(4.0);
         let key = crate::fuzzy::sort_key(&self.help_query);
         let mut run_example: Option<String> = None;
+        // **La section de la vue ouverte, en tête** — quand rien n'est
+        // cherché. On ouvre l'aide depuis l'écran dont on doute ; lui
+        // faire parcourir trente sections pour le retrouver, c'est ne
+        // pas répondre.
+        let here: Option<&'static str> = match &self.state {
+            State::Unlocked(session) if key.is_empty() => help_title_for(
+                session.view,
+                session.viewing.is_some(),
+                session.show_graph,
+                session.calc_open,
+            ),
+            _ => None,
+        };
         egui::ScrollArea::vertical()
             .id_salt("side_help")
             .show(ui, |ui| {
                 let mut shown = 0_usize;
+                if let Some(section) =
+                    here.and_then(|t| help_sections().iter().find(|s| s.title == t))
+                {
+                    ui.label(
+                        egui::RichText::new(tr("help_here"))
+                            .size(motif::pt(ui, 10.5))
+                            .strong()
+                            .color(motif::accent()),
+                    );
+                    motif::section(ui, &section.title);
+                    Self::help_body(ui, &section.blocks);
+                    ui.add_space(10.0);
+                    motif::separator(ui);
+                    ui.add_space(6.0);
+                }
                 for section in help_sections() {
+                    // Déjà montrée en tête.
+                    if here.is_some_and(|t| section.title == t) {
+                        continue;
+                    }
                     // La recherche garde ou écarte une **section
                     // entière** : un mode d'emploi dont il ne reste
                     // qu'une phrase sur deux ne se lit pas.
@@ -26059,8 +26173,27 @@ impl App {
             });
         motif::dialog_relief(ctx, &shown);
         if let Some(pid) = switch {
-            session.trod_edit = Some(TrodEdit::new(pid));
-            return;
+            // **Ce qu'on tapait ne se perd pas en silence** : une ligne
+            // modifiée et pas enregistrée garde la main, et le dit.
+            // Comparé à la ligne rangée **lue par le même formulaire** :
+            // la lecture borne ce que la base garde tel quel (un âge hors
+            // bornes), et la comparaison brute croirait modifiée une
+            // ligne que personne n'a touchée.
+            let dirty = session.trod_edit.as_ref().is_some_and(|e| {
+                e.base.as_ref().is_some_and(|b| {
+                    let mut probe = TrodEdit::new(e.protocol);
+                    probe.open(b);
+                    e.read() != probe.read()
+                })
+            });
+            if dirty {
+                if let Some(e) = &mut session.trod_edit {
+                    e.note = Some((true, tr("trod_edit_unsaved").to_owned()));
+                }
+            } else {
+                session.trod_edit = Some(TrodEdit::new(pid));
+                return;
+            }
         }
         // Par l'identité réseau de la ligne : c'est sous elle que ses
         // versions sont rangées, quel que soit son nom d'aujourd'hui.
@@ -27411,6 +27544,11 @@ impl App {
                 &patient.birth_date,
                 scheduled.as_deref().unwrap_or(&session.today),
             );
+            let table = crate::entretien::resolve_table(kind, &session.content);
+            let next_rdv = next_rdv_text(
+                &session.viewing_interviews,
+                scheduled.as_deref().unwrap_or(&session.today),
+            );
             let paper = crate::pdf::InterviewPaper {
                 patient,
                 kind,
@@ -27420,6 +27558,8 @@ impl App {
                 signature: &signature,
                 treats: &session.patient_treats,
                 checklist: &lines,
+                next_rdv: &next_rdv,
+                table: table.as_ref(),
             };
             let done = match target {
                 ExportTarget::Fiche => crate::pdf::open_interview_sheet(
@@ -48876,6 +49016,30 @@ impl App {
             "total" => tr("carnets_field_total"),
             "alerte" => tr("carnets_field_alerte"),
             "retour" => tr("carnets_field_retour"),
+            "allaitement" => tr("content_f_allaitement"),
+            "alternative" => tr("content_f_alternative"),
+            "apres" => tr("content_f_apres"),
+            "conduite" => tr("content_f_conduite"),
+            "conseil" => tr("content_f_conseil"),
+            "courrier-negatif" => tr("content_f_courrier_negatif"),
+            "courrier-positif" => tr("content_f_courrier_positif"),
+            "courrier-test" => tr("content_f_courrier_test"),
+            "detail" => tr("content_f_detail"),
+            "grossesse" => tr("content_f_grossesse"),
+            "lecture" => tr("content_f_lecture"),
+            "ligne" => tr("content_f_ligne"),
+            "negatif" => tr("content_f_negatif"),
+            "note" => tr("content_f_note"),
+            "point" => tr("content_f_point"),
+            "positif" => tr("content_f_positif"),
+            "pourquoi" => tr("content_f_pourquoi"),
+            "question" => tr("content_f_question"),
+            "regle" => tr("content_f_regle"),
+            "risque" => tr("content_f_risque"),
+            "score" => tr("content_f_score"),
+            "signe" => tr("content_f_signe"),
+            "temps" => tr("content_f_temps"),
+            "terme" => tr("content_f_terme"),
             _ => "?",
         }
     }
@@ -54190,6 +54354,34 @@ impl App {
                                     });
                                 }
                             });
+                            // **Les postes que ce poste entend** : un poste
+                            // seul écoute les annonces du groupe sur le
+                            // réseau local. Leur adresse se choisit d'un
+                            // clic au lieu de se recopier depuis l'autre
+                            // écran.
+                            let heard: Vec<String> = session
+                                .posts_peers
+                                .iter()
+                                .map(|h| h.address.clone())
+                                .collect();
+                            if !heard.is_empty() {
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(
+                                        egui::RichText::new(tr("posts_heard_pick"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    for address in heard {
+                                        if motif::button(ui, &address)
+                                            .on_hover_text(tr("posts_heard_pick_tooltip"))
+                                            .clicked()
+                                        {
+                                            w.join_address = address;
+                                            w.join_armed = false;
+                                        }
+                                    }
+                                });
+                            }
                             if w.join_armed {
                                 ui.add(
                                     egui::Label::new(
@@ -74888,6 +75080,132 @@ mod tests {
         assert!(skipped
             .windows(2)
             .all(|w| crate::release::is_newer(&w[0].version, &w[1].version)));
+    }
+
+    /// **Chaque vue qui renvoie à une section du mode d'emploi renvoie
+    /// à une section qui existe** — un titre renommé dans `aide.md` ne
+    /// doit pas faire disparaître l'aide de la vue en silence.
+    #[test]
+    fn every_view_s_help_section_exists_in_the_manual() {
+        use super::MainView as V;
+        let views = [
+            V::Search,
+            V::Connexions,
+            V::Dashboard,
+            V::Ruptures,
+            V::Drugs,
+            V::Agenda,
+            V::Transmissions,
+            V::VaccineMap,
+            V::Registres,
+            V::Explorer,
+            V::Classes,
+            V::Finances,
+            V::Stats,
+            V::Script,
+            V::Caisse,
+            V::CaisseHistory,
+            V::Ddi,
+            V::UiTexts,
+            V::Checklists,
+        ];
+        let titles: Vec<&str> = super::help_sections()
+            .iter()
+            .map(|s| s.title.as_str())
+            .collect();
+        let mut checked = 0;
+        for view in views {
+            for (patient, graph, calc) in [
+                (false, false, false),
+                (true, false, false),
+                (false, true, false),
+                (false, false, true),
+            ] {
+                if let Some(t) = super::help_title_for(view, patient, graph, calc) {
+                    assert!(
+                        titles.contains(&t),
+                        "« {t} » n'est pas une section de aide.md"
+                    );
+                    checked += 1;
+                }
+            }
+        }
+        assert!(checked > 20);
+    }
+
+    /// **Le prochain rendez-vous est l'acte à faire le plus proche après
+    /// celui qu'on imprime** — ni un acte déjà réalisé, ni un acte daté
+    /// d'avant, ni un acte sans date.
+    #[test]
+    fn the_sheet_names_the_next_appointment_and_only_that() {
+        use crate::db::{InterviewKind, InterviewState};
+        let act = |id, kind, state, day: Option<&str>, hour: &str| crate::db::Interview {
+            id,
+            kind,
+            state,
+            duration_minutes: 0,
+            scheduled_date: day.map(str::to_owned),
+            scheduled_time: hour.to_owned(),
+            remote: false,
+            treatment_change: false,
+            theme: String::new(),
+            trod_result: String::new(),
+            operator: String::new(),
+            created_at: String::new(),
+        };
+        let acts = vec![
+            act(
+                1,
+                InterviewKind::Bpm,
+                InterviewState::Performed,
+                Some("2026-10-02"),
+                "",
+            ),
+            act(
+                2,
+                InterviewKind::Aod,
+                InterviewState::Scheduled,
+                Some("2026-11-20"),
+                "",
+            ),
+            act(
+                3,
+                InterviewKind::Bpm,
+                InterviewState::Scheduled,
+                Some("2026-10-15"),
+                "10:00",
+            ),
+            act(4, InterviewKind::Bpm, InterviewState::Identified, None, ""),
+            act(
+                5,
+                InterviewKind::Bpm,
+                InterviewState::Scheduled,
+                Some("2026-09-01"),
+                "",
+            ),
+        ];
+        let text = super::next_rdv_text(&acts, "2026-09-24");
+        assert!(text.starts_with("15/10/2026"), "{text}");
+        assert!(text.contains("10:00") && text.contains("BPM"), "{text}");
+        assert!(
+            super::next_rdv_text(&acts, "2026-12-01").is_empty(),
+            "rien après"
+        );
+    }
+
+    /// **Chaque famille de phrases a son intitulé** dans l'écran des
+    /// textes : une famille inconnue s'y affichait sous « ? ».
+    #[test]
+    fn every_phrase_family_has_a_heading() {
+        let mut missing: Vec<String> = crate::content::documents()
+            .iter()
+            .flat_map(|d| d.phrases.iter().map(|(_, f, _)| *f))
+            .filter(|f| super::App::content_field_label(f) == "?")
+            .map(str::to_owned)
+            .collect();
+        missing.sort();
+        missing.dedup();
+        assert!(missing.is_empty(), "familles sans intitulé : {missing:?}");
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {

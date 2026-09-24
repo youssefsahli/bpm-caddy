@@ -5,6 +5,33 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.296.0] - 2026-09-24
+
+### Added
+- **Fiche d'entretien : un tableau selon l'acte** — suivi de l'INR
+  (AVK), prises oubliées, saignements et DFG (AOD), grades des effets
+  indésirables (anticancéreux), étapes de la technique d'inhalation
+  (asthme). Titres, colonnes et lignes réécrivables.
+- **Fiche d'entretien : le prochain rendez-vous déjà posé** s'inscrit
+  dans son cadre (date, heure, acte) ; sans rendez-vous, le cadre reste
+  à remplir.
+- **Aide : « Sur cette vue ».** L'onglet Aide ouvre d'abord la section
+  du mode d'emploi qui parle de l'écran en cours.
+- **Postes de l'officine : les postes entendus** sur le réseau local
+  s'affichent sous « Rejoindre, à l'adresse » ; un clic reprend leur
+  adresse au lieu de la recopier.
+
+### Fixed
+- **Textes imprimés : chaque famille de phrases a son intertitre**
+  (« Points à couvrir », « Conseils », « Temps de prise », « Signes
+  d'orientation »…) — vingt-quatre familles s'affichaient sous « ? ».
+- **Barre d'état : seule une rupture venue d'une autre officine
+  s'annonce comme nouvelle du réseau** — pas celle qu'un autre poste de
+  l'officine vient de répliquer.
+- **Lignes du protocole TROD** : changer de protocole avec une ligne
+  modifiée et non enregistrée ne la perd plus en silence ; l'éditeur le
+  dit et garde la main.
+
 ## [0.295.0] - 2026-09-24
 
 ### Added

@@ -50,6 +50,22 @@ pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
     for (theme, points) in CHECKLISTS {
         push(theme, points);
     }
+    // Les tableaux des types d'acte : leur titre, leurs colonnes, leurs
+    // lignes — imprimés comme les points, réécrits comme eux.
+    for t in tables() {
+        let item = table_item(t);
+        out.push((crate::content::key(DOC, &item, "titre"), "titre", t.title));
+        for (n, c) in t.columns.iter().enumerate() {
+            out.push((
+                crate::content::key_n(DOC, &item, "colonne", n),
+                "colonne",
+                *c,
+            ));
+        }
+        for (n, r) in t.rows.iter().enumerate() {
+            out.push((crate::content::key_n(DOC, &item, "ligne", n), "ligne", *r));
+        }
+    }
     out
 }
 
@@ -76,6 +92,124 @@ pub fn resolve(theme: &str, over: &crate::content::Overrides) -> Vec<String> {
                 .to_owned()
         })
         .collect()
+}
+
+/// Un tableau propre à un type d'acte, imprimé sur la fiche entre les
+/// points à couvrir et les cadres de notes : ce que l'entretien relève
+/// en colonnes plutôt qu'en prose — les INR d'un patient sous AVK, les
+/// grades des effets d'un anticancéreux.
+///
+/// Des cases vides : la feuille ne relève rien d'elle-même, elle dit où
+/// l'écrire.
+pub struct KindTable {
+    /// L'adresse de ses phrases (`entretien.tableau-<clé>.…`).
+    pub key: &'static str,
+    pub title: &'static str,
+    pub columns: &'static [&'static str],
+    /// Les libellés des lignes ; vide, `blank_rows` lignes à remplir.
+    pub rows: &'static [&'static str],
+    pub blank_rows: usize,
+}
+
+const AVK_TABLE: KindTable = KindTable {
+    key: "avk",
+    title: "Suivi de l'INR",
+    columns: &["Date", "INR", "Dose prise", "Prochain contrôle"],
+    rows: &[],
+    blank_rows: 5,
+};
+
+const AOD_TABLE: KindTable = KindTable {
+    key: "aod",
+    title: "Suivi du traitement anticoagulant",
+    columns: &["Date", "Prises oubliées", "Saignement", "DFG"],
+    rows: &[],
+    blank_rows: 4,
+};
+
+const ANTICANCER_TABLE: KindTable = KindTable {
+    key: "anticancereux",
+    title: "Effets indésirables — grade de 0 à 4",
+    columns: &["Effet", "0", "1", "2", "3", "4"],
+    rows: &[
+        "Fatigue",
+        "Nausées, vomissements",
+        "Diarrhée",
+        "Mucite, aphtes",
+        "Syndrome main-pied",
+        "Éruption cutanée",
+    ],
+    blank_rows: 0,
+};
+
+const ASTHMA_TABLE: KindTable = KindTable {
+    key: "asthme",
+    title: "Technique d'inhalation observée",
+    columns: &["Étape", "Oui", "Non"],
+    rows: &[
+        "Expiration complète avant la prise",
+        "Embout bien serré entre les lèvres",
+        "Inspiration adaptée au dispositif",
+        "Apnée de quelques secondes",
+        "Rinçage de la bouche après un corticoïde inhalé",
+    ],
+    blank_rows: 0,
+};
+
+fn tables() -> [&'static KindTable; 4] {
+    [&AVK_TABLE, &AOD_TABLE, &ANTICANCER_TABLE, &ASTHMA_TABLE]
+}
+
+/// Le tableau d'un type d'acte, quand il en a un.
+pub fn kind_table(kind: crate::db::InterviewKind) -> Option<&'static KindTable> {
+    use crate::db::InterviewKind as K;
+    match kind {
+        K::Avk => Some(&AVK_TABLE),
+        K::Aod => Some(&AOD_TABLE),
+        K::AnticancereuxLc | K::AnticancereuxAutres => Some(&ANTICANCER_TABLE),
+        K::Asthme => Some(&ASTHMA_TABLE),
+        _ => None,
+    }
+}
+
+/// Un tableau avec les mots de l'officine.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FilledTable {
+    pub title: String,
+    pub columns: Vec<String>,
+    pub rows: Vec<String>,
+    pub blank_rows: usize,
+}
+
+fn table_item(t: &KindTable) -> String {
+    format!("tableau-{}", t.key)
+}
+
+/// Le tableau d'un type d'acte, réécrit par l'officine.
+pub fn resolve_table(
+    kind: crate::db::InterviewKind,
+    over: &crate::content::Overrides,
+) -> Option<FilledTable> {
+    let t = kind_table(kind)?;
+    let item = table_item(t);
+    let many = |field: &str, shipped: &'static [&'static str]| -> Vec<String> {
+        shipped
+            .iter()
+            .enumerate()
+            .map(|(n, s)| {
+                over.get(&crate::content::key_n(DOC, &item, field, n), s)
+                    .to_owned()
+            })
+            .collect()
+    };
+    Some(FilledTable {
+        title: over
+            .get(&crate::content::key(DOC, &item, "titre"), t.title)
+            .to_owned(),
+        columns: many("colonne", t.columns),
+        rows: many("ligne", t.rows),
+        blank_rows: t.blank_rows,
+    })
 }
 
 /// Le nom sous lequel le fond commun est adressé. Ce n'est pas une
@@ -286,7 +420,12 @@ mod tests {
     #[test]
     fn every_checklist_point_is_editable_and_every_rewrite_arrives() {
         let listed = phrases();
-        let expected: usize = COMMON.len() + CHECKLISTS.iter().map(|(_, p)| p.len()).sum::<usize>();
+        let tables_len: usize = tables()
+            .iter()
+            .map(|t| 1 + t.columns.len() + t.rows.len())
+            .sum();
+        let expected: usize =
+            COMMON.len() + CHECKLISTS.iter().map(|(_, p)| p.len()).sum::<usize>() + tables_len;
         assert_eq!(listed.len(), expected, "un point, une adresse");
 
         // Une adresse par point, fond commun compris.
@@ -321,6 +460,51 @@ mod tests {
         assert_eq!(invented.len(), COMMON.len());
         for point in &invented {
             assert!(point.starts_with("réécrit:"), "fond commun : {point}");
+        }
+    }
+
+    /// **Les tableaux des types d'acte se réécrivent, et chaque
+    /// réécriture arrive sur la fiche** — titre, colonnes, lignes.
+    #[test]
+    fn every_kind_table_phrase_is_editable_and_every_rewrite_arrives() {
+        use crate::db::InterviewKind as K;
+        let listed: Vec<(String, &str, &str)> = phrases()
+            .into_iter()
+            .filter(|(k, _, _)| k.contains(".tableau-"))
+            .collect();
+        let over = crate::content::Overrides::from_rows(
+            listed
+                .iter()
+                .map(|(k, _, shipped)| (k.clone(), format!("réécrit:{k}"), (*shipped).to_owned()))
+                .collect::<Vec<_>>(),
+        );
+        let mut printed = 0;
+        for kind in [K::Avk, K::Aod, K::AnticancereuxLc, K::Asthme] {
+            let t = resolve_table(kind, &over).unwrap();
+            for p in std::iter::once(&t.title).chain(&t.columns).chain(&t.rows) {
+                assert!(
+                    p.starts_with("réécrit:entretien.tableau-"),
+                    "{kind:?} : {p}"
+                );
+                printed += 1;
+            }
+        }
+        assert_eq!(
+            printed,
+            listed.len(),
+            "une phrase listée, une phrase imprimée"
+        );
+        // Les deux anticancéreux partagent le leur ; les autres actes
+        // n'en ont pas.
+        assert_eq!(
+            resolve_table(K::AnticancereuxAutres, &over),
+            resolve_table(K::AnticancereuxLc, &over)
+        );
+        assert!(kind_table(K::Bpm).is_none());
+        // Chaque tableau porte des lignes, écrites ou à remplir.
+        for t in tables() {
+            assert!(!t.rows.is_empty() || t.blank_rows > 0, "{}", t.key);
+            assert!(t.columns.len() >= 3, "{}", t.key);
         }
     }
 

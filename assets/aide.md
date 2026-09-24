@@ -25,6 +25,10 @@ Trois volets autour d'un cahier d'onglets.
 Les volets latéraux se ferment et se redimensionnent ; leur largeur et
 la vue ouverte sont conservées d'une session à l'autre.
 
+L'onglet **Aide** ouvre en tête, sous « Sur cette vue », la section qui
+parle de l'écran en cours — l'agenda, un dossier, la caisse… — puis
+toutes les autres. Une recherche remplace cet ordre.
+
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
 clavier. Cette liste est tenue par l'application et toujours à jour.
 
@@ -507,6 +511,13 @@ ouvre le registre, où l'association du code se fait manuellement.
 Un acte porte sa thématique, son état, sa date, sa durée et les
 initiales de l'intervenant. « Tout imprimer » produit la fiche
 d'entretien, le bilan et le plan de prise en un seul document.
+
+La fiche d'entretien porte, selon l'acte, un **tableau à remplir** :
+suivi de l'INR pour un AVK, prises oubliées, saignements et DFG pour un
+AOD, grades des effets indésirables pour un anticancéreux, étapes de la
+technique d'inhalation pour l'asthme. Le prochain rendez-vous déjà posé
+s'inscrit dans son cadre. Titres, colonnes et lignes se réécrivent dans
+« Textes imprimés », sous « Fiche d'entretien ».
 
 Le bilan partagé de médication comporte une section consacrée au sujet
 âgé : il concerne le patient polymédiqué, le plus souvent âgé, et c'est
