@@ -33515,29 +33515,37 @@ impl App {
                             {
                                 session.frame.replace = !session.frame.replace;
                             }
+                            // **La phrase qui oriente** : quelle semaine est
+                            // celle de départ, et de quelle parité. Sans elle,
+                            // « paires » et « impaires » sont deux mots qu'on
+                            // tire à pile ou face. Sur la rangée des dates
+                            // qu'elle commente : une rangée de moins au-dessus
+                            // des sept jours.
+                            if let Some((_, week)) = crate::date::iso_week(&session.frame.from) {
+                                // D'un tenant : la rangée la pose entière à
+                                // la ligne plutôt que de la couper après
+                                // « La semaine du ».
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trn(
+                                            "frame_week_is",
+                                            &[
+                                                &db::format_french_date(&session.frame.from),
+                                                &week,
+                                                &if week % 2 == 0 {
+                                                    tr("frame_even")
+                                                } else {
+                                                    tr("frame_odd")
+                                                },
+                                            ],
+                                        ))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                    )
+                                    .extend(),
+                                );
+                            }
                         });
-                        // **La phrase qui oriente** : quelle semaine est celle
-                        // de départ, et de quelle parité. Sans elle, « paires »
-                        // et « impaires » sont deux mots qu'on tire à pile ou
-                        // face.
-                        if let Some((_, week)) = crate::date::iso_week(&session.frame.from) {
-                            ui.label(
-                                egui::RichText::new(trn(
-                                    "frame_week_is",
-                                    &[
-                                        &db::format_french_date(&session.frame.from),
-                                        &week,
-                                        &if week % 2 == 0 {
-                                            tr("frame_even")
-                                        } else {
-                                            tr("frame_odd")
-                                        },
-                                    ],
-                                ))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                            );
-                        }
                         if let Some(note) = session.frame.notice.clone() {
                             ui.add(
                                 egui::Label::new(
@@ -33832,17 +33840,22 @@ impl App {
                         session.frame.touched = touched;
                         ui.add_space(4.0);
                         // La légende des deux pistes, quand il y en a deux
-                        // et qu'elles sont dessinées.
-                        if show_strip && week.labels.len() == 2 {
-                            let items: Vec<(&str, egui::Color32)> = week
-                                .labels
+                        // et qu'elles sont dessinées — **au bout de la
+                        // rangée des commandes**, pas sur une rangée à
+                        // elle : à 1280x800 et `text_scale` 1,25, cette
+                        // rangée de plus poussait les commandes et le
+                        // résumé sous le bord du défilement.
+                        let legend: Vec<(&str, egui::Color32)> = if show_strip
+                            && week.labels.len() == 2
+                        {
+                            week.labels
                                 .iter()
                                 .enumerate()
                                 .map(|(p, l)| (l.as_str(), Self::frame_lane_color(&week, p, page)))
-                                .collect();
-                            motif::chart::legend(ui, &items);
-                            ui.add_space(4.0);
-                        }
+                                .collect()
+                        } else {
+                            Vec::new()
+                        };
                         // — Les commandes qui font gagner les six autres
                         // rangées : recopier la première journée écrite sur la
                         // semaine ouvrée, et tout effacer.
@@ -33878,6 +33891,10 @@ impl App {
                                 .size(motif::pt(ui, 11.0))
                                 .strong(),
                             );
+                            if !legend.is_empty() {
+                                ui.add_space(ui.spacing().item_spacing.x);
+                                motif::chart::legend(ui, &legend);
+                            }
                         });
                         // — Ce que cela va poser, **avec les dates**.
                         let rows = Self::frame_shifts(&session.frame);

@@ -5,13 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.303.0] - 2026-09-24
+
+### Fixed
+- **Trame** : sur un écran de 1280x800 en grande taille de texte, la
+  rangée « Lundi à vendredi / Lundi à samedi / Vider » et le résumé de ce
+  qui sera posé passaient sous le bord de la fenêtre. La phrase de la
+  semaine de départ rejoint la rangée des dates, la légende des deux
+  semaines la rangée des commandes : tout tient.
+
 ## [0.302.0] - 2026-09-24
 
 ### Added
 - **Courrier au médecin** : le prochain rendez-vous déjà posé
-  s'imprime sous la synthèse, comme sur la fiche d'entretien. Le
-  libellé est dans le modèle (`{{NEXT_RDV}}`, et `{{NEXT_RDV_KNOWN}}`
-  pour ne rien imprimer quand il n'y en a pas).
+  s'imprime sous la synthèse, comme sur la fiche d'entretien ; rien ne
+  s'imprime quand il n'y en a pas. Le libellé se réécrit dans le modèle
+  du courrier (« Modèles… »).
 
 ### Fixed
 - **Réseau d'officines** : comme Connexions, la fenêtre dit pourquoi
@@ -48,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   désormais tout ce qui circule — valeurs de pharmacocinétique, versions
   des fiches, préparations, protocoles, lignes de TROD et vaccins —, et
   toujours jamais un patient.
-- **Réseau d'officines, à `text_scale` 1,6** : la croix qui retire une
+- **Réseau d'officines, en grande taille de texte** : la croix qui retire une
   officine appairée ne tombe plus seule à la ligne ; les deux champs
   cèdent la largeur qu'il faut.
 - **Trame** : le menu « Rythme » proposait « Semaines paires » et
@@ -74,7 +83,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Modèles…** : la feuille et le courrier de TROD et la fiche de
   vaccination se rangent à côté de la fiche d'entretien et du courrier,
   au lieu de la fin d'une liste de trente-six.
-- `eyeball.sh` lance, comme `smoke.sh`, une copie figée du binaire.
 
 ### Fixed
 - **« Aller à… » : « Chercher … dans le texte des fiches » reste en vue**
@@ -170,14 +178,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (nom, dose, lot, péremption, voie, site, heure), suites (surveillance
   de quinze minutes, carnet, consignes), et ce que le calendrier vaccinal
   doit encore d'après le carnet du patient. Phrases réécrivables
-  (« Fiche de vaccination »), modèle `vaccin`.
+  (« Fiche de vaccination »), mise en page dans « Modèles… ».
 - **Courrier de TROD au médecin traitant.** Sur un acte TROD, « CR »
   imprime un courrier propre au test : le test réalisé, son résultat
   enregistré et la conduite tenue (dispensation selon le protocole, ou
   traitement symptomatique et consigne de reconsulter), les traitements
   connus et un cadre d'observations. Sans résultat enregistré, la
   conclusion reste à écrire. Phrases réécrivables (« Feuille de TROD »),
-  modèle `trod_cr`.
+  mise en page dans « Modèles… ».
 - **Connexions : « Derniers reçus ».** Sous les officines du réseau,
   ce qu'elles ont envoyé — ruptures, levées, substitutions, versions de
   fiches, de préparations et de protocoles —, daté et signé du nom de
@@ -208,9 +216,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Réseau d'officines** : chaque officine sur trois lignes — son nom et
   son empreinte, ses champs, son état — au lieu d'une rangée qui
   s'enroulait au hasard de la largeur.
-- `smoke.sh` lance une copie figée du binaire : un `cargo build` fait
-  pendant la passe ne change plus le code qu'elle éprouve ; `shot.sh`
-  accepte `vierge=1` (base du premier lancement).
 
 ### Fixed
 - **Raison d'un échec de connexion au réseau** : la couche de
@@ -276,7 +281,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   devant le patient. « Tout imprimer » met la feuille en tête de la
   liasse.
 - Les phrases de la feuille se réécrivent dans « Textes imprimés »
-  (« Feuille de TROD »), sa mise en page dans « Modèles… » (clé `trod`).
+  (« Feuille de TROD »), sa mise en page dans « Modèles… ».
 
 ### Changed
 - **Fiche d'entretien** : en-tête de l'officine, âge du patient à côté
