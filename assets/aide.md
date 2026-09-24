@@ -520,8 +520,8 @@ AOD, grades des effets indésirables pour un anticancéreux, étapes de la
 technique d'inhalation pour l'asthme, problèmes repérés et propositions
 au prescripteur pour un bilan partagé de médication, plan personnalisé
 (sujet, objectif, orientation) pour un rendez-vous de prévention. Le
-prochain rendez-vous déjà posé
-s'inscrit dans son cadre. Titres, colonnes et lignes se réécrivent dans
+prochain rendez-vous déjà posé s'inscrit dans son cadre, et sur le
+courrier au médecin sous la synthèse. Titres, colonnes et lignes se réécrivent dans
 « Textes imprimés », sous « Fiche d'entretien ».
 
 Le bilan partagé de médication comporte une section consacrée au sujet

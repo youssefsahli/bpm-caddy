@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.302.0] - 2026-09-24
+
+### Added
+- **Courrier au médecin** : le prochain rendez-vous déjà posé
+  s'imprime sous la synthèse, comme sur la fiche d'entretien. Le
+  libellé est dans le modèle (`{{NEXT_RDV}}`, et `{{NEXT_RDV_KNOWN}}`
+  pour ne rien imprimer quand il n'y en a pas).
+
+### Fixed
+- **Réseau d'officines** : comme Connexions, la fenêtre dit pourquoi
+  une lecture a échoué et offre « Relire », au lieu de « Configuration
+  du réseau illisible dans cette base ».
+
 ## [0.301.0] - 2026-09-24
 
 ### Added

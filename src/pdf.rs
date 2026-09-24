@@ -143,6 +143,11 @@ issus de cet échange.
 #v(1mm)
 {{POINTS}}
 
+#if {{NEXT_RDV_KNOWN}} [
+  #v(2mm)
+  #text(weight: "bold")[Prochain rendez-vous à l'officine :] {{NEXT_RDV}}
+]
+
 #v(1fr)
 Restant à votre disposition, nous vous prions d'agréer, Docteur,
 l'expression de nos salutations confraternelles.
@@ -412,6 +417,7 @@ fn fill_cr_template(
     pharmacy: &PharmacyConfig,
     signature: &str,
     points: &[&str],
+    next_rdv: &str,
 ) -> String {
     let physician = if patient.physician.trim().is_empty() {
         "Médecin traitant"
@@ -471,6 +477,14 @@ fn fill_cr_template(
             // liste de points qu'on n'a pas choisis serait faire dire au
             // pharmacien ce qu'il n'a pas dit.
             ("{{POINTS}}", cr_points_markup(points)),
+            // Le prochain rendez-vous déjà posé, comme sur la fiche : le
+            // médecin sait quand le patient repasse. Le libellé est dans
+            // le modèle, sous un `#if` que ce booléen commande.
+            ("{{NEXT_RDV}}", format!("#{}", typst_str(next_rdv))),
+            (
+                "{{NEXT_RDV_KNOWN}}",
+                (!next_rdv.trim().is_empty()).to_string(),
+            ),
         ],
     )
 }
@@ -504,6 +518,7 @@ pub fn open_cr_letter(
     template_path: &std::path::Path,
     signature: &str,
     points: &[&str],
+    next_rdv: &str,
 ) -> Result<PathBuf, String> {
     let template = if template_path.exists() {
         std::fs::read_to_string(template_path)
@@ -512,7 +527,7 @@ pub fn open_cr_letter(
         DEFAULT_CR_TEMPLATE.to_owned()
     };
     let filled = fill_cr_template(
-        &template, patient, kind, date, theme, treats, pharmacy, signature, points,
+        &template, patient, kind, date, theme, treats, pharmacy, signature, points, next_rdv,
     );
     compile_and_open(filled, &format!("cr_{}", patient.id))
 }
@@ -4557,6 +4572,8 @@ const MARKERS_FICHE: &[&str] = &[
 
 const MARKERS_CR: &[&str] = &[
     "{{POINTS}}",
+    "{{NEXT_RDV}}",
+    "{{NEXT_RDV_KNOWN}}",
     "{{PHARMACY_NAME}}",
     "{{PHARMACY_ADDRESS}}",
     "{{PHARMACY_PHONE}}",
@@ -4740,6 +4757,8 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             ("{{THEME}}", s("Observance")),
             ("{{TREATMENTS}}", treatments_markup(&sample_treatments())),
             ("{{PHARMACIST}}", s(&pharmacy.pharmacist)),
+            ("{{NEXT_RDV}}", s("15/10/2026 à 10:30 — BPM")),
+            ("{{NEXT_RDV_KNOWN}}", "true".to_owned()),
         ],
         // Le carnet : les mêmes transmissions d'exemple que le test du
         // carnet, et par la même fonction de remplissage — deux
@@ -9191,8 +9210,34 @@ mod tests {
             // le reste : c'est du texte libre, donc c'est là que le
             // balisage entrerait s'il devait entrer quelque part.
             &["Sommeil — #eval \"W\"", "Vaccinations"],
+            "15/10/2026 — #eval \"R\"",
         );
         assert!(!filled.contains("#eval \"W\"]"));
+        assert!(
+            filled.contains("#if true ["),
+            "un rendez-vous posé s'imprime"
+        );
+        assert!(
+            !filled.contains("#eval \"R\"]"),
+            "le rendez-vous est échappé"
+        );
+        // Sans rendez-vous, ni libellé ni ligne vide — et ça compile.
+        let none = fill_cr_template(
+            DEFAULT_CR_TEMPLATE,
+            &sample_patient(),
+            InterviewKind::Bpm,
+            "24/08/2026",
+            "Observance",
+            &sample_treatments(),
+            &sample_pharmacy(),
+            "Claire Leroy",
+            &[],
+            "",
+        );
+        assert!(none.contains("#if false ["));
+        assert!(typst::compile::<PagedDocument>(&PdfWorld::new(none))
+            .output
+            .is_ok());
         // Les points cochés remplacent le cadre vide ; sans eux il reste.
         assert!(filled.contains("Vaccinations"));
         assert!(cr_points_markup(&[]).contains("7cm"));

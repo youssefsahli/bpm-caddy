@@ -1031,7 +1031,9 @@ conseils à tenir à jour deux fois.
   alors de ce qu'on tape.
 - **Le courrier** porte `{{POINTS}}` : sans point coché il garde son
   encadré vide, avec des points il imprime la liste et garde un encadré
-  plus court pour la réponse du médecin.
+  plus court pour la réponse du médecin. `{{NEXT_RDV}}` y porte le
+  prochain rendez-vous déjà posé, sous un `#if {{NEXT_RDV_KNOWN}}` : le
+  libellé est dans le modèle, pas dans le code.
 
 ## Les listes d'entretien
 

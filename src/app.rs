@@ -6249,10 +6249,7 @@ impl Session {
                 self.reload_supply();
                 #[cfg(feature = "sync")]
                 if self.net_window.is_none() {
-                    self.net_window = Some(NetWindow {
-                        summary: NetSummary::read(&self.db).ok(),
-                        ..NetWindow::default()
-                    });
+                    self.net_window = Some(NetWindow::opened(&self.db));
                 }
             }
             Tool::Postes =>
@@ -10235,12 +10232,37 @@ impl PostsSummary {
     }
 }
 
+#[cfg(feature = "sync")]
+impl NetWindow {
+    fn opened(db: &Db) -> Self {
+        let mut w = Self::default();
+        w.reread(db);
+        w
+    }
+
+    fn reread(&mut self, db: &Db) {
+        match NetSummary::read(db) {
+            Ok(s) => {
+                self.summary = Some(s);
+                self.read_error = None;
+            }
+            Err(e) => {
+                self.summary = None;
+                self.read_error = Some(e);
+            }
+        }
+    }
+}
+
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
 /// en cours sur son fil, et ce que l'écran a sous les doigts.
 #[cfg(feature = "sync")]
 #[derive(Default)]
 struct NetWindow {
     summary: Option<NetSummary>,
+    /// Pourquoi `summary` manque, quand la lecture a échoué — dit à
+    /// l'écran plutôt que « illisible dans cette base ».
+    read_error: Option<String>,
     job: Option<(
         std::sync::mpsc::Receiver<crate::network::Progress>,
         std::sync::mpsc::Sender<bool>,
@@ -13110,10 +13132,7 @@ impl App {
                             if key == "reseau" {
                                 let _ = crate::network::Net::create(&session.db);
                                 demo_net_peers(&session.db);
-                                session.net_window = Some(NetWindow {
-                                    summary: NetSummary::read(&session.db).ok(),
-                                    ..NetWindow::default()
-                                });
+                                session.net_window = Some(NetWindow::opened(&session.db));
                             }
                             #[cfg(not(feature = "sync"))]
                             let _ = key;
@@ -27755,6 +27774,7 @@ impl App {
                     &config.cr_template_path(),
                     &signature,
                     &lines,
+                    &next_rdv,
                 ),
             };
             if let Err(e) = done {
@@ -53751,10 +53771,7 @@ impl App {
                     .clicked()
                     && session.net_window.is_none()
                 {
-                    session.net_window = Some(NetWindow {
-                        summary: NetSummary::read(&session.db).ok(),
-                        ..NetWindow::default()
-                    });
+                    session.net_window = Some(NetWindow::opened(&session.db));
                 }
             });
             ui.add(
@@ -54348,10 +54365,7 @@ impl App {
                 }
             }
             if open_net && session.net_window.is_none() {
-                session.net_window = Some(NetWindow {
-                    summary: NetSummary::read(&session.db).ok(),
-                    ..NetWindow::default()
-                });
+                session.net_window = Some(NetWindow::opened(&session.db));
             }
             Self::net_window(ui.ctx(), session, config);
         }
@@ -54927,7 +54941,7 @@ impl App {
             w.job = None;
             w.code = None;
             w.waiting = None;
-            w.summary = NetSummary::read(&session.db).ok();
+            w.reread(&session.db);
             session.reload_supply();
             // La vue des connexions promet de se relire à la fin d'une
             // tâche : celles de cette fenêtre comprises.
@@ -54939,6 +54953,7 @@ impl App {
         let mut start: Option<Job> = None;
         let mut close = false;
         let mut create = false;
+        let mut reread_net = false;
         let mut answer: Option<bool> = None;
         // (device, what was typed, what the list showed)
         type PeerEdit = (String, (String, String), (String, String));
@@ -54989,7 +55004,12 @@ impl App {
                     .max_height(body_h)
                     .show(ui, |ui| {
                         let Some(sum) = &w.summary else {
-                            ui.label(tr("net_unreadable"));
+                            match &w.read_error {
+                                Some(e) => reread_net |= conn_unreadable(ui, e),
+                                None => {
+                                    ui.label(tr("net_unreadable"));
+                                }
+                            }
                             return;
                         };
                         ui.label(trf("net_you", &sum.groups))
@@ -55209,7 +55229,7 @@ impl App {
                 Ok(()) => (false, tr("net_created").to_owned()),
                 Err(e) => (true, e),
             });
-            w.summary = NetSummary::read(&session.db).ok();
+            w.reread(&session.db);
         }
         if let Some((device, (name, address), was)) = save_peer {
             match session
@@ -55221,14 +55241,14 @@ impl App {
                 Err(e) => w.note = Some((true, e)),
             }
             w.edits.remove(&device);
-            w.summary = NetSummary::read(&session.db).ok();
+            w.reread(&session.db);
         }
         if let Some(device) = remove_peer {
             if let Err(e) = session.db.remove_net_peer(&device) {
                 w.note = Some((true, e));
             }
             w.edits.remove(&device);
-            w.summary = NetSummary::read(&session.db).ok();
+            w.reread(&session.db);
         }
         if let Some(job) = start {
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
@@ -55243,6 +55263,9 @@ impl App {
             );
             w.job = Some((rx, answers_tx));
             w.note = None;
+        }
+        if reread_net {
+            w.reread(&session.db);
         }
         if close && w.job.is_none() {
             session.net_window = None;
