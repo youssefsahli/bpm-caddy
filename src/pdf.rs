@@ -147,7 +147,7 @@ l'expression de nos salutations confraternelles.
 
 #align(right)[{{PHARMACIST}}
 #v(2mm)
-#box(width: 6.5cm, height: 2.2cm, stroke: 0.8pt, radius: 5pt)]
+#box(width: 6.5cm, height: 2.2cm, stroke: 0.7pt)]
 "#;
 
 /// Default A4 ordonnance for a dispensation after a positive TROD.
@@ -470,7 +470,7 @@ fn fill_cr_template(
 /// Les points retenus, ou l'encadré à remplir quand il n'y en a pas.
 fn cr_points_markup(points: &[&str]) -> String {
     if points.is_empty() {
-        return "#box(width: 100%, height: 7cm, stroke: 0.8pt, radius: 5pt)".to_owned();
+        return "#box(width: 100%, height: 7cm, stroke: 0.7pt)".to_owned();
     }
     let list = points
         .iter()
@@ -479,7 +479,7 @@ fn cr_points_markup(points: &[&str]) -> String {
         .join("\n");
     // L'encadré reste sous la liste, plus court : le médecin y répond,
     // et c'est la moitié de l'intérêt d'envoyer la feuille.
-    format!("{list}\n#v(2mm)\n#box(width: 100%, height: 3.5cm, stroke: 0.8pt, radius: 5pt)")
+    format!("{list}\n#v(2mm)\n#box(width: 100%, height: 3.5cm, stroke: 0.7pt)")
 }
 
 /// Compile the CR letter for a patient and open it in the OS viewer.
@@ -3898,6 +3898,20 @@ pub fn open_vaccination_carnet(
     )
 }
 
+/// Le carnet de vaccination, rempli mais pas encore compilé — pour la
+/// liasse d'une vaccination, qui le met après la fiche.
+pub fn vaccination_carnet_source(
+    patient: &Patient,
+    lines: &[crate::db::Vaccination],
+    mention: &str,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("vaccination", template_path),
+        &vaccination_carnet_values(patient, lines, mention),
+    )
+}
+
 fn vaccination_carnet_values(
     patient: &Patient,
     lines: &[crate::db::Vaccination],
@@ -4451,6 +4465,18 @@ pub const DOCS: &[Doc] = &[
         label: "tpl_target_trod",
         markers: MARKERS_TROD,
         default: DEFAULT_TROD_TEMPLATE,
+    },
+    Doc {
+        key: "vaccin",
+        label: "tpl_target_vaccin",
+        markers: MARKERS_VACCIN,
+        default: DEFAULT_VACCIN_TEMPLATE,
+    },
+    Doc {
+        key: "trod_cr",
+        label: "tpl_target_trod_cr",
+        markers: MARKERS_TROD_CR,
+        default: DEFAULT_TROD_CR_TEMPLATE,
     },
 ];
 
@@ -5873,6 +5899,35 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &pharmacy,
         ),
+        // Une dose due et une question : les deux formes de ligne que
+        // la section du calendrier sait écrire.
+        "vaccin" => vaccination_values(
+            &VaccinationPaper {
+                patient: &patient,
+                date: "24/08/2026",
+                age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
+                signature: &pharmacy.pharmacist,
+                treats: &sample_treatments(),
+                due: &crate::vaccines::due_lines_with(&patient.birth_date, "2026-10-15", &[], ""),
+                content: &crate::content::Overrides::default(),
+            },
+            &pharmacy,
+        ),
+        "trod_cr" => trod_letter_values(
+            &TrodPaper {
+                patient: &patient,
+                kind: InterviewKind::TrodAngine,
+                date: "24/08/2026",
+                age: crate::db::age_on(&patient.birth_date, "2026-08-24"),
+                result: crate::ordonnance::POSITIF,
+                signature: &pharmacy.pharmacist,
+                treats: &sample_treatments(),
+                offers: &[],
+                pregnant: false,
+                content: &crate::content::Overrides::default(),
+            },
+            &pharmacy,
+        ),
         // L'ordonnance : son aperçu montre les deux mentions remplies,
         // pour qu'on voie où les siennes tomberaient.
         _ => vec![
@@ -7047,6 +7102,324 @@ fn trod_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, S
         ("{{TREATMENTS}}", treatments_markup(p.treats)),
         ("{{PHARMACIST}}", s(p.signature)),
     ]
+}
+
+const MARKERS_TROD_CR: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_ADDRESS}}",
+    "{{PHARMACY_PHONE}}",
+    "{{PHYSICIAN}}",
+    "{{DATE}}",
+    "{{KIND}}",
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{TEST}}",
+    "{{RESULT}}",
+    "{{CONCLUSION}}",
+    "{{TREATMENTS}}",
+    "{{PHARMACIST}}",
+];
+
+/// Le courrier au médecin traitant après un TROD : le test, son
+/// résultat, ce qui a été fait. **Le protocole demande de l'informer** ;
+/// le courrier d'accompagnement générique parlait d'« accompagnement à
+/// l'officine », ce qu'un test rapide n'est pas.
+///
+/// Sans résultat enregistré, la conclusion reste à écrire à la main :
+/// le courrier ne suppose pas un résultat qu'on n'a pas lu.
+const DEFAULT_TROD_CR_TEMPLATE: &str = r#"
+#set page(paper: "a4", margin: 2cm)
+#set text(size: 11pt, lang: "fr")
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold", size: 13pt)[{{PHARMACY_NAME}}] \
+   {{PHARMACY_ADDRESS}} \
+   {{PHARMACY_PHONE}}],
+  [#align(right)[À l'attention du \ #text(weight: "bold")[{{PHYSICIAN}}]]],
+)
+#v(8mm)
+#align(right)[Le {{DATE}}]
+#v(4mm)
+#text(weight: "bold")[Objet : {{KIND}} — {{PATIENT_NAME}} (né(e) le {{BIRTH_DATE}})]
+#v(4mm)
+Docteur,
+
+{{TEST}}
+
+#text(weight: "bold")[Résultat :] {{RESULT}}
+
+{{CONCLUSION}}
+
+#v(2mm)
+#text(weight: "bold")[Traitements connus à l'officine :]
+
+{{TREATMENTS}}
+
+#v(2mm)
+#text(weight: "bold")[Observations :]
+#v(1mm)
+#box(width: 100%, height: 3cm, stroke: 0.7pt)
+
+#v(1fr)
+Restant à votre disposition, nous vous prions d'agréer, Docteur,
+l'expression de nos salutations confraternelles.
+
+#align(right)[{{PHARMACIST}}
+#v(2mm)
+#box(width: 6.5cm, height: 2.2cm, stroke: 0.7pt)]
+"#;
+
+/// Les valeurs du courrier d'un TROD — celles de l'impression et celles
+/// de l'aperçu, par la même fonction.
+fn trod_letter_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let s = |v: &str| format!("#{}", typst_str(v));
+    let Some(sheet) = crate::trod::sheet(p.kind) else {
+        return Vec::new();
+    };
+    let filled = crate::trod::fill(sheet, p.content, p.age);
+    let known = crate::trod::result(p.result);
+    let physician = if p.patient.physician.trim().is_empty() {
+        crate::strings::tr("trod_letter_physician")
+    } else {
+        p.patient.physician.trim()
+    };
+    let result = match known {
+        Some(true) => crate::strings::tr("trod_letter_positive"),
+        Some(false) => crate::strings::tr("trod_letter_negative"),
+        None => crate::strings::tr("trod_letter_unread"),
+    };
+    let conclusion = match known {
+        Some(true) => s(&filled.letter_positive),
+        Some(false) => s(&filled.letter_negative),
+        // Rien de lu : des lignes à remplir, pas une conclusion écrite
+        // d'avance.
+        None => "#box(width: 100%, height: 2cm, stroke: (bottom: 0.5pt))".to_owned(),
+    };
+    let birth = if p.patient.birth_date.trim().is_empty() {
+        "—".to_owned()
+    } else {
+        crate::db::format_french_date(&p.patient.birth_date)
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+        ("{{PHARMACY_ADDRESS}}", s(&pharmacy.address)),
+        ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+        ("{{PHYSICIAN}}", s(physician)),
+        ("{{DATE}}", s(p.date)),
+        ("{{KIND}}", s(p.kind.label())),
+        ("{{PATIENT_NAME}}", s(&p.patient.full_name())),
+        ("{{BIRTH_DATE}}", s(&birth)),
+        ("{{TEST}}", s(&filled.letter_test)),
+        (
+            "{{RESULT}}",
+            format!("#text(weight: \"bold\")[{}]", s(result)),
+        ),
+        ("{{CONCLUSION}}", conclusion),
+        ("{{TREATMENTS}}", treatments_markup(p.treats)),
+        ("{{PHARMACIST}}", s(p.signature)),
+    ]
+}
+
+/// Le courrier au médecin traitant après un TROD. Voir
+/// [`DEFAULT_TROD_CR_TEMPLATE`].
+pub fn open_trod_letter(
+    paper: &TrodPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        trod_letter_source(paper, pharmacy, template_path),
+        &format!("courrier_trod_{}", paper.patient.id),
+    )
+}
+
+/// Le courrier d'un TROD, rempli mais pas encore compilé — pour la
+/// liasse.
+pub fn trod_letter_source(
+    paper: &TrodPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("trod_cr", template_path),
+        &trod_letter_values(paper, pharmacy),
+    )
+}
+
+/// Ce que la fiche de vaccination reçoit.
+pub struct VaccinationPaper<'a> {
+    pub patient: &'a Patient,
+    /// La date imprimée, déjà au format `JJ/MM/AAAA`.
+    pub date: &'a str,
+    pub age: Option<u32>,
+    pub signature: &'a str,
+    pub treats: &'a [Drug],
+    /// Ce que le calendrier doit encore, lu contre le carnet.
+    pub due: &'a [crate::vaccines::DueLine],
+    pub content: &'a crate::content::Overrides,
+}
+
+const MARKERS_VACCIN: &[&str] = &[
+    "{{PHARMACY_NAME}}",
+    "{{PHARMACY_PHONE}}",
+    "{{DATE}}",
+    "{{PATIENT_NAME}}",
+    "{{BIRTH_DATE}}",
+    "{{AGE}}",
+    "{{SEX}}",
+    "{{PHARMACIST}}",
+    "{{QUESTIONS}}",
+    "{{DUE}}",
+    "{{AFTER}}",
+    "{{TREATMENTS}}",
+];
+
+/// La fiche d'une vaccination à l'officine, A4 : les questions avant
+/// l'injection, le vaccin tracé (nom, lot, péremption, voie, site,
+/// heure), les suites, et ce que le calendrier doit encore d'après le
+/// carnet.
+const DEFAULT_VACCIN_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: (x: 1.5cm, y: 1.3cm))
+#set text(size: 10pt, lang: "fr")
+#set block(spacing: 2mm)
+
+#let sec(title) = block(above: 4mm, below: 2mm)[
+  #text(weight: "bold", size: 10.5pt)[#title]
+  #v(-1.5mm)
+  #line(length: 100%, stroke: 0.4pt)
+]
+#let blank(w) = box(width: w, height: 0.9em, stroke: (bottom: 0.5pt))
+#let tick = box(width: 3.2mm, height: 3.2mm, stroke: 0.7pt)
+
+#grid(columns: (1fr, auto),
+  [#text(weight: "bold")[{{PHARMACY_NAME}}] \ #text(size: 9pt)[{{PHARMACY_PHONE}}]],
+  [#align(right)[Le {{DATE}}]],
+)
+#v(3mm)
+#align(center)[#text(14pt, weight: "bold")[Vaccination à l'officine]]
+#v(2mm)
+#box(width: 100%, stroke: 0.7pt, inset: 7pt)[
+  #grid(columns: (1fr, 1fr), row-gutter: 1.5mm,
+    [*Patient :* {{PATIENT_NAME}}], [*Né(e) le :* {{BIRTH_DATE}} ({{AGE}})],
+    [*Sexe :* {{SEX}}], [*Pharmacien :* {{PHARMACIST}}],
+  )
+]
+
+#sec[Avant l'injection : une réponse « oui » est à instruire avant de vacciner]
+{{QUESTIONS}}
+
+#sec[Vaccin administré]
+#grid(columns: (1fr, 1fr), row-gutter: 3mm, column-gutter: 6mm,
+  [Vaccin : #blank(1fr)], [Dose : #blank(1fr)],
+  [N° de lot : #blank(1fr)], [Péremption : #blank(1fr)],
+  [Voie : #h(1mm) #tick #h(1mm) IM #h(4mm) #tick #h(1mm) SC], [Heure : #blank(1fr)],
+  [Site : #h(1mm) #tick #h(1mm) deltoïde gauche #h(4mm) #tick #h(1mm) deltoïde droit], [Autre site : #blank(1fr)],
+)
+
+#sec[Après l'injection]
+{{AFTER}}
+
+#sec[Calendrier vaccinal d'après le carnet]
+{{DUE}}
+
+#sec[Traitements connus à l'officine]
+{{TREATMENTS}}
+
+#v(1fr)
+#grid(columns: (1fr, 1fr), column-gutter: 6mm,
+  [#text(weight: "bold")[Observations]
+   #v(1mm)
+   #box(width: 100%, height: 2cm, stroke: 0.7pt)],
+  [#text(weight: "bold")[Signature du pharmacien]
+   #v(1mm)
+   #box(width: 100%, height: 2cm, stroke: 0.7pt)],
+)
+"##;
+
+/// Les valeurs de la fiche de vaccination — l'impression et l'aperçu.
+fn vaccination_values(
+    p: &VaccinationPaper,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let s = |v: &str| format!("#{}", typst_str(v));
+    let filled = crate::vaccsheet::fill(p.content);
+    let owed: Vec<String> = p
+        .due
+        .iter()
+        .filter_map(|l| {
+            let what = if l.detail.trim().is_empty() {
+                l.label.to_owned()
+            } else {
+                format!("{} — {}", l.label, l.detail.trim())
+            };
+            match l.level {
+                crate::vaccines::DueLevel::Due => Some(crate::strings::trf("vacc_pdf_due", what)),
+                crate::vaccines::DueLevel::Ask => Some(crate::strings::trf("vacc_pdf_ask", what)),
+                crate::vaccines::DueLevel::Ok => None,
+            }
+        })
+        .collect();
+    let due = if owed.is_empty() {
+        s(crate::strings::tr("vacc_pdf_due_none"))
+    } else {
+        owed.iter()
+            .map(|l| format!("- #{}", typst_str(l)))
+            .collect::<Vec<_>>()
+            .join("\n")
+    };
+    let sex = match p.patient.known_sex() {
+        Some(crate::ordonnance::Sex::F) => "F",
+        Some(crate::ordonnance::Sex::M) => "M",
+        None => "—",
+    };
+    let age = p.age.map_or_else(
+        || crate::strings::tr("trod_pdf_no_age").to_owned(),
+        |a| format!("{a} ans"),
+    );
+    let birth = if p.patient.birth_date.trim().is_empty() {
+        "—".to_owned()
+    } else {
+        crate::db::format_french_date(&p.patient.birth_date)
+    };
+    vec![
+        ("{{PHARMACY_NAME}}", s(&pharmacy.name)),
+        ("{{PHARMACY_PHONE}}", s(&pharmacy.phone)),
+        ("{{DATE}}", s(p.date)),
+        ("{{PATIENT_NAME}}", s(&p.patient.full_name())),
+        ("{{BIRTH_DATE}}", s(&birth)),
+        ("{{AGE}}", s(&age)),
+        ("{{SEX}}", s(sex)),
+        ("{{PHARMACIST}}", s(p.signature)),
+        ("{{QUESTIONS}}", tick_list(&filled.questions, 1)),
+        ("{{AFTER}}", tick_list(&filled.after, 1)),
+        ("{{DUE}}", due),
+        ("{{TREATMENTS}}", treatments_markup(p.treats)),
+    ]
+}
+
+/// La fiche de vaccination, remplie mais pas encore compilée — pour la
+/// liasse.
+pub fn vaccination_source(
+    paper: &VaccinationPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> String {
+    fill(
+        &template_source("vaccin", template_path),
+        &vaccination_values(paper, pharmacy),
+    )
+}
+
+/// La fiche d'une vaccination à l'officine. Voir `vaccsheet.rs`.
+pub fn open_vaccination_sheet(
+    paper: &VaccinationPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        vaccination_source(paper, pharmacy, template_path),
+        &format!("vaccination_{}", paper.patient.id),
+    )
 }
 
 /// La feuille d'un TROD, remplie mais pas encore compilée — pour la
@@ -8474,10 +8847,26 @@ mod tests {
             0,
             "rien d'enregistré, rien de coché"
         );
+        // **Le courrier dit le résultat enregistré, et rien d'autre** :
+        // négatif, sa conclusion ; rien de lu, des lignes à remplir.
+        let letter = |p: &TrodPaper| {
+            fill(
+                DEFAULT_TROD_CR_TEMPLATE,
+                &trod_letter_values(p, &sample_pharmacy()),
+            )
+        };
+        let sheet = crate::trod::sheet(InterviewKind::TrodCystite).unwrap();
+        let negative = letter(&paper(woman, crate::ordonnance::NEGATIF));
+        assert!(negative.contains(&typst_str(sheet.letter_negative)));
+        assert!(!negative.contains(&typst_str(sheet.letter_positive)));
+        let unread = letter(&paper(woman, ""));
+        assert!(unread.contains(&typst_str(crate::strings::tr("trod_letter_unread"))));
+        assert!(!unread.contains(&typst_str(sheet.letter_negative)));
+        assert!(!unread.contains(&typst_str(sheet.letter_positive)));
         // L'angine, la plus longue des deux (score, six lignes) : c'est
         // l'aperçu de l'éditeur, et il doit tenir sur une page lui aussi.
         let angine = fill(DEFAULT_TROD_TEMPLATE, &sample_values("trod"));
-        for (n, source) in [her, him, angine].into_iter().enumerate() {
+        for (n, source) in [her, him, angine, negative, unread].into_iter().enumerate() {
             let world = PdfWorld::new(source);
             let document: PagedDocument = typst::compile(&world)
                 .output
@@ -8495,6 +8884,83 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// **La fiche de vaccination tient sur une page, et liste ce que le
+    /// calendrier doit** — les doses dues comme les questions — sans
+    /// qu'un nom hostile ne la casse.
+    #[test]
+    fn the_vaccination_sheet_lists_what_is_owed_on_one_page() {
+        let patient = Patient {
+            id: 4,
+            last_name: "#eval \"Durand\"".to_owned(),
+            first_name: "Anne".to_owned(),
+            birth_date: "1950-03-02".to_owned(),
+            ..Default::default()
+        };
+        let due = crate::vaccines::due_lines_with(&patient.birth_date, "2026-10-15", &[], "");
+        let none = crate::content::Overrides::default();
+        let paper = VaccinationPaper {
+            patient: &patient,
+            date: "15/10/2026",
+            age: Some(76),
+            signature: "Claire Leroy",
+            treats: &[],
+            due: &due,
+            content: &none,
+        };
+        let source = vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new(""));
+        assert!(!source.contains("{{"));
+        let owed = due
+            .iter()
+            .filter(|l| l.level != crate::vaccines::DueLevel::Ok)
+            .count();
+        assert!(owed > 0, "l'exemple doit devoir quelque chose");
+        assert_eq!(
+            source.matches("- #").count() - 1,
+            owed,
+            "une ligne par dose due ou question"
+        );
+        let world = PdfWorld::new(source);
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la fiche de vaccination doit compiler");
+        assert_eq!(document.pages.len(), 1);
+        // À jour : la phrase qui le dit, pas une section vide.
+        let paper = VaccinationPaper { due: &[], ..paper };
+        let source = vaccination_source(&paper, &sample_pharmacy(), std::path::Path::new(""));
+        assert!(source.contains(&typst_str(crate::strings::tr("vacc_pdf_due_none"))));
+    }
+
+    /// **La liasse d'un TROD : la feuille, puis le courrier** — deux
+    /// pages, et pas le bilan de médication d'un entretien.
+    #[test]
+    fn the_trod_bundle_is_the_sheet_then_the_letter() {
+        let patient = sample_patient();
+        let none = crate::content::Overrides::default();
+        let offers = crate::ordonnance::starter("angine");
+        let paper = TrodPaper {
+            patient: &patient,
+            kind: InterviewKind::TrodAngine,
+            date: "24/09/2026",
+            age: Some(68),
+            result: crate::ordonnance::POSITIF,
+            signature: "Claire Leroy",
+            treats: &[],
+            offers: &offers,
+            pregnant: false,
+            content: &none,
+        };
+        let path = std::path::Path::new("");
+        let parts = [
+            trod_source(&paper, &sample_pharmacy(), path),
+            trod_letter_source(&paper, &sample_pharmacy(), path),
+        ];
+        let world = PdfWorld::new(bundle_source(&parts).unwrap());
+        let document: PagedDocument = typst::compile(&world)
+            .output
+            .expect("la liasse du TROD doit compiler");
+        assert_eq!(document.pages.len(), 2, "une feuille, un courrier");
     }
 
     #[test]

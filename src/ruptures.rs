@@ -233,6 +233,24 @@ pub fn shortages(events: &[Event], today: &str) -> Vec<Shortage> {
     out
 }
 
+/// Les produits en rupture **à présent** qui ne l'étaient pas avant —
+/// ce qu'une synchronisation vient d'apprendre. Dans l'ordre de
+/// [`shortages`].
+///
+/// Une rupture déjà connue qui reçoit un signalement de plus n'est pas
+/// une nouvelle : elle était au tableau de bord avant.
+pub fn newly_short(before: &[Event], after: &[Event], today: &str) -> Vec<String> {
+    let known: std::collections::HashSet<String> = shortages(before, today)
+        .into_iter()
+        .map(|s| key(&s.product))
+        .collect();
+    shortages(after, today)
+        .into_iter()
+        .filter(|s| !known.contains(&key(&s.product)))
+        .map(|s| s.product)
+        .collect()
+}
+
 /// Ce qui a été donné à la place d'un produit, une ligne par substitut.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tried {
@@ -370,6 +388,37 @@ pub fn decode(bytes: &[u8]) -> Option<Event> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Une nouvelle, c'est une rupture qu'on ne savait pas** : ni une
+    /// déjà connue qui reçoit un signalement de plus, ni une levée.
+    #[test]
+    fn only_a_shortage_not_known_before_is_news() {
+        let ev = |uid: &str, product: &str, kind, day: &str| Event {
+            uid: uid.to_owned(),
+            day: day.to_owned(),
+            kind,
+            product: product.to_owned(),
+            product_dci: String::new(),
+            other: String::new(),
+            other_dci: String::new(),
+            outcome: Outcome::Accepted,
+            note: String::new(),
+            operator: String::new(),
+            source: "Pharmacie du Port".to_owned(),
+            refers: String::new(),
+        };
+        let before = vec![ev("a:1", "Diprosone", Kind::Rupture, "2026-09-20")];
+        let mut after = before.clone();
+        after.push(ev("a:2", "Diprosone", Kind::Rupture, "2026-09-23"));
+        after.push(ev("a:3", "Locoid", Kind::Rupture, "2026-09-23"));
+        assert_eq!(
+            newly_short(&before, &after, "2026-09-24"),
+            vec!["Locoid".to_owned()]
+        );
+        // Levée : rien de neuf à annoncer.
+        after.push(ev("a:4", "Locoid", Kind::Levee, "2026-09-24"));
+        assert!(newly_short(&before, &after, "2026-09-24").is_empty());
+    }
 
     fn ev(uid: &str, day: &str, kind: Kind, product: &str, other: &str, source: &str) -> Event {
         Event {

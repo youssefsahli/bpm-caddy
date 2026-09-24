@@ -569,24 +569,22 @@ pub fn run(
 }
 
 /// Pourquoi une conversation directe a échoué, en une phrase qu'on peut
-/// lire au comptoir : l'erreur brute de la couche réseau
-/// (`Io(Custom { kind: TimedOut … })`) ne dit rien à personne.
+/// lire au comptoir.
+///
+/// `bpm-sync` rend ses refus sans détail, et c'est voulu (voir
+/// `sync/src/lib.rs`) : un lien qui casse est `Link`, qu'il s'agisse d'un
+/// poste éteint, d'un port fermé ou d'une adresse hors d'atteinte — ce
+/// que la phrase dit tel quel plutôt que de deviner lequel. Les autres
+/// refus disent quelque chose de plus précis : l'officine qui répond
+/// n'est pas celle qu'on attendait, ou ne tient plus la même clé.
 fn dial_reason(raw: &str) -> String {
     use crate::strings::tr;
-    let low = raw.to_lowercase();
-    tr(
-        if low.contains("timedout") || low.contains("timed out") || low.contains("wouldblock") {
-            "net_dial_timeout"
-        } else if low.contains("refused") {
-            "net_dial_refused"
-        } else if low.contains("unreachable") || low.contains("no route") {
-            "net_dial_unreachable"
-        } else if low.contains("resolve") || low.contains("lookup") || low.contains("invalid") {
-            "net_dial_address"
-        } else {
-            "net_dial_other"
-        },
-    )
+    tr(match raw.trim() {
+        "Link" => "net_dial_link",
+        "Handshake" | "Unknown" => "net_dial_identity",
+        "Seal" => "net_dial_key",
+        _ => "net_dial_other",
+    })
     .to_owned()
 }
 
@@ -666,10 +664,10 @@ mod tests {
         assert!(!peer.last_try.is_empty(), "la tentative est datée");
         assert!(peer.last_ok.is_empty());
         assert!(!peer.last_error.is_empty(), "et sa raison écrite");
-        assert!(
-            !peer.last_error.contains("Io(") && !peer.last_error.contains("Custom"),
-            "une raison lisible, pas l'erreur brute : {}",
-            peer.last_error
+        assert_eq!(
+            peer.last_error,
+            crate::strings::tr("net_dial_link"),
+            "une raison lisible, pas l'erreur brute"
         );
         // Une réussite efface l'erreur d'avant.
         a.note_net_dial(&peer.device, None).unwrap();

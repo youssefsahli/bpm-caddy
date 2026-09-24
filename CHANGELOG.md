@@ -5,6 +5,64 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.294.0] - 2026-09-24
+
+### Added
+- **Fiche de vaccination.** Sur un acte Vaccination, « PDF » imprime une
+  fiche propre à l'injection : questions à poser avant, vaccin tracé
+  (nom, dose, lot, péremption, voie, site, heure), suites (surveillance
+  de quinze minutes, carnet, consignes), et ce que le calendrier vaccinal
+  doit encore d'après le carnet du patient. Phrases réécrivables
+  (« Fiche de vaccination »), modèle `vaccin`.
+- **Courrier de TROD au médecin traitant.** Sur un acte TROD, « CR »
+  imprime un courrier propre au test : le test réalisé, son résultat
+  enregistré et la conduite tenue (dispensation selon le protocole, ou
+  traitement symptomatique et consigne de reconsulter), les traitements
+  connus et un cadre d'observations. Sans résultat enregistré, la
+  conclusion reste à écrire. Phrases réécrivables (« Feuille de TROD »),
+  modèle `trod_cr`.
+- **Connexions : « Derniers reçus ».** Sous les officines du réseau,
+  ce qu'elles ont envoyé — ruptures, levées, substitutions, versions de
+  fiches, de préparations et de protocoles —, daté et signé du nom de
+  l'officine, le plus récent d'abord.
+- **Réseau : une nouvelle rupture s'annonce.** Quand la synchronisation
+  automatique apporte une rupture qu'on ne connaissait pas, la barre
+  d'état l'annonce dix minutes ; un clic ouvre les ruptures.
+- **Tableau de bord d'une base neuve : « Premiers pas ».** Options de
+  l'officine, trame de l'équipe, sauvegardes, postes, réseau — un bouton
+  par réglage, jusqu'au premier dossier.
+- **Fenêtre « ? » (F12) : les outils, par usage**, sous les raccourcis ;
+  un clic ouvre l'outil. L'infobulle d'« Aller à… » dit qu'un besoin se
+  tape aussi (« horaires », « périmés », « sauvegarde »).
+
+### Changed
+- **« Tout imprimer » selon l'acte** : pour un TROD, la feuille puis le
+  courrier au médecin traitant ; pour une vaccination, la fiche puis le
+  carnet de vaccination — au lieu du bilan de médication et du plan de
+  prise d'un entretien.
+- **Trame de la semaine** : « Lundi à vendredi » et « Lundi à samedi »
+  recopient la journée modifiée en dernier — à défaut la première
+  écrite — et non plus toujours le lundi ; un « × » par journée la vide
+  d'un geste.
+- **Courrier d'entretien** : cadres droits, comme la fiche d'entretien
+  et les feuilles de TROD et de vaccination.
+- **Menus « Qui »** du planning et de la trame : initiales et nom, sans
+  la qualité, à la largeur du plus long nom de l'équipe.
+- **Réseau d'officines** : chaque officine sur trois lignes — son nom et
+  son empreinte, ses champs, son état — au lieu d'une rangée qui
+  s'enroulait au hasard de la largeur.
+- `smoke.sh` lance une copie figée du binaire : un `cargo build` fait
+  pendant la passe ne change plus le code qu'elle éprouve ; `shot.sh`
+  accepte `vierge=1` (base du premier lancement).
+
+### Fixed
+- **Raison d'un échec de connexion au réseau** : la couche de
+  synchronisation ne distingue pas un poste éteint d'un port fermé ; la
+  raison affichée le dit tel quel, et nomme les deux cas qu'elle sait
+  reconnaître — une officine qui n'est pas celle appairée, une clé de
+  réseau différente. Toutes les pannes de lien s'affichaient jusqu'ici
+  « échange interrompu ».
+
 ## [0.293.0] - 2026-09-24
 
 ### Added

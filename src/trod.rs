@@ -49,6 +49,11 @@ pub struct Sheet {
     pub positive: &'static [&'static str],
     /// La conduite quand il est négatif.
     pub negative: &'static [&'static str],
+    /// Ce que le courrier au médecin traitant dit du test, en une phrase.
+    pub letter_test: &'static str,
+    /// Sa conclusion, selon le résultat.
+    pub letter_positive: &'static str,
+    pub letter_negative: &'static str,
 }
 
 /// La feuille d'un acte, quand l'acte est un TROD.
@@ -111,6 +116,9 @@ const ANGINE: Sheet = Sheet {
         "Pas d'antibiotique : traitement symptomatique",
         "Reconsulter si la fièvre persiste ou si les signes s'aggravent",
     ],
+    letter_test: "Un test rapide d'orientation diagnostique du streptocoque du groupe A a été réalisé à l'officine.",
+    letter_positive: "Conformément au protocole, un traitement antibiotique a été délivré sur ordonnance protocolisée ; le patient a reçu les conseils et les signes qui imposent de reconsulter.",
+    letter_negative: "Aucun antibiotique n'a été délivré : traitement symptomatique et conseils, avec la consigne de reconsulter si la fièvre persiste ou si les signes s'aggravent.",
 };
 
 const CYSTITE: Sheet = Sheet {
@@ -139,6 +147,9 @@ const CYSTITE: Sheet = Sheet {
         "Leucocytes et nitrites négatifs : pas d'antibiotique",
         "Orienter vers le médecin si les signes persistent",
     ],
+    letter_test: "Une bandelette urinaire a été réalisée à l'officine devant des signes de cystite.",
+    letter_positive: "Conformément au protocole, un traitement antibiotique a été délivré sur ordonnance protocolisée ; la patiente a reçu les conseils et les signes qui imposent de consulter.",
+    letter_negative: "Aucun antibiotique n'a été délivré ; la patiente a été orientée vers une consultation si les signes persistent.",
 };
 
 fn sheets() -> [&'static Sheet; 2] {
@@ -156,6 +167,9 @@ pub struct Filled {
     pub readings: Vec<String>,
     pub positive: Vec<String>,
     pub negative: Vec<String>,
+    pub letter_test: String,
+    pub letter_positive: String,
+    pub letter_negative: String,
 }
 
 /// La feuille d'un protocole, réécrite et remplie de ce qui est su.
@@ -202,6 +216,9 @@ pub fn fill(sheet: &Sheet, over: &crate::content::Overrides, age: Option<u32>) -
         readings: many("lecture", sheet.readings),
         positive: many("positif", sheet.positive),
         negative: many("negatif", sheet.negative),
+        letter_test: one("courrier-test", sheet.letter_test),
+        letter_positive: one("courrier-positif", sheet.letter_positive),
+        letter_negative: one("courrier-negatif", sheet.letter_negative),
     }
 }
 
@@ -229,6 +246,13 @@ pub fn phrases() -> Vec<(String, &'static str, &'static str)> {
                 "regle",
                 sheet.score_rule,
             ));
+        }
+        for (field, text) in [
+            ("courrier-test", sheet.letter_test),
+            ("courrier-positif", sheet.letter_positive),
+            ("courrier-negatif", sheet.letter_negative),
+        ] {
+            out.push((crate::content::key(DOC, id, field), field, text));
         }
     }
     out
@@ -335,6 +359,7 @@ mod tests {
                 .chain(&f.readings)
                 .chain(&f.positive)
                 .chain(&f.negative)
+                .chain([&f.letter_test, &f.letter_positive, &f.letter_negative])
                 .collect();
             for p in &all {
                 assert!(p.starts_with("réécrit:trod."), "{} : {p}", s.protocol);

@@ -28,6 +28,11 @@ la vue ouverte sont conservées d'une session à l'autre.
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
 clavier. Cette liste est tenue par l'application et toujours à jour.
 
+Sur une base neuve, le tableau de bord ouvre un panneau **« Premiers
+pas »** : la fiche de l'officine et son équipe, la trame de chaque
+personne, les sauvegardes, les autres postes, le réseau d'officines. Il
+disparaît au premier dossier.
+
 # Recherche
 
 « Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
@@ -45,7 +50,8 @@ TROD. Champ vide, la boîte liste les vues puis tous les outils : trame,
 planning, réseau d'officines, postes, codex, dispositifs, ordonnancier,
 vigilance, retours, pièces, textes imprimés, libellés, listes de
 contrôle, croisement, lignes du TROD, modèles, options, base et
-sauvegardes, règles et quotas.
+sauvegardes, règles et quotas. La fenêtre « ? » (F12) les liste aussi
+sous les raccourcis, avec leur usage ; un clic ouvre l'outil.
 
 La recherche ignore la casse et les accents, et accepte des lettres non
 contiguës dans l'ordre : « jndp » retrouve Jean Dupont.
@@ -500,7 +506,23 @@ Le bilan partagé de médication comporte une section consacrée au sujet
 le document transmis au prescripteur. Chaque ligne indique le risque et
 l'alternative ; aucune ne prescrit un arrêt.
 
+## Fiche de vaccination
+
+Sur un acte Vaccination, « PDF » imprime la fiche de l'injection : les
+questions à poser avant (allergie, fièvre, grossesse, immunodépression,
+anticoagulant, malaise antérieur, vaccin récent), le vaccin tracé —
+nom, dose, lot, péremption, voie, site, heure —, les suites
+(surveillance de quinze minutes, inscription au carnet, consignes) et
+ce que le calendrier vaccinal doit encore d'après le carnet du patient.
+Une réponse « oui » est une question à instruire, pas une
+contre-indication calculée. Phrases réécrivables sous « Fiche de
+vaccination » ; mise en page, modèle `vaccin`.
+
 ## Feuille de TROD
+
+« Tout imprimer » suit l'acte : pour un TROD, la feuille puis le
+courrier au médecin traitant ; pour une vaccination, la fiche puis le
+carnet de vaccination.
 
 Sur un acte TROD, « PDF » imprime la feuille du test et non la fiche
 d'entretien : signes qui orientent vers le médecin sans tester, score de
@@ -510,8 +532,13 @@ au patient d'après son âge, son sexe et une grossesse en cours. L'âge
 connu coche l'item d'âge du score ; un résultat déjà enregistré arrive
 coché. Le reste se coche à la main, devant le patient.
 
-Les phrases de la feuille se réécrivent dans l'écran « Textes
-imprimés », sous « Feuille de TROD » ; sa mise en page, par
+« CR » imprime le courrier au médecin traitant : le test réalisé, son
+résultat et la conduite tenue — dispensation selon le protocole, ou
+traitement symptomatique et consigne de reconsulter. Sans résultat
+enregistré, la conclusion reste à écrire à la main.
+
+Les phrases de la feuille et du courrier se réécrivent dans l'écran
+« Textes imprimés », sous « Feuille de TROD » ; leur mise en page, par
 « Modèles… ».
 
 ## Ordonnance sous protocole
@@ -590,6 +617,10 @@ coupure.
 Pour une alternance, deux onglets : semaine paire et semaine impaire.
 Une journée identique sur les deux est enregistrée une fois, en
 hebdomadaire.
+
+« Lundi à vendredi » et « Lundi à samedi » recopient la journée
+modifiée en dernier (à défaut, la première écrite). Le « × » d'une
+rangée vide cette journée.
 
 La dernière colonne dessine chaque journée sur l'échelle des heures :
 les postes en barres, sur le fond des horaires d'ouverture quand
@@ -793,9 +824,19 @@ indique le nom sous lequel elle signe, le nombre d'enregistrements reçus
 d'elle et la date des dernières nouvelles, qu'elles soient arrivées par
 une connexion directe ou par le dossier d'échange. Pour une officine à
 adresse, la dernière connexion directe réussie, ou, en rouge, l'heure du
-dernier échec et sa raison : pas de réponse dans le délai, connexion
-refusée, adresse hors d'atteinte. Le nom sous lequel elle signe sert
+dernier échec et sa raison : pas de réponse à l'adresse (poste éteint,
+port fermé ou adresse hors d'atteinte), officine qui n'est pas celle
+appairée, ou clé de réseau différente. Le nom sous lequel elle signe sert
 d'invite au champ du nom.
+
+Dans « Connexions », **« Derniers reçus »** liste ce que les autres
+officines ont envoyé — ruptures, levées, substitutions, versions de
+fiches, de préparations et de protocoles —, daté et signé du nom de
+l'officine, le plus récent d'abord.
+
+Quand la synchronisation automatique apporte une **nouvelle rupture**,
+la barre d'état l'annonce dix minutes (« Réseau : Diprosone en
+rupture ») ; un clic ouvre les ruptures.
 
 **Au tableau de bord**, « Ruptures en cours » liste les produits en
 rupture — signalés par l'officine ou par le réseau —, depuis quand, par

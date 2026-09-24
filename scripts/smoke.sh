@@ -49,6 +49,13 @@ mkdir -p "$tmp/seed/bpm-caddy"
 XDG_CONFIG_HOME="$tmp/seed" \
     BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null || exit 1
 cargo build || exit 1
+# **Le binaire est figé** : copié à côté de la base jetable et lancé de
+# là. Une passe complète dure plus d'une heure, et un `cargo build` fait
+# entre-temps dans le même dépôt remplaçait le binaire sous elle — la fin
+# de la passe testait alors un autre code que son début, sans le dire.
+bin="$tmp/bpm-caddy"
+cp ./target/debug/bpm-caddy "$bin" || exit 1
+export bin
 
 # Prove the application starts before believing seventy-six silent runs.
 #
@@ -63,7 +70,7 @@ alive="$tmp/alive.log"
 XDG_CONFIG_HOME="$tmp/alive" BPM_CADDY_WINDOW=1400x900 \
     xvfb-run -a -s "-screen 0 1400x900x24" bash -c '
         unset WAYLAND_DISPLAY
-        timeout 5 ./target/debug/bpm-caddy' > "$alive" 2>&1
+        timeout 5 "$bin"' > "$alive" 2>&1
 code=$?
 if [ "$code" -ne 124 ]; then
     echo "L'application ne reste pas ouverte cinq secondes : un passage" >&2
@@ -159,7 +166,7 @@ for shape in "${shapes[@]}"; do
                     search)    ;;
                     *)         export BPM_CADDY_START_VIEW="$view" ;;
                 esac
-                timeout 5 ./target/debug/bpm-caddy 2>&1
+                timeout 5 "$bin" 2>&1
             ' | grep -iE "panicked|out of bounds|unwrap\(\) on" | head -3
         )
         if [ -n "$out" ]; then

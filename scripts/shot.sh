@@ -3,6 +3,7 @@
 # vingt fois pendant qu'on corrige une bande.
 #
 #   ./scripts/shot.sh <vue> [fichier.png] [taille] [échelle] [clé=valeur…]
+#   (`vierge=1` : la base vide du premier lancement)
 #
 # Les `clé=valeur` en trop sont écrits dans `layout.toml` — c'est là que
 # vit la forme du plan de travail (largeur des volets, bandeau replié).
@@ -29,6 +30,7 @@ mkdir -p "$tmp/config/bpm-caddy"
 : > "$tmp/config/bpm-caddy/layout.toml"
 theme=motif
 mono=feuille
+fresh=
 for kv in "$@"; do
     # `theme=` et `mono=` sont les deux clés qui vivent dans config.toml
     # et non dans la forme du plan de travail — ce sont celles qu'on veut
@@ -38,6 +40,10 @@ for kv in "$@"; do
         theme=${kv#*=}
     elif [ "${kv%%=*}" = mono ]; then
         mono=${kv#*=}
+    elif [ "${kv%%=*}" = vierge ]; then
+        # La base du premier lancement, sans la démonstration — comme
+        # `eyeball.sh … vierge=1`, pour une seule vue.
+        fresh=${kv#*=}
     else
         printf '%s = %s\n' "${kv%%=*}" "${kv#*=}" >> "$tmp/config/bpm-caddy/layout.toml"
     fi
@@ -46,7 +52,9 @@ demo_config "$tmp/config/bpm-caddy/config.toml" "$SCALE" "$theme" "$mono"
 demo_home "$tmp/config"
 export BPM_CADDY_WINDOW="$SIZE"
 
-BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null 2>&1
+if [ -z "$fresh" ]; then
+    BPM_CADDY_SEED_DB="$BPM_CADDY_DB" cargo test seed_demo >/dev/null 2>&1
+fi
 cargo build 2>/dev/null
 
 w=${SIZE%x*} h=${SIZE#*x}

@@ -1050,6 +1050,10 @@ conseils à tenir à jour deux fois.
 - Les **bornes** (âge, sexe, grossesse) ne sont pas dans ce module : la
   feuille liste les lignes de `trod_lines` qui s'appliquent au patient,
   celles que l'officine tient dans sa base. Une seule source de bornes.
+- Le **courrier au médecin traitant** (`pdf::open_trod_letter`, clé
+  `trod_cr`) prend ses trois phrases dans la même feuille
+  (`letter_test`, `letter_positive`, `letter_negative`) : sans résultat
+  enregistré, aucune conclusion n'est écrite d'avance.
 - Seuls l'item d'âge du score (âge **connu**) et le résultat déjà
   enregistré arrivent cochés. Une case cochée par le logiciel se lit
   comme une case constatée.
@@ -1057,6 +1061,16 @@ conseils à tenir à jour deux fois.
   (les deux sens), `the_trod_sheet_reads_the_person_and_the_recorded_result`
   (un homme ne reçoit aucune ligne de la cystite, la feuille tient sur
   une page).
+
+## La fiche de vaccination
+
+- **Où** : `src/vaccsheet.rs` — les questions d'avant l'injection et les
+  suites, réécrivables (`vaccination.feuille.*`). Imprimée par
+  `pdf::open_vaccination_sheet`, clé `vaccin`. La section « calendrier »
+  lit `vaccines::due_lines_with` contre le carnet : la feuille liste les
+  doses dues et les questions, elle ne prescrit rien.
+- **Test** : `every_vaccination_phrase_is_editable_and_every_rewrite_arrives`,
+  `the_vaccination_sheet_lists_what_is_owed_on_one_page`.
 
 ## Le calendrier vaccinal et les voyages
 

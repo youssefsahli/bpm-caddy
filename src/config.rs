@@ -1237,6 +1237,19 @@ impl Operator {
     }
 
     /// What the operator picker shows: "CL — Claire Leroy".
+    /// Les initiales et le nom, sans la qualité : ce qu'un menu de choix
+    /// montre. La qualité appartient au bas d'un document ; dans un menu
+    /// de planning, elle faisait quarante caractères et le nom se coupait.
+    pub fn short_label(&self) -> String {
+        let initials = self.initials.trim();
+        let name = self.name.trim();
+        if name.is_empty() {
+            initials.to_owned()
+        } else {
+            format!("{initials} — {name}")
+        }
+    }
+
     pub fn label(&self) -> String {
         let initials = self.initials.trim();
         let signature = self.signature();

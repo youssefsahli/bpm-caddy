@@ -3301,6 +3301,15 @@ struct ActsRow<'a> {
     config: &'a Config,
 }
 
+/// Les trois documents d'un acte TROD : sa feuille, la liasse qu'elle
+/// ouvre, et le courrier au médecin traitant.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum TrodPrint {
+    Sheet,
+    Bundle,
+    Letter,
+}
+
 /// Ce qu'une rangée du tableau des entretiens demande qu'on fasse.
 ///
 /// Dix-sept écritures possibles, toutes remontées hors du dessin :
@@ -3314,9 +3323,8 @@ struct ActsOut {
     cr_req: Option<(InterviewKind, Option<String>, String, String)>,
     /// La liasse de fin d'entretien : fiche, bilan et plan de prise.
     bundle_req: Option<(InterviewKind, Option<String>, String, String)>,
-    /// La feuille d'un TROD, par l'identifiant de l'acte — seule ou en
-    /// tête de la liasse (`true`).
-    trod_req: Option<(i64, bool)>,
+    /// Ce qu'un TROD imprime, par l'identifiant de l'acte.
+    trod_req: Option<(i64, TrodPrint)>,
     bulletin_req: Option<InterviewKind>,
     set_trod: Option<(i64, String, String)>,
     open_ordonnance: Option<(i64, InterviewKind)>,
@@ -4419,6 +4427,9 @@ struct Session {
     /// ou le jour changent, pas à chaque image.
     dash_shortages: Vec<(crate::ruptures::Shortage, Option<crate::ruptures::Tried>)>,
     dash_shortages_key: Option<(u64, String)>,
+    /// Ce qu'une synchronisation automatique du réseau vient d'apprendre,
+    /// et quand : la barre d'état le dit un moment.
+    net_news: Option<(Instant, String)>,
     /// What the journal says about the open card.
     drug_supply: DrugSupply,
     drug_supply_key: Option<(i64, u64, String)>,
@@ -5255,6 +5266,7 @@ impl Session {
             supply_rev: 0,
             dash_shortages: Vec::new(),
             dash_shortages_key: None,
+            net_news: None,
             drug_supply: DrugSupply::default(),
             drug_supply_key: None,
             subst_form: None,
@@ -6688,6 +6700,7 @@ impl Session {
                 }
             }
             self.conn_summary = Some(ConnSummary {
+                feed: network_feed(&self.supply_events, &self.card_edits, 12),
                 posts: PostsSummary::read(&self.db).ok(),
                 net: NetSummary::read(&self.db).ok(),
                 cards,
@@ -6766,7 +6779,24 @@ impl Session {
                         .map(|l| l.0.clone())
                         .unwrap_or_default();
                     self.net_status = Some((false, said, at));
+                    // **Ce que la synchronisation automatique apprend se
+                    // dit** : elle tourne en fond toutes les quinze
+                    // minutes, et une rupture arrivée du réseau ne se
+                    // voyait qu'en passant au tableau de bord.
+                    let before = self.supply_events.clone();
                     self.reload_supply();
+                    let fresh =
+                        crate::ruptures::newly_short(&before, &self.supply_events, &self.today);
+                    if let Some(first) = fresh.first() {
+                        self.net_news = Some((
+                            Instant::now(),
+                            if fresh.len() == 1 {
+                                trf("net_news_one", first)
+                            } else {
+                                trn("net_news_many", &[&fresh.len(), first])
+                            },
+                        ));
+                    }
                 }
                 Ok(crate::network::Progress::Failed(said)) => {
                     self.net_auto = None;
@@ -9884,6 +9914,74 @@ struct ConnSummary {
     cards: Vec<(i64, String, usize)>,
     /// Les préparations et les protocoles qui en ont : sorte, nom, combien.
     entries: Vec<(crate::versions::Kind, String, usize)>,
+    /// Ce que les autres officines ont envoyé, le plus récent d'abord.
+    feed: Vec<FeedRow>,
+}
+
+/// Une ligne de « Derniers reçus » : le jour, l'officine, ce qu'elle a
+/// envoyé.
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct FeedRow {
+    day: String,
+    officine: String,
+    what: String,
+}
+
+/// Ce que le réseau a apporté, en une liste : les ruptures, levées et
+/// substitutions des autres officines, et les versions de fiches, de
+/// préparations et de protocoles qu'elles ont écrites — **le plus récent
+/// d'abord**, `limit` lignes au plus.
+///
+/// Le réseau ne se voyait qu'en creux : une ligne de plus au journal des
+/// ruptures, une version « à arbitrer » sur une fiche. Ce qui est arrivé,
+/// d'où et quand, ne se lisait nulle part d'un regard — donc personne ne
+/// savait si le réseau servait.
+///
+/// Un retrait n'est pas une nouvelle : l'événement retiré et le retrait
+/// sortent tous deux de la liste, comme du journal.
+fn network_feed(
+    events: &[crate::ruptures::Event],
+    edits: &[crate::versions::Edit],
+    limit: usize,
+) -> Vec<FeedRow> {
+    let mut out: Vec<FeedRow> = crate::ruptures::standing(events)
+        .into_iter()
+        .filter(|e| !e.source.trim().is_empty())
+        .map(|e| FeedRow {
+            day: e.day.clone(),
+            officine: e.source.clone(),
+            what: match e.kind {
+                crate::ruptures::Kind::Rupture => trf("rupt_journal_rupture", &e.product),
+                crate::ruptures::Kind::Levee => trf("rupt_journal_levee", &e.product),
+                _ => trn("rupt_journal_subst", &[&e.product, &e.other]),
+            },
+        })
+        .chain(
+            edits
+                .iter()
+                .filter(|e| !e.source.trim().is_empty())
+                .map(|e| FeedRow {
+                    day: e.day.clone(),
+                    officine: e.source.clone(),
+                    what: trn(
+                        "conn_feed_edit",
+                        &[
+                            &e.card_name,
+                            &match e.kind {
+                                crate::versions::Kind::Fiche => App::field_label(&e.field),
+                                _ => App::entry_field_label(&e.field),
+                            },
+                        ],
+                    ),
+                }),
+        )
+        .collect();
+    // Le plus récent d'abord ; à jour égal, l'ordre d'arrivée est gardé
+    // (un tri stable), pour que deux lignes du même jour ne s'échangent
+    // pas d'une relecture à l'autre.
+    out.sort_by(|a, b| b.day.cmp(&a.day));
+    out.truncate(limit);
+    out
 }
 
 /// La fenêtre des postes de l'officine : ce que la base en dit, une
@@ -9985,7 +10083,7 @@ fn demo_net_peers(db: &Db) {
     let _ = db.note_net_heard(&port, "Pharmacie du Port", 14);
     let _ = db.add_net_peer(&gare, "192.168.1.20:7742", "2026-09-10");
     let _ = db.note_net_heard(&gare, "Pharmacie de la Gare", 3);
-    let _ = db.note_net_dial(&gare, Some(tr("net_dial_timeout")));
+    let _ = db.note_net_dial(&gare, Some(tr("net_dial_link")));
 }
 
 /// Le nom d'une officine appairée : celui qu'on lui a donné, sinon celui
@@ -10745,6 +10843,17 @@ struct ShiftForm {
     this_day_only: bool,
 }
 
+/// La journée que « Lundi à vendredi » recopie : celle modifiée en
+/// dernier quand elle porte un poste, sinon la première écrite, sinon
+/// aucune.
+fn frame_spread_model(week: &[FrameDay; 7], touched: Option<usize>) -> Option<FrameDay> {
+    touched
+        .and_then(|i| week.get(i))
+        .filter(|d| d.written())
+        .or_else(|| week.iter().find(|d| d.written()))
+        .cloned()
+}
+
 /// Ce que la colonne dessinée de la trame lit : par jour, les postes de
 /// chaque page ; les horaires d'ouverture ; l'échelle commune, en
 /// minutes. Relu à chaque image — sept jours, deux pages : rien.
@@ -10843,6 +10952,11 @@ struct FrameForm {
     /// Laquelle des deux semaines on remplit. Toujours 0 hors
     /// alternance.
     page: usize,
+    /// La journée modifiée en dernier sur la page ouverte : c'est elle
+    /// que « Lundi à vendredi » recopie. Sans elle, la recopie prenait
+    /// la *première* journée écrite — le lundi —, si bien que corriger
+    /// le mardi puis recopier effaçait la correction.
+    touched: Option<usize>,
     /// `[page][jour - 1]`, lundi en tête.
     weeks: [[FrameDay; 7]; 2],
     /// Pour qui la grille a été remplie, la dernière fois qu'on l'a
@@ -10894,6 +11008,7 @@ impl Default for FrameForm {
             replacing: Vec::new(),
             loaded: Vec::new(),
             page: 0,
+            touched: None,
             weeks: Default::default(),
             replace: false,
         }
@@ -15548,6 +15663,7 @@ impl App {
         let rows = key_rows();
         let mut open = true;
         let mut print_guide = false;
+        let mut open_tool: Option<Tool> = None;
         let shown = egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
@@ -15621,9 +15737,45 @@ impl App {
                                     ui.end_row();
                                 }
                             });
+                        // **Les outils, par ce qu'ils font.** La fenêtre
+                        // qu'on ouvre pour apprendre l'application disait
+                        // le clavier et taisait les dix-neuf outils
+                        // qu'aucun onglet ne montre. Un clic l'ouvre ; le
+                        // propos est celui que « Aller à… » compare à ce
+                        // qu'on tape.
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("keys_tools"));
+                        egui::Grid::new("keys_tools")
+                            .num_columns(2)
+                            .spacing([18.0, 3.0])
+                            .show(ui, |ui| {
+                                for tool in Tool::ALL.into_iter().filter(|t| t.available()) {
+                                    if motif::list_row(
+                                        ui,
+                                        egui::RichText::new(tool.title()).size(motif::pt(ui, 12.0)),
+                                        false,
+                                    )
+                                    .clicked()
+                                    {
+                                        open_tool = Some(tool);
+                                    }
+                                    ui.label(
+                                        egui::RichText::new(tool.purpose())
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    );
+                                    ui.end_row();
+                                }
+                            });
                     });
             });
         motif::dialog_relief(ctx, &shown);
+        if let Some(tool) = open_tool {
+            if let State::Unlocked(session) = &mut self.state {
+                session.go_to(Goto::Tool(tool));
+            }
+            open = false;
+        }
         if print_guide {
             if let Err(e) = crate::pdf::open_guide(
                 &self.config.pharmacy,
@@ -26249,17 +26401,43 @@ impl App {
         patient: &Patient,
         config: &Config,
         itv: &Interview,
-        bundle: bool,
+        what: TrodPrint,
     ) -> Result<std::path::PathBuf, String> {
         let on = itv
             .scheduled_date
             .clone()
             .unwrap_or_else(|| session.today.clone());
         let date = db::format_french_date(&on);
+        let signature = config.pharmacy.signature_for(&itv.operator);
+        if itv.kind == InterviewKind::Vaccination {
+            let paper = crate::pdf::VaccinationPaper {
+                patient,
+                date: &date,
+                age: db::age_on(&patient.birth_date, &on),
+                signature: &signature,
+                treats: &session.patient_treats,
+                due: &session.vacc_due,
+                content: &session.content,
+            };
+            let path = config.doc_template_path("vaccin");
+            if what != TrodPrint::Bundle {
+                return crate::pdf::open_vaccination_sheet(&paper, &config.pharmacy, &path);
+            }
+            // **La liasse d'une vaccination** : la fiche, puis le carnet
+            // de vaccination à remettre — et non le bilan de médication
+            // et le plan de prise, qui n'ont rien à y faire.
+            let sheet = crate::pdf::vaccination_source(&paper, &config.pharmacy, &path);
+            let carnet = crate::pdf::vaccination_carnet_source(
+                patient,
+                &session.vaccinations,
+                &config.disclaimers.carnet,
+                &config.doc_template_path("vaccination"),
+            );
+            return crate::pdf::open_bundle(&[sheet, carnet], &format!("liasse_{}", patient.id));
+        }
         let offers = crate::ordonnance::protocol_id(itv.kind)
             .map(|p| session.db.trod_lines(p).unwrap_or_default())
             .unwrap_or_default();
-        let signature = config.pharmacy.signature_for(&itv.operator);
         let paper = crate::pdf::TrodPaper {
             patient,
             kind: itv.kind,
@@ -26273,13 +26451,28 @@ impl App {
             content: &session.content,
         };
         let path = config.doc_template_path("trod");
-        if !bundle {
-            return crate::pdf::open_trod_sheet(&paper, &config.pharmacy, &path);
+        match what {
+            TrodPrint::Sheet => {
+                return crate::pdf::open_trod_sheet(&paper, &config.pharmacy, &path);
+            }
+            TrodPrint::Letter => {
+                return crate::pdf::open_trod_letter(
+                    &paper,
+                    &config.pharmacy,
+                    &config.doc_template_path("trod_cr"),
+                );
+            }
+            TrodPrint::Bundle => {}
         }
+        // **La liasse d'un TROD** : la feuille, puis le courrier au
+        // médecin traitant — les deux documents qui sortent d'un test.
         let sheet = crate::pdf::trod_source(&paper, &config.pharmacy, &path);
-        let bilan = Self::bilan_body(session, patient, config, &itv.operator, true);
-        let plan = Self::plan_body(session, patient, config, &itv.operator, true);
-        crate::pdf::open_bundle(&[sheet, bilan, plan], &format!("liasse_{}", patient.id))
+        let letter = crate::pdf::trod_letter_source(
+            &paper,
+            &config.pharmacy,
+            &config.doc_template_path("trod_cr"),
+        );
+        crate::pdf::open_bundle(&[sheet, letter], &format!("liasse_{}", patient.id))
     }
 
     /// Ce que l'acte imprime, et ce qu'un TROD a lu.
@@ -26289,16 +26482,21 @@ impl App {
             // lot, conduite — et n'a pas de points d'entretien à choisir :
             // la fenêtre d'export n'aurait rien à lui proposer.
             let trod = crate::trod::sheet(row.itv.kind).is_some();
+            // La vaccination aussi a sa feuille : le vaccin tracé, les
+            // questions d'avant, les suites.
+            let own_sheet = trod || row.itv.kind == InterviewKind::Vaccination;
             if motif::button(ui, tr("itv_pdf"))
                 .on_hover_text(tr(if trod {
                     "itv_pdf_trod_tooltip"
+                } else if own_sheet {
+                    "itv_pdf_vacc_tooltip"
                 } else {
                     "itv_pdf_tooltip"
                 }))
                 .clicked()
             {
-                if trod {
-                    out.trod_req = Some((row.itv.id, false));
+                if own_sheet {
+                    out.trod_req = Some((row.itv.id, TrodPrint::Sheet));
                 } else {
                     out.print_req = Some((
                         row.itv.kind,
@@ -26309,15 +26507,25 @@ impl App {
                 }
             }
             if motif::button(ui, tr("itv_cr"))
-                .on_hover_text(tr("itv_cr_tooltip"))
+                .on_hover_text(tr(if trod {
+                    "itv_cr_trod_tooltip"
+                } else {
+                    "itv_cr_tooltip"
+                }))
                 .clicked()
             {
-                out.cr_req = Some((
-                    row.itv.kind,
-                    row.itv.scheduled_date.clone(),
-                    row.itv.theme.clone(),
-                    row.itv.operator.clone(),
-                ));
+                // Le courrier d'un TROD dit le test et son résultat : il
+                // n'a pas de points d'entretien à choisir.
+                if trod {
+                    out.trod_req = Some((row.itv.id, TrodPrint::Letter));
+                } else {
+                    out.cr_req = Some((
+                        row.itv.kind,
+                        row.itv.scheduled_date.clone(),
+                        row.itv.theme.clone(),
+                        row.itv.operator.clone(),
+                    ));
+                }
             }
             // Tout ce qui part à la fin de l'entretien, d'un bouton et
             // dans un seul PDF.
@@ -26325,8 +26533,8 @@ impl App {
                 .on_hover_text(tr("itv_bundle_tooltip"))
                 .clicked()
             {
-                if trod {
-                    out.trod_req = Some((row.itv.id, true));
+                if own_sheet {
+                    out.trod_req = Some((row.itv.id, TrodPrint::Bundle));
                 } else {
                     out.bundle_req = Some((
                         row.itv.kind,
@@ -27031,14 +27239,14 @@ impl App {
                 session.error = Some(e);
             }
         }
-        if let Some((id, bundle)) = trod_req {
+        if let Some((id, what)) = trod_req {
             let itv = session
                 .viewing_interviews
                 .iter()
                 .find(|i| i.id == id)
                 .cloned();
             if let Some(itv) = itv {
-                if let Err(e) = Self::print_trod(session, patient, config, &itv, bundle) {
+                if let Err(e) = Self::print_trod(session, patient, config, &itv, what) {
                     session.error = Some(e);
                 }
             }
@@ -30692,12 +30900,14 @@ impl App {
                                 .pharmacy
                                 .operators
                                 .iter()
-                                .map(|o| (o.initials.trim().to_owned(), o.label().to_owned()))
+                                .map(|o| (o.initials.trim().to_owned(), o.short_label()))
                                 .collect();
+                            // Mesuré sur les noms de l'équipe, comme dans
+                            // la trame : seize caractères coupaient le nom.
                             motif::select(
                                 ui,
                                 "planning_who",
-                                chars_wide(ui, 16.0),
+                                Self::team_select_width(ui, config),
                                 &mut session.shift_form.operator,
                                 &team,
                             );
@@ -31577,7 +31787,9 @@ impl App {
             rect.width() - 20.0,
             [
                 btn(tr("planning_who")),
-                combo("MMM"),
+                // **La même largeur que le dessin** : la mesure comptait
+                // trois lettres là où le menu en montrait seize.
+                Self::team_select_width(ui, config),
                 combo(planning::ShiftKind::Recup.label()),
                 btn("00/00/0000"),
                 Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()),
@@ -32592,18 +32804,15 @@ impl App {
                                     .pharmacy
                                     .operators
                                     .iter()
-                                    .map(|o| (o.initials.trim().to_owned(), o.label().to_owned()))
+                                    .map(|o| (o.initials.trim().to_owned(), o.short_label()))
                                     .collect();
                                 // **Mesuré sur les noms de l'équipe** : seize
                                 // caractères rendaient « CL — Claire L… », et
                                 // c'est le nom qu'on vérifie avant de poser.
-                                let who_w =
-                                    motif::select_width(ui, team.iter().map(|(_, l)| l.as_str()))
-                                        .clamp(chars_wide(ui, 12.0), chars_wide(ui, 30.0));
                                 motif::select(
                                     ui,
                                     "frame_who",
-                                    who_w,
+                                    Self::team_select_width(ui, config),
                                     &mut session.frame.operator,
                                     &team,
                                 );
@@ -32740,8 +32949,12 @@ impl App {
                                 for (i, c) in pages.iter().enumerate() {
                                     if motif::toggle(ui, c.label(), session.frame.page == i)
                                         .clicked()
+                                        && session.frame.page != i
                                     {
                                         session.frame.page = i;
+                                        // La journée retenue était celle
+                                        // de l'autre page.
+                                        session.frame.touched = None;
                                     }
                                 }
                                 if motif::button(ui, tr("frame_copy_week"))
@@ -32804,7 +33017,9 @@ impl App {
                         // total de la page est écrit sous la grille, et
                         // les champs sont ce qu'on remplit.
                         let gutter = ui.spacing().item_spacing.x;
-                        let row_w = name_w + kind_w + 4.0 * hour_w + pause_w + 6.0 * gutter;
+                        let clear_w = Self::button_width(ui, "×");
+                        let row_w =
+                            name_w + kind_w + 4.0 * hour_w + pause_w + clear_w + 7.0 * gutter;
                         let show_sum = row_w + gutter + sum_w <= ui.clip_rect().width();
                         // **La semaine dessinée, en dernière colonne** —
                         // quand la place le permet, et jamais au prix
@@ -32817,6 +33032,7 @@ impl App {
                         let strip_w = strip_room.min(chars_wide(ui, 40.0));
                         let mut total = 0_u16;
                         let mut unknown = 0_usize;
+                        let mut touched = session.frame.touched;
                         egui::Grid::new("frame_grid")
                             .striped(true)
                             .num_columns(6)
@@ -32841,6 +33057,7 @@ impl App {
                                 head(ui, pause_w, "frame_head_pause");
                                 head(ui, hour_w, "frame_head_from2");
                                 head(ui, hour_w, "frame_head_to");
+                                Self::grid_cell(ui, clear_w, egui::RichText::new(""));
                                 if show_sum {
                                     head(ui, sum_w, "frame_head_total");
                                 }
@@ -32872,13 +33089,14 @@ impl App {
                                             .into_iter()
                                             .map(|k| (Some(k), k.label().to_owned()))
                                             .collect();
-                                    motif::select(
+                                    let mut edited = motif::select(
                                         ui,
                                         ("frame_kind", page, i),
                                         kind_w,
                                         &mut day.kind,
                                         &kinds,
-                                    );
+                                    )
+                                    .changed();
                                     // **`add_sized`, et non une largeur
                                     // souhaitée.** Une cellule de
                                     // `Grid` doit annoncer sa largeur ;
@@ -32889,46 +33107,65 @@ impl App {
                                     // hauteur est un plancher que le
                                     // style relève, comme partout
                                     // ailleurs ici.
-                                    motif::field(
+                                    edited |= motif::field(
                                         ui,
                                         hour_w,
                                         egui::TextEdit::singleline(&mut day.from)
                                             .hint_text(motif::hint(tr("agenda_hour_hint"))),
                                     )
-                                    .on_hover_text(tr("planning_from_tooltip"));
-                                    motif::field(
+                                    .on_hover_text(tr("planning_from_tooltip"))
+                                    .changed();
+                                    edited |= motif::field(
                                         ui,
                                         hour_w,
                                         egui::TextEdit::singleline(&mut day.to)
                                             .hint_text(motif::hint(tr("agenda_end_hint"))),
                                     )
-                                    .on_hover_text(tr("planning_to_tooltip"));
-                                    motif::field(
+                                    .on_hover_text(tr("planning_to_tooltip"))
+                                    .changed();
+                                    edited |= motif::field(
                                         ui,
                                         pause_w,
                                         egui::TextEdit::singleline(&mut day.pause)
                                             .hint_text(motif::hint("45")),
                                     )
-                                    .on_hover_text(tr("planning_pause_tooltip"));
+                                    .on_hover_text(tr("planning_pause_tooltip"))
+                                    .changed();
                                     // **La seconde moitié d'une journée
                                     // coupée** — deux postes, pas une
                                     // longue pause : une pause n'a pas
                                     // d'heure, donc la couverture ne
                                     // sait pas où est le trou.
-                                    motif::field(
+                                    edited |= motif::field(
                                         ui,
                                         hour_w,
                                         egui::TextEdit::singleline(&mut day.from2)
                                             .hint_text(motif::hint(tr("frame_afternoon_from"))),
                                     )
-                                    .on_hover_text(tr("frame_split_tooltip"));
-                                    motif::field(
+                                    .on_hover_text(tr("frame_split_tooltip"))
+                                    .changed();
+                                    edited |= motif::field(
                                         ui,
                                         hour_w,
                                         egui::TextEdit::singleline(&mut day.to2)
                                             .hint_text(motif::hint(tr("frame_afternoon_to"))),
                                     )
-                                    .on_hover_text(tr("frame_split_tooltip"));
+                                    .on_hover_text(tr("frame_split_tooltip"))
+                                    .changed();
+                                    // Vider une seule journée : quatre
+                                    // champs et une nature à effacer à la
+                                    // main pour dire « pas ce jour-là ».
+                                    let blank = *day == FrameDay::default();
+                                    if motif::button_enabled(ui, "×", !blank)
+                                        .on_hover_text(tr("frame_clear_day_tooltip"))
+                                        .clicked()
+                                    {
+                                        *day = FrameDay::default();
+                                        edited = true;
+                                    }
+                                    if edited {
+                                        touched = Some(i);
+                                    }
                                     // **La durée s'écrit pendant qu'on
                                     // tape.** Un tableau d'heures qui ne
                                     // dit pas ce qu'il fait est un
@@ -32975,6 +33212,7 @@ impl App {
                                     ui.end_row();
                                 }
                             });
+                        session.frame.touched = touched;
                         ui.add_space(4.0);
                         // La légende des deux pistes, quand il y en a deux
                         // et qu'elles sont dessinées.
@@ -33130,10 +33368,8 @@ impl App {
             // celle qu'on vient de taper, et demander laquelle serait un
             // écran de plus pour une question dont la réponse est
             // évidente.
-            if let Some(model) = session.frame.weeks[page]
-                .iter()
-                .find(|d| d.written())
-                .cloned()
+            if let Some(model) =
+                frame_spread_model(&session.frame.weeks[page], session.frame.touched)
             {
                 for d in session.frame.weeks[page].iter_mut().take(days) {
                     *d = model.clone();
@@ -33142,6 +33378,7 @@ impl App {
         }
         if clear {
             session.frame.weeks[page] = Default::default();
+            session.frame.touched = None;
         }
         if apply {
             Self::frame_apply(session);
@@ -33155,6 +33392,23 @@ impl App {
         if session.frame.open && ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
             session.frame.open = false;
         }
+    }
+
+    /// La largeur du menu « Qui » : le plus long nom de l'équipe, en
+    /// entier, entre dix et vingt-quatre caractères. Sans équipe déclarée,
+    /// le champ libre des initiales.
+    fn team_select_width(ui: &egui::Ui, config: &Config) -> f32 {
+        if config.pharmacy.operators.is_empty() {
+            return chars_wide(ui, 6.0);
+        }
+        let labels: Vec<String> = config
+            .pharmacy
+            .operators
+            .iter()
+            .map(crate::config::Operator::short_label)
+            .collect();
+        motif::select_width(ui, labels.iter().map(String::as_str))
+            .clamp(chars_wide(ui, 10.0), chars_wide(ui, 24.0))
     }
 
     /// La trame dessinée, jour par jour : ce que chaque page pose ce
@@ -33509,6 +33763,7 @@ impl App {
     fn frame_load(session: &mut Session) {
         let who = session.frame.operator.trim().to_owned();
         session.frame.loaded_for = who.clone();
+        session.frame.touched = None;
         let ids = session
             .db
             .shift_patterns(&who, &session.today)
@@ -53227,6 +53482,28 @@ impl App {
                                 );
                             }
                         }
+                        // Ce que le réseau a apporté, le plus récent
+                        // d'abord.
+                        if !sum.feed.is_empty() {
+                            ui.add_space(6.0);
+                            motif::section(ui, tr("conn_feed_title"));
+                            for row in &sum.feed {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trn(
+                                            "conn_feed_line",
+                                            &[
+                                                &db::format_french_date(&row.day),
+                                                &row.officine,
+                                                &row.what,
+                                            ],
+                                        ))
+                                        .size(motif::pt(ui, 10.5)),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                        }
                         ui.add_space(6.0);
                         if net_running {
                             ui.label(small(ui, tr("conn_net_running").to_owned()));
@@ -54053,12 +54330,24 @@ impl App {
                                 .edits
                                 .entry(p.device.clone())
                                 .or_insert_with(|| (p.name.clone(), p.address.clone()));
+                            // **Qui, puis quoi en faire, puis comment ça
+                            // va** — trois lignes. Tout sur une rangée
+                            // enveloppée, l'empreinte, deux champs et deux
+                            // boutons tombaient où la largeur les posait,
+                            // et « Enregistrer » se retrouvait seul sous
+                            // l'empreinte de l'officine suivante.
+                            ui.add_space(4.0);
                             ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(net_peer_title(p)).strong());
                                 ui.label(
                                     egui::RichText::new(crate::network::peer_groups(&p.device))
                                         .monospace()
-                                        .size(motif::pt(ui, 11.0)),
-                                );
+                                        .size(motif::pt(ui, 10.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .on_hover_text(tr("net_peer_groups_tooltip"));
+                            });
+                            ui.horizontal_wrapped(|ui| {
                                 // L'invite est le nom sous lequel
                                 // l'officine signe, quand on le sait :
                                 // c'est celui qu'on voudra le plus
@@ -54994,6 +55283,7 @@ impl App {
                 let mut open_bio: Option<i64> = None;
                 let mut open_locations: Option<i64> = None;
                 let mut open_shortage: Option<String> = None;
+                let mut start_step: Option<Tool> = None;
 
                 // Each entry is (title, height, painter). They are dealt
                 // into the columns in order, so a one-column window
@@ -55032,6 +55322,14 @@ impl App {
                 // chercher ; c'est ici qu'on le voit le matin.
                 if !session.dash_shortages.is_empty() {
                     panels.insert(3, (tr("dash_shortages"), 190.0));
+                }
+                // **Une base neuve dit par où commencer.** Des tuiles à
+                // zéro et des panneaux vides n'apprennent rien ; les
+                // outils qui préparent l'officine — sa fiche, son équipe,
+                // ses horaires, ses postes — ne se trouvent qu'en sachant
+                // qu'ils existent. Le panneau s'en va au premier dossier.
+                if session.patients.is_empty() {
+                    panels.insert(0, (tr("dash_start"), 300.0));
                 }
                 // On a tall screen the natural grid stopped short and
                 // left a band of grey under it; stretch the panels to
@@ -55080,10 +55378,20 @@ impl App {
                     bottom = bottom.max(y[lane]);
                     motif::panel(ui, rect, Some(title), |ui| {
                         let body = ui.max_rect();
-                        match i {
-                            0 => Self::dash_pipeline(ui, session, body),
-                            1 => Self::dash_per_kind(ui, session, config, body),
-                            2 => open_patient = Self::dash_appointments(ui, session, body),
+                        let _ = i;
+                        match *title {
+                            t if t == tr("dash_start") => {
+                                if let Some(step) = Self::dash_start(ui, body) {
+                                    start_step = Some(step);
+                                }
+                            }
+                            t if t == tr("dash_pipeline") => Self::dash_pipeline(ui, session, body),
+                            t if t == tr("dash_per_kind") => {
+                                Self::dash_per_kind(ui, session, config, body)
+                            }
+                            t if t == tr("dash_rdv") => {
+                                open_patient = Self::dash_appointments(ui, session, body)
+                            }
                             _ => match *title {
                                 t if t == tr("dash_bio") => {
                                     if let Some(id) = Self::dash_bio(ui, session, body) {
@@ -55118,6 +55426,9 @@ impl App {
                 // not laid out by the cursor.
                 ui.allocate_space(egui::vec2(w, bottom - full.top() - kpi_rect.height()));
 
+                if let Some(tool) = start_step {
+                    session.go_to(Goto::Tool(tool));
+                }
                 // Un produit en rupture : sa fiche quand la base en a une
                 // — c'est là que se lisent les substitutions —, sinon le
                 // journal.
@@ -55224,6 +55535,67 @@ impl App {
     /// The rentals whose ordonnance has lapsed or is about to: what is
     /// still at a patient's home on a prescription that has run out.
     /// Clicking a row opens the file straight on its Locations tab.
+    /// Les premiers pas d'une base neuve : un bouton par geste, et ce
+    /// qu'il prépare. Rend l'outil choisi.
+    fn dash_start(ui: &mut egui::Ui, rect: egui::Rect) -> Option<Tool> {
+        let mut chosen = None;
+        let inner = motif::well(ui, rect);
+        motif::inside(ui, inner, |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("dash_start")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("dash_start_intro"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    ui.add_space(4.0);
+                    for (tool, key) in [
+                        (Tool::Options, "dash_start_officine"),
+                        (Tool::Trame, "dash_start_trame"),
+                        (Tool::Sauvegarde, "dash_start_base"),
+                        (Tool::Postes, "dash_start_postes"),
+                        (Tool::Reseau, "dash_start_reseau"),
+                    ] {
+                        if !tool.available() {
+                            continue;
+                        }
+                        // Le propos à droite du bouton, et **qui passe à
+                        // la ligne sous lui-même** : dans une rangée
+                        // enveloppée il repartait sous le bouton.
+                        ui.horizontal(|ui| {
+                            if motif::button(ui, tool.title()).clicked() {
+                                chosen = Some(tool);
+                            }
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr(key))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                        });
+                    }
+                    ui.add_space(4.0);
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("dash_start_goto"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                });
+        });
+        ui.allocate_space(rect.size());
+        chosen
+    }
+
     /// Les ruptures en cours : le produit, depuis quand, combien
     /// d'officines l'ont signalé, et le substitut le plus pratiqué. Rend
     /// le produit cliqué.
@@ -62424,6 +62796,7 @@ impl eframe::App for App {
         // Motif status bar: the at-a-glance numbers and which base this
         // post is on (multi-post support aid).
         let mut status_goto: Option<WorkTab> = None;
+        let mut clear_news = false;
         if let State::Unlocked(session) = &self.state {
             let in_progress: i64 = session.pending.values().sum();
             let summary = trn(
@@ -62453,6 +62826,14 @@ impl eframe::App for App {
             let synced = session
                 .sync_notice
                 .is_some_and(|at| at.elapsed() < Session::SYNC_NOTICE_FOR);
+            // Dix minutes : une nouvelle du réseau arrive en fond, pendant
+            // qu'on sert quelqu'un — quelques secondes, et personne ne
+            // l'aurait lue.
+            let net_news = session
+                .net_news
+                .as_ref()
+                .filter(|(at, _)| at.elapsed() < Duration::from_secs(600))
+                .map(|(_, said)| said.clone());
             let conn_mark = session.conn_mark();
             let db_file = self
                 .config
@@ -62600,12 +62981,47 @@ impl eframe::App for App {
                                     .color(motif::accent()),
                             );
                         }
+                        if let Some(news) = &net_news {
+                            let fits_news = ui
+                                .painter()
+                                .layout_no_wrap(
+                                    news.clone(),
+                                    egui::FontId::proportional(motif::pt(ui, 11.0)),
+                                    motif::accent(),
+                                )
+                                .size()
+                                .x
+                                + ui.spacing().item_spacing.x * 2.0
+                                <= ui.available_width();
+                            if fits_news
+                                && ui
+                                    .add(
+                                        egui::Label::new(
+                                            egui::RichText::new(news.as_str())
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(motif::accent()),
+                                        )
+                                        .sense(egui::Sense::click()),
+                                    )
+                                    .on_hover_text(tr("net_news_tooltip"))
+                                    .clicked()
+                            {
+                                status_goto = Some(WorkTab::Ruptures);
+                                clear_news = true;
+                            }
+                        }
                     });
                 });
             });
         }
         if let (Some(to), State::Unlocked(session)) = (status_goto, &mut self.state) {
+            if to == WorkTab::Ruptures {
+                session.reload_supply();
+            }
             session.activate_tab(&to);
+            if clear_news {
+                session.net_news = None;
+            }
         }
 
         if toggle_dashboard {
@@ -73929,6 +74345,94 @@ mod tests {
         s.reload_supply();
         s.refresh_dash_shortages();
         assert!(s.dash_shortages.is_empty());
+    }
+
+    /// **« Derniers reçus » : ce qui vient d'ailleurs, le plus récent
+    /// d'abord** — jamais ce que l'officine a écrit elle-même, ni ce qui a
+    /// été retiré.
+    #[test]
+    fn the_network_feed_lists_what_other_officines_sent_newest_first() {
+        use crate::ruptures::{Event, Kind, Outcome};
+        let ev = |uid: &str, kind, day: &str, source: &str, refers: &str| Event {
+            uid: uid.to_owned(),
+            day: day.to_owned(),
+            kind,
+            product: "Diprosone".to_owned(),
+            product_dci: String::new(),
+            other: "Locoid".to_owned(),
+            other_dci: String::new(),
+            outcome: Outcome::Accepted,
+            note: String::new(),
+            operator: String::new(),
+            source: source.to_owned(),
+            refers: refers.to_owned(),
+        };
+        let events = vec![
+            ev("a:1", Kind::Rupture, "2026-09-10", "Pharmacie du Port", ""),
+            ev(
+                "a:2",
+                Kind::Substitution,
+                "2026-09-12",
+                "Pharmacie du Port",
+                "",
+            ),
+            // Écrite ici : pas une nouvelle du réseau.
+            ev("b:1", Kind::Rupture, "2026-09-20", "", ""),
+            // Retirée par son officine : ni elle ni le retrait.
+            ev("c:1", Kind::Levee, "2026-09-15", "Pharmacie de la Gare", ""),
+            ev(
+                "c:2",
+                Kind::Retrait,
+                "2026-09-16",
+                "Pharmacie de la Gare",
+                "c:1",
+            ),
+        ];
+        let edits = vec![crate::versions::Edit {
+            kind: crate::versions::Kind::Fiche,
+            uid: "a:3".to_owned(),
+            day: "2026-09-14".to_owned(),
+            card: "eliquis".to_owned(),
+            card_name: "Eliquis".to_owned(),
+            field: "dosage".to_owned(),
+            value: "5 mg".to_owned(),
+            previous: String::new(),
+            corrects: String::new(),
+            revert: false,
+            operator: String::new(),
+            source: "Pharmacie du Port".to_owned(),
+        }];
+        let feed = super::network_feed(&events, &edits, 10);
+        let days: Vec<&str> = feed.iter().map(|r| r.day.as_str()).collect();
+        assert_eq!(days, ["2026-09-14", "2026-09-12", "2026-09-10"]);
+        assert!(feed.iter().all(|r| r.officine == "Pharmacie du Port"));
+        assert!(feed[0].what.contains("Eliquis"));
+        assert_eq!(super::network_feed(&events, &edits, 2).len(), 2, "borné");
+    }
+
+    /// **« Lundi à vendredi » recopie la journée qu'on vient de
+    /// modifier**, pas le lundi : corriger le mardi puis recopier
+    /// effaçait la correction.
+    #[test]
+    fn the_spread_copies_the_day_just_edited() {
+        let day = |from: &str, to: &str| super::FrameDay {
+            from: from.to_owned(),
+            to: to.to_owned(),
+            ..Default::default()
+        };
+        let mut week: [super::FrameDay; 7] = Default::default();
+        week[0] = day("9", "19");
+        week[1] = day("8h30", "12h30");
+        let model = |t| super::frame_spread_model(&week, t).map(|d| d.from);
+        assert_eq!(model(Some(1)).as_deref(), Some("8h30"), "le mardi modifié");
+        assert_eq!(
+            model(None).as_deref(),
+            Some("9"),
+            "à défaut, le premier écrit"
+        );
+        // Une journée vidée n'est pas un modèle : on retombe sur le premier.
+        assert_eq!(model(Some(3)).as_deref(), Some("9"));
+        assert!(super::frame_spread_model(&Default::default(), Some(0)).is_none());
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {
