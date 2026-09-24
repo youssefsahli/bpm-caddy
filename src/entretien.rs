@@ -156,8 +156,38 @@ const ASTHMA_TABLE: KindTable = KindTable {
     blank_rows: 0,
 };
 
-fn tables() -> [&'static KindTable; 4] {
-    [&AVK_TABLE, &AOD_TABLE, &ANTICANCER_TABLE, &ASTHMA_TABLE]
+const BPM_TABLE: KindTable = KindTable {
+    key: "bpm",
+    title: "Analyse des traitements",
+    columns: &[
+        "Médicament",
+        "Problème repéré",
+        "Proposition au prescripteur",
+    ],
+    rows: &[],
+    blank_rows: 4,
+};
+
+/// Les sujets d'un rendez-vous de prévention sont déjà sur la fiche,
+/// cochés dans la liste de l'officine (`config.prevention`) : le tableau
+/// porte ce qui en sort, le plan convenu avec le patient.
+const PREVENTION_TABLE: KindTable = KindTable {
+    key: "prevention",
+    title: "Plan personnalisé de prévention",
+    columns: &["Sujet", "Objectif convenu", "Orientation"],
+    rows: &[],
+    blank_rows: 3,
+};
+
+fn tables() -> [&'static KindTable; 6] {
+    [
+        &AVK_TABLE,
+        &AOD_TABLE,
+        &ANTICANCER_TABLE,
+        &ASTHMA_TABLE,
+        &BPM_TABLE,
+        &PREVENTION_TABLE,
+    ]
 }
 
 /// Le tableau d'un type d'acte, quand il en a un.
@@ -168,6 +198,8 @@ pub fn kind_table(kind: crate::db::InterviewKind) -> Option<&'static KindTable> 
         K::Aod => Some(&AOD_TABLE),
         K::AnticancereuxLc | K::AnticancereuxAutres => Some(&ANTICANCER_TABLE),
         K::Asthme => Some(&ASTHMA_TABLE),
+        K::Bpm => Some(&BPM_TABLE),
+        K::Prevention => Some(&PREVENTION_TABLE),
         _ => None,
     }
 }
@@ -479,7 +511,14 @@ mod tests {
                 .collect::<Vec<_>>(),
         );
         let mut printed = 0;
-        for kind in [K::Avk, K::Aod, K::AnticancereuxLc, K::Asthme] {
+        for kind in [
+            K::Avk,
+            K::Aod,
+            K::AnticancereuxLc,
+            K::Asthme,
+            K::Bpm,
+            K::Prevention,
+        ] {
             let t = resolve_table(kind, &over).unwrap();
             for p in std::iter::once(&t.title).chain(&t.columns).chain(&t.rows) {
                 assert!(
@@ -500,7 +539,8 @@ mod tests {
             resolve_table(K::AnticancereuxAutres, &over),
             resolve_table(K::AnticancereuxLc, &over)
         );
-        assert!(kind_table(K::Bpm).is_none());
+        assert!(kind_table(K::TrodAngine).is_none());
+        assert!(kind_table(K::Vaccination).is_none());
         // Chaque tableau porte des lignes, écrites ou à remplir.
         for t in tables() {
             assert!(!t.rows.is_empty() || t.blank_rows > 0, "{}", t.key);

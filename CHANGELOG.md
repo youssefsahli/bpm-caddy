@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.299.0] - 2026-09-24
+
+### Added
+- **Fiche d'entretien d'un bilan partagé de médication** : un tableau
+  « Analyse des traitements » — médicament, problème repéré, proposition
+  au prescripteur.
+- **Fiche d'un rendez-vous de prévention** : sous les sujets cochés, le
+  plan personnalisé — sujet, objectif convenu avec le patient,
+  orientation.
+- **Tableaux de la fiche** : une colonne où l'on écrit prend la largeur
+  de la page, une case à cocher reste étroite — selon le titre de la
+  colonne.
+
 ## [0.298.0] - 2026-09-24
 
 ### Changed

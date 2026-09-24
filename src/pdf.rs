@@ -3601,13 +3601,19 @@ fn kind_table_markup(table: Option<&crate::entretien::FilledTable>) -> String {
         return String::new();
     };
     let n = t.columns.len().max(1);
-    // Une colonne de libellés large, des cases étroites ; sans libellés,
-    // des colonnes égales où l'on écrit.
+    // Une colonne de libellés large ; après elle, une case à cocher sous
+    // un titre court, une case à la mesure de son titre, et une colonne
+    // où l'on écrit sous un titre long (« Action retenue »). Sans
+    // libellés, des colonnes égales où l'on écrit.
     let widths = if t.rows.is_empty() {
         vec!["1fr"; n].join(", ")
     } else {
         std::iter::once("1fr")
-            .chain(std::iter::repeat_n("1.2cm", n - 1))
+            .chain(t.columns.iter().skip(1).map(|c| match c.chars().count() {
+                0..=4 => "1.2cm",
+                5..=8 => "auto",
+                _ => "1fr",
+            }))
             .collect::<Vec<_>>()
             .join(", ")
     };
@@ -9032,45 +9038,107 @@ mod tests {
         assert_eq!(document.pages.len(), 2, "une feuille, un courrier");
     }
 
-    /// **La fiche d'un anticancéreux tient sur une page avec son tableau
-    /// des effets**, ses points et six traitements — les cadres de notes
-    /// cèdent la place, pas la signature.
+    /// **La fiche tient sur une page avec le plus long de ses tableaux**
+    /// — les effets d'un anticancéreux, les thèmes d'un bilan de
+    /// prévention, l'analyse d'un bilan partagé de médication avec dix
+    /// traitements : les cadres de notes cèdent la place, pas la
+    /// signature.
     #[test]
     fn the_largest_kind_table_still_fits_one_sheet() {
         let patient = sample_patient();
-        let table =
-            crate::entretien::resolve_table(InterviewKind::AnticancereuxLc, &Default::default());
-        let mut treats = sample_treatments();
-        while treats.len() < 6 {
-            treats.push(treats[0].clone());
+        for (kind, theme, n, marker) in [
+            (
+                InterviewKind::AnticancereuxLc,
+                "Effets indésirables",
+                6,
+                "Syndrome main-pied",
+            ),
+            (InterviewKind::Prevention, "", 3, "Objectif convenu"),
+            (
+                InterviewKind::Bpm,
+                "Observance",
+                10,
+                "Proposition au prescripteur",
+            ),
+        ] {
+            let table = crate::entretien::resolve_table(kind, &Default::default());
+            // Un rendez-vous de prévention imprime les sujets de
+            // l'officine, tous cochés au pire.
+            let subjects = crate::config::PreventionConfig::default().subjects;
+            let subjects: Vec<&str> = subjects.iter().map(String::as_str).collect();
+            let points = if kind.is_prevention() {
+                &subjects[..]
+            } else {
+                crate::entretien::checklist(theme)
+            };
+            let mut treats = sample_treatments();
+            while treats.len() < n {
+                treats.push(treats[0].clone());
+            }
+            let filled = fill_interview_template(
+                DEFAULT_TEMPLATE,
+                &InterviewPaper {
+                    patient: &patient,
+                    kind,
+                    date: "24/09/2026",
+                    age: Some(68),
+                    theme,
+                    signature: "Claire Leroy",
+                    treats: &treats,
+                    checklist: points,
+                    next_rdv: "15/10/2026 — Suivi",
+                    table: table.as_ref(),
+                },
+                &sample_pharmacy(),
+            );
+            assert!(filled.contains(&typst_str(marker)), "{kind:?}");
+            let world = PdfWorld::new(filled);
+            let document: PagedDocument = typst::compile(&world)
+                .output
+                .expect("la fiche doit compiler");
+            assert_eq!(
+                document.pages.len(),
+                1,
+                "{kind:?} : une fiche d'entretien tient sur une page"
+            );
+            if let Ok(dir) = std::env::var("BPM_CADDY_TEST_PDF_OUT") {
+                if let Ok(pdf) = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()) {
+                    let _ = std::fs::write(
+                        std::path::Path::new(&dir).join(format!("fiche_{kind:?}.pdf")),
+                        &pdf,
+                    );
+                }
+            }
         }
-        let points = crate::entretien::checklist("Effets indésirables");
-        let filled = fill_interview_template(
-            DEFAULT_TEMPLATE,
-            &InterviewPaper {
-                patient: &patient,
-                kind: InterviewKind::AnticancereuxLc,
-                date: "24/09/2026",
-                age: Some(68),
-                theme: "Effets indésirables",
-                signature: "Claire Leroy",
-                treats: &treats,
-                checklist: points,
-                next_rdv: "15/10/2026 — Anticancéreux",
-                table: table.as_ref(),
-            },
-            &sample_pharmacy(),
-        );
-        assert!(filled.contains(&typst_str("Syndrome main-pied")));
-        let world = PdfWorld::new(filled);
-        let document: PagedDocument = typst::compile(&world)
-            .output
-            .expect("la fiche doit compiler");
-        assert_eq!(
-            document.pages.len(),
-            1,
-            "une fiche d'entretien tient sur une page"
-        );
+    }
+
+    /// **Une colonne où l'on écrit est large, une case à cocher est
+    /// étroite** : le titre de la colonne le dit — « Action retenue »
+    /// n'a pas la largeur de « Oui ».
+    #[test]
+    fn kind_table_columns_are_sized_by_what_goes_in_them() {
+        let widths = |kind| {
+            let t = crate::entretien::resolve_table(kind, &Default::default());
+            let m = kind_table_markup(t.as_ref());
+            let from = m.find("columns: (").unwrap() + "columns: (".len();
+            m[from..from + m[from..].find(')').unwrap()].to_owned()
+        };
+        assert_eq!(widths(InterviewKind::Asthme), "1fr, 1.2cm, 1.2cm");
+        assert_eq!(widths(InterviewKind::Prevention), "1fr, 1fr, 1fr");
+        assert!(widths(InterviewKind::AnticancereuxLc).ends_with("1.2cm, 1.2cm"));
+        assert_eq!(widths(InterviewKind::Bpm), "1fr, 1fr, 1fr");
+        assert_eq!(kind_table_markup(None), "");
+        // Une officine qui réécrit « Oui » en « Abordé » et ajoute une
+        // colonne « Action retenue » : la case suit son titre, la colonne
+        // où l'on écrit prend la place.
+        let rewritten = crate::entretien::FilledTable {
+            title: "Sujets".into(),
+            columns: vec!["Sujet".into(), "Abordé".into(), "Action retenue".into()],
+            rows: vec!["Tabac".into()],
+            blank_rows: 0,
+        };
+        let m = kind_table_markup(Some(&rewritten));
+        assert!(m.contains("columns: (1fr, auto, 1fr)"), "{m}");
     }
 
     #[test]

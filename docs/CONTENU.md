@@ -1041,7 +1041,8 @@ conseils à tenir à jour deux fois.
   points. Une liste de vingt lignes est une liste que personne ne coche.
 - **Les tableaux des types d'acte** (`entretien::kind_table`) : INR (AVK),
   suivi de l'anticoagulant (AOD), grades des effets (anticancéreux),
-  technique d'inhalation (asthme). Des cases vides — la feuille ne relève
+  technique d'inhalation (asthme), analyse des traitements (bilan
+  partagé de médication), plan personnalisé de prévention. Des cases vides — la feuille ne relève
   rien d'elle-même ; phrases sous `entretien.tableau-<clé>.*`.
 
 ## La feuille de TROD
