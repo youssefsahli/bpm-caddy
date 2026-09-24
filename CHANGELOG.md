@@ -5,6 +5,22 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.291.0] - 2026-09-24
+
+### Added
+- **Carte pharmacologique : agrandir fait entrer d'autres voisins.**
+  Agrandie, la carte s'étend au-delà du cadre et ses anneaux prennent
+  des produits de plus, tous nommés, jusqu'à 800 % (400 % jusqu'ici).
+  Un anneau d'interactions trop fourni se parcourt en agrandissant puis
+  en déplaçant la carte ; aucun produit déjà affiché ne bouge.
+- **Touches fléchées** : déplacement de la carte, d'un sixième du cadre
+  par appui.
+- Sous la légende, le nombre de produits **hors du cadre**, dès que la
+  carte est agrandie.
+- **Carte de l'ordonnance** : zoom et déplacement, avec les mêmes
+  gestes que la carte d'une fiche (boutons, molette, glisser, clavier,
+  double-clic).
+
 ## [0.290.0] - 2026-09-24
 
 ### Changed

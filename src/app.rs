@@ -4433,6 +4433,8 @@ struct Session {
     graph_look: crate::graph::Look,
     /// How many names the last drawing of the map had no room for.
     graph_unnamed: usize,
+    /// Combien de voisins la carte grossie pose hors du cadre.
+    graph_offscreen: usize,
     /// What the tables say of each pair (centre, card), for the centre
     /// and base revision they were read on.
     graph_reasons: Option<GraphReasons>,
@@ -5178,6 +5180,7 @@ impl Session {
             graph_key: None,
             graph_look: crate::graph::Look::default(),
             graph_unnamed: 0,
+            graph_offscreen: 0,
             graph_reasons: None,
             graph_folded: None,
             graph_hidden: Vec::new(),
@@ -9199,6 +9202,13 @@ fn graph_substitute_meets_any(session: &Session, node: &crate::graph::Node, cent
 }
 
 /// Une raison du trait, en une ligne, **sa source nommée**.
+/// Ce que les gestes d'une carte ont demandé à cette image.
+struct GraphNav {
+    look: crate::graph::Look,
+    /// Retour arrière ou bouton « précédent » : le centre d'avant.
+    back: bool,
+}
+
 fn graph_why_line(w: &crate::graph::Why) -> String {
     use crate::graph::Why;
     match w {
@@ -54512,10 +54522,14 @@ impl App {
     /// Le sens de l'approximation reste le seul sûr : le pied réel est
     /// plus court ou égal, donc la figure plus haute ou égale, donc les
     /// plafonds ne promettent jamais plus que ce qui tiendra.
-    fn graph_widest_note() -> String {
+    ///
+    /// `beyond` : la carte est grossie, et la phrase peut dire aussi ce
+    /// que le cadre ne montre pas.
+    fn graph_widest_note(beyond: bool) -> String {
         crate::graph::Tie::ALL
             .iter()
             .map(|t| trn("graph_omitted", &[&99, &tr(t.label_key())]))
+            .chain(beyond.then(|| trf("graph_offscreen", 99)))
             .collect::<Vec<_>>()
             .join(" · ")
     }
@@ -55036,6 +55050,114 @@ impl App {
     /// La disposition vient de `graph::circle` et les cordes de
     /// `graph::chords`, purs et testés ; les raisons, des trois lectures
     /// du dossier (`graph_file_found`). La vue met à l'échelle et peint.
+    /// **D'où l'on regarde une carte : glisser, molette, clavier.** Les
+    /// deux cartes — le voisinage et l'ordonnance — se parcourent de la
+    /// même façon, et deux copies de ces gestes divergeraient au premier
+    /// ajout.
+    ///
+    /// **À poser avant les nœuds**, pour que les nœuds gardent leurs
+    /// clics : egui donne le pointeur au dernier des deux objets qui se
+    /// recouvrent. C'est l'arrangement que la barre compagnon a déjà, pour
+    /// la même raison.
+    fn graph_navigate(
+        ui: &mut egui::Ui,
+        field: egui::Rect,
+        plain: (f32, f32),
+        look: crate::graph::Look,
+        salt: &str,
+    ) -> GraphNav {
+        let canvas = ui.interact(field, ui.id().with(salt), egui::Sense::click_and_drag());
+        let mut look = look;
+        if canvas.dragged() {
+            let d = canvas.drag_delta();
+            look.pan = (look.pan.0 + d.x, look.pan.1 + d.y);
+        }
+        // Le double-clic dans le vide remet la carte à plat : c'est le
+        // geste qu'on essaie quand on s'est perdu en la déplaçant, et il
+        // n'y a rien d'autre à cet endroit — un clic sur un nœud, lui,
+        // déplace le centre.
+        if canvas.double_clicked() {
+            look = crate::graph::Look::default();
+        }
+        // La molette grossit **autour du pointeur** : ce qu'on regarde
+        // reste où on le regarde. Exponentielle, donc un cran en avant et
+        // un cran en arrière rendent au même endroit.
+        //
+        // Sur **le creux tout entier**, et non sur ce qui écoute le
+        // glissement : les nœuds sont posés après lui et lui prennent le
+        // pointeur, si bien que molettant au-dessus d'un carré —
+        // c'est-à-dire précisément là où l'on regarde sur une carte
+        // serrée — il ne se passait rien. Le glissement, lui, reste au
+        // vide : sur un nœud on clique.
+        let (wheel, over) = ui.input(|i| (i.raw_scroll_delta.y, i.pointer.hover_pos()));
+        if let Some(p) = over.filter(|p| field.contains(*p)) {
+            if wheel.abs() > 0.5 {
+                let d = p - field.center();
+                look = look.zoom_about((wheel * 0.0025).exp(), (d.x, d.y));
+            }
+        }
+        let mut back = false;
+        // **Et au clavier**, parce qu'un poste de comptoir n'a pas
+        // toujours une molette sous la main et que « + » et « − » sont ce
+        // que tout le monde essaie. Seulement quand aucun champ n'a le
+        // curseur : la vue en porte un, et un « + » tapé dans « Mettre au
+        // centre… » est un « + » dans le nom qu'on cherche, pas un
+        // grossissement.
+        if ui.memory(|m| m.focused()).is_none() {
+            let (plus, minus, home) = ui.input(|i| {
+                (
+                    i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
+                    i.key_pressed(egui::Key::Minus),
+                    i.key_pressed(egui::Key::Num0),
+                )
+            });
+            // **Revenir au centre d'avant** : la touche Retour arrière, ou
+            // le bouton « précédent » de la souris. La carte se parcourt
+            // en cliquant de voisin en voisin, et revenir d'un pas se
+            // faisait en retapant le nom.
+            back = ui.input(|i| {
+                i.key_pressed(egui::Key::Backspace)
+                    || i.pointer.button_clicked(egui::PointerButton::Extra1)
+            });
+            // **Les flèches déplacent la carte**, d'un sixième du creux par
+            // appui — la main qui tient la souris pour cliquer un voisin
+            // n'a pas à la lâcher pour glisser, et une carte grossie huit
+            // fois se parcourt au clavier. La flèche dit où l'on va
+            // regarder : → montre ce qui est à droite, donc la figure part
+            // à gauche. Tenue, elle répète, comme partout.
+            // Sans modificateur : Alt et les flèches sont déjà pris ailleurs.
+            let (l, r, u, d) = ui.input(|i| {
+                let bare = i.modifiers.is_none();
+                (
+                    bare && i.key_pressed(egui::Key::ArrowLeft),
+                    bare && i.key_pressed(egui::Key::ArrowRight),
+                    bare && i.key_pressed(egui::Key::ArrowUp),
+                    bare && i.key_pressed(egui::Key::ArrowDown),
+                )
+            });
+            let (sx, sy) = (field.width() / 6.0, field.height() / 6.0);
+            let dx = f32::from(u8::from(l)) * sx - f32::from(u8::from(r)) * sx;
+            let dy = f32::from(u8::from(u)) * sy - f32::from(u8::from(d)) * sy;
+            look.pan = (look.pan.0 + dx, look.pan.1 + dy);
+            if home {
+                look = crate::graph::Look::default();
+            } else if plus {
+                look = look.zoom_about(crate::graph::Look::STEP, (0.0, 0.0));
+            } else if minus {
+                look = look.zoom_about(1.0 / crate::graph::Look::STEP, (0.0, 0.0));
+            }
+        }
+        let look = look.clamp_pan((field.width() / 2.0, field.height() / 2.0), plain);
+        // La main dit que ça se déplace : une carte qu'on peut glisser
+        // sans que rien ne le dise est une carte que personne ne glisse.
+        if canvas.dragged() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
+        } else if canvas.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+        }
+        GraphNav { look, back }
+    }
+
     fn graph_file_figure(ui: &mut egui::Ui, session: &mut Session) {
         let body = ui.available_rect_before_wrap();
         let field = motif::well(ui, body);
@@ -55044,12 +55166,25 @@ impl App {
         };
         let lines: Vec<Drug> = session.patient_treats.clone();
         let ring = crate::graph::circle(lines.len());
-        let rx = field.width() * 0.30;
-        let ry = field.height() / 2.0 - Self::graph_margin_y(ui);
-        if rx < 24.0 || ry < 24.0 {
+        let plain_rx = field.width() * 0.30;
+        let plain_ry = field.height() / 2.0 - Self::graph_margin_y(ui);
+        if plain_rx < 24.0 || plain_ry < 24.0 {
             return;
         }
-        let mid = field.center();
+        // **La carte de l'ordonnance se parcourt comme le voisinage** :
+        // une ordonnance de quinze lignes serre ses noms autant qu'un
+        // anneau, et on la lisait sans pouvoir s'en approcher.
+        let look = Self::graph_navigate(
+            ui,
+            field,
+            (plain_rx, plain_ry),
+            session.graph_look,
+            "graph_file_canvas",
+        )
+        .look;
+        session.graph_look = look;
+        let (rx, ry) = (plain_rx * look.zoom, plain_ry * look.zoom);
+        let mid = field.center() + egui::vec2(look.pan.0, look.pan.1);
         let at = |i: usize| {
             let (x, y) = ring.get(i).copied().unwrap_or((0.0, 0.0));
             egui::pos2(mid.x + x * rx, mid.y + y * ry)
@@ -55343,7 +55478,7 @@ impl App {
             work.width() - 32.0,
         ) + Self::prose_height(
             ui,
-            &Self::graph_widest_note(),
+            &Self::graph_widest_note(!file_mode && session.graph_look.zoom > 1.0 + 1e-3),
             motif::pt(ui, 11.0),
             Self::scrolled_width(ui, work.width() - 32.0),
         )
@@ -55374,8 +55509,14 @@ impl App {
         // sur ses candidats et non sur ce qu'on en dessine, si bien
         // qu'un membre de plus vient se poser dans un trou — voir
         // `graph::place` et `graph::spread_order`.
-        let coverage = room * (1.0 / session.graph_look.zoom).clamp(1.0, 4.0);
+        //
+        // **Et grossi, il en prend davantage** : la figure est
+        // réellement plus grande, ses anneaux ont la place d'écrire des
+        // noms de plus, et on va les lire en déplaçant la carte. Voir
+        // `graph::Look::coverage` et `graph::Caps::widened`.
+        let coverage = session.graph_look.coverage(room);
         let mut caps = crate::graph::Caps::default()
+            .widened(session.graph_look.zoom)
             .lend(&session.graph_hidden)
             .for_room(coverage, node_line);
         for t in &session.graph_hidden {
@@ -55410,7 +55551,31 @@ impl App {
         // en « interaction citée » non dessinés », qui s'enveloppe sur
         // deux lignes dans un volet de comptoir — et la seconde sortait
         // du pied. La phrase qui dit ce qui manque manquait à son tour.
-        let note_h = match &note_line {
+        //
+        // **Grossie, elle dit aussi ce que le cadre ne montre pas** — ce
+        // qu'il reste à aller voir en déplaçant la carte. Mesurée sur un
+        // compte à deux chiffres et **dès que la carte est grossie**, que
+        // le compte soit nul ou non : un pied qui grandit quand un voisin
+        // sort du cadre raccourcit le cadre, qui en fait rentrer ou
+        // sortir un autre, et la phrase clignoterait d'une image à
+        // l'autre.
+        let beyond = !file_mode && session.graph_look.zoom > 1.0 + 1e-3;
+        let join = |a: Option<&(String, egui::Color32)>, b: Option<String>| match (a, b) {
+            (Some((a, c)), Some(b)) => Some((format!("{a} · {b}"), *c)),
+            (Some(a), None) => Some(a.clone()),
+            (None, Some(b)) => Some((b, motif::text_dim())),
+            (None, None) => None,
+        };
+        let note_measure = join(
+            note_line.as_ref(),
+            beyond.then(|| trf("graph_offscreen", 99)),
+        );
+        let note_line = join(
+            note_line.as_ref(),
+            (beyond && session.graph_offscreen > 0)
+                .then(|| trf("graph_offscreen", session.graph_offscreen)),
+        );
+        let note_h = match &note_measure {
             Some((note, _)) => Self::prose_height(
                 ui,
                 note,
@@ -55501,7 +55666,7 @@ impl App {
                 if motif::button_enabled(
                     ui,
                     tr("graph_zoom_out"),
-                    !file_mode && look.zoom > crate::graph::Look::MIN + 1e-3,
+                    look.zoom > crate::graph::Look::MIN + 1e-3,
                 )
                 .on_hover_text(tr("graph_zoom_out_tip"))
                 .clicked()
@@ -55511,7 +55676,7 @@ impl App {
                 if motif::button_enabled(
                     ui,
                     tr("graph_zoom_in"),
-                    !file_mode && look.zoom < crate::graph::Look::MAX - 1e-3,
+                    look.zoom < crate::graph::Look::MAX - 1e-3,
                 )
                 .on_hover_text(tr("graph_zoom_in_tip"))
                 .clicked()
@@ -55554,29 +55719,28 @@ impl App {
         // dans le creux serait un objet qui couvre ce qu'il annonce. À
         // cent pour cent il ne dit rien de plus : un état permanent
         // qu'on ne peut pas ne pas avoir est du bruit.
-        let mut title = if session.graph_look.is_plain() {
-            tr("graph_title").to_owned()
-        } else {
-            trn(
-                "graph_title_zoomed",
-                &[
-                    &tr("graph_title"),
-                    &(session.graph_look.zoom * 100.0).round(),
-                ],
-            )
-        };
-        if session.graph_unnamed > 0 && !file_mode {
-            title.push_str(&trf("graph_title_unnamed", session.graph_unnamed));
-        }
-        if file_mode {
-            title = trf(
+        let name = if file_mode {
+            trf(
                 "graph_file_title",
                 session
                     .viewing
                     .as_ref()
                     .map(|p| p.full_name())
                     .unwrap_or_default(),
-            );
+            )
+        } else {
+            tr("graph_title").to_owned()
+        };
+        let mut title = if session.graph_look.is_plain() {
+            name
+        } else {
+            trn(
+                "graph_title_zoomed",
+                &[&name, &(session.graph_look.zoom * 100.0).round()],
+            )
+        };
+        if session.graph_unnamed > 0 && !file_mode {
+            title.push_str(&trf("graph_title_unnamed", session.graph_unnamed));
         }
         motif::panel(ui, plot_rect, Some(&title), |ui| {
             if file_mode {
@@ -55617,91 +55781,18 @@ impl App {
                 return;
             }
 
-            // ---- D'où l'on regarde : glisser, molette ----------------
-            //
-            // **Posé avant les nœuds**, pour que les nœuds gardent leurs
-            // clics : egui donne le pointeur au dernier des deux
-            // objets qui se recouvrent. C'est l'arrangement que la barre
-            // compagnon a déjà, pour la même raison.
-            let canvas = ui.interact(
+            // D'où l'on regarde : avant les nœuds, qui gardent leurs clics.
+            let nav = Self::graph_navigate(
+                ui,
                 field,
-                ui.id().with("graph_canvas"),
-                egui::Sense::click_and_drag(),
-            );
-            let mut look = session.graph_look;
-            if canvas.dragged() {
-                let d = canvas.drag_delta();
-                look.pan = (look.pan.0 + d.x, look.pan.1 + d.y);
-            }
-            // Le double-clic dans le vide remet la carte à plat : c'est
-            // le geste qu'on essaie quand on s'est perdu en la
-            // déplaçant, et il n'y a rien d'autre à cet endroit — un
-            // clic sur un nœud, lui, déplace le centre.
-            if canvas.double_clicked() {
-                look = crate::graph::Look::default();
-            }
-            // La molette grossit **autour du pointeur** : ce qu'on
-            // regarde reste où on le regarde. Exponentielle, donc un cran
-            // en avant et un cran en arrière rendent au même endroit.
-            //
-            // Sur **le creux tout entier**, et non sur ce qui écoute le
-            // glissement : les nœuds sont posés après lui et lui prennent
-            // le pointeur, si bien que molettant au-dessus d'un carré —
-            // c'est-à-dire précisément là où l'on regarde sur une carte
-            // serrée — il ne se passait rien. Le glissement, lui, reste
-            // au vide : sur un nœud on clique.
-            let (wheel, over) = ui.input(|i| (i.raw_scroll_delta.y, i.pointer.hover_pos()));
-            if let Some(p) = over.filter(|p| field.contains(*p)) {
-                if wheel.abs() > 0.5 {
-                    let d = p - field.center();
-                    look = look.zoom_about((wheel * 0.0025).exp(), (d.x, d.y));
-                }
-            }
-            // **Et au clavier**, parce qu'un poste de comptoir n'a pas
-            // toujours une molette sous la main et que « + » et « − »
-            // sont ce que tout le monde essaie. Seulement quand aucun
-            // champ n'a le curseur : cette vue-ci en porte un, et un
-            // « + » tapé dans « Mettre au centre… » est un « + » dans
-            // le nom qu'on cherche, pas un grossissement.
-            if ui.memory(|m| m.focused()).is_none() {
-                let (plus, minus, home) = ui.input(|i| {
-                    (
-                        i.key_pressed(egui::Key::Plus) || i.key_pressed(egui::Key::Equals),
-                        i.key_pressed(egui::Key::Minus),
-                        i.key_pressed(egui::Key::Num0),
-                    )
-                });
-                // **Revenir au centre d'avant** : la touche Retour arrière,
-                // ou le bouton « précédent » de la souris. La carte se
-                // parcourt en cliquant de voisin en voisin, et revenir
-                // d'un pas se faisait en retapant le nom.
-                let back = ui.input(|i| {
-                    i.key_pressed(egui::Key::Backspace)
-                        || i.pointer.button_clicked(egui::PointerButton::Extra1)
-                });
-                if back {
-                    go_back = true;
-                }
-                if home {
-                    look = crate::graph::Look::default();
-                } else if plus {
-                    look = look.zoom_about(crate::graph::Look::STEP, (0.0, 0.0));
-                } else if minus {
-                    look = look.zoom_about(1.0 / crate::graph::Look::STEP, (0.0, 0.0));
-                }
-            }
-            look = look.clamp_pan(
-                (field.width() / 2.0, field.height() / 2.0),
                 (plain_rx, plain_ry),
+                session.graph_look,
+                "graph_canvas",
             );
+            let look = nav.look;
             session.graph_look = look;
-            // La main dit que ça se déplace : une carte qu'on peut
-            // glisser sans que rien ne le dise est une carte que
-            // personne ne glisse.
-            if canvas.dragged() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grabbing);
-            } else if canvas.hovered() {
-                ui.ctx().set_cursor_icon(egui::CursorIcon::Grab);
+            if nav.back {
+                go_back = true;
             }
 
             let (rx, ry) = (plain_rx * look.zoom, plain_ry * look.zoom);
@@ -55935,8 +56026,12 @@ impl App {
             let mut nameless: Option<usize> = None;
             // Et combien de noms la place a refusés : le titre le dit.
             let mut unnamed = 0usize;
+            let mut offscreen = 0usize;
             for (i, n) in map.nodes.iter().enumerate() {
                 let p = at(n);
+                if !field.contains(p) {
+                    offscreen += 1;
+                }
                 let node = box_of(p, half);
                 let resp = &responses[i];
                 let color = motif::chart::series_color(n.tie.series());
@@ -56093,8 +56188,9 @@ impl App {
             // nom. Le titre le compte à l'image suivante — il est posé
             // avant la figure — et le compte ne change qu'avec le
             // grossissement ou le centre.
-            if session.graph_unnamed != unnamed {
+            if session.graph_unnamed != unnamed || session.graph_offscreen != offscreen {
                 session.graph_unnamed = unnamed;
+                session.graph_offscreen = offscreen;
                 ui.ctx().request_repaint();
             }
             if let (None, Some(i)) = (hot_node, hot_line) {
@@ -56281,6 +56377,9 @@ impl App {
         }
         if toggle_file {
             session.graph_file = !file_mode;
+            // Une autre carte est une autre image : on la regarde d'où le
+            // volet la pose.
+            session.graph_look = crate::graph::Look::default();
         }
         if let Some(t) = toggle_ring {
             if let Some(at) = session.graph_hidden.iter().position(|x| *x == t) {

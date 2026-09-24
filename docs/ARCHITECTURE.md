@@ -669,23 +669,29 @@ The one that was missing — « combien de fois un autre poste avait
   account for occupancy, since Lamictal's class labels read only because
   its interaction ring is nearly empty. **What answers it in practice is
   `Look`** — the figure drags and zooms, so a crowded ring is read by
-  magnifying it. Zoom deliberately **does not re-read the base**: the
-  caps stay the pane's, so no node appears, vanishes or *moves* under
-  the fingers — a ring spreads evenly, one more member turns them all,
-  and a picture that turns while you magnify it is one nobody can
-  follow. Pure and tested, because a zoom that does not keep what is
-  under the pointer where it was sends the figure off at the first
-  notch, and that shows on no screenshot.
-  **Zoom is the dial between seeing everything and reading
-  everything**: zoomed out a ring takes more members — up to the reading
-  ceiling, which does not move — at the price of the names; zoomed in it
-  keeps its own and finally gives them room. Nothing moves on the way,
+  magnifying it. Pure and tested, because a zoom that does not keep
+  what is under the pointer where it was sends the figure off at the
+  first notch, and that shows on no screenshot.
+  **Zoom is the dial between seeing everything and travelling**:
+  zoomed out a ring takes more members — up to the reading ceiling, which
+  does not move — at the price of the names; zoomed in the figure is
+  really bigger, so the rings are cut for what is painted
+  (`Look::coverage`) under a ceiling that grows with the zoom
+  (`Caps::widened`), and more members come in, all named, past the edge
+  of the pane. The map is then *travelled*: drag, the arrow keys, and a
+  foot note that says how many nodes lie outside the frame — measured on
+  a two-digit count as soon as the map is magnified, because a foot that
+  grows when a node leaves the frame shortens the frame and would make
+  the note blink. Magnifying never lets one out, and nothing moves on the
+  way,
   and that is what makes the dial usable: a member's place on its ring
   is counted over **all its candidates**, never over the ones drawn, so
   opening one more sets it down *in a gap* — `place` takes the slots and
   the total, and `spread_order` decides which slots open, in an order
   whose every prefix is spread and contained in the next. Without it the
-  angle was `i / drawn` and one more member turned them all.
+  angle was `i / drawn` and one more member turned them all. The
+  prescription map is travelled with the same gestures
+  (`graph_navigate`, one copy for both).
   And the map now says what a **line** means, not only its kind: the
   mini fiche carries `companion_signals` — the counter bar's own chips,
   same tables, same reserves — read **against what the node is tied

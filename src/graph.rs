@@ -112,14 +112,13 @@ impl Tie {
 /// fenêtre, et les noms que la place refusait n'avaient d'autre recours
 /// que l'infobulle.
 ///
-/// **Grossir ne relit pas la base**, et c'est délibéré. Les plafonds
-/// restent ceux du volet : aucun nœud n'apparaît ni ne disparaît sous
-/// les doigts, et surtout aucun ne change de place — un anneau se
-/// répartit régulièrement, si bien qu'un membre de plus les ferait tous
-/// tourner, et une image qui tourne pendant qu'on la grossit est une
-/// image que personne ne peut suivre. Ce qu'on gagne en grossissant, ce
-/// sont les **noms** que la place refusait, c'est-à-dire exactement ce
-/// qui manquait.
+/// **Grossir fait entrer des voisins, et n'en déplace aucun** : les
+/// anneaux se taillent pour la figure telle qu'elle est peinte (voir
+/// [`Look::coverage`] et [`Caps::widened`]), et un membre de plus vient
+/// se poser dans un trou — les places se comptent sur tous les candidats,
+/// voir `place` et `spread_order`. Une image qui tourne pendant qu'on
+/// la grossit est une image que personne ne peut suivre ; une image qui
+/// se remplit, on la parcourt.
 ///
 /// Pur, et c'est ce qui permet de tenir l'arithmétique sans écran : un
 /// grossissement qui ne garde pas sous le pointeur ce qui y était fait
@@ -145,8 +144,13 @@ impl Default for Look {
 impl Look {
     /// En deçà, la figure est un pâté ; au delà, un anneau ne tient plus
     /// dans le creux et il n'y a plus de carte, seulement un nœud.
+    ///
+    /// Huit et non plus quatre : grossir fait maintenant **entrer** des
+    /// voisins (voir [`Look::coverage`]), et c'est la seule façon d'aller
+    /// lire un anneau d'interactions de cent membres — on grossit, puis on
+    /// se promène.
     pub const MIN: f32 = 0.5;
-    pub const MAX: f32 = 4.0;
+    pub const MAX: f32 = 8.0;
     /// Ce que vaut un cran de bouton. Multiplicatif et non additif :
     /// c'est la seule façon qu'un cran en avant et un cran en arrière se
     /// rendent au même endroit.
@@ -179,6 +183,32 @@ impl Look {
                 at.0 - (at.0 - self.pan.0) * k,
                 at.1 - (at.1 - self.pan.1) * k,
             ),
+        }
+    }
+
+    /// **La demi-hauteur pour laquelle les anneaux se taillent**, celle
+    /// du volet posé valant `room`.
+    ///
+    /// Grossie, la figure est réellement plus grande : ses anneaux ont
+    /// `zoom` fois la place, et cette place se donne à des voisins de
+    /// plus — tous nommés, puisqu'on taille pour ce qui est peint. On les
+    /// lit en déplaçant la carte. C'est ce qui fait de la carte un
+    /// territoire et non une image qu'on regarde de plus près : grossie,
+    /// elle ne montrait que les mêmes noms en plus grand, et le pied
+    /// disait « 102 de plus non dessinés » sans aucun moyen d'aller les
+    /// voir.
+    ///
+    /// Réduite, elle prend plus de monde qu'elle n'en peut nommer, jusqu'à
+    /// quatre fois la place : c'est le réglage entre tout voir et tout
+    /// lire, et le survol donne le nom.
+    pub fn coverage(self, room: f32) -> f32 {
+        if !self.zoom.is_finite() || self.zoom <= 0.0 {
+            return room;
+        }
+        if self.zoom >= 1.0 {
+            room * self.zoom
+        } else {
+            room * (1.0 / self.zoom).min(4.0)
         }
     }
 
@@ -414,6 +444,27 @@ impl Caps {
             Tie::Molecule => self.molecule,
             Tie::Class => self.class,
             Tie::Interaction => self.interaction,
+        }
+    }
+
+    /// **Les plafonds de lecture, grossis avec la carte.** Douze noms se
+    /// lisent d'un coup d'œil sur un anneau posé dans le volet ; sur un
+    /// anneau huit fois plus grand qu'on parcourt en le déplaçant, douze
+    /// noms laissaient du vide entre eux et le reste de l'anneau hors de
+    /// portée. En deçà de 1, rien ne change : réduire montre davantage
+    /// par la place, pas par le plafond.
+    ///
+    /// La géométrie garde le dernier mot : [`Caps::for_room`] vient après.
+    pub fn widened(self, zoom: f32) -> Caps {
+        if !zoom.is_finite() || zoom <= 1.0 {
+            return self;
+        }
+        let k = |n: usize| ((n as f32) * zoom).floor() as usize;
+        Caps {
+            molecule: k(self.molecule),
+            class: k(self.class),
+            interaction: k(self.interaction),
+            total: k(self.total),
         }
     }
 
@@ -1458,6 +1509,59 @@ mod tests {
         assert_eq!(l.zoom_about(0.0, (1.0, 1.0)), l);
         assert_eq!(l.zoom_about(f32::NAN, (1.0, 1.0)), l);
         assert_eq!(l.zoom_about(f32::INFINITY, (1.0, 1.0)), l);
+    }
+
+    /// **Grossir fait entrer du monde, et n'en fait jamais sortir** : au
+    /// delà de cent pour cent, chaque cran donne des plafonds au moins
+    /// aussi grands que le précédent, et un anneau de cent membres finit
+    /// par en montrer bien plus que les douze du volet posé.
+    #[test]
+    fn magnifying_lets_more_neighbours_in_and_never_one_out() {
+        let room = 180.0_f32;
+        let line = 18.0_f32;
+        let caps_at = |zoom: f32| {
+            let l = Look {
+                zoom,
+                pan: (0.0, 0.0),
+            };
+            Caps::default()
+                .widened(l.zoom)
+                .for_room(l.coverage(room), line)
+        };
+        let plain = caps_at(1.0);
+        let mut last = plain;
+        let mut l = Look::default();
+        while l.zoom < Look::MAX - 1e-3 {
+            l = l.zoom_about(Look::STEP, (0.0, 0.0));
+            let c = caps_at(l.zoom);
+            for t in Tie::ALL {
+                assert!(
+                    c.of(t) >= last.of(t),
+                    "{t:?} à {} : {c:?} < {last:?}",
+                    l.zoom
+                );
+            }
+            assert!(c.total >= last.total);
+            last = c;
+        }
+        assert!(
+            last.interaction >= plain.interaction * 3,
+            "grossie huit fois, la carte ne montre guère plus : {plain:?} → {last:?}"
+        );
+        // Réduite, la place grandit et le plafond ne bouge pas.
+        let small = Look {
+            zoom: 0.5,
+            pan: (0.0, 0.0),
+        };
+        assert_eq!(small.coverage(room), room * 2.0);
+        assert_eq!(Caps::default().widened(0.5), Caps::default());
+        // Un grossissement qui n'en est pas un ne décide rien.
+        assert_eq!(Caps::default().widened(f32::NAN), Caps::default());
+        let broken = Look {
+            zoom: f32::NAN,
+            pan: (0.0, 0.0),
+        };
+        assert_eq!(broken.coverage(room), room);
     }
 
     /// **On peut amener n'importe quel nœud au milieu, et on ne peut pas

@@ -324,19 +324,23 @@ ces tables**, ce qui n'exclut pas une interaction. Un clic sur une ligne
 la met au centre de la carte ; le mode « Fiche » revient à la fiche au
 centre.
 
-**Déplacement et zoom.** Glisser à la souris déplace la figure ; la
-molette zoome autour du pointeur. Au clavier, `+` et `−` zooment, `0`
-rétablit taille et position ; les boutons `−` et `+` de la barre font de
-même, et un double-clic dans le vide rétablit la vue. Le titre du cadre
-indique le facteur de zoom dès qu'il diffère de cent pour cent, et le
-nombre de noms non affichés, lisibles au survol.
+**Déplacement et zoom.** Glisser le fond à la souris ou les touches
+fléchées déplacent la figure ; la molette zoome autour du pointeur. Au
+clavier, `+` et `−` zooment, `0` rétablit taille et position ; les
+boutons `−` et `+` de la barre font de même, et un double-clic dans le
+vide rétablit la vue. Les deux cartes, fiche et ordonnance, se
+parcourent ainsi. Le titre du cadre indique le facteur de zoom dès qu'il
+diffère de cent pour cent, le nombre de noms non affichés, lisibles au
+survol, et le nombre de produits hors du cadre.
 
-Le zoom arbitre entre **vue d'ensemble** et **lisibilité**. Réduite, la
+Le zoom arbitre entre **vue d'ensemble** et **exploration**. Réduite, la
 carte affiche davantage de produits — dans la limite d'un plafond fixe —
-au détriment des noms ; agrandie, elle affiche les noms. La position
-d'un produit sur son anneau est calculée sur l'ensemble des candidats :
-un produit supplémentaire prend une place libre sans déplacer les
-autres.
+au détriment des noms. Agrandie, elle s'étend au-delà du cadre et fait
+entrer d'autres produits, tous nommés, jusqu'à huit fois la taille
+d'origine : un anneau d'interactions trop fourni se parcourt en
+agrandissant puis en déplaçant la carte. La position d'un produit sur
+son anneau est calculée sur l'ensemble des candidats : un produit
+supplémentaire prend une place libre sans déplacer les autres.
 
 **Survol d'un produit** : nom, DCI, classe, indication, toxicité
 documentée, et statut s'il diffère de « commercialisé » — une rupture
