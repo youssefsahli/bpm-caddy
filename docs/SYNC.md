@@ -275,6 +275,15 @@ facultative.
    devenir une comparaison bâclée. Une preuve fausse ferme l'invitation :
    quatre-vingts bits, une tentative. `Sync` ne prend pas de ticket.
 
+**Le dossier d'échange garde aussi ce qu'écrivent les officines qu'on
+n'a pas appairées soi-même** (0.318.0), pourvu que la clé du réseau les
+ouvre : un membre les a fait entrer, et une conversation directe relayait
+déjà leurs enregistrements. Gardés, **pas lus** — `absorb` ne lit que les
+officines ajoutées ; la carte les propose (« présentées par le réseau »),
+et les ajouter est un geste en deux clics, sous le nom qu'elles écrivent
+et avec leur empreinte. Une officine écartée (`net_ignored`) n'est plus
+proposée.
+
 Les invitations faites **à une officine voisine** depuis la carte (vue
 par son annonce UDP `BPMOFFICINE1`, nom déclaré par elle-même) n'ont pas
 de ticket, sont les seules annoncées sur le réseau local, et passent

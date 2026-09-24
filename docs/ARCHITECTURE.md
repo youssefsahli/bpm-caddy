@@ -2487,6 +2487,15 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_VITALE_DUMP=<path>` — replay a captured card instead of
   talking to a reader, so `START_VIEW=vitale` exercises the whole path
   (parsing, matching, the picker) with no hardware and nobody's identity
+- `BPM_CADDY_FUZZ=<seed>` — feed random input every frame (pointer walk,
+  clicks, wheel, navigation keys, a few characters; no modifier
+  shortcuts) through `App::raw_input_hook`; `scripts/fuzz.sh` opens every
+  view of `smoke.sh` that way and fails on a panic. Smoke opens a view
+  and never uses it: the Explorateur crash (0.316.0 — a table cached
+  under the axis read *after* the click, measured for the one read
+  before) only showed once an organ was clicked and the table scrolled.
+  The script stubs `xdg-open` and the other desktop launchers, so nothing
+  it clicks leaves the sandbox
 
 The workspace's shape — window size, dock widths, whether each dock is
 open, the right pane's content, the view on screen — is remembered in

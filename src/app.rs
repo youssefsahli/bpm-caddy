@@ -66319,7 +66319,119 @@ fn companion_signals(
     out
 }
 
+/// **Des gestes au hasard, pour chercher les chutes** : avec
+/// `BPM_CADDY_FUZZ=<graine>`, chaque image reçoit un déplacement du
+/// pointeur, et souvent un clic, un tour de molette, une touche de
+/// navigation ou un caractère. `scripts/fuzz.sh` ouvre chaque vue ainsi et
+/// cherche une panique dans ce qu'elle écrit.
+///
+/// C'est ce qu'il a fallu pour trouver la chute de l'Explorateur : une
+/// capture ne clique pas, et `smoke.sh` ouvre une vue sans jamais s'en
+/// servir. Aucun raccourci à modificateur n'est tapé — rien qui quitte ni
+/// ne verrouille exprès.
+fn fuzz_input(raw: &mut egui::RawInput) -> bool {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static STATE: std::sync::OnceLock<Option<AtomicU64>> = std::sync::OnceLock::new();
+    let Some(state) = STATE.get_or_init(|| {
+        std::env::var("BPM_CADDY_FUZZ")
+            .ok()
+            .and_then(|v| v.trim().parse::<u64>().ok())
+            .map(|seed| AtomicU64::new(seed.max(1)))
+    }) else {
+        return false;
+    };
+    // xorshift64 : assez de hasard pour des clics, et rejouable par sa
+    // graine.
+    let next = || {
+        let mut x = state.load(Ordering::Relaxed);
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        state.store(x, Ordering::Relaxed);
+        x
+    };
+    let screen = raw.screen_rect.unwrap_or(egui::Rect::from_min_size(
+        egui::Pos2::ZERO,
+        egui::vec2(1024.0, 700.0),
+    ));
+    // **Surtout dans la vue** : quatre gestes sur cinq tombent dans le
+    // plan de travail, hors de la barre, des onglets et des volets. Au
+    // hasard pur, le premier clic sur un onglet emmenait ailleurs, et la
+    // vue de départ n'était presque pas servie.
+    let (fx, fy, fw, fh) = if next() % 5 == 0 {
+        (0.0, 0.0, 1.0, 1.0)
+    } else {
+        (0.18, 0.2, 0.64, 0.75)
+    };
+    let pos = egui::pos2(
+        screen.left() + (fx + fw * (next() % 10_000) as f32 / 10_000.0) * screen.width(),
+        screen.top() + (fy + fh * (next() % 10_000) as f32 / 10_000.0) * screen.height(),
+    );
+    let none = egui::Modifiers::default();
+    raw.events.push(egui::Event::PointerMoved(pos));
+    if next() % 4 == 0 {
+        for pressed in [true, false] {
+            raw.events.push(egui::Event::PointerButton {
+                pos,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: none,
+            });
+        }
+    }
+    if next() % 5 == 0 {
+        let dy = (next() % 1_200) as f32 - 600.0;
+        raw.events.push(egui::Event::MouseWheel {
+            unit: egui::MouseWheelUnit::Point,
+            delta: egui::vec2(0.0, dy),
+            modifiers: none,
+        });
+    }
+    if next() % 9 == 0 {
+        use egui::Key;
+        let keys = [
+            Key::Tab,
+            Key::Enter,
+            Key::ArrowDown,
+            Key::ArrowUp,
+            Key::ArrowLeft,
+            Key::ArrowRight,
+            Key::PageDown,
+            Key::PageUp,
+            Key::Home,
+            Key::End,
+            Key::Backspace,
+            Key::Delete,
+            Key::Escape,
+        ];
+        let key = keys[(next() % keys.len() as u64) as usize];
+        for pressed in [true, false] {
+            raw.events.push(egui::Event::Key {
+                key,
+                physical_key: None,
+                pressed,
+                repeat: false,
+                modifiers: none,
+            });
+        }
+    }
+    if next() % 7 == 0 {
+        let chars = ['a', 'é', '1', '0', ' ', '/', '-', ',', 'Z', '9'];
+        let c = chars[(next() % chars.len() as u64) as usize];
+        raw.events.push(egui::Event::Text(c.to_string()));
+    }
+    true
+}
+
 impl eframe::App for App {
+    fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
+        // Sans vraie saisie, rien ne redessine : le hasard demande
+        // l'image suivante lui-même.
+        if fuzz_input(raw_input) {
+            ctx.request_repaint_after(Duration::from_millis(30));
+        }
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // **Ouvert par sa clé, le compagnon prend sa taille.** C'était
         // un drapeau et rien d'autre : la fenêtre gardait celle qu'on

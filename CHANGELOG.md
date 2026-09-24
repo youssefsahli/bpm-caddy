@@ -5,6 +5,15 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.319.0] - 2026-09-25
+
+### Changed
+- Un appairage refusé le dit mieux : code d'invitation absent ou faux,
+  codes différents, ou connexion coupée — et invite à coller le code
+  d'invitation entier, tel qu'affiché.
+- Chaque vue a été parcourue au hasard (clics, défilement, touches) à
+  trois tailles d'écran, sans une seule fermeture de l'application.
+
 ## [0.318.0] - 2026-09-25
 
 ### Added

@@ -171,6 +171,9 @@ Headless under Xvfb with `unset WAYLAND_DISPLAY`, a throwaway
 - `./scripts/eyeball.sh [dir] 1024x700 1.6` — every view; **look at the
   pictures**. `vierge=1` shows the first-launch empty base.
 - `./scripts/screenshots.sh` — README screenshots.
+- `./scripts/fuzz.sh [vue] [secondes]` — every view *used* at random
+  (`BPM_CADDY_FUZZ=<graine>`: clicks, wheel, keys), fails on a panic;
+  smoke only opens views. Replay a failure with `FUZZ_SEED=`.
 - A new view key goes in the ARCHITECTURE.md list, `smoke.sh` and
   `eyeball.sh` (a test holds the three together).
 
