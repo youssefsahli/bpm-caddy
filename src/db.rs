@@ -323,7 +323,10 @@ CREATE TABLE IF NOT EXISTS net_peers (
     last_heard TEXT NOT NULL DEFAULT '',
     last_ok    TEXT NOT NULL DEFAULT '',
     last_try   TEXT NOT NULL DEFAULT '',
-    last_error TEXT NOT NULL DEFAULT ''
+    last_error TEXT NOT NULL DEFAULT '',
+    -- La clé publique de sa boîte (X25519, hex), qu'elle annonce au
+    -- réseau : ce qui permet de lui sceller un message.
+    box_key    TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_published (
     -- Les événements du journal des ruptures déjà scellés vers le
@@ -1215,6 +1218,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE net_peers ADD COLUMN last_ok TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE net_peers ADD COLUMN last_try TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE net_peers ADD COLUMN last_error TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE net_peers ADD COLUMN box_key TEXT NOT NULL DEFAULT ''",
     // Le journal des ruptures et des substitutions — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS supply_events (
         id          INTEGER PRIMARY KEY,
@@ -34354,6 +34358,99 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Noter la clé de boîte qu'une officine appairée annonce.
+    pub fn set_net_box_key(&self, device: &str, key: &str) -> Result<(), String> {
+        self.conn
+            .execute(
+                "UPDATE net_peers SET box_key = ?2 WHERE device = ?1 AND box_key <> ?2",
+                (device, key.trim()),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(())
+    }
+
+    /// Les clés de boîte connues, par officine (empreinte hex).
+    pub fn net_box_keys(&self) -> Result<std::collections::HashMap<String, String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT device, box_key FROM net_peers WHERE box_key <> ''")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les messages écrits ici dans une conversation avec d'autres
+    /// officines — à publier, s'ils ne l'ont pas été.
+    pub fn outgoing_net_messages(&self) -> Result<Vec<crate::messages::Outgoing>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT m.uid, c.uid, c.title, c.peers, m.author, m.body, m.sent_at
+                 FROM messages m JOIN conversations c ON c.id = m.conversation_id
+                 WHERE c.channel = 'officines' AND m.source = ''
+                 ORDER BY m.sent_at, m.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::messages::Outgoing {
+                    uid: r.get(0)?,
+                    conversation: r.get(1)?,
+                    title: r.get(2)?,
+                    peers: split_list(&r.get::<_, String>(3)?),
+                    author: r.get(4)?,
+                    body: r.get(5)?,
+                    sent_at: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Ranger un message reçu d'une autre officine : sa conversation
+    /// (retrouvée par son `uid`, ouverte sinon, avec les officines qu'elle
+    /// réunit **moins celle-ci**), puis le message, une fois. Rend vrai
+    /// pour un message nouveau.
+    pub fn receive_net_message(
+        &self,
+        m: &crate::messages::Incoming,
+        me: &str,
+    ) -> Result<bool, String> {
+        let conv = match self.conversation_by_uid(&m.conversation)? {
+            Some(id) => id,
+            None => {
+                let peers: Vec<String> = m
+                    .peers
+                    .iter()
+                    .filter(|p| p.as_str() != me)
+                    .cloned()
+                    .collect();
+                self.create_conversation(
+                    &m.conversation,
+                    crate::messages::Channel::Officines,
+                    &m.title,
+                    &[],
+                    None,
+                    &peers,
+                    "",
+                )?
+            }
+        };
+        Ok(self
+            .post_message(
+                conv,
+                &m.uid,
+                &m.author,
+                &m.body,
+                None,
+                &m.officine,
+                Some(&m.sent_at),
+            )?
+            .is_some())
     }
 
     /// Les officines appairées : (clé, nom, adresse, date).

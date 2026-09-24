@@ -15,6 +15,9 @@ chacha20poly1305 = "0.11"
 # Who wrote a record. A signature over the record's own name, so a relay
 # that stores ciphertext cannot invent a line in a register.
 ed25519-dalek = "2"
+# The box key exchange (`boxed.rs`): X25519 on the Montgomery form. Already
+# in the tree through ed25519-dalek; named here because `boxed` calls it.
+curve25519-dalek = "4"
 # Names records (content hashes) and derives keys (`derive_key`, which
 # is a KDF with a domain string and not a bare hash).
 blake3 = "1"

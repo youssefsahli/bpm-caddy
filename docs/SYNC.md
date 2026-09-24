@@ -415,6 +415,34 @@ enregistrements), la télémétrie du poste, le journal du réseau
 d'officines et ce que ce poste en a déjà envoyé, et tout `sync_*` propre
 au poste.
 
+### 7.7 La boîte scellée : un message pour quelques officines
+
+Le trousseau du réseau ouvre tout ce que le réseau transporte, et toutes
+les officines membres le tiennent. Un message pour deux officines sur
+dix passe donc sous un **second sceau**, `bpm_sync::boxed` :
+
+* chaque appareil a une **clé de boîte** X25519, troisième dérivation de
+  sa graine (`Device::box_secret`, domaine `bpm-caddy/device-box/v1`) —
+  jamais la clé de signature ;
+* chaque officine **annonce** la partie publique une fois dans le journal
+  (`{"t":"boite","k":…}`) ; la signature de l'enregistrement dit qui
+  l'annonce, et `net_peers.box_key` la garde ;
+* un message est scellé une fois sous une clé de contenu tirée au hasard
+  (XChaCha20-Poly1305), elle-même scellée pour chaque destinataire sous
+  une clé dérivée (BLAKE3 `derive_key`) d'un échange X25519 avec une clé
+  jetable ; l'en-tête est lié au contenu ;
+* la boîte **ne nomme pas** ses destinataires : chacun essaie les
+  entrées ; l'expéditrice s'y met aussi, pour se relire ;
+* dans le journal, la charge commence par `BOX1` : les lecteurs JSON
+  (ruptures, versions, valeurs) la laissent passer.
+
+Un message qui nomme un patient ne part qu'après confirmation, et
+l'envoi est écrit au journal des accès (`transmis`). Un message dont une
+destinataire n'a pas encore annoncé sa clé attend la synchronisation
+suivante. Deux postes qui absorbent la même boîte avant de se
+synchroniser entre eux peuvent l'écrire deux fois ; l'`uid` évite tout
+autre doublon.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a

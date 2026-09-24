@@ -76,10 +76,20 @@ pub enum Act {
     /// journal, `print(patients())` était le moyen de tout regarder sans
     /// laisser de trace. Sans dossier, comme l'export.
     Console,
+    /// Le dossier a été nommé dans un message parti à une autre officine,
+    /// après confirmation — la seule façon dont un patient quitte
+    /// l'officine par le réseau.
+    Transmis,
 }
 
 impl Act {
-    pub const ALL: [Act; 4] = [Act::Ouvert, Act::Exporte, Act::Purge, Act::Console];
+    pub const ALL: [Act; 5] = [
+        Act::Ouvert,
+        Act::Exporte,
+        Act::Purge,
+        Act::Console,
+        Act::Transmis,
+    ];
 
     /// Ce qui est écrit dans la base. Ne change jamais.
     pub fn key(self) -> &'static str {
@@ -88,6 +98,7 @@ impl Act {
             Act::Exporte => "exporte",
             Act::Purge => "purge",
             Act::Console => "console",
+            Act::Transmis => "transmis",
         }
     }
 
@@ -104,6 +115,7 @@ impl Act {
             Act::Exporte => tr("audit_act_exporte"),
             Act::Purge => tr("audit_act_purge"),
             Act::Console => tr("audit_act_console"),
+            Act::Transmis => tr("audit_act_transmis"),
         }
     }
 }
@@ -616,7 +628,8 @@ mod tests {
                 (Act::Ouvert, 3),
                 (Act::Exporte, 1),
                 (Act::Purge, 1),
-                (Act::Console, 0)
+                (Act::Console, 0),
+                (Act::Transmis, 0)
             ]
         );
         // Le plus actif d'abord, puis par nom.
@@ -831,7 +844,7 @@ mod tests {
         }
         assert_eq!(
             Act::ALL.map(Act::key),
-            ["ouvert", "exporte", "purge", "console"]
+            ["ouvert", "exporte", "purge", "console", "transmis"]
         );
         assert_eq!(Act::from_key("ce-que-fera-la-suite"), None);
     }

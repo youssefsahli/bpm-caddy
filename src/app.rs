@@ -6189,6 +6189,12 @@ impl Session {
             .into_iter()
             .map(|p| (p.device.clone(), p.name.clone()))
             .collect();
+        self.msg.peer_keys = self
+            .db
+            .net_box_keys()
+            .unwrap_or_default()
+            .into_keys()
+            .collect();
         self.msg.unread = self.db.unread_counts(&op).unwrap_or_default();
         if self
             .msg
@@ -6245,6 +6251,38 @@ impl Session {
                 self.reload_messages(&op);
             }
             Err(e) => self.msg.note = Some((true, e)),
+        }
+    }
+
+    /// Écrire à une officine du réseau : la conversation sans titre qui
+    /// la réunit seule à celle-ci, ou une nouvelle.
+    fn write_to_officine(&mut self, device: &str) {
+        let op = self.msg.loaded_for.clone().unwrap_or_default();
+        let all = self.db.conversations().unwrap_or_default();
+        let found = all.iter().find(|c| {
+            c.channel == crate::messages::Channel::Officines
+                && c.title.trim().is_empty()
+                && c.peers == [device.to_owned()]
+        });
+        let id = match found {
+            Some(c) => Some(c.id),
+            None => self
+                .db
+                .create_conversation(
+                    "",
+                    crate::messages::Channel::Officines,
+                    "",
+                    &[],
+                    None,
+                    &[device.to_owned()],
+                    &op,
+                )
+                .map_err(|e| self.msg.note = Some((true, e)))
+                .ok(),
+        };
+        if let Some(id) = id {
+            self.reload_messages(&op);
+            self.open_conversation(id);
         }
     }
 
@@ -7180,6 +7218,10 @@ impl Session {
             .unwrap_or_default();
         self.conn_log.push_back((at, bad, what.to_owned()));
         self.conn_dirty = true;
+        // Une synchronisation a pu apporter des messages.
+        if let Some(op) = self.msg.loaded_for.clone() {
+            self.reload_messages(&op);
+        }
         while self.conn_log.len() > 50 {
             self.conn_log.pop_front();
         }
@@ -10563,6 +10605,14 @@ struct MessagesState {
     /// Les noms des officines du réseau, par empreinte — relus avec la
     /// liste, pas à chaque image.
     peer_names: Vec<(String, String)>,
+    /// Les officines dont la clé de boîte est connue : on peut leur écrire.
+    peer_keys: std::collections::HashSet<String>,
+    /// Le canal d'une nouvelle conversation, et les officines choisies.
+    new_channel: Option<crate::messages::Channel>,
+    new_peers: std::collections::BTreeSet<String>,
+    /// Un message qui nomme un patient et part à d'autres officines
+    /// attend qu'on confirme.
+    confirm_send: bool,
     /// Quelque chose a bougé depuis la dernière lecture.
     dirty: bool,
     note: Option<(bool, String)>,
@@ -54606,6 +54656,7 @@ impl App {
             .collect();
         let mut open: Option<i64> = None;
         let mut write_to: Option<String> = None;
+        let mut write_net: Option<String> = None;
         motif::panel(ui, list_rect, Some(tr("msg_list")), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
@@ -54625,7 +54676,28 @@ impl App {
                                 )
                         })
                         .collect();
-                    if !starred.is_empty() {
+                    // Et les officines favorites, par leur nom.
+                    let starred_net: Vec<(String, String)> = session
+                        .msg
+                        .peer_names
+                        .iter()
+                        .filter(|(d, _)| {
+                            crate::favorites::has(
+                                &session.favorites,
+                                crate::favorites::Kind::Contact,
+                                &format!("net:{d}"),
+                            )
+                        })
+                        .map(|(d, n)| {
+                            let name = if n.trim().is_empty() {
+                                crate::network::peer_groups(d)
+                            } else {
+                                n.trim().to_owned()
+                            };
+                            (d.clone(), name)
+                        })
+                        .collect();
+                    if !starred.is_empty() || !starred_net.is_empty() {
                         ui.horizontal_wrapped(|ui| {
                             for (i, label) in starred {
                                 if motif::icon_button(ui, Some(motif::Pict::StarFull), i)
@@ -54633,6 +54705,14 @@ impl App {
                                     .clicked()
                                 {
                                     write_to = Some(i.clone());
+                                }
+                            }
+                            for (d, name) in &starred_net {
+                                if motif::icon_button(ui, Some(motif::Pict::StarFull), name)
+                                    .on_hover_text(trf("msg_write_to", name))
+                                    .clicked()
+                                {
+                                    write_net = Some(d.clone());
                                 }
                             }
                         });
@@ -54676,15 +54756,23 @@ impl App {
         if let Some(who) = write_to {
             session.write_to(&[who]);
         }
+        if let Some(device) = write_net {
+            session.write_to_officine(&device);
+        }
         match session.msg.pane {
-            MessagesPane::Thread => Self::messages_thread(ui, session, pane_rect),
+            MessagesPane::Thread => Self::messages_thread(ui, session, pane_rect, config),
             MessagesPane::New => Self::messages_new(ui, session, pane_rect, &team),
             MessagesPane::Groups => Self::messages_groups(ui, session, pane_rect, &team),
         }
     }
 
     /// La conversation ouverte : ses messages, puis ce qu'on écrit.
-    fn messages_thread(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+    fn messages_thread(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        config: &Config,
+    ) {
         let Some(id) = session.msg.open else {
             motif::panel(ui, rect, None, |ui| {
                 ui.label(
@@ -54739,14 +54827,11 @@ impl App {
                         );
                     }
                     for m in &session.msg.thread {
-                        let who = if m.source.is_empty() {
-                            if m.author.is_empty() {
-                                "—".to_owned()
-                            } else {
-                                m.author.clone()
-                            }
-                        } else {
-                            m.source.clone()
+                        let who = match (m.source.is_empty(), m.author.is_empty()) {
+                            (true, true) => "—".to_owned(),
+                            (true, false) => m.author.clone(),
+                            (false, true) => m.source.clone(),
+                            (false, false) => format!("{} · {}", m.source, m.author),
                         };
                         ui.horizontal_wrapped(|ui| {
                             ui.label(
@@ -54835,15 +54920,76 @@ impl App {
                     );
                 }
             });
+            if session.msg.confirm_send {
+                ui.horizontal_wrapped(|ui| {
+                    ui.label(
+                        egui::RichText::new(trf(
+                            "msg_confirm_patient",
+                            viewing
+                                .as_ref()
+                                .map(|(_, n)| n.as_str())
+                                .unwrap_or_default(),
+                        ))
+                        .size(motif::pt(ui, 10.5))
+                        .color(motif::warn()),
+                    );
+                    if motif::button(ui, tr("msg_confirm_send")).clicked() {
+                        send = true;
+                    }
+                    if motif::button(ui, tr("msg_confirm_cancel")).clicked() {
+                        session.msg.confirm_send = false;
+                    }
+                });
+            }
         });
+        let to_officines = session
+            .msg
+            .conversations
+            .iter()
+            .find(|c| c.id == id)
+            .is_some_and(|c| c.channel == crate::messages::Channel::Officines);
         if send {
             let patient = if session.msg.with_patient {
-                viewing.map(|(id, _)| id)
+                viewing.as_ref().map(|(id, _)| *id)
             } else {
                 None
             };
+            // **Un patient ne sort de l'officine qu'après confirmation**,
+            // et la sortie est écrite au journal des accès.
+            if to_officines && patient.is_some() && !session.msg.confirm_send {
+                session.msg.confirm_send = true;
+                return;
+            }
+            if to_officines {
+                if let Some(pid) = patient {
+                    let line = session
+                        .viewing
+                        .as_ref()
+                        .map(|p| {
+                            trn(
+                                "msg_patient_line",
+                                &[&p.full_name(), &db::format_french_date(&p.birth_date)],
+                            )
+                        })
+                        .unwrap_or_default();
+                    session.msg.draft = format!("{line}\n{}", session.msg.draft.trim());
+                    let op = session.msg.loaded_for.clone().unwrap_or_default();
+                    let _ = session.db.log_access(&op, crate::audit::Act::Transmis, pid);
+                }
+            }
+            session.msg.confirm_send = false;
             session.send_message(patient);
+            // Le message part tout de suite : entre postes par le fil des
+            // postes, entre officines par une synchronisation du réseau.
+            #[cfg(feature = "sync")]
+            if to_officines {
+                session.start_net_sync(config);
+            } else if let Some((_, poke)) = &session.posts_auto {
+                let _ = poke.send(crate::postes::Poke::Now);
+            }
         }
+        #[cfg(not(feature = "sync"))]
+        let _ = config;
     }
 
     /// Une nouvelle conversation d'équipe : à toute l'équipe, à un groupe,
@@ -54856,6 +55002,7 @@ impl App {
     ) {
         let me = session.msg.loaded_for.clone().unwrap_or_default();
         let mut create = false;
+        let mut create_net = false;
         let mut cancel = false;
         let mut star: Option<String> = None;
         motif::panel(ui, rect, Some(tr("msg_new")), |ui| {
@@ -54874,6 +55021,93 @@ impl App {
                         );
                     });
                     ui.add_space(4.0);
+                    // **Deux canaux** : l'équipe, et — quand l'officine
+                    // est d'un réseau — d'autres officines.
+                    let officines = !session.msg.peer_names.is_empty();
+                    let channel = session
+                        .msg
+                        .new_channel
+                        .unwrap_or(crate::messages::Channel::Equipe);
+                    if officines {
+                        ui.horizontal_wrapped(|ui| {
+                            for (c, label) in [
+                                (crate::messages::Channel::Equipe, tr("msg_channel_team")),
+                                (crate::messages::Channel::Officines, tr("msg_channel_net")),
+                            ] {
+                                if motif::toggle(ui, label, channel == c).clicked() {
+                                    session.msg.new_channel = Some(c);
+                                }
+                            }
+                        });
+                        ui.add_space(4.0);
+                    }
+                    if channel == crate::messages::Channel::Officines {
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(tr("msg_net_note"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            )
+                            .wrap(),
+                        );
+                        let peers = session.msg.peer_names.clone();
+                        for (device, name) in &peers {
+                            let label = if name.trim().is_empty() {
+                                crate::network::peer_groups(device)
+                            } else {
+                                name.trim().to_owned()
+                            };
+                            ui.horizontal_wrapped(|ui| {
+                                let key = format!("net:{device}");
+                                let on = crate::favorites::has(
+                                    &session.favorites,
+                                    crate::favorites::Kind::Contact,
+                                    &key,
+                                );
+                                if motif::star(ui, on)
+                                    .on_hover_text(if on {
+                                        tr("fav_remove_tooltip")
+                                    } else {
+                                        tr("fav_contact_tooltip")
+                                    })
+                                    .clicked()
+                                {
+                                    star = Some(key);
+                                }
+                                let mut picked = session.msg.new_peers.contains(device);
+                                if motif::checkbox(ui, &mut picked, &label).changed() {
+                                    if picked {
+                                        session.msg.new_peers.insert(device.clone());
+                                    } else {
+                                        session.msg.new_peers.remove(device);
+                                    }
+                                }
+                                if !session.msg.peer_keys.contains(device) {
+                                    ui.label(
+                                        egui::RichText::new(tr("msg_net_no_key"))
+                                            .size(motif::pt(ui, 10.0))
+                                            .color(motif::text_faint()),
+                                    );
+                                }
+                            });
+                        }
+                        ui.add_space(6.0);
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button_enabled(
+                                ui,
+                                tr("msg_create"),
+                                !session.msg.new_peers.is_empty(),
+                            )
+                            .clicked()
+                            {
+                                create_net = true;
+                            }
+                            if motif::button(ui, tr("msg_cancel")).clicked() {
+                                cancel = true;
+                            }
+                        });
+                        return;
+                    }
                     ui.horizontal_wrapped(|ui| {
                         for (to, label) in [
                             (MessagesTo::People, tr("msg_to_people")),
@@ -54976,25 +55210,53 @@ impl App {
                 });
         });
         if let Some(i) = star {
-            let label = team
-                .iter()
-                .find(|(x, _)| *x == i)
-                .map(|(_, l)| l.clone())
-                .unwrap_or_else(|| i.clone());
-            let on = !crate::favorites::has(
-                &session.favorites,
-                crate::favorites::Kind::Contact,
-                &format!("op:{i}"),
-            );
+            // Un collègue par ses initiales, une officine par sa clé
+            // « net:… » déjà formée.
+            let (key, label) = if let Some(device) = i.strip_prefix("net:") {
+                let name = session
+                    .msg
+                    .peer_names
+                    .iter()
+                    .find(|(d, _)| d == device)
+                    .map(|(_, n)| n.clone())
+                    .unwrap_or_default();
+                (i.clone(), name)
+            } else {
+                let label = team
+                    .iter()
+                    .find(|(x, _)| *x == i)
+                    .map(|(_, l)| l.clone())
+                    .unwrap_or_else(|| i.clone());
+                (format!("op:{i}"), label)
+            };
+            let on =
+                !crate::favorites::has(&session.favorites, crate::favorites::Kind::Contact, &key);
             let who = session.favorites_of.clone().unwrap_or_default();
-            let _ = session.db.set_favorite(
-                &who,
-                crate::favorites::Kind::Contact,
-                &format!("op:{i}"),
-                &label,
-                on,
-            );
+            let _ =
+                session
+                    .db
+                    .set_favorite(&who, crate::favorites::Kind::Contact, &key, &label, on);
             session.load_favorites(&who);
+        }
+        if create_net {
+            let peers: Vec<String> = session.msg.new_peers.iter().cloned().collect();
+            match session.db.create_conversation(
+                "",
+                crate::messages::Channel::Officines,
+                session.msg.new_title.trim(),
+                &[],
+                None,
+                &peers,
+                &me,
+            ) {
+                Ok(id) => {
+                    session.msg.new_peers.clear();
+                    session.reload_messages(&me);
+                    session.open_conversation(id);
+                }
+                Err(e) => session.msg.note = Some((true, e)),
+            }
+            return;
         }
         if cancel {
             session.msg.pane = MessagesPane::Thread;

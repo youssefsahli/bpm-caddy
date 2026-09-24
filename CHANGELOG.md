@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.312.0] - 2026-09-24
+
+### Added
+- **Messagerie entre officines.** Une conversation peut s'adresser à une
+  ou plusieurs officines du réseau. Chaque message est chiffré pour elles
+  seules : les autres officines du réseau le transportent sans pouvoir le
+  lire. Il part aussitôt, par une synchronisation du réseau. Nommer un
+  patient dans un message à une autre officine demande une confirmation,
+  inscrite au journal des accès.
+- **Officines favorites** : une étoile, et un bouton en tête des
+  conversations pour leur écrire d'un clic.
+
 ## [0.311.0] - 2026-09-24
 
 ### Added

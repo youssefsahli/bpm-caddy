@@ -162,6 +162,19 @@ impl Device {
         blake3::derive_key("bpm-caddy/device-handshake/v1", &self.seed)
     }
 
+    /// The secret of this post's *box key* — what opens a
+    /// [`crate::boxed`] sealed for it. A third derivation of the same
+    /// seed, for a third purpose.
+    pub fn box_secret(&self) -> [u8; 32] {
+        blake3::derive_key("bpm-caddy/device-box/v1", &self.seed)
+    }
+
+    /// The public half of the box key, which this post announces so that
+    /// others can seal for it.
+    pub fn box_public(&self) -> [u8; 32] {
+        crate::boxed::public_of(&self.box_secret())
+    }
+
     /// This post's public name.
     pub fn id(&self) -> DeviceId {
         DeviceId(self.signing().verifying_key().to_bytes())

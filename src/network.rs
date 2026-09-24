@@ -219,6 +219,86 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(key);
         }
+        // **La clé de boîte**, annoncée une fois : ce qui permet aux
+        // autres officines de sceller un message pour celle-ci seule.
+        let box_public = hex(&self.device.box_public());
+        let key = format!("boite:{box_public}");
+        if !already.contains(&key) {
+            let payload = serde_json::json!({
+                "t": "boite",
+                "k": box_public,
+                "officine": officine,
+            })
+            .to_string()
+            .into_bytes();
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(key);
+        }
+        // **Les messages**, scellés pour leurs seules officines — et pour
+        // celle-ci, qui les relit comme les autres. Un message dont une
+        // destinataire n'a pas encore annoncé sa clé attend la prochaine
+        // synchronisation.
+        let keys: std::collections::HashMap<String, [u8; 32]> = db
+            .net_box_keys()?
+            .into_iter()
+            .filter_map(|(device, k)| unhex::<32>(&k).map(|b| (device, b)))
+            .collect();
+        let mine = self.device.box_public();
+        for m in db.outgoing_net_messages()? {
+            let key = format!("msg:{}", m.uid);
+            if already.contains(&key) {
+                continue;
+            }
+            let Some(mut recipients) = m
+                .peers
+                .iter()
+                .map(|p| keys.get(p).copied())
+                .collect::<Option<Vec<[u8; 32]>>>()
+            else {
+                continue;
+            };
+            recipients.push(mine);
+            let mut all_peers = m.peers.clone();
+            all_peers.push(hex(&self.device.id().0));
+            let inner = crate::messages::Incoming {
+                uid: m.uid.clone(),
+                conversation: m.conversation.clone(),
+                title: m.title.clone(),
+                peers: all_peers,
+                officine: officine.to_owned(),
+                author: m.author.clone(),
+                body: m.body.clone(),
+                sent_at: m.sent_at.clone(),
+            };
+            let bytes = serde_json::to_vec(&inner).map_err(|e| e.to_string())?;
+            let sealed = bpm_sync::boxed::seal(&recipients, &bytes, &mut bpm_sync::OsEntropy)
+                .map_err(|e| format!("{e:?}"))?;
+            let mut payload = crate::messages::BOX_TAG.to_vec();
+            payload.extend(sealed);
+            if payload.len() > bpm_sync::MAX_PAYLOAD {
+                return Err(crate::strings::tr("msg_too_long").to_owned());
+            }
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(key);
+        }
         self.keep(db)?;
         db.mark_published(&done)?;
         Ok(done.len())
@@ -298,6 +378,30 @@ impl Net {
         // came in — written after, it would silently answer it.
         db.version_shared_entries("")?;
         db.receive_card_edits(&versions)?;
+        // Les clés de boîte annoncées, puis les messages scellés pour
+        // celle-ci — ceux qui ne s'ouvrent pas sont pour d'autres.
+        for f in &facts {
+            if let Some(k) = serde_json::from_slice::<serde_json::Value>(&f.payload)
+                .ok()
+                .filter(|v| v.get("t").and_then(|t| t.as_str()) == Some("boite"))
+                .and_then(|v| v.get("k").and_then(|k| k.as_str()).map(str::to_owned))
+            {
+                db.set_net_box_key(&hex(&f.author.0), &k)?;
+            }
+        }
+        let secret = self.device.box_secret();
+        let me_hex = hex(&me.0);
+        for f in &facts {
+            let Some(sealed) = f.payload.strip_prefix(crate::messages::BOX_TAG) else {
+                continue;
+            };
+            let Ok(inner) = bpm_sync::boxed::open(&secret, sealed) else {
+                continue;
+            };
+            if let Ok(m) = serde_json::from_slice::<crate::messages::Incoming>(&inner) {
+                db.receive_net_message(&m, &me_hex)?;
+            }
+        }
         db.receive_supply_events(&events)
     }
 
@@ -1015,6 +1119,118 @@ mod tests {
     /// première. Le dossier ne contient que des octets scellés — ni le
     /// produit ni le nom de l'officine n'y sont lisibles —, et une
     /// officine qui n'est pas appairée n'y est pas lue.
+    /// **Un message entre deux officines, que la troisième transporte
+    /// sans le lire.** Chacune annonce sa clé de boîte ; le message est
+    /// scellé pour B seule (et A, qui l'a écrit) ; C, du même réseau,
+    /// reçoit l'enregistrement et n'en tire rien.
+    #[test]
+    fn a_message_reaches_its_officine_and_no_other() {
+        use crate::messages::Channel;
+        let (dir_a, _sa, a) = officine("msg-a");
+        let (_db, _sb, b) = officine("msg-b");
+        let (_dc, _sc, c) = officine("msg-c");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        let key = a.setting("net_trousseau").unwrap();
+        b.net_key("net_trousseau", &key).unwrap();
+        c.net_key("net_trousseau", &key).unwrap();
+        let ids: Vec<String> = [&a, &b, &c]
+            .iter()
+            .map(|d| hex(&Net::load(d).unwrap().device.id().0))
+            .collect();
+        for (i, d) in [&a, &b, &c].into_iter().enumerate() {
+            for (k, id) in ids.iter().enumerate() {
+                if k != i {
+                    d.add_net_peer(id, "", "2026-09-24").unwrap();
+                }
+            }
+        }
+        // Un premier tour : chacune annonce sa clé de boîte.
+        for (d, name) in [(&a, "Centre"), (&b, "Port"), (&c, "Gare")] {
+            let mut n = Net::load(d).unwrap();
+            n.publish(d, name).unwrap();
+            n.exchange_folder(d, &folder).unwrap();
+        }
+        for d in [&a, &b, &c] {
+            let mut n = Net::load(d).unwrap();
+            n.exchange_folder(d, &folder).unwrap();
+            n.absorb(d).unwrap();
+        }
+        assert_eq!(
+            a.net_box_keys().unwrap().len(),
+            2,
+            "A connaît les clés de B et C"
+        );
+        // A écrit à B.
+        let conv = a
+            .create_conversation(
+                "",
+                Channel::Officines,
+                "Rupture Diprosone",
+                &[],
+                None,
+                &[ids[1].clone()],
+                "CL",
+            )
+            .unwrap();
+        a.post_message(
+            conv,
+            "",
+            "CL",
+            "Il vous en reste ? Patient : Jean Dupont",
+            None,
+            "",
+            Some("2026-09-24 10:00:00"),
+        )
+        .unwrap();
+        let mut na = Net::load(&a).unwrap();
+        assert_eq!(na.publish(&a, "Centre").unwrap(), 1);
+        na.exchange_folder(&a, &folder).unwrap();
+        for entry in std::fs::read_dir(&folder).unwrap().flatten() {
+            let text = String::from_utf8_lossy(&std::fs::read(entry.path()).unwrap()).to_string();
+            assert!(!text.contains("Dupont"), "rien de lisible dans le dossier");
+        }
+        let mut nb = Net::load(&b).unwrap();
+        nb.exchange_folder(&b, &folder).unwrap();
+        nb.absorb(&b).unwrap();
+        let theirs = b.conversations().unwrap();
+        assert_eq!(theirs.len(), 1);
+        assert_eq!(theirs[0].title, "Rupture Diprosone");
+        assert_eq!(theirs[0].peers, vec![ids[0].clone()], "B répond à A");
+        let got = b.conversation_messages(theirs[0].id).unwrap();
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].source, "Centre");
+        assert_eq!(got[0].author, "CL");
+        // Absorber deux fois ne double rien.
+        nb.absorb(&b).unwrap();
+        assert_eq!(b.conversation_messages(theirs[0].id).unwrap().len(), 1);
+        // C a l'enregistrement, pas le message.
+        let mut nc = Net::load(&c).unwrap();
+        nc.exchange_folder(&c, &folder).unwrap();
+        nc.absorb(&c).unwrap();
+        assert!(c.conversations().unwrap().is_empty(), "C ne lit rien");
+        // Et la réponse de B revient dans la conversation de A.
+        b.post_message(
+            theirs[0].id,
+            "",
+            "YS",
+            "Oui, deux boîtes.",
+            None,
+            "",
+            Some("2026-09-24 10:05:00"),
+        )
+        .unwrap();
+        nb.publish(&b, "Port").unwrap();
+        nb.exchange_folder(&b, &folder).unwrap();
+        let mut na = Net::load(&a).unwrap();
+        na.exchange_folder(&a, &folder).unwrap();
+        na.absorb(&a).unwrap();
+        assert_eq!(a.conversations().unwrap().len(), 1, "la même conversation");
+        let thread = a.conversation_messages(conv).unwrap();
+        assert_eq!(thread.len(), 2);
+        assert_eq!(thread[1].source, "Port");
+    }
+
     #[test]
     fn two_officines_share_a_substitution_through_a_folder_and_nothing_readable_crosses() {
         let (dir_a, _sa, a) = officine("a");
@@ -1058,7 +1274,8 @@ mod tests {
         a.update_drug_by(&after, &before, "CL", false).unwrap();
 
         let mut na = Net::load(&a).unwrap();
-        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 3);
+        // Trois enregistrements, et l'annonce de la clé de boîte.
+        assert_eq!(na.publish(&a, "Pharmacie du Centre").unwrap(), 4);
         assert_eq!(
             na.publish(&a, "Pharmacie du Centre").unwrap(),
             0,
@@ -1074,7 +1291,7 @@ mod tests {
         }
 
         let mut nb = Net::load(&b).unwrap();
-        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 3);
+        assert_eq!(nb.exchange_folder(&b, &folder).unwrap(), 4);
         assert_eq!(nb.absorb(&b).unwrap(), 1);
         let tried = crate::ruptures::tried(&b.supply_events().unwrap(), "Diprosone");
         assert_eq!(tried.len(), 1);
@@ -1098,11 +1315,12 @@ mod tests {
         // Relu : rien de neuf.
         assert_eq!(nb.absorb(&b).unwrap(), 0);
         // **Et B sait qui lui a écrit, combien, et depuis quand** : le nom
-        // sous lequel A signe, ses trois enregistrements, des nouvelles
-        // datées — arrivées par le dossier, sans conversation directe.
+        // sous lequel A signe, ses quatre enregistrements (la clé de
+        // boîte comprise), des nouvelles datées — arrivées par le dossier,
+        // sans conversation directe.
         let peer = &b.net_peers().unwrap()[0];
         assert_eq!(peer.seen_as, "Pharmacie du Centre");
-        assert_eq!(peer.received, 3);
+        assert_eq!(peer.received, 4);
         assert!(!peer.last_heard.is_empty(), "des nouvelles datées");
         assert!(
             peer.last_ok.is_empty() && peer.last_try.is_empty(),

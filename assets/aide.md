@@ -971,6 +971,18 @@ Un message peut **lier le dossier ouvert** : son nom s'affiche dans le
 fil, et un clic ouvre le dossier. Ctrl+Entrée envoie ; un message envoyé
 ne se modifie pas.
 
+**Avec d'autres officines.** Quand l'officine est d'un réseau, une
+nouvelle conversation peut s'adresser à des **officines** plutôt qu'à
+l'équipe. Chaque message est chiffré pour les seules officines choisies :
+les autres officines du réseau le transportent sans pouvoir le lire. Il
+part tout de suite, par une synchronisation du réseau. Une officine qui
+n'a pas encore annoncé sa clé le reçoit après sa prochaine
+synchronisation. Lier le dossier ouvert à un message pour une autre
+officine demande une **confirmation** : le message porte alors le nom et
+la date de naissance du patient, et l'envoi est inscrit au journal des
+accès. Les officines favorites (étoile) ont leur bouton en tête des
+conversations.
+
 # Connexions
 
 L'icône à trois nœuds, en bas à droite de la barre d'état, indique le

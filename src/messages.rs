@@ -90,6 +90,42 @@ pub struct Message {
     pub sent_at: String,
 }
 
+/// Un message écrit ici, à sceller pour d'autres officines.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Outgoing {
+    pub uid: String,
+    /// L'`uid` de la conversation.
+    pub conversation: String,
+    pub title: String,
+    /// Les officines destinataires (empreintes hex).
+    pub peers: Vec<String>,
+    /// Les initiales de qui l'a écrit.
+    pub author: String,
+    pub body: String,
+    pub sent_at: String,
+}
+
+/// Ce qu'une boîte scellée porte — écrit par l'officine qui envoie, lu
+/// par celles qui reçoivent.
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct Incoming {
+    pub uid: String,
+    pub conversation: String,
+    pub title: String,
+    /// Toutes les officines de la conversation, l'expéditrice comprise.
+    pub peers: Vec<String>,
+    /// Le nom de l'officine qui écrit.
+    pub officine: String,
+    /// Les initiales de qui a écrit, chez elle.
+    pub author: String,
+    pub body: String,
+    pub sent_at: String,
+}
+
+/// Le préfixe d'une charge scellée dans le journal du réseau : les autres
+/// lecteurs, qui attendent du JSON, la laissent passer.
+pub const BOX_TAG: &[u8] = b"BOX1";
+
 /// Les initiales d'une liste, rangées et sans doublon, sans les vides.
 pub fn normalize(members: &[String]) -> Vec<String> {
     let set: BTreeSet<String> = members

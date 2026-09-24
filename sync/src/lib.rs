@@ -80,6 +80,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod boxed;
 mod enc;
 mod journal;
 mod keys;
@@ -94,7 +95,7 @@ pub use journal::{Fact, Journal, Reading};
 pub use keys::{Device, DeviceId, Fingerprint, Trousseau};
 pub use link::Link;
 pub use meter::{Meter, Refusal, Report, Signal};
-pub use seal::{Hash, Record, Stream};
+pub use seal::{Hash, Record, Stream, MAX_PAYLOAD};
 pub use session::{drive, Intent, Session, Step};
 pub use wire::Frame;
 
