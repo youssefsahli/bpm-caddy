@@ -242,6 +242,50 @@ impl Net {
             .collect()
     }
 
+    /// **Les officines du réseau qu'on n'a pas appairées soi-même** : elles
+    /// écrivent au journal sous la clé de ce réseau — une autre officine
+    /// les y a donc fait entrer —, et le journal voyage entier d'une
+    /// officine à l'autre. `absorb` ne les lit pas tant qu'on ne les a pas
+    /// ajoutées : la carte les montre, l'officine décide.
+    ///
+    /// Leur nom est celui qu'elles écrivent dans leurs envois ; celles
+    /// qu'on a écartées (`ignored`, clés de [`ignore_key`]) n'y sont pas.
+    pub fn introduced(&self, ignored: &[String]) -> Vec<Introduced> {
+        let Some(trousseau) = &self.trousseau else {
+            return Vec::new();
+        };
+        let me = self.device.id();
+        let known = self.known();
+        let mut out: Vec<Introduced> = Vec::new();
+        for f in self.journal.read(trousseau, Stream::Reseau).facts {
+            if f.author == me || known.contains(&f.author) {
+                continue;
+            }
+            let device = hex(&f.author.0);
+            if ignored.contains(&ignore_key(&self.id, &device)) {
+                continue;
+            }
+            let name = serde_json::from_slice::<serde_json::Value>(&f.payload)
+                .ok()
+                .and_then(|v| v.get("officine")?.as_str().map(str::to_owned));
+            match out.iter_mut().find(|o| o.device == device) {
+                Some(o) => {
+                    o.records += 1;
+                    if let Some(n) = name.filter(|n| !n.trim().is_empty()) {
+                        o.name = n;
+                    }
+                }
+                None => out.push(Introduced {
+                    device,
+                    name: name.unwrap_or_default(),
+                    records: 1,
+                }),
+            }
+        }
+        out.sort_by(|a, b| a.name.cmp(&b.name).then(a.device.cmp(&b.device)));
+        out
+    }
+
     /// Créer un réseau : une clé neuve, que cette officine donnera à
     /// celles qu'elle invite.
     pub fn create(db: &Db) -> Result<(), String> {
@@ -631,7 +675,6 @@ impl Net {
         let part = folder.join(format!("{name}.bpmnet.part"));
         std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
         std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
-        let known = self.known();
         let mut added = 0;
         for entry in std::fs::read_dir(folder)
             .map_err(|e| e.to_string())?
@@ -655,16 +698,23 @@ impl Net {
                     break;
                 };
                 at += len;
-                // Signé par son auteur, d'une officine appairée, et **scellé
-                // sous la clé de ce réseau** : un dossier partagé par deux
-                // réseaux — ou le principal d'une officine qui est le second
-                // d'une autre — ne mêle pas leurs enregistrements.
+                // Signé par son auteur et **scellé sous la clé de ce
+                // réseau** : un dossier partagé par deux réseaux — ou le
+                // principal d'une officine qui est le second d'une autre —
+                // ne mêle pas leurs enregistrements.
+                //
+                // **Gardé au journal même d'une officine qu'on n'a pas
+                // appairée** : la clé du réseau prouve qu'un membre l'a fait
+                // entrer, comme ce qu'une conversation directe relaie déjà.
+                // Gardé, pas lu : `absorb` ne lit que les officines
+                // ajoutées, et la carte propose les autres — voir
+                // `introduced`.
                 if let Ok(record) = Record::decode(chunk) {
                     let ours = self
                         .trousseau
                         .as_ref()
                         .is_some_and(|t| record.open(t).is_ok());
-                    if ours && known.contains(&record.author()) && self.journal.insert(record) {
+                    if ours && self.journal.insert(record) {
                         added += 1;
                     }
                 }
@@ -750,6 +800,96 @@ pub enum Job {
     /// Composer l'adresse d'**une** officine : savoir si elle répond,
     /// sans attendre toutes les autres ni le dossier d'échange.
     Dial { device: String },
+}
+
+/// Une officine du réseau présentée par une autre : voir
+/// [`Net::introduced`].
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Introduced {
+    pub device: String,
+    /// Le nom qu'elle écrit dans ses envois — le dernier lu.
+    pub name: String,
+    /// Combien d'enregistrements d'elle le journal tient.
+    pub records: usize,
+}
+
+/// La clé d'une officine écartée d'un réseau, dans le réglage
+/// `net_ignored`.
+pub fn ignore_key(network: &str, device: &str) -> String {
+    format!("{network}|{device}")
+}
+
+/// Les officines écartées : ce que la carte ne propose plus d'ajouter.
+pub fn ignored(db: &Db) -> Vec<String> {
+    db.setting("net_ignored")
+        .and_then(|v| serde_json::from_str::<Vec<String>>(&v).ok())
+        .unwrap_or_default()
+}
+
+/// Écarter une officine d'un réseau (`on`), ou la reprendre.
+pub fn set_ignored(
+    db: &Db,
+    network: &str,
+    device: &str,
+    on: bool,
+    day: &str,
+) -> Result<(), String> {
+    let was = db.setting("net_ignored");
+    let mut list = ignored(db);
+    let key = ignore_key(network, device);
+    list.retain(|k| *k != key);
+    if on {
+        list.push(key);
+    }
+    let value = serde_json::to_string(&list).map_err(|e| e.to_string())?;
+    db.set_setting("net_ignored", &value, was.as_deref(), day, "")?;
+    Ok(())
+}
+
+/// **Ajouter une officine présentée par le réseau** : l'inscrire comme
+/// si on l'avait appairée — elle tient déjà la clé du réseau, qu'une
+/// autre officine lui a donnée —, sous le nom qu'elle écrit, puis lire
+/// ce qu'elle a envoyé.
+pub fn adopt(db: &Db, network: &str, device: &str, name: &str, day: &str) -> Result<usize, String> {
+    unhex::<32>(device).ok_or("identité illisible")?;
+    let was = db.net_members("")?.iter().any(|p| p.device == device);
+    db.add_net_peer(device, "", day)?;
+    db.add_net_membership(network, device, was)?;
+    if !name.trim().is_empty() {
+        let _ = db.set_net_peer(device, name.trim(), "", ("", ""));
+    }
+    set_ignored(db, network, device, false, day)?;
+    Net::load_network(db, network)?.absorb(db)
+}
+
+/// **Pour la démonstration** : une officine qu'un autre membre aurait fait
+/// entrer dans le réseau principal — une identité tirée de `seed`, et une
+/// annonce de sa boîte sous ce nom, au journal. Ce que la carte montre
+/// alors « présentée par le réseau ».
+pub fn demo_introduce(db: &Db, seed: [u8; 32], name: &str) -> Result<(), String> {
+    let mut net = Net::load(db)?;
+    let Some(trousseau) = net.trousseau.clone() else {
+        return Ok(());
+    };
+    let other = Device::from_seed(seed);
+    let payload = serde_json::json!({
+        "t": "boite",
+        "k": hex(&other.box_public()),
+        "officine": name,
+    })
+    .to_string()
+    .into_bytes();
+    net.journal
+        .write(
+            &other,
+            &trousseau,
+            Stream::Reseau,
+            &payload,
+            None,
+            &mut bpm_sync::OsEntropy,
+        )
+        .map_err(|e| format!("{e:?}"))?;
+    net.keep(db).map(|_| ())
 }
 
 /// Le code d'invitation : le ticket, puis où composer —
@@ -2557,5 +2697,63 @@ mod tests {
         ] {
             assert_eq!(heard_officine(&bad, ip), None, "{bad}");
         }
+    }
+
+    /// **Une officine présentée par le réseau** : A a fait entrer B, B a
+    /// fait entrer C. A ne connaît pas C, mais ce que C écrit lui arrive
+    /// par le journal : la carte le propose sous le nom que C écrit, A ne
+    /// lit rien de C tant qu'il ne l'a pas ajoutée, et une officine
+    /// écartée n'est plus proposée.
+    #[test]
+    fn an_officine_let_in_by_another_member_is_introduced_not_trusted() {
+        let (dir_a, _sa, a) = officine("intro-a");
+        let (dir_b, _sb, b) = officine("intro-b");
+        let (dir_c, _sc, c) = officine("intro-c");
+        Net::create(&a).unwrap();
+        drop((a, b, c));
+        let (da, db_) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+        assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        let (db2, dc) = pair(&dir_b, &dir_c, "");
+        assert!(matches!(db2, Some(Progress::Done(_))), "{db2:?}");
+        assert!(matches!(dc, Some(Progress::Done(_))), "{dc:?}");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let c = Db::open(&dir_c.join("net.db"), "secret").unwrap();
+        c.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        let folder = dir_c.join("echange");
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut net_c = Net::load(&c).unwrap();
+        net_c.publish(&c, "Pharmacie du Canal").unwrap();
+        net_c.exchange_folder(&c, &folder).unwrap();
+        let mut net_a = Net::load(&a).unwrap();
+        net_a.exchange_folder(&a, &folder).unwrap();
+        net_a.absorb(&a).unwrap();
+        let c_device = hex(&net_c.device.id().0);
+        let intro = net_a.introduced(&ignored(&a));
+        assert_eq!(intro.len(), 1, "{intro:?}");
+        assert_eq!(intro[0].device, c_device);
+        assert_eq!(intro[0].name, "Pharmacie du Canal");
+        assert!(
+            crate::ruptures::tried(&a.supply_events().unwrap(), "Diprosone").is_empty(),
+            "rien de C n'entre avant qu'on l'ajoute"
+        );
+        // Écartée, elle n'est plus proposée ; reprise, elle l'est.
+        set_ignored(&a, "", &c_device, true, "2026-09-24").unwrap();
+        assert!(net_a.introduced(&ignored(&a)).is_empty());
+        set_ignored(&a, "", &c_device, false, "2026-09-24").unwrap();
+        assert_eq!(net_a.introduced(&ignored(&a)).len(), 1);
+        // Ajoutée : ce qu'elle a envoyé entre, sous son nom.
+        adopt(&a, "", &c_device, "Pharmacie du Canal", "2026-09-24").unwrap();
+        assert_eq!(
+            crate::ruptures::tried(&a.supply_events().unwrap(), "Diprosone").len(),
+            1
+        );
+        assert!(a
+            .net_members("")
+            .unwrap()
+            .iter()
+            .any(|p| p.device == c_device && p.name == "Pharmacie du Canal"));
+        assert!(Net::load(&a).unwrap().introduced(&ignored(&a)).is_empty());
+        assert!(adopt(&a, "", "pas une clé", "", "2026-09-24").is_err());
     }
 }

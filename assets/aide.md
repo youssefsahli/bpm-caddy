@@ -1039,6 +1039,11 @@ poste ou inviter une officine. Les **officines voisines**, qui
 s'annoncent sur le réseau local sans être d'aucun réseau de celle-ci,
 sont sur l'arc « À portée », en cercle pointillé (plein au centre quand
 elle invite), sans lien dessiné : Inviter, ou Rejoindre son réseau.
+Les **officines présentées par le réseau** — qu'une autre officine y a
+fait entrer, et dont les envois arrivent par le dossier d'échange — sont
+sur l'arc de leur réseau, en cercle creux : leurs envois ne sont lus
+qu'une fois ajoutées (« Ajouter à mes officines », deux clics), ou elles
+sont écartées (« Écarter »).
 
 **Connexion au lancement** : les postes du groupe se découvrent et se
 synchronisent sur le réseau local ; le réseau d'officines se synchronise

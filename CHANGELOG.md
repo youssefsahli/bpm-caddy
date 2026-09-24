@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.318.0] - 2026-09-25
+
+### Added
+- **Officines présentées par le réseau.** Une officine qu'un membre a
+  fait entrer dans le réseau apparaît sur la carte des connexions, sur
+  l'arc de ce réseau, dès que ses envois arrivent par le dossier
+  d'échange. « Ajouter à mes officines » (deux clics) la compte parmi
+  les siennes et lit ce qu'elle a envoyé ; « Écarter » ne la propose
+  plus. Rien d'elle n'est lu avant.
+
+### Changed
+- Carte des connexions : sur un écran étroit, les noms des officines se
+  raccourcissent (« Gare » pour « Pharmacie de la Gare ») au lieu de se
+  couper ; le nom d'un réseau ne se pose plus sur une officine ni sur un
+  lien.
+
+### Fixed
+- La vue des connexions ne reste plus sur « Lecture impossible » après
+  une synchronisation ou la sauvegarde du jour : elle se relit d'elle-même.
+
 ## [0.317.0] - 2026-09-24
 
 ### Added

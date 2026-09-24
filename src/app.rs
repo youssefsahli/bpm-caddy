@@ -4631,6 +4631,14 @@ struct Session {
     /// automatique — la carte des connexions les pose « à portée ».
     #[cfg(feature = "sync")]
     near_officines: Vec<crate::network::Nearby>,
+    /// L'officine présentée dont « Ajouter » attend le second clic.
+    #[cfg(feature = "sync")]
+    conn_adopt_armed: Option<String>,
+    /// La largeur de carte où la légende s'est repliée : elle passe au
+    /// volet tant que la carte garde cette largeur.
+    conn_legend_aside: Option<i32>,
+    /// Quand relire la vue des connexions après une lecture tombée.
+    conn_retry: Option<Instant>,
     /// The officines' network synchronisation running in the background,
     /// at launch and then at its interval.
     #[cfg(feature = "sync")]
@@ -5466,6 +5474,10 @@ impl Session {
             posts_peers: Vec::new(),
             #[cfg(feature = "sync")]
             near_officines: Vec::new(),
+            #[cfg(feature = "sync")]
+            conn_adopt_armed: None,
+            conn_legend_aside: None,
+            conn_retry: None,
             #[cfg(feature = "sync")]
             net_auto: None,
             #[cfg(feature = "sync")]
@@ -7212,10 +7224,17 @@ impl Session {
             // qui la compte.
             let mut map_groups = Vec::new();
             let mut map_peers: Vec<(crate::network::Peer, usize)> = Vec::new();
+            let mut map_introduced = Vec::new();
+            let ignored = crate::network::ignored(&self.db);
             if let Ok(all) = NetSummary::read(&self.db).map(|s| s.networks) {
                 for (id, label) in all {
                     let g = map_groups.len();
                     map_groups.push(label);
+                    if let Ok(net) = crate::network::Net::load_network(&self.db, &id) {
+                        for i in net.introduced(&ignored) {
+                            map_introduced.push((i, g, id.clone()));
+                        }
+                    }
                     for p in self.db.net_members(&id).unwrap_or_default() {
                         if !map_peers.iter().any(|(q, _)| q.device == p.device) {
                             map_peers.push((p, g));
@@ -7224,6 +7243,7 @@ impl Session {
                 }
             }
             self.conn_summary = Some(ConnSummary {
+                map_introduced,
                 map_peers,
                 map_groups,
                 feed: network_feed(&self.supply_events, &self.card_edits, 12),
@@ -7302,6 +7322,10 @@ impl Session {
             match rx.try_recv() {
                 Ok(crate::network::Progress::Done(said)) => {
                     self.net_auto = None;
+                    // La vue des connexions promet de se relire à la fin
+                    // d'une synchronisation : une lecture tombée pendant
+                    // qu'elle tenait la base restait affichée pour de bon.
+                    self.conn_dirty = true;
                     self.log_connection(false, &said);
                     let at = self
                         .conn_log
@@ -7345,6 +7369,7 @@ impl Session {
                 }
                 Ok(crate::network::Progress::Failed(said)) => {
                     self.net_auto = None;
+                    self.conn_dirty = true;
                     self.log_connection(true, &said);
                     let at = self
                         .conn_log
@@ -7356,7 +7381,10 @@ impl Session {
                 Ok(_) | Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(Duration::from_millis(500));
                 }
-                Err(std::sync::mpsc::TryRecvError::Disconnected) => self.net_auto = None,
+                Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                    self.net_auto = None;
+                    self.conn_dirty = true;
+                }
             }
             return;
         }
@@ -10723,6 +10751,10 @@ struct ConnSummary {
     /// chaque réseau.
     map_peers: Vec<(crate::network::Peer, usize)>,
     map_groups: Vec<String>,
+    /// Les officines que chaque réseau présente — qu'un autre membre y a
+    /// fait entrer et qu'on n'a pas ajoutées : l'officine, le rang du
+    /// réseau, son identifiant.
+    map_introduced: Vec<(crate::network::Introduced, usize, String)>,
 }
 
 /// Une ligne de « Derniers reçus » : le jour, l'officine, ce qu'elle a
@@ -14087,6 +14119,15 @@ impl App {
                                 }
                                 session.reload_connections();
                                 session.conn_map = true;
+                                // Une officine qu'un autre membre a fait
+                                // entrer : l'arc du réseau la montre, à
+                                // ajouter ou à écarter.
+                                let _ = crate::network::demo_introduce(
+                                    &session.db,
+                                    [0x42; 32],
+                                    "Pharmacie du Canal",
+                                );
+                                session.reload_connections();
                                 // Deux officines voisines, l'une qui
                                 // invite : l'arc « À portée » et, choisie,
                                 // ce que le volet propose pour se lier.
@@ -56037,6 +56078,26 @@ impl App {
         }
         #[cfg(feature = "sync")]
         {
+            // **Une lecture tombée se retente** toutes les deux secondes,
+            // tant qu'elle tombe : la sauvegarde du jour (`VACUUM INTO`)
+            // tient la base au lancement, parfois plus longtemps que la
+            // synchronisation après laquelle la vue se relisait — et
+            // l'erreur restait affichée pour de bon.
+            let failed = session
+                .conn_summary
+                .as_ref()
+                .is_some_and(|s| s.posts.is_err() || s.net.is_err());
+            if failed {
+                let due = session
+                    .conn_retry
+                    .get_or_insert_with(|| Instant::now() + Duration::from_secs(2));
+                if Instant::now() >= *due {
+                    session.conn_retry = None;
+                    session.conn_dirty = true;
+                } else {
+                    ui.ctx().request_repaint_after(Duration::from_millis(500));
+                }
+            }
             if session.conn_dirty || session.conn_summary.is_none() {
                 session.reload_connections();
             }
@@ -56540,6 +56601,14 @@ impl App {
                     last_error: &p.last_error,
                 })
                 .collect::<Vec<_>>(),
+            &sum.map_introduced
+                .iter()
+                .map(|(i, g, _)| crate::netmap::IntroIn {
+                    device: &i.device,
+                    name: &i.name,
+                    group: *g,
+                })
+                .collect::<Vec<_>>(),
             &session
                 .near_officines
                 .iter()
@@ -56583,6 +56652,9 @@ impl App {
         };
         let mut picked: Option<Option<String>> = None;
         let mut legend_aside = false;
+        let mut legend_wrapped = false;
+        let width_key = map_rect.width().round() as i32;
+        let legend_key = session.conn_legend_aside;
         motif::panel(ui, map_rect, Some(tr("conn_map_title")), |ui| {
             let draw_stroke = conn_link_stroke;
             // **Une ligne de légende, ou aucune** : repliée sur trois
@@ -56594,21 +56666,11 @@ impl App {
                 (LinkState::Failing, tr("conn_map_failing")),
                 (LinkState::Silent, tr("conn_map_silent")),
             ];
-            let key_font = egui::FontId::proportional(motif::pt(ui, 10.5));
-            let legend_w: f32 = keys
-                .iter()
-                .map(|(_, l)| {
-                    chars_wide(ui, 3.0)
-                        + 6.0
-                        + ui.fonts(|f| {
-                            f.layout_no_wrap((*l).to_owned(), key_font.clone(), motif::text())
-                                .size()
-                                .x
-                        })
-                        + 3.0 * ui.spacing().item_spacing.x
-                })
-                .sum();
-            legend_aside = legend_w > ui.available_width() * 2.0;
+            // **Mesurée en la posant** : une ligne de légende qui se replie
+            // passe au volet à l'image suivante, pour cette largeur de
+            // carte — l'estimer à côté se trompait de quelques pixels, et
+            // l'envoyait au volet quand elle tenait.
+            legend_aside = legend_key == Some(width_key);
             // Ce que la base n'a pas pu dire — une synchronisation la
             // tient : la carte le dit plutôt que de montrer ce poste seul.
             if let Some(e) = unreadable.as_ref() {
@@ -56622,6 +56684,7 @@ impl App {
                 );
             }
             if !legend_aside {
+                let before = ui.cursor().top();
                 ui.horizontal_wrapped(|ui| {
                     for (st, label) in keys {
                         let (r, _) = ui.allocate_exact_size(
@@ -56637,6 +56700,9 @@ impl App {
                         ui.add_space(6.0);
                     }
                 });
+                if ui.cursor().top() - before > Self::label_line(ui) * 1.8 {
+                    legend_wrapped = true;
+                }
             }
             let field = ui.available_rect_before_wrap();
             // **Les cercles prennent toute la place** : en ellipses quand la
@@ -56662,15 +56728,26 @@ impl App {
                 })
                 .collect();
             let r = motif::pt(ui, 9.0);
+            let mut link_marks: Vec<egui::Rect> = Vec::new();
             // Les liens d'abord, sous les nœuds — et aucun vers une
             // voisine : il n'y en a pas.
             for (i, n) in nodes.iter().enumerate().skip(1) {
-                if n.kind != NodeKind::Nearby {
+                if !matches!(n.kind, NodeKind::Nearby | NodeKind::Introduced) {
                     draw_stroke(&painter, [at(0), at(i)], n.state);
+                    // Un lien barre le nom qu'on poserait dessus : ses
+                    // points comptent parmi ce que les noms de réseau
+                    // évitent.
+                    let (a, b) = (at(0), at(i));
+                    let steps = ((b - a).length() / 6.0).ceil().max(1.0) as usize;
+                    for k in 0..=steps {
+                        let p = a + (b - a) * (k as f32 / steps as f32);
+                        link_marks.push(egui::Rect::from_center_size(p, egui::vec2(3.0, 3.0)));
+                    }
                 }
             }
             let label_font = egui::FontId::proportional(motif::pt(ui, 10.5));
             let label_w = chars_wide(ui, 16.0);
+            let mut taken: Vec<egui::Rect> = std::mem::take(&mut link_marks);
             for (i, n) in nodes.iter().enumerate() {
                 let c = at(i);
                 let chosen = session.conn_pick.as_deref() == Some(n.key.as_str());
@@ -56696,6 +56773,22 @@ impl App {
                     NodeKind::Officine => {
                         painter.circle_filled(c, r, motif::bg_light());
                         painter.circle_stroke(c, r, ring);
+                    }
+                    // Présentée par son réseau : un cercle creux, trait
+                    // plein — elle en est, on ne l'a pas ajoutée.
+                    NodeKind::Introduced => {
+                        painter.circle_stroke(
+                            c,
+                            r,
+                            egui::Stroke::new(
+                                if chosen { 3.0_f32 } else { 1.5_f32 },
+                                if chosen {
+                                    motif::accent()
+                                } else {
+                                    motif::text_dim()
+                                },
+                            ),
+                        );
                     }
                     // Une voisine : un cercle creux en pointillés, plein
                     // au centre quand elle invite.
@@ -56724,8 +56817,32 @@ impl App {
                         }
                     }
                 }
+                // **La place du nom, puis le nom qui y tient.** Sous le
+                // nœud, dans la largeur que laissent les voisins de la
+                // même rangée ; le nom entier s'il tient, sinon le nom
+                // court (« Gare »), et l'ellipse seulement en dernier.
+                let line_h = ui.fonts(|f| f.row_height(&label_font));
+                let room = (0..nodes.len())
+                    .filter(|j| *j != i)
+                    .map(&at)
+                    .filter(|o| (o.y - c.y).abs() < line_h * 1.2)
+                    .map(|o| (o.x - c.x).abs() - 6.0)
+                    .fold(label_w, f32::min)
+                    .max(chars_wide(ui, 3.0));
+                let wide = |t: &str| {
+                    ui.fonts(|f| {
+                        f.layout_no_wrap(t.to_owned(), label_font.clone(), motif::text())
+                            .size()
+                            .x
+                    })
+                };
+                let text = if wide(&n.label) <= room {
+                    n.label.clone()
+                } else {
+                    crate::netmap::short_name(&n.label)
+                };
                 let mut job = egui::text::LayoutJob::single_section(
-                    n.label.clone(),
+                    text,
                     egui::TextFormat {
                         font_id: label_font.clone(),
                         color: motif::text(),
@@ -56733,33 +56850,76 @@ impl App {
                     },
                 );
                 job.wrap = egui::text::TextWrapping {
-                    max_width: label_w,
+                    max_width: room,
                     max_rows: 1,
                     break_anywhere: false,
                     overflow_character: Some('…'),
                 };
-                job.halign = egui::Align::Center;
                 let g = ui.fonts(|f| f.layout_job(job));
-                painter.galley(c + egui::vec2(0.0, r * 1.4), g, motif::text());
+                let size = g.size();
+                let min = egui::pos2(c.x - size.x / 2.0, c.y + r * 1.4);
+                // Ce que le nœud occupe — son carré et son nom : les noms
+                // de réseau se posent ailleurs.
+                taken.push(egui::Rect::from_center_size(
+                    c,
+                    egui::vec2(r * 2.2, r * 2.2),
+                ));
+                taken.push(egui::Rect::from_min_size(min, size));
+                painter.galley(min, g, motif::text());
             }
             // Le nom de chaque réseau, de son côté du cercle — quand il y en
             // a plus d'un : seul, il n'apprend rien.
             if group_names.len() > 1 {
-                for (g, x, y) in crate::netmap::group_labels(&nodes, &places) {
+                // **Mesuré, là où il ne couvre rien** : ni un nœud, ni son
+                // nom, ni le nom d'un autre réseau. À défaut, là où il
+                // couvre le moins.
+                for (g, ux, uy) in crate::netmap::group_directions(&nodes, &places) {
                     let Some(name) = group_names.get(g) else {
                         continue;
                     };
-                    let p = egui::pos2(
-                        square.left() + (x - 0.1) / 0.8 * square.width(),
-                        square.top() + (y - 0.1) / 0.8 * square.height(),
-                    );
-                    painter.text(
-                        p,
-                        egui::Align2::CENTER_CENTER,
-                        name,
-                        egui::FontId::proportional(motif::pt(ui, 11.0)),
-                        motif::accent(),
-                    );
+                    let galley = ui.fonts(|f| {
+                        f.layout_no_wrap(
+                            name.clone(),
+                            egui::FontId::proportional(motif::pt(ui, 11.0)),
+                            motif::accent(),
+                        )
+                    });
+                    let covered = |rect: egui::Rect| -> f32 {
+                        let outside = (rect.area() - rect.intersect(field).area()).max(0.0);
+                        taken
+                            .iter()
+                            .map(|t| {
+                                let i = rect.intersect(*t);
+                                if i.is_positive() {
+                                    i.area()
+                                } else {
+                                    0.0
+                                }
+                            })
+                            .sum::<f32>()
+                            + outside
+                    };
+                    let spot = crate::netmap::label_radii(uy)
+                        .into_iter()
+                        .map(|rad| {
+                            let p = egui::pos2(
+                                square.left() + (0.5 + ux * rad - 0.1) / 0.8 * square.width(),
+                                square.top() + (0.5 + uy * rad - 0.1) / 0.8 * square.height(),
+                            );
+                            egui::Rect::from_center_size(p, galley.size())
+                        })
+                        .map(|rect| (covered(rect), rect))
+                        .reduce(|a, b| if b.0 < a.0 - 0.5 { b } else { a });
+                    // Nulle part sans rien couvrir — une carte de comptoir
+                    // en texte 1,6 — : le nom ne s'écrit pas. Le volet d'une
+                    // officine choisie dit son réseau ; un nom posé sur
+                    // une officine ne se lit ni l'un ni l'autre.
+                    if let Some((_, rect)) =
+                        spot.filter(|(covered, rect)| *covered < rect.area() * 0.05)
+                    {
+                        painter.galley(rect.min, galley, motif::accent());
+                        taken.push(rect);
+                    }
                 }
             }
             // Le survol dit l'état ; le clic choisit — au plus près, en
@@ -56770,10 +56930,10 @@ impl App {
                     resp.clone().on_hover_text(format!(
                         "{} — {}",
                         nodes[i].label,
-                        if nodes[i].kind == NodeKind::Nearby {
-                            conn_nearby_text(nodes[i].state)
-                        } else {
-                            conn_state_text(nodes[i].state)
+                        match nodes[i].kind {
+                            NodeKind::Nearby => conn_nearby_text(nodes[i].state),
+                            NodeKind::Introduced => tr("conn_intro_state"),
+                            _ => conn_state_text(nodes[i].state),
                         }
                     ));
                 }
@@ -56789,6 +56949,10 @@ impl App {
         if let Some(p) = picked {
             session.conn_pick = p;
         }
+        if legend_wrapped {
+            session.conn_legend_aside = Some(width_key);
+            ui.ctx().request_repaint();
+        }
         // Le volet du nœud choisi.
         let chosen = session
             .conn_pick
@@ -56800,6 +56964,9 @@ impl App {
         let mut dial: Option<String> = None;
         let mut join_near: Option<String> = None;
         let mut invite_near = false;
+        let mut adopt: Option<(String, String, String)> = None;
+        let mut dismiss: Option<(String, String)> = None;
+        let mut arm: Option<String> = None;
         let in_network = sum.net.as_ref().is_ok_and(|n| n.in_network);
         motif::panel(
             ui,
@@ -56853,10 +57020,10 @@ impl App {
                             return;
                         };
                         ui.label(
-                            egui::RichText::new(if n.kind == NodeKind::Nearby {
-                                conn_nearby_text(n.state)
-                            } else {
-                                conn_state_text(n.state)
+                            egui::RichText::new(match n.kind {
+                                NodeKind::Nearby => conn_nearby_text(n.state),
+                                NodeKind::Introduced => tr("conn_intro_state"),
+                                _ => conn_state_text(n.state),
                             })
                             .size(motif::pt(ui, 11.0))
                             .color(match n.state {
@@ -56965,6 +57132,64 @@ impl App {
                                     }
                                 }
                             }
+                            // **Présentée par son réseau** : son empreinte,
+                            // ce qu'elle a envoyé, et la décision — l'ajouter
+                            // (deux clics : c'est une confiance qu'on donne)
+                            // ou l'écarter.
+                            NodeKind::Introduced => {
+                                let found = sum
+                                    .map_introduced
+                                    .iter()
+                                    .find(|(i, g, _)| i.device == n.device && *g == n.group);
+                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                if let Some((i, g, _)) = found {
+                                    ui.add(
+                                        egui::Label::new(small(
+                                            ui,
+                                            trn(
+                                                "conn_intro_note",
+                                                &[
+                                                    &group_names
+                                                        .get(*g)
+                                                        .cloned()
+                                                        .unwrap_or_default(),
+                                                    &i.records,
+                                                ],
+                                            ),
+                                        ))
+                                        .wrap(),
+                                    );
+                                }
+                                ui.add_space(4.0);
+                                let armed =
+                                    session.conn_adopt_armed.as_deref() == Some(n.key.as_str());
+                                ui.horizontal_wrapped(|ui| {
+                                    let label = if armed {
+                                        tr("conn_intro_add_confirm")
+                                    } else {
+                                        tr("conn_intro_add")
+                                    };
+                                    if motif::button(ui, label)
+                                        .on_hover_text(tr("conn_intro_add_tooltip"))
+                                        .clicked()
+                                    {
+                                        if armed {
+                                            adopt = found.map(|(i, _, id)| {
+                                                (id.clone(), i.device.clone(), i.name.clone())
+                                            });
+                                        } else {
+                                            arm = Some(n.key.clone());
+                                        }
+                                    }
+                                    if motif::button(ui, tr("conn_intro_ignore"))
+                                        .on_hover_text(tr("conn_intro_ignore_tooltip"))
+                                        .clicked()
+                                    {
+                                        dismiss =
+                                            found.map(|(i, _, id)| (id.clone(), i.device.clone()));
+                                    }
+                                });
+                            }
                             // **Une voisine** : ce qu'elle dit d'elle, et
                             // les deux façons de se lier — la rejoindre
                             // quand elle invite, l'inviter sinon. Dans les
@@ -57007,6 +57232,36 @@ impl App {
                     });
             },
         );
+        if let Some(k) = arm {
+            session.conn_adopt_armed = Some(k);
+        }
+        if let Some((network, device, name)) = adopt {
+            session.conn_adopt_armed = None;
+            match crate::network::adopt(&session.db, &network, &device, &name, &session.today) {
+                Ok(n) => {
+                    let who = if name.trim().is_empty() {
+                        crate::network::peer_groups(&device)
+                    } else {
+                        name.clone()
+                    };
+                    session.log_connection(false, &trn("conn_intro_added", &[&who, &n]));
+                    session.reload_supply();
+                }
+                Err(e) => session.log_connection(true, &e),
+            }
+            session.conn_pick = None;
+            session.conn_dirty = true;
+        }
+        if let Some((network, device)) = dismiss {
+            session.conn_adopt_armed = None;
+            if let Err(e) =
+                crate::network::set_ignored(&session.db, &network, &device, true, &session.today)
+            {
+                session.log_connection(true, &e);
+            }
+            session.conn_pick = None;
+            session.conn_dirty = true;
+        }
         // Se lier à une voisine passe par la fenêtre du réseau : c'est là
         // que le code se compare, et que la tâche se suit.
         if join_near.is_some() || invite_near {
