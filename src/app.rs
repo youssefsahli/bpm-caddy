@@ -26039,7 +26039,7 @@ impl App {
                         // la fenêtre : le clic ne changeait rien de visible,
                         // les champs étaient sous le pli.
                         if picked {
-                            ui.scroll_to_rect(form.response.rect, Some(egui::Align::Max));
+                            ui.scroll_to_rect(form.response.rect, Some(egui::Align::Min));
                         }
                     });
                 if let Some((bad, note)) = &edit.note {
@@ -32616,22 +32616,12 @@ impl App {
                             // défilement horizontal l'emporterait
                             // en premier, et « 9 h – 19 h 30 » sans
                             // le nom de qui ne dit rien.
-                            let (cell, name_resp) = ui.allocate_exact_size(
-                                egui::vec2(name_w, ui.text_style_height(&body_style(ui))),
-                                egui::Sense::click(),
-                            );
-                            // **Le nom ouvre sa trame.** « Trame… » est
-                            // au bas du volet, sous un menu « Qui » à
-                            // régler d'abord ; la ligne de la personne
-                            // est là où l'on regarde ses horaires.
-                            if r < known
-                                && name_resp
-                                    .on_hover_text(trf("planning_name_frame_tooltip", who))
-                                    .clicked()
-                            {
-                                session.shift_form.operator = key.to_owned();
-                                open_frame = true;
-                            }
+                            let cell = ui
+                                .allocate_exact_size(
+                                    egui::vec2(name_w, ui.text_style_height(&body_style(ui))),
+                                    egui::Sense::hover(),
+                                )
+                                .0;
                             let x = frozen_left(clip_left, cell.left(), 4.0);
                             let (band, at) = frozen_cell(x, name_w, 4.0, cell);
                             ui.painter().rect_filled(band, 0.0, motif::bg());
@@ -32835,6 +32825,29 @@ impl App {
                                     .collect(),
                                 total.clone(),
                             ));
+                            // **Le nom ouvre sa trame.** « Trame… » est
+                            // au bas du volet, sous un menu « Qui » à
+                            // régler d'abord ; la ligne de la personne
+                            // est là où l'on regarde ses horaires.
+                            //
+                            // Le clic se prend **sur le nom qu'on voit**,
+                            // et après les cases de la rangée : la grille
+                            // défilée de côté, le nom épinglé couvre la
+                            // première case de jour, et c'est le dernier
+                            // inscrit qui reçoit le clic.
+                            if r < known
+                                && ui
+                                    .interact(
+                                        band,
+                                        ui.id().with(("plan_name", r)),
+                                        egui::Sense::click(),
+                                    )
+                                    .on_hover_text(trf("planning_name_frame_tooltip", who))
+                                    .clicked()
+                            {
+                                session.shift_form.operator = key.to_owned();
+                                open_frame = true;
+                            }
                             ui.end_row();
                         }
 
@@ -32961,14 +32974,6 @@ impl App {
         }
     }
 
-    /// Take back the last planning gesture.
-    ///
-    /// Ce qu'il faut savoir, et qui est écrit ici parce que cela se
-    /// saurait mal ailleurs : **défaire une suppression réinsère**,
-    /// donc les identifiants changent. Rien ne pointe vers un poste, ce
-    /// qui rend le changement sans conséquence — et les exceptions, qui
-    /// pointent vers *leur* ligne rangée, sont réécrites avec le nouvel
-    /// identifiant plutôt que laissées à nommer une ligne disparue.
     /// Ouvrir la trame de la personne du formulaire, sur la semaine
     /// affichée — « Trame… », et un clic sur un nom de la grille.
     fn open_frame_on_view(session: &mut Session) {
@@ -32997,6 +33002,14 @@ impl App {
         Self::frame_load(session);
     }
 
+    /// Take back the last planning gesture.
+    ///
+    /// Ce qu'il faut savoir, et qui est écrit ici parce que cela se
+    /// saurait mal ailleurs : **défaire une suppression réinsère**,
+    /// donc les identifiants changent. Rien ne pointe vers un poste, ce
+    /// qui rend le changement sans conséquence — et les exceptions, qui
+    /// pointent vers *leur* ligne rangée, sont réécrites avec le nouvel
+    /// identifiant plutôt que laissées à nommer une ligne disparue.
     fn planning_undo(session: &mut Session) {
         let Some(what) = session.planning_undo.pop() else {
             return;
