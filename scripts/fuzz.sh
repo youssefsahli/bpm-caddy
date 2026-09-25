@@ -73,7 +73,10 @@ for view in "${views[@]}"; do
     cp "$tmp/pristine.db" "$BPM_CADDY_DB"
     rm -f "$BPM_CADDY_DB"-journal
     out=$(
-        view="$view" seed="$seed" xvfb-run -a -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
+        # Des écrans virtuels à partir de 200 : `smoke.sh` part de 99, et
+        # deux `xvfb-run -a` lancés ensemble se disputent le même numéro
+        # — l'un perd son écran, et la vue « tombe » dans winit.
+        view="$view" seed="$seed" xvfb-run -a -n 200 -s "-screen 0 ${size%x*}x${size#*x}x24" bash -c '
             unset WAYLAND_DISPLAY
             case "$view" in
                 verrou|search) ;;
