@@ -30380,6 +30380,19 @@ fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
     rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
 }
 
+/// Un lot SQL dans une transaction immédiate, **annulée s'il tombe** :
+/// `execute_batch` s'arrête à l'erreur sans rien annuler, et un `COMMIT`
+/// refusé (base tenue) laissait la transaction ouverte sur la connexion
+/// de l'écran — chaque écriture suivante tombait alors sur « transaction
+/// dans une transaction ».
+fn batch_tx(conn: &Connection, body: &str) -> rusqlite::Result<()> {
+    let done = conn.execute_batch(&format!("BEGIN IMMEDIATE;\n{body}\nCOMMIT;"));
+    if done.is_err() && !conn.is_autocommit() {
+        let _ = conn.execute_batch("ROLLBACK");
+    }
+    done
+}
+
 impl Db {
     /// Open (or create) the encrypted database. Fails with a French message
     /// if the password does not match an existing file.
@@ -41206,8 +41219,7 @@ impl Db {
             if !force && self.sync_local(&slot).as_deref() == Some(stamp.as_str()) {
                 continue;
             }
-            conn.execute_batch(&format!("BEGIN IMMEDIATE;\n{sql}COMMIT;"))
-                .map_err(|e| format!("capture impossible : {e}"))?;
+            batch_tx(conn, &sql).map_err(|e| format!("capture impossible : {e}"))?;
             self.set_sync_local(&slot, &stamp)?;
         }
         Ok(())
@@ -41383,15 +41395,12 @@ impl Db {
         }
         self.remove_capture()?;
         for file in [File::Main, File::Stups] {
-            let mut sql =
-                String::from("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);\n");
+            let mut sql = String::from("INSERT INTO sync_mute (mute) VALUES (1);\n");
             for t in TABLES.iter().filter(|t| t.file == file) {
                 sql.push_str(&format!("DELETE FROM \"{}\";\n", t.name));
             }
-            sql.push_str("DELETE FROM sync_mute; COMMIT;");
-            self.conn_of(file)
-                .execute_batch(&sql)
-                .map_err(|e| e.to_string())?;
+            sql.push_str("DELETE FROM sync_mute;");
+            batch_tx(self.conn_of(file), &sql).map_err(|e| e.to_string())?;
         }
         self.conn
             .execute_batch("DELETE FROM sync_applied; DELETE FROM sync_conflicts;")
@@ -41580,6 +41589,12 @@ impl Db {
             return Ok(done);
         }
         let main = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        // Relu sous le verrou : deux fils qui rangeaient le même
+        // enregistrement le rangeaient deux fois — le second attend
+        // désormais le premier, puis le trouve rangé.
+        if self.sync_applied(record) {
+            return Ok(done);
+        }
         let stups = write_tx(&self.stups).map_err(|e| e.to_string())?;
         for tx in [&main, &stups] {
             tx.execute("INSERT INTO sync_mute (mute) VALUES (1)", [])
@@ -41962,6 +41977,24 @@ mod tests {
             "une transaction différée dans db.rs"
         );
         assert!(!body.contains(bare), "un BEGIN différé dans db.rs");
+    }
+
+    /// **Un lot qui tombe ne laisse pas de transaction ouverte** : sans
+    /// annulation, chaque écriture suivante de la connexion tombait.
+    #[test]
+    fn a_failed_batch_leaves_no_transaction_behind() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-batchtx-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("b.db"), "secret").unwrap();
+        let body = "INSERT INTO settings (key, value) VALUES ('lot', 'x');\nINSERT INTO nulle_part VALUES (1);";
+        assert!(batch_tx(&db.conn, body).is_err());
+        assert!(db.conn.is_autocommit(), "la transaction est restée ouverte");
+        assert_eq!(db.setting("lot"), None, "la moitié du lot est restée");
+        // Et la connexion écrit encore.
+        let tx = write_tx(&db.conn).unwrap();
+        tx.commit().unwrap();
     }
 
     /// A first launch looks where an installed copy actually puts its
