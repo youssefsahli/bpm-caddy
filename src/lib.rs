@@ -91,6 +91,21 @@ pub fn peer_groups(device: &str) -> String {
     }
 }
 
+/// Un nom d'officine réduit à ses lettres et chiffres, en minuscules :
+/// « Pharmacie-B », « pharmacie  b » et « Pharma\u{200b}cie B » sont le même.
+pub fn name_skeleton(s: &str) -> String {
+    s.chars()
+        .filter(|c| c.is_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect()
+}
+
+/// Deux noms d'officine qui se lisent pareil (voir [`name_skeleton`]).
+pub fn same_name(a: &str, b: &str) -> bool {
+    let a = name_skeleton(a);
+    !a.is_empty() && a == name_skeleton(b)
+}
+
 /// **Un nom qu'une officine se donne, et qu'une autre porte déjà**, se lit
 /// avec son empreinte : sans cela, une officine appairée hostile se nommait
 /// comme une autre, et ses envois passaient pour les siens partout où
@@ -103,20 +118,14 @@ pub fn peer_groups(device: &str) -> String {
 /// Un nom qui porte une parenthèse (une fausse empreinte) ou une lettre hors
 /// de l'alphabet latin (un « Р » cyrillique) prend toujours la sienne.
 pub fn disambiguated(name: &str, device: &str, names: &[(String, String)]) -> String {
-    let skeleton = |s: &str| -> String {
-        s.chars()
-            .filter(|c| c.is_alphanumeric())
-            .flat_map(char::to_lowercase)
-            .collect()
-    };
-    let own = skeleton(name);
+    let own = name_skeleton(name);
     let latin = |c: char| {
         c.is_ascii() || ('\u{c0}'..='\u{24f}').contains(&c) || matches!(c, '\u{2018}' | '\u{2019}')
     };
     let suspicious = name.contains('(') || !name.trim().chars().all(latin);
     let taken = names
         .iter()
-        .any(|(d, n)| d != device && !own.is_empty() && skeleton(n) == own);
+        .any(|(d, n)| d != device && !own.is_empty() && name_skeleton(n) == own);
     if taken || suspicious {
         let groups = peer_groups(device);
         let short: String = groups.split(' ').take(2).collect::<Vec<_>>().join(" ");

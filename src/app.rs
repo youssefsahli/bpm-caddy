@@ -69,7 +69,19 @@ fn spawn_daily_backup(
         return;
     }
     std::thread::spawn(move || {
-        if let Ok(db) = Db::open(&db_path, &password) {
+        // **Retentée** : au lancement, l'ouverture d'un poste de groupe
+        // écrit (les migrations, en sourdine) et peut trouver la base tenue
+        // par l'écran ou une synchronisation — la sauvegarde du jour
+        // sautait alors sans un mot.
+        let mut opened = Db::open(&db_path, &password);
+        for _ in 0..3 {
+            if opened.is_ok() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_secs(10));
+            opened = Db::open(&db_path, &password);
+        }
+        if let Ok(db) = opened {
             daily_backup(&db, &db_path, &password, keep);
             daily_scans_backup(&db, &db_path, scans_keep);
             daily_stups_backup(&db, &db_path, keep.max(scans_keep));
@@ -7564,13 +7576,11 @@ impl Session {
                     // appairée n'est pas mise en avant.
                     let paired = self.db.net_peers().unwrap_or_default();
                     let known_name = |name: &str| {
-                        let name = name.trim().to_lowercase();
-                        !name.is_empty()
-                            && paired.iter().any(|p| {
-                                [p.name.as_str(), p.seen_as.as_str()]
-                                    .iter()
-                                    .any(|x| x.trim().to_lowercase() == name)
-                            })
+                        paired.iter().any(|p| {
+                            [p.name.as_str(), p.seen_as.as_str()]
+                                .iter()
+                                .any(|x| crate::same_name(name, x))
+                        })
                     };
                     if let Some(n) = near.iter().find(|n| {
                         n.invite.is_some()
@@ -56284,9 +56294,11 @@ impl App {
                 if Instant::now() >= *due {
                     session.conn_retry = None;
                     session.conn_dirty = true;
-                } else {
-                    ui.ctx().request_repaint_after(Duration::from_millis(500));
                 }
+                // Dans les deux cas : la relecture qui tombe encore doit
+                // avoir une image après elle, sinon l'écran immobile garde
+                // l'erreur jusqu'au prochain mouvement de souris.
+                ui.ctx().request_repaint_after(Duration::from_millis(500));
             }
             if session.conn_dirty || session.conn_summary.is_none() {
                 session.reload_connections();
@@ -56799,10 +56811,15 @@ impl App {
         let groups_of: Vec<usize> = sum.map_peers.iter().map(|(_, g)| *g).collect();
         // Le nom sous lequel chacune se lit — un nom déjà pris, avec son
         // empreinte.
+        let names = crate::peer_names(&peers, &config.pharmacy.name);
         let labels: Vec<String> = peers
             .iter()
             .map(|p| {
-                crate::peer_claim(&p.device, &peers, &config.pharmacy.name).unwrap_or_default()
+                if p.seen_as.trim().is_empty() {
+                    String::new()
+                } else {
+                    crate::disambiguated(&p.seen_as, &p.device, &names)
+                }
             })
             .collect();
         let group_names = sum.map_groups.clone();
@@ -57579,10 +57596,9 @@ impl App {
                                 if let Some((i, _, _)) = found.filter(|(i, _, _)| {
                                     !i.name.trim().is_empty()
                                         && peers.iter().any(|p| {
-                                            [p.name.as_str(), p.seen_as.as_str()].iter().any(|n| {
-                                                n.trim().to_lowercase()
-                                                    == i.name.trim().to_lowercase()
-                                            })
+                                            [p.name.as_str(), p.seen_as.as_str()]
+                                                .iter()
+                                                .any(|n| crate::same_name(&i.name, n))
                                         })
                                 }) {
                                     // **Le même nom qu'une officine déjà
@@ -79748,6 +79764,66 @@ mod tests {
         db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
         db.add_patient("Martin", "Claire", "1949-02-11").unwrap();
         (super::Session::new(db, 12, 30, true).unwrap(), swept)
+    }
+
+    /// **Une relecture qui tombe encore demande une image de plus.** Le
+    /// retour de la vue Connexions après une lecture refusée (base tenue
+    /// par un autre) se faisait à la frame où le délai échoit — sans rien
+    /// demander ensuite : l'écran immobile gardait « database is locked »
+    /// trente secondes, jusqu'au prochain mouvement de souris.
+    #[cfg(feature = "sync")]
+    #[test]
+    fn a_connections_read_that_fails_again_asks_for_another_frame() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-connlock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("live.db");
+        let db = crate::db::Db::open(&path, "secret").unwrap();
+        let mut session = super::Session::new(db, 12, 30, true).unwrap();
+        // Une lecture qui tombe à coup sûr, et tout de suite : une base
+        // tenue la ferait attendre cinq secondes par requête.
+        let other = crate::db::Db::open(&path, "secret").unwrap();
+        other
+            .conn_for_tests()
+            .execute_batch("ALTER TABLE net_records RENAME TO net_records_away")
+            .unwrap();
+        session.conn_dirty = true;
+        let config = crate::config::Config::default();
+        let ctx = egui::Context::default();
+        let frame = |ctx: &egui::Context, session: &mut super::Session| {
+            let out = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    super::App::connexions_view(ui, session, &config);
+                });
+            });
+            out.viewport_output
+                .get(&egui::ViewportId::ROOT)
+                .map(|v| v.repaint_delay)
+                .unwrap_or(std::time::Duration::MAX)
+        };
+        frame(&ctx, &mut session);
+        assert!(
+            session
+                .conn_summary
+                .as_ref()
+                .is_some_and(|s| s.net.is_err()),
+            "la lecture doit tomber"
+        );
+        // Le délai échoit : la relecture part, et tombe encore.
+        session.conn_retry = Some(std::time::Instant::now());
+        let delay = frame(&ctx, &mut session);
+        assert!(
+            session
+                .conn_summary
+                .as_ref()
+                .is_some_and(|s| s.net.is_err()),
+            "elle tombe encore"
+        );
+        assert!(
+            delay <= std::time::Duration::from_secs(1),
+            "une image de plus doit être demandée, pas {delay:?}"
+        );
     }
 
     /// **Ce qu'un autre poste écrit arrive à l'écran sans qu'on demande
