@@ -57325,6 +57325,7 @@ impl App {
         let mut invite_near = false;
         let mut invite_post = false;
         let mut create_then_invite = false;
+        let mut near_device: Option<String> = None;
         let mut adopt: Option<(String, String, String)> = None;
         let mut dismiss: Option<(String, String)> = None;
         let mut arm: Option<String> = None;
@@ -57667,6 +57668,7 @@ impl App {
                                             .clicked()
                                         {
                                             join_near = Some(address);
+                                            near_device = Some(n.device.clone());
                                         }
                                     }
                                     if in_network
@@ -57675,6 +57677,7 @@ impl App {
                                             .clicked()
                                     {
                                         invite_near = true;
+                                        near_device = Some(n.device.clone());
                                     }
                                     // Sans réseau encore : le créer et
                                     // l'inviter, d'un seul clic.
@@ -57684,6 +57687,7 @@ impl App {
                                             .clicked()
                                     {
                                         create_then_invite = true;
+                                        near_device = Some(n.device.clone());
                                     }
                                 });
                                 if !in_network && near.is_some_and(|x| x.invite.is_none()) {
@@ -57775,12 +57779,14 @@ impl App {
                     w.pending = Some(crate::network::Job::Join {
                         address,
                         ticket: None,
+                        expect: near_device.clone(),
                     });
                 } else {
                     w.pending = Some(crate::network::Job::Invite {
                         port: config.reseau.port,
                         network: w.network.clone(),
                         nearby: true,
+                        expect: near_device.clone(),
                     });
                 }
             }
@@ -58886,6 +58892,7 @@ impl App {
                                 port: config.reseau.port,
                                 network: w.network.clone(),
                                 nearby: false,
+                                expect: None,
                             });
                         }
                         if !w.network.is_empty() {
@@ -59019,12 +59026,17 @@ impl App {
             {
                 w.note = Some((true, e));
             }
-            // Ce qu'elle avait annoncé ne sert plus.
-            let key = crate::network::announced_key(&device);
-            if let Some(was) = session.db.setting(&key) {
-                let _ = session
-                    .db
-                    .set_setting(&key, "", Some(&was), &session.today, "");
+            // Ce qu'elle avait annoncé, et où elle avait répondu, ne
+            // sert plus.
+            for key in [
+                crate::network::announced_key(&device),
+                crate::network::reached_key(&device),
+            ] {
+                if let Some(was) = session.db.setting(&key) {
+                    let _ = session
+                        .db
+                        .set_setting(&key, "", Some(&was), &session.today, "");
+                }
             }
             if let Err(e) = session.db.remove_net_membership(&w.network, &device) {
                 w.note = Some((true, e));
@@ -59072,7 +59084,13 @@ impl App {
         // tapé.
         if join_typed {
             match crate::network::read_join(&w.join_address) {
-                Some((address, ticket)) => start = Some(Job::Join { address, ticket }),
+                Some((address, ticket)) => {
+                    start = Some(Job::Join {
+                        address,
+                        ticket,
+                        expect: None,
+                    })
+                }
                 None => w.note = Some((true, tr("net_join_bad").to_owned())),
             }
         }

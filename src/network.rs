@@ -285,6 +285,14 @@ impl Net {
         let _one = PUBLISHING
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
+        // Ce que l'autre vient d'écrire, sous le verrou : sans cela ce
+        // journal-ci, lu avant d'attendre, écrivait après des parents
+        // périmés et au même rang que le dernier enregistrement.
+        for bytes in db.net_records_of(&self.id)? {
+            if let Ok(record) = Record::decode(&bytes) {
+                self.journal.insert(record);
+            }
+        }
         // Ce que **ce** réseau a déjà reçu d'ici, et ce que l'officine y
         // partage : un événement part une fois par réseau, et pas du tout
         // dans un réseau où son genre n'est pas partagé.
@@ -559,6 +567,13 @@ impl Net {
         let Some(trousseau) = &self.trousseau else {
             return Ok(0);
         };
+        // **Une lecture à la fois dans ce processus** : au lancement, deux
+        // conversations (l'une composée, l'autre reçue) absorbaient le même
+        // message, et chacune créait sa conversation.
+        static ABSORBING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _one = ABSORBING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let me = self.device.id();
         let known = self.known();
         // **Lu à travers la vue de confiance** : ce que les conversations
@@ -578,6 +593,8 @@ impl Net {
         // des nouvelles : c'est ce qui dit, dans la liste, qu'une
         // officine est vivante même quand on ne la joint jamais
         // directement.
+        let mut claimed: std::collections::HashMap<DeviceId, String> =
+            std::collections::HashMap::new();
         for author in &known {
             let theirs: Vec<&bpm_sync::Fact> =
                 facts.iter().filter(|f| f.author == *author).collect();
@@ -592,6 +609,7 @@ impl Net {
                         .map(str::to_owned)
                 })
                 .unwrap_or_default();
+            claimed.insert(*author, name.clone());
             db.note_net_heard_in(
                 &self.id,
                 &hex(&author.0),
@@ -599,20 +617,59 @@ impl Net {
                 i64::try_from(theirs.len()).unwrap_or(i64::MAX),
             )?;
         }
+        // **Qui a envoyé, c'est qui a signé** : le nom qu'une officine
+        // appairée écrit dans son envoi est à elle de choisir, et une
+        // hostile signait ses ruptures du nom d'une autre. Le nom que
+        // l'officine lui a donné ici, sinon celui qu'elle signe elle-même.
+        let peers = &self.peers;
+        let signer = |author: &DeviceId| -> String {
+            let device = hex(&author.0);
+            peers
+                .iter()
+                .find(|p| p.device == device)
+                .and_then(|p| {
+                    [p.name.trim(), p.seen_as.trim()]
+                        .into_iter()
+                        .find(|n| !n.is_empty())
+                        .map(str::to_owned)
+                })
+                // Le nom que **cette** officine écrit dans ses propres
+                // envois — lu à l'instant, `seen_as` ne l'a pas encore.
+                .or_else(|| {
+                    claimed
+                        .get(author)
+                        .map(|n| n.trim().to_owned())
+                        .filter(|n| !n.is_empty())
+                })
+                .unwrap_or_else(|| peer_groups(&device))
+        };
         let events: Vec<crate::ruptures::Event> = facts
             .iter()
-            .filter_map(|f| crate::ruptures::decode(&f.payload))
+            .filter_map(|f| crate::ruptures::decode(&f.payload).map(|e| (f, e)))
+            .map(|(f, mut e)| {
+                e.source = signer(&f.author);
+                e
+            })
             .collect();
         // In causal order, so the last value an officine sent for a
         // property is the one kept.
         let shared: Vec<crate::pk::Shared> = facts
             .iter()
-            .filter_map(|f| crate::pk::decode_shared(&f.payload))
+            .filter_map(|f| {
+                crate::pk::decode_shared(&f.payload).map(|mut s| {
+                    s.officine = signer(&f.author);
+                    s
+                })
+            })
             .collect();
         db.receive_net_facts(&shared)?;
         let versions: Vec<crate::versions::Edit> = facts
             .iter()
-            .filter_map(|f| crate::versions::decode(&f.payload))
+            .filter_map(|f| crate::versions::decode(&f.payload).map(|e| (f, e)))
+            .map(|(f, mut e)| {
+                e.source = signer(&f.author);
+                e
+            })
             .collect();
         // What the codex and the protocols changed here is versioned
         // **before** what arrives is ranged: an edit made before this
@@ -780,7 +837,17 @@ impl Net {
         trusted.push(self.device.id());
         let mut view = Journal::new();
         for r in self.journal.records() {
-            if trusted.contains(&r.author()) {
+            // **Une correction ne vaut que de l'auteur de ce qu'elle
+            // corrige.** Le journal lit toute correction comme telle ; une
+            // officine appairée mais hostile effaçait ainsi, chez tous, une
+            // rupture ou une valeur d'une autre. Le réseau d'officines n'en
+            // écrit d'ailleurs aucune.
+            let foreign_fix = r.corrects().is_some_and(|t| {
+                self.journal
+                    .get(&t)
+                    .is_none_or(|o| o.author() != r.author())
+            });
+            if trusted.contains(&r.author()) && !foreign_fix {
                 view.insert(r.clone());
             }
         }
@@ -879,6 +946,10 @@ pub enum Job {
         port: u16,
         network: String,
         nearby: bool,
+        /// L'officine voisine qu'on invite, quand on l'a choisie sur la
+        /// carte : toute autre qui frappe est refusée avant tout code, et
+        /// la porte reste ouverte pour la bonne.
+        expect: Option<String>,
     },
     /// Rejoindre un réseau en composant l'adresse de l'officine qui
     /// invite — avec le ticket de son code d'invitation quand on l'a :
@@ -886,6 +957,9 @@ pub enum Job {
     Join {
         address: String,
         ticket: Option<bpm_sync::Ticket>,
+        /// L'officine voisine qu'on rejoint, choisie sur la carte : une
+        /// autre qui répondrait à l'adresse est refusée avant tout code.
+        expect: Option<String>,
     },
     /// Synchroniser : le dossier d'échange s'il y en a un, puis chaque
     /// officine qui a une adresse. `announced` : essayer aussi l'adresse
@@ -915,7 +989,9 @@ pub const PUBLIC_ADDRESS_SEQ: &str = "net_public_address_seq";
 /// pas vers où ce poste frappe.
 pub fn usable_announced(text: &str) -> Option<String> {
     let at: std::net::SocketAddr = text.trim().parse().ok()?;
-    let ip = at.ip();
+    // Une IPv4 écrite en IPv6 (`::ffff:127.0.0.1`) est jugée comme l'IPv4
+    // qu'elle est : sans cela, la boucle locale passait déguisée.
+    let ip = at.ip().to_canonical();
     let bad = at.port() == 0
         || ip.is_loopback()
         || ip.is_unspecified()
@@ -930,6 +1006,13 @@ pub fn usable_announced(text: &str) -> Option<String> {
 /// Où ranger l'adresse qu'une officine appairée a annoncée.
 pub fn announced_key(device: &str) -> String {
     format!("net_announced:{device}")
+}
+
+/// Où ranger la dernière adresse où une officine appairée a répondu,
+/// apprise d'une annonce ou de ce qu'elle a déclaré — à côté de l'adresse
+/// saisie, jamais à sa place.
+pub fn reached_key(device: &str) -> String {
+    format!("net_reached:{device}")
 }
 
 /// Combien d'officines non ajoutées un passage au dossier compte au plus.
@@ -1021,8 +1104,7 @@ pub fn adopt(
 ) -> Result<usize, String> {
     unhex::<32>(device).ok_or("identité illisible")?;
     let was = db.net_members("")?.iter().any(|p| p.device == device);
-    db.add_net_peer(device, "", day)?;
-    db.add_net_membership(network, device, was)?;
+    db.add_net_peer_member(network, device, "", day, was)?;
     let _ = set_ignored(db, network, device, false, day);
     let mut net = Net::load_network(db, network)?;
     if let Some(dir) = folder {
@@ -1176,32 +1258,65 @@ pub fn heard_officine(text: &str, from: std::net::IpAddr) -> Option<Nearby> {
 /// qu'elle en soit. Ce qu'elle apporte est gardé et lu comme après une
 /// synchronisation. Rend l'empreinte de qui a frappé.
 pub fn answer<L: bpm_sync::Link>(db: &Db, link: &mut L) -> Result<String, String> {
-    let mut nets = Net::load_all(db)?;
-    let choices: Vec<(Trousseau, Vec<DeviceId>)> = nets
-        .iter()
-        .filter_map(|n| n.trousseau.clone().map(|t| (t, n.known())))
-        .collect();
-    if choices.len() != nets.len() || nets.is_empty() {
+    // **Rien de lourd avant de savoir qui frappe** : les clés et les
+    // membres de chaque réseau, sans leurs journaux — une connexion qui
+    // ne s'authentifie pas ne coûte pas une lecture de tout le journal.
+    let keys = network_keys(db)?;
+    if keys.is_empty() {
         return Err(crate::strings::tr("net_err_no_network").to_owned());
     }
-    let device = Device::from_seed(nets[0].device.seed());
-    let mut journals: Vec<Journal> = nets
-        .iter_mut()
-        .map(|n| std::mem::take(&mut n.journal))
+    let seed = db.net_key("net_seed", &hex(&random32()))?;
+    let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
+    let device = Device::from_seed(seed);
+    let choices = keys
+        .iter()
+        .map(|(_, t, k)| (t.clone(), k.clone()))
         .collect();
     let mut session = Session::answer_any(&device, choices).map_err(|e| format!("{e:?}"))?;
-    let chosen = bpm_sync::drive_any(&mut session, link, &mut journals, &mut Meter::new())
-        .map_err(|e| format!("{e:?}"));
-    for (n, j) in nets.iter_mut().zip(journals) {
-        n.journal = j;
-    }
-    let i = chosen?;
-    let net = &nets[i];
+    let mut loaded: Option<Net> = None;
+    let mut load = |i: usize| match Net::load_network(db, &keys[i].0) {
+        Ok(mut n) => {
+            let j = std::mem::take(&mut n.journal);
+            loaded = Some(n);
+            j
+        }
+        Err(_) => Journal::new(),
+    };
+    let (_, journal) = bpm_sync::drive_any(&mut session, link, &mut load, &mut Meter::new())
+        .map_err(|e| format!("{e:?}"))?;
+    let mut net = loaded.ok_or_else(|| crate::strings::tr("net_err_no_network").to_owned())?;
+    net.journal = journal;
     net.keep(db)?;
     let peer = session.peer().map(|p| hex(&p.0)).unwrap_or_default();
     let _ = db.note_net_dial(&peer, None);
     net.absorb(db)?;
     Ok(peer)
+}
+
+/// Les réseaux de l'officine **sans leurs journaux** : identifiant, clé,
+/// officines membres — ce qu'il faut pour répondre à une poignée de main.
+fn network_keys(db: &Db) -> Result<Vec<(String, Trousseau, Vec<DeviceId>)>, String> {
+    let members = |id: &str| -> Result<Vec<DeviceId>, String> {
+        Ok(db
+            .net_members(id)?
+            .iter()
+            .filter_map(|p| unhex::<32>(&p.device).map(DeviceId::from_bytes))
+            .collect())
+    };
+    let mut out = Vec::new();
+    if let Some(t) = db
+        .setting("net_trousseau")
+        .and_then(|t| unhex::<32>(&t))
+        .map(Trousseau::from_secret)
+    {
+        out.push((String::new(), t, members("")?));
+    }
+    for n in db.net_networks()? {
+        if let Some(t) = unhex::<32>(&n.secret).map(Trousseau::from_secret) {
+            out.push((n.id.clone(), t, members(&n.id)?));
+        }
+    }
+    Ok(out)
 }
 
 /// **Composer une officine appairée à l'adresse que son annonce donne**,
@@ -1212,9 +1327,22 @@ pub fn answer<L: bpm_sync::Link>(db: &Db, link: &mut L) -> Result<String, String
 /// apprise auparavant reste. Rien pour une officine qu'on n'a pas
 /// ajoutée.
 pub fn dial_heard(db: &Db, device: &str, address: &str, officine: &str) -> Result<String, String> {
+    dial_heard_in(db, None, device, address, officine)
+}
+
+/// [`dial_heard`] dans un réseau donné — celui que la synchronisation
+/// parcourt ; sans réseau, le premier où l'officine est.
+pub fn dial_heard_in(
+    db: &Db,
+    network: Option<&str>,
+    device: &str,
+    address: &str,
+    officine: &str,
+) -> Result<String, String> {
     use crate::strings::{tr, trn};
     let Some(mut net) = Net::load_all(db)?
         .into_iter()
+        .filter(|n| network.is_none_or(|id| n.id == id))
         .find(|n| n.peers.iter().any(|p| p.device == device))
     else {
         return Err(tr("net_err_no_network").to_owned());
@@ -1229,8 +1357,13 @@ pub fn dial_heard(db: &Db, device: &str, address: &str, officine: &str) -> Resul
     if answered.as_deref() != Some(device) {
         return Err(dial_reason("Handshake"));
     }
-    if p.address.trim() != address.trim() {
-        db.add_net_peer(device, address, "")?;
+    // **Rangée à part, jamais à la place de l'adresse saisie** : une
+    // machine du réseau local qui relaie vers la vraie officine l'aurait
+    // remplacée, et tenu ensuite chaque synchronisation à sa merci.
+    let key = reached_key(device);
+    let was = db.setting(&key);
+    if was.as_deref() != Some(address.trim()) {
+        let _ = db.set_setting(&key, address.trim(), was.as_deref(), "", "");
     }
     let _ = db.note_net_dial(device, None);
     let received = net.absorb(db)?;
@@ -1290,7 +1423,12 @@ pub fn run(
         answers.recv().unwrap_or(false)
     };
     match job {
-        Job::Invite { port, nearby, .. } => {
+        Job::Invite {
+            port,
+            nearby,
+            expect,
+            ..
+        } => {
             let trousseau = net
                 .trousseau
                 .clone()
@@ -1305,51 +1443,88 @@ pub fn run(
                 Some(t) => invitation_code(t, &at),
                 None => at,
             }));
-            let mut link = door
-                .accept(INVITE_PATIENCE)
-                .map_err(|_| tr("net_err_nobody").to_owned())?;
-            let mut session = Session::new(
-                &net.device,
-                Some(&trousseau),
-                Intent::Invite,
-                false,
-                &net.known(),
-            )
-            .and_then(|s| match ticket {
-                Some(t) => s.with_ticket(t),
-                None => Ok(s),
-            })
-            .map_err(|e| format!("{e:?}"))?;
-            let mut meter = Meter::new();
-            bpm_sync::drive(
-                &mut session,
-                &mut link,
-                &mut net.journal,
-                &mut meter,
-                &mut confirm,
-            )
-            .map_err(|_| tr("net_err_refused").to_owned())?;
+            let expected = expect
+                .as_deref()
+                .and_then(unhex::<32>)
+                .map(DeviceId::from_bytes);
+            let deadline = std::time::Instant::now() + INVITE_PATIENCE;
+            // **Pour l'officine attendue, la porte reste ouverte** : une
+            // autre qui frappe la première est refusée avant tout code, et
+            // on attend la bonne jusqu'à la fin de l'invitation.
+            let session = loop {
+                let left = deadline.saturating_duration_since(std::time::Instant::now());
+                if left.is_zero() {
+                    return Err(tr("net_err_nobody").to_owned());
+                }
+                let mut link = door
+                    .accept_with(left, TALK_PATIENCE)
+                    .map_err(|_| tr("net_err_nobody").to_owned())?;
+                let mut session = Session::new(
+                    &net.device,
+                    Some(&trousseau),
+                    Intent::Invite,
+                    false,
+                    &net.known(),
+                )
+                .and_then(|s| match ticket {
+                    Some(t) => s.with_ticket(t),
+                    None => Ok(s),
+                })
+                .map_err(|e| format!("{e:?}"))?;
+                if let Some(e) = expected {
+                    session = session.expecting(e);
+                }
+                let mut meter = Meter::new();
+                let went = bpm_sync::drive(
+                    &mut session,
+                    &mut link,
+                    &mut net.journal,
+                    &mut meter,
+                    &mut confirm,
+                );
+                match went {
+                    Ok(()) => break session,
+                    Err(_)
+                        if expected.is_some()
+                            && session.peer().is_none_or(|p| Some(p) != expected) =>
+                    {
+                        continue;
+                    }
+                    Err(_) => return Err(tr("net_err_refused").to_owned()),
+                }
+            };
             if let Some(peer) = session.peer() {
                 let device = hex(&peer.0);
                 let was = db.net_members("")?.iter().any(|p| p.device == device);
-                db.add_net_peer(&device, "", today)?;
                 // Au principal aussi, l'appartenance s'écrit : une officine
                 // déjà d'un autre réseau n'y serait pas comptée sinon.
-                db.add_net_membership(&net.id, &device, was)?;
+                db.add_net_peer_member(&net.id, &device, "", today, was)?;
             }
             net.keep(&db)?;
             Ok(tr("net_done_invited").to_owned())
         }
-        Job::Join { address, ticket } => {
+        Job::Join {
+            address,
+            ticket,
+            expect,
+        } => {
             // **Déjà d'un réseau, on en rejoint un de plus** : la clé reçue
             // devient celle d'un réseau à part, le principal ne bouge pas.
             let second = net.in_network();
             let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
                 .map_err(|_| tr("net_err_unreachable").to_owned())?;
+            let expected = expect
+                .as_deref()
+                .and_then(unhex::<32>)
+                .map(DeviceId::from_bytes);
             let mut session = Session::new(&net.device, None, Intent::Join, true, &[])
                 .and_then(|s| match ticket {
                     Some(t) => s.with_ticket(*t),
                     None => Ok(s),
+                })
+                .map(|s| match expected {
+                    Some(e) => s.expecting(e),
+                    None => s,
                 })
                 .map_err(|e| format!("{e:?}"))?;
             let mut meter = Meter::new();
@@ -1384,8 +1559,7 @@ pub fn run(
             if let Some(peer) = session.peer() {
                 let device = hex(&peer.0);
                 let was = db.net_members("")?.iter().any(|p| p.device == device);
-                db.add_net_peer(&device, address, today)?;
-                db.add_net_membership(&id, &device, was)?;
+                db.add_net_peer_member(&id, &device, address, today, was)?;
             }
             // Les enregistrements reçus pendant l'appairage — et seulement
             // ceux que la clé du réseau rejoint ouvre.
@@ -1435,20 +1609,32 @@ pub fn run(
                 // cette boucle, relu avant d'absorber, ne récrit pas par-dessus
                 // des valeurs plus anciennes.
                 let mut reread = false;
-                let announced_of = |device: &str| {
-                    if *announced {
+                // Les adresses à essayer après celle qu'on a saisie : où
+                // l'officine a répondu la dernière fois, puis celle qu'elle
+                // annonce (pas à la fermeture).
+                let fallbacks = |device: &str, typed: &str| -> Vec<String> {
+                    let mut out: Vec<String> = Vec::new();
+                    let reached = db.setting(&reached_key(device));
+                    let announced = if *announced {
                         db.setting(&announced_key(device))
                             .and_then(|a| usable_announced(&a))
                     } else {
                         None
+                    };
+                    for a in [reached, announced].into_iter().flatten() {
+                        let a = a.trim().to_owned();
+                        if !a.is_empty() && a != typed.trim() && !out.contains(&a) {
+                            out.push(a);
+                        }
                     }
+                    out
                 };
-                // **L'adresse annoncée, en second** : pour une officine sans
-                // adresse, ou dont l'adresse ne répond plus. Retenue
-                // seulement une fois l'officine jointe (`dial_heard`).
                 for p in peers.iter().filter(|p| p.address.trim().is_empty()) {
-                    if let Some(a) = announced_of(&p.device) {
-                        reread |= dial_heard(&db, &p.device, &a, officine).is_ok();
+                    for a in fallbacks(&p.device, "") {
+                        if dial_heard_in(&db, Some(&net.id), &p.device, &a, officine).is_ok() {
+                            reread = true;
+                            break;
+                        }
                     }
                 }
                 for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
@@ -1461,13 +1647,12 @@ pub fn run(
                                 db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
                         }
                         Err(e) => {
-                            let other =
-                                announced_of(&p.device).filter(|a| a.trim() != p.address.trim());
-                            if let Some(a) = other {
-                                if dial_heard(&db, &p.device, &a, officine).is_ok() {
-                                    reread = true;
-                                    continue;
-                                }
+                            let reached = fallbacks(&p.device, &p.address).into_iter().any(|a| {
+                                dial_heard_in(&db, Some(&net.id), &p.device, &a, officine).is_ok()
+                            });
+                            if reached {
+                                reread = true;
+                                continue;
                             }
                             let _ = db.note_net_dial(&p.device, Some(&dial_reason(&e)));
                             let who = if p.name.trim().is_empty() {
@@ -2658,6 +2843,7 @@ mod tests {
                 port,
                 network: network.to_owned(),
                 nearby: true,
+                expect: None,
             },
             dir_a.join("net.db"),
             "secret".to_owned(),
@@ -2673,6 +2859,7 @@ mod tests {
             Job::Join {
                 address: format!("127.0.0.1:{port}"),
                 ticket: None,
+                expect: None,
             },
             dir_b.join("net.db"),
             "secret".to_owned(),
@@ -2784,6 +2971,7 @@ mod tests {
                 port,
                 network: String::new(),
                 nearby: true,
+                expect: None,
             },
             dir_a.join("net.db"),
             "secret".to_owned(),
@@ -2801,6 +2989,7 @@ mod tests {
             Job::Join {
                 address: format!("127.0.0.1:{port}"),
                 ticket: None,
+                expect: None,
             },
             dir_b.join("net.db"),
             "secret".to_owned(),
@@ -2876,6 +3065,7 @@ mod tests {
                     port,
                     network: String::new(),
                     nearby: false,
+                    expect: None,
                 },
                 dir_a.join("net.db"),
                 "secret".to_owned(),
@@ -2897,6 +3087,7 @@ mod tests {
                 Job::Join {
                     address: format!("127.0.0.1:{port}"),
                     ticket: Some(ticket),
+                    expect: None,
                 },
                 dir_b.join("net.db"),
                 "secret".to_owned(),
@@ -3230,16 +3421,21 @@ mod tests {
                 .find(|p| p.device == a_device)
                 .map(|p| p.address)
         };
-        assert_eq!(stored(&b), Some(before), "l'adresse d'avant reste");
+        assert_eq!(stored(&b), Some(before.clone()), "l'adresse d'avant reste");
         // C n'a pas A parmi ses officines : rien à composer.
         assert!(dial_heard(&c, &a_device, &at, "Pharmacie C").is_err());
         // L'adresse annoncée, où A répond : jointe, et gardée.
         let said = dial_heard(&b, &a_device, &at, "Pharmacie B").expect("jointe");
         assert!(!said.is_empty());
         assert_eq!(
-            stored(&b),
+            b.setting(&reached_key(&a_device)),
             Some(at.clone()),
             "gardée une fois qu'A y a répondu"
+        );
+        assert_eq!(
+            stored(&b),
+            Some(before.clone()),
+            "à part : l'adresse saisie ne bouge pas"
         );
         // C, d'un autre réseau, compose la même porte : refusée.
         let mut net_c = Net::load(&c).unwrap();
@@ -3363,13 +3559,11 @@ mod tests {
         });
         dial_heard(&b, &a_device, &at, "Pharmacie B").expect("jointe");
         assert!(answering.join().unwrap().is_ok());
-        let stored = b
-            .net_peers()
-            .unwrap()
-            .into_iter()
-            .find(|p| p.device == a_device)
-            .map(|p| p.address);
-        assert_eq!(stored, Some(at), "retenue une fois jointe");
+        assert_eq!(
+            b.setting(&reached_key(&a_device)),
+            Some(at),
+            "retenue une fois jointe"
+        );
     }
 
     #[test]
@@ -3396,10 +3590,178 @@ mod tests {
             "203.0.113.5:0",
             "[::1]:7745",
             "[fe80::1]:7745",
+            "[::ffff:127.0.0.1]:7745",
+            "[::ffff:169.254.169.254]:80",
             "203.0.113.5",
             "",
         ] {
             assert_eq!(usable_announced(bad), None, "{bad}");
         }
+    }
+
+    /// **Une officine appairée ne parle que pour elle** : B, hostile,
+    /// « corrige » la rupture de C et signe une rupture du nom de C. Chez A,
+    /// qui a ajouté les deux, la rupture de C reste, et celle de B est
+    /// de B.
+    #[test]
+    fn a_paired_officine_speaks_only_for_itself() {
+        let (dir_a, _sa, a) = officine("speak-a");
+        let (dir_b, _sb, b) = officine("speak-b");
+        let (dir_c, _sc, c) = officine("speak-c");
+        Net::create(&a).unwrap();
+        drop((a, b, c));
+        for dir in [&dir_b, &dir_c] {
+            let (da, db_) = pair(&dir_a, dir, "");
+            assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+            assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        }
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let c = Db::open(&dir_c.join("net.db"), "secret").unwrap();
+        let folder = dir_a.join("echange");
+        c.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        let mut net_c = Net::load(&c).unwrap();
+        net_c.publish(&c, "Pharmacie C").unwrap();
+        net_c.exchange_folder(&c, &folder).unwrap();
+        let target = net_c
+            .journal
+            .records()
+            .find(|r| r.author() == net_c.device.id())
+            .map(|r| r.id())
+            .unwrap();
+        // B efface, et signe du nom de C.
+        let mut net_b = Net::load(&b).unwrap();
+        let t = net_b.trousseau.clone().unwrap();
+        let mut fake = subst("Dafalgan", "Doliprane");
+        fake.uid = "b-base:1".to_owned();
+        let forged = crate::ruptures::encode(&fake, "Pharmacie C");
+        net_b
+            .journal
+            .write(
+                &net_b.device,
+                &t,
+                Stream::Reseau,
+                b"{}",
+                Some(target),
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap();
+        net_b
+            .journal
+            .write(
+                &net_b.device,
+                &t,
+                Stream::Reseau,
+                &forged,
+                None,
+                &mut bpm_sync::OsEntropy,
+            )
+            .unwrap();
+        net_b.exchange_folder(&b, &folder).unwrap();
+        a.set_net_peer(&hex(&net_b.device.id().0), "Pharmacie B", "", ("", ""))
+            .ok();
+        let mut net_a = Net::load(&a).unwrap();
+        net_a.exchange_folder(&a, &folder).unwrap();
+        net_a.absorb(&a).unwrap();
+        let events = a.supply_events().unwrap();
+        let dipro = crate::ruptures::tried(&events, "Diprosone");
+        assert_eq!(dipro.len(), 1, "la rupture de C n'est pas effacée");
+        let dafa = events
+            .iter()
+            .find(|e| e.product == "Dafalgan")
+            .expect("reçue");
+        assert_ne!(dafa.source, "Pharmacie C", "signée par B, pas par C");
+    }
+
+    /// **L'invitation faite à une voisine est pour elle seule** : B, plus
+    /// rapide, frappe le premier et n'obtient rien — pas même un code ; la
+    /// porte reste ouverte, et C, attendue, entre.
+    #[test]
+    fn an_invitation_to_one_neighbour_admits_only_her() {
+        let (dir_a, _sa, a) = officine("expect-a");
+        let (dir_b, _sb, b) = officine("expect-b");
+        let (dir_c, _sc, c) = officine("expect-c");
+        Net::create(&a).unwrap();
+        let c_device = device_hex(&c).unwrap();
+        drop((a, b, c));
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (yes_a, answers_a) = std::sync::mpsc::channel();
+        let inviting = spawn(
+            Job::Invite {
+                port,
+                network: String::new(),
+                nearby: true,
+                expect: Some(c_device),
+            },
+            dir_a.join("net.db"),
+            "secret".to_owned(),
+            "A".to_owned(),
+            "2026-09-25".to_owned(),
+            answers_a,
+        );
+        assert!(matches!(inviting.recv().unwrap(), Progress::Waiting(_)));
+        let join = |dir: &std::path::Path| {
+            let (yes, answers) = std::sync::mpsc::channel();
+            let rx = spawn(
+                Job::Join {
+                    address: format!("127.0.0.1:{port}"),
+                    ticket: None,
+                    expect: None,
+                },
+                dir.join("net.db"),
+                "secret".to_owned(),
+                "X".to_owned(),
+                "2026-09-25".to_owned(),
+                answers,
+            );
+            (rx, yes)
+        };
+        // B d'abord : refusée. Son propre écran peut montrer un code — les
+        // deux « bonjour » se croisent —, et même un opérateur qui dirait
+        // « identique » n'y gagne rien : A n'en montre aucun, et refuse.
+        let (rx_b, yes_b) = join(&dir_b);
+        loop {
+            match rx_b.recv_timeout(Duration::from_secs(20)).expect("une fin") {
+                Progress::Code(_) => {
+                    let _ = yes_b.send(true);
+                }
+                Progress::Failed(_) => break,
+                Progress::Done(d) => panic!("B est entrée : {d}"),
+                _ => {}
+            }
+        }
+        assert!(
+            inviting.try_recv().is_err(),
+            "A n'a rien montré à B — ni code, ni fin"
+        );
+        // C ensuite : les deux codes, acceptés — elle entre.
+        let (rx_c, yes_c) = join(&dir_c);
+        let (mut done_a, mut done_c) = (None, None);
+        while done_a.is_none() || done_c.is_none() {
+            if done_a.is_none() {
+                if let Ok(p) = inviting.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(_) => yes_a.send(true).unwrap(),
+                        other => done_a = Some(other),
+                    }
+                }
+            }
+            if done_c.is_none() {
+                if let Ok(p) = rx_c.recv_timeout(Duration::from_millis(50)) {
+                    match p {
+                        Progress::Code(_) => yes_c.send(true).unwrap(),
+                        other => done_c = Some(other),
+                    }
+                }
+            }
+        }
+        assert!(matches!(done_a, Some(Progress::Done(_))), "{done_a:?}");
+        assert!(matches!(done_c, Some(Progress::Done(_))), "{done_c:?}");
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        assert!(!Net::load(&b).unwrap().in_network(), "B n'a pas la clé");
     }
 }

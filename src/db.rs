@@ -35094,6 +35094,51 @@ impl Db {
     /// était déjà appairée avant, au réseau principal, et y reste — une
     /// officine sans appartenance est du principal, et la première
     /// appartenance à un autre réseau ne doit pas l'en retirer.
+    /// **Une officine et son réseau, d'un seul tenant** : entre les deux
+    /// écritures, une officine sans appartenance passait pour membre du
+    /// principal — et une porte qui répondait à ce moment-là l'y aurait
+    /// admise.
+    pub fn add_net_peer_member(
+        &self,
+        network: &str,
+        device: &str,
+        address: &str,
+        day: &str,
+        was_principal: bool,
+    ) -> Result<(), String> {
+        let tx = self
+            .conn
+            .unchecked_transaction()
+            .map_err(|e| e.to_string())?;
+        tx.execute(
+            "INSERT INTO net_peers (device, address, added) VALUES (?1, ?2, ?3)
+             ON CONFLICT(device) DO UPDATE SET address = CASE
+                 WHEN excluded.address <> '' THEN excluded.address ELSE address END",
+            (device, address.trim(), day),
+        )
+        .map_err(|e| e.to_string())?;
+        let has_any: bool = tx
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM net_memberships WHERE device = ?1)",
+                [device],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !has_any && was_principal && !network.is_empty() {
+            tx.execute(
+                "INSERT OR IGNORE INTO net_memberships (network, device) VALUES ('', ?1)",
+                [device],
+            )
+            .map_err(|e| e.to_string())?;
+        }
+        tx.execute(
+            "INSERT OR IGNORE INTO net_memberships (network, device) VALUES (?1, ?2)",
+            (network, device),
+        )
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())
+    }
+
     pub fn add_net_membership(
         &self,
         network: &str,

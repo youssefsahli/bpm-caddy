@@ -817,6 +817,16 @@ const MOST_ANSWERS: usize = 2;
 /// Le temps qu'une conversation d'officine peut durer en tout.
 const ANSWER_BOUND: Duration = Duration::from_secs(60);
 
+/// Combien de fois une même adresse peut frapper par minute.
+const KNOCKS_PER_MINUTE: usize = 6;
+
+/// Ce qu'on remet à un répondeur : la conversation, et l'adresse d'où
+/// elle vient — tenue pour « en cours » jusqu'à ce qu'il ait fini.
+type Knock = (bpm_sync::link::TcpLink, std::net::IpAddr);
+
+/// Les adresses dont une conversation est en cours.
+type BusyIps = std::sync::Arc<std::sync::Mutex<std::collections::HashSet<std::net::IpAddr>>>;
+
 /// Une officine appairée entendue n'est composée de nouveau qu'après ce
 /// délai — une annonce toutes les trois secondes n'est pas un appel toutes
 /// les trois secondes, et une annonce contrefaite non plus.
@@ -829,11 +839,13 @@ fn answerers(
     path: &Path,
     password: &str,
     tx: &std::sync::mpsc::Sender<Progress>,
-) -> std::sync::mpsc::SyncSender<bpm_sync::link::TcpLink> {
-    let (give, take) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(0);
+) -> (std::sync::mpsc::SyncSender<Knock>, BusyIps) {
+    let (give, take) = std::sync::mpsc::sync_channel::<Knock>(0);
     let take = std::sync::Arc::new(std::sync::Mutex::new(take));
+    let busy: BusyIps = std::sync::Arc::new(std::sync::Mutex::new(Default::default()));
     for _ in 0..MOST_ANSWERS {
         let take = std::sync::Arc::clone(&take);
+        let busy = std::sync::Arc::clone(&busy);
         let (path, password, tx) = (path.to_path_buf(), password.to_owned(), tx.clone());
         std::thread::spawn(move || {
             let mut db: Option<Db> = None;
@@ -842,34 +854,36 @@ fn answerers(
                     Ok(t) => t.recv(),
                     Err(_) => return,
                 };
-                let Ok(mut link) = next else {
+                let Ok((mut link, ip)) = next else {
                     return;
                 };
                 if db.is_none() {
                     db = Db::open(&path, &password).ok();
                 }
-                let Some(db) = &db else {
-                    continue;
-                };
-                if let Ok(device) = crate::network::answer(db, &mut link) {
-                    let who = db
-                        .net_peers()
-                        .ok()
-                        .and_then(|p| p.into_iter().find(|p| p.device == device))
-                        .map(|p| {
-                            [p.name, p.seen_as]
-                                .into_iter()
-                                .find(|n| !n.trim().is_empty())
-                                .unwrap_or_default()
-                        })
-                        .filter(|n| !n.is_empty())
-                        .unwrap_or_else(|| crate::network::peer_groups(&device));
-                    let _ = tx.send(Progress::Status(crate::strings::trf("net_answered", who)));
+                if let Some(db) = &db {
+                    if let Ok(device) = crate::network::answer(db, &mut link) {
+                        let who = db
+                            .net_peers()
+                            .ok()
+                            .and_then(|p| p.into_iter().find(|p| p.device == device))
+                            .map(|p| {
+                                [p.name, p.seen_as]
+                                    .into_iter()
+                                    .find(|n| !n.trim().is_empty())
+                                    .unwrap_or_default()
+                            })
+                            .filter(|n| !n.is_empty())
+                            .unwrap_or_else(|| crate::peer_groups(&device));
+                        let _ = tx.send(Progress::Status(crate::strings::trf("net_answered", who)));
+                    }
+                }
+                if let Ok(mut b) = busy.lock() {
+                    b.remove(&ip);
                 }
             }
         });
     }
-    give
+    (give, busy)
 }
 
 /// Ce que le fil sait d'un poste entendu.
@@ -922,14 +936,18 @@ fn auto(
     // porte ne coûte plus une dérivation de clé à chaque fois. Une porte
     // où les deux sont pris lâche la conversation aussitôt.
     let answers = (side.listen != 0).then(|| answerers(path, password, tx));
+    let mut knocks: Vec<(std::net::IpAddr, Instant)> = Vec::new();
     // Les officines appairées, relues de temps en temps : ce qu'une
     // annonce entendue fait apprendre, et qui on a déjà composé.
     let mut paired: Vec<String> = Vec::new();
     let mut paired_read: Option<Instant> = None;
-    // Par officine **et par adresse** : une annonce contrefaite entendue
-    // la première ne retarde pas l'appel à la vraie adresse.
-    let mut dialed: std::collections::HashMap<(String, String), Instant> =
+    // Les appels aux officines appairées entendues : la dernière réussite
+    // et le dernier essai de chacune, et les adresses qui ont échoué.
+    let mut dial_ok: std::collections::HashMap<String, Instant> = std::collections::HashMap::new();
+    let mut dial_any: std::collections::HashMap<String, Instant> = std::collections::HashMap::new();
+    let mut dial_failed: std::collections::HashMap<(String, std::net::IpAddr), Instant> =
         std::collections::HashMap::new();
+    let (dial_done_tx, dial_done) = std::sync::mpsc::channel::<(String, std::net::IpAddr, bool)>();
     let dialing = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut inviting: u16 = 0;
     // Chaque voisine, l'adresse d'où elle s'est annoncée, et quand.
@@ -1004,12 +1022,38 @@ fn auto(
                 }
             }
         }
-        if let (Some(d), Some(give)) = (&net_door, &answers) {
+        if let (Some(d), Some((give, busy_ips))) = (&net_door, &answers) {
             if let Ok(link) = d.accept_with(Duration::from_millis(100), TALK_PATIENCE) {
-                // Toute la conversation en une minute au plus : qui écrit
-                // un octet de temps en temps ne tient pas la porte. Remise
-                // à un répondeur libre, ou lâchée sur-le-champ.
-                let _ = give.try_send(link.with_deadline(ANSWER_BOUND));
+                // **Une adresse, une conversation à la fois, six par
+                // minute** : qui frappe en boucle ou tient la porte depuis
+                // une seule adresse ne prend pas les deux répondeurs aux
+                // officines appairées.
+                let ip = link.peer_ip();
+                let now = Instant::now();
+                knocks.retain(|(_, at)| now.duration_since(*at) < Duration::from_secs(60));
+                let recent = knocks.iter().filter(|(k, _)| Some(*k) == ip).count();
+                let in_flight =
+                    ip.is_some_and(|ip| busy_ips.lock().map(|b| b.contains(&ip)).unwrap_or(true));
+                if let (Some(ip), false, true) = (ip, in_flight, recent < KNOCKS_PER_MINUTE) {
+                    knocks.push((ip, now));
+                    // Tenue « en cours » dès maintenant : une seconde
+                    // conversation de la même adresse ne passe pas entre
+                    // cette ligne et le répondeur.
+                    if let Ok(mut b) = busy_ips.lock() {
+                        b.insert(ip);
+                    }
+                    // Toute la conversation en une minute au plus : qui
+                    // écrit un octet de temps en temps ne tient pas la
+                    // porte. Remise à un répondeur libre, ou lâchée.
+                    if give
+                        .try_send((link.with_deadline(ANSWER_BOUND), ip))
+                        .is_err()
+                    {
+                        if let Ok(mut b) = busy_ips.lock() {
+                            b.remove(&ip);
+                        }
+                    }
+                }
             }
         }
         if paired_read.is_none_or(|t| t.elapsed() >= Duration::from_secs(30)) {
@@ -1029,42 +1073,70 @@ fn auto(
                     // **La première adresse tient** jusqu'à ce qu'elle se
                     // taise : une annonce venue d'ailleurs sous la même
                     // identité ne détourne pas l'invitation d'une voisine.
-                    let held = near.iter().find(|(x, _, _)| x.device == o.device);
-                    let elsewhere = held.is_some_and(|(_, ip, _)| *ip != from.ip());
-                    if mine || elsewhere {
+                    if mine {
                         continue;
                     }
                     // **Une officine appairée qui s'annonce** : on la compose
                     // à l'adresse annoncée — c'est la connexion au
-                    // lancement, sans rien à saisir. Une fois toutes les
-                    // dix minutes au plus, et l'adresse n'est gardée qu'une
-                    // fois qu'elle y a répondu (`dial_heard`).
+                    // lancement, sans rien à saisir. Avant la règle « la
+                    // première adresse tient », qui ne vaut que pour
+                    // l'affichage : une annonce contrefaite entendue la
+                    // première ne doit pas empêcher d'appeler la vraie.
+                    // Par officine : un essai par minute au plus, rien
+                    // pendant dix minutes après une réussite, et une adresse
+                    // qui a échoué mise de côté dix minutes. L'adresse n'est
+                    // gardée qu'une fois l'officine jointe (`dial_heard`).
+                    for (device, ip, ok) in dial_done.try_iter() {
+                        if ok {
+                            dial_ok.insert(device, Instant::now());
+                        } else {
+                            dial_failed.insert((device, ip), Instant::now());
+                        }
+                    }
+                    dial_failed.retain(|_, t| t.elapsed() < REDIAL);
                     if paired.contains(&o.device) {
                         use std::sync::atomic::Ordering;
-                        let key = (o.device.clone(), o.listen.clone().unwrap_or_default());
-                        let due = dialed
-                            .get(&key)
-                            .is_none_or(|t: &Instant| t.elapsed() >= REDIAL);
-                        if let (Some(at), true) = (&o.listen, due) {
+                        let at_ip = o
+                            .listen
+                            .as_deref()
+                            .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
+                            .map(|a| a.ip());
+                        let due = dial_ok.get(&o.device).is_none_or(|t| t.elapsed() >= REDIAL)
+                            && dial_any
+                                .get(&o.device)
+                                .is_none_or(|t| t.elapsed() >= Duration::from_secs(60))
+                            && at_ip.is_some_and(|ip| {
+                                !dial_failed.contains_key(&(o.device.clone(), ip))
+                            });
+                        if let (Some(at), Some(ip), true) = (&o.listen, at_ip, due) {
                             if dialing.load(Ordering::SeqCst) < MOST_ANSWERS {
-                                dialed.insert(key, Instant::now());
+                                dial_any.insert(o.device.clone(), Instant::now());
                                 dialing.fetch_add(1, Ordering::SeqCst);
                                 let (busy, tx) = (std::sync::Arc::clone(&dialing), tx.clone());
+                                let done = dial_done_tx.clone();
                                 let (path, password) = (path.to_path_buf(), password.to_owned());
                                 let (device, name, at) =
                                     (o.device.clone(), side.name.clone(), at.clone());
                                 std::thread::spawn(move || {
+                                    let mut ok = false;
                                     if let Ok(db) = Db::open(&path, &password) {
                                         if let Ok(said) =
                                             crate::network::dial_heard(&db, &device, &at, &name)
                                         {
+                                            ok = true;
                                             let _ = tx.send(Progress::Status(said));
                                         }
                                     }
+                                    let _ = done.send((device, ip, ok));
                                     busy.fetch_sub(1, Ordering::SeqCst);
                                 });
                             }
                         }
+                    }
+                    let held = near.iter().find(|(x, _, _)| x.device == o.device);
+                    let elsewhere = held.is_some_and(|(_, ip, _)| *ip != from.ip());
+                    if elsewhere {
+                        continue;
                     }
                     if held.is_some() || near.len() < MOST_NEARBY {
                         near.retain(|(x, _, _)| x.device != o.device);

@@ -132,6 +132,12 @@ mod tcp {
             })
         }
 
+        /// Who is at the other end, as the socket says — for a door that
+        /// limits how often, and how many at once, one address may knock.
+        pub fn peer_ip(&self) -> Option<std::net::IpAddr> {
+            self.stream.peer_addr().ok().map(|a| a.ip())
+        }
+
         /// **A bound on the whole conversation**, not only on each read.
         /// The per-read deadline is a socket option, and a caller that
         /// trickles one byte every few seconds satisfies it for ever: a

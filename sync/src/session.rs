@@ -127,6 +127,9 @@ pub struct Session {
     /// `Hello` — see [`Session::answer_any`].
     choices: Vec<(Trousseau, Vec<DeviceId>)>,
     chosen: Option<usize>,
+    /// The one post this conversation is for, when the caller knows it —
+    /// a pairing started from a specific neighbour.
+    expected: Option<DeviceId>,
     /// Chosen, and the exchange not yet opened on that network's journal.
     to_open: bool,
     /// The inviting side has not yet read the joiner's [`Frame::Proof`]:
@@ -203,6 +206,7 @@ impl Session {
             proof_due: false,
             choices: Vec::new(),
             chosen: None,
+            expected: None,
             to_open: false,
             welcome: None,
             adopted: false,
@@ -251,6 +255,15 @@ impl Session {
         let mut s = Self::new(device, Some(&first), Intent::Sync, false, &[])?;
         s.choices = networks;
         Ok(s)
+    }
+
+    /// **Only this post, or nobody**: a pairing started from one
+    /// neighbour refuses any other device the moment it has proved who it
+    /// is — before a code is ever shown, so a third party quicker to the
+    /// door does not get the comparison screen.
+    pub fn expecting(mut self, peer: DeviceId) -> Self {
+        self.expected = Some(peer);
+        self
     }
 
     /// Which of [`Session::answer_any`]'s networks the caller named.
@@ -454,6 +467,10 @@ impl Session {
                 device
                     .verify(&hash, &signature)
                     .inspect_err(|e| meter.refuse(*e))?;
+                if self.expected.is_some_and(|e| e != device) {
+                    meter.refuse(Error::Unknown);
+                    return Err(Error::Unknown);
+                }
                 self.peer = Some(device);
                 meter.note(Signal::Handshake);
                 meter.met(device.fingerprint());
@@ -767,31 +784,39 @@ pub fn drive<L: crate::Link>(
 }
 
 /// [`drive`] for a session made by [`Session::answer_any`]: the journal is
-/// the chosen network's, picked the moment the caller has named it. Returns
-/// the index of that network.
+/// the chosen network's, **loaded only once the caller has named it** —
+/// through `load`, given the network's index. Before that nothing but the
+/// keys and member lists is needed, so a knock that never authenticates
+/// costs the answering post no journal read. Returns the index and the
+/// journal, which the caller keeps.
 pub fn drive_any<L: crate::Link>(
     session: &mut Session,
     link: &mut L,
-    journals: &mut [Journal],
+    load: &mut dyn FnMut(usize) -> Journal,
     meter: &mut Meter,
-) -> Result<usize> {
-    if journals.len() != session.choices.len() || journals.is_empty() {
+) -> Result<(usize, Journal)> {
+    if session.choices.is_empty() {
         return Err(Error::Protocol);
     }
+    // Greeting frames touch no journal; this one stands in until then.
+    let mut journal = Journal::new();
     loop {
-        let at = session.chosen.unwrap_or(0);
         match session.step(meter)? {
             Step::Send(bytes) => link.send(&bytes)?,
             Step::Await => {
                 let bytes = link.recv()?;
-                session.deliver(&bytes, &mut journals[at], meter)?;
-                if let Some(i) = session.chosen {
-                    session.open_chosen(&journals[i]);
+                session.deliver(&bytes, &mut journal, meter)?;
+                if let (Some(i), true) = (session.chosen, session.to_open) {
+                    journal = load(i);
+                    session.open_chosen(&journal);
                 }
             }
             // An ordinary sync never shows a code.
             Step::Confirm(_) => return Err(Error::Protocol),
-            Step::Done => return session.chosen.ok_or(Error::Protocol),
+            Step::Done => {
+                let i = session.chosen.ok_or(Error::Protocol)?;
+                return Ok((i, journal));
+            }
         }
     }
 }
@@ -1485,7 +1510,13 @@ mod tests {
                 std::thread::scope(|sc| {
                     let a = sc.spawn(|| {
                         let mut link = door_link.accept(patience).unwrap();
-                        drive_any(&mut answering, &mut link, journals, &mut Meter::new())
+                        let mut load = |i: usize| std::mem::take(&mut journals[i]);
+                        let got =
+                            drive_any(&mut answering, &mut link, &mut load, &mut Meter::new());
+                        got.map(|(i, j)| {
+                            journals[i] = j;
+                            i
+                        })
                     });
                     let mut link = dial(&address, patience).unwrap();
                     let b = drive(
@@ -1507,5 +1538,31 @@ mod tests {
         let mut nobody = Journal::new();
         let (a, _) = run(&caller, &ta, &mut nobody, &mut journals);
         assert!(a.is_err(), "inconnu du réseau qu'il nomme");
+    }
+
+    /// **A pairing meant for one post refuses another**, before any code.
+    #[test]
+    fn a_pairing_meant_for_one_post_refuses_another() {
+        let t = officine(5);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        let someone = Post::new(3, None).device.id();
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+            .unwrap()
+            .expecting(someone);
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[]).unwrap();
+        match converse(&mut a, &mut b, sa, sb, true) {
+            Err(_) => {}
+            Ok(talked) => assert!(talked.code_a.is_none() && talked.sb.joined().is_none()),
+        }
+        assert!(b.trousseau.is_none());
+        // Expecting the right one, the pairing goes as ever.
+        let b_id = b.device.id();
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+            .unwrap()
+            .expecting(b_id);
+        let sb = Session::new(&b.device, None, Intent::Join, true, &[]).unwrap();
+        let talked = converse(&mut a, &mut b, sa, sb, true).unwrap();
+        assert!(talked.sb.joined().is_some());
     }
 }

@@ -341,6 +341,36 @@ attend la fin de la tâche ; le `Net` de la boucle est relu après un
 récentes ; l'annonce repart à chaque enregistrement (`…_seq`), et une
 officine retirée perd l'adresse qu'elle avait annoncée.
 
+**Revue d'ensemble (0.334.0).** Une revue de toute la couche depuis 0.315.0 :
+- une **correction ne vaut que de l'auteur de ce qu'elle corrige**
+  (`trusted_view`) — une officine appairée effaçait sinon une rupture
+  d'une autre ;
+- **qui a envoyé, c'est qui a signé** : ruptures, valeurs sourcées et
+  versions prennent le nom de l'auteur du relevé (nom donné ici, sinon
+  celui qu'il signe), jamais celui que la charge utile déclare ;
+- la porte ne lit **aucun journal avant la poignée de main** (clés et
+  membres seulement ; `drive_any` charge celui du réseau choisi), une
+  conversation à la fois par adresse et six par minute ;
+- une adresse apprise ou annoncée est rangée à part (`net_reached:`),
+  jamais à la place de l'adresse saisie, et l'appel aux officines
+  appairées entendues ne dépend plus de la règle d'affichage « la
+  première adresse tient » (un essai par minute et par officine, une
+  adresse en échec écartée dix minutes) ;
+- l'invitation faite à une voisine depuis la carte n'admet **qu'elle**
+  (`Session::expecting`) : une autre est refusée avant tout code, et la
+  porte reste ouverte pour la bonne ; de même pour « Rejoindre son
+  réseau » ;
+- une publication et une lecture à la fois par processus, le journal
+  relu sous le verrou avant d'écrire ; officine et appartenance écrites
+  d'un seul tenant ; IPv4 écrite en IPv6 jugée comme telle.
+
+**Reste ouvert** : un identifiant (`<base>:<n>`) repris par une officine
+appairée hostile garde sa place `INSERT OR IGNORE` là où il arrive le
+premier — désormais **attribué à qui l'a signé**, mais la bonne ligne est
+écartée. La parade (l'auteur rangé avec chaque ligne reçue, un identifiant
+déjà tenu par un autre auteur refusé) demande une colonne de plus dans
+deux tables répliquées : à décider.
+
 **L'horloge ne se règle que sur les auteurs de confiance** (0.321.0) :
 `Journal::trust` — cette officine et les siennes — et un rang venu d'un
 autre (relayé par une officine appairée) ne déplace plus celui des
