@@ -370,7 +370,10 @@ impl Net {
         // officines de deux sites.
         let public = db.setting(PUBLIC_ADDRESS).unwrap_or_default();
         let public = public.trim();
-        let key = format!("adresse:{public}");
+        // Une fois par adresse **enregistrée** : revenir à une adresse
+        // d'avant l'annonce de nouveau.
+        let seq = db.setting(PUBLIC_ADDRESS_SEQ).unwrap_or_default();
+        let key = format!("adresse:{seq}:{public}");
         if !public.is_empty() && !already.contains(&key) {
             let payload = serde_json::json!({
                 "t": "adresse",
@@ -620,8 +623,7 @@ impl Net {
                 .filter(|v| v.get("t").and_then(|t| t.as_str()) == Some("adresse"))
                 .and_then(|v| v.get("a").and_then(|a| a.as_str()).map(str::to_owned))
             {
-                let a: String = a.trim().chars().take(120).collect();
-                if !a.is_empty() && !a.contains(char::is_whitespace) {
+                if let Some(a) = usable_announced(&a) {
                     let key = announced_key(&hex(&f.author.0));
                     let was = db.setting(&key);
                     if was.as_deref() != Some(a.as_str()) {
@@ -879,8 +881,13 @@ pub enum Job {
         ticket: Option<bpm_sync::Ticket>,
     },
     /// Synchroniser : le dossier d'échange s'il y en a un, puis chaque
-    /// officine qui a une adresse.
-    Sync { folder: Option<PathBuf> },
+    /// officine qui a une adresse. `announced` : essayer aussi l'adresse
+    /// qu'une officine a annoncée — jamais à la fermeture, qui attend la
+    /// fin de la tâche.
+    Sync {
+        folder: Option<PathBuf>,
+        announced: bool,
+    },
     /// Composer l'adresse d'**une** officine : savoir si elle répond,
     /// sans attendre toutes les autres ni le dossier d'échange.
     Dial { device: String },
@@ -889,6 +896,29 @@ pub enum Job {
 /// Le réglage de l'officine : l'adresse où elle se joint de l'extérieur
 /// (routeur, VPN), annoncée aux membres de ses réseaux. Vide : aucune.
 pub const PUBLIC_ADDRESS: &str = "net_public_address";
+
+/// Combien de fois l'adresse externe a été enregistrée : ce qui fait
+/// repartir l'annonce, même vers une adresse d'avant.
+pub const PUBLIC_ADDRESS_SEQ: &str = "net_public_address_seq";
+
+/// **Une adresse annoncée qu'on accepte de composer** : une adresse IP et
+/// un port, rien d'autre — pas de nom d'hôte, dont la résolution n'a pas
+/// de délai et peut en rendre des dizaines ; ni boucle locale, ni lien
+/// local, ni multidiffusion, ni port nul. Un membre du réseau ne choisit
+/// pas vers où ce poste frappe.
+pub fn usable_announced(text: &str) -> Option<String> {
+    let at: std::net::SocketAddr = text.trim().parse().ok()?;
+    let ip = at.ip();
+    let bad = at.port() == 0
+        || ip.is_loopback()
+        || ip.is_unspecified()
+        || ip.is_multicast()
+        || match ip {
+            std::net::IpAddr::V4(v4) => v4.is_link_local() || v4.is_broadcast(),
+            std::net::IpAddr::V6(v6) => (v6.segments()[0] & 0xffc0) == 0xfe80,
+        };
+    (!bad).then(|| at.to_string())
+}
 
 /// Où ranger l'adresse qu'une officine appairée a annoncée.
 pub fn announced_key(device: &str) -> String {
@@ -1363,7 +1393,7 @@ pub fn run(
             let received = net.absorb(&db)?;
             Ok(trn("net_done_joined", &[&received]))
         }
-        Job::Sync { folder } => {
+        Job::Sync { folder, announced } => {
             let nets = Net::load_all(&db)?;
             if nets.is_empty() {
                 return Err(tr("net_err_no_network").to_owned());
@@ -1394,12 +1424,24 @@ pub fn run(
                     }
                 }
                 let peers = net.peers.clone();
+                // `dial_heard` lit et écrit par son propre `Net` : celui de
+                // cette boucle, relu avant d'absorber, ne récrit pas par-dessus
+                // des valeurs plus anciennes.
+                let mut reread = false;
+                let announced_of = |device: &str| {
+                    if *announced {
+                        db.setting(&announced_key(device))
+                            .and_then(|a| usable_announced(&a))
+                    } else {
+                        None
+                    }
+                };
                 // **L'adresse annoncée, en second** : pour une officine sans
                 // adresse, ou dont l'adresse ne répond plus. Retenue
                 // seulement une fois l'officine jointe (`dial_heard`).
                 for p in peers.iter().filter(|p| p.address.trim().is_empty()) {
-                    if let Some(a) = db.setting(&announced_key(&p.device)) {
-                        let _ = dial_heard(&db, &p.device, &a, officine);
+                    if let Some(a) = announced_of(&p.device) {
+                        reread |= dial_heard(&db, &p.device, &a, officine).is_ok();
                     }
                 }
                 for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
@@ -1412,11 +1454,11 @@ pub fn run(
                                 db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
                         }
                         Err(e) => {
-                            let announced = db
-                                .setting(&announced_key(&p.device))
-                                .filter(|a| a.trim() != p.address.trim());
-                            if let Some(a) = announced {
+                            let other =
+                                announced_of(&p.device).filter(|a| a.trim() != p.address.trim());
+                            if let Some(a) = other {
                                 if dial_heard(&db, &p.device, &a, officine).is_ok() {
+                                    reread = true;
                                     continue;
                                 }
                             }
@@ -1430,6 +1472,11 @@ pub fn run(
                                 failed.push(who);
                             }
                         }
+                    }
+                }
+                if reread {
+                    if let Ok(fresh) = Net::load_network(&db, &net.id.clone()) {
+                        net = fresh;
                     }
                 }
                 match net.absorb(&db) {
@@ -1858,7 +1905,10 @@ mod tests {
         let (tx, _rx) = std::sync::mpsc::channel();
         let (_atx, arx) = std::sync::mpsc::channel();
         let said = run(
-            &Job::Sync { folder: None },
+            &Job::Sync {
+                folder: None,
+                announced: true,
+            },
             &dir.join("net.db"),
             "secret",
             "Pharmacie du Centre",
@@ -3281,7 +3331,10 @@ mod tests {
         b.set_net_peer(&a_device, "", "", ("", "")).ok();
         let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
         let at = door.address().unwrap().to_string();
-        a.set_setting(PUBLIC_ADDRESS, &at, None, "2026-09-25", "")
+        // Annoncée : une adresse publique. La boucle locale du test, elle,
+        // n'est jamais acceptée d'une annonce — on la compose à la main.
+        let public = "203.0.113.9:7745";
+        a.set_setting(PUBLIC_ADDRESS, public, None, "2026-09-25", "")
             .unwrap();
         let folder = dir_a.join("echange");
         let mut net_a = Net::load(&a).unwrap();
@@ -3290,7 +3343,10 @@ mod tests {
         let mut net_b = Net::load(&b).unwrap();
         net_b.exchange_folder(&b, &folder).unwrap();
         net_b.absorb(&b).unwrap();
-        assert_eq!(b.setting(&announced_key(&a_device)), Some(at.clone()));
+        assert_eq!(
+            b.setting(&announced_key(&a_device)),
+            Some(public.to_owned())
+        );
         // A tient sa porte ; B synchronise : jointe à l'adresse annoncée.
         let path_a = dir_a.join("net.db");
         let answering = std::thread::spawn(move || {
@@ -3307,5 +3363,36 @@ mod tests {
             .find(|p| p.device == a_device)
             .map(|p| p.address);
         assert_eq!(stored, Some(at), "retenue une fois jointe");
+    }
+
+    #[test]
+    fn an_announced_address_is_an_ip_and_a_port_nowhere_private_to_this_post() {
+        assert_eq!(
+            usable_announced(" 203.0.113.5:7745 "),
+            Some("203.0.113.5:7745".to_owned())
+        );
+        assert_eq!(
+            usable_announced("10.8.0.2:7745"),
+            Some("10.8.0.2:7745".to_owned())
+        );
+        assert_eq!(
+            usable_announced("[2001:db8::1]:7745"),
+            Some("[2001:db8::1]:7745".to_owned())
+        );
+        for bad in [
+            "exemple.fr:7745",
+            "127.0.0.1:7745",
+            "0.0.0.0:7745",
+            "169.254.169.254:80",
+            "224.0.0.1:7745",
+            "255.255.255.255:7745",
+            "203.0.113.5:0",
+            "[::1]:7745",
+            "[fe80::1]:7745",
+            "203.0.113.5",
+            "",
+        ] {
+            assert_eq!(usable_announced(bad), None, "{bad}");
+        }
     }
 }

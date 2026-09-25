@@ -7508,6 +7508,7 @@ impl Session {
         self.net_auto = Some(crate::network::spawn(
             crate::network::Job::Sync {
                 folder: (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
+                announced: true,
             },
             path,
             self.password.clone(),
@@ -7558,19 +7559,23 @@ impl Session {
                     // **Une voisine qui vient d'ouvrir une invitation** se
                     // dit dans la barre d'état : on n'attend pas que
                     // quelqu'un regarde la carte.
-                    let paired = self
-                        .conn_summary
-                        .as_ref()
-                        .map(|s| {
-                            s.map_peers
-                                .iter()
-                                .map(|(p, _)| p.device.clone())
-                                .collect::<Vec<_>>()
-                        })
-                        .unwrap_or_default();
+                    // Les officines appairées, lues dans la base — et leurs
+                    // noms : une annonce qui prend le nom d'une officine
+                    // appairée n'est pas mise en avant.
+                    let paired = self.db.net_peers().unwrap_or_default();
+                    let known_name = |name: &str| {
+                        let name = name.trim().to_lowercase();
+                        !name.is_empty()
+                            && paired.iter().any(|p| {
+                                [p.name.as_str(), p.seen_as.as_str()]
+                                    .iter()
+                                    .any(|x| x.trim().to_lowercase() == name)
+                            })
+                    };
                     if let Some(n) = near.iter().find(|n| {
                         n.invite.is_some()
-                            && !paired.contains(&n.device)
+                            && !paired.iter().any(|p| p.device == n.device)
+                            && !known_name(&n.name)
                             && !self
                                 .near_officines
                                 .iter()
@@ -58798,6 +58803,7 @@ impl App {
                             start = Some(Job::Sync {
                                 folder: (!folder.is_empty())
                                     .then(|| std::path::PathBuf::from(folder)),
+                                announced: true,
                             });
                         }
                         if motif::button_enabled(ui, tr("net_invite"), !busy)
@@ -58941,6 +58947,13 @@ impl App {
             {
                 w.note = Some((true, e));
             }
+            // Ce qu'elle avait annoncé ne sert plus.
+            let key = crate::network::announced_key(&device);
+            if let Some(was) = session.db.setting(&key) {
+                let _ = session
+                    .db
+                    .set_setting(&key, "", Some(&was), &session.today, "");
+            }
             if let Err(e) = session.db.remove_net_membership(&w.network, &device) {
                 w.note = Some((true, e));
             }
@@ -58948,18 +58961,39 @@ impl App {
             w.reread(&session.db);
         }
         if let Some((value, was)) = save_public {
-            match session.db.set_setting(
-                crate::network::PUBLIC_ADDRESS,
-                &value,
-                was.as_deref(),
-                &session.today,
-                "",
-            ) {
-                Ok(true) => {}
-                Ok(false) => network_stale = true,
-                Err(e) => w.note = Some((true, e)),
+            // Une adresse IP et un port, ou rien : ce que les autres
+            // officines accepteront de composer.
+            let usable = crate::network::usable_announced(&value);
+            if !value.is_empty() && usable.is_none() {
+                w.note = Some((true, tr("net_public_bad").to_owned()));
+            } else {
+                match session.db.set_setting(
+                    crate::network::PUBLIC_ADDRESS,
+                    &usable.unwrap_or_default(),
+                    was.as_deref(),
+                    &session.today,
+                    "",
+                ) {
+                    Ok(true) => {
+                        let seq = session
+                            .db
+                            .setting(crate::network::PUBLIC_ADDRESS_SEQ)
+                            .and_then(|n| n.parse::<u64>().ok())
+                            .unwrap_or(0);
+                        let was_seq = session.db.setting(crate::network::PUBLIC_ADDRESS_SEQ);
+                        let _ = session.db.set_setting(
+                            crate::network::PUBLIC_ADDRESS_SEQ,
+                            &(seq + 1).to_string(),
+                            was_seq.as_deref(),
+                            &session.today,
+                            "",
+                        );
+                    }
+                    Ok(false) => network_stale = true,
+                    Err(e) => w.note = Some((true, e)),
+                }
+                w.public = None;
             }
-            w.public = None;
         }
         // Un code d'invitation, ou une adresse seule ; un code abîmé est
         // dit, jamais changé en comparaison de code à l'insu de qui l'a
@@ -70672,9 +70706,12 @@ impl eframe::App for App {
                         let (tx, _rx) = std::sync::mpsc::channel();
                         let (_ans_tx, ans_rx) = std::sync::mpsc::channel();
                         let _ = crate::network::run(
+                            // Sans les adresses annoncées : la fermeture attend
+                            // la fin de cette tâche.
                             &crate::network::Job::Sync {
                                 folder: (!folder.is_empty())
                                     .then(|| std::path::PathBuf::from(folder)),
+                                announced: false,
                             },
                             &path,
                             &s.password,

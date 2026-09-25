@@ -331,7 +331,15 @@ réseau**, chiffrée et signée. `absorb` range la dernière adresse annoncée
 par chaque officine appairée à part (`net_announced:<empreinte>`), jamais à
 la place de l'adresse saisie ; la synchronisation l'essaie pour une
 officine sans adresse ou dont l'adresse ne répond plus, et ne la retient
-qu'une fois l'officine attendue jointe (`dial_heard`).
+qu'une fois l'officine attendue jointe (`dial_heard`). Revue de sécurité
+(0.328.0) : **une adresse IP et un port, rien d'autre**
+(`usable_announced` — ni nom d'hôte, dont la résolution n'a pas de délai,
+ni boucle locale, lien local, multidiffusion ou port nul), vérifiée à
+l'enregistrement et à la réception ; jamais essayée à la fermeture, qui
+attend la fin de la tâche ; le `Net` de la boucle est relu après un
+`dial_heard` réussi, pour ne pas récrire par-dessus des valeurs plus
+récentes ; l'annonce repart à chaque enregistrement (`…_seq`), et une
+officine retirée perd l'adresse qu'elle avait annoncée.
 
 **L'horloge ne se règle que sur les auteurs de confiance** (0.321.0) :
 `Journal::trust` — cette officine et les siennes — et un rang venu d'un

@@ -857,9 +857,8 @@ Base, « Répondre aux officines appairées »), et une officine appairée
 présente sur le réseau local est jointe dès qu'elle s'annonce, sans
 adresse à saisir. Les autres ne reçoivent aucune réponse. Entre deux
 sites : une officine joignable de l'extérieur (routeur, VPN) déclare son
-adresse dans la fenêtre du réseau (« Adresse joignable de
-l'extérieur ») ; ses officines appairées l'apprennent et s'y connectent
-au lancement.
+adresse dans la fenêtre du réseau (« Adresse externe ») ; ses officines
+appairées l'apprennent et s'y connectent au lancement.
 
 **Les officines voisines.** Chaque officine s'annonce sur le réseau
 local : nom, ville et empreinte, rien d'autre (Options › Base, « Annoncer
