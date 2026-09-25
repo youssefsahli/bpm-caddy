@@ -1,6 +1,6 @@
 [package]
 name = "bpm-sync"
-version = "0.239.0"
+version = "0.240.0"
 edition = "2021"
 description = "Versioned, end-to-end encrypted peer-to-peer journal for clinical data. Optional, self-contained, no server."
 license-file = "../LICENSE"

@@ -23,7 +23,9 @@ Il s'adresse à qui reprend le sujet, y compris à moi-même dans six mois.
 > d'autre. Les décisions du § 8 ont été prises pour lui par l'officine :
 > entre officines d'un groupement ; sur un bouton et à la fermeture ;
 > personne n'écoute en permanence (une porte s'ouvre le temps d'une
-> invitation) ; et, en plus des adresses, un **dossier d'échange** où
+> invitation) — **décision revue en 0.321.0, sur demande de l'officine :
+> une porte tenue ouverte aux seules officines appairées, voir plus
+> bas** ; et, en plus des adresses, un **dossier d'échange** où
 > chaque officine dépose ses enregistrements scellés. La fonction `sync`
 > est donc allumée par défaut ; `--no-default-features` rend toujours un
 > binaire sans aucun code réseau. Les autres flux (dossiers, registre,
@@ -298,9 +300,34 @@ Ce qu'une **conversation directe** relaie d'auteurs qu'on n'a pas ajoutés
 avant — le redemander à chaque échange coûterait tout le trafic. Mais
 `absorb` lit à travers une **vue de confiance** (`trusted_view` : cette
 officine et les siennes) : une correction venue d'un autre n'y efface
-rien. Reste ouvert, comme avant 0.318.0 : un tel auteur relayé peut
-porter le rang de Lamport au plafond ; la parade (ne laisser monter
-`high` qu'aux auteurs de confiance) est dans `bpm-sync`, à décider.
+rien. Un tel auteur relayé ne règle pas non plus le rang de Lamport d'ici
+(`Journal::trust`, 0.321.0).
+
+**La connexion au lancement** (0.321.0). Le fil automatique, lancé à
+chaque ouverture, tient une porte sur `[reseau] port_ecoute` (7745 ;
+`ecouter`, oui par défaut) dès que l'officine est d'un réseau — **distinct
+de `port`**, celui des invitations, que la porte tenue ouverte aurait
+sinon pris. `Session::answer_any` répond
+pour **n'importe lequel** de ses réseaux : son `Hello` ne nomme aucune
+officine, celui de l'appelant nomme la sienne, qui doit être l'un des
+réseaux d'ici *et* connaître l'appelant — sinon refus, avant le moindre
+enregistrement ; `drive_any` ouvre alors l'échange sur le journal de ce
+réseau. Chaque conversation a son fil, deux au plus, huit secondes par lecture
+et **une minute en tout** (`TcpLink::with_deadline` : le délai par lecture
+est une option de socket, et qui envoie un octet toutes les sept secondes
+le satisfait sans fin) ; les appels sortants ont leur propre compte. L'annonce `BPMOFFICINE2` dit le port d'écoute et la ville
+(celle de la configuration, sans code postal) ; une officine **appairée**
+qu'on entend est composée à cette adresse (`dial_heard`), une fois toutes
+les dix minutes au plus, et l'adresse n'est **gardée qu'une fois que
+l'officine attendue y a répondu** — une annonce ne prouve rien, et une
+annonce contrefaite ne remplace pas une adresse saisie. La ville annoncée
+ne s'affiche que pour une officine qu'on n'a pas ajoutée. Au-delà du réseau local, sans serveur,
+rien ne se découvre : restent les adresses saisies et le dossier.
+
+**L'horloge ne se règle que sur les auteurs de confiance** (0.321.0) :
+`Journal::trust` — cette officine et les siennes — et un rang venu d'un
+autre (relayé par une officine appairée) ne déplace plus celui des
+écritures d'ici. Ce qui restait ouvert plus haut est fermé.
 
 Les invitations faites **à une officine voisine** depuis la carte (vue
 par son annonce UDP `BPMOFFICINE1`, nom déclaré par elle-même) n'ont pas

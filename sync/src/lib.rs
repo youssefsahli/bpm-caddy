@@ -96,7 +96,7 @@ pub use keys::{Device, DeviceId, Fingerprint, Ticket, Trousseau};
 pub use link::Link;
 pub use meter::{Meter, Refusal, Report, Signal};
 pub use seal::{Hash, Record, Stream, MAX_PAYLOAD};
-pub use session::{drive, Intent, Session, Step};
+pub use session::{drive, drive_any, Intent, Session, Step};
 pub use wire::Frame;
 
 /// Everything this crate can refuse to do, as a reason and never as a

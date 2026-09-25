@@ -122,6 +122,13 @@ pub struct Session {
     /// The invitation's ticket, when the pairing came with a code. See
     /// [`Ticket`].
     ticket: Option<Ticket>,
+    /// Answering for any of several officines (networks): each with the
+    /// posts it knows. The one used is the one the caller names in its
+    /// `Hello` — see [`Session::answer_any`].
+    choices: Vec<(Trousseau, Vec<DeviceId>)>,
+    chosen: Option<usize>,
+    /// Chosen, and the exchange not yet opened on that network's journal.
+    to_open: bool,
     /// The inviting side has not yet read the joiner's [`Frame::Proof`]:
     /// it neither shows a code nor hands over a key until it has.
     proof_due: bool,
@@ -194,6 +201,9 @@ impl Session {
             accepted: false,
             ticket: None,
             proof_due: false,
+            choices: Vec::new(),
+            chosen: None,
+            to_open: false,
             welcome: None,
             adopted: false,
             phase: Phase::Handshake,
@@ -225,6 +235,35 @@ impl Session {
         }
         self.ticket = Some(ticket);
         Ok(self)
+    }
+
+    /// **Answer an ordinary sync for whichever of several officines the
+    /// caller belongs to** — a post that is in more than one network holds
+    /// one door, and cannot know which network a knock is for until the
+    /// caller has said who it is.
+    ///
+    /// This end's own `Hello` therefore names no officine; the caller's
+    /// names one, and it must be one of `networks` *and* the caller must
+    /// be a post that network knows. Then [`Session::chosen`] says which,
+    /// and [`drive_any`] opens the exchange on that network's journal.
+    pub fn answer_any(device: &Device, networks: Vec<(Trousseau, Vec<DeviceId>)>) -> Result<Self> {
+        let first = networks.first().ok_or(Error::Protocol)?.0.clone();
+        let mut s = Self::new(device, Some(&first), Intent::Sync, false, &[])?;
+        s.choices = networks;
+        Ok(s)
+    }
+
+    /// Which of [`Session::answer_any`]'s networks the caller named.
+    pub fn chosen(&self) -> Option<usize> {
+        self.chosen
+    }
+
+    /// Open the exchange on the chosen network's journal.
+    fn open_chosen(&mut self, journal: &Journal) {
+        if self.to_open {
+            self.to_open = false;
+            self.open_exchange(journal);
+        }
     }
 
     /// Which post is at the other end, once it has proved it.
@@ -361,10 +400,16 @@ impl Session {
         self.code = Some(short_code(&hash));
         self.transport = Some(hs.into_transport_mode().map_err(|_| Error::Handshake)?);
         self.phase = Phase::Greet;
+        // Answering for several networks, this end does not know which yet.
+        let officine = if self.choices.is_empty() {
+            self.trousseau.as_ref().map(Trousseau::name)
+        } else {
+            None
+        };
         self.out.push_back(Frame::Hello {
             protocol: PROTOCOL,
             device: self.device.id(),
-            officine: self.trousseau.as_ref().map(Trousseau::name),
+            officine,
             signature: self.device.sign(&hash),
         });
         meter.note(Signal::Session);
@@ -490,11 +535,33 @@ impl Session {
     ) -> Result<()> {
         let mine = self.trousseau.as_ref().map(Trousseau::name);
         match self.intent {
+            Intent::Sync if !self.choices.is_empty() => {
+                // The network the caller names, if it is one of ours and
+                // knows this caller.
+                let found = self
+                    .choices
+                    .iter()
+                    .position(|(t, known)| Some(t.name()) == officine && known.contains(&device));
+                let Some(i) = found else {
+                    meter.refuse(Error::Unknown);
+                    return Err(Error::Unknown);
+                };
+                self.trousseau = Some(self.choices[i].0.clone());
+                self.known = self.choices[i].1.clone();
+                self.chosen = Some(i);
+                self.to_open = true;
+                self.phase = Phase::Exchange;
+                Ok(())
+            }
             Intent::Sync => {
                 // A stranger under this intent is refused. Pairing is a
                 // decision, not something that happens because two
                 // machines found each other.
-                if !self.known.contains(&device) || officine != mine {
+                //
+                // A post answering for several networks names none in its
+                // `Hello` (see `answer_any`): it is the caller's officine
+                // that chooses, and the answering end checks it.
+                if !self.known.contains(&device) || (officine.is_some() && officine != mine) {
                     meter.refuse(Error::Unknown);
                     return Err(Error::Unknown);
                 }
@@ -695,6 +762,36 @@ pub fn drive<L: crate::Link>(
                 session.accept(journal, meter)?;
             }
             Step::Done => return Ok(()),
+        }
+    }
+}
+
+/// [`drive`] for a session made by [`Session::answer_any`]: the journal is
+/// the chosen network's, picked the moment the caller has named it. Returns
+/// the index of that network.
+pub fn drive_any<L: crate::Link>(
+    session: &mut Session,
+    link: &mut L,
+    journals: &mut [Journal],
+    meter: &mut Meter,
+) -> Result<usize> {
+    if journals.len() != session.choices.len() || journals.is_empty() {
+        return Err(Error::Protocol);
+    }
+    loop {
+        let at = session.chosen.unwrap_or(0);
+        match session.step(meter)? {
+            Step::Send(bytes) => link.send(&bytes)?,
+            Step::Await => {
+                let bytes = link.recv()?;
+                session.deliver(&bytes, &mut journals[at], meter)?;
+                if let Some(i) = session.chosen {
+                    session.open_chosen(&journals[i]);
+                }
+            }
+            // An ordinary sync never shows a code.
+            Step::Confirm(_) => return Err(Error::Protocol),
+            Step::Done => return session.chosen.ok_or(Error::Protocol),
         }
     }
 }
@@ -1350,5 +1447,65 @@ mod tests {
         // And an ordinary sync takes no ticket at all.
         let sync = Session::new(&a.device, a.trousseau.as_ref(), Intent::Sync, true, &[]).unwrap();
         assert!(sync.with_ticket(Ticket::from_bytes([1; 10])).is_err());
+    }
+
+    /// **One door for several networks**: a post in two officines answers
+    /// a caller of the second on that network's journal, and a caller the
+    /// named network does not know is refused — even one the other
+    /// network knows.
+    #[test]
+    fn one_door_answers_each_network_on_its_own_journal() {
+        let (ta, tb) = (officine(5), officine(6));
+        let mut e = Counted(71);
+        let door = Device::generate(&mut e);
+        let caller = Device::generate(&mut e);
+        let other = Device::generate(&mut e);
+        // The caller writes in network B.
+        let mut theirs = Journal::new();
+        theirs
+            .write(&caller, &tb, Stream::Reseau, b"de B", None, &mut e)
+            .unwrap();
+        let mut journals = [Journal::new(), Journal::new()];
+        let run =
+            |caller: &Device, t: &Trousseau, theirs: &mut Journal, journals: &mut [Journal]| {
+                use crate::link::{dial, Door};
+                let patience = std::time::Duration::from_secs(20);
+                let door_link = Door::open("127.0.0.1:0").unwrap();
+                let address = door_link.address().unwrap().to_string();
+                let mut answering = Session::answer_any(
+                    &door,
+                    vec![
+                        (ta.clone(), vec![other.id()]),
+                        (tb.clone(), vec![caller.id()]),
+                    ],
+                )
+                .unwrap();
+                let mut calling =
+                    Session::new(caller, Some(t), Intent::Sync, true, &[door.id()]).unwrap();
+                std::thread::scope(|sc| {
+                    let a = sc.spawn(|| {
+                        let mut link = door_link.accept(patience).unwrap();
+                        drive_any(&mut answering, &mut link, journals, &mut Meter::new())
+                    });
+                    let mut link = dial(&address, patience).unwrap();
+                    let b = drive(
+                        &mut calling,
+                        &mut link,
+                        theirs,
+                        &mut Meter::new(),
+                        &mut |_| false,
+                    );
+                    (a.join().unwrap(), b)
+                })
+            };
+        let (a, b) = run(&caller, &tb, &mut theirs, &mut journals);
+        assert_eq!(a, Ok(1), "le second réseau");
+        assert!(b.is_ok());
+        assert_eq!(journals[1].len(), 1, "reçu dans le journal de B");
+        assert_eq!(journals[0].len(), 0, "rien dans celui de A");
+        // A caller network A does not know, naming A: refused.
+        let mut nobody = Journal::new();
+        let (a, _) = run(&caller, &ta, &mut nobody, &mut journals);
+        assert!(a.is_err(), "inconnu du réseau qu'il nomme");
     }
 }

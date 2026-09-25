@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.321.0] - 2026-09-25
+
+### Added
+- **Connexion au lancement.** Tant que l'application est ouverte, les
+  officines appairées se joignent d'elles-mêmes : chacune répond aux
+  siennes, et une officine appairée entendue sur le réseau local est
+  connectée aussitôt, sans adresse à saisir. Aucune autre officine ne
+  reçoit de réponse. Réglable dans Options › Base (« Répondre aux
+  officines appairées », sur un port à part, 7745 par défaut).
+- **Chaque officine se reconnaît d'un coup d'œil sur la carte** : ses
+  initiales dans une couleur tirée de son empreinte, les mêmes sur chaque
+  poste ; et, pour une officine voisine, sa ville sous son nom.
+
+### Security
+- Une officine qu'on n'a pas ajoutée ne peut plus dérégler l'ordre des
+  échanges du réseau, même relayée par une officine appairée.
+- Une adresse apprise sur le réseau local n'est gardée qu'une fois que
+  l'officine attendue y a répondu ; une conversation ne peut plus tenir
+  la connexion plus d'une minute.
+
 ## [0.320.0] - 2026-09-25
 
 ### Security

@@ -117,7 +117,8 @@ impl Net {
             .map(Trousseau::from_secret);
         let peers = db.net_members("")?;
         let device = Device::from_seed(seed);
-        let journal = stored_journal(db.net_records_of("")?);
+        let mut journal = stored_journal(db.net_records_of("")?);
+        journal.trust(trusted_ids(&device, &peers));
         Ok(Self {
             id: String::new(),
             label: String::new(),
@@ -145,7 +146,8 @@ impl Net {
         let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
         let device = Device::from_seed(seed);
         let peers = db.net_members(id)?;
-        let journal = stored_journal(db.net_records_of(id)?);
+        let mut journal = stored_journal(db.net_records_of(id)?);
+        journal.trust(trusted_ids(&device, &peers));
         Ok(Self {
             id: n.id.clone(),
             label: n.label.clone(),
@@ -840,6 +842,16 @@ pub enum Job {
 /// Combien d'officines non ajoutées un passage au dossier compte au plus.
 pub const MOST_STRANGERS: usize = 32;
 
+/// Cette officine et les siennes : les auteurs dont le rang règle
+/// l'horloge du journal — voir `Journal::trust`.
+fn trusted_ids(me: &Device, peers: &[Peer]) -> Vec<DeviceId> {
+    peers
+        .iter()
+        .filter_map(|p| unhex::<32>(&p.device).map(DeviceId::from_bytes))
+        .chain(std::iter::once(me.id()))
+        .collect()
+}
+
 /// Le journal tel que la base le garde.
 fn stored_journal(records: Vec<Vec<u8>>) -> Journal {
     let mut journal = Journal::new();
@@ -971,6 +983,11 @@ pub struct Nearby {
     pub name: String,
     /// L'adresse de son invitation, quand elle en a une ouverte.
     pub invite: Option<String>,
+    /// L'adresse où elle écoute les officines appairées, quand elle le
+    /// fait — ce qu'une officine appairée apprend pour la joindre.
+    pub listen: Option<String>,
+    /// La ville **qu'elle se donne**, pour la reconnaître d'un coup d'œil.
+    pub place: String,
 }
 
 /// Le plus long nom qu'une annonce porte, en caractères.
@@ -981,12 +998,34 @@ const NEARBY_NAME: usize = 48;
 /// que l'annonce reste une ligne de mots. **Rien d'autre** : ni réseau,
 /// ni membre, ni donnée — une officine est un commerce qui a pignon sur
 /// rue, et son nom sur le réseau local n'apprend rien de plus.
-pub fn officine_beacon(device: &str, name: &str, invite_port: u16) -> String {
-    let name: String = clean_name(name);
+pub fn officine_beacon(
+    device: &str,
+    name: &str,
+    place: &str,
+    listen_port: u16,
+    invite_port: u16,
+) -> String {
     format!(
-        "BPMOFFICINE1 {device} {invite_port} {}",
-        hex(name.as_bytes())
+        "BPMOFFICINE2 {device} {listen_port} {invite_port} {} {}",
+        hex(clean_name(name).as_bytes()),
+        hex(clean_name(place).as_bytes())
     )
+}
+
+/// **La ville d'une adresse**, pour l'annonce : son dernier morceau —
+/// « 12 rue des Lilas, 75011 Paris » donne « Paris ». Le code postal
+/// n'apprend rien de plus à qui voit la carte, et prend la place.
+pub fn town_of(address: &str) -> String {
+    let last = address
+        .split(['\n', ','])
+        .map(str::trim)
+        .rfind(|l| !l.is_empty())
+        .unwrap_or("");
+    let words: Vec<&str> = last
+        .split_whitespace()
+        .skip_while(|w| w.chars().all(|c| c.is_ascii_digit()))
+        .collect();
+    clean_name(&words.join(" ")).chars().take(32).collect()
 }
 
 /// Un nom tel qu'une annonce peut le porter : sans caractère de
@@ -1005,30 +1044,108 @@ fn clean_name(name: &str) -> String {
 /// pas exactement une annonce est `None` — l'annonce vient de n'importe
 /// qui sur le réseau local.
 pub fn heard_officine(text: &str, from: std::net::IpAddr) -> Option<Nearby> {
-    let mut parts = text.split(' ');
-    if parts.next()? != "BPMOFFICINE1" {
-        return None;
-    }
+    let parts: Vec<&str> = text.split(' ').collect();
+    // Deux versions : la première ne disait ni où écouter ni la ville.
+    let (device, listen, invite, name_hex, place_hex) = match parts.as_slice() {
+        ["BPMOFFICINE1", d, i, n] => (*d, "0", *i, *n, ""),
+        ["BPMOFFICINE2", d, l, i, n, p] => (*d, *l, *i, *n, *p),
+        _ => return None,
+    };
     // **Réécrite, jamais reprise telle quelle** : `unhex` lit aussi les
     // majuscules, et une même clé écrite de deux façons passerait pour
     // deux officines — une voisine inconnue portant l'empreinte d'un
     // membre.
-    let device = hex(&unhex::<32>(parts.next()?)?);
-    let port: u16 = parts.next()?.parse().ok()?;
-    let name_hex = parts.next()?;
-    if parts.next().is_some() || name_hex.len() > NEARBY_NAME * 8 || name_hex.len() % 2 != 0 {
-        return None;
-    }
-    let bytes: Option<Vec<u8>> = (0..name_hex.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(name_hex.get(i..i + 2)?, 16).ok())
-        .collect();
-    let name = clean_name(&String::from_utf8(bytes?).ok()?);
+    let device = hex(&unhex::<32>(device)?);
+    let listen: u16 = listen.parse().ok()?;
+    let invite: u16 = invite.parse().ok()?;
+    let text_of = |h: &str| -> Option<String> {
+        if h.len() > NEARBY_NAME * 8 || !h.len().is_multiple_of(2) {
+            return None;
+        }
+        let bytes: Option<Vec<u8>> = (0..h.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(h.get(i..i + 2)?, 16).ok())
+            .collect();
+        Some(clean_name(&String::from_utf8(bytes?).ok()?))
+    };
+    let at = |port: u16| (port != 0).then(|| std::net::SocketAddr::new(from, port).to_string());
     Some(Nearby {
         device,
-        name,
-        invite: (port != 0).then(|| std::net::SocketAddr::new(from, port).to_string()),
+        name: text_of(name_hex)?,
+        invite: at(invite),
+        listen: at(listen),
+        place: text_of(place_hex)?,
     })
+}
+
+/// **Répondre à une officine appairée qui frappe** — de n'importe lequel
+/// des réseaux de celle-ci : c'est elle qui dit lequel, et il faut
+/// qu'elle en soit. Ce qu'elle apporte est gardé et lu comme après une
+/// synchronisation. Rend l'empreinte de qui a frappé.
+pub fn answer<L: bpm_sync::Link>(db: &Db, link: &mut L) -> Result<String, String> {
+    let mut nets = Net::load_all(db)?;
+    let choices: Vec<(Trousseau, Vec<DeviceId>)> = nets
+        .iter()
+        .filter_map(|n| n.trousseau.clone().map(|t| (t, n.known())))
+        .collect();
+    if choices.len() != nets.len() || nets.is_empty() {
+        return Err(crate::strings::tr("net_err_no_network").to_owned());
+    }
+    let device = Device::from_seed(nets[0].device.seed());
+    let mut journals: Vec<Journal> = nets
+        .iter_mut()
+        .map(|n| std::mem::take(&mut n.journal))
+        .collect();
+    let mut session = Session::answer_any(&device, choices).map_err(|e| format!("{e:?}"))?;
+    let chosen = bpm_sync::drive_any(&mut session, link, &mut journals, &mut Meter::new())
+        .map_err(|e| format!("{e:?}"));
+    for (n, j) in nets.iter_mut().zip(journals) {
+        n.journal = j;
+    }
+    let i = chosen?;
+    let net = &nets[i];
+    net.keep(db)?;
+    let peer = session.peer().map(|p| hex(&p.0)).unwrap_or_default();
+    let _ = db.note_net_dial(&peer, None);
+    net.absorb(db)?;
+    Ok(peer)
+}
+
+/// **Composer une officine appairée à l'adresse que son annonce donne**,
+/// et ne garder cette adresse qu'**une fois qu'elle y a répondu** : une
+/// annonce ne prouve rien — n'importe qui sur le réseau local peut en
+/// écrire une sous l'identité d'une officine appairée. Une adresse
+/// fausse mène à une poignée de main refusée, et l'adresse saisie ou
+/// apprise auparavant reste. Rien pour une officine qu'on n'a pas
+/// ajoutée.
+pub fn dial_heard(db: &Db, device: &str, address: &str, officine: &str) -> Result<String, String> {
+    use crate::strings::{tr, trn};
+    let Some(mut net) = Net::load_all(db)?
+        .into_iter()
+        .find(|n| n.peers.iter().any(|p| p.device == device))
+    else {
+        return Err(tr("net_err_no_network").to_owned());
+    };
+    let Some(p) = net.peers.iter().find(|p| p.device == device).cloned() else {
+        return Err(tr("net_err_no_network").to_owned());
+    };
+    let sent = net.publish(db, officine)?;
+    let answered = net
+        .sync_with(db, address, TALK_PATIENCE)
+        .map_err(|e| dial_reason(&e))?;
+    if answered.as_deref() != Some(device) {
+        return Err(dial_reason("Handshake"));
+    }
+    if p.address.trim() != address.trim() {
+        db.add_net_peer(device, address, "")?;
+    }
+    let _ = db.note_net_dial(device, None);
+    let received = net.absorb(db)?;
+    let name = [p.name, p.seen_as]
+        .into_iter()
+        .find(|n| !n.trim().is_empty())
+        .unwrap_or_else(|| peer_groups(device));
+    Ok(trn("net_done_dialed", &[&name, &sent, &received]))
 }
 
 /// Combien d'attente pour une invitation, et pour une conversation.
@@ -1259,61 +1376,67 @@ pub fn run(
             Ok(said)
         }
         Job::Dial { device } => {
-            // Le réseau où cette officine est : le premier qui la compte.
-            if let Some(found) = Net::load_all(&db)?
-                .into_iter()
-                .find(|n| n.peers.iter().any(|p| p.device == *device))
-            {
-                net = found;
+            let _ = net;
+            dial_device(&db, device, officine)
+        }
+    }
+}
+
+/// Composer l'adresse d'**une** officine appairée et échanger avec elle :
+/// ce que « Essayer » demande, et ce que le fil automatique fait quand il
+/// entend une officine appairée sur le réseau local.
+pub fn dial_device(db: &Db, device: &str, officine: &str) -> Result<String, String> {
+    use crate::strings::{tr, trn};
+    // Le réseau où cette officine est : le premier qui la compte.
+    let Some(mut net) = Net::load_all(db)?
+        .into_iter()
+        .find(|n| n.peers.iter().any(|p| p.device == device))
+    else {
+        return Err(tr("net_err_no_network").to_owned());
+    };
+    let Some(p) = net
+        .peers
+        .iter()
+        .find(|p| p.device == device && !p.address.trim().is_empty())
+        .cloned()
+    else {
+        return Err(tr("net_err_no_address").to_owned());
+    };
+    let name = if p.name.trim().is_empty() {
+        p.address.clone()
+    } else {
+        p.name.clone()
+    };
+    let sent = net.publish(db, officine)?;
+    match net.sync_with(db, &p.address, TALK_PATIENCE) {
+        Ok(answered) => {
+            let answered = answered.unwrap_or_else(|| p.device.clone());
+            let _ = db.note_net_dial(&answered, None);
+            let received = net.absorb(db)?;
+            if answered == p.device {
+                return Ok(trn("net_done_dialed", &[&name, &sent, &received]));
             }
-            if !net.in_network() {
-                return Err(tr("net_err_no_network").to_owned());
-            }
-            let Some(p) = net
+            // Une autre officine du réseau répond à cette adresse (un bail
+            // DHCP qui a changé) : l'échange a eu lieu, mais celle qu'on
+            // composait n'a pas répondu.
+            let reason = dial_reason("Handshake");
+            let _ = db.note_net_dial(&p.device, Some(&reason));
+            let who = net
                 .peers
                 .iter()
-                .find(|p| p.device == *device && !p.address.trim().is_empty())
-                .cloned()
-            else {
-                return Err(tr("net_err_no_address").to_owned());
-            };
-            let name = if p.name.trim().is_empty() {
-                p.address.clone()
-            } else {
-                p.name.clone()
-            };
-            let sent = net.publish(&db, officine)?;
-            match net.sync_with(&db, &p.address, TALK_PATIENCE) {
-                Ok(answered) => {
-                    let answered = answered.unwrap_or_else(|| p.device.clone());
-                    let _ = db.note_net_dial(&answered, None);
-                    let received = net.absorb(&db)?;
-                    if answered == p.device {
-                        return Ok(trn("net_done_dialed", &[&name, &sent, &received]));
-                    }
-                    // Une autre officine du réseau répond à cette adresse
-                    // (un bail DHCP qui a changé) : l'échange a eu lieu,
-                    // mais celle qu'on composait n'a pas répondu.
-                    let reason = dial_reason("Handshake");
-                    let _ = db.note_net_dial(&p.device, Some(&reason));
-                    let who = net
-                        .peers
-                        .iter()
-                        .find(|q| q.device == answered)
-                        .map(|q| q.name.trim().to_owned())
-                        .filter(|n| !n.is_empty())
-                        .unwrap_or_else(|| crate::network::peer_groups(&answered));
-                    Ok(trn(
-                        "net_done_dialed_other",
-                        &[&who, &name, &sent, &received],
-                    ))
-                }
-                Err(e) => {
-                    let reason = dial_reason(&e);
-                    let _ = db.note_net_dial(&p.device, Some(&reason));
-                    Err(format!("{name} : {reason}"))
-                }
-            }
+                .find(|q| q.device == answered)
+                .map(|q| q.name.trim().to_owned())
+                .filter(|n| !n.is_empty())
+                .unwrap_or_else(|| crate::network::peer_groups(&answered));
+            Ok(trn(
+                "net_done_dialed_other",
+                &[&who, &name, &sent, &received],
+            ))
+        }
+        Err(e) => {
+            let reason = dial_reason(&e);
+            let _ = db.note_net_dial(&p.device, Some(&reason));
+            Err(format!("{name} : {reason}"))
         }
     }
 }
@@ -2705,22 +2828,32 @@ mod tests {
     fn an_officine_beacon_names_itself_and_nothing_else() {
         let d = hex(&[7u8; 32]);
         let ip: std::net::IpAddr = "192.168.1.30".parse().unwrap();
-        let b = officine_beacon(&d, "  Pharmacie de la Gare\n", 0);
+        let b = officine_beacon(&d, "  Pharmacie de la Gare\n", "Épinal", 7742, 0);
         assert!(!b.contains("Gare"), "le nom voyage en hexadécimal : {b}");
         let n = heard_officine(&b, ip).unwrap();
         assert_eq!(n.device, d);
         assert_eq!(n.name, "Pharmacie de la Gare");
+        assert_eq!(n.place, "Épinal");
         assert_eq!(n.invite, None);
-        let n = heard_officine(&officine_beacon(&d, "Épinal — Centre", 7742), ip).unwrap();
+        assert_eq!(n.listen.as_deref(), Some("192.168.1.30:7742"));
+        let n = heard_officine(&officine_beacon(&d, "Épinal — Centre", "", 0, 7742), ip).unwrap();
         assert_eq!(n.name, "Épinal — Centre");
         assert_eq!(n.invite.as_deref(), Some("192.168.1.30:7742"));
+        assert_eq!(n.listen, None);
+        // La première version s'entend encore : ni ville ni écoute.
+        let v1 = format!("BPMOFFICINE1 {d} 0 {}", hex(b"Pharmacie du Port"));
+        let n = heard_officine(&v1, ip).unwrap();
+        assert_eq!(
+            (n.name.as_str(), n.place.as_str(), n.listen),
+            ("Pharmacie du Port", "", None)
+        );
         // Une identité s'écrit d'une seule façon : en majuscules, elle
         // revient en minuscules — la même que celle du réseau.
         let upper = format!("BPMOFFICINE1 {} 0 41", d.to_uppercase());
         assert_eq!(heard_officine(&upper, ip).unwrap().device, d);
         // Un nom trop long est coupé, pas refusé.
         let long = "x".repeat(200);
-        let n = heard_officine(&officine_beacon(&d, &long, 0), ip).unwrap();
+        let n = heard_officine(&officine_beacon(&d, &long, "", 0, 0), ip).unwrap();
         assert_eq!(n.name.chars().count(), NEARBY_NAME);
         for bad in [
             String::new(),
@@ -2734,6 +2867,10 @@ mod tests {
             format!("BPMOFFICINE1 {d} 0 41 de-trop"),
             format!("BPMPOSTE1 {d} 7743"),
             format!("BPMOFFICINE1 {d} 0 {}", "41".repeat(NEARBY_NAME * 4 + 1)),
+            format!("BPMOFFICINE2 {d} 0 0 41"),
+            format!("BPMOFFICINE2 {d} x 0 41 41"),
+            format!("BPMOFFICINE2 {d} 0 0 41 zz"),
+            format!("BPMOFFICINE2 {d} 0 0 41 41 de-trop"),
         ] {
             assert_eq!(heard_officine(&bad, ip), None, "{bad}");
         }
@@ -2900,5 +3037,91 @@ mod tests {
             .facts
             .iter()
             .all(|f| f.author == again.device.id() || f.author == net_b.device.id()));
+    }
+
+    #[test]
+    fn a_town_is_the_last_part_of_an_address_without_its_postcode() {
+        assert_eq!(town_of("12 rue des Lilas, 75011 Paris"), "Paris");
+        assert_eq!(town_of("Place de la Mairie\n88000 Épinal\n"), "Épinal");
+        assert_eq!(town_of("Saint-Dié-des-Vosges"), "Saint-Dié-des-Vosges");
+        assert_eq!(
+            town_of("3 place du Marché, 13001 Marseille Cedex 01"),
+            "Marseille Cedex 01"
+        );
+        assert_eq!(town_of(""), "");
+        assert_eq!(town_of("75011"), "");
+    }
+
+    /// **La connexion au lancement, de bout en bout** : A tient sa porte,
+    /// B apprend où A écoute (comme par son annonce), compose, et ce que B
+    /// signale arrive chez A — sans rien saisir. Une officine que A n'a
+    /// pas appairée n'obtient rien de la même porte.
+    #[test]
+    fn a_paired_officine_heard_on_the_network_connects_by_itself() {
+        let (dir_a, _sa, a) = officine("listen-a");
+        let (dir_b, _sb, b) = officine("listen-b");
+        let (dir_c, _sc, c) = officine("listen-c");
+        Net::create(&a).unwrap();
+        Net::create(&c).unwrap();
+        drop((a, b, c));
+        let (da, db_) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+        assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let c = Db::open(&dir_c.join("net.db"), "secret").unwrap();
+        b.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        let a_device = device_hex(&a).unwrap();
+        let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+        let at = door.address().unwrap().to_string();
+        let path_a = dir_a.join("net.db");
+        let answering = std::thread::spawn(move || {
+            let db = Db::open(&path_a, "secret").unwrap();
+            let mut answered = Vec::new();
+            for _ in 0..2 {
+                if let Ok(mut link) = door.accept(Duration::from_secs(20)) {
+                    answered.push(answer(&db, &mut link));
+                }
+            }
+            answered
+        });
+        // Une adresse où personne ne répond : rien n'est gardé.
+        let before = b
+            .net_peers()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.device == a_device)
+            .unwrap()
+            .address;
+        assert!(dial_heard(&b, &a_device, "127.0.0.1:9", "Pharmacie B").is_err());
+        let stored = |db: &Db| {
+            db.net_peers()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.device == a_device)
+                .map(|p| p.address)
+        };
+        assert_eq!(stored(&b), Some(before), "l'adresse d'avant reste");
+        // C n'a pas A parmi ses officines : rien à composer.
+        assert!(dial_heard(&c, &a_device, &at, "Pharmacie C").is_err());
+        // L'adresse annoncée, où A répond : jointe, et gardée.
+        let said = dial_heard(&b, &a_device, &at, "Pharmacie B").expect("jointe");
+        assert!(!said.is_empty());
+        assert_eq!(
+            stored(&b),
+            Some(at.clone()),
+            "gardée une fois qu'A y a répondu"
+        );
+        // C, d'un autre réseau, compose la même porte : refusée.
+        let mut net_c = Net::load(&c).unwrap();
+        assert!(net_c.sync_with(&c, &at, Duration::from_secs(8)).is_err());
+        let answered = answering.join().unwrap();
+        assert!(answered[0].is_ok(), "{answered:?}");
+        assert!(answered.get(1).is_some_and(|r| r.is_err()), "{answered:?}");
+        assert_eq!(
+            crate::ruptures::tried(&a.supply_events().unwrap(), "Diprosone").len(),
+            1,
+            "ce que B signale est arrivé chez A"
+        );
     }
 }

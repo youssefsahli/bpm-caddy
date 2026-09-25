@@ -396,6 +396,44 @@ pub fn short_name(label: &str) -> String {
     }
 }
 
+/// **Deux lettres pour reconnaître une officine d'un coup d'œil** : les
+/// initiales de son nom court — « Pharmacie de la Gare » donne « GA »,
+/// « Pharmacie Saint-Jean » « SJ ». Les mêmes sur chaque poste qui la
+/// voit, puisqu'elles viennent du nom qu'elle se donne.
+pub fn initials(label: &str) -> String {
+    let short = short_name(label);
+    let words: Vec<&str> = short
+        .split(|c: char| c.is_whitespace() || c == '-' || c == '\'')
+        .filter(|w| w.chars().next().is_some_and(char::is_alphanumeric))
+        .collect();
+    let out: String = match words.as_slice() {
+        [] => String::new(),
+        [one] => one
+            .chars()
+            .filter(|c| c.is_alphanumeric())
+            .take(2)
+            .collect(),
+        [a, b, ..] => [a, b].iter().filter_map(|w| w.chars().next()).collect(),
+    };
+    out.to_uppercase()
+}
+
+/// **La couleur d'une officine**, tirée de son empreinte : la même sur
+/// chaque poste et à chaque lancement, et deux officines de même nom ont
+/// de bonnes chances de ne pas l'avoir — c'est l'empreinte qui la donne,
+/// pas le nom. Un rang dans la palette des séries.
+///
+/// Le premier octet de l'empreinte, qui est une clé publique — donc du
+/// hasard bien réparti ; jamais le rang 0, qui est l'accent de « ce
+/// poste » et des liens qui répondent.
+pub fn badge(device: &str) -> usize {
+    let first = device
+        .get(..2)
+        .and_then(|h| u8::from_str_radix(h, 16).ok())
+        .unwrap_or(0);
+    1 + usize::from(first) % 7
+}
+
 /// Combien un nom de réseau se tient loin de tout nœud (unités de
 /// `layout`) : la place d'un carré et du nom écrit sous lui.
 const LABEL_CLEARANCE: f32 = 0.07;
@@ -842,5 +880,19 @@ mod tests {
         assert_eq!(short_name("Pharmacie"), "Pharmacie");
         assert_eq!(short_name("Comptoir 2"), "Comptoir 2");
         assert_eq!(short_name("  Pharmacie de  "), "de");
+    }
+
+    #[test]
+    fn initials_come_from_the_short_name_and_the_badge_from_the_fingerprint() {
+        assert_eq!(initials("Pharmacie de la Gare"), "GA");
+        assert_eq!(initials("Pharmacie Saint-Jean"), "SJ");
+        assert_eq!(initials("Pharmacie du Port"), "PO");
+        assert_eq!(initials("Grande Pharmacie de l'Église"), "ÉG");
+        assert_eq!(initials("Pharmacie"), "PH");
+        assert_eq!(initials(""), "");
+        assert_eq!(badge("a1"), badge("a1"));
+        assert_ne!(badge(&"a1".repeat(32)), badge(&"b2".repeat(32)));
+        assert!((0..=255u8).all(|b| (1..=7).contains(&badge(&format!("{b:02x}")))));
+        assert_eq!(badge("zz"), 1);
     }
 }

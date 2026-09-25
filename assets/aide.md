@@ -851,9 +851,17 @@ transmettre par téléphone ou en personne. L'autre officine le colle dans
 fois ; un code faux ferme l'invitation, et une officine qui se présente
 sans lui est refusée. Les deux officines doivent être à jour.
 
+**Connexion au lancement.** Tant que l'application est ouverte, les
+officines appairées se joignent d'elles-mêmes : chacune répond aux
+siennes (Options › Base, « Répondre aux officines appairées »), et une
+officine appairée entendue sur le réseau local est connectée aussitôt,
+sans adresse à saisir. Aucune autre ne reçoit de réponse.
+
 **Les officines voisines.** Chaque officine s'annonce sur le réseau
-local — son nom et son empreinte, rien d'autre ; Options › Base,
-« Annoncer l'officine », pour ne pas le faire. La carte des connexions
+local — son nom, sa ville et son empreinte, rien d'autre ; Options ›
+Base, « Annoncer l'officine », pour ne pas le faire. Sur la carte,
+chaque officine porte **ses initiales dans une couleur tirée de son
+empreinte** — les mêmes sur chaque poste —, et sa ville sous son nom. La carte des connexions
 les montre sur un arc « À portée ». Un clic sur l'une d'elles propose
 **Inviter cette officine** — l'invitation apparaît sur sa carte —, ou
 **Rejoindre son réseau** quand c'est elle qui invite. Ce nom est celui

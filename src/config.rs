@@ -518,6 +518,14 @@ pub struct ReseauConfig {
     /// de réseau, rien d'autre — pour que les officines voisines la
     /// voient sur leur carte des connexions.
     pub annoncer: bool,
+    /// Répondre aux officines appairées, sur `port`, tant que
+    /// l'application est ouverte — ce qui permet la connexion au
+    /// lancement. Seules les officines appairées obtiennent une réponse.
+    pub ecouter: bool,
+    /// Le port où répondre — **distinct de `port`**, celui d'une
+    /// invitation : une porte tenue ouverte ne doit pas prendre la place
+    /// de celle qu'on ouvre pour inviter.
+    pub port_ecoute: u16,
 }
 
 impl Default for ReseauConfig {
@@ -529,6 +537,8 @@ impl Default for ReseauConfig {
             automatique: true,
             intervalle_minutes: 15,
             annoncer: true,
+            ecouter: true,
+            port_ecoute: 7745,
         }
     }
 }

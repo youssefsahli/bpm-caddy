@@ -7138,10 +7138,25 @@ impl Session {
             config.postes.port,
             (!folder.is_empty()).then(|| std::path::PathBuf::from(folder)),
             config.postes.adresses.clone(),
-            config
-                .reseau
-                .annoncer
-                .then(|| config.pharmacy.name.trim().to_owned()),
+            crate::postes::OfficineSide {
+                announce: config.reseau.annoncer.then(|| {
+                    (
+                        config.pharmacy.name.trim().to_owned(),
+                        crate::network::town_of(&config.pharmacy.address),
+                    )
+                }),
+                // Un port d'écoute qui serait celui des invitations ou des
+                // postes : refusé — il prendrait leur place.
+                listen: if config.reseau.ecouter
+                    && config.reseau.port_ecoute != config.reseau.port
+                    && config.reseau.port_ecoute != config.postes.port
+                {
+                    config.reseau.port_ecoute
+                } else {
+                    0
+                },
+                name: config.pharmacy.name.clone(),
+            },
             crate::postes::Pace::default(),
         ));
     }
@@ -14174,11 +14189,24 @@ impl App {
                                         device: "5".repeat(64),
                                         name: "Pharmacie de la Mairie".to_owned(),
                                         invite: Some("192.168.1.31:7742".to_owned()),
+                                        listen: None,
+                                        place: "Épinal".to_owned(),
                                     },
                                     crate::network::Nearby {
                                         device: "6".repeat(64),
                                         name: "Pharmacie du Marché".to_owned(),
                                         invite: None,
+                                        listen: Some("192.168.1.32:7742".to_owned()),
+                                        place: "Golbey".to_owned(),
+                                    },
+                                    // Une officine appairée, entendue en ce
+                                    // moment : sa ville, et « en ligne ».
+                                    crate::network::Nearby {
+                                        device: "a1".repeat(32),
+                                        name: "Pharmacie du Port".to_owned(),
+                                        invite: None,
+                                        listen: Some("192.168.1.33:7742".to_owned()),
+                                        place: "Épinal".to_owned(),
                                     },
                                 ];
                                 session.conn_pick = Some(format!("near:{}", "5".repeat(64)));
@@ -56617,6 +56645,7 @@ impl App {
         let groups_of: Vec<usize> = sum.map_peers.iter().map(|(_, g)| *g).collect();
         let group_names = sum.map_groups.clone();
         let heard = session.posts_peers.clone();
+        let near = session.near_officines.clone();
         let nodes = crate::netmap::nodes(
             tr("conn_map_me"),
             my_post,
@@ -56670,6 +56699,18 @@ impl App {
             &|n| trf("conn_map_post", n),
             &crate::network::peer_groups,
         );
+        // **Une officine appairée qui s'annonce en ce moment** sur le réseau
+        // local est au moins « entendue » — le fil automatique la compose
+        // aussitôt, et la conversation dira le reste.
+        let mut nodes = nodes;
+        for n in nodes.iter_mut() {
+            if n.kind == NodeKind::Officine
+                && n.state == LinkState::Silent
+                && near.iter().any(|x| x.device == n.device)
+            {
+                n.state = LinkState::Heard;
+            }
+        }
         let places = crate::netmap::layout(&nodes);
         // Les voisines ont leur arc, et leur nom d'arc.
         let mut group_names = group_names;
@@ -56778,6 +56819,18 @@ impl App {
                 .collect();
             let r = motif::pt(ui, 9.0);
             let mut link_marks: Vec<egui::Rect> = Vec::new();
+            // La ville **annoncée** — pour une officine qu'on n'a pas
+            // ajoutée seulement : une officine appairée porte le nom qu'on
+            // lui connaît, et une annonce contrefaite ne lui prête pas une
+            // autre ville.
+            let place_of = |device: &str| {
+                if peers.iter().any(|p| p.device == device) {
+                    return None;
+                }
+                near.iter()
+                    .find(|x| x.device == device)
+                    .map(|x| x.place.clone())
+            };
             // Les liens d'abord, sous les nœuds — et aucun vers une
             // voisine : il n'y en a pas.
             for (i, n) in nodes.iter().enumerate().skip(1) {
@@ -56861,10 +56914,34 @@ impl App {
                             r * 0.35,
                             r * 0.25,
                         ));
+                        // Elle invite : une pastille, au coin.
                         if n.state == LinkState::Ok {
-                            painter.circle_filled(c, r * 0.45, motif::accent());
+                            painter.circle_filled(
+                                c + egui::vec2(r * 0.8, -r * 0.8),
+                                r * 0.35,
+                                motif::accent(),
+                            );
                         }
                     }
+                }
+                // **Reconnaître une officine d'un coup d'œil** : ses deux
+                // initiales, dans une couleur tirée de son empreinte — les
+                // mêmes sur chaque poste, à chaque lancement.
+                if matches!(
+                    n.kind,
+                    NodeKind::Officine | NodeKind::Introduced | NodeKind::Nearby
+                ) {
+                    let hue = motif::chart::series_color(crate::netmap::badge(&n.device));
+                    if !chosen {
+                        painter.circle_stroke(c, r * 0.82, egui::Stroke::new(2.0_f32, hue));
+                    }
+                    painter.text(
+                        c,
+                        egui::Align2::CENTER_CENTER,
+                        crate::netmap::initials(&n.label),
+                        egui::FontId::proportional(motif::pt(ui, 8.0)),
+                        hue,
+                    );
                 }
                 // **La place du nom, puis le nom qui y tient.** Sous le
                 // nœud, dans la largeur que laissent les voisins de la
@@ -56885,11 +56962,17 @@ impl App {
                             .x
                     })
                 };
-                let text = if wide(&n.label) <= room {
-                    n.label.clone()
-                } else {
-                    crate::netmap::short_name(&n.label)
+                // Et sa ville quand elle la dit et qu'il y a la place :
+                // deux « Pharmacie de la Gare » ne se confondent plus.
+                let with_place = place_of(&n.device)
+                    .filter(|p| !p.trim().is_empty())
+                    .map(|p| format!("{} · {p}", n.label));
+                let text = match with_place {
+                    Some(t) if wide(&t) <= room => t,
+                    _ if wide(&n.label) <= room => n.label.clone(),
+                    _ => crate::netmap::short_name(&n.label),
                 };
+                let text_shown = text.clone();
                 let mut job = egui::text::LayoutJob::single_section(
                     text,
                     egui::TextFormat {
@@ -56914,7 +56997,44 @@ impl App {
                     egui::vec2(r * 2.2, r * 2.2),
                 ));
                 taken.push(egui::Rect::from_min_size(min, size));
+                let under = min.y + size.y;
                 painter.galley(min, g, motif::text());
+                // **La ville, sur une ligne à elle**, plus petite — quand
+                // elle n'est pas déjà sur la première et qu'il y a la
+                // place, sans rien couvrir.
+                if let Some(place) = place_of(&n.device)
+                    .filter(|p| !p.trim().is_empty() && !text_shown.contains(p.trim()))
+                {
+                    let small_font = egui::FontId::proportional(motif::pt(ui, 9.0));
+                    let mut job = egui::text::LayoutJob::single_section(
+                        place,
+                        egui::TextFormat {
+                            font_id: small_font,
+                            color: motif::text_dim(),
+                            ..Default::default()
+                        },
+                    );
+                    job.wrap = egui::text::TextWrapping {
+                        max_width: room,
+                        max_rows: 1,
+                        break_anywhere: false,
+                        overflow_character: Some('…'),
+                    };
+                    let pg = ui.fonts(|f| f.layout_job(job));
+                    let rect = egui::Rect::from_min_size(
+                        egui::pos2(c.x - pg.size().x / 2.0, under),
+                        pg.size(),
+                    );
+                    // Posée contre le nom, elle le touche : on éprouve un
+                    // rectangle d'un pixel plus petit.
+                    let probe = rect.shrink(1.0);
+                    let clear =
+                        field.contains_rect(rect) && !taken.iter().any(|t| t.intersects(probe));
+                    if clear {
+                        taken.push(rect);
+                        painter.galley(rect.min, pg, motif::text_dim());
+                    }
+                }
             }
             // Le nom de chaque réseau, de son côté du cercle — quand il y en
             // a plus d'un : seul, il n'apprend rien.
@@ -57124,6 +57244,9 @@ impl App {
                                 });
                             }
                             NodeKind::Officine => {
+                                if near.iter().any(|x| x.device == n.device) {
+                                    ui.label(small(ui, tr("conn_near_here").to_owned()));
+                                }
                                 if let Some(p) = peers.iter().find(|p| p.device == n.device) {
                                     ui.label(small(ui, crate::network::peer_groups(&p.device)));
                                     if !p.address.trim().is_empty() {
@@ -57272,6 +57395,9 @@ impl App {
                             NodeKind::Nearby => {
                                 let near =
                                     session.near_officines.iter().find(|x| x.device == n.device);
+                                if let Some(x) = near.filter(|x| !x.place.trim().is_empty()) {
+                                    ui.label(small(ui, x.place.clone()));
+                                }
                                 ui.label(small(ui, crate::network::peer_groups(&n.device)));
                                 ui.add(
                                     egui::Label::new(small(ui, tr("conn_near_note").to_owned()))
@@ -68514,6 +68640,29 @@ impl eframe::App for App {
                                     tr("opts_reseau_announce"),
                                 )
                                 .on_hover_text(tr("opts_reseau_announce_tooltip"));
+                                ui.horizontal_wrapped(|ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.ecouter,
+                                        tr("opts_reseau_listen"),
+                                    )
+                                    .on_hover_text(tr("opts_reseau_listen_tooltip"));
+                                    ui.label(dim(tr("opts_reseau_listen_port")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.reseau.port_ecoute)
+                                            .range(1024..=65535),
+                                    );
+                                });
+                                let r = &editor.cfg.reseau;
+                                if r.port_ecoute == r.port
+                                    || r.port_ecoute == editor.cfg.postes.port
+                                {
+                                    ui.label(
+                                        egui::RichText::new(tr("opts_reseau_listen_clash"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::alert()),
+                                    );
+                                }
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.

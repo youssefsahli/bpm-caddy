@@ -77,6 +77,9 @@ pub struct Journal {
     /// knows what to ask a peer for.
     named: BTreeSet<Hash>,
     high: u64,
+    /// The authors whose ranks move this post's clock, once set — see
+    /// [`Journal::trust`]. `None`: every author, as a journal always was.
+    trusted: Option<BTreeSet<DeviceId>>,
 }
 
 impl Journal {
@@ -136,7 +139,9 @@ impl Journal {
         if self.records.contains_key(&id) {
             return false;
         }
-        self.high = self.high.max(record.lamport());
+        if self.trusts(&record.author()) {
+            self.high = self.high.max(record.lamport());
+        }
         for parent in record.parents() {
             self.named.insert(*parent);
             self.heads.remove(parent);
@@ -146,6 +151,33 @@ impl Journal {
         }
         self.records.insert(id, record);
         true
+    }
+
+    /// **Only these authors set the clock.** A record's rank comes off the
+    /// record, and the record comes off whoever wrote it: one written at
+    /// `u64::MAX` by somebody this post never admitted — relayed by a
+    /// peer that did admit them — would have pinned every later write of
+    /// this post at the ceiling, and records at one rank fall back to an
+    /// order by hash, that is to no order at all. Records from others
+    /// are still held and relayed; they no longer decide what « after »
+    /// means here.
+    pub fn trust(&mut self, authors: impl IntoIterator<Item = DeviceId>) {
+        self.trusted = Some(authors.into_iter().collect());
+        self.high = self
+            .records
+            .values()
+            .filter(|r| {
+                self.trusted
+                    .as_ref()
+                    .is_none_or(|t| t.contains(&r.author()))
+            })
+            .map(Record::lamport)
+            .max()
+            .unwrap_or(0);
+    }
+
+    fn trusts(&self, author: &DeviceId) -> bool {
+        self.trusted.as_ref().is_none_or(|t| t.contains(author))
     }
 
     /// Writes a fact this post has to say.
@@ -748,5 +780,38 @@ mod tests {
                 "les enregistrements ne se perdent pas : « {verb} »"
             );
         }
+    }
+
+    /// **A rank from somebody untrusted does not move this post's clock**:
+    /// a record at `u64::MAX` from a stranger is held, and the next write
+    /// still ranks just above what the trusted authors wrote.
+    #[test]
+    fn an_untrusted_rank_does_not_move_the_clock() {
+        let mut e = Counted(61);
+        let (me, stranger) = (Device::generate(&mut e), Device::generate(&mut e));
+        let t = Trousseau::generate(&mut e);
+        let mut theirs = Journal::new();
+        theirs.high = u64::MAX - 1;
+        theirs
+            .write(&stranger, &t, Stream::Reseau, b"x", None, &mut e)
+            .unwrap();
+        let mut j = Journal::new();
+        j.write(&me, &t, Stream::Reseau, b"a", None, &mut e)
+            .unwrap();
+        j.trust([me.id()]);
+        for r in theirs.records() {
+            j.insert(r.clone());
+        }
+        assert_eq!(j.len(), 2, "gardé");
+        let id = j
+            .write(&me, &t, Stream::Reseau, b"b", None, &mut e)
+            .unwrap();
+        assert_eq!(j.get(&id).unwrap().lamport(), 2);
+        // Trusted, the same record would have pinned the clock.
+        j.trust([me.id(), stranger.id()]);
+        let id = j
+            .write(&me, &t, Stream::Reseau, b"c", None, &mut e)
+            .unwrap();
+        assert_eq!(j.get(&id).unwrap().lamport(), u64::MAX);
     }
 }

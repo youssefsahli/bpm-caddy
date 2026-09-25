@@ -108,6 +108,8 @@ mod tcp {
     /// nobody checked.
     pub struct TcpLink {
         stream: TcpStream,
+        /// When the whole conversation must be over, if it has a bound.
+        deadline: Option<Instant>,
     }
 
     impl TcpLink {
@@ -123,7 +125,43 @@ mod tcp {
             // waiting for a full segment adds a round trip to every
             // round of the exchange.
             stream.set_nodelay(true).map_err(|_| Error::Link)?;
-            Ok(Self { stream })
+
+            Ok(Self {
+                stream,
+                deadline: None,
+            })
+        }
+
+        /// **A bound on the whole conversation**, not only on each read.
+        /// The per-read deadline is a socket option, and a caller that
+        /// trickles one byte every few seconds satisfies it for ever: a
+        /// door answering whoever knocks needs the whole exchange to end
+        /// by a time it chose.
+        pub fn with_deadline(mut self, total: Duration) -> Self {
+            self.deadline = Some(Instant::now() + total);
+            self
+        }
+
+        /// Past the conversation's bound?
+        fn late(&self) -> bool {
+            self.deadline.is_some_and(|d| Instant::now() >= d)
+        }
+
+        /// `read_exact`, looking at the bound between reads.
+        fn read_whole(&mut self, buf: &mut [u8]) -> Result<()> {
+            let mut at = 0;
+            while at < buf.len() {
+                if self.late() {
+                    return Err(Error::Link);
+                }
+                match self.stream.read(&mut buf[at..]) {
+                    Ok(0) => return Err(Error::Link),
+                    Ok(n) => at += n,
+                    Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                    Err(_) => return Err(Error::Link),
+                }
+            }
+            Ok(())
         }
     }
 
@@ -183,8 +221,17 @@ mod tcp {
         /// milliseconds between looks is imperceptible to whoever is
         /// dialling and costs nothing to the machine waiting.
         pub fn accept(&self, patience: Duration) -> Result<TcpLink> {
+            self.accept_with(patience, patience)
+        }
+
+        /// [`Door::accept`], waiting `wait` for a knock but giving the
+        /// conversation `talk` for each read and write: a door looked at
+        /// briefly, between other work, must not hand over a link that
+        /// gives up on a peer a few hundred milliseconds away.
+        pub fn accept_with(&self, wait: Duration, talk: Duration) -> Result<TcpLink> {
+            let patience = talk;
             self.0.set_nonblocking(true).map_err(|_| Error::Link)?;
-            let deadline = Instant::now() + patience;
+            let deadline = Instant::now() + wait;
             loop {
                 match self.0.accept() {
                     Ok((stream, _)) => {
@@ -215,17 +262,26 @@ mod tcp {
             if message.len() > MAX_WIRE {
                 return Err(Error::TooLarge);
             }
+            if self.late() {
+                return Err(Error::Link);
+            }
             let header = (message.len() as u32).to_be_bytes();
             self.stream.write_all(&header).map_err(|_| Error::Link)?;
-            self.stream.write_all(message).map_err(|_| Error::Link)?;
+            // In pieces, the bound looked at between them: a peer that
+            // reads slowly holds each write for a timeout, and the bound
+            // is what ends the conversation all the same.
+            for piece in message.chunks(4096) {
+                if self.late() {
+                    return Err(Error::Link);
+                }
+                self.stream.write_all(piece).map_err(|_| Error::Link)?;
+            }
             self.stream.flush().map_err(|_| Error::Link)
         }
 
         fn recv(&mut self) -> Result<Vec<u8>> {
             let mut header = [0u8; 4];
-            self.stream
-                .read_exact(&mut header)
-                .map_err(|_| Error::Link)?;
+            self.read_whole(&mut header)?;
             let len = u32::from_be_bytes(header) as usize;
             // Read **before** allocating: this is the whole reason the
             // length is checked here and not after the buffer exists.
@@ -233,9 +289,7 @@ mod tcp {
                 return Err(Error::TooLarge);
             }
             let mut message = vec![0u8; len];
-            self.stream
-                .read_exact(&mut message)
-                .map_err(|_| Error::Link)?;
+            self.read_whole(&mut message)?;
             Ok(message)
         }
     }
@@ -401,5 +455,36 @@ mod tests {
             dial("pas une adresse", Duration::from_secs(2)).err(),
             Some(Error::Link)
         );
+    }
+
+    /// **A caller that trickles is cut at the conversation's bound**: one
+    /// byte a little faster than the per-read timeout would keep a door
+    /// busy for ever; the whole-conversation deadline ends it.
+    #[cfg(feature = "tcp")]
+    #[test]
+    fn a_trickling_caller_is_cut_at_the_conversation_bound() {
+        use std::io::Write;
+        use std::time::{Duration, Instant};
+        let door = Door::open("127.0.0.1:0").unwrap();
+        let address = door.address().unwrap().to_string();
+        let trickle = std::thread::spawn(move || {
+            let mut s = std::net::TcpStream::connect(address).unwrap();
+            let _ = s.write_all(&[0, 0, 1, 0]);
+            for _ in 0..40 {
+                std::thread::sleep(Duration::from_millis(100));
+                if s.write_all(&[1]).is_err() {
+                    break;
+                }
+            }
+        });
+        let mut link = door
+            .accept_with(Duration::from_secs(5), Duration::from_secs(2))
+            .unwrap()
+            .with_deadline(Duration::from_millis(700));
+        let t = Instant::now();
+        assert_eq!(link.recv(), Err(Error::Link));
+        assert!(t.elapsed() < Duration::from_secs(2), "{:?}", t.elapsed());
+        drop(link);
+        trickle.join().unwrap();
     }
 }

@@ -743,7 +743,7 @@ pub fn spawn_auto(
     port: u16,
     folder: Option<PathBuf>,
     addresses: Vec<String>,
-    announce: Option<String>,
+    officine: OfficineSide,
     pace: Pace,
 ) -> (
     std::sync::mpsc::Receiver<Progress>,
@@ -753,22 +753,38 @@ pub fn spawn_auto(
     let (poke_tx, poke_rx) = std::sync::mpsc::channel();
     std::thread::spawn(move || {
         if let Err(e) = auto(
-            &path,
-            &password,
-            &today,
-            port,
-            folder,
-            &addresses,
-            announce.as_deref(),
-            &pace,
-            &tx,
-            &poke_rx,
+            &path, &password, &today, port, folder, &addresses, &officine, &pace, &tx, &poke_rx,
         ) {
             let _ = tx.send(Progress::Failed(e));
         }
     });
     (rx, poke_tx)
 }
+
+/// **Ce que le fil automatique fait pour l'officine** — le réseau
+/// d'officines, à côté des postes.
+#[derive(Clone, Debug, Default)]
+pub struct OfficineSide {
+    /// S'annoncer sur le réseau local : le nom, la ville.
+    pub announce: Option<(String, String)>,
+    /// Répondre aux officines appairées sur ce port (0 : non).
+    pub listen: u16,
+    /// Le nom sous lequel l'officine signe ce qu'elle publie.
+    pub name: String,
+}
+
+/// Combien de conversations d'officines à la fois, au plus : chacune a
+/// son fil, et une officine lente — ou quelqu'un qui frappe sans rien
+/// dire — n'en retient aucune autre, ni les postes.
+const MOST_ANSWERS: usize = 2;
+
+/// Le temps qu'une conversation d'officine peut durer en tout.
+const ANSWER_BOUND: Duration = Duration::from_secs(60);
+
+/// Une officine appairée entendue n'est composée de nouveau qu'après ce
+/// délai — une annonce toutes les trois secondes n'est pas un appel toutes
+/// les trois secondes, et une annonce contrefaite non plus.
+const REDIAL: Duration = Duration::from_secs(600);
 
 /// Ce que le fil sait d'un poste entendu.
 struct Seen {
@@ -793,7 +809,7 @@ fn auto(
     port: u16,
     folder: Option<PathBuf>,
     addresses: &[String],
-    announce: Option<&str>,
+    side: &OfficineSide,
     pace: &Pace,
     tx: &std::sync::mpsc::Sender<Progress>,
     pokes: &std::sync::mpsc::Receiver<Poke>,
@@ -801,13 +817,30 @@ fn auto(
     use crate::strings::tr;
     let db = Db::open(path, password)?;
     // **L'officine s'annonce aussi**, quand elle le veut : son identité
-    // de réseau et son nom, pour que les officines voisines la voient sur
-    // leur carte. Tirée de la base, comme l'identité elle-même.
-    let officine = announce.and_then(|name| {
-        crate::network::device_hex(&db)
-            .ok()
-            .map(|d| (d, name.to_owned()))
+    // de réseau, son nom et sa ville, pour que les officines voisines la
+    // voient sur leur carte. Tirée de la base, comme l'identité elle-même.
+    let my_officine = crate::network::device_hex(&db).ok();
+    let officine = side.announce.as_ref().and_then(|(name, place)| {
+        my_officine
+            .clone()
+            .map(|d| (d, name.clone(), place.clone()))
     });
+    // **La porte des officines appairées**, ouverte dès que l'officine est
+    // d'un réseau — regardé chaque minute, pour un réseau rejoint en
+    // cours de journée.
+    let mut net_door: Option<bpm_sync::link::Door> = None;
+    let mut net_door_looked: Option<Instant> = None;
+    let mut net_door_said = false;
+    let answering = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // Les officines appairées, relues de temps en temps : ce qu'une
+    // annonce entendue fait apprendre, et qui on a déjà composé.
+    let mut paired: Vec<String> = Vec::new();
+    let mut paired_read: Option<Instant> = None;
+    // Par officine **et par adresse** : une annonce contrefaite entendue
+    // la première ne retarde pas l'appel à la vraie adresse.
+    let mut dialed: std::collections::HashMap<(String, String), Instant> =
+        std::collections::HashMap::new();
+    let dialing = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut inviting: u16 = 0;
     // Chaque voisine, l'adresse d'où elle s'est annoncée, et quand.
     let mut near: Vec<(crate::network::Nearby, std::net::IpAddr, Instant)> = Vec::new();
@@ -857,19 +890,114 @@ fn auto(
             }
             _ => std::thread::sleep(Duration::from_millis(400)),
         }
+        // **Une officine appairée qui frappe** : sa conversation sur son fil.
+        if side.listen != 0
+            && net_door.is_none()
+            && net_door_looked.is_none_or(|t| t.elapsed() >= Duration::from_secs(60))
+        {
+            net_door_looked = Some(Instant::now());
+            if crate::network::Net::load_all(&db).is_ok_and(|n| !n.is_empty()) {
+                net_door = bpm_sync::link::Door::open(&format!("0.0.0.0:{}", side.listen)).ok();
+                if net_door.is_none() && !net_door_said {
+                    net_door_said = true;
+                    let _ = tx.send(Progress::Status(crate::strings::trf(
+                        "net_listen_no_door",
+                        side.listen,
+                    )));
+                }
+            }
+        }
+        if let Some(d) = &net_door {
+            if let Ok(link) = d.accept_with(Duration::from_millis(100), TALK_PATIENCE) {
+                // Toute la conversation en une minute au plus : qui écrit
+                // un octet de temps en temps ne tient pas la porte.
+                let mut link = link.with_deadline(ANSWER_BOUND);
+                use std::sync::atomic::Ordering;
+                if answering.load(Ordering::SeqCst) < MOST_ANSWERS {
+                    answering.fetch_add(1, Ordering::SeqCst);
+                    let (busy, tx) = (std::sync::Arc::clone(&answering), tx.clone());
+                    let (path, password) = (path.to_path_buf(), password.to_owned());
+                    std::thread::spawn(move || {
+                        if let Ok(db) = Db::open(&path, &password) {
+                            if let Ok(device) = crate::network::answer(&db, &mut link) {
+                                let who = db
+                                    .net_peers()
+                                    .ok()
+                                    .and_then(|p| p.into_iter().find(|p| p.device == device))
+                                    .map(|p| {
+                                        [p.name, p.seen_as]
+                                            .into_iter()
+                                            .find(|n| !n.trim().is_empty())
+                                            .unwrap_or_default()
+                                    })
+                                    .filter(|n| !n.is_empty())
+                                    .unwrap_or_else(|| crate::network::peer_groups(&device));
+                                let _ = tx.send(Progress::Status(crate::strings::trf(
+                                    "net_answered",
+                                    who,
+                                )));
+                            }
+                        }
+                        busy.fetch_sub(1, Ordering::SeqCst);
+                    });
+                }
+            }
+        }
+        if paired_read.is_none_or(|t| t.elapsed() >= Duration::from_secs(30)) {
+            paired_read = Some(Instant::now());
+            paired = db
+                .net_peers()
+                .map(|p| p.into_iter().map(|p| p.device).collect())
+                .unwrap_or_default();
+        }
         // Who announced themselves.
         if let Some(u) = &udp {
             let mut buf = [0u8; 1024];
             while let Ok((n, from)) = u.recv_from(&mut buf) {
                 let text = std::str::from_utf8(&buf[..n]).ok();
                 if let Some(o) = text.and_then(|t| crate::network::heard_officine(t, from.ip())) {
-                    let mine = officine.as_ref().is_some_and(|(d, _)| *d == o.device);
+                    let mine = my_officine.as_deref() == Some(o.device.as_str());
                     // **La première adresse tient** jusqu'à ce qu'elle se
                     // taise : une annonce venue d'ailleurs sous la même
                     // identité ne détourne pas l'invitation d'une voisine.
                     let held = near.iter().find(|(x, _, _)| x.device == o.device);
                     let elsewhere = held.is_some_and(|(_, ip, _)| *ip != from.ip());
-                    if !mine && !elsewhere && (held.is_some() || near.len() < MOST_NEARBY) {
+                    if mine || elsewhere {
+                        continue;
+                    }
+                    // **Une officine appairée qui s'annonce** : on la compose
+                    // à l'adresse annoncée — c'est la connexion au
+                    // lancement, sans rien à saisir. Une fois toutes les
+                    // dix minutes au plus, et l'adresse n'est gardée qu'une
+                    // fois qu'elle y a répondu (`dial_heard`).
+                    if paired.contains(&o.device) {
+                        use std::sync::atomic::Ordering;
+                        let key = (o.device.clone(), o.listen.clone().unwrap_or_default());
+                        let due = dialed
+                            .get(&key)
+                            .is_none_or(|t: &Instant| t.elapsed() >= REDIAL);
+                        if let (Some(at), true) = (&o.listen, due) {
+                            if dialing.load(Ordering::SeqCst) < MOST_ANSWERS {
+                                dialed.insert(key, Instant::now());
+                                dialing.fetch_add(1, Ordering::SeqCst);
+                                let (busy, tx) = (std::sync::Arc::clone(&dialing), tx.clone());
+                                let (path, password) = (path.to_path_buf(), password.to_owned());
+                                let (device, name, at) =
+                                    (o.device.clone(), side.name.clone(), at.clone());
+                                std::thread::spawn(move || {
+                                    if let Ok(db) = Db::open(&path, &password) {
+                                        if let Ok(said) =
+                                            crate::network::dial_heard(&db, &device, &at, &name)
+                                        {
+                                            let _ = tx.send(Progress::Status(said));
+                                        }
+                                    }
+                                    busy.fetch_sub(1, Ordering::SeqCst);
+                                });
+                            }
+                        }
+                    }
+                    if held.is_some() || near.len() < MOST_NEARBY {
                         near.retain(|(x, _, _)| x.device != o.device);
                         near.push((o, from.ip(), Instant::now()));
                     }
@@ -894,8 +1022,10 @@ fn auto(
                 if trousseau.is_some() {
                     let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
                 }
-                if let Some((device, name)) = &officine {
-                    let b = crate::network::officine_beacon(device, name, inviting);
+                if let Some((device, name, place)) = &officine {
+                    let listening = if net_door.is_some() { side.listen } else { 0 };
+                    let b =
+                        crate::network::officine_beacon(device, name, place, listening, inviting);
                     let _ = u.send_to(b.as_bytes(), ("255.255.255.255", port));
                 }
                 last_beacon = Instant::now();
@@ -1173,7 +1303,7 @@ mod tests {
             port,
             None,
             Vec::new(),
-            None,
+            OfficineSide::default(),
             Pace::default(),
         );
         let other = hex(&[9u8; 32]);
@@ -1230,7 +1360,11 @@ mod tests {
             port,
             None,
             Vec::new(),
-            Some("Pharmacie du Centre".to_owned()),
+            OfficineSide {
+                announce: Some(("Pharmacie du Centre".to_owned(), "Épinal".to_owned())),
+                listen: 0,
+                name: "Pharmacie du Centre".to_owned(),
+            },
             Pace::default(),
         );
         let other = hex(&[9u8; 32]);
@@ -1238,8 +1372,8 @@ mod tests {
         let mut found = None;
         for _ in 0..40 {
             for b in [
-                crate::network::officine_beacon(&other, "Pharmacie du Port", 7742),
-                crate::network::officine_beacon(&me, "Moi-même", 0),
+                crate::network::officine_beacon(&other, "Pharmacie du Port", "Sète", 0, 7742),
+                crate::network::officine_beacon(&me, "Moi-même", "", 0, 0),
             ] {
                 let _ = sender.send_to(b.as_bytes(), ("127.0.0.1", port));
             }
