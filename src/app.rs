@@ -18038,13 +18038,24 @@ impl App {
             }
 
             let idle = session.query.trim().is_empty();
+            // **Le nom de l'application cède sa place quand la vue est
+            // basse** : à 1024x700 en texte 1,6 le titre, sa devise et
+            // leurs marges prenaient cent cinquante pixels, et les trois
+            // volets du dessous — les rendez-vous du jour d'abord — n'en
+            // montraient plus qu'une ligne et demie chacun. La barre de
+            // titre de la fenêtre dit déjà « BPM-Caddy ».
+            let banner = motif::visible_rect(ui).height() >= Self::rows_height(ui, 16.0);
             motif::page(ui, 720.0, |ui| {
-                ui.vertical_centered(|ui| {
-                    ui.add_space(if idle { 22.0 } else { 12.0 });
-                    ui.heading("BPM-Caddy");
-                    ui.label(tr("app_tagline"));
-                });
-                ui.add_space(14.0);
+                if banner {
+                    ui.vertical_centered(|ui| {
+                        ui.add_space(if idle { 22.0 } else { 12.0 });
+                        ui.heading("BPM-Caddy");
+                        ui.label(tr("app_tagline"));
+                    });
+                    ui.add_space(14.0);
+                } else {
+                    ui.add_space(8.0);
+                }
                 let search = motif::field(
                     ui,
                     ui.available_width(),
@@ -22116,7 +22127,9 @@ impl App {
                     motif::select(
                         ui,
                         "loc_pick",
-                        chars_wide(ui, Self::button_height(ui)),
+                        // En caractères, pas « la hauteur d'un bouton en
+                        // caractères » — qui suivait le carré de l'échelle.
+                        chars_wide(ui, 30.0),
                         &mut session.loc_pick,
                         &choices,
                     );
@@ -22794,6 +22807,17 @@ impl App {
             // enregistre le résultat était coupé par le cadre — invisible
             // à l'échelle 1, où le jeu est encore positif.
             let form_w = Self::scrolled_width(ui, body.width()).max(chars_wide(ui, 12.0));
+            // **Mais les rangées se comptent à la largeur où l'on dessine.**
+            // Le champ est taillé sur `form_w`, avec le jeu d'une barre
+            // pleine ; la zone du formulaire, elle, a une barre qui
+            // flotte, et egui ne lui alloue rien (`allocated_width`,
+            // zéro). Compter sur `form_w` annonçait deux rangées pour une
+            // dessinée : à 1024x700 en texte 1,6 ce faux second rang
+            // prenait la ligne qui dit « huit résultats, volet trop
+            // court », et le volet ne montrait que du gris sous le
+            // formulaire. La zone est ouverte plus bas dans ce même `ui`,
+            // avec ce même réglage.
+            let drawn_w = body.width() - ui.spacing().scroll.allocated_width();
             let field = Self::field_width(ui, [tr("bio_pick_hint")].into_iter())
                 .min((form_w - taken).max(chars_wide(ui, 9.0)));
             let hint = if Self::field_width(ui, [tr("bio_pick_hint")].into_iter()) <= field {
@@ -22802,7 +22826,7 @@ impl App {
                 tr("bio_pick_hint_short")
             };
             let mut form_rows =
-                Self::wrapped_rows_of(ui, form_w, std::iter::once(field).chain(sisters));
+                Self::wrapped_rows_of(ui, drawn_w, std::iter::once(field).chain(sisters));
             let picking = !session.bio_query.trim().is_empty() && session.bio_new_code.is_empty();
             if picking {
                 form_rows += Self::wrapped_rows(
@@ -22878,14 +22902,33 @@ impl App {
                     egui::vec2(body.width(), rest.max(notice_h)),
                 );
                 motif::inside(ui, notice, |ui| {
-                    ui.add(
-                        egui::Label::new(
-                            egui::RichText::new(trf("bio_too_short", results.len()))
-                                .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
-                        )
-                        .wrap(),
+                    // La phrase entière si elle tient, sinon sa forme
+                    // courte sur une ligne — entière au survol : deux
+                    // lignes dans la place d'une coupaient la seconde,
+                    // celle qui dit quoi faire.
+                    let long = trf("bio_too_short", results.len());
+                    let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+                    let long_h = ui.fonts(|f| {
+                        f.layout(long.clone(), font, motif::text_dim(), notice.width())
+                            .size()
+                            .y
+                    });
+                    let fits = long_h <= notice.height();
+                    let shown = if fits {
+                        long.clone()
+                    } else {
+                        trf("bio_too_short_brief", results.len())
+                    };
+                    let label = egui::Label::new(
+                        egui::RichText::new(shown)
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::text_dim()),
                     );
+                    if fits {
+                        ui.add(label.wrap());
+                    } else {
+                        ui.add(label.truncate()).on_hover_text(long);
+                    }
                 });
             }
             if let Some(table) = table {
@@ -29729,12 +29772,19 @@ impl App {
     fn vaccine_map_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui).shrink(6.0);
         // The lens buttons wrap: measure the band before carving it.
+        let lens_lines = Self::wrapped_rows(
+            ui,
+            body.width() - 40.0,
+            MapLens::ALL.iter().map(|l| l.label()),
+        );
+        // **Un menu quand les loupes ne tiennent pas sur une rangée** :
+        // à 1024x700 en texte 1,6 elles en prenaient deux, en cachaient
+        // encore une, et la carte — ce que la vue existe pour montrer —
+        // n'avait plus que quatre-vingt-dix pixels. Un menu montre la
+        // loupe choisie, donne les sept, et rend une rangée à la carte.
+        let lens_menu = lens_lines > 1.0;
         let lens_h = {
-            let lines = Self::wrapped_rows(
-                ui,
-                body.width() - 40.0,
-                MapLens::ALL.iter().map(|l| l.label()),
-            );
+            let lines = lens_lines;
             let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
             // Le cadre du panneau — la légende encastrée, son filet et
             // l'air autour — demandé à qui le dessine. L'oublier coûtait
@@ -29745,7 +29795,9 @@ impl App {
             let chrome = motif::panel_chrome(ui, true);
             let want = chrome + row * lines;
             let cap = body.height() * 0.35;
-            if want <= cap {
+            if lens_menu {
+                chrome + Self::row_height(ui)
+            } else if want <= cap {
                 want
             } else {
                 // **Et le plafond tombe sur une rangée entière.**
@@ -29775,6 +29827,16 @@ impl App {
         // même raison.
         let lens_title = trn("map_lens_title_n", &[&MapLens::ALL.len()]);
         motif::panel(ui, rows[0], Some(&lens_title), |ui| {
+            if lens_menu {
+                let options: Vec<(MapLens, String)> = MapLens::ALL
+                    .iter()
+                    .map(|l| (*l, l.label().to_owned()))
+                    .collect();
+                let w = motif::select_width(ui, MapLens::ALL.iter().map(|l| l.label()))
+                    .min(ui.available_width());
+                motif::select(ui, "map_lens_menu", w, &mut session.map_lens, &options);
+                return;
+            }
             // Capped: on a short window the band scrolls past its share
             // rather than hiding a lens behind its own bottom edge.
             egui::ScrollArea::vertical()
@@ -41227,52 +41289,44 @@ impl App {
                 crate::facets::coverage(o).to_string(),
             ),
         };
-        // **Et la bande porte deux choses, pas une.** Quand les axes ne
-        // tiennent pas dans leur part, une ligne le dit au-dessus de la
-        // phrase — c'est la règle de la maison —, et sa hauteur
-        // n'entrait pas dans la mesure : la phrase était poussée d'une
-        // ligne et tranchée par le bas du cadre, en plein milieu des
-        // lettres. « 862 fiches classées. Les monographies sans demi-vie
-        // chiffrée sont placées en fin de liste, non à zéro » se lisait
-        // sur une demi-ligne.
-        let axes_cut = Self::wrapped_band_height(
+        // **Et quand les axes ne tiennent pas dans leur part, un menu.**
+        // La bande défilait, et une ligne le disait au-dessus de la
+        // phrase de couverture : à 1024 en texte 1,6 trois rangées de
+        // portes, neuf axes sur treize, plus cette ligne, laissaient au
+        // tableau une seule fiche. Un menu tient sur une rangée, montre
+        // l'axe choisi et donne les treize — la règle de `richest_form` :
+        // la forme la plus riche qui tienne, et la plus pauvre sinon.
+        let axes_menu = Self::wrapped_band_height(
             ui,
             body.width(),
             labels.iter().map(|l| Self::button_width(ui, l)),
         ) > head;
-        let more_h = if axes_cut {
-            Self::prose_height(
-                ui,
-                &trf("explorer_axes_more", labels.len()),
-                motif::pt(ui, 10.5),
-                body.width(),
-            ) + ui.spacing().item_spacing.y
-        } else {
-            0.0
-        };
-        let note_h = (more_h
-            + ui.fonts(|f| {
-                f.layout(
-                    note.clone(),
-                    egui::TextStyle::Body.resolve(ui.style()),
-                    motif::text_dim(),
-                    body.width() - 8.0,
-                )
-                .size()
-                .y
-            }))
+        let head = if axes_menu { row_h } else { head };
+        let note_h = (ui.fonts(|f| {
+            f.layout(
+                note.clone(),
+                egui::TextStyle::Body.resolve(ui.style()),
+                motif::text_dim(),
+                body.width() - 8.0,
+            )
+            .size()
+            .y
+        }))
         .min(body.height() * 0.25)
             + 4.0;
         let strip = motif::split_rows(body, &[head, note_h, 0.0], 6.0);
 
-        // La bande défile au-delà de sa part plutôt que de se faire
-        // couper : treize portes tiennent en quatre lignes ici et en
-        // cinq sur un poste plus étroit, et une cinquième ligne rognée
-        // est un axe que personne ne pourra plus ouvrir.
         motif::inside(ui, strip[0], |ui| {
             // Deux zones défilantes dans une même vue, et aucune nommée :
             // egui leur dérive le même identifiant et se plaint à
             // l'écran. Le nom n'est pas décoratif.
+            if axes_menu {
+                let options: Vec<(usize, String)> = labels.iter().cloned().enumerate().collect();
+                let w = motif::select_width(ui, labels.iter().map(|l| l.as_str()))
+                    .min(ui.available_width());
+                motif::select(ui, "explorer_axis", w, &mut session.explorer_axis, &options);
+                return;
+            }
             egui::ScrollArea::vertical()
                 .id_salt("explorer_axes")
                 .auto_shrink([false, false])
@@ -41290,20 +41344,6 @@ impl App {
 
         // Ce que l'axe couvre, dit avant le tableau.
         motif::inside(ui, strip[1], |ui| {
-            // **Et ce que la bande ne montre pas se dit.** Elle est
-            // plafonnée à une part du volet et défile, mais la barre
-            // d'egui est flottante : invisible au repos, si bien qu'à
-            // 1024x700 en texte 1,6 huit axes sur douze se voyaient et
-            // les quatre autres — neuro, peau, digestif, oreille — se
-            // lisaient comme n'existant pas. Même règle qu'au sélecteur
-            // de modèles et qu'à la carte de voisinage.
-            if axes_cut {
-                ui.label(
-                    egui::RichText::new(trf("explorer_axes_more", labels.len()))
-                        .size(motif::pt(ui, 10.5))
-                        .color(motif::text_faint()),
-                );
-            }
             ui.add(egui::Label::new(egui::RichText::new(note).color(motif::text_dim())).wrap());
         });
 
@@ -43628,24 +43668,53 @@ impl App {
         let row = Self::row_height(ui);
         let line = ui.text_style_height(&egui::TextStyle::Body);
         let day_w = Self::field_width(ui, [tr("stup_day_hint")].into_iter());
-        let text_w = chars_wide(ui, Self::button_height(ui));
-        let kind_rows = Self::wrapped_rows_of(
+        // Trente caractères — ce que la hauteur d'un bouton, prise pour
+        // un nombre de caractères, donnait à l'échelle 1. Prise ainsi,
+        // la largeur suivait le **carré** de `[ui] text_scale` : à 1,6
+        // le filtre faisait quarante-sept caractères, une rangée à lui
+        // seul, et la bande en tranchait une de plus.
+        let text_w = chars_wide(ui, 30.0);
+        // **La nature en menu quand ses boutons ne tiennent pas dans la
+        // part de la bande**, comme au formulaire ligne à ligne : à 1024
+        // en texte 1,6 les huit natures prenaient trois rangées, et la
+        // feuille — ce que l'écran existe pour remplir — n'en montrait
+        // plus que deux lignes. Un menu tient dans la rangée des champs
+        // et montre la nature choisie ; les boutons, un clic et toutes
+        // les natures sous les yeux, restent partout où ils tiennent.
+        let kind_needed = Self::wrapped_rows_of(
             ui,
             body.width(),
             Kind::ALL
                 .iter()
                 .map(|k| Self::button_width(ui, tr(k.label_key()))),
         );
-        let mut field_widths: Vec<f32> = vec![day_w];
+        let kind_w = motif::select_width(ui, Kind::ALL.iter().map(|k| tr(k.label_key())));
+        let mut rest_widths: Vec<f32> = Vec::new();
         if kind.is_dispensing() {
-            field_widths.push(text_w);
+            rest_widths.push(text_w);
         }
         if kind == Kind::Entree {
-            field_widths.push(text_w);
-            field_widths.push(text_w);
+            rest_widths.push(text_w);
+            rest_widths.push(text_w);
         }
-        field_widths.push(text_w);
-        field_widths.push(Self::button_width(ui, tr("batch_all_products")));
+        rest_widths.push(text_w);
+        rest_widths.push(Self::button_width(ui, tr("batch_all_products")));
+        let plain_rows = Self::wrapped_rows_of(
+            ui,
+            body.width(),
+            std::iter::once(day_w).chain(rest_widths.iter().copied()),
+        );
+        let kind_menu = kind_needed > 1.0
+            && Self::rows_height(ui, kind_needed + plain_rows) > body.height() * 0.42 - 12.0;
+        let kind_rows = if kind_menu { 0.0_f32 } else { kind_needed };
+        let field_widths: Vec<f32> = if kind_menu {
+            vec![kind_w, day_w]
+        } else {
+            vec![day_w]
+        }
+        .into_iter()
+        .chain(rest_widths)
+        .collect();
         let field_rows = Self::wrapped_rows_of(ui, body.width(), field_widths.into_iter());
         // Le sous-titre enveloppe : mesuré comme il est dessiné, sans
         // quoi une phrase de deux lignes en réserve une et prend la
@@ -43683,7 +43752,16 @@ impl App {
                 .y
             })
         });
-        let gutters = ui.spacing().item_spacing.y * 5.0 + 12.0;
+        // **Les gouttières de ce qui est dessiné**, une entre deux
+        // rangées, et non cinq d'office — celles de tout ce que la bande
+        // *peut* porter. Avec la nature en menu dans la rangée des
+        // champs, cinq faisaient une rangée de gris sous le filtre.
+        let drawn_rows = kind_rows
+            + field_rows
+            + if file_h > 0.0 { 2.0 } else { 0.0 }
+            + if note_h > 0.0 { 1.0 } else { 0.0 };
+        let gutters_for =
+            |extra: f32| ui.spacing().item_spacing.y * (drawn_rows + extra - 1.0).max(0.0) + 12.0;
         let controls = (kind_rows + field_rows) * row + file_h + note_h;
         // Plafonnée en part du volet, comme toute bande dont la hauteur
         // dépend de son contenu : la feuille — ce pour quoi on ouvre
@@ -43696,8 +43774,10 @@ impl App {
         // (périmés) » — se peignait alors coupée en travers du panneau
         // d'en dessous. Une porte coupée en deux se lit « cassé », pas
         // « il y en a d'autres ».
-        let show_sub = sub_h + controls + gutters <= cap;
-        let want = if show_sub { sub_h } else { 0.0 } + controls + gutters;
+        let show_sub = sub_h + controls + gutters_for(1.0) <= cap;
+        let want = if show_sub { sub_h } else { 0.0 }
+            + controls
+            + gutters_for(if show_sub { 1.0 } else { 0.0 });
         // **Et le plafond tombe sur une rangée entière.** Le reste de la
         // bande défile, mais toujours entre deux choses entières — la
         // même règle que la bande du registre, à côté.
@@ -43766,25 +43846,29 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                     }
-                    ui.horizontal_wrapped(|ui| {
-                        for k in Kind::ALL {
-                            if motif::toggle(ui, tr(k.label_key()), batch.kind == k).clicked() {
-                                batch.kind = k;
-                                // Une nature ne garde que ses propres
-                                // champs, comme dans le formulaire ligne
-                                // à ligne : le grossiste d'une réception
-                                // qui survit au changement de nature
-                                // repart au registre sur une délivrance,
-                                // et une ligne fausse dans un registre
-                                // inaltérable ne se corrige que par une
-                                // contre-passation.
-                                if k != Kind::Sortie {
-                                    batch.prescriber.clear();
+                    let mut picked: Option<Kind> = None;
+                    if !kind_menu {
+                        ui.horizontal_wrapped(|ui| {
+                            for k in Kind::ALL {
+                                if motif::toggle(ui, tr(k.label_key()), batch.kind == k).clicked() {
+                                    picked = Some(k);
                                 }
                             }
-                        }
-                    });
+                        });
+                    }
                     ui.horizontal_wrapped(|ui| {
+                        if kind_menu {
+                            let options: Vec<(Kind, String)> = Kind::ALL
+                                .iter()
+                                .map(|k| (*k, tr(k.label_key()).to_owned()))
+                                .collect();
+                            let mut current = batch.kind;
+                            if motif::select(ui, "batch_kind", kind_w, &mut current, &options)
+                                .changed()
+                            {
+                                picked = Some(current);
+                            }
+                        }
                         motif::field_sized(
                             ui,
                             egui::vec2(day_w, Self::button_height(ui)),
@@ -43831,6 +43915,18 @@ impl App {
                             batch.show_all = !batch.show_all;
                         }
                     });
+                    if let Some(k) = picked {
+                        batch.kind = k;
+                        // Une nature ne garde que ses propres champs, comme
+                        // dans le formulaire ligne à ligne : le grossiste
+                        // d'une réception qui survit au changement de
+                        // nature repart au registre sur une délivrance, et
+                        // une ligne fausse dans un registre inaltérable ne
+                        // se corrige que par une contre-passation.
+                        if k != Kind::Sortie {
+                            batch.prescriber.clear();
+                        }
+                    }
                     // Le dossier, par la même rangée que le formulaire
                     // ligne à ligne — la règle et le moyen de désigner
                     // un dossier sont écrits une fois pour les deux
@@ -53299,6 +53395,29 @@ impl App {
     /// Ce n'est pas la même chose : une liste d'appel se sort devant le
     /// comptoir, un récapitulatif de facturation ne se sort pas devant
     /// n'importe qui. Ils vivent avec les recettes.
+    /// Le carré des montants discrets : levé tant qu'ils sont masqués,
+    /// enfoncé quand ils se montrent. Volontairement discret, sans
+    /// libellé.
+    fn discreet_toggle(ui: &mut egui::Ui, session: &mut Session, masked: bool) {
+        let (rect, resp) = ui.allocate_exact_size(egui::vec2(30.0, 20.0), egui::Sense::click());
+        ui.painter().rect_filled(
+            rect,
+            0.0,
+            if masked { motif::bg() } else { motif::trough() },
+        );
+        motif::bevel(ui.painter(), rect, masked);
+        ui.painter().text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            "•••",
+            egui::FontId::proportional(motif::pt(ui, 10.0)),
+            motif::text_dim(),
+        );
+        if resp.on_hover_text(tr("dash_discreet_tooltip")).clicked() {
+            session.show_amounts = !session.show_amounts;
+        }
+    }
+
     fn finance_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config, wrap: bool) {
         let layout = if wrap {
             egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true)
@@ -54268,59 +54387,110 @@ impl App {
                     let amount = chars_wide(ui, 10.0)
                         .max(head(ui, "caisse_denomination"))
                         .max(head(ui, "caisse_amount"));
-                    egui::Grid::new("caisse_grid")
-                        .num_columns(3)
-                        .spacing([10.0, 3.0])
-                        .striped(true)
-                        .show(ui, |ui| {
-                            Self::grid_cell(
-                                ui,
-                                amount,
-                                egui::RichText::new(tr("caisse_denomination")).strong(),
-                            );
-                            Self::grid_cell(
-                                ui,
-                                field,
-                                egui::RichText::new(tr("caisse_how_many")).strong(),
-                            );
-                            Self::grid_cell(
-                                ui,
-                                amount,
-                                egui::RichText::new(tr("caisse_amount")).strong(),
-                            );
-                            ui.end_row();
-                            for (i, d) in DENOMINATIONS.iter().enumerate() {
-                                Self::grid_cell(ui, amount, egui::RichText::new(d.label));
-                                ui.allocate_ui_with_layout(
-                                    egui::vec2(field, Self::button_height(ui)),
-                                    egui::Layout::left_to_right(egui::Align::Center),
-                                    |ui| {
-                                        motif::field(
-                                            ui,
-                                            field,
-                                            egui::TextEdit::singleline(&mut session.caisse_qty[i])
-                                                .horizontal_align(egui::Align::RIGHT),
+                    // **Billets et pièces côte à côte quand la place le
+                    // permet** : l'une sous l'autre, les quinze coupures
+                    // n'occupaient que la moitié gauche du volet, et à
+                    // 1024 en texte 1,25 on n'en voyait que six. Côte à
+                    // côte, deux fois plus — et la ligne coupe là où le
+                    // tiroir se coupe, entre les billets et les pièces.
+                    // (À 1,6 les deux groupes ne tiennent pas : une seule
+                    // colonne, comme avant.)
+                    let gap = chars_wide(ui, 2.0);
+                    // La coupure est courte (« 500 € », « 0,05 € ») : sa
+                    // colonne à la mesure de ce qu'elle porte.
+                    let denom = DENOMINATIONS
+                        .iter()
+                        .map(|d| {
+                            ui.fonts(|f| {
+                                f.layout_no_wrap(
+                                    d.label.to_owned(),
+                                    egui::TextStyle::Body.resolve(ui.style()),
+                                    motif::text(),
+                                )
+                                .size()
+                                .x
+                            })
+                        })
+                        .fold(head(ui, "caisse_denomination"), f32::max);
+                    let group = denom + field + amount + 2.0 * 10.0;
+                    let paired = ui.available_width() >= 2.0 * group + gap + 10.0;
+                    let notes = DENOMINATIONS.iter().filter(|d| d.note).count();
+                    let heads = |ui: &mut egui::Ui| {
+                        Self::grid_cell(
+                            ui,
+                            denom,
+                            egui::RichText::new(tr("caisse_denomination")).strong(),
+                        );
+                        Self::grid_cell(
+                            ui,
+                            field,
+                            egui::RichText::new(tr("caisse_how_many")).strong(),
+                        );
+                        Self::grid_cell(
+                            ui,
+                            amount,
+                            egui::RichText::new(tr("caisse_amount")).strong(),
+                        );
+                        ui.end_row();
+                    };
+                    // **Deux grilles et non une de six colonnes** : l'ordre
+                    // de la tabulation est celui où les champs sont posés,
+                    // et une seule grille le faisait aller de 500 € à 2 €
+                    // puis à 200 € — on compte les billets, puis les pièces.
+                    let qty = &mut session.caisse_qty;
+                    let mut group_grid =
+                        |ui: &mut egui::Ui, id: &str, range: std::ops::Range<usize>| {
+                            egui::Grid::new(id)
+                                .num_columns(3)
+                                .spacing([10.0, 3.0])
+                                .striped(true)
+                                .show(ui, |ui| {
+                                    heads(ui);
+                                    for i in range {
+                                        let d = &DENOMINATIONS[i];
+                                        Self::grid_cell(ui, denom, egui::RichText::new(d.label));
+                                        ui.allocate_ui_with_layout(
+                                            egui::vec2(field, Self::button_height(ui)),
+                                            egui::Layout::left_to_right(egui::Align::Center),
+                                            |ui| {
+                                                motif::field(
+                                                    ui,
+                                                    field,
+                                                    egui::TextEdit::singleline(&mut qty[i])
+                                                        .horizontal_align(egui::Align::RIGHT),
+                                                );
+                                            },
                                         );
-                                    },
-                                );
-                                let n = quantities[i];
-                                Self::grid_cell(
-                                    ui,
-                                    amount,
-                                    egui::RichText::new(if n == 0 {
-                                        "—".to_owned()
-                                    } else {
-                                        format!("{} €", euros(d.cents * n))
-                                    })
-                                    .color(if n == 0 {
-                                        motif::text_dim()
-                                    } else {
-                                        motif::text()
-                                    }),
-                                );
-                                ui.end_row();
-                            }
+                                        let n = quantities[i];
+                                        Self::grid_cell(
+                                            ui,
+                                            amount,
+                                            egui::RichText::new(if n == 0 {
+                                                "—".to_owned()
+                                            } else {
+                                                format!("{} €", euros(d.cents * n))
+                                            })
+                                            .color(
+                                                if n == 0 {
+                                                    motif::text_dim()
+                                                } else {
+                                                    motif::text()
+                                                },
+                                            ),
+                                        );
+                                        ui.end_row();
+                                    }
+                                });
+                        };
+                    if paired {
+                        ui.horizontal_top(|ui| {
+                            group_grid(ui, "caisse_grid", 0..notes);
+                            ui.add_space(gap);
+                            group_grid(ui, "caisse_grid_coins", notes..DENOMINATIONS.len());
                         });
+                    } else {
+                        group_grid(ui, "caisse_grid", 0..DENOMINATIONS.len());
+                    }
                     ui.add_space(8.0);
                     // Ce qui ne se compte pas : la carte et les chèques se
                     // lisent sur un ticket, pas dans le tiroir.
@@ -59875,42 +60045,31 @@ impl App {
                 .x
         });
         let roomy = title_w + gap + buttons_w <= motif::visible_rect(ui).width() - 16.0;
-        ui.horizontal(|ui| {
-            ui.add_space(4.0);
-            ui.heading(tr("fin_title"));
-            if !roomy {
-                return;
-            }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if config.ui.discreet_finances {
-                    // Deliberately unobtrusive: a small unlabeled square,
-                    // raised while masked, sunken while shown.
-                    let (rect, resp) =
-                        ui.allocate_exact_size(egui::vec2(30.0, 20.0), egui::Sense::click());
-                    ui.painter().rect_filled(
-                        rect,
-                        0.0,
-                        if masked { motif::bg() } else { motif::trough() },
-                    );
-                    motif::bevel(ui.painter(), rect, masked);
-                    ui.painter().text(
-                        rect.center(),
-                        egui::Align2::CENTER_CENTER,
-                        "•••",
-                        egui::FontId::proportional(motif::pt(ui, 10.0)),
-                        motif::text_dim(),
-                    );
-                    if resp.on_hover_text(tr("dash_discreet_tooltip")).clicked() {
-                        session.show_amounts = !session.show_amounts;
+        if roomy {
+            ui.horizontal(|ui| {
+                ui.add_space(4.0);
+                ui.heading(tr("fin_title"));
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    if config.ui.discreet_finances {
+                        Self::discreet_toggle(ui, session, masked);
                     }
-                }
-                Self::finance_controls(ui, session, config, false);
+                    Self::finance_controls(ui, session, config, false);
+                });
             });
-        });
-        if !roomy {
+        } else {
+            // **Le titre et les boutons dans une même rangée qui
+            // enveloppe** : le titre seul sur sa ligne, puis chaque
+            // bouton sur la sienne, prenaient trois rangées à 1024 en
+            // texte 1,6. Et le carré des montants discrets n'était
+            // dessiné que dans la forme large : sur un écran étroit,
+            // des montants masqués ne pouvaient plus être montrés.
             ui.horizontal_wrapped(|ui| {
                 ui.add_space(4.0);
+                ui.heading(tr("fin_title"));
                 Self::finance_controls(ui, session, config, true);
+                if config.ui.discreet_finances {
+                    Self::discreet_toggle(ui, session, masked);
+                }
             });
         }
         ui.add_space(6.0);
@@ -63487,12 +63646,12 @@ impl App {
                 .show(ui, |ui| {
                     ui.spacing_mut().item_spacing.y = 1.0;
                     for (p, moved) in &recent {
-                        let text = format!(
-                            "{}      {}",
-                            p.full_name(),
-                            db::format_french_date(&moved[..10.min(moved.len())])
-                        );
-                        if motif::list_row(ui, egui::RichText::new(text), false)
+                        // Le nom, puis la date en retrait : six espaces
+                        // entre les deux ne faisaient pas une colonne, et
+                        // la date d'un nom court tombait sous le nom long
+                        // du dessus.
+                        let day = db::format_french_date(&moved[..10.min(moved.len())]);
+                        if motif::list_row_pair(ui, &p.full_name(), &day, false, 0.0)
                             .on_hover_text(tr("dash_open_patient"))
                             .clicked()
                         {

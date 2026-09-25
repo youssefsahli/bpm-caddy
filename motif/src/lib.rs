@@ -2922,21 +2922,35 @@ pub fn select_hinted<T: PartialEq + Clone>(
         egui::popup::PopupCloseBehavior::CloseOnClick,
         |ui| {
             ui.set_min_width(width);
-            for (value, label, hint) in options {
-                let row = list_row(ui, egui::RichText::new(label), value == current);
-                // Une explication vide ne pose pas d'infobulle : une
-                // boîte qui s'ouvre pour ne rien dire est pire que pas
-                // de boîte du tout.
-                let row = if hint.is_empty() {
-                    row
-                } else {
-                    row.on_hover_text(hint)
-                };
-                if row.clicked() && value != current {
-                    *current = value.clone();
-                    changed = true;
-                }
-            }
+            // **Jamais plus bas que l'écran.** Un menu est aussi long que
+            // ses choix : treize axes à 1024x700 en texte 1,6 font près
+            // de cinq cents pixels, et un menu ouvert bas dans la vue
+            // descendait sous le bord — les derniers choix n'existaient
+            // plus. Il défile dans ce que l'écran lui laisse, et la barre
+            // le dit.
+            let room = (ui.ctx().screen_rect().bottom() - response.rect.bottom() - 16.0)
+                .max(ui.spacing().interact_size.y * 3.0);
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt(id.with("rows"))
+                .max_height(room)
+                .show(ui, |ui| {
+                    for (value, label, hint) in options {
+                        let row = list_row(ui, egui::RichText::new(label), value == current);
+                        // Une explication vide ne pose pas d'infobulle :
+                        // une boîte qui s'ouvre pour ne rien dire est pire
+                        // que pas de boîte du tout.
+                        let row = if hint.is_empty() {
+                            row
+                        } else {
+                            row.on_hover_text(hint)
+                        };
+                        if row.clicked() && value != current {
+                            *current = value.clone();
+                            changed = true;
+                        }
+                    }
+                });
             popup_relief(ui);
         },
     );
@@ -4145,5 +4159,50 @@ mod tests {
                 );
             });
         });
+    }
+
+    /// **Un menu ne descend pas sous l'écran.** Treize choix ouverts au
+    /// bas d'une fenêtre de 700 pixels, en texte 1,6 : sans défilement,
+    /// les derniers étaient posés hors de l'écran, et un choix qu'on ne
+    /// voit pas n'existe pas. Le menu est ouvert à mi-hauteur, dessiné
+    /// sur quelques images, puis sa zone est comparée au bord.
+    #[test]
+    fn a_menu_never_opens_below_the_screen() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.6, super::Density::Comfortable);
+        let options: Vec<(usize, String)> = (0..30).map(|i| (i, format!("Choix {i}"))).collect();
+        let input = || egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(
+                egui::Pos2::ZERO,
+                egui::vec2(1024.0, 700.0),
+            )),
+            ..Default::default()
+        };
+        let mut current = 0usize;
+        let mut bottom = 0.0_f32;
+        for frame in 0..4 {
+            let out = ctx.run(input(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.add_space(350.0);
+                    if frame == 0 {
+                        let id = ui.make_persistent_id("long_menu");
+                        ui.memory_mut(|m| m.open_popup(id));
+                    }
+                    super::select(ui, "long_menu", 200.0, &mut current, &options);
+                });
+            });
+            bottom = out
+                .shapes
+                .iter()
+                .map(|s| s.shape.visual_bounding_rect().bottom())
+                .filter(|b| b.is_finite())
+                .fold(0.0_f32, f32::max);
+        }
+        assert!(
+            bottom <= 700.0 + 1.0,
+            "le menu descend jusqu'à {bottom} px sur un écran de 700"
+        );
     }
 }

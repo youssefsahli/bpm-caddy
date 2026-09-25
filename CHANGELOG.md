@@ -5,6 +5,30 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.345.0] - 2026-09-25
+
+### Changed
+- Caisse : billets et pièces côte à côte quand le volet le permet — deux
+  fois plus de coupures visibles, et la tabulation descend les billets
+  puis les pièces.
+- Saisie groupée, Explorateur, Carte vaccinale : quand les boutons de
+  nature, d'axe ou de regroupement prendraient la place du tableau, ils
+  deviennent un menu d'une rangée qui montre le choix en cours.
+- Accueil : sur petit écran, le titre de l'application cède sa place aux
+  rendez-vous du jour, aux derniers patients et aux notes.
+- Derniers patients : la date en retrait après le nom.
+- Les menus déroulants longs défilent au lieu de descendre sous le bord
+  de l'écran.
+
+### Fixed
+- Recettes : le carré des montants discrets manquait sur petit écran —
+  des montants masqués ne pouvaient plus être montrés ; le titre et les
+  boutons tiennent en deux rangées au lieu de trois.
+- Biologie du dossier : le volet trop court dit combien de résultats il
+  cache, sur une ligne, et le formulaire de saisie tient sur la sienne.
+- Saisie groupée et locations : les champs de texte ne s'élargissent plus
+  démesurément en grand texte.
+
 ## [0.344.0] - 2026-09-25
 
 ### Fixed

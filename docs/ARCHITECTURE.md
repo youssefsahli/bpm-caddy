@@ -1340,7 +1340,10 @@ add clicking and typing; it is not the price of entry.
 - **`spacing.scroll.floating` is egui's default and nothing here changes
   it *globally* — but where the hidden tail carries a gesture or the
   subject itself, that one region turns it off.** Saying the total works
-  for a band of doors (« 13 axes en tout »); it says nothing useful
+  for a band of doors (« Regroupement (7) »), and where the doors would
+  still take the rows the view exists for, they become one menu — the
+  explorer's axes, the map's lenses, the batch sheet's natures, as the
+  register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
   fold is the control you came to use. 57 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
