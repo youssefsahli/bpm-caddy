@@ -10969,6 +10969,9 @@ struct PostsWindow {
     leave_armed: bool,
     /// A post's name as typed, by number.
     names: std::collections::HashMap<i64, String>,
+    /// Ouverte depuis la carte pour relier un poste : l'invitation part
+    /// dès que la fenêtre est libre.
+    invite_now: bool,
 }
 
 /// What the base says about the posts, read when the window opens and
@@ -57297,6 +57300,7 @@ impl App {
         let mut dial: Option<String> = None;
         let mut join_near: Option<String> = None;
         let mut invite_near = false;
+        let mut invite_post = false;
         let mut adopt: Option<(String, String, String)> = None;
         let mut dismiss: Option<(String, String)> = None;
         let mut arm: Option<String> = None;
@@ -57441,7 +57445,17 @@ impl App {
                                     ))
                                     .wrap(),
                                 );
-                                if motif::button(ui, tr("conn_post_alone_link")).clicked() {
+                                // Ce poste d'un groupe : l'invitation s'ouvre
+                                // d'un clic, son code à coller sur l'autre.
+                                let grouped = sum.posts.as_ref().is_ok_and(|p| p.in_group);
+                                if grouped {
+                                    if motif::button(ui, tr("conn_post_alone_invite"))
+                                        .on_hover_text(tr("conn_post_alone_invite_tooltip"))
+                                        .clicked()
+                                    {
+                                        invite_post = true;
+                                    }
+                                } else if motif::button(ui, tr("conn_post_alone_link")).clicked() {
                                     *open_posts = Some(String::new());
                                 }
                             }
@@ -57700,6 +57714,13 @@ impl App {
             session.conn_pick = None;
             session.conn_dirty = true;
         }
+        if invite_post && session.posts_window.is_none() {
+            session.posts_window = Some(PostsWindow {
+                summary: PostsSummary::read(&session.db).ok(),
+                invite_now: true,
+                ..PostsWindow::default()
+            });
+        }
         // Se lier à une voisine passe par la fenêtre du réseau : c'est là
         // que le code se compare, et que la tâche se suit.
         if join_near.is_some() || invite_near {
@@ -57903,6 +57924,14 @@ impl App {
         let mut leave = false;
         let mut sync_now = false;
         let busy = w.job.is_some();
+        if !busy && w.invite_now {
+            w.invite_now = false;
+            if w.summary.as_ref().is_some_and(|s| s.in_group) {
+                start = Some(Job::Invite {
+                    port: config.postes.port,
+                });
+            }
+        }
         let auto_on = session.posts_auto.is_some() && config.postes.automatique;
         let status = session.posts_status.clone();
         let screen = ctx.screen_rect();
