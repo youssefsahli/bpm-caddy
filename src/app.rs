@@ -4674,7 +4674,9 @@ struct Session {
     /// view's reading: the other active posts of the group, and whether
     /// the officine is in a network.
     #[cfg(feature = "sync")]
-    conn_badge: (usize, bool),
+    /// Les autres postes du groupe, l'officine est d'un réseau, et combien
+    /// d'officines appairées ont été jointes aujourd'hui.
+    conn_badge: (usize, bool, usize),
     /// Which neighbour list the operator has open, if either. Cleared
     /// when a card is opened: the answer belongs to the card that was
     /// asked, not to the next one.
@@ -5500,7 +5502,7 @@ impl Session {
             conn_map: false,
             conn_pick: None,
             #[cfg(feature = "sync")]
-            conn_badge: (0, false),
+            conn_badge: (0, false, 0),
             drug_kin_show: None,
             vitale_found: Vec::new(),
             vitale_note: None,
@@ -7192,7 +7194,16 @@ impl Session {
                 .iter()
                 .filter(|p| p.left_on.is_empty() && Some(p.post) != self.db.sync_post())
                 .count();
-            self.conn_badge = (others, self.db.setting("net_trousseau").is_some());
+            let reached = self
+                .db
+                .net_peers()
+                .unwrap_or_default()
+                .iter()
+                .filter(|p| p.last_ok.starts_with(&self.today))
+                .count();
+            let network = self.db.setting("net_trousseau").is_some()
+                || self.db.net_networks().is_ok_and(|n| !n.is_empty());
+            self.conn_badge = (others, network, reached);
             let mut entries = Vec::new();
             let mut names: Vec<(crate::versions::Kind, String)> = self
                 .preparations
@@ -7290,7 +7301,7 @@ impl Session {
     fn conn_mark(&self) -> (egui::Color32, String) {
         #[cfg(feature = "sync")]
         {
-            let (others, network) = self.conn_badge;
+            let (others, network, reached) = self.conn_badge;
             let failed = self.posts_status.as_ref().is_some_and(|s| s.0)
                 || self.net_status.as_ref().is_some_and(|s| s.0);
             let online = self
@@ -7304,7 +7315,12 @@ impl Session {
             } else {
                 tr("conn_mark_alone").to_owned()
             };
-            if network {
+            // **Combien d'officines jointes aujourd'hui**, plutôt que
+            // « réseau » : ce que la connexion au lancement a fait se lit
+            // d'un coup d'œil.
+            if network && reached > 0 {
+                text.push_str(&trn("conn_mark_officines", &[&reached]));
+            } else if network {
                 text.push_str(tr("conn_mark_network"));
             }
             let color = if failed {
@@ -7519,6 +7535,9 @@ impl Session {
                 crate::postes::Progress::Status(line) => {
                     self.log_connection(false, &line);
                     self.posts_status = Some((false, line));
+                    // Une officine jointe ou qui a frappé : la vue des
+                    // connexions et la marque de la barre se relisent.
+                    self.conn_dirty = true;
                 }
                 crate::postes::Progress::Peers(peers) => self.posts_peers = peers,
                 crate::postes::Progress::Officines(near) => self.near_officines = near,
@@ -14144,6 +14163,42 @@ impl App {
                             session.log_connection(false, tr("conn_sync_asked"));
                             session.reload_connections();
                             session.view = MainView::Connexions;
+                            // Deux officines voisines, l'une qui
+                            // invite : l'arc « À portée » et, choisie,
+                            // ce que le volet propose pour se lier.
+                            session.near_officines = vec![
+                                crate::network::Nearby {
+                                    device: "5".repeat(64),
+                                    name: "Pharmacie de la Mairie".to_owned(),
+                                    invite: Some("192.168.1.31:7742".to_owned()),
+                                    listen: None,
+                                    place: "Épinal".to_owned(),
+                                },
+                                crate::network::Nearby {
+                                    device: "6".repeat(64),
+                                    name: "Pharmacie du Marché".to_owned(),
+                                    invite: None,
+                                    listen: Some("192.168.1.32:7742".to_owned()),
+                                    place: "Golbey".to_owned(),
+                                },
+                                // Une officine appairée, entendue en ce
+                                // moment : sa ville, et « en ligne ».
+                                crate::network::Nearby {
+                                    device: "a1".repeat(32),
+                                    name: "Pharmacie du Port".to_owned(),
+                                    invite: None,
+                                    listen: Some("192.168.1.33:7742".to_owned()),
+                                    place: "Épinal".to_owned(),
+                                },
+                            ];
+                            // Un poste seul sur le réseau local, à relier.
+                            session.posts_peers = vec![crate::postes::PeerSeen {
+                                device: "9".repeat(64),
+                                address: "192.168.1.40:7743".to_owned(),
+                                member: false,
+                                talked: None,
+                                alone: true,
+                            }];
                             // La carte, une officine choisie : le volet
                             // montre ses gestes.
                             if key == "connexions_carte" {
@@ -14184,42 +14239,6 @@ impl App {
                                     }],
                                 )];
                                 session.reload_connections();
-                                // Deux officines voisines, l'une qui
-                                // invite : l'arc « À portée » et, choisie,
-                                // ce que le volet propose pour se lier.
-                                session.near_officines = vec![
-                                    crate::network::Nearby {
-                                        device: "5".repeat(64),
-                                        name: "Pharmacie de la Mairie".to_owned(),
-                                        invite: Some("192.168.1.31:7742".to_owned()),
-                                        listen: None,
-                                        place: "Épinal".to_owned(),
-                                    },
-                                    crate::network::Nearby {
-                                        device: "6".repeat(64),
-                                        name: "Pharmacie du Marché".to_owned(),
-                                        invite: None,
-                                        listen: Some("192.168.1.32:7742".to_owned()),
-                                        place: "Golbey".to_owned(),
-                                    },
-                                    // Une officine appairée, entendue en ce
-                                    // moment : sa ville, et « en ligne ».
-                                    crate::network::Nearby {
-                                        device: "a1".repeat(32),
-                                        name: "Pharmacie du Port".to_owned(),
-                                        invite: None,
-                                        listen: Some("192.168.1.33:7742".to_owned()),
-                                        place: "Épinal".to_owned(),
-                                    },
-                                ];
-                                // Un poste seul sur le réseau local, à relier.
-                                session.posts_peers = vec![crate::postes::PeerSeen {
-                                    device: "9".repeat(64),
-                                    address: "192.168.1.40:7743".to_owned(),
-                                    member: false,
-                                    talked: None,
-                                    alone: true,
-                                }];
                                 session.conn_pick = Some(format!("near:{}", "5".repeat(64)));
                             }
                         }
@@ -56265,6 +56284,14 @@ impl App {
             let posts_status = session.posts_status.clone();
             let net_status = session.net_status.clone();
             let net_running = session.net_auto.is_some();
+            // Les officines qui s'annoncent et qu'on n'a pas ajoutées, et
+            // les postes seuls : ce que la carte pose « à portée ».
+            let near_list: Vec<crate::network::Nearby> = session.near_officines.clone();
+            let alone_posts = session
+                .posts_peers
+                .iter()
+                .filter(|p| p.alone && !p.member)
+                .count();
             let net_in = session
                 .net_next
                 .map(|at| at.saturating_duration_since(Instant::now()).as_secs() / 60);
@@ -56409,6 +56436,37 @@ impl App {
                                 return;
                             }
                         };
+                        // **À portée**, en tête : les officines qui
+                        // s'annoncent sur le réseau local sans être d'ici,
+                        // et les postes seuls — la carte les relie.
+                        let strangers: Vec<&crate::network::Nearby> = near_list
+                            .iter()
+                            .filter(|x| !n.peers.iter().any(|p| p.device == x.device))
+                            .collect();
+                        if !strangers.is_empty() || alone_posts > 0 {
+                            motif::section(ui, tr("conn_map_nearby"));
+                            for x in &strangers {
+                                let who = if x.place.trim().is_empty() {
+                                    x.name.clone()
+                                } else {
+                                    format!("{} · {}", x.name, x.place)
+                                };
+                                ui.horizontal_wrapped(|ui| {
+                                    ui.label(egui::RichText::new(who).strong());
+                                    if x.invite.is_some() {
+                                        ui.label(small(ui, tr("conn_near_inviting").to_owned()));
+                                    }
+                                });
+                            }
+                            if alone_posts > 0 {
+                                ui.label(small(ui, trn("conn_posts_alone", &[&alone_posts])));
+                            }
+                            ui.add(
+                                egui::Label::new(small(ui, tr("conn_near_on_map").to_owned()))
+                                    .wrap(),
+                            );
+                            ui.add_space(6.0);
+                        }
                         if !n.in_network {
                             ui.add(egui::Label::new(tr("net_none")).wrap());
                             return;
