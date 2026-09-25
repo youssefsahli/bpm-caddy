@@ -1058,7 +1058,9 @@ après une synchronisation, en cercle creux sur l'arc de leur réseau.
 Leurs envois ne sont ni gardés ni lus avant ajout : « Ajouter » (deux
 clics) ou « Écarter ». Alerte si le nom est déjà porté par une officine
 ajoutée : vérifier l'empreinte par téléphone. Une officine retirée n'est
-plus proposée.
+plus proposée. Une officine appairée qui se donne le nom d'une autre, ou
+celui de cette officine, s'affiche suivie du début de son empreinte ; le
+nom saisi ici dans la fenêtre du réseau fait foi.
 
 **Connexion au lancement** : les postes du groupe se découvrent et se
 synchronisent sur le réseau local ; le réseau d'officines se synchronise
