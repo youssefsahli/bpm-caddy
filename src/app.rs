@@ -56571,6 +56571,7 @@ impl App {
                         }
                         for peer in &n.peers {
                             ui.horizontal_wrapped(|ui| {
+                                officine_badge(ui, &peer.device, &net_peer_title(peer));
                                 ui.label(egui::RichText::new(net_peer_title(peer)).strong());
                                 ui.label(small(
                                     ui,
@@ -58722,6 +58723,7 @@ impl App {
                             // l'empreinte de l'officine suivante.
                             ui.add_space(4.0);
                             ui.horizontal_wrapped(|ui| {
+                                officine_badge(ui, &p.device, &net_peer_title(p));
                                 ui.label(egui::RichText::new(net_peer_title(p)).strong());
                                 ui.label(
                                     egui::RichText::new(crate::peer_groups(&p.device))

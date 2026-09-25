@@ -278,6 +278,13 @@ impl Net {
         let Some(trousseau) = &self.trousseau else {
             return Ok(0);
         };
+        // **Un seul à la fois dans ce processus** : la synchronisation et
+        // l'appel né d'une annonce publient chacun sur leur fil ; ensemble,
+        // chacun scellait ce que l'autre n'avait pas encore marqué parti.
+        static PUBLISHING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        let _one = PUBLISHING
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         // Ce que **ce** réseau a déjà reçu d'ici, et ce que l'officine y
         // partage : un événement part une fois par réseau, et pas du tout
         // dans un réseau où son genre n'est pas partagé.
