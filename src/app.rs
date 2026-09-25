@@ -54989,6 +54989,18 @@ impl App {
             egui::TextStyle::Body.resolve(ui.style()),
             std::iter::once("septembre 2026"),
         );
+        // **« ‹ mois › » d'un seul tenant**, comme le jour de la caisse :
+        // à 1024 en texte 1,25 la rangée finissait sur « ‹ » et la
+        // suivante commençait par « septembre 2026 › ».
+        let step_w = Self::group_width(
+            ui,
+            [
+                Self::button_width(ui, "‹"),
+                month_w,
+                Self::button_width(ui, "›"),
+            ]
+            .into_iter(),
+        );
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -55006,10 +55018,9 @@ impl App {
                 Self::button_width(ui, tr("caisses_print")),
                 // Les dix pixels d'`add_space` qui séparent les boutons
                 // du sélecteur de mois : un espace que le dessin prend
-                // et que la mesure ignorait.
-                Self::button_width(ui, "‹") + 10.0,
-                month_w,
-                Self::button_width(ui, "›"),
+                // et que la mesure ignorait. Et le sélecteur compte pour
+                // **un** article : il se dessine d'un seul tenant.
+                step_w + 10.0,
             ]
             .into_iter(),
             caisses_subtitle,
@@ -55036,16 +55047,18 @@ impl App {
                     print = true;
                 }
                 ui.add_space(10.0);
-                if motif::button(ui, "‹").clicked() {
-                    step = -1;
-                }
-                ui.add_sized(
-                    [month_w, Self::button_height(ui)],
-                    egui::Label::new(egui::RichText::new(&month_label).strong()),
-                );
-                if motif::button(ui, "›").clicked() {
-                    step = 1;
-                }
+                Self::keep_together(ui, egui::vec2(step_w, Self::row_height(ui)), |ui| {
+                    if motif::button(ui, "‹").clicked() {
+                        step = -1;
+                    }
+                    ui.add_sized(
+                        [month_w, Self::button_height(ui)],
+                        egui::Label::new(egui::RichText::new(&month_label).strong()),
+                    );
+                    if motif::button(ui, "›").clicked() {
+                        step = 1;
+                    }
+                });
             });
             ui.label(
                 egui::RichText::new(caisses_subtitle)
