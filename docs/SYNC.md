@@ -524,6 +524,26 @@ capturée ; un **dossier d'échange** (`<empreinte>.bpmposte`) ; des
 **adresses écrites** ; plus le bouton et la fermeture. `link.rs` ne
 décide toujours de rien : c'est l'application qui a un fil.
 
+**Relier un poste** (0.343) : l'invitation ouverte s'annonce toutes les
+deux secondes, le temps qu'elle attend — `BPMPOSTE2 <poste> <port>
+<groupe> pour:<poste invité|*> <étiquette>` (`beacon_invite`). Rien de
+secret : l'étiquette est 4 octets de `derive_key("bpm-caddy/invite-tag/v1",
+ticket)`, qui sert au poste invité à choisir, parmi les invitations
+entendues, **celle que son code ouvre** (`join_target`) — une annonce
+contrefaite ne la porte pas et ne détourne pas le code vers une autre
+adresse. Le code seul suffit alors ; la poignée de main reste celle du
+ticket (preuve des deux côtés, `session::proved`). L'invitation accepte
+vingt connexions, trois par adresse, chacune lâchée après huit secondes
+de silence : une annonce publique ne donne plus à qui la lit le moyen de
+la fermer d'un essai. La liste des postes entendus garde la première
+adresse d'une identité tant qu'elle s'annonce, et 64 postes au plus.
+
+**L'officine** (`settings`, clé `pharmacy`, un bloc TOML) se fusionne
+champ par champ (`PharmacyConfig::merge`) : à l'enregistrement refusé
+(`Session::save_officine`) et à la réception (`replica::merge_officine`,
+qui ne fusionne pas une valeur portant un champ que cette version ne
+connaît pas). Un même champ changé des deux côtés reste un conflit.
+
 Réseau d'officines, contenu versionné : fiches, codex, protocoles et,
 depuis la 0.295, **lignes du TROD** (`versions::Kind::Trod`, nom de
 voyage `protocole · nom`, champs `versions::TROD_FIELDS` — tout sauf le
