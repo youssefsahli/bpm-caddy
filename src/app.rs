@@ -57194,16 +57194,6 @@ impl App {
                 // même rangée ; le nom entier s'il tient, sinon le nom
                 // court (« Gare »), et l'ellipse seulement en dernier.
                 let line_h = ui.fonts(|f| f.row_height(&label_font));
-                let room = (0..nodes.len())
-                    .filter(|j| *j != i)
-                    .map(&at)
-                    .filter(|o| (o.y - c.y).abs() < line_h * 1.2)
-                    .map(|o| (o.x - c.x).abs() - 6.0)
-                    .fold(label_w, f32::min)
-                    // Centré sous son nœud, le nom ne sort pas du cadre :
-                    // au bord, c'est le nom court qui s'écrit.
-                    .min(2.0 * (c.x - field.left()).min(field.right() - c.x) - 4.0)
-                    .max(chars_wide(ui, 3.0));
                 let wide = |t: &str| {
                     ui.fonts(|f| {
                         f.layout_no_wrap(t.to_owned(), label_font.clone(), motif::text())
@@ -57211,6 +57201,44 @@ impl App {
                             .x
                     })
                 };
+                // Un poste de la moitié haute dont le nom, dessous,
+                // tomberait sur ce poste l'écrit au-dessus de lui — côté
+                // extérieur. Seulement alors : au-dessus, il y a les noms
+                // des officines.
+                let me_top = centre.y - r * 1.3;
+                let above = matches!(n.kind, NodeKind::Post | NodeKind::PostAlone)
+                    && c.y < centre.y - 1.0
+                    && c.y + r * 1.4 + line_h > me_top
+                    && (c.x - centre.x).abs() < wide(&n.label).min(label_w) / 2.0 + r * 1.3;
+                // La place se mesure sur la rangée où le nom s'écrit : au-
+                // dessus, ce sont les nœuds qui montent jusque-là qui gênent,
+                // pas ceux de la même hauteur.
+                let label_y = c.y - r * 1.4 - line_h / 2.0;
+                let room = (0..nodes.len())
+                    .filter(|j| *j != i)
+                    .map(&at)
+                    .filter(|o| {
+                        if above {
+                            (o.y - label_y).abs() < r + line_h / 2.0
+                        } else {
+                            (o.y - c.y).abs() < line_h * 1.2
+                        }
+                    })
+                    // Deux noms centrés sous leurs nœuds partagent l'écart ;
+                    // au-dessus, le voisin n'est qu'un cercle : le nom en
+                    // prend les deux côtés.
+                    .map(|o| {
+                        if above {
+                            2.0 * ((o.x - c.x).abs() - r - 4.0)
+                        } else {
+                            (o.x - c.x).abs() - 6.0
+                        }
+                    })
+                    .fold(label_w, f32::min)
+                    // Centré sous son nœud, le nom ne sort pas du cadre :
+                    // au bord, c'est le nom court qui s'écrit.
+                    .min(2.0 * (c.x - field.left()).min(field.right() - c.x) - 4.0)
+                    .max(chars_wide(ui, 3.0));
                 // Et sa ville quand elle la dit et qu'il y a la place :
                 // deux « Pharmacie de la Gare » ne se confondent plus.
                 let with_place = place_of(&n.device)
@@ -57219,6 +57247,9 @@ impl App {
                 let text = match with_place {
                     Some(t) if wide(&t) <= room => t,
                     _ if wide(&n.label) <= room => n.label.clone(),
+                    // Un poste non relié : son carré en tirets dit déjà
+                    // « poste » — « Non relié » suffit.
+                    _ if n.kind == NodeKind::PostAlone => tr("conn_post_alone_short").to_owned(),
                     _ => crate::netmap::short_name(&n.label),
                 };
                 let text_shown = text.clone();
@@ -57238,15 +57269,6 @@ impl App {
                 };
                 let g = ui.fonts(|f| f.layout_job(job));
                 let size = g.size();
-                // Un poste de la moitié haute dont le nom, dessous,
-                // tomberait sur ce poste l'écrit au-dessus de lui — côté
-                // extérieur. Seulement alors : au-dessus, il y a les noms
-                // des officines.
-                let me_top = centre.y - r * 1.3;
-                let above = matches!(n.kind, NodeKind::Post | NodeKind::PostAlone)
-                    && c.y < centre.y - 1.0
-                    && c.y + r * 1.4 + size.y > me_top
-                    && (c.x - centre.x).abs() < size.x / 2.0 + r * 1.3;
                 let min = if above {
                     egui::pos2(c.x - size.x / 2.0, c.y - r * 1.4 - size.y)
                 } else {

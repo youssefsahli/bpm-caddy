@@ -5,6 +5,13 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.338.0] - 2026-09-25
+
+### Fixed
+- Carte des connexions : un poste non relié s'affiche « Non relié »
+  quand la place manque, au-dessus de son carré quand dessous il
+  couvrirait « Ce poste ».
+
 ## [0.337.0] - 2026-09-25
 
 ### Fixed
