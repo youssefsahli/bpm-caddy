@@ -844,30 +844,29 @@ registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 
 Une officine **crée** le réseau, puis **invite** les autres : « Inviter
-une officine… » ouvre une invitation de cinq minutes et affiche son
-**code d'invitation** (`K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`), à
-transmettre par téléphone ou en personne. L'autre officine le colle dans
-« Rejoindre » : rien d'autre à saisir ni à comparer. Le code sert une
-fois ; un code faux ferme l'invitation, et une officine qui se présente
-sans lui est refusée. Les deux officines doivent être à jour.
+une officine… » ouvre une invitation de 5 minutes et affiche un **code
+d'invitation** (`K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`), à transmettre
+par téléphone ou en personne. L'autre officine le colle dans
+« Rejoindre » ; rien d'autre à saisir ni à comparer. Code à usage
+unique : un code erroné ferme l'invitation, une officine sans code est
+refusée. Les deux officines doivent être à jour.
 
-**Connexion au lancement.** Tant que l'application est ouverte, les
-officines appairées se joignent d'elles-mêmes : chacune répond aux
-siennes (Options › Base, « Répondre aux officines appairées »), et une
-officine appairée entendue sur le réseau local est connectée aussitôt,
-sans adresse à saisir. Aucune autre ne reçoit de réponse.
+**Connexion au lancement.** Application ouverte, les officines appairées
+se connectent automatiquement : chacune répond aux siennes (Options ›
+Base, « Répondre aux officines appairées »), et une officine appairée
+présente sur le réseau local est jointe dès qu'elle s'annonce, sans
+adresse à saisir. Les autres ne reçoivent aucune réponse.
 
 **Les officines voisines.** Chaque officine s'annonce sur le réseau
-local — son nom, sa ville et son empreinte, rien d'autre ; Options ›
-Base, « Annoncer l'officine », pour ne pas le faire. Sur la carte,
-chaque officine porte **ses initiales dans une couleur tirée de son
-empreinte** — les mêmes sur chaque poste —, et sa ville sous son nom. La carte des connexions
-les montre sur un arc « À portée ». Un clic sur l'une d'elles propose
-**Inviter cette officine** — l'invitation apparaît sur sa carte —, ou
-**Rejoindre son réseau** quand c'est elle qui invite. Ce nom est celui
-qu'elle se donne : ces invitations-là n'ont pas de code, et les deux
-officines se lisent par téléphone un code de cinq groupes. Un code
-identique des deux côtés garantit l'absence d'intermédiaire.
+local : nom, ville et empreinte, rien d'autre (Options › Base, « Annoncer
+l'officine »). La carte des connexions les place sur l'arc « À portée ».
+Chaque officine y porte **ses initiales dans une couleur tirée de son
+empreinte**, identiques sur chaque poste. Un clic propose **Inviter cette
+officine** (l'invitation apparaît sur sa carte) ou **Rejoindre son
+réseau** quand elle invite. Nom déclaré, non vérifié : ces invitations
+n'ont pas de code d'invitation, et les deux officines comparent par
+téléphone un code de cinq groupes. Code identique des deux côtés :
+aucun intermédiaire.
 
 La **synchronisation** se fait par un bouton, et à la fermeture si le
 poste est configuré ainsi (Options › Base). Deux modes : connexion
@@ -953,8 +952,8 @@ données.
 
 Un poste **fonde** le groupe : sa base est conservée, avec sa
 numérotation des dossiers. Il **invite** ensuite les autres, comme pour
-le réseau : « Inviter… » affiche un code d'invitation, que l'autre poste
-colle dans « Rejoindre ». **Rejoindre remplace le contenu du poste** par les
+le réseau : « Inviter un poste… » affiche un code d'invitation, à coller
+dans « Rejoindre… » sur l'autre poste. **Rejoindre remplace le contenu du poste** par les
 données du groupe : faire une copie au préalable si nécessaire.
 
 Sur le réseau local, les postes se découvrent et se synchronisent
@@ -1043,22 +1042,19 @@ gestes : pour une officine, **Écrire**, **Envoyer un fichier…** (la
 conversation s'ouvre, le fichier joint au prochain message) et
 **Essayer** (une connexion directe, quand elle a une adresse) ; pour un
 poste, le synchroniser ; pour ce poste, tout synchroniser, relier un
-poste ou inviter une officine. Les **officines voisines**, qui
-s'annoncent sur le réseau local sans être d'aucun réseau de celle-ci,
-sont sur l'arc « À portée », en cercle pointillé (une pastille au coin
-quand elle invite), sans lien dessiné : Inviter, ou Rejoindre son réseau.
-Un **poste non relié** — un BPM-Caddy d'aucun groupe sur le réseau local,
-peut-être un poste de l'officine — est un carré en tirets sur le cercle
-des postes. « Ce poste » montre comment les autres officines voient
-celle-ci : ses initiales, sa couleur, son nom et sa ville.
-Les **officines présentées par le réseau** — qui détiennent sa clé et
-déposent au dossier d'échange sans avoir été ajoutées ici — sont sur
-l'arc de leur réseau, en cercle creux, après une synchronisation : leurs
-envois ne sont ni gardés ni lus tant qu'elles ne sont pas ajoutées
-(« Ajouter à mes officines », deux clics), ou elles sont écartées
-(« Écarter »). Une alerte signale un nom déjà porté par une officine
-ajoutée : comparer alors l'empreinte par téléphone. Une officine
-retirée n'est plus proposée.
+poste ou inviter une officine. Les **officines voisines** hors réseau
+sont sur l'arc « À portée » : cercle pointillé, sans lien, pastille au
+coin quand elle invite. Un **poste non relié** (BPM-Caddy hors groupe sur
+le réseau local, peut-être un poste de l'officine) est un carré en
+tirets sur le cercle des postes. « Ce poste » montre l'insigne vu par les
+autres officines : initiales, couleur, nom et ville.
+Les **officines présentées par le réseau** (qui détiennent sa clé et
+déposent au dossier d'échange sans avoir été ajoutées ici) apparaissent
+après une synchronisation, en cercle creux sur l'arc de leur réseau.
+Leurs envois ne sont ni gardés ni lus avant ajout : « Ajouter » (deux
+clics) ou « Écarter ». Alerte si le nom est déjà porté par une officine
+ajoutée : vérifier l'empreinte par téléphone. Une officine retirée n'est
+plus proposée.
 
 **Connexion au lancement** : les postes du groupe se découvrent et se
 synchronisent sur le réseau local ; le réseau d'officines se synchronise

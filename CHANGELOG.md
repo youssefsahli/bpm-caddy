@@ -5,140 +5,120 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.325.0] - 2026-09-25
+
+### Changed
+- Textes des connexions, de l'appairage et de l'aide raccourcis ; le
+  bouton « Ajouter à mes officines » devient « Ajouter ».
+
 ## [0.324.0] - 2026-09-25
 
 ### Fixed
 - Couper la synchronisation automatique des postes ne coupe plus la
-  connexion aux officines appairées ni l'annonce sur le réseau local : ce
-  sont deux réglages à part.
+  connexion aux officines ni l'annonce sur le réseau local.
 
 ## [0.323.0] - 2026-09-25
 
 ### Added
-- La barre d'état compte les officines jointes aujourd'hui (« · 2
-  officine(s) jointe(s) ») au lieu de dire seulement « réseau ».
-- La vue Connexions, en liste, montre aussi ce qui est « À portée » : les
-  officines voisines avec leur ville, et les postes d'aucun groupe.
+- Barre d'état : nombre d'officines jointes aujourd'hui.
+- Vue Connexions en liste : section « À portée » (officines voisines,
+  postes hors groupe).
 
 ## [0.322.0] - 2026-09-25
 
 ### Added
-- **Chaque BPM-Caddy du réseau local sur la carte** : un poste d'aucun
-  groupe — peut-être un poste de l'officine pas encore relié — apparaît
-  sur le cercle des postes, « Poste non relié », avec le chemin pour le
-  relier.
-- « Ce poste », sur la carte, montre comment les autres officines voient
-  celle-ci : initiales, couleur, nom et ville.
+- **Postes non reliés sur la carte** : un BPM-Caddy hors groupe sur le
+  réseau local apparaît sur le cercle des postes, avec la marche à
+  suivre pour le relier.
+- « Ce poste », sur la carte : l'insigne vu par les autres officines.
 
 ### Changed
-- Répondre aux officines appairées coûte moins : deux répondeurs ouverts
-  une fois, au lieu d'une ouverture de la base à chaque connexion.
+- Réponse aux officines appairées plus légère pour le poste.
 
 ## [0.321.0] - 2026-09-25
 
 ### Added
-- **Connexion au lancement.** Tant que l'application est ouverte, les
-  officines appairées se joignent d'elles-mêmes : chacune répond aux
-  siennes, et une officine appairée entendue sur le réseau local est
-  connectée aussitôt, sans adresse à saisir. Aucune autre officine ne
-  reçoit de réponse. Réglable dans Options › Base (« Répondre aux
-  officines appairées », sur un port à part, 7745 par défaut).
-- **Chaque officine se reconnaît d'un coup d'œil sur la carte** : ses
-  initiales dans une couleur tirée de son empreinte, les mêmes sur chaque
-  poste ; et, pour une officine voisine, sa ville sous son nom.
+- **Connexion au lancement.** Application ouverte, les officines
+  appairées se connectent automatiquement ; une officine appairée
+  présente sur le réseau local est jointe sans adresse à saisir. Les
+  autres ne reçoivent aucune réponse. Options › Base, « Répondre aux
+  officines appairées » (port 7745).
+- **Insigne de chaque officine sur la carte** : initiales dans une
+  couleur tirée de son empreinte, identiques sur chaque poste ; ville
+  des officines voisines.
 
 ### Security
-- Une officine qu'on n'a pas ajoutée ne peut plus dérégler l'ordre des
-  échanges du réseau, même relayée par une officine appairée.
-- Une adresse apprise sur le réseau local n'est gardée qu'une fois que
-  l'officine attendue y a répondu ; une conversation ne peut plus tenir
-  la connexion plus d'une minute.
+- Une officine non ajoutée ne peut plus perturber l'ordre des échanges
+  du réseau.
+- Une adresse apprise sur le réseau local n'est retenue qu'après réponse
+  de l'officine attendue ; une connexion est coupée au bout d'une minute.
 
 ## [0.320.0] - 2026-09-25
 
 ### Security
-- **Les officines présentées par le réseau ne touchent plus au journal.**
-  Leurs envois déposés au dossier d'échange sont comptés, jamais gardés,
-  tant qu'elles ne sont pas ajoutées ; et ce qu'on lit des autres
-  officines ne peut plus être effacé par un envoi d'une officine qu'on
-  n'a pas ajoutée. Au plus 32 officines proposées à la fois.
-- Une alerte signale une officine présentée qui porte le nom d'une
-  officine déjà ajoutée : comparer son empreinte par téléphone avant de
-  l'ajouter. Ajoutée, elle ne prend pas d'office le nom qu'elle se donne.
-- Une officine retirée n'est plus proposée de nouveau.
+- **Officines présentées par le réseau** : leurs envois ne sont ni
+  gardés ni lus avant ajout, et ne peuvent plus masquer ceux des
+  officines ajoutées.
+- Alerte quand une officine présentée porte le nom d'une officine déjà
+  ajoutée ; vérifier son empreinte par téléphone.
+- Une officine retirée n'est plus proposée.
 
 ### Changed
 - Les officines présentées apparaissent après une synchronisation avec
   le dossier d'échange.
-- Le champ « Rejoindre » garde une invite lisible sur un écran étroit.
+- Champ « Rejoindre » lisible sur un écran étroit.
 
 ## [0.319.0] - 2026-09-25
 
 ### Changed
-- Un appairage refusé le dit mieux : code d'invitation absent ou faux,
-  codes différents, ou connexion coupée — et invite à coller le code
-  d'invitation entier, tel qu'affiché.
-- Chaque vue a été parcourue au hasard (clics, défilement, touches) à
-  trois tailles d'écran, sans une seule fermeture de l'application.
+- Message d'appairage refusé plus précis : coller le code d'invitation
+  complet.
 
 ## [0.318.0] - 2026-09-25
 
 ### Added
-- **Officines présentées par le réseau.** Une officine qu'un membre a
-  fait entrer dans le réseau apparaît sur la carte des connexions, sur
-  l'arc de ce réseau, dès que ses envois arrivent par le dossier
-  d'échange. « Ajouter à mes officines » (deux clics) la compte parmi
-  les siennes et lit ce qu'elle a envoyé ; « Écarter » ne la propose
-  plus. Rien d'elle n'est lu avant.
+- **Officines présentées par le réseau** : une officine admise par un
+  autre membre apparaît sur l'arc de son réseau dès que ses envois
+  arrivent par le dossier d'échange. « Ajouter » (deux clics) ou
+  « Écarter ».
 
 ### Changed
-- Carte des connexions : sur un écran étroit, les noms des officines se
-  raccourcissent (« Gare » pour « Pharmacie de la Gare ») au lieu de se
-  couper ; le nom d'un réseau ne se pose plus sur une officine ni sur un
-  lien.
+- Carte des connexions : noms courts sur écran étroit (« Gare » pour
+  « Pharmacie de la Gare ») ; le nom d'un réseau ne recouvre plus une
+  officine ni un lien.
 
 ### Fixed
-- La vue des connexions ne reste plus sur « Lecture impossible » après
-  une synchronisation ou la sauvegarde du jour : elle se relit d'elle-même.
+- La vue Connexions ne reste plus bloquée sur « Lecture impossible » :
+  elle se relit seule.
 
 ## [0.317.0] - 2026-09-24
 
 ### Added
-- **Code d'invitation.** « Inviter une officine… » et « Inviter… » (postes)
-  affichent un code à usage unique, par exemple
-  `K7QM-2XPA-9D3F-7H1Q@192.168.1.20:7742`, avec un bouton « Copier ».
-  L'autre officine, ou l'autre poste, le colle dans « Rejoindre » : plus
-  d'adresse à saisir, plus de code à comparer. Le code vaut cinq
-  minutes, pour une seule connexion ; un code faux ferme l'invitation, et
-  qui se présente sans lui est refusé. Les deux côtés doivent être à jour.
-- **Officines voisines sur la carte.** Chaque officine s'annonce sur le
-  réseau local (son nom et son empreinte, rien d'autre ; réglable dans
-  Options › Base). La carte des connexions les montre sur un arc « À
-  portée », en cercle pointillé. Un clic : « Inviter cette officine » —
-  l'invitation apparaît sur sa carte — ou « Rejoindre son réseau » quand
-  elle invite ; le code de cinq groupes se compare alors au téléphone.
+- **Code d'invitation.** « Inviter une officine… » et « Inviter un
+  poste… » affichent un code à usage unique, valable 5 minutes, avec
+  « Copier ». L'autre côté le colle dans « Rejoindre » : ni adresse à
+  saisir ni code à comparer. Code erroné : invitation fermée. Les deux
+  côtés doivent être à jour.
+- **Officines voisines sur la carte** : arc « À portée ». « Inviter
+  cette officine », ou « Rejoindre son réseau » quand elle invite ; le
+  code de cinq groupes se compare par téléphone. Annonce réglable dans
+  Options › Base.
 
 ### Changed
-- **Carte des médicaments plus fluide.** Les lectures de la base se font
-  hors de l'écran : recentrer ne fige plus l'affichage, et la carte d'un
-  dossier ouvert ne se recalcule plus ligne par ligne à chaque
-  changement. Chaque lecture est environ dix fois plus rapide.
-- La carte des connexions reste côte à côte avec son volet sur un écran
-  de comptoir, et sa légende passe au volet quand elle ne tient pas.
+- **Carte des médicaments plus fluide** : calculs hors de l'affichage,
+  environ dix fois plus rapides ; recentrer ne fige plus l'écran.
+- Carte des connexions lisible sur un écran de comptoir.
 
 ### Fixed
-- La carte des connexions pouvait perdre le réseau d'officines pendant
-  une synchronisation ; elle dit désormais quand la base est occupée.
-- Le nom d'un réseau en bas de la carte ne recouvre plus celui de
-  l'officine.
+- La carte des connexions signale une base occupée au lieu de perdre le
+  réseau.
+- Le nom d'un réseau ne recouvre plus celui d'une officine.
 
 ## [0.316.0] - 2026-09-24
 
 ### Fixed
-- **L'Explorateur ne se ferme plus.** Choisir un organe puis faire
-  défiler le tableau pouvait fermer l'application : le tableau gardé
-  était celui de l'axe d'avant le clic. Il est désormais rangé sous
-  l'organe lui-même.
+- **Explorateur** : choisir un organe puis faire défiler le tableau ne
+  ferme plus l'application.
 
 ## [0.315.0] - 2026-09-24
 
