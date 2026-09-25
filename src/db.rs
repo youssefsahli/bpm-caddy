@@ -30368,6 +30368,18 @@ fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
         .find(|p| p.is_file())
 }
 
+/// **Une transaction d'écriture prend le verrou dès son début**
+/// (`BEGIN IMMEDIATE`). Différée — le défaut de SQLite —, elle lit d'abord
+/// puis écrit ; deux postes qui le font en même temps s'interbloquent, et
+/// SQLite rend alors « database is locked » **sur-le-champ**, sans
+/// attendre les cinq secondes de `busy_timeout` : la moitié des
+/// compare-and-set de la base échouaient ainsi dès que deux connexions
+/// écrivaient ensemble (un poste et la sauvegarde du lancement, deux
+/// postes). Immédiate, la seconde attend que la première ait fini.
+fn write_tx(conn: &Connection) -> rusqlite::Result<rusqlite::Transaction<'_>> {
+    rusqlite::Transaction::new_unchecked(conn, rusqlite::TransactionBehavior::Immediate)
+}
+
 impl Db {
     /// Open (or create) the encrypted database. Fails with a French message
     /// if the password does not match an existing file.
@@ -30407,7 +30419,7 @@ impl Db {
             )
             .is_ok();
         if grouped {
-            conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+            conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);")
                 .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
         }
         for migration in MIGRATIONS {
@@ -30487,7 +30499,7 @@ impl Db {
             )
             .is_ok();
         if captured {
-            conn.execute_batch("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);")
+            conn.execute_batch("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);")
                 .map_err(|e| format!("schéma du registre impossible : {e}"))?;
         }
         for migration in STUP_MIGRATIONS {
@@ -30585,10 +30597,7 @@ impl Db {
                 rows.collect::<Result<Vec<_>, _>>()
                     .map_err(|e| e.to_string())?
             };
-            let tx = self
-                .stups
-                .unchecked_transaction()
-                .map_err(|e| e.to_string())?;
+            let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
             for (id, drug_id, label, unit, threshold, archived) in products {
                 tx.execute(
                     "INSERT OR IGNORE INTO stupefiants
@@ -31421,10 +31430,7 @@ impl Db {
             hash: crate::messages::hash_of(bytes),
             chunks: i64::try_from(parts.len()).unwrap_or(i64::MAX),
         };
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         self.insert_file_meta(&tx, &meta)?;
         for (n, d) in parts.iter().enumerate() {
             tx.execute(
@@ -31532,10 +31538,7 @@ impl Db {
         if seen {
             return Ok(());
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         self.insert_file_meta(&tx, meta)?;
         tx.commit().map_err(|e| e.to_string())
     }
@@ -32295,10 +32298,7 @@ impl Db {
         if cited > 0 {
             return Err(crate::strings::tr("patient_delete_in_register").to_owned());
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let same: i64 = tx
             .query_row(
                 "SELECT COUNT(*) FROM patients
@@ -32600,10 +32600,7 @@ impl Db {
     /// time and name each one as it starts. Called through the composite
     /// they would otherwise run twice: once inside it, once after it.
     pub fn insert_missing_drugs(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut inserted = 0;
         for (name, dci, class, antidote) in STARTER_DRUGS {
             inserted += tx
@@ -32661,10 +32658,7 @@ impl Db {
             ("toxicity", |d| d.toxicity),
             ("forms", |d| d.forms),
         ];
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut filled = 0;
         // Les dix-huit requêtes sont préparées **une fois**, puis la
         // boucle va fiche par fiche. Les trois formes ont été mesurées
@@ -32729,10 +32723,7 @@ impl Db {
         if self.sync_post().is_some() {
             self.leave_posts()?;
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         // **Les numéros de dossier ne recommencent pas à un.** Le registre
         // des stupéfiants — son propre fichier, jamais réinitialisé — et
         // le journal des accès citent des numéros : après une remise à
@@ -32847,10 +32838,7 @@ impl Db {
         // « Compléter » d'un autre poste passé au milieu —, et le texte
         // de référence revenait dedans. Les deux écritures passent par
         // la même connexion, donc dans la même transaction.
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let changed = self
             .conn
             .execute(
@@ -33097,10 +33085,7 @@ impl Db {
         &self,
         edits: &[crate::versions::Edit],
     ) -> Result<(usize, usize), String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let (mut received, mut applied) = (0, 0);
         for e in edits {
             if !e.kind.fields().contains(&e.field.as_str()) {
@@ -33240,10 +33225,7 @@ impl Db {
     /// Remove a drug card; refused (`false`) if it was renamed meanwhile.
     /// Its dated notes go with it, atomically.
     pub fn delete_drug(&self, id: i64, expected_name: &str) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         // Children first: `posologies` references `drugs(id)`, so the
         // card cannot be removed while its lines are still there.
         let matches: i64 = tx
@@ -33600,10 +33582,7 @@ impl Db {
     /// Supprimer une liste **et ses lignes** : une ligne orpheline est
     /// une ligne que plus rien n'affiche et que rien n'efface.
     pub fn delete_checklist(&self, id: i64, expected_title: &str) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let n = tx
             .execute(
                 "DELETE FROM checklists WHERE id = ?1 AND title = ?2",
@@ -33680,10 +33659,7 @@ impl Db {
         // Lues **dans** la transaction qui les échange, et échangées
         // seulement si elles n'ont pas bougé : deux postes qui déplaçaient
         // en même temps laissaient deux points au même rang.
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let items = self.checklist_items(list)?;
         let Some(at) = items.iter().position(|i| i.id == id) else {
             return Ok(false);
@@ -33746,10 +33722,7 @@ impl Db {
 
     /// Remove a protocol and every step it holds.
     pub fn delete_protocol(&self, id: i64, expected_title: &str) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let matches: i64 = tx
             .query_row(
                 "SELECT COUNT(*) FROM protocols WHERE id = ?1 AND title = ?2",
@@ -33875,10 +33848,7 @@ impl Db {
             }
             i += 1;
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         for node in &doomed {
             tx.execute("DELETE FROM protocol_nodes WHERE id = ?1", [node])
                 .map_err(|e| e.to_string())?;
@@ -33891,10 +33861,7 @@ impl Db {
     /// the team has already written on is left alone. Returns how many
     /// lines were added.
     pub fn seed_posologies(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         // The cards that already carry a list are settled once, before
         // inserting: testing it per line would stop after the first one
         // the seed itself had just added.
@@ -33976,10 +33943,7 @@ impl Db {
         // La règle **la première qui prend, garde** est conservée : la
         // requête d'origine la tenait par « missed_dose = '' », qui
         // devenait faux dès la première écriture ; ici, un ensemble.
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         struct Card {
             id: i64,
             haystack: String,
@@ -34138,10 +34102,7 @@ impl Db {
         if counts.is_empty() {
             return Ok(());
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         {
             let mut add = tx
                 .prepare(
@@ -34222,10 +34183,7 @@ impl Db {
     /// pour la raison qui vaut partout ici — un annuaire à moitié
     /// remplacé est le pire état où le laisser.
     pub fn set_prescribers(&self, who: &[crate::prescribers::Prescriber]) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         tx.execute("DELETE FROM prescribers", [])
             .map_err(|e| e.to_string())?;
         {
@@ -34344,10 +34302,7 @@ impl Db {
         // journal qui a rétréci sans le dire se lit comme un journal
         // qu'on a vidé, et c'est la seule chose que cette ligne existe
         // pour empêcher.
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let removed = self
             .conn
             .execute("DELETE FROM access_log WHERE at < ?1", [horizon])
@@ -34556,10 +34511,7 @@ impl Db {
     /// attribué ici, dans la transaction qui écrit.
     pub fn add_supply_event(&self, e: &crate::ruptures::Event) -> Result<String, String> {
         let base = self.base_uid()?;
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let next: i64 = tx
             .query_row(
                 &format!(
@@ -34605,10 +34557,7 @@ impl Db {
         &self,
         events: &[crate::ruptures::Event],
     ) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut added = 0;
         for e in events {
             added += tx
@@ -34719,10 +34668,7 @@ impl Db {
         network: &str,
         records: &[(String, Vec<u8>)],
     ) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut added = 0;
         for (id, bytes) in records {
             added += tx
@@ -34978,10 +34924,7 @@ impl Db {
         if id.is_empty() {
             return Err("le réseau principal se quitte autrement".to_owned());
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         // Les officines qui n'étaient que de ce réseau partent du carnet :
         // sans appartenance, elles passeraient pour des membres du principal.
         tx.execute(
@@ -35094,10 +35037,7 @@ impl Db {
         day: &str,
         was_principal: bool,
     ) -> Result<(), String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         tx.execute(
             "INSERT INTO net_peers (device, address, added) VALUES (?1, ?2, ?3)
              ON CONFLICT(device) DO UPDATE SET address = CASE
@@ -35133,10 +35073,7 @@ impl Db {
         device: &str,
         was_principal: bool,
     ) -> Result<(), String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let has_any: bool = tx
             .query_row(
                 "SELECT EXISTS(SELECT 1 FROM net_memberships WHERE device = ?1)",
@@ -35365,10 +35302,7 @@ impl Db {
 
     /// Noter qu'un événement est parti.
     pub fn mark_published(&self, uids: &[String]) -> Result<(), String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         for uid in uids {
             tx.execute(
                 "INSERT OR IGNORE INTO net_published (uid) VALUES (?1)",
@@ -35533,10 +35467,7 @@ impl Db {
     /// Ranger les valeurs reçues du réseau : la dernière par officine,
     /// produit et propriété.
     pub fn receive_net_facts(&self, facts: &[crate::pk::Shared]) -> Result<(), String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         for s in facts {
             tx.execute(
                 "INSERT INTO net_facts
@@ -35728,10 +35659,7 @@ impl Db {
         if self.seed_mark("toxicity")?.as_deref() == Some(PASS) {
             return Ok(0);
         }
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut changed = 0;
         for d in STARTER_DETAILS {
             if d.toxicity.is_empty() {
@@ -35762,10 +35690,7 @@ impl Db {
         // Une transaction : un arbre interrompu à mi-semis restait à
         // moitié écrit, et son titre présent l'empêchait d'être jamais
         // complété.
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let existing: std::collections::HashSet<String> =
             self.protocols()?.into_iter().map(|p| p.title).collect();
         let seeded = self.seeded_names("protocole")?;
@@ -35809,10 +35734,7 @@ impl Db {
     /// team has renamed or rewritten is never touched, and a name
     /// already present is skipped rather than duplicated.
     pub fn seed_preparations(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
         {
             let mut stmt = tx
@@ -35974,10 +35896,7 @@ impl Db {
     /// que l'équipe a réécrite, renommée ou supprimée ne revient pas — la
     /// règle du codex et des dispositifs, tenue par les mêmes marques.
     pub fn seed_trod_lines(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let present: std::collections::HashSet<(String, String)> = self
             .trod_lines_all()?
             .into_iter()
@@ -36216,10 +36135,7 @@ impl Db {
     /// Semer le catalogue des vaccins, **une fois**, par code : un vaccin
     /// que l'équipe a renommé ou retiré ne revient pas.
     pub fn seed_vaccine_catalogue(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let present: std::collections::HashSet<String> = self
             .vaccine_catalogue()?
             .into_iter()
@@ -36333,10 +36249,7 @@ impl Db {
     /// codex: a fiche the team rewrote or renamed is never touched, and
     /// one it deleted does not come back.
     pub fn seed_dispositifs(&self) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
         {
             let mut stmt = tx
@@ -37628,10 +37541,7 @@ impl Db {
         if label.is_empty() {
             return Err(crate::strings::tr("stup_err_no_label").to_owned());
         }
-        let tx = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let was = expected.label.trim();
         let renamed = !label.eq_ignore_ascii_case(was);
         if renamed {
@@ -38104,10 +38014,7 @@ impl Db {
     /// numéro et l'un des deux écrirait un doublon. Le numéro n'est posé
     /// que sur une sortie ; il n'est jamais réattribué.
     pub fn add_stup_move(&self, m: &StupMove) -> Result<i64, String> {
-        let tx = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let id = Self::insert_stup_move(&tx, m, self.numbers_here())?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(id)
@@ -38132,10 +38039,7 @@ impl Db {
             return Ok(Vec::new());
         }
         let here = self.numbers_here();
-        let tx = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let mut ids = Vec::with_capacity(moves.len());
         for m in moves {
             ids.push(Self::insert_stup_move(&tx, m, here)?);
@@ -38664,10 +38568,7 @@ impl Db {
     /// même instant passaient tous deux la comparaison, et le dernier
     /// écrasait l'autre sans rien dire.
     pub fn set_class_note(&self, class: &str, body: &str, expected: &str) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let done = self.set_class_note_in(class, body, expected)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(done)
@@ -38751,10 +38652,7 @@ impl Db {
         shipped: &str,
         expected: &str,
     ) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let done = self.set_table_cell_in(table_key, row, col, value, shipped, expected)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(done)
@@ -38851,10 +38749,7 @@ impl Db {
         day: &str,
         who: &str,
     ) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let done = self.set_content_in(key, value, shipped, expected, day, who)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(done)
@@ -39363,10 +39258,7 @@ impl Db {
     /// against it — in **one** transaction, so a pattern never survives
     /// as a handful of orphan days nobody can explain.
     pub fn delete_shift(&self, id: i64, expected_operator: &str) -> Result<bool, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let changed = tx
             .execute(
                 "DELETE FROM shifts WHERE id = ?1 AND operator = ?2",
@@ -41124,10 +41016,7 @@ impl Db {
         if !self.numbers_here() {
             return Ok(0);
         }
-        let tx = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let waiting: Vec<(i64, String, i64)> = {
             let mut stmt = tx
                 .prepare(
@@ -41317,7 +41206,7 @@ impl Db {
             if !force && self.sync_local(&slot).as_deref() == Some(stamp.as_str()) {
                 continue;
             }
-            conn.execute_batch(&format!("BEGIN;\n{sql}COMMIT;"))
+            conn.execute_batch(&format!("BEGIN IMMEDIATE;\n{sql}COMMIT;"))
                 .map_err(|e| format!("capture impossible : {e}"))?;
             self.set_sync_local(&slot, &stamp)?;
         }
@@ -41494,7 +41383,8 @@ impl Db {
         }
         self.remove_capture()?;
         for file in [File::Main, File::Stups] {
-            let mut sql = String::from("BEGIN; INSERT INTO sync_mute (mute) VALUES (1);\n");
+            let mut sql =
+                String::from("BEGIN IMMEDIATE; INSERT INTO sync_mute (mute) VALUES (1);\n");
             for t in TABLES.iter().filter(|t| t.file == file) {
                 sql.push_str(&format!("DELETE FROM \"{}\";\n", t.name));
             }
@@ -41605,10 +41495,7 @@ impl Db {
     /// un enregistrement est nommé par son contenu, et il ne se réécrit
     /// pas.
     pub fn keep_sync_records(&self, records: &[(String, Vec<u8>)]) -> Result<usize, String> {
-        let tx = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut added = 0;
         for (id, bytes) in records {
             added += tx
@@ -41692,14 +41579,8 @@ impl Db {
         if self.sync_applied(record) {
             return Ok(done);
         }
-        let main = self
-            .conn
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
-        let stups = self
-            .stups
-            .unchecked_transaction()
-            .map_err(|e| e.to_string())?;
+        let main = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let stups = write_tx(&self.stups).map_err(|e| e.to_string())?;
         for tx in [&main, &stups] {
             tx.execute("INSERT INTO sync_mute (mute) VALUES (1)", [])
                 .map_err(|e| e.to_string())?;
@@ -42017,6 +41898,70 @@ mod tests {
     /// two-digit years.
     fn parse(input: &str) -> Result<String, String> {
         parse_french_date(input, 2026, YearHint::Past)
+    }
+
+    /// **Deux connexions qui écrivent ensemble : la seconde attend.**
+    /// Différées, deux transactions qui lisent puis écrivent
+    /// s'interbloquent, et SQLite répond « database is locked » tout de
+    /// suite, sans `busy_timeout` — c'est ce que la première moitié
+    /// montre. Immédiates (`write_tx`), la seconde attend la première et
+    /// passe. Et la base n'en ouvre plus d'autres : `db.rs` est relu.
+    #[test]
+    fn a_second_writer_waits_instead_of_failing_at_once() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-immediate-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("shared.db");
+        let a = Db::open(&path, "secret").unwrap();
+        let b = Db::open(&path, "secret").unwrap();
+        let count = |c: &Connection| -> i64 {
+            c.query_row("SELECT count(*) FROM settings", [], |r| r.get(0))
+                .unwrap()
+        };
+        let put = |c: &Connection, k: &str| {
+            c.execute("INSERT INTO settings (key, value) VALUES (?1, 'x')", [k])
+        };
+
+        // Différées : lire, puis écrire — la seconde tombe sans attendre.
+        let ta = a.conn.unchecked_transaction().unwrap();
+        let tb = b.conn.unchecked_transaction().unwrap();
+        count(&ta);
+        count(&tb);
+        put(&ta, "a1").unwrap();
+        let started = std::time::Instant::now();
+        assert!(put(&tb, "b1").is_err(), "l'interblocage doit tomber");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "et sur-le-champ, sans busy_timeout"
+        );
+        drop(tb);
+        ta.commit().unwrap();
+
+        // Immédiates : la seconde attend que la première ait fini.
+        let holder = std::thread::spawn(move || {
+            let ta = write_tx(&a.conn).unwrap();
+            count(&ta);
+            put(&ta, "a2").unwrap();
+            std::thread::sleep(std::time::Duration::from_millis(400));
+            ta.commit().unwrap();
+        });
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        let tb = write_tx(&b.conn).expect("la seconde attend son tour");
+        count(&tb);
+        put(&tb, "b2").unwrap();
+        tb.commit().unwrap();
+        holder.join().unwrap();
+
+        let source = include_str!("db.rs");
+        let deferred = concat!(".unchecked_", "transaction()");
+        let bare = concat!("BEGIN", ";");
+        let body = source.split("\nmod tests {").next().unwrap_or(source);
+        assert!(
+            !body.contains(deferred),
+            "une transaction différée dans db.rs"
+        );
+        assert!(!body.contains(bare), "un BEGIN différé dans db.rs");
     }
 
     /// A first launch looks where an installed copy actually puts its

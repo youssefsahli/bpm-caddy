@@ -7284,25 +7284,35 @@ impl Session {
             let mut map_peers: Vec<(crate::network::Peer, usize)> = Vec::new();
             let mut map_introduced = Vec::new();
             let ignored = crate::network::ignored(&self.db);
-            if let Ok(all) = NetSummary::read(&self.db).map(|s| s.networks) {
-                for (id, label) in all {
-                    let g = map_groups.len();
-                    map_groups.push(label);
-                    let members = self.db.net_members(&id).unwrap_or_default();
-                    for (_, list) in self.net_introduced.iter().filter(|(n, _)| *n == id) {
-                        for i in list {
-                            if members.iter().any(|m| m.device == i.device)
-                                || ignored.contains(&crate::network::ignore_key(&id, &i.device))
-                            {
-                                continue;
-                            }
-                            map_introduced.push((i.clone(), g, id.clone()));
-                        }
+            // **Une lecture, et son erreur dite** : la carte relisait le
+            // réseau à part et avalait l'erreur d'une base tenue — elle
+            // montrait alors ce poste seul, sans un mot ni nouvel essai.
+            // Une lecture tombée passe par `net`, que la vue retente.
+            let mut net = NetSummary::read(&self.db);
+            let all = net.as_ref().map(|s| s.networks.clone()).unwrap_or_default();
+            for (id, label) in all {
+                let g = map_groups.len();
+                map_groups.push(label);
+                let members = match self.db.net_members(&id) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        net = Err(e);
+                        break;
                     }
-                    for p in self.db.net_members(&id).unwrap_or_default() {
-                        if !map_peers.iter().any(|(q, _)| q.device == p.device) {
-                            map_peers.push((p, g));
+                };
+                for (_, list) in self.net_introduced.iter().filter(|(n, _)| *n == id) {
+                    for i in list {
+                        if members.iter().any(|m| m.device == i.device)
+                            || ignored.contains(&crate::network::ignore_key(&id, &i.device))
+                        {
+                            continue;
                         }
+                        map_introduced.push((i.clone(), g, id.clone()));
+                    }
+                }
+                for p in &members {
+                    if !map_peers.iter().any(|(q, _)| q.device == p.device) {
+                        map_peers.push((p.clone(), g));
                     }
                 }
             }
@@ -7313,7 +7323,7 @@ impl Session {
                 map_groups,
                 feed: network_feed(&self.supply_events, &self.card_edits, 12),
                 posts: PostsSummary::read(&self.db),
-                net: NetSummary::read(&self.db),
+                net,
                 cards,
                 entries,
             });
@@ -56983,11 +56993,16 @@ impl App {
             // carte est large et basse, plutôt qu'en un carré qui entasse
             // les nœuds au milieu d'une bande étroite. Une marge garde les
             // noms dans le cadre.
-            let pad = egui::vec2(chars_wide(ui, 8.0), Self::label_line(ui) * 1.5);
+            // Sur les côtés, la moitié d'un nom court (« Gare », « Marché »)
+            // centré sous son nœud : huit caractères de chaque côté
+            // prenaient la moitié d'une carte étroite, et les nœuds
+            // s'entassaient au milieu.
+            let pad = egui::vec2(chars_wide(ui, 5.0), Self::label_line(ui) * 1.5);
             let square = field.shrink2(pad.min(field.size() * 0.3));
             let resp = ui.allocate_rect(field, egui::Sense::click());
             let painter = ui.painter_at(field);
-            let at = |i: usize| {
+            let r = motif::pt(ui, 9.0);
+            let stretched = |i: usize| {
                 let (x, y) = places[i];
                 // Les places vont de 0,1 à 0,9 : étirées sur le cadre.
                 egui::pos2(
@@ -56995,13 +57010,32 @@ impl App {
                     square.top() + (y - 0.1) / 0.8 * square.height(),
                 )
             };
+            // **Les postes assez loin de ce poste pour que leur nom passe
+            // entre les deux** : sur une petite carte, le cercle des postes
+            // (0,22) posait le nom d'un poste sur le carré de celui-ci. Pas
+            // plus loin que les trois quarts du cercle des officines.
+            let inner_min = (r * 3.6 + Self::label_line(ui))
+                .min(square.width().min(square.height()) * 0.5 * 0.75);
+            let centre = square.center();
+            let at = |i: usize| {
+                let p = stretched(i);
+                if !matches!(nodes[i].kind, NodeKind::Post | NodeKind::PostAlone) {
+                    return p;
+                }
+                let d = p - centre;
+                let len = d.length();
+                if len > 0.0 && len < inner_min {
+                    centre + d / len * inner_min
+                } else {
+                    p
+                }
+            };
             let pixels: Vec<(f32, f32)> = (0..places.len())
                 .map(|i| {
                     let p = at(i);
                     (p.x, p.y)
                 })
                 .collect();
-            let r = motif::pt(ui, 9.0);
             let mut link_marks: Vec<egui::Rect> = Vec::new();
             // La ville **annoncée** — pour une officine qu'on n'a pas
             // ajoutée seulement : une officine appairée porte le nom qu'on
@@ -57166,6 +57200,9 @@ impl App {
                     .filter(|o| (o.y - c.y).abs() < line_h * 1.2)
                     .map(|o| (o.x - c.x).abs() - 6.0)
                     .fold(label_w, f32::min)
+                    // Centré sous son nœud, le nom ne sort pas du cadre :
+                    // au bord, c'est le nom court qui s'écrit.
+                    .min(2.0 * (c.x - field.left()).min(field.right() - c.x) - 4.0)
                     .max(chars_wide(ui, 3.0));
                 let wide = |t: &str| {
                     ui.fonts(|f| {
@@ -57201,7 +57238,20 @@ impl App {
                 };
                 let g = ui.fonts(|f| f.layout_job(job));
                 let size = g.size();
-                let min = egui::pos2(c.x - size.x / 2.0, c.y + r * 1.4);
+                // Un poste de la moitié haute dont le nom, dessous,
+                // tomberait sur ce poste l'écrit au-dessus de lui — côté
+                // extérieur. Seulement alors : au-dessus, il y a les noms
+                // des officines.
+                let me_top = centre.y - r * 1.3;
+                let above = matches!(n.kind, NodeKind::Post | NodeKind::PostAlone)
+                    && c.y < centre.y - 1.0
+                    && c.y + r * 1.4 + size.y > me_top
+                    && (c.x - centre.x).abs() < size.x / 2.0 + r * 1.3;
+                let min = if above {
+                    egui::pos2(c.x - size.x / 2.0, c.y - r * 1.4 - size.y)
+                } else {
+                    egui::pos2(c.x - size.x / 2.0, c.y + r * 1.4)
+                };
                 // Ce que le nœud occupe — son carré et son nom : les noms
                 // de réseau se posent ailleurs.
                 taken.push(egui::Rect::from_center_size(

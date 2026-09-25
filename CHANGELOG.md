@@ -5,6 +5,17 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.337.0] - 2026-09-25
+
+### Fixed
+- Deux postes qui enregistrent en même temps : le second attend son
+  tour au lieu d'échouer sur « database is locked ».
+- Carte des connexions : une lecture refusée ne montre plus ce poste
+  seul, sans message ; elle est signalée et relue.
+- Carte des connexions sur un petit écran : les noms restent dans le
+  cadre (nom court au bord) et le nom d'un poste ne couvre plus
+  « Ce poste ».
+
 ## [0.336.0] - 2026-09-25
 
 ### Fixed
