@@ -5,6 +5,26 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.344.0] - 2026-09-25
+
+### Fixed
+- « Raccourcis et outils » ne déborde plus de l'écran en grand texte : la
+  page des outils garde ses deux bords et replie le propos de chaque outil.
+- Carte des connexions : chaque trait de la légende reste à côté du mot
+  qu'il illustre, et la légende tient sur une ligne quand la place le
+  permet.
+- Postes de l'officine : un poste par rangée lisible (nom, gestes, puis
+  l'empreinte dessous) ; l'explication tient en une ligne sur petit écran,
+  entière au survol.
+- Connexions : la phrase d'en-tête tient en une ligne sur petit écran, et
+  les quatre volets retrouvent la place qu'elle prenait.
+- Messages : la conversation ouverte prend la place qu'occupaient une
+  liste presque vide et une zone de saisie trop haute.
+- Ruptures : les ruptures en cours ne prennent que la place qu'elles
+  occupent ; le journal en dessous en montre davantage.
+- Fil du dossier : deux fois plus de lignes visibles en grand texte ; le
+  résumé par nature n'est plus coupé à mi-ligne.
+
 ## [0.343.0] - 2026-09-25
 
 ### Added

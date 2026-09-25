@@ -121,6 +121,23 @@ for view in "${views[@]}"; do
     # on a screen the size of the window is *inside* it, and every shot
     # came back with whatever tooltip happened to be under it.
     layout "$@"
+    # **Chaque vue sur sa propre copie de la base.** « postes » fonde un
+    # groupe en s'ouvrant : sans copie, « postes_seul » — un poste hors
+    # groupe à qui l'on montre la consigne — se capturait sur la base
+    # que la vue d'avant venait de grouper, et montrait la liste des
+    # postes à la place de ce qu'elle existe pour montrer.
+    # La base vierge, elle, est semée par la première vue et gardée : la
+    # semer à chaque image coûterait plus que l'attente.
+    base="$tmp/demo.db"
+    if [ -z "$fresh" ]; then
+        rm -rf "$tmp/vue" && mkdir -p "$tmp/vue"
+        for f in "$tmp"/demo*; do [ -e "$f" ] && cp "$f" "$tmp/vue/"; done
+        base="$tmp/vue/demo.db"
+    fi
+    # Fonder un groupe écrit le journal des postes — plusieurs secondes
+    # en debug : à trois, l'image était noire.
+    case "$view" in postes | postes_seul | connexions* | reseau) wait=12 ;; *) wait=3 ;; esac
+    BPM_CADDY_DB="$base" wait="$wait" \
     view="$view" out="$out" w="$w" h="$h" card="$card" \
     xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
         unset WAYLAND_DISPLAY
@@ -132,7 +149,7 @@ for view in "${views[@]}"; do
         demo_view_env "$view" "$card"
         "$bin" &
         app=$!
-        sleep 3
+        sleep "$wait"
         import -window root +repage -crop "${w}x${h}+0+0" +repage \
             "$out/$view.png" 2>/dev/null
         kill "$app" 2>/dev/null

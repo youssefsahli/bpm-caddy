@@ -4678,10 +4678,6 @@ struct Session {
     /// L'officine présentée dont « Ajouter » attend le second clic.
     #[cfg(feature = "sync")]
     conn_adopt_armed: Option<String>,
-    /// La largeur de carte où la légende s'est repliée : elle passe au
-    /// volet tant que la carte garde cette largeur.
-    #[cfg(feature = "sync")]
-    conn_legend_aside: Option<i32>,
     /// Ce que la dernière synchronisation a vu, dans les dossiers
     /// d'échange, d'officines non ajoutées — par réseau. En mémoire
     /// seulement : rien d'elles n'est gardé avant qu'on les ajoute.
@@ -5530,8 +5526,6 @@ impl Session {
             near_officines: Vec::new(),
             #[cfg(feature = "sync")]
             conn_adopt_armed: None,
-            #[cfg(feature = "sync")]
-            conn_legend_aside: None,
             #[cfg(feature = "sync")]
             net_introduced: Vec::new(),
             #[cfg(feature = "sync")]
@@ -11417,6 +11411,77 @@ fn conn_link_stroke(painter: &egui::Painter, line: [egui::Pos2; 2], st: crate::n
             painter.extend(egui::Shape::dotted_line(&line, c, 6.0, 1.2));
         }
     }
+}
+
+/// La légende des liens de la carte, **posée à la main** : chaque entrée
+/// d'un seul tenant — le trait et le mot qu'il illustre —, rangées à la
+/// hauteur d'une ligne de texte.
+///
+/// Posées comme deux contrôles dans une rangée qui enveloppe, le trait
+/// de « entendu » finissait la rangée de « répond » et le mot commençait
+/// la suivante : chaque trait se lisait comme celui du mot d'avant. Et
+/// une rangée d'egui a au moins la hauteur d'un bouton : trois rangées de
+/// légende en prenaient deux cents pixels, et la mesure « tient-elle sur
+/// une ligne ? », faite sur cette hauteur-là, répondait toujours non.
+/// Les rangées ont ici la hauteur de leur texte.
+///
+/// Avec `one_row`, ne dessine rien si elle ne tient pas sur une rangée ;
+/// rend si elle est dessinée.
+#[cfg(feature = "sync")]
+fn conn_legend(ui: &mut egui::Ui, one_row: bool) -> bool {
+    use crate::netmap::LinkState;
+    let font = egui::FontId::proportional(motif::pt(ui, 10.5));
+    let entries: Vec<(LinkState, std::sync::Arc<egui::Galley>)> = [
+        (LinkState::Ok, tr("conn_map_ok")),
+        (LinkState::Heard, tr("conn_map_heard")),
+        (LinkState::Failing, tr("conn_map_failing")),
+        (LinkState::Silent, tr("conn_map_silent")),
+    ]
+    .into_iter()
+    .map(|(st, label)| {
+        let g = ui.fonts(|f| f.layout_no_wrap(label.to_owned(), font.clone(), motif::text_dim()));
+        (st, g)
+    })
+    .collect();
+    let swatch = chars_wide(ui, 3.0);
+    let gap = ui.spacing().item_spacing.x;
+    let between = chars_wide(ui, 2.0);
+    let width = ui.available_width();
+    // Rangée de chaque entrée et abscisse de son début.
+    let mut placed = Vec::with_capacity(entries.len());
+    let (mut row, mut x) = (0usize, 0.0_f32);
+    for (_, g) in &entries {
+        let w = swatch + gap + g.size().x;
+        if x > 0.0 && x + w > width {
+            row += 1;
+            x = 0.0;
+        }
+        placed.push((row, x));
+        x += w + between;
+    }
+    let rows = row + 1;
+    if one_row && rows > 1 {
+        return false;
+    }
+    // La hauteur du texte de la légende, pas celle d'un bouton.
+    let line = entries.iter().map(|(_, g)| g.size().y).fold(0.0, f32::max);
+    let step = line + ui.spacing().item_spacing.y;
+    let (rect, _) = ui.allocate_exact_size(
+        egui::vec2(width, rows as f32 * step - ui.spacing().item_spacing.y),
+        egui::Sense::hover(),
+    );
+    for ((st, g), (row, x)) in entries.into_iter().zip(placed) {
+        let y = rect.top() + row as f32 * step + line / 2.0;
+        let left = rect.left() + x;
+        conn_link_stroke(
+            ui.painter(),
+            [egui::pos2(left, y), egui::pos2(left + swatch, y)],
+            st,
+        );
+        let at = egui::pos2(left + swatch + gap, y - g.size().y / 2.0);
+        ui.painter().galley(at, g, motif::text_dim());
+    }
+    true
 }
 
 /// Ce qu'une synchronisation rapporte des officines non ajoutées remplace
@@ -17431,6 +17496,12 @@ impl App {
         let shown = egui::Window::new(tr("keys_title"))
             .collapsible(false)
             .resizable(false)
+            // **Jamais plus large que l'écran** : à 1024 en texte 1,6 le
+            // propos le plus long des outils, posé sur une ligne, faisait
+            // la fenêtre plus large que l'écran — centrée, elle perdait
+            // ses deux bords, « Raccourcis » et la fin de chaque propos.
+            .min_width(dialog_size(ctx.screen_rect().size(), egui::vec2(980.0, 0.0)).x)
+            .max_width(dialog_size(ctx.screen_rect().size(), egui::vec2(980.0, 0.0)).x)
             .open(&mut open)
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
@@ -17593,39 +17664,42 @@ impl App {
         // se centrait sur la rangée et chaque nom tombait d'une
         // demi-ligne sous son propos.
         let row_h = Self::row_height(ui);
-        egui::Grid::new("keys_tools")
-            .num_columns(3)
-            .spacing([18.0, 3.0])
-            .show(ui, |ui| {
-                for tool in tools {
-                    let fav = crate::favorites::has(favs, crate::favorites::Kind::Tool, tool.key());
-                    if motif::star(ui, fav)
-                        .on_hover_text(if fav {
-                            tr("fav_remove_tooltip")
-                        } else {
-                            tr("fav_add_tooltip")
-                        })
-                        .clicked()
-                    {
-                        *pin = Some(tool);
-                    }
-                    let row = ui
-                        .allocate_ui(egui::vec2(title_w, row_h), |ui| {
-                            ui.set_width(title_w);
-                            motif::list_row(ui, egui::RichText::new(tool.title()).size(size), false)
-                        })
-                        .inner;
-                    if row.clicked() {
-                        *open_tool = Some(tool);
-                    }
-                    ui.label(
+        // Le propos prend ce qui reste de la largeur, et se replie : sur
+        // une seule ligne, c'était lui qui décidait de la largeur de la
+        // fenêtre — plus large que l'écran à 1024 en texte 1,6.
+        for tool in tools {
+            ui.horizontal(|ui| {
+                let fav = crate::favorites::has(favs, crate::favorites::Kind::Tool, tool.key());
+                if motif::star(ui, fav)
+                    .on_hover_text(if fav {
+                        tr("fav_remove_tooltip")
+                    } else {
+                        tr("fav_add_tooltip")
+                    })
+                    .clicked()
+                {
+                    *pin = Some(tool);
+                }
+                let row = ui
+                    .allocate_ui(egui::vec2(title_w, row_h), |ui| {
+                        ui.set_width(title_w);
+                        motif::list_row(ui, egui::RichText::new(tool.title()).size(size), false)
+                    })
+                    .inner;
+                if row.clicked() {
+                    *open_tool = Some(tool);
+                }
+                ui.add_space(18.0);
+                ui.add(
+                    egui::Label::new(
                         egui::RichText::new(tool.purpose())
                             .size(motif::pt(ui, 10.5))
                             .color(motif::text_dim()),
-                    );
-                    ui.end_row();
-                }
+                    )
+                    .wrap(),
+                );
             });
+        }
     }
 
     fn unlock_screen(&mut self, ctx: &egui::Context) {
@@ -19180,7 +19254,9 @@ impl App {
         let ahead = crate::timeline::upcoming(fil, &session.today);
         let band_h = line * 2.6;
         let summary_row = Self::fil_summary_row(ui);
-        let summary_h = (summary.len() as f32).min(4.0) * summary_row + 8.0;
+        // Des rangées entières : le résumé défile au-delà de quatre, et
+        // huit pixels de plus y montraient le haut d'une cinquième.
+        let summary_h = (summary.len() as f32).min(4.0) * summary_row;
         // Le plancher du fil, en **lignes** : quatre lignes de fil et
         // son cadre. Exprimé ainsi, `[ui] text_scale` ne le déplace pas.
         let floor = line * 5.0 + 12.0;
@@ -19242,21 +19318,18 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         for e in &summary {
-                            ui.horizontal(|ui| {
-                                Self::fil_mark(ui, e.kind);
-                                ui.label(
-                                    egui::RichText::new(trn(
-                                        "fil_last",
-                                        &[
-                                            &tr(e.kind.label_key()),
-                                            &e.title,
-                                            &db::format_french_date(&e.day),
-                                        ],
-                                    ))
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(motif::text()),
-                                );
-                            });
+                            Self::fil_summary_line(
+                                ui,
+                                e.kind,
+                                &trn(
+                                    "fil_last",
+                                    &[
+                                        &tr(e.kind.label_key()),
+                                        &e.title,
+                                        &db::format_french_date(&e.day),
+                                    ],
+                                ),
+                            );
                         }
                     });
             });
@@ -19273,6 +19346,17 @@ impl App {
                     .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.visuals_mut().faint_bg_color = motif::bg_dark();
+                        // **Une ligne du fil a la hauteur de son texte.**
+                        // Un `horizontal` part de la hauteur d'un bouton,
+                        // et le fil n'en porte aucun : à 1024 en texte 1,6
+                        // chaque ligne en valait deux, et le panneau n'en
+                        // montrait que deux sur trente et une.
+                        let text_h = ui.fonts(|f| {
+                            f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5)))
+                        });
+                        ui.spacing_mut().interact_size.y = text_h;
+                        // Et l'air d'une liste, pas celui d'un formulaire.
+                        ui.spacing_mut().item_spacing.y *= 0.4;
                         // **Mesurée dans la fonte qui dessine.** La
                         // colonne se peint en chasse fixe, et une mesure
                         // proportionnelle la rend trop étroite : la date
@@ -19349,13 +19433,50 @@ impl App {
     /// Ce que coûte **une rangée du résumé du fil**.
     ///
     /// Écrit ici, où la hauteur est décidée, et non recopié dans la
-    /// mesure : c'est un `horizontal` qui porte un repère et un libellé,
-    /// donc il coûte ce que coûte une rangée de cette mise en page — pas
-    /// une ligne de texte, qui est le nombre qu'on écrit quand on
-    /// devine. `a_fil_summary_row_is_as_tall_as_its_model_says` confronte
+    /// mesure. `a_fil_summary_row_is_as_tall_as_its_model_says` confronte
     /// ce modèle au dessin, à trois échelles de texte.
+    ///
+    /// **Une ligne de texte, pas une rangée de boutons** : posée dans un
+    /// `horizontal`, chaque ligne du résumé avait la hauteur d'un
+    /// bouton, et à 1024 en texte 1,6 les quatre lignes prenaient la
+    /// place de huit — le fil lui-même, trente et une lignes, n'en
+    /// montrait plus qu'une et demie. [`Self::fil_summary_line`] pose le
+    /// repère et le libellé à la main, à la hauteur du libellé.
     fn fil_summary_row(ui: &egui::Ui) -> f32 {
-        Self::row_height(ui)
+        let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+        ui.fonts(|f| f.row_height(&font)) + ui.spacing().item_spacing.y
+    }
+
+    /// Une ligne du résumé du fil : le repère de sa nature, puis le
+    /// libellé, élidé s'il dépasse — entier au survol.
+    fn fil_summary_line(ui: &mut egui::Ui, kind: crate::timeline::Kind, text: &str) {
+        let font = egui::FontId::proportional(motif::pt(ui, 11.0));
+        let h = ui.fonts(|f| f.row_height(&font));
+        let (rect, resp) =
+            ui.allocate_exact_size(egui::vec2(ui.available_width(), h), egui::Sense::hover());
+        let mark = ui.text_style_height(&egui::TextStyle::Body) * 0.55;
+        let square = egui::Rect::from_center_size(
+            egui::pos2(rect.left() + mark / 2.0, rect.center().y),
+            egui::vec2(mark, mark),
+        );
+        ui.painter()
+            .rect_filled(square, 0.0, motif::chart::series_color(kind.series()));
+        let left = square.right() + ui.spacing().item_spacing.x;
+        let mut job =
+            egui::text::LayoutJob::simple_singleline(text.to_owned(), font, motif::text());
+        job.wrap = egui::text::TextWrapping::truncate_at_width((rect.right() - left).max(0.0));
+        let galley = ui.fonts(|f| f.layout_job(job));
+        let elided = galley.elided;
+        ui.painter().galley(
+            egui::pos2(left, rect.center().y - galley.size().y / 2.0),
+            galley,
+            motif::text(),
+        );
+        if elided {
+            resp.on_hover_text(text);
+        } else {
+            resp.on_hover_text(tr(kind.label_key()));
+        }
     }
 
     /// Un intertitre du fil : « à venir », « passé ».
@@ -55330,15 +55451,27 @@ impl App {
                 .wrap(),
             );
         });
+        let events = &session.supply_events;
+        let today = &session.today;
+        let current = crate::ruptures::shortages(events, today);
         let wide = rows[1].width() >= chars_wide(ui, 90.0);
         let panes = if wide {
             motif::split_columns(rows[1], 2, 8.0)
         } else {
-            motif::split_rows(rows[1], &[0.0, 0.0], 8.0)
+            // **Les ruptures en cours ne prennent que ce qu'elles
+            // portent**, jusqu'à la moitié : une seule rupture dans une
+            // demi-vue laissait, à 1024 en texte 1,6, deux lignes et demie
+            // au journal. Chacune : son nom, puis ce qui l'a remplacée.
+            let small =
+                ui.fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 10.5))));
+            let gutter = ui.spacing().item_spacing.y;
+            let each = Self::row_height(ui) + small + 4.0 + gutter * 2.0;
+            let chrome = motif::panel_chrome(ui, true);
+            let need = chrome + current.len().max(1) as f32 * each;
+            let half = (rows[1].height() - 8.0) / 2.0;
+            let top = half.min(need).max(chrome + Self::row_height(ui));
+            motif::split_rows(rows[1], &[top, 0.0], 8.0)
         };
-        let events = &session.supply_events;
-        let today = &session.today;
-        let current = crate::ruptures::shortages(events, today);
         let mut open: Option<String> = None;
         motif::panel(ui, panes[0], Some(tr("rupt_view_current")), |ui| {
             ui.spacing_mut().scroll.floating = false;
@@ -55521,9 +55654,16 @@ impl App {
             )
         } else {
             // L'une sur l'autre, la liste cède : le fil est ce qu'on lit.
+            // **Pas plus haute que ce qu'elle porte** : une seule
+            // conversation dans un quart de la vue laissait au fil, à 1024
+            // en texte 1,6, la hauteur d'un seul message.
+            let rows = session.msg.conversations.len().max(1) as f32;
+            let chrome = motif::panel_chrome(ui, true);
+            let content = chrome + Self::rows_height(ui, rows);
+            let floor = chrome + Self::row_height(ui);
             let parts = motif::split_rows(
                 area,
-                &[(area.height() * 0.26).max(Self::row_height(ui) * 2.5), 0.0],
+                &[(area.height() * 0.26).min(content).max(floor), 0.0],
                 8.0,
             );
             (parts[0], parts[1])
@@ -55690,7 +55830,12 @@ impl App {
         } else {
             3.0
         };
-        let compose_h = Self::label_line(ui) * lines + Self::row_height(ui) + 16.0;
+        // Une ligne de texte, pas une rangée de bouton : compter la case
+        // en `label_line` lui donnait, à 1,6, la hauteur de quatre lignes
+        // pour deux — prise au fil.
+        let text_line = ui.text_style_height(&egui::TextStyle::Body);
+        let area_h = text_line * lines + 8.0 + 8.0;
+        let compose_h = area_h + ui.spacing().item_spacing.y + Self::row_height(ui) + 8.0;
         let parts = motif::split_rows(rect, &[0.0, compose_h], 6.0);
         let mut open_patient: Option<i64> = None;
         let mut save_file: Option<crate::messages::FileMeta> = None;
@@ -55812,7 +55957,7 @@ impl App {
             let w = ui.available_width();
             let resp = motif::area(
                 ui,
-                egui::vec2(w, Self::label_line(ui) * lines + 8.0),
+                egui::vec2(w, area_h),
                 egui::TextEdit::multiline(&mut session.msg.draft)
                     .hint_text(motif::hint(tr("msg_draft_hint"))),
             );
@@ -56402,6 +56547,16 @@ impl App {
 
     fn connexions_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
+        // **La phrase d'en-tête en une ligne quand la vue est basse** :
+        // à 1024x700 en texte 1,6 ses quatre lignes et les boutons
+        // repliés laissaient aux quatre volets une rangée et demie
+        // chacun, et le second poste de la liste était tranché. Entière
+        // au survol.
+        let subtitle = if body.height() > Self::rows_height(ui, 16.0) {
+            tr("conn_subtitle")
+        } else {
+            tr("conn_subtitle_short")
+        };
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -56414,11 +56569,7 @@ impl App {
             ]
             .into_iter(),
             // En carte, la phrase d'en-tête cède sa place au dessin.
-            if session.conn_map {
-                ""
-            } else {
-                tr("conn_subtitle")
-            },
+            if session.conn_map { "" } else { subtitle },
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         #[cfg(not(feature = "sync"))]
@@ -56490,12 +56641,13 @@ impl App {
                 if !session.conn_map {
                     ui.add(
                         egui::Label::new(
-                            egui::RichText::new(tr("conn_subtitle"))
+                            egui::RichText::new(subtitle)
                                 .size(motif::pt(ui, 11.5))
                                 .color(motif::text_dim()),
                         )
                         .wrap(),
-                    );
+                    )
+                    .on_hover_text(tr("conn_subtitle"));
                 }
             });
             if session.conn_map {
@@ -57098,25 +57250,11 @@ impl App {
         };
         let mut picked: Option<Option<String>> = None;
         let mut legend_aside = false;
-        let mut legend_wrapped = false;
-        let width_key = map_rect.width().round() as i32;
-        let legend_key = session.conn_legend_aside;
         motif::panel(ui, map_rect, Some(tr("conn_map_title")), |ui| {
             let draw_stroke = conn_link_stroke;
             // **Une ligne de légende, ou aucune** : repliée sur trois
             // rangées à 1024 en texte 1,6, elle prenait la moitié de la
             // carte. Quand elle ne tient pas sur une, elle passe au volet.
-            let keys = [
-                (LinkState::Ok, tr("conn_map_ok")),
-                (LinkState::Heard, tr("conn_map_heard")),
-                (LinkState::Failing, tr("conn_map_failing")),
-                (LinkState::Silent, tr("conn_map_silent")),
-            ];
-            // **Mesurée en la posant** : une ligne de légende qui se replie
-            // passe au volet à l'image suivante, pour cette largeur de
-            // carte — l'estimer à côté se trompait de quelques pixels, et
-            // l'envoyait au volet quand elle tenait.
-            legend_aside = legend_key == Some(width_key);
             // Ce que la base n'a pas pu dire — une synchronisation la
             // tient : la carte le dit plutôt que de montrer ce poste seul.
             if let Some(e) = unreadable.as_ref() {
@@ -57129,27 +57267,7 @@ impl App {
                     .wrap(),
                 );
             }
-            if !legend_aside {
-                let before = ui.cursor().top();
-                ui.horizontal_wrapped(|ui| {
-                    for (st, label) in keys {
-                        let (r, _) = ui.allocate_exact_size(
-                            egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
-                            egui::Sense::hover(),
-                        );
-                        draw_stroke(ui.painter(), [r.left_center(), r.right_center()], st);
-                        ui.label(
-                            egui::RichText::new(label)
-                                .size(motif::pt(ui, 10.5))
-                                .color(motif::text_dim()),
-                        );
-                        ui.add_space(6.0);
-                    }
-                });
-                if ui.cursor().top() - before > Self::label_line(ui) * 1.8 {
-                    legend_wrapped = true;
-                }
-            }
+            legend_aside = !conn_legend(ui, true);
             let field = ui.available_rect_before_wrap();
             // **Les cercles prennent toute la place** : en ellipses quand la
             // carte est large et basse, plutôt qu'en un carré qui entasse
@@ -57564,10 +57682,6 @@ impl App {
         if let Some(p) = picked {
             session.conn_pick = p;
         }
-        if legend_wrapped {
-            session.conn_legend_aside = Some(width_key);
-            ui.ctx().request_repaint();
-        }
         // Le volet du nœud choisi.
         let chosen = session
             .conn_pick
@@ -57609,26 +57723,7 @@ impl App {
                         // La légende, quand la carte n'avait pas la
                         // place de l'écrire sur une ligne.
                         if legend_aside {
-                            ui.horizontal_wrapped(|ui| {
-                                for (st, label) in [
-                                    (LinkState::Ok, tr("conn_map_ok")),
-                                    (LinkState::Heard, tr("conn_map_heard")),
-                                    (LinkState::Failing, tr("conn_map_failing")),
-                                    (LinkState::Silent, tr("conn_map_silent")),
-                                ] {
-                                    let (r, _) = ui.allocate_exact_size(
-                                        egui::vec2(chars_wide(ui, 3.0), Self::label_line(ui)),
-                                        egui::Sense::hover(),
-                                    );
-                                    conn_link_stroke(
-                                        ui.painter(),
-                                        [r.left_center(), r.right_center()],
-                                        st,
-                                    );
-                                    ui.label(small(ui, label.to_owned()));
-                                    ui.add_space(6.0);
-                                }
-                            });
+                            conn_legend(ui, false);
                             ui.add_space(4.0);
                         }
                         let Some(n) = &chosen else {
@@ -58253,14 +58348,24 @@ impl App {
             .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 620.0)))
             .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
             .show(ctx, |ui| {
+                // **Entière quand la fenêtre a la place, une ligne sinon** :
+                // à 1024x700 en texte 1,6 ses quatre lignes prenaient le
+                // haut d'une fenêtre dont la liste des postes ne montrait
+                // plus qu'une rangée. Entière au survol, toujours.
+                let roomy = ui.available_height() > Self::rows_height(ui, 16.0);
                 ui.add(
                     egui::Label::new(
-                        egui::RichText::new(tr("posts_scope"))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
+                        egui::RichText::new(if roomy {
+                            tr("posts_scope")
+                        } else {
+                            tr("posts_scope_short")
+                        })
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
                     )
                     .wrap(),
-                );
+                )
+                .on_hover_text(tr("posts_scope"));
                 ui.add_space(6.0);
                 if let Some(code) = &w.code {
                     ui.label(tr("posts_code_intro"));
@@ -58446,6 +58551,11 @@ impl App {
                         );
                         ui.add_space(6.0);
                         motif::section(ui, tr("posts_list"));
+                        // **Deux lignes par poste** : le nom et ses gestes,
+                        // puis l'empreinte en petit dessous. Sur une seule,
+                        // l'empreinte prenait la place du nom, et à 1024 en
+                        // texte 1,6 « référence » passait seule à la ligne
+                        // suivante — la liste ne montrait plus qu'un poste.
                         for p in &sum.posts {
                             let typed = w.names.entry(p.post).or_insert_with(|| p.name.clone());
                             ui.horizontal_wrapped(|ui| {
@@ -58453,11 +58563,6 @@ impl App {
                                     egui::RichText::new(format!("{:>2}", p.post + 1))
                                         .monospace()
                                         .strong(),
-                                );
-                                ui.label(
-                                    egui::RichText::new(crate::postes::groups_of(&p.device))
-                                        .monospace()
-                                        .size(motif::pt(ui, 11.0)),
                                 );
                                 if !p.left_on.is_empty() {
                                     ui.label(
@@ -58500,6 +58605,16 @@ impl App {
                                     retire = Some(p.post);
                                 }
                             });
+                            ui.label(
+                                egui::RichText::new(if Some(p.post) == sum.post {
+                                    trf("posts_fp_here", crate::postes::groups_of(&p.device))
+                                } else {
+                                    crate::postes::groups_of(&p.device)
+                                })
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_faint()),
+                            );
+                            ui.add_space(4.0);
                         }
                         ui.add_space(6.0);
                         motif::section(ui, &trf("posts_questions", sum.conflicts.len()));
@@ -75415,13 +75530,7 @@ mod tests {
                                 crate::timeline::Kind::Vaccin,
                                 crate::timeline::Kind::Biologie,
                             ] {
-                                ui.horizontal(|ui| {
-                                    App::fil_mark(ui, k);
-                                    ui.label(
-                                        egui::RichText::new("Grippe saisonnière — 14/10/2025")
-                                            .size(motif::pt(ui, 11.0)),
-                                    );
-                                });
+                                App::fil_summary_line(ui, k, "Grippe saisonnière — 14/10/2025");
                             }
                         })
                         .response
