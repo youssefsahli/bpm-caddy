@@ -126,17 +126,27 @@ for view in "${views[@]}"; do
     # groupe à qui l'on montre la consigne — se capturait sur la base
     # que la vue d'avant venait de grouper, et montrait la liste des
     # postes à la place de ce qu'elle existe pour montrer.
-    # La base vierge, elle, est semée par la première vue et gardée : la
-    # semer à chaque image coûterait plus que l'attente.
+    # La base vierge, elle, est semée par la première vue qui l'ouvre,
+    # puis photographiée (`$tmp/vierge`) : les suivantes en reçoivent
+    # une copie. Sans la photo, « patient_new » laissait un dossier et
+    # « messages » une conversation à toutes les vues d'après — et
+    # l'écran du premier lancement montrait un patient.
     base="$tmp/demo.db"
-    if [ -z "$fresh" ]; then
+    src="$tmp"
+    if [ -n "$fresh" ]; then
+        src="$tmp/vierge"
+    fi
+    if [ -z "$fresh" ] || [ -e "$tmp/vierge/demo.db" ]; then
         rm -rf "$tmp/vue" && mkdir -p "$tmp/vue"
-        for f in "$tmp"/demo*; do [ -e "$f" ] && cp "$f" "$tmp/vue/"; done
+        for f in "$src"/demo*; do [ -e "$f" ] && cp "$f" "$tmp/vue/"; done
         base="$tmp/vue/demo.db"
     fi
     # Fonder un groupe écrit le journal des postes — plusieurs secondes
     # en debug : à trois, l'image était noire.
     case "$view" in postes | postes_seul | connexions* | reseau) wait=12 ;; *) wait=3 ;; esac
+    # La vue qui sème la base vierge a le temps de finir : c'est sa base
+    # que toutes les suivantes recevront.
+    if [ -n "$fresh" ] && [ ! -e "$tmp/vierge/demo.db" ]; then wait=15; fi
     BPM_CADDY_DB="$base" wait="$wait" \
     view="$view" out="$out" w="$w" h="$h" card="$card" \
     xvfb-run -a -s "-screen 0 $((w * 3))x${h}x24" bash -c '
@@ -155,6 +165,11 @@ for view in "${views[@]}"; do
         kill "$app" 2>/dev/null
         wait "$app" 2>/dev/null || true
     '
+    # La première base semée, gardée telle quelle pour les suivantes.
+    if [ -n "$fresh" ] && [ ! -e "$tmp/vierge/demo.db" ] && [ -e "$tmp/demo.db" ]; then
+        mkdir -p "$tmp/vierge"
+        for f in "$tmp"/demo*; do [ -e "$f" ] && cp "$f" "$tmp/vierge/"; done
+    fi
     echo "  $out/$view.png"
 done
 echo

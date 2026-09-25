@@ -29777,12 +29777,16 @@ impl App {
             body.width() - 40.0,
             MapLens::ALL.iter().map(|l| l.label()),
         );
-        // **Un menu quand les loupes ne tiennent pas sur une rangée** :
-        // à 1024x700 en texte 1,6 elles en prenaient deux, en cachaient
+        // **Un menu quand les loupes ne tiennent pas dans leur part** : à
+        // 1024x700 en texte 1,6 elles en prenaient deux, en cachaient
         // encore une, et la carte — ce que la vue existe pour montrer —
         // n'avait plus que quatre-vingt-dix pixels. Un menu montre la
-        // loupe choisie, donne les sept, et rend une rangée à la carte.
-        let lens_menu = lens_lines > 1.0;
+        // loupe choisie, donne les sept, et rend ses rangées à la carte ;
+        // là où elles tiennent, les boutons restent.
+        let lens_menu = lens_lines > 1.0 && {
+            let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
+            motif::panel_chrome(ui, true) + row * lens_lines > body.height() * 0.35
+        };
         let lens_h = {
             let lines = lens_lines;
             let row = Self::row_height(ui) + ui.spacing().item_spacing.y;
@@ -31366,6 +31370,50 @@ impl App {
             // et seule la ligne d'à côté, dont le patient n'a pas de
             // téléphone, gardait le sien. Rien ne panique, rien ne se
             // coupe : le geste disparaît, et il disparaît selon la fiche.
+            // **En colonnes** : la nature, le nom et le téléphone à la
+            // largeur du plus long de la journée, pour que « Déplacer »
+            // tombe au même endroit sur chaque ligne au lieu de suivre la
+            // longueur de chaque nom.
+            let chips: Vec<String> = rdvs
+                .iter()
+                .map(|r| format!("  {}  ", r.kind.label()))
+                .collect();
+            let kind_w = Self::widest(ui, 11.0, chips.iter().map(|c| c.as_str()));
+            let name_w = (Self::widest_in(
+                ui,
+                egui::TextStyle::Body.resolve(ui.style()),
+                rdvs.iter().map(|r| r.patient_name.as_str()),
+            ) + 2.0 * ui.spacing().button_padding.x)
+                .min(chars_wide(ui, 28.0));
+            let phone_w = Self::widest(ui, 11.0, rdvs.iter().map(|r| r.phone.as_str()));
+            // Seulement si la ligne entière tient : une ligne qui se replie
+            // de toute façon n'a pas de colonnes, et des cases à la mesure
+            // du plus long la feraient se replier plus tôt.
+            let columns = Self::group_width(
+                ui,
+                [
+                    Self::field_width(ui, [tr("agenda_hour_hint")].into_iter()).max(56.0),
+                    kind_w,
+                    name_w,
+                    phone_w,
+                    Self::button_width(ui, tr("agenda_move")),
+                ]
+                .into_iter(),
+            ) <= ui.available_width();
+            let cell = |ui: &mut egui::Ui, w: f32, add: &mut dyn FnMut(&mut egui::Ui)| {
+                if !columns {
+                    add(ui);
+                    return;
+                }
+                ui.allocate_ui_with_layout(
+                    egui::vec2(w, Self::button_height(ui)),
+                    egui::Layout::left_to_right(egui::Align::Center),
+                    |ui| {
+                        ui.set_min_width(w);
+                        add(ui);
+                    },
+                );
+            };
             for rdv in &rdvs {
                 ui.horizontal_wrapped(|ui| {
                     // The hour, typed the fast way: 9, 9h30, 930, 09:30.
@@ -31416,25 +31464,31 @@ impl App {
                             session.rdv_time_edit = Some((rdv.id, rdv.time.clone()));
                         }
                     }
-                    ui.label(
-                        egui::RichText::new(format!("  {}  ", rdv.kind.label()))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::on_fill(kind_color(rdv.kind)))
-                            .background_color(kind_color(rdv.kind)),
-                    );
-                    if ui
-                        .selectable_label(false, &rdv.patient_name)
-                        .on_hover_text(tr("dash_open_patient"))
-                        .clicked()
-                    {
-                        *open_id = Some(rdv.patient_id);
-                    }
-                    if !rdv.phone.is_empty() {
+                    cell(ui, kind_w, &mut |ui| {
                         ui.label(
-                            egui::RichText::new(&rdv.phone)
+                            egui::RichText::new(format!("  {}  ", rdv.kind.label()))
                                 .size(motif::pt(ui, 11.0))
-                                .color(motif::text_dim()),
+                                .color(motif::on_fill(kind_color(rdv.kind)))
+                                .background_color(kind_color(rdv.kind)),
                         );
+                    });
+                    cell(ui, name_w, &mut |ui| {
+                        if ui
+                            .selectable_label(false, &rdv.patient_name)
+                            .on_hover_text(tr("dash_open_patient"))
+                            .clicked()
+                        {
+                            *open_id = Some(rdv.patient_id);
+                        }
+                    });
+                    if !rdv.phone.is_empty() || (columns && phone_w > ui.spacing().item_spacing.x) {
+                        cell(ui, phone_w, &mut |ui| {
+                            ui.label(
+                                egui::RichText::new(&rdv.phone)
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        });
                     }
                     // Moving a rendez-vous without opening the record.
                     let moving = session
@@ -32270,14 +32324,22 @@ impl App {
                             // croire une journée vide alors qu'elle est
                             // filtrée. Le mot « masqués » y est nécessaire.
                             ui.add_space(8.0);
-                            ui.label(
-                                egui::RichText::new(&counts_label)
-                                    .size(motif::pt(ui, 11.0))
-                                    .color(if tally.clashes > 0 {
-                                        motif::alert()
-                                    } else {
-                                        motif::text_dim()
-                                    }),
+                            // **D'un seul tenant** : un libellé dans une
+                            // rangée qui enveloppe se replie *lui-même* au
+                            // bord, et « 7 rendez-vous » finissait la
+                            // rangée des filtres quand « affiché(s) ·
+                            // 0 masqué(s) » commençait la suivante.
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(&counts_label)
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(if tally.clashes > 0 {
+                                            motif::alert()
+                                        } else {
+                                            motif::text_dim()
+                                        }),
+                                )
+                                .wrap_mode(egui::TextWrapMode::Extend),
                             )
                             .on_hover_text(tr("agenda_counts_tooltip"));
                         });
@@ -53419,87 +53481,94 @@ impl App {
     }
 
     fn finance_controls(ui: &mut egui::Ui, session: &mut Session, config: &Config, wrap: bool) {
-        let layout = if wrap {
-            egui::Layout::left_to_right(egui::Align::Center).with_main_wrap(true)
+        // Enveloppés, les boutons se posent **dans la rangée qui les
+        // reçoit** : une région à eux commençait au bout du titre, et le
+        // second bouton passait à la ligne sous le premier plutôt que
+        // sous le titre.
+        if wrap {
+            Self::finance_buttons(ui, session, config);
         } else {
-            egui::Layout::right_to_left(egui::Align::Center)
-        };
-        ui.with_layout(layout, |ui| {
-            if motif::button(ui, tr("dash_export")).clicked() {
-                // Des données sortent de la base : tracé, et sans
-                // dossier — c'est la période entière qui part.
-                session
-                    .db
-                    .log_access(&session.operator, crate::audit::Act::Exporte, 0);
-                match session.db.export_rows(config.rules.cycle_months.max(1)) {
-                    Ok(rows) => {
-                        let csv = interviews_csv(&rows, config);
-                        let today = if session.today.is_empty() {
-                            session.db.today_iso().unwrap_or_default()
-                        } else {
-                            session.today.clone()
-                        };
-                        let dir = config
-                            .db_path()
-                            .parent()
-                            .map(|p| p.join("exports"))
-                            .unwrap_or_else(|| std::path::PathBuf::from("exports"));
-                        let file = dir.join(format!("entretiens-{today}.csv"));
-                        let result = std::fs::create_dir_all(&dir)
-                            .and_then(|()| std::fs::write(&file, csv.as_bytes()));
-                        match result {
-                            Ok(()) => {
-                                let _ = open::that_detached(&file);
-                                session.export_notice = Some(trf("dash_exported", file.display()));
-                            }
-                            Err(e) => session.error = Some(trf("dash_export_error", e)),
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                Self::finance_buttons(ui, session, config);
+            });
+        }
+    }
+
+    fn finance_buttons(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        if motif::button(ui, tr("dash_export")).clicked() {
+            // Des données sortent de la base : tracé, et sans
+            // dossier — c'est la période entière qui part.
+            session
+                .db
+                .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+            match session.db.export_rows(config.rules.cycle_months.max(1)) {
+                Ok(rows) => {
+                    let csv = interviews_csv(&rows, config);
+                    let today = if session.today.is_empty() {
+                        session.db.today_iso().unwrap_or_default()
+                    } else {
+                        session.today.clone()
+                    };
+                    let dir = config
+                        .db_path()
+                        .parent()
+                        .map(|p| p.join("exports"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("exports"));
+                    let file = dir.join(format!("entretiens-{today}.csv"));
+                    let result = std::fs::create_dir_all(&dir)
+                        .and_then(|()| std::fs::write(&file, csv.as_bytes()));
+                    match result {
+                        Ok(()) => {
+                            let _ = open::that_detached(&file);
+                            session.export_notice = Some(trf("dash_exported", file.display()));
                         }
+                        Err(e) => session.error = Some(trf("dash_export_error", e)),
                     }
-                    Err(e) => session.error = Some(e),
                 }
+                Err(e) => session.error = Some(e),
             }
-            // The paper companion of the export: the acts to invoice,
-            // with the code, the step and the amount the memo sets.
-            if motif::button(ui, tr("dash_billing_recap"))
-                .on_hover_text(tr("dash_billing_recap_tooltip"))
-                .clicked()
-            {
-                match session.db.export_rows(config.rules.cycle_months.max(1)) {
-                    Ok(rows) => {
-                        let today = if session.today.is_empty() {
-                            session.db.today_iso().unwrap_or_default()
-                        } else {
-                            session.today.clone()
-                        };
-                        let lines = billing_lines(&rows, config);
-                        // The rentals still out belong on the same
-                        // sheet: they are billed in the same envelope,
-                        // and a forfait forgotten is a forfait lost.
-                        let rentals = billing_rentals(&session.db, &today);
-                        if lines.is_empty() && rentals.is_empty() {
-                            session.export_notice = Some(tr("dash_billing_none").to_owned());
-                        } else if let Err(e) = crate::pdf::open_billing_recap(
-                            &lines,
-                            &rentals,
-                            tr("dash_billing_period"),
-                            &db::format_french_date(&today),
-                            &config.doc_template_path("facturation"),
-                        ) {
-                            session.error = Some(e);
-                        }
+        }
+        // The paper companion of the export: the acts to invoice,
+        // with the code, the step and the amount the memo sets.
+        if motif::button(ui, tr("dash_billing_recap"))
+            .on_hover_text(tr("dash_billing_recap_tooltip"))
+            .clicked()
+        {
+            match session.db.export_rows(config.rules.cycle_months.max(1)) {
+                Ok(rows) => {
+                    let today = if session.today.is_empty() {
+                        session.db.today_iso().unwrap_or_default()
+                    } else {
+                        session.today.clone()
+                    };
+                    let lines = billing_lines(&rows, config);
+                    // The rentals still out belong on the same
+                    // sheet: they are billed in the same envelope,
+                    // and a forfait forgotten is a forfait lost.
+                    let rentals = billing_rentals(&session.db, &today);
+                    if lines.is_empty() && rentals.is_empty() {
+                        session.export_notice = Some(tr("dash_billing_none").to_owned());
+                    } else if let Err(e) = crate::pdf::open_billing_recap(
+                        &lines,
+                        &rentals,
+                        tr("dash_billing_period"),
+                        &db::format_french_date(&today),
+                        &config.doc_template_path("facturation"),
+                    ) {
+                        session.error = Some(e);
                     }
-                    Err(e) => session.error = Some(e),
                 }
+                Err(e) => session.error = Some(e),
             }
-            if let Some(notice) = &session.export_notice {
-                ui.label(
-                    egui::RichText::new(elide(ui, notice, 260.0, 10.5))
-                        .size(motif::pt(ui, 10.5))
-                        .color(motif::text_faint()),
-                )
-                .on_hover_text(notice.as_str());
-            }
-        });
+        }
+        if let Some(notice) = &session.export_notice {
+            ui.label(
+                egui::RichText::new(elide(ui, notice, 260.0, 10.5))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_faint()),
+            )
+            .on_hover_text(notice.as_str());
+        }
     }
 
     /// La liste d'appel : qui rappeler, et pourquoi.
@@ -58522,7 +58591,10 @@ impl App {
                 // à 1024x700 en texte 1,6 ses quatre lignes prenaient le
                 // haut d'une fenêtre dont la liste des postes ne montrait
                 // plus qu'une rangée. Entière au survol, toujours.
-                let roomy = ui.available_height() > Self::rows_height(ui, 16.0);
+                // Mesuré sur l'écran : la fenêtre prend la hauteur de son
+                // contenu, et la place qui lui reste ne dit pas celle
+                // qu'elle pourrait prendre.
+                let roomy = ctx.screen_rect().height() > Self::rows_height(ui, 20.0);
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(if roomy {
