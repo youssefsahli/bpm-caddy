@@ -35700,6 +35700,15 @@ impl Db {
     /// alone: the tool is the team's, and a tree they have rewritten
     /// never comes back to what it shipped as.
     pub fn seed_protocols(&self) -> Result<usize, String> {
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien, au moment où la sauvegarde et les
+        // synchronisations démarrent.
+        {
+            let seeded = self.seeded_names("protocole")?;
+            if STARTER_PROTOCOLS.iter().all(|p| seeded.contains(p.title)) {
+                return Ok(0);
+            }
+        }
         // Une transaction : un arbre interrompu à mi-semis restait à
         // moitié écrit, et son titre présent l'empêchait d'être jamais
         // complété.
@@ -35747,6 +35756,15 @@ impl Db {
     /// team has renamed or rewritten is never touched, and a name
     /// already present is skipped rather than duplicated.
     pub fn seed_preparations(&self) -> Result<usize, String> {
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien, au moment où la sauvegarde et les
+        // synchronisations démarrent.
+        {
+            let seeded = self.seeded_names("preparation")?;
+            if STARTER_PREPARATIONS.iter().all(|p| seeded.contains(p.name)) {
+                return Ok(0);
+            }
+        }
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
         {
@@ -35909,6 +35927,18 @@ impl Db {
     /// que l'équipe a réécrite, renommée ou supprimée ne revient pas — la
     /// règle du codex et des dispositifs, tenue par les mêmes marques.
     pub fn seed_trod_lines(&self) -> Result<usize, String> {
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien, au moment où la sauvegarde et les
+        // synchronisations démarrent.
+        {
+            let seeded = self.seeded_names("trod")?;
+            if crate::ordonnance::starters()
+                .iter()
+                .all(|o| seeded.contains(&format!("{}:{}", o.protocol, o.name)))
+            {
+                return Ok(0);
+            }
+        }
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let present: std::collections::HashSet<(String, String)> = self
             .trod_lines_all()?
@@ -36148,6 +36178,18 @@ impl Db {
     /// Semer le catalogue des vaccins, **une fois**, par code : un vaccin
     /// que l'équipe a renommé ou retiré ne revient pas.
     pub fn seed_vaccine_catalogue(&self) -> Result<usize, String> {
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien, au moment où la sauvegarde et les
+        // synchronisations démarrent.
+        {
+            let seeded = self.seeded_names("vaccin")?;
+            if crate::vaccines::starter_catalogue()
+                .iter()
+                .all(|v| seeded.contains(&v.code))
+            {
+                return Ok(0);
+            }
+        }
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let present: std::collections::HashSet<String> = self
             .vaccine_catalogue()?
@@ -36262,6 +36304,15 @@ impl Db {
     /// codex: a fiche the team rewrote or renamed is never touched, and
     /// one it deleted does not come back.
     pub fn seed_dispositifs(&self) -> Result<usize, String> {
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien, au moment où la sauvegarde et les
+        // synchronisations démarrent.
+        {
+            let seeded = self.seeded_names("dispositif")?;
+            if STARTER_DISPOSITIFS.iter().all(|d| seeded.contains(d.name)) {
+                return Ok(0);
+            }
+        }
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
         {
@@ -41977,6 +42028,38 @@ mod tests {
             "une transaction différée dans db.rs"
         );
         assert!(!body.contains(bare), "un BEGIN différé dans db.rs");
+    }
+
+    /// **Semer ce qui l'est déjà ne prend pas le verrou d'écriture** :
+    /// au lancement du poste de référence, cinq semis qui n'avaient rien à
+    /// faire prenaient chacun la base en écriture, au moment même où la
+    /// sauvegarde et les synchronisations démarrent.
+    #[test]
+    fn seeding_what_is_already_seeded_takes_no_write_lock() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-seedlock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("s.db");
+        let db = Db::open(&path, "secret").unwrap();
+        db.seed_preparations().unwrap();
+        db.seed_protocols().unwrap();
+        db.seed_trod_lines().unwrap();
+        db.seed_vaccine_catalogue().unwrap();
+        db.seed_dispositifs().unwrap();
+        let other = Db::open(&path, "secret").unwrap();
+        let held = write_tx(&other.conn).unwrap();
+        let started = std::time::Instant::now();
+        assert_eq!(db.seed_preparations(), Ok(0));
+        assert_eq!(db.seed_protocols(), Ok(0));
+        assert_eq!(db.seed_trod_lines(), Ok(0));
+        assert_eq!(db.seed_vaccine_catalogue(), Ok(0));
+        assert_eq!(db.seed_dispositifs(), Ok(0));
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(1),
+            "un semis a attendu le verrou"
+        );
+        drop(held);
     }
 
     /// **Un lot qui tombe ne laisse pas de transaction ouverte** : sans

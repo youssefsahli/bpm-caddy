@@ -5,6 +5,12 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.341.0] - 2026-09-25
+
+### Changed
+- Lancement du poste de référence : le contenu de départ déjà en place
+  n'occupe plus la base, les autres postes enregistrent sans attendre.
+
 ## [0.340.0] - 2026-09-25
 
 ### Fixed
