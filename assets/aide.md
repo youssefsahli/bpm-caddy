@@ -954,11 +954,23 @@ fiches, réglages. « Postes de l'officine… », dans Options › Base. Les
 le réseau d'officines a sa propre clé et n'accède à aucune de ces
 données.
 
-Un poste **fonde** le groupe : sa base est conservée, avec sa
-numérotation des dossiers. Il **invite** ensuite les autres, comme pour
-le réseau : « Inviter un poste… » affiche un code d'invitation, à coller
-dans « Rejoindre… » sur l'autre poste. **Rejoindre remplace le contenu du poste** par les
-données du groupe : faire une copie au préalable si nécessaire.
+**Relier deux postes, pas à pas.** Un poste hors groupe dit dans
+Connexions ce qu'il entend et quoi faire :
+
+- Premier poste de l'officine : « Fonder le groupe sur cette base ». Sa
+  base est conservée, avec sa numérotation des dossiers.
+- Sur un poste du groupe : « Postes de l'officine… » puis « Inviter un
+  poste… » (ou, sur la carte, clic sur le poste non relié puis « Inviter
+  ce poste »). Un code de seize caractères s'affiche, valable 5 min.
+- Sur le poste à relier : l'invitation apparaît d'elle-même dans
+  Connexions. Y saisir le code — tirets et majuscules facultatifs —,
+  puis « Rejoindre… ».
+
+**Rejoindre remplace le contenu du poste** par les données du groupe :
+faire une copie au préalable si nécessaire. Un code erroné se corrige
+et se ressaisit tant que l'invitation est ouverte. Si elle n'apparaît pas
+(autre réseau, pare-feu), coller le code complet, adresse comprise,
+affiché sous le code.
 
 Sur le réseau local, les postes se découvrent et se synchronisent
 **automatiquement**, quelques secondes après chaque écriture. S'ils ne
@@ -981,6 +993,12 @@ registre, la caisse et les journaux restent en ajout seul : une
 modification reçue pour eux est refusée, et le refus est affiché. Le
 poste de référence installe aussi le contenu livré avec les mises à
 jour.
+
+**L'officine** (nom, adresse, pharmacien, n° AM, équipe, horaires) se
+corrige depuis n'importe quel poste, dans Options › Officine. Deux postes
+qui la corrigent en même temps ne perdent rien : ce que chacun a changé
+se réunit ; un même champ changé des deux côtés est signalé, la valeur
+saisie reste affichée, et « Enregistrer » la garde.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 

@@ -178,9 +178,122 @@ pub fn trf(key: &'static str, value: impl std::fmt::Display) -> String {
     trn(key, &[&value])
 }
 
+/// **Une erreur dite à qui ne connaît pas le réseau.** Les couches du
+/// dessous parlent leur langue : un refus de `bpm-sync` est un mot
+/// (« Link », « Handshake »), SQLite dit « database is locked », le
+/// système « Connection refused (os error 111) » ou, sous Windows,
+/// « os error 10061 ». Arrivés tels quels à l'écran, ils ne disaient ni
+/// ce qui s'était passé ni quoi faire.
+///
+/// Ce qui est reconnu devient une phrase qui dit les deux ; le reste —
+/// déjà en français, écrit par l'application — passe tel quel.
+pub fn plain_error(raw: &str) -> String {
+    let word = raw.trim();
+    let key = match word {
+        "Link" => Some("err_plain_link"),
+        "Handshake" | "Unknown" => Some("err_plain_identity"),
+        "Seal" => Some("err_plain_key"),
+        "Malformed" | "TooLarge" | "Signature" | "Name" | "Protocol" => Some("err_plain_protocol"),
+        _ => None,
+    };
+    if let Some(k) = key {
+        return tr(k).to_owned();
+    }
+    let l = word.to_lowercase();
+    let any = |needles: &[&str]| needles.iter().any(|n| l.contains(n));
+    let key = if any(&[
+        "database is locked",
+        "database is busy",
+        "database table is locked",
+    ]) {
+        "err_plain_busy"
+    } else if any(&[
+        "database or disk is full",
+        "no space left",
+        "disk is full",
+        "os error 28)",
+        "os error 112)",
+    ]) {
+        "err_plain_disk"
+    } else if any(&["file is not a database", "notadb"]) {
+        "err_plain_notadb"
+    } else if any(&["connection refused", "os error 111)", "os error 10061)"]) {
+        "err_plain_refused"
+    } else if any(&["timed out", "os error 110)", "os error 10060)"]) {
+        "err_plain_timeout"
+    } else if any(&[
+        "no route to host",
+        "network is unreachable",
+        "host is unreachable",
+        "os error 113)",
+        "os error 101)",
+        "os error 10065)",
+        "os error 10051)",
+    ]) {
+        "err_plain_unreachable"
+    } else if any(&["address already in use", "os error 98)", "os error 10048)"]) {
+        "err_plain_port"
+    } else if any(&[
+        "permission denied",
+        "access is denied",
+        "os error 13)",
+        "os error 10013)",
+    ]) {
+        "err_plain_denied"
+    } else if any(&[
+        "invalid socket address",
+        "invalid port",
+        "failed to lookup address",
+        "name or service not known",
+        "os error 11001)",
+    ]) {
+        "err_plain_address"
+    } else if any(&[
+        "connection reset",
+        "broken pipe",
+        "os error 104)",
+        "os error 32)",
+        "os error 10054)",
+    ]) {
+        "err_plain_cut"
+    } else {
+        return word.to_owned();
+    };
+    tr(key).to_owned()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Rien d'anglais ni de technique à l'écran pour ce que l'on
+    /// reconnaît** ; ce que l'application écrit elle-même passe tel quel.
+    #[test]
+    fn a_lower_layer_error_reads_as_a_plain_sentence() {
+        for (raw, key) in [
+            ("Link", "err_plain_link"),
+            ("Handshake", "err_plain_identity"),
+            ("Seal", "err_plain_key"),
+            ("Protocol", "err_plain_protocol"),
+            ("database is locked", "err_plain_busy"),
+            (
+                "Io(Os { code: 111, kind: ConnectionRefused, message: \"Connection refused\" })",
+                "err_plain_refused",
+            ),
+            ("Une connexion (os error 10061)", "err_plain_refused"),
+            ("connection timed out", "err_plain_timeout"),
+            ("No route to host (os error 113)", "err_plain_unreachable"),
+            ("Address already in use (os error 98)", "err_plain_port"),
+            ("invalid socket address syntax", "err_plain_address"),
+            ("Connection reset by peer (os error 104)", "err_plain_cut"),
+            ("database or disk is full", "err_plain_disk"),
+            ("file is not a database", "err_plain_notadb"),
+        ] {
+            assert_eq!(plain_error(raw), tr(key), "{raw}");
+        }
+        let ours = "Aucune connexion dans les cinq minutes : invitation expirée.";
+        assert_eq!(plain_error(ours), ours);
+    }
 
     /// Every key written as a literal in the sources must exist in the
     /// embedded file. A typo used to reach the counter as a raw key on
@@ -288,6 +401,9 @@ mod tests {
             // Et la lecture des doses au poids, dont la cadence nomme
             // son libellé : « par prise » n'est pas « par jour ».
             include_str!("dosing.rs"),
+            // Les erreurs des couches du dessous, dites en clair
+            // (`plain_error`) : ce fichier-ci nomme leurs phrases.
+            include_str!("strings.rs"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");
@@ -1387,6 +1503,7 @@ livre = "Une phrase qui n'est plus livrée"
                     // relais, pas un site.
                     APP.matches(concat!(".sta", "le(")).count()
                         + APP.matches(concat!(".sta", "le_note(")).count()
+                        + APP.matches(concat!(".sta", "le_note_with(")).count()
                         - 1
                 ),
             ),

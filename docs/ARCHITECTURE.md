@@ -287,10 +287,10 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  69 of them, and counting at all but one would be a counter quietly
+  72 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
-  path to a « rechargez » notice; `no_stale_notice_is_written_by_hand`
+  path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
   reads `app.rs` and refuses the forty-seventh written beside it
   (verified by putting one back). One signal is still deliberately
   absent, and it is written where one would look: a sync conversation,
@@ -2205,7 +2205,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
+  vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|

@@ -11,7 +11,7 @@ use crate::db::{
 use crate::fuzzy;
 use crate::pk::parse_hours;
 use crate::planning;
-use crate::strings::{tr, trf, trn};
+use crate::strings::{plain_error, tr, trf, trn};
 use crate::vaccines;
 
 enum State {
@@ -54,6 +54,34 @@ fn adopt_officine(config: &mut Config, session: &mut Session) {
             }
         }
     }
+}
+
+/// Les champs de l'officine changés des deux côtés, en une phrase : leur
+/// nom et, pour un champ simple, ce que l'autre poste y a écrit.
+fn officine_clashes(
+    fields: &[crate::config::OfficineField],
+    theirs: &crate::config::PharmacyConfig,
+) -> String {
+    use crate::config::OfficineField as F;
+    fields
+        .iter()
+        .map(|f| {
+            let (label, value) = match f {
+                F::Name => (tr("form_last_name").to_owned(), Some(&theirs.name)),
+                F::Address => (tr("form_address").to_owned(), Some(&theirs.address)),
+                F::Phone => (tr("form_phone").to_owned(), Some(&theirs.phone)),
+                F::Pharmacist => (tr("opts_pharmacist").to_owned(), Some(&theirs.pharmacist)),
+                F::AmNumber => (tr("opts_am_number").to_owned(), Some(&theirs.am_number)),
+                F::Operator(k) => (trf("opts_officine_member", k), None),
+                F::Horaires => (tr("opts_officine_hours").to_owned(), None),
+            };
+            match value {
+                Some(v) => trn("opts_officine_clash_value", &[&label, v]),
+                None => label,
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ; ")
 }
 
 /// Run [`daily_backup`] on a background thread with its own connection:
@@ -6904,6 +6932,87 @@ impl Session {
         tr(key).to_owned()
     }
 
+    /// La même, pour une phrase qui nomme ce qui a changé.
+    fn stale_note_with(&mut self, key: &'static str, what: &str) -> String {
+        self.note(crate::telemetry::Signal::Collision);
+        trf(key, what)
+    }
+
+    /// **Enregistrer l'officine depuis ce poste**, contre ce qu'il avait
+    /// lu. Rend ce que le formulaire doit maintenant montrer (quand cela
+    /// change) et la phrase à dire.
+    ///
+    /// Un autre poste a écrit entre-temps : on **fusionne** champ par
+    /// champ au lieu de jeter ce qui vient d'être tapé. Ce que chacun a
+    /// changé de son côté passe ; un même champ changé des deux côtés
+    /// est nommé, et la valeur tapée reste dans le formulaire — un
+    /// second « Enregistrer » la garde, puisque le témoin suit alors ce
+    /// que la base porte.
+    fn save_officine(
+        &mut self,
+        mine: &crate::config::PharmacyConfig,
+        day: &str,
+        who: &str,
+    ) -> (
+        Option<crate::config::PharmacyConfig>,
+        Option<(bool, String)>,
+    ) {
+        match self
+            .db
+            .set_officine(mine, self.officine_seen.as_ref(), day, who)
+        {
+            Ok(true) => {
+                self.officine_seen = Some(mine.clone());
+                (None, None)
+            }
+            Ok(false) => {
+                self.officine_stale = true;
+                let Some(theirs) = self.db.officine() else {
+                    return (None, Some((true, self.stale_note("opts_officine_stale"))));
+                };
+                // Sans ce qu'on avait lu, pas de fusion : tout ce qui est
+                // tapé passerait pour une modification, et effacerait
+                // celle de l'autre poste.
+                let Some(base) = self.officine_seen.clone() else {
+                    self.officine_seen = Some(theirs.clone());
+                    return (
+                        Some(theirs),
+                        Some((true, self.stale_note("opts_officine_stale"))),
+                    );
+                };
+                let m = crate::config::PharmacyConfig::merge(&base, mine, &theirs);
+                if !m.conflicts.is_empty() {
+                    let what = officine_clashes(&m.conflicts, &theirs);
+                    let said = self.stale_note_with("opts_officine_clash", &what);
+                    self.officine_seen = Some(theirs);
+                    return (Some(m.merged), Some((true, said)));
+                }
+                match self.db.set_officine(&m.merged, Some(&theirs), day, who) {
+                    Ok(true) => {
+                        self.officine_seen = Some(m.merged.clone());
+                        (
+                            Some(m.merged),
+                            Some((false, tr("opts_officine_merged").to_owned())),
+                        )
+                    }
+                    // Encore un autre entre-temps : ce qui est affiché
+                    // reste, et se mesure à ce que la base portait.
+                    _ => {
+                        self.officine_seen = Some(theirs);
+                        (
+                            Some(m.merged),
+                            Some((true, self.stale_note("opts_officine_stale"))),
+                        )
+                    }
+                }
+            }
+            Err(e) => (
+                None,
+                Some((true, trf("opts_officine_error", plain_error(&e)))),
+            ),
+        }
+    }
+
     /// Compte un geste. Le seul chemin vers les compteurs.
     ///
     /// L'interrupteur est vérifié **dans** `Counters::note`, et non ici
@@ -7448,6 +7557,7 @@ impl Session {
                     }
                 }
                 Ok(crate::network::Progress::Failed(said)) => {
+                    let said = plain_error(&said);
                     self.net_auto = None;
                     self.conn_dirty = true;
                     self.log_connection(true, &said);
@@ -7615,6 +7725,7 @@ impl Session {
                     self.near_officines = near;
                 }
                 crate::postes::Progress::Failed(line) => {
+                    let line = plain_error(&line);
                     self.log_connection(true, &line);
                     self.posts_status = Some((true, line));
                     gone = true;
@@ -10992,6 +11103,8 @@ struct PostsWindow {
     /// Ouverte depuis la carte pour relier un poste : l'invitation part
     /// dès que la fenêtre est libre.
     invite_now: bool,
+    /// Le poste choisi sur la carte : l'invitation s'annonce pour lui.
+    invite_target: Option<String>,
 }
 
 /// What the base says about the posts, read when the window opens and
@@ -14215,6 +14328,36 @@ impl App {
                             session.refresh_stats();
                             session.view = MainView::Stats;
                         }
+                        // Un poste hors groupe, une invitation entendue
+                        // pour lui : la consigne et le champ du code seul.
+                        #[cfg(feature = "sync")]
+                        Ok("postes_seul") => {
+                            session.posts_auto_tried = true;
+                            session.posts_peers = vec![
+                                crate::postes::PeerSeen {
+                                    device: "7".repeat(64),
+                                    address: "192.168.1.20:7743".to_owned(),
+                                    member: false,
+                                    talked: None,
+                                    alone: false,
+                                    invites_me: true,
+                                    invite_tag: String::new(),
+                                },
+                                crate::postes::PeerSeen {
+                                    device: "9".repeat(64),
+                                    address: "192.168.1.40:7743".to_owned(),
+                                    member: false,
+                                    talked: None,
+                                    alone: true,
+                                    invites_me: false,
+                                    invite_tag: String::new(),
+                                },
+                            ];
+                            session.posts_window = Some(PostsWindow {
+                                summary: PostsSummary::read(&session.db).ok(),
+                                ..PostsWindow::default()
+                            });
+                        }
                         // Les postes : sur une base qui a fondé son
                         // groupe, pour que la capture montre la liste et
                         // les gestes. La synchronisation automatique ne
@@ -14296,6 +14439,8 @@ impl App {
                                 member: false,
                                 talked: None,
                                 alone: true,
+                                invites_me: false,
+                                invite_tag: String::new(),
                             }];
                             // La carte, une officine choisie : le volet
                             // montre ses gestes.
@@ -56421,20 +56566,37 @@ impl App {
                         };
                         let me = p.post;
                         if !p.in_group {
-                            ui.add(egui::Label::new(tr("conn_alone")).wrap());
+                            // **Une consigne, d'après ce qu'on entend** —
+                            // la même que la fenêtre des postes : une
+                            // invitation pour ce poste, un groupe en ligne,
+                            // ou personne.
+                            let inviting = peers.iter().find(|h| h.invites_me);
+                            let group: Vec<&crate::postes::PeerSeen> =
+                                peers.iter().filter(|h| !h.alone).collect();
+                            let (line, button) = if let Some(h) = inviting {
+                                (
+                                    trf("conn_alone_invited", &h.address),
+                                    tr("conn_alone_enter_code"),
+                                )
+                            } else if !group.is_empty() {
+                                (tr("conn_alone_group").to_owned(), tr("posts_open"))
+                            } else {
+                                (tr("conn_alone_first").to_owned(), tr("posts_open"))
+                            };
+                            ui.add(egui::Label::new(egui::RichText::new(line).strong()).wrap());
+                            if motif::button(ui, button).clicked() {
+                                open_posts = Some(String::new());
+                            }
                             ui.add_space(4.0);
-                            if peers.is_empty() {
+                            if group.is_empty() {
                                 ui.label(small(ui, tr("conn_heard_none").to_owned()));
                             } else {
                                 ui.label(small(ui, tr("conn_heard").to_owned()));
                             }
-                            for h in &peers {
+                            for h in &group {
                                 ui.horizontal_wrapped(|ui| {
                                     ui.label(egui::RichText::new(h.address.as_str()).monospace());
                                     ui.label(small(ui, crate::postes::groups_of(&h.device)));
-                                    if motif::button(ui, tr("posts_join")).clicked() {
-                                        open_posts = Some(h.address.clone());
-                                    }
                                 });
                             }
                             return;
@@ -57417,7 +57579,7 @@ impl App {
         let mut dial: Option<String> = None;
         let mut join_near: Option<String> = None;
         let mut invite_near = false;
-        let mut invite_post = false;
+        let mut invite_post: Option<String> = None;
         let mut create_then_invite = false;
         let mut near_device: Option<String> = None;
         let mut adopt: Option<(String, String, String)> = None;
@@ -57572,7 +57734,7 @@ impl App {
                                         .on_hover_text(tr("conn_post_alone_invite_tooltip"))
                                         .clicked()
                                     {
-                                        invite_post = true;
+                                        invite_post = Some(n.device.clone());
                                     }
                                 } else if motif::button(ui, tr("conn_post_alone_link")).clicked() {
                                     *open_posts = Some(String::new());
@@ -57844,10 +58006,11 @@ impl App {
             session.conn_pick = None;
             session.conn_dirty = true;
         }
-        if invite_post && session.posts_window.is_none() {
+        if let (Some(target), true) = (invite_post, session.posts_window.is_none()) {
             session.posts_window = Some(PostsWindow {
                 summary: PostsSummary::read(&session.db).ok(),
                 invite_now: true,
+                invite_target: Some(target),
                 ..PostsWindow::default()
             });
         }
@@ -58009,6 +58172,8 @@ impl App {
     #[cfg(feature = "sync")]
     fn posts_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
         use crate::postes::{Job, Progress};
+        // Les postes entendus, pour dire à un poste hors groupe quoi faire.
+        let peers = session.posts_peers.clone();
         let Some(w) = &mut session.posts_window else {
             return;
         };
@@ -58026,7 +58191,7 @@ impl App {
                         break;
                     }
                     Ok(Progress::Failed(said)) => {
-                        w.note = Some((true, said));
+                        w.note = Some((true, plain_error(&said)));
                         finished = true;
                         break;
                     }
@@ -58034,7 +58199,12 @@ impl App {
                         ctx.request_repaint_after(Duration::from_millis(150));
                         break;
                     }
+                    // La tâche s'est arrêtée sans rien dire : on le dit,
+                    // plutôt qu'un bouton qui revient sans explication.
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        if w.note.is_none() {
+                            w.note = Some((true, tr("conn_task_lost").to_owned()));
+                        }
                         finished = true;
                         break;
                     }
@@ -58070,6 +58240,7 @@ impl App {
             if w.summary.as_ref().is_some_and(|s| s.in_group) {
                 start = Some(Job::Invite {
                     port: config.postes.port,
+                    for_device: w.invite_target.take(),
                 });
             }
         }
@@ -58125,24 +58296,68 @@ impl App {
                         if !sum.in_group {
                             ui.add_space(6.0);
                             ui.label(tr("posts_none"));
-                            ui.horizontal_wrapped(|ui| {
-                                if motif::button_enabled(ui, tr("posts_found"), !busy)
-                                    .on_hover_text(tr("posts_found_tooltip"))
-                                    .clicked()
-                                {
-                                    start = Some(Job::Found {
-                                        name: config.pharmacy.name.clone(),
-                                    });
-                                }
-                            });
                             ui.add_space(4.0);
+                            // **Ce qu'il faut faire, d'après ce qu'on
+                            // entend** : une invitation pour ce poste, un
+                            // groupe en ligne, ou personne — trois cas, trois
+                            // consignes, et le bouton qui va avec.
+                            let inviting = peers.iter().find(|p| p.invites_me);
+                            let group_online: Vec<&str> = peers
+                                .iter()
+                                .filter(|p| !p.alone)
+                                .map(|p| p.address.as_str())
+                                .collect();
+                            let guide = |ui: &mut egui::Ui, text: String| {
+                                ui.add(egui::Label::new(egui::RichText::new(text).strong()).wrap());
+                            };
+                            if let Some(p) = inviting {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("posts_guide_invited", &p.address))
+                                            .strong()
+                                            .color(motif::accent()),
+                                    )
+                                    .wrap(),
+                                );
+                            } else if !group_online.is_empty() {
+                                guide(ui, trf("posts_guide_group", group_online.join(", ")));
+                            } else {
+                                guide(ui, tr("posts_guide_first").to_owned());
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button_enabled(ui, tr("posts_found"), !busy)
+                                        .on_hover_text(tr("posts_found_tooltip"))
+                                        .clicked()
+                                    {
+                                        start = Some(Job::Found {
+                                            name: config.pharmacy.name.clone(),
+                                        });
+                                    }
+                                });
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("posts_guide_other"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                            }
+                            ui.add_space(6.0);
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(tr("posts_join_label"));
+                                ui.label(if inviting.is_some() {
+                                    tr("posts_guide_code")
+                                } else {
+                                    tr("posts_join_label")
+                                });
                                 motif::field(
                                     ui,
                                     chars_wide(ui, 22.0),
                                     egui::TextEdit::singleline(&mut w.join_address).hint_text(
-                                        motif::hint(App::join_hint(ui, "posts_join_hint")),
+                                        motif::hint(if inviting.is_some() {
+                                            tr("posts_code_hint")
+                                        } else {
+                                            App::join_hint(ui, "posts_join_hint")
+                                        }),
                                     ),
                                 );
                                 let ready = !busy && !w.join_address.trim().is_empty();
@@ -58155,25 +58370,35 @@ impl App {
                                     .clicked()
                                 {
                                     w.join_armed = false;
-                                    // Un code d'invitation, ou une adresse
-                                    // seule — un code abîmé est dit.
-                                    match crate::network::read_join(&w.join_address) {
-                                        Some((address, ticket)) => {
+                                    // Le code seul quand l'invitation est
+                                    // entendue ; sinon le code complet.
+                                    let heard: Vec<(&str, &str)> = peers
+                                        .iter()
+                                        .filter(|p| p.invites_me)
+                                        .map(|p| (p.address.as_str(), p.invite_tag.as_str()))
+                                        .collect();
+                                    match crate::postes::join_target(&w.join_address, &heard) {
+                                        Ok((address, ticket)) => {
                                             start = Some(Job::Join {
                                                 address,
                                                 name: String::new(),
                                                 ticket,
                                             })
                                         }
-                                        None => {
+                                        Err(crate::postes::JoinText::NoMatch) => {
+                                            w.note =
+                                                Some((true, tr("posts_join_no_match").to_owned()))
+                                        }
+                                        Err(crate::postes::JoinText::NoAddress) => {
+                                            w.note =
+                                                Some((true, tr("posts_join_no_address").to_owned()))
+                                        }
+                                        Err(crate::postes::JoinText::Unreadable) => {
                                             w.note = Some((true, tr("net_join_bad").to_owned()))
                                         }
                                     }
                                 }
                             });
-                            // L'adresse voyage dans le code d'invitation :
-                            // choisir celle d'un poste entendu ne suffit plus,
-                            // une invitation à code refuse qui vient sans.
                             if w.join_armed {
                                 ui.add(
                                     egui::Label::new(
@@ -58183,6 +58408,22 @@ impl App {
                                     )
                                     .wrap(),
                                 );
+                            }
+                            // Un groupe existe : le fonder ici en ferait
+                            // un second. Possible encore, mais plus bas et
+                            // dit pour ce qu'il est.
+                            if inviting.is_some() || !group_online.is_empty() {
+                                ui.add_space(8.0);
+                                ui.horizontal_wrapped(|ui| {
+                                    if motif::button_enabled(ui, tr("posts_found_other"), !busy)
+                                        .on_hover_text(tr("posts_found_other_tooltip"))
+                                        .clicked()
+                                    {
+                                        start = Some(Job::Found {
+                                            name: config.pharmacy.name.clone(),
+                                        });
+                                    }
+                                });
                             }
                             return;
                         }
@@ -58322,6 +58563,12 @@ impl App {
                             );
                         }
                         if let Some(code) = &w.waiting {
+                            // **Le code seul, en grand** : l'invitation
+                            // s'annonce sur le réseau local, l'autre poste
+                            // n'a que lui à saisir. Le code complet, adresse
+                            // comprise, en dessous — pour un poste qui ne
+                            // l'entend pas (autre réseau, pare-feu).
+                            let short = code.split('@').next().unwrap_or(code);
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(tr("posts_waiting"))
@@ -58330,13 +58577,23 @@ impl App {
                                 )
                                 .wrap(),
                             );
+                            ui.label(
+                                egui::RichText::new(short)
+                                    .size(motif::pt(ui, 20.0))
+                                    .monospace()
+                                    .strong(),
+                            );
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("posts_waiting_full"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
                             ui.horizontal_wrapped(|ui| {
-                                ui.label(
-                                    egui::RichText::new(code.as_str())
-                                        .size(motif::pt(ui, 16.0))
-                                        .monospace()
-                                        .strong(),
-                                );
+                                ui.label(egui::RichText::new(code.as_str()).monospace());
                                 if motif::button(ui, tr("net_code_copy")).clicked() {
                                     ui.ctx().copy_text(code.clone());
                                 }
@@ -58368,6 +58625,7 @@ impl App {
                         {
                             start = Some(Job::Invite {
                                 port: config.postes.port,
+                                for_device: None,
                             });
                         }
                         if !w.leave_armed {
@@ -58495,6 +58753,15 @@ impl App {
     #[cfg(feature = "sync")]
     fn net_window(ctx: &egui::Context, session: &mut Session, config: &Config) {
         use crate::network::{Job, Progress};
+        // Les officines entendues sur le réseau local, hors celles déjà
+        // appairées : à nommer à qui n'a pas encore de réseau.
+        let near: Vec<String> = session
+            .near_officines
+            .iter()
+            .map(|n| n.name.trim().to_owned())
+            .filter(|n| !n.is_empty())
+            .collect();
+        let mut to_map = false;
         let Some(w) = &mut session.net_window else {
             return;
         };
@@ -58513,7 +58780,7 @@ impl App {
                         break;
                     }
                     Ok(Progress::Failed(said)) => {
-                        w.note = Some((true, said));
+                        w.note = Some((true, plain_error(&said)));
                         finished = true;
                         break;
                     }
@@ -58521,7 +58788,12 @@ impl App {
                         ctx.request_repaint_after(Duration::from_millis(150));
                         break;
                     }
+                    // La tâche s'est arrêtée sans rien dire : on le dit,
+                    // plutôt qu'un bouton qui revient sans explication.
                     Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        if w.note.is_none() {
+                            w.note = Some((true, tr("conn_task_lost").to_owned()));
+                        }
                         finished = true;
                         break;
                     }
@@ -58668,6 +58940,25 @@ impl App {
                         if !sum.in_network {
                             ui.add_space(6.0);
                             ui.label(tr("net_none"));
+                            ui.add_space(4.0);
+                            // **Ce qu'il faut faire** : une officine à
+                            // portée se relie d'un clic sur la carte ; une
+                            // officine distante, par un code.
+                            if !near.is_empty() {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(trf("net_guide_near", near.join(", ")))
+                                            .strong()
+                                            .color(motif::accent()),
+                                    )
+                                    .wrap(),
+                                );
+                                if motif::button(ui, tr("net_guide_map")).clicked() {
+                                    to_map = true;
+                                }
+                                ui.add_space(4.0);
+                            }
+                            ui.add(egui::Label::new(tr("net_guide_far")).wrap());
                             ui.horizontal_wrapped(|ui| {
                                 if motif::button_enabled(ui, tr("net_create"), !busy)
                                     .on_hover_text(tr("net_create_tooltip"))
@@ -59217,8 +59508,16 @@ impl App {
         if reread_net {
             w.reread(&session.db);
         }
-        if close && w.job.is_none() {
+        // Vers la carte : la fenêtre se ferme, la vue Connexions s'ouvre
+        // sur la carte, où chaque officine voisine a ses gestes.
+        let to_map = to_map && w.job.is_none();
+        if (close || to_map) && w.job.is_none() {
             session.net_window = None;
+        }
+        if to_map {
+            session.view = MainView::Connexions;
+            session.conn_map = true;
+            session.conn_dirty = true;
         }
         if peer_stale {
             session.stale("net_peer_stale");
@@ -70724,31 +71023,15 @@ impl eframe::App for App {
                     .operators
                     .first()
                     .map_or_else(String::new, |o| o.initials.clone());
-                match session.db.set_officine(
-                    &self.config.pharmacy,
-                    session.officine_seen.as_ref(),
-                    &day,
-                    &who,
-                ) {
-                    Ok(true) => session.officine_seen = Some(self.config.pharmacy.clone()),
-                    Ok(false) => {
-                        // Un autre poste a écrit avant nous : on montre
-                        // ce qu'il a écrit plutôt que de l'effacer — et
-                        // **dans le formulaire aussi**, sinon l'écran
-                        // continuerait d'afficher un texte que la base
-                        // ne porte pas.
-                        if let Some(theirs) = session.db.officine() {
-                            self.config.pharmacy = theirs.clone();
-                            let said = session.stale_note("opts_officine_stale");
-                            if let Some(editor) = &mut self.options {
-                                editor.cfg.pharmacy = theirs.clone();
-                                editor.message = Some((true, said));
-                            }
-                            session.officine_seen = Some(theirs);
-                        }
-                        session.officine_stale = true;
+                let (shown, note) = session.save_officine(&self.config.pharmacy, &day, &who);
+                if let Some(shown) = shown {
+                    self.config.pharmacy = shown.clone();
+                    if let Some(editor) = &mut self.options {
+                        editor.cfg.pharmacy = shown;
                     }
-                    Err(_) => {}
+                }
+                if let (Some(note), Some(editor)) = (note, &mut self.options) {
+                    editor.message = Some(note);
                 }
                 session.refresh_dashboard();
             }
@@ -79024,6 +79307,81 @@ mod tests {
         session.officine_seen = session.officine_fresh.take();
         session.resync();
         assert_eq!(session.officine_fresh, None);
+    }
+
+    /// **Deux postes corrigent l'officine en même temps : rien de ce qui
+    /// a été tapé n'est perdu.** Deux champs différents se fusionnent en
+    /// silence ; un même champ changé des deux côtés est nommé, la valeur
+    /// tapée reste affichée, et un second « Enregistrer » la garde.
+    #[test]
+    fn two_posts_editing_the_officine_lose_nothing_that_was_typed() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-officine-merge-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("shared.db");
+        let mut session =
+            super::Session::new(crate::db::Db::open(&path, "secret").unwrap(), 12, 30, true)
+                .unwrap();
+        let other = crate::db::Db::open(&path, "secret").unwrap();
+        let day = "2026-09-25";
+        let start = crate::config::PharmacyConfig {
+            name: "Pharmacie des Lilas".to_owned(),
+            phone: "01".to_owned(),
+            ..Default::default()
+        };
+        session.db.set_officine(&start, None, day, "CL").unwrap();
+        session.officine_seen = Some(start.clone());
+
+        // L'autre poste change l'adresse ; celui-ci, le téléphone.
+        let there = crate::config::PharmacyConfig {
+            address: "14 rue des Lilas".to_owned(),
+            ..start.clone()
+        };
+        assert!(other.set_officine(&there, Some(&start), day, "MB").unwrap());
+        let here = crate::config::PharmacyConfig {
+            phone: "02".to_owned(),
+            ..start.clone()
+        };
+        let (shown, note) = session.save_officine(&here, day, "CL");
+        let shown = shown.expect("le formulaire montre la fusion");
+        assert_eq!(
+            (shown.phone.as_str(), shown.address.as_str()),
+            ("02", "14 rue des Lilas")
+        );
+        assert_eq!(note.map(|n| n.0), Some(false), "fusionné sans alerte");
+        assert_eq!(session.db.officine(), Some(shown.clone()), "et enregistré");
+
+        // Le même champ, des deux côtés.
+        let there = crate::config::PharmacyConfig {
+            phone: "03".to_owned(),
+            ..shown.clone()
+        };
+        assert!(other.set_officine(&there, Some(&shown), day, "MB").unwrap());
+        let here = crate::config::PharmacyConfig {
+            phone: "04".to_owned(),
+            ..shown.clone()
+        };
+        let (kept, note) = session.save_officine(&here, day, "CL");
+        let (bad, said) = note.unwrap();
+        assert!(bad && said.contains("03"), "{said}");
+        assert_eq!(
+            kept.map(|k| k.phone),
+            Some("04".to_owned()),
+            "la valeur tapée reste"
+        );
+        assert_eq!(
+            session.db.officine().map(|o| o.phone),
+            Some("03".to_owned())
+        );
+        // Enregistrer encore : elle est gardée.
+        let (_, note) = session.save_officine(&here, day, "CL");
+        assert_eq!(note, None);
+        assert_eq!(
+            session.db.officine().map(|o| o.phone),
+            Some("04".to_owned())
+        );
     }
 
     /// **Ouvrir la trame et la reposer sans rien changer ne réécrit

@@ -41689,7 +41689,8 @@ impl Db {
                 continue;
             }
             let local = Self::local_row(conn, &op.table, cols, &op.key)?;
-            let outcome = decide(op, t.append_only, local.as_ref());
+            let mut outcome = decide(op, t.append_only, local.as_ref());
+            crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
             let kind = match (&outcome.action, op.kind) {
                 (Action::Refused, _) => "REFUS",
                 (_, Kind::Update | Kind::Patch) if local.is_none() => "ABSENT",

@@ -700,9 +700,162 @@ pub fn plain_identifier(name: &str) -> bool {
         && !name.starts_with(|c: char| c.is_ascii_digit())
 }
 
+/// **L'officine reçue d'un autre poste se fusionne champ par champ.**
+/// Elle est rangée d'un seul tenant (`settings`, clé `pharmacy`) : pour
+/// [`decide`], deux postes qui l'avaient changée — un téléphone ici, une
+/// préparatrice ajoutée là — se contredisaient sur la seule colonne
+/// `value`, et la modification attendait un arbitrage à la main.
+///
+/// Quand la fusion à trois voix ([`crate::config::PharmacyConfig::merge`])
+/// ne trouve aucun champ changé des deux côtés, la ligne prend la
+/// fusion — et la date et l'auteur de l'écriture reçue. Sinon, rien ne
+/// change : le conflit reste posé, comme avant.
+pub fn merge_officine(op: &Op, local: Option<&Map<String, Value>>, outcome: &mut Outcome) {
+    let meta = ["value", "updated_on", "updated_by"];
+    let is_officine = op.table == "settings"
+        && op.kind == Kind::Update
+        && op.key.get("key").and_then(Value::as_str) == Some("pharmacy");
+    let Some(row) = local.filter(|_| is_officine) else {
+        return;
+    };
+    if !outcome.conflicts.iter().any(|c| c.column == "value")
+        || outcome
+            .conflicts
+            .iter()
+            .any(|c| !meta.contains(&c.column.as_str()))
+    {
+        return;
+    }
+    // **Rien que ce que cette version connaît** : une version plus
+    // récente peut écrire un champ de plus, que la lecture d'ici
+    // laisserait tomber — et la fusion réécrirait l'officine sans lui,
+    // une valeur qu'aucun des deux postes n'a écrite. Un champ inconnu :
+    // pas de fusion, le conflit reste.
+    let read = |v: Option<&Value>| {
+        let raw = v.and_then(Value::as_str)?;
+        let parsed = toml::from_str::<crate::config::PharmacyConfig>(raw).ok()?;
+        let again = toml::to_string(&parsed).ok()?;
+        (toml::from_str::<toml::Table>(raw).ok()? == toml::from_str::<toml::Table>(&again).ok()?)
+            .then_some(parsed)
+    };
+    let (Some(base), Some(mine), Some(theirs)) = (
+        read(op.old.get("value")),
+        read(row.get("value")),
+        read(op.new.get("value")),
+    ) else {
+        return;
+    };
+    let m = crate::config::PharmacyConfig::merge(&base, &mine, &theirs);
+    if !m.conflicts.is_empty() {
+        return;
+    }
+    let Ok(text) = toml::to_string(&m.merged) else {
+        return;
+    };
+    let mut set = match std::mem::replace(&mut outcome.action, Action::Nothing) {
+        Action::Set(set) => set,
+        _ => Map::new(),
+    };
+    set.insert("value".to_owned(), Value::String(text));
+    // La fusion est des deux : les deux auteurs, la date la plus récente.
+    let word = |m: &Map<String, Value>, c: &str| {
+        m.get(c)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .trim()
+            .to_owned()
+    };
+    let (by_here, by_there) = (word(row, "updated_by"), word(&op.new, "updated_by"));
+    let mut names: Vec<&str> = Vec::new();
+    for n in by_here.split(',').chain(by_there.split(',')).map(str::trim) {
+        if !n.is_empty() && !names.contains(&n) {
+            names.push(n);
+        }
+    }
+    let by = names.join(", ");
+    set.insert("updated_by".to_owned(), Value::String(by));
+    let on = word(row, "updated_on").max(word(&op.new, "updated_on"));
+    set.insert("updated_on".to_owned(), Value::String(on));
+    outcome
+        .conflicts
+        .retain(|c| !meta.contains(&c.column.as_str()));
+    outcome.action = Action::Set(set);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Deux postes, deux champs de l'officine : la ligne reçue prend la
+    /// fusion au lieu d'attendre un arbitrage ; un même champ changé des
+    /// deux côtés reste un conflit.
+    #[test]
+    fn an_officine_changed_on_two_posts_merges_field_by_field() {
+        use crate::config::PharmacyConfig;
+        let text = |p: &PharmacyConfig| Value::String(toml::to_string(p).unwrap());
+        let base = PharmacyConfig {
+            name: "Pharmacie de la Gare".into(),
+            phone: "1".into(),
+            ..Default::default()
+        };
+        let mut here = base.clone();
+        here.phone = "2".into();
+        let mut there = base.clone();
+        there.address = "1 place de la Gare".into();
+        let op = Op {
+            file: File::Main,
+            table: "settings".into(),
+            kind: Kind::Update,
+            key: [("key".to_owned(), Value::String("pharmacy".into()))]
+                .into_iter()
+                .collect(),
+            old: [("value".to_owned(), text(&base))].into_iter().collect(),
+            new: [
+                ("value".to_owned(), text(&there)),
+                ("updated_by".to_owned(), Value::String("MB".into())),
+            ]
+            .into_iter()
+            .collect(),
+        };
+        let row: Map<String, Value> = [
+            ("key".to_owned(), Value::String("pharmacy".into())),
+            ("value".to_owned(), text(&here)),
+            ("updated_by".to_owned(), Value::String("CL".into())),
+        ]
+        .into_iter()
+        .collect();
+        let mut out = decide(&op, false, Some(&row));
+        assert!(!out.conflicts.is_empty(), "sans fusion, un conflit");
+        merge_officine(&op, Some(&row), &mut out);
+        assert!(out.conflicts.is_empty(), "{:?}", out.conflicts);
+        let Action::Set(set) = &out.action else {
+            panic!("{:?}", out.action)
+        };
+        let merged: PharmacyConfig = toml::from_str(set["value"].as_str().unwrap()).unwrap();
+        assert_eq!(
+            (merged.phone.as_str(), merged.address.as_str()),
+            ("2", "1 place de la Gare")
+        );
+        // Le même champ, des deux côtés : le conflit reste.
+        let mut clash = base.clone();
+        clash.phone = "3".into();
+        let mut op2 = op.clone();
+        op2.new.insert("value".into(), text(&clash));
+        let mut out = decide(&op2, false, Some(&row));
+        merge_officine(&op2, Some(&row), &mut out);
+        assert!(out.conflicts.iter().any(|c| c.column == "value"));
+        // Un champ qu'une version plus récente a écrit : pas de fusion —
+        // elle le ferait disparaître.
+        let mut op3 = op.clone();
+        let newer = format!(
+            "{}site = \"https://gare.fr\"\n",
+            toml::to_string(&there).unwrap()
+        );
+        op3.new.insert("value".into(), Value::String(newer));
+        let mut out = decide(&op3, false, Some(&row));
+        merge_officine(&op3, Some(&row), &mut out);
+        assert!(out.conflicts.iter().any(|c| c.column == "value"));
+    }
     use serde_json::json;
 
     fn m(v: Value) -> Map<String, Value> {

@@ -1276,7 +1276,138 @@ impl Operator {
     }
 }
 
+/// Un champ de l'officine que deux postes ont changé chacun à sa façon.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OfficineField {
+    Name,
+    Address,
+    Phone,
+    Pharmacist,
+    AmNumber,
+    /// Un membre de l'équipe, par ses initiales.
+    Operator(String),
+    Horaires,
+}
+
+/// Ce que la fusion de deux écritures de l'officine a donné.
+#[derive(Clone, Debug, PartialEq)]
+pub struct OfficineMerge {
+    /// Les deux écritures réunies ; sur un champ en conflit, `mine`.
+    pub merged: PharmacyConfig,
+    /// Les champs que les deux côtés ont changés différemment.
+    pub conflicts: Vec<OfficineField>,
+}
+
+/// Un champ, à trois voix : inchangé d'un côté, c'est l'autre qui
+/// l'emporte ; changé pareil des deux, c'est lui ; sinon, un conflit (et
+/// `mine`).
+fn three_way<T: PartialEq + Clone>(base: &T, mine: &T, theirs: &T) -> (T, bool) {
+    if mine == theirs || theirs == base {
+        (mine.clone(), false)
+    } else if mine == base {
+        (theirs.clone(), false)
+    } else {
+        (mine.clone(), true)
+    }
+}
+
 impl PharmacyConfig {
+    /// **Deux postes qui corrigent l'officine chacun de son côté ne se
+    /// refusent plus l'un l'autre.** L'officine est rangée d'un seul
+    /// tenant ; l'écriture contre ce qu'on avait lu refusait donc tout
+    /// dès que l'autre poste avait changé *quoi que ce soit* — un
+    /// téléphone ici, une préparatrice ajoutée là —, et ce qu'on venait
+    /// de taper était à refaire.
+    ///
+    /// Fusion à trois voix, champ par champ : `base` est ce que ce poste
+    /// avait lu, `mine` ce qu'il écrit, `theirs` ce que la base porte à
+    /// présent. L'équipe se fusionne **personne par personne**, par les
+    /// initiales (une ajoutée ici, une autre là : les deux restent) ; les
+    /// horaires, d'un bloc — deux lignes d'une même journée n'ont de sens
+    /// qu'ensemble.
+    pub fn merge(base: &Self, mine: &Self, theirs: &Self) -> OfficineMerge {
+        let mut conflicts = Vec::new();
+        let mut field = |b: &String, m: &String, t: &String, f: OfficineField| {
+            let (v, clash) = three_way(b, m, t);
+            if clash {
+                conflicts.push(f);
+            }
+            v
+        };
+        let name = field(&base.name, &mine.name, &theirs.name, OfficineField::Name);
+        let address = field(
+            &base.address,
+            &mine.address,
+            &theirs.address,
+            OfficineField::Address,
+        );
+        let phone = field(
+            &base.phone,
+            &mine.phone,
+            &theirs.phone,
+            OfficineField::Phone,
+        );
+        let pharmacist = field(
+            &base.pharmacist,
+            &mine.pharmacist,
+            &theirs.pharmacist,
+            OfficineField::Pharmacist,
+        );
+        let am_number = field(
+            &base.am_number,
+            &mine.am_number,
+            &theirs.am_number,
+            OfficineField::AmNumber,
+        );
+        let (horaires, clash) = three_way(&base.horaires, &mine.horaires, &theirs.horaires);
+        if clash {
+            conflicts.push(OfficineField::Horaires);
+        }
+        // L'équipe, par initiales : l'ordre de ce poste, puis ceux que
+        // l'autre a ajoutés, dans le sien.
+        let key = |o: &Operator| o.initials.trim().to_uppercase();
+        let find = |list: &[Operator], k: &str| list.iter().find(|o| key(o) == k).cloned();
+        let mut order: Vec<String> = Vec::new();
+        for o in mine
+            .operators
+            .iter()
+            .chain(&theirs.operators)
+            .chain(&base.operators)
+        {
+            let k = key(o);
+            if !order.contains(&k) {
+                order.push(k);
+            }
+        }
+        let mut operators = Vec::new();
+        for k in order {
+            let (b, m, t) = (
+                find(&base.operators, &k),
+                find(&mine.operators, &k),
+                find(&theirs.operators, &k),
+            );
+            let (kept, clash) = three_way(&b, &m, &t);
+            if clash {
+                conflicts.push(OfficineField::Operator(k));
+            }
+            if let Some(o) = kept {
+                operators.push(o);
+            }
+        }
+        OfficineMerge {
+            merged: Self {
+                name,
+                address,
+                phone,
+                pharmacist,
+                am_number,
+                operators,
+                horaires,
+            },
+            conflicts,
+        }
+    }
+
     /// The team member behind these initials, case-insensitively.
     pub fn operator(&self, initials: &str) -> Option<&Operator> {
         let wanted = initials.trim();
@@ -2043,6 +2174,88 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn op(i: &str, name: &str) -> Operator {
+        Operator {
+            initials: i.to_owned(),
+            name: name.to_owned(),
+            role: String::new(),
+        }
+    }
+
+    /// **Deux postes, deux champs différents : les deux restent.** Un
+    /// téléphone corrigé au comptoir, une préparatrice ajoutée en
+    /// arrière-boutique — sans conflit, et sans rien à retaper.
+    #[test]
+    fn two_posts_changing_different_fields_both_keep_theirs() {
+        let base = PharmacyConfig {
+            name: "Pharmacie de la Gare".into(),
+            phone: "03 29 00 00 00".into(),
+            operators: vec![op("CL", "Claire Leroy")],
+            ..Default::default()
+        };
+        let mut mine = base.clone();
+        mine.phone = "03 29 11 11 11".into();
+        mine.operators.push(op("YS", "Youssef S."));
+        let mut theirs = base.clone();
+        theirs.address = "1 place de la Gare".into();
+        theirs.operators.push(op("MB", "Marie B."));
+        let m = PharmacyConfig::merge(&base, &mine, &theirs);
+        assert!(m.conflicts.is_empty(), "{:?}", m.conflicts);
+        assert_eq!(m.merged.phone, "03 29 11 11 11");
+        assert_eq!(m.merged.address, "1 place de la Gare");
+        let team: Vec<&str> = m
+            .merged
+            .operators
+            .iter()
+            .map(|o| o.initials.as_str())
+            .collect();
+        assert_eq!(team, ["CL", "YS", "MB"]);
+    }
+
+    /// Un même champ changé de deux façons : le conflit est nommé, et ce
+    /// qu'on a tapé reste dans le formulaire.
+    #[test]
+    fn the_same_field_changed_twice_is_named_and_mine_is_kept() {
+        let base = PharmacyConfig {
+            phone: "1".into(),
+            operators: vec![op("CL", "Claire")],
+            ..Default::default()
+        };
+        let mut mine = base.clone();
+        mine.phone = "2".into();
+        mine.operators[0].name = "Claire Leroy".into();
+        let mut theirs = base.clone();
+        theirs.phone = "3".into();
+        theirs.operators[0].name = "Claire L.".into();
+        let m = PharmacyConfig::merge(&base, &mine, &theirs);
+        assert_eq!(
+            m.conflicts,
+            [OfficineField::Phone, OfficineField::Operator("CL".into())]
+        );
+        assert_eq!(m.merged.phone, "2");
+        assert_eq!(m.merged.operators[0].name, "Claire Leroy");
+    }
+
+    /// Retirée d'un côté, inchangée de l'autre : retirée. Retirée d'un
+    /// côté, modifiée de l'autre : un conflit, pas une disparition.
+    #[test]
+    fn a_removed_member_stays_removed_unless_the_other_side_changed_her() {
+        let base = PharmacyConfig {
+            operators: vec![op("CL", "Claire"), op("MB", "Marie")],
+            ..Default::default()
+        };
+        let mut mine = base.clone();
+        mine.operators.retain(|o| o.initials != "MB");
+        let theirs = base.clone();
+        let m = PharmacyConfig::merge(&base, &mine, &theirs);
+        assert!(m.conflicts.is_empty());
+        assert_eq!(m.merged.operators.len(), 1);
+        let mut theirs = base.clone();
+        theirs.operators[1].name = "Marie Bernard".into();
+        let m = PharmacyConfig::merge(&base, &mine, &theirs);
+        assert_eq!(m.conflicts, [OfficineField::Operator("MB".into())]);
+    }
 
     /// **« On ne sait pas » n'est pas « non ».** La qualité reste du
     /// texte libre ; ce que la liste en lit décide d'une seule chose —

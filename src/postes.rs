@@ -465,6 +465,12 @@ pub struct PeerSeen {
     pub talked: Option<bool>,
     /// D'aucun groupe : à relier.
     pub alone: bool,
+    /// Il a une invitation ouverte pour ce poste — nommément, ou pour
+    /// tout poste hors groupe quand celui-ci en est un : il suffit alors
+    /// de saisir le code affiché sur lui.
+    pub invites_me: bool,
+    /// L'étiquette du code de cette invitation ([`invite_tag`]).
+    pub invite_tag: String,
 }
 
 /// Ce qu'on demande au fil des postes.
@@ -473,7 +479,14 @@ pub enum Job {
     /// Fonder le groupe sur cette base.
     Found { name: String },
     /// Ouvrir une porte le temps d'une invitation.
-    Invite { port: u16 },
+    /// `for_device` : le poste invité quand on le connaît (choisi sur la
+    /// carte) ; sinon tout poste hors groupe du réseau local voit
+    /// l'invitation. L'annonce ne porte que l'adresse — le code reste à
+    /// lire sur l'écran de ce poste.
+    Invite {
+        port: u16,
+        for_device: Option<String>,
+    },
     /// Rejoindre le groupe en composant l'adresse du poste qui invite.
     /// **Ce que ce poste contenait est remplacé.**
     /// Avec le ticket du code d'invitation quand on l'a : rien à
@@ -492,6 +505,20 @@ pub enum Job {
 
 const INVITE_PATIENCE: Duration = Duration::from_secs(300);
 const TALK_PATIENCE: Duration = Duration::from_secs(8);
+
+/// Combien de connexions une invitation accepte avant de se fermer, en
+/// tout et par adresse.
+const INVITE_TRIES: usize = 20;
+const INVITE_TRIES_PER_IP: usize = 3;
+
+/// Éteint une annonce quand il tombe.
+struct Quiet(std::sync::Arc<std::sync::atomic::AtomicBool>);
+
+impl Drop for Quiet {
+    fn drop(&mut self) {
+        self.0.store(false, std::sync::atomic::Ordering::SeqCst);
+    }
+}
 
 /// Lancer une tâche sur son propre fil, avec sa propre connexion à la
 /// base. `answers` porte la réponse de l'écran au code affiché.
@@ -552,7 +579,7 @@ pub fn run(
             let n = posts.found(&db, name, today)?;
             Ok(trn("posts_done_founded", &[&n]))
         }
-        Job::Invite { port } => {
+        Job::Invite { port, for_device } => {
             let trousseau = posts
                 .trousseau
                 .clone()
@@ -576,27 +603,96 @@ pub fn run(
                 &ticket,
                 &format!("{}:{port}", local_address()),
             )));
-            let mut link = door
-                .accept(INVITE_PATIENCE)
-                .map_err(|_| tr("posts_err_nobody").to_owned())?;
-            let mut session = Session::new(
-                &posts.device,
-                Some(&trousseau),
-                Intent::Invite,
-                false,
-                &posts.known(&db),
-            )
-            .and_then(|s| s.with_ticket(ticket))
-            .map_err(|e| format!("{e:?}"))?;
-            let mut meter = Meter::new();
-            bpm_sync::drive(
-                &mut session,
-                &mut link,
-                &mut posts.journal,
-                &mut meter,
-                &mut confirm,
-            )
-            .map_err(|_| tr("posts_err_refused").to_owned())?;
+            // **L'invitation se dit sur le réseau local**, le temps qu'elle
+            // attend : le poste invité la voit et n'a plus qu'à saisir le
+            // code, sans l'adresse. L'annonce ne porte rien de secret —
+            // sans le code, la poignée de main échoue des deux côtés.
+            let announcing = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+            // Éteinte à la sortie, quelle qu'elle soit — une erreur en
+            // chemin laissait l'annonce courir jusqu'à la fermeture.
+            let _quiet = Quiet(std::sync::Arc::clone(&announcing));
+            {
+                let on = std::sync::Arc::clone(&announcing);
+                let me = posts.device_hex();
+                let group = hex(&trousseau.name().bytes());
+                let target = for_device.clone();
+                let tag = invite_tag(&ticket);
+                let port = *port;
+                std::thread::spawn(move || {
+                    let Ok(u) = std::net::UdpSocket::bind("0.0.0.0:0") else {
+                        return;
+                    };
+                    let _ = u.set_broadcast(true);
+                    let text = beacon_invite(&me, port, &group, target.as_deref(), &tag);
+                    while on.load(std::sync::atomic::Ordering::SeqCst) {
+                        let _ = u.send_to(text.as_bytes(), ("255.255.255.255", port));
+                        std::thread::sleep(Duration::from_secs(2));
+                    }
+                });
+            }
+            // **Quelques essais, pas un seul** : l'annonce dit à tout le
+            // réseau local qu'une porte est ouverte, et une seule
+            // connexion acceptée laissait le premier venu, avec un code
+            // faux, fermer l'invitation du poste qui l'attendait. Le code
+            // de 80 bits rend ces essais sans danger ; chacun est borné
+            // par ce qui reste des cinq minutes.
+            let until = std::time::Instant::now() + INVITE_PATIENCE;
+            let mut tries = 0;
+            let mut per_ip: std::collections::HashMap<std::net::IpAddr, usize> = Default::default();
+            let outcome = loop {
+                let left = until.saturating_duration_since(std::time::Instant::now());
+                if left.is_zero() || tries >= INVITE_TRIES {
+                    break None;
+                }
+                // Qui se tait plus de huit secondes est lâché : une
+                // connexion muette ne tient pas la porte cinq minutes.
+                let Ok(link) = door.accept_with(left, TALK_PATIENCE) else {
+                    break None;
+                };
+                // Trois essais par adresse : quelques connexions de rebut
+                // n'épuisent pas ceux du poste invité.
+                let from = link.peer_ip();
+                let n = from.map(|ip| per_ip.entry(ip).or_insert(0));
+                if let Some(n) = n {
+                    *n += 1;
+                    if *n > INVITE_TRIES_PER_IP {
+                        continue;
+                    }
+                }
+                tries += 1;
+                let mut link = link.with_deadline(left);
+                let mut session = Session::new(
+                    &posts.device,
+                    Some(&trousseau),
+                    Intent::Invite,
+                    false,
+                    &posts.known(&db),
+                )
+                .and_then(|s| s.with_ticket(ticket))
+                .map_err(|e| format!("{e:?}"))?;
+                let mut meter = Meter::new();
+                if bpm_sync::drive(
+                    &mut session,
+                    &mut link,
+                    &mut posts.journal,
+                    &mut meter,
+                    &mut confirm,
+                )
+                .is_ok()
+                {
+                    break Some(session);
+                }
+                let _ = tx.send(Progress::Status(tr("posts_invite_retry").to_owned()));
+            };
+            announcing.store(false, std::sync::atomic::Ordering::SeqCst);
+            let Some(session) = outcome else {
+                return Err(tr(if tries == 0 {
+                    "posts_err_nobody"
+                } else {
+                    "posts_err_refused_here"
+                })
+                .to_owned());
+            };
             if let Some(peer) = session.peer() {
                 Posts::admit(&db, &peer)?;
             }
@@ -702,6 +798,10 @@ pub struct Heard {
     /// officine. Faux pour la première version de l'annonce, qui ne
     /// venait que d'un poste d'un groupe.
     pub alone: bool,
+    /// Une invitation ouverte sur lui : pour qui — une empreinte, ou « * »
+    /// pour tout poste hors groupe — et l'étiquette de son code
+    /// ([`invite_tag`]).
+    pub invites: Option<(String, String)>,
 }
 
 /// L'annonce qu'un poste envoie sur le réseau local : son identité et
@@ -713,8 +813,21 @@ pub fn beacon(device: &str, port: u16) -> String {
 /// L'inverse, avec l'adresse d'où l'annonce est venue.
 pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
     let parts: Vec<&str> = text.split_whitespace().collect();
+    let mut invites = None;
     let (device, port, alone) = match parts.as_slice() {
         ["BPMPOSTE1", d, p] => (*d, *p, false),
+        // Une invitation ouverte : d'un poste d'un groupe seulement.
+        ["BPMPOSTE2", d, p, g, pour, tag] => {
+            unhex::<10>(g)?;
+            let target = pour.strip_prefix("pour:")?;
+            let target = if *target == *"*" {
+                "*".to_owned()
+            } else {
+                hex(&unhex::<32>(target)?)
+            };
+            invites = Some((target, hex(&unhex::<4>(tag)?)));
+            (*d, *p, false)
+        }
         // La seconde version dit le groupe — son empreinte, que la
         // poignée de main montre de toute façon — ou « - » pour un poste
         // seul.
@@ -732,7 +845,80 @@ pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
         device,
         address: std::net::SocketAddr::new(from, port).to_string(),
         alone,
+        invites,
     })
+}
+
+/// Ce que le champ « Rejoindre » ne permet pas de faire.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum JoinText {
+    /// Ni un code, ni une adresse.
+    Unreadable,
+    /// Un code seul, et aucune invitation entendue pour dire où.
+    NoAddress,
+    /// Un code seul qu'aucune invitation entendue ne porte : mal recopié,
+    /// ou une annonce qui n'est pas la bonne.
+    NoMatch,
+}
+
+/// **Ce qu'on a tapé pour rejoindre, et où.** Le code complet porte
+/// l'adresse (`XXXX-XXXX-XXXX-XXXX@192.168.1.20:7743`) ; quand une
+/// invitation est entendue sur le réseau local (`inviting`, l'adresse du
+/// poste qui invite), **le code seul suffit** — c'est ce qu'on lit sur
+/// l'autre écran, et le reste est long à recopier sans faute. Tirets,
+/// espaces, minuscules et les lettres qui se confondent (O et 0, I, L
+/// et 1) sont acceptés : voir `Ticket::parse`.
+pub fn join_target(
+    text: &str,
+    inviting: &[(&str, &str)],
+) -> Result<(String, Option<bpm_sync::Ticket>), JoinText> {
+    let text = text.trim();
+    if text.contains('@') {
+        return crate::network::read_join(text).ok_or(JoinText::Unreadable);
+    }
+    if let Some(ticket) = bpm_sync::Ticket::parse(text) {
+        if inviting.is_empty() {
+            return Err(JoinText::NoAddress);
+        }
+        // L'invitation que ce code ouvre, par son étiquette : une seule.
+        let tag = invite_tag(&ticket);
+        let mut matching = inviting.iter().filter(|(_, t)| *t == tag);
+        return match (matching.next(), matching.next()) {
+            (Some((at, _)), None) => Ok(((*at).to_owned(), Some(ticket))),
+            _ => Err(JoinText::NoMatch),
+        };
+    }
+    // Une adresse seule : `ip:port`.
+    if text.parse::<std::net::SocketAddr>().is_ok() {
+        return Ok((text.to_owned(), None));
+    }
+    Err(JoinText::Unreadable)
+}
+
+/// L'annonce d'une invitation ouverte : la seconde version, pour qui —
+/// un poste nommé, ou « * » pour tout poste hors groupe — et l'étiquette
+/// de son code. Six mots : une version d'avant l'ignore.
+pub fn beacon_invite(
+    device: &str,
+    port: u16,
+    group: &str,
+    target: Option<&str>,
+    tag: &str,
+) -> String {
+    format!(
+        "BPMPOSTE2 {device} {port} {group} pour:{} {tag}",
+        target.unwrap_or("*")
+    )
+}
+
+/// **L'étiquette d'un code d'invitation** : quatre octets tirés du code,
+/// annoncés avec l'invitation. Le code tapé sur l'autre poste choisit
+/// ainsi *son* invitation parmi celles qu'on entend — une annonce
+/// contrefaite, qui ne connaît pas le code, ne peut pas porter la bonne
+/// et ne détourne pas le code vers une autre adresse. Elle ne révèle rien
+/// d'utile : retrouver le code depuis elle, c'est essayer 2^80 codes.
+pub fn invite_tag(ticket: &bpm_sync::Ticket) -> String {
+    hex(&blake3::derive_key("bpm-caddy/invite-tag/v1", &ticket.bytes())[..4])
 }
 
 /// La seconde version de l'annonce : envoyée **aussi par un poste seul**,
@@ -931,6 +1117,9 @@ struct Seen {
 
 /// Combien de temps un poste reste « en ligne » sans s'annoncer.
 const SEEN_FOR: Duration = Duration::from_secs(15);
+
+/// Combien de postes entendus on retient au plus.
+const MOST_POSTS_HEARD: usize = 64;
 
 /// Combien d'officines voisines on retient au plus : les annonces
 /// viennent de n'importe qui sur le réseau local, et n'importe qui ne
@@ -1216,7 +1405,27 @@ fn auto(
                     continue;
                 }
                 if let Some(h) = text.and_then(|t| heard(t, from.ip())) {
-                    if h.device != me {
+                    // **La première adresse tient** tant qu'elle s'annonce,
+                    // et la liste a une taille : une annonce reprise d'une
+                    // autre machine sous la même identité ne prend pas sa
+                    // place, et des identités inventées en masse ne la
+                    // gonflent pas.
+                    let now = Instant::now();
+                    let held_elsewhere = seen.iter().any(|x| {
+                        x.heard.device == h.device
+                            && now.duration_since(x.at) < SEEN_FOR
+                            && x.heard
+                                .address
+                                .parse::<std::net::SocketAddr>()
+                                .ok()
+                                .map(|a| a.ip())
+                                != Some(from.ip())
+                    });
+                    let known_here = seen.iter().any(|x| x.heard.device == h.device);
+                    if h.device != me
+                        && !held_elsewhere
+                        && (known_here || seen.len() < MOST_POSTS_HEARD)
+                    {
                         let talked = seen
                             .iter()
                             .find(|x| x.heard.device == h.device)
@@ -1304,6 +1513,17 @@ fn auto(
                 member: known.contains(&x.heard.device),
                 talked: x.talked,
                 alone: x.heard.alone,
+                invites_me: match x.heard.invites.as_ref().map(|(t, _)| t.as_str()) {
+                    Some("*") => trousseau.is_none(),
+                    Some(d) => d == me,
+                    None => false,
+                },
+                invite_tag: x
+                    .heard
+                    .invites
+                    .as_ref()
+                    .map(|(_, tag)| tag.clone())
+                    .unwrap_or_default(),
             })
             .collect();
         if now != told {
@@ -1329,6 +1549,61 @@ pub fn local_address() -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Le code seul suffit quand l'invitation est entendue ; sans elle,
+    /// il est dit qu'il manque l'adresse — et non « adresse illisible ».
+    #[test]
+    fn the_code_alone_is_enough_when_the_invitation_is_heard() {
+        let t = bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy);
+        let code = t.text();
+        let tag = invite_tag(&t);
+        let at = "192.168.1.20:7743";
+        let heard = [(at, tag.as_str())];
+        let (a, got) = join_target(&code, &heard).unwrap();
+        assert_eq!(
+            (a.as_str(), got.map(|g| g.text())),
+            (at, Some(code.clone()))
+        );
+        // Recopié sans tirets, en minuscules.
+        let loose = code.replace('-', "").to_lowercase();
+        assert!(join_target(&loose, &heard).is_ok());
+        assert!(matches!(join_target(&code, &[]), Err(JoinText::NoAddress)));
+        // **Une annonce contrefaite ne détourne pas le code** : elle ne
+        // porte pas son étiquette, et la vraie est choisie parmi deux.
+        let forged = [("192.168.1.66:7743", "00000000"), (at, tag.as_str())];
+        assert_eq!(join_target(&code, &forged).unwrap().0, at);
+        assert!(matches!(
+            join_target(&code, &forged[..1]),
+            Err(JoinText::NoMatch)
+        ));
+        // Le code complet, avec ou sans invitation entendue.
+        let full = crate::network::invitation_code(&t, at);
+        assert_eq!(join_target(&full, &[]).unwrap().0, at);
+        assert!(join_target("192.168.1.20:7743", &[]).unwrap().1.is_none());
+        assert!(matches!(
+            join_target("n'importe quoi", &heard),
+            Err(JoinText::Unreadable)
+        ));
+    }
+
+    /// L'annonce d'une invitation se lit, pour un poste nommé ou pour
+    /// tous ; une version d'avant, qui n'attend que quatre mots, l'ignore.
+    #[test]
+    fn an_invitation_announcement_reads_back() {
+        let ip: std::net::IpAddr = "192.168.1.20".parse().unwrap();
+        let (d, t, g) = ("a1".repeat(32), "b2".repeat(32), "c3".repeat(10));
+        let h = heard(&beacon_invite(&d, 7743, &g, Some(&t), "0a0b0c0d"), ip).unwrap();
+        assert_eq!(h.invites, Some((t.clone(), "0a0b0c0d".to_owned())));
+        assert_eq!(h.address, "192.168.1.20:7743");
+        let h = heard(&beacon_invite(&d, 7743, &g, None, "0a0b0c0d"), ip).unwrap();
+        assert_eq!(h.invites.map(|i| i.0), Some("*".to_owned()));
+        assert!(heard(&format!("BPMPOSTE2 {d} 7743 {g} pour:pas-hex 0a0b0c0d"), ip).is_none());
+        assert!(heard(&format!("BPMPOSTE2 {d} 7743 {g} pour:* xyz"), ip).is_none());
+        assert_eq!(
+            heard(&beacon2(&d, 7743, Some(&g)), ip).unwrap().invites,
+            None
+        );
+    }
 
     fn post(tag: &str) -> (PathBuf, crate::db::Swept, Db) {
         let dir =
@@ -1364,7 +1639,10 @@ mod tests {
         let (yes_a, answers_a) = std::sync::mpsc::channel();
         let (yes_b, answers_b) = std::sync::mpsc::channel();
         let inviting = spawn(
-            Job::Invite { port },
+            Job::Invite {
+                port,
+                for_device: None,
+            },
             dir_a.join("poste.db"),
             "secret".to_owned(),
             "2026-09-23".to_owned(),
@@ -1653,7 +1931,10 @@ mod tests {
         });
         let (_yes, answers) = std::sync::mpsc::channel();
         let rx = spawn(
-            Job::Invite { port },
+            Job::Invite {
+                port,
+                for_device: None,
+            },
             dir.join("poste.db"),
             "secret".to_owned(),
             "2026-09-25".to_owned(),

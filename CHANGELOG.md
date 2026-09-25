@@ -5,6 +5,29 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.343.0] - 2026-09-25
+
+### Added
+- Relier les postes pas à pas : un poste hors groupe dit dans Connexions
+  ce qu'il entend et quoi faire — fonder le groupe, se faire inviter, ou
+  saisir le code d'une invitation reçue.
+- Une invitation de poste apparaît d'elle-même sur le poste à relier : il
+  suffit d'y saisir le code (tirets et majuscules facultatifs), sans
+  l'adresse.
+- Réseau d'officines sans réseau : les officines à portée sont nommées,
+  avec un accès direct à la carte.
+
+### Changed
+- L'officine (nom, adresse, pharmacien, n° AM, équipe, horaires) se
+  corrige depuis plusieurs postes sans rien perdre : les modifications
+  faites de part et d'autre se réunissent, y compris à la synchronisation
+  des postes ; un même champ changé des deux côtés est signalé et la
+  valeur saisie reste affichée.
+- Erreurs de connexion dites en clair, avec la marche à suivre (poste
+  éteint, pare-feu, code erroné, invitation expirée, base occupée).
+- Une invitation de poste accepte plusieurs essais pendant ses 5 minutes :
+  un code mal saisi se corrige sans en rouvrir une.
+
 ## [0.342.0] - 2026-09-25
 
 ### Changed
