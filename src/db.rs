@@ -41080,6 +41080,21 @@ impl Db {
         if !self.numbers_here() {
             return Ok(0);
         }
+        // Rien en attente — le cas ordinaire, après chaque
+        // synchronisation : pas de verrou d'écriture sur le registre.
+        let any: bool = self
+            .stups
+            .query_row(
+                "SELECT EXISTS (SELECT 1 FROM stup_moves m
+                     WHERE m.ordo_no = 0
+                       AND NOT EXISTS (SELECT 1 FROM stup_numbers n WHERE n.move_id = m.id))",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        if !any {
+            return Ok(0);
+        }
         let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let waiting: Vec<(i64, String, i64)> = {
             let mut stmt = tx
