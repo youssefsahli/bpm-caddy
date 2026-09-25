@@ -57301,6 +57301,7 @@ impl App {
         let mut join_near: Option<String> = None;
         let mut invite_near = false;
         let mut invite_post = false;
+        let mut create_then_invite = false;
         let mut adopt: Option<(String, String, String)> = None;
         let mut dismiss: Option<(String, String)> = None;
         let mut arm: Option<String> = None;
@@ -57652,6 +57653,15 @@ impl App {
                                     {
                                         invite_near = true;
                                     }
+                                    // Sans réseau encore : le créer et
+                                    // l'inviter, d'un seul clic.
+                                    if !in_network
+                                        && motif::button(ui, tr("conn_near_create_invite"))
+                                            .on_hover_text(tr("conn_near_create_invite_tooltip"))
+                                            .clicked()
+                                    {
+                                        create_then_invite = true;
+                                    }
                                 });
                                 if !in_network && near.is_some_and(|x| x.invite.is_none()) {
                                     ui.add(
@@ -57720,6 +57730,15 @@ impl App {
                 invite_now: true,
                 ..PostsWindow::default()
             });
+        }
+        if create_then_invite {
+            match crate::network::Net::create(&session.db) {
+                Ok(()) => {
+                    invite_near = true;
+                    session.conn_dirty = true;
+                }
+                Err(e) => session.log_connection(true, &e),
+            }
         }
         // Se lier à une voisine passe par la fenêtre du réseau : c'est là
         // que le code se compare, et que la tâche se suit.

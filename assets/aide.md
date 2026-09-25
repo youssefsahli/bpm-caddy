@@ -865,7 +865,8 @@ local : nom, ville et empreinte, rien d'autre (Options › Base, « Annoncer
 l'officine »). La carte des connexions les place sur l'arc « À portée ».
 Chaque officine y porte **ses initiales dans une couleur tirée de son
 empreinte**, identiques sur chaque poste. Un clic propose **Inviter cette
-officine** (l'invitation apparaît sur sa carte) ou **Rejoindre son
+officine** (l'invitation apparaît sur sa carte), **Créer un réseau et
+l'inviter** quand l'officine n'en a pas encore, ou **Rejoindre son
 réseau** quand elle invite. Nom déclaré, non vérifié : ces invitations
 n'ont pas de code d'invitation, et les deux officines comparent par
 téléphone un code de cinq groupes. Code identique des deux côtés :

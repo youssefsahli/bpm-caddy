@@ -2748,7 +2748,9 @@ conn_near_join = "Rejoindre son réseau"
 conn_near_join_tooltip = "Se connecter à son invitation, puis comparer le code"
 conn_near_invite = "Inviter cette officine"
 conn_near_invite_tooltip = "Invitation de 5 min, visible sur sa carte"
-conn_near_ask = "Aucune invitation ouverte : lui en demander une, ou créer un réseau pour l'inviter."
+conn_near_create_invite = "Créer un réseau et l'inviter"
+conn_near_create_invite_tooltip = "Crée le réseau de l'officine, puis ouvre une invitation de 5 min visible sur sa carte"
+conn_near_ask = "Aucune invitation ouverte : lui en demander une, ou l'inviter."
 
 # Pharmacocinétique et pharmacodynamie
 pk_bioavailability = "Biodisponibilité"

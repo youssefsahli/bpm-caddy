@@ -5,6 +5,12 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.331.0] - 2026-09-25
+
+### Added
+- Carte des connexions : « Créer un réseau et l'inviter » sur une
+  officine voisine, quand l'officine n'a pas encore de réseau.
+
 ## [0.330.0] - 2026-09-25
 
 ### Fixed
