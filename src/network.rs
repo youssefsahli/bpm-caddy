@@ -3124,4 +3124,67 @@ mod tests {
             "ce que B signale est arrivé chez A"
         );
     }
+
+    /// **Le fil automatique tient la porte** : lancé comme au démarrage de
+    /// l'application sur la base de A, il répond à B, appairée, qui compose
+    /// son port d'écoute — et le dit à l'écran.
+    #[test]
+    fn the_auto_thread_answers_a_paired_officine_at_launch() {
+        let (dir_a, _sa, a) = officine("auto-door-a");
+        let (dir_b, _sb, b) = officine("auto-door-b");
+        Net::create(&a).unwrap();
+        drop((a, b));
+        let (da, db_) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+        assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        let free = |_: ()| {
+            std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port()
+        };
+        let (posts_port, listen) = (free(()), free(()));
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let a_device = device_hex(&a).unwrap();
+        drop(a);
+        let (rx, poke) = crate::postes::spawn_auto(
+            dir_a.join("net.db"),
+            "secret".to_owned(),
+            "2026-09-25".to_owned(),
+            posts_port,
+            None,
+            Vec::new(),
+            crate::postes::OfficineSide {
+                announce: None,
+                listen,
+                name: "Pharmacie A".to_owned(),
+            },
+            crate::postes::Pace::default(),
+        );
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let at = format!("127.0.0.1:{listen}");
+        let mut joined = Err(String::new());
+        for _ in 0..40 {
+            joined = dial_heard(&b, &a_device, &at, "Pharmacie B");
+            if joined.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        assert!(joined.is_ok(), "{joined:?}");
+        let mut said = false;
+        for _ in 0..40 {
+            if let Ok(crate::postes::Progress::Status(line)) =
+                rx.recv_timeout(Duration::from_millis(250))
+            {
+                if line.contains("connectée") {
+                    said = true;
+                    break;
+                }
+            }
+        }
+        poke.send(crate::postes::Poke::Stop).unwrap();
+        assert!(said, "la connexion est dite à l'écran");
+    }
 }

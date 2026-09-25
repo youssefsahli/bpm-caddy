@@ -7271,6 +7271,7 @@ impl Session {
                 }
             }
             self.conn_summary = Some(ConnSummary {
+                me_device: crate::network::device_hex(&self.db).unwrap_or_default(),
                 map_introduced,
                 map_peers,
                 map_groups,
@@ -10788,6 +10789,8 @@ struct ConnSummary {
     /// fait entrer et qu'on n'a pas ajoutées : l'officine, le rang du
     /// réseau, son identifiant.
     map_introduced: Vec<(crate::network::Introduced, usize, String)>,
+    /// L'identité de l'officine sur le réseau, pour son insigne.
+    me_device: String,
 }
 
 /// Une ligne de « Derniers reçus » : le jour, l'officine, ce qu'elle a
@@ -14209,6 +14212,14 @@ impl App {
                                         place: "Épinal".to_owned(),
                                     },
                                 ];
+                                // Un poste seul sur le réseau local, à relier.
+                                session.posts_peers = vec![crate::postes::PeerSeen {
+                                    device: "9".repeat(64),
+                                    address: "192.168.1.40:7743".to_owned(),
+                                    member: false,
+                                    talked: None,
+                                    alone: true,
+                                }];
                                 session.conn_pick = Some(format!("near:{}", "5".repeat(64)));
                             }
                         }
@@ -56663,6 +56674,7 @@ impl App {
                 .map(|h| crate::netmap::HeardIn {
                     device: &h.device,
                     talked: h.talked,
+                    alone: h.alone && !h.member,
                 })
                 .collect::<Vec<_>>(),
             &peers
@@ -56703,6 +56715,9 @@ impl App {
         // local est au moins « entendue » — le fil automatique la compose
         // aussitôt, et la conversation dira le reste.
         let mut nodes = nodes;
+        for n in nodes.iter_mut().filter(|n| n.kind == NodeKind::PostAlone) {
+            n.label = tr("conn_post_alone").to_owned();
+        }
         for n in nodes.iter_mut() {
             if n.kind == NodeKind::Officine
                 && n.state == LinkState::Silent
@@ -56834,7 +56849,10 @@ impl App {
             // Les liens d'abord, sous les nœuds — et aucun vers une
             // voisine : il n'y en a pas.
             for (i, n) in nodes.iter().enumerate().skip(1) {
-                if !matches!(n.kind, NodeKind::Nearby | NodeKind::Introduced) {
+                if !matches!(
+                    n.kind,
+                    NodeKind::Nearby | NodeKind::Introduced | NodeKind::PostAlone
+                ) {
                     draw_stroke(&painter, [at(0), at(i)], n.state);
                     // Un lien barre le nom qu'on poserait dessus : ses
                     // points comptent parmi ce que les noms de réseau
@@ -56871,6 +56889,31 @@ impl App {
                         let b = egui::Rect::from_center_size(c, egui::vec2(r * 2.0, r * 2.0));
                         painter.rect_filled(b, 0.0, motif::bg_light());
                         painter.rect_stroke(b, 0.0, ring);
+                    }
+                    // Un poste seul : un carré creux en tirets — un poste,
+                    // pas encore relié.
+                    NodeKind::PostAlone => {
+                        let b = egui::Rect::from_center_size(c, egui::vec2(r * 2.0, r * 2.0));
+                        let corners = [
+                            b.left_top(),
+                            b.right_top(),
+                            b.right_bottom(),
+                            b.left_bottom(),
+                            b.left_top(),
+                        ];
+                        painter.extend(egui::Shape::dashed_line(
+                            &corners,
+                            egui::Stroke::new(
+                                if chosen { 3.0_f32 } else { 1.5_f32 },
+                                if chosen {
+                                    motif::accent()
+                                } else {
+                                    motif::text_dim()
+                                },
+                            ),
+                            r * 0.35,
+                            r * 0.25,
+                        ));
                     }
                     NodeKind::Officine => {
                         painter.circle_filled(c, r, motif::bg_light());
@@ -57202,6 +57245,41 @@ impl App {
                         );
                         match n.kind {
                             NodeKind::Me => {
+                                // **Comme les autres la voient** : l'insigne,
+                                // le nom et la ville que ce poste annonce.
+                                let name = config.pharmacy.name.trim();
+                                if !name.is_empty() && !sum.me_device.is_empty() {
+                                    let r = motif::pt(ui, 9.0);
+                                    ui.horizontal(|ui| {
+                                        let (rect, _) = ui.allocate_exact_size(
+                                            egui::vec2(r * 2.4, r * 2.4),
+                                            egui::Sense::hover(),
+                                        );
+                                        let hue = motif::chart::series_color(crate::netmap::badge(
+                                            &sum.me_device,
+                                        ));
+                                        ui.painter().circle_stroke(
+                                            rect.center(),
+                                            r,
+                                            egui::Stroke::new(2.0_f32, hue),
+                                        );
+                                        ui.painter().text(
+                                            rect.center(),
+                                            egui::Align2::CENTER_CENTER,
+                                            crate::netmap::initials(name),
+                                            egui::FontId::proportional(motif::pt(ui, 8.0)),
+                                            hue,
+                                        );
+                                        let town =
+                                            crate::network::town_of(&config.pharmacy.address);
+                                        ui.label(if town.is_empty() {
+                                            name.to_owned()
+                                        } else {
+                                            format!("{name} · {town}")
+                                        });
+                                    });
+                                    ui.label(small(ui, tr("conn_map_me_seen").to_owned()));
+                                }
                                 ui.add(
                                     egui::Label::new(small(ui, tr("conn_map_me_note").to_owned()))
                                         .wrap(),
@@ -57226,6 +57304,25 @@ impl App {
                                         *open_net = true;
                                     }
                                 });
+                            }
+                            // **Un poste seul qu'on entend** : peut-être un
+                            // poste d'ici qu'on n'a pas relié — la fenêtre
+                            // des postes le relie, par un code d'invitation.
+                            NodeKind::PostAlone => {
+                                if let Some(h) = heard.iter().find(|h| h.device == n.device) {
+                                    ui.label(small(ui, h.address.clone()));
+                                }
+                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.add(
+                                    egui::Label::new(small(
+                                        ui,
+                                        tr("conn_post_alone_note").to_owned(),
+                                    ))
+                                    .wrap(),
+                                );
+                                if motif::button(ui, tr("conn_post_alone_link")).clicked() {
+                                    *open_posts = Some(String::new());
+                                }
                             }
                             NodeKind::Post => {
                                 if let Some(h) = heard.iter().find(|h| h.device == n.device) {

@@ -5,6 +5,20 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.322.0] - 2026-09-25
+
+### Added
+- **Chaque BPM-Caddy du réseau local sur la carte** : un poste d'aucun
+  groupe — peut-être un poste de l'officine pas encore relié — apparaît
+  sur le cercle des postes, « Poste non relié », avec le chemin pour le
+  relier.
+- « Ce poste », sur la carte, montre comment les autres officines voient
+  celle-ci : initiales, couleur, nom et ville.
+
+### Changed
+- Répondre aux officines appairées coûte moins : deux répondeurs ouverts
+  une fois, au lieu d'une ouverture de la base à chaque connexion.
+
 ## [0.321.0] - 2026-09-25
 
 ### Added

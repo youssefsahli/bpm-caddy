@@ -1045,8 +1045,12 @@ conversation s'ouvre, le fichier joint au prochain message) et
 poste, le synchroniser ; pour ce poste, tout synchroniser, relier un
 poste ou inviter une officine. Les **officines voisines**, qui
 s'annoncent sur le réseau local sans être d'aucun réseau de celle-ci,
-sont sur l'arc « À portée », en cercle pointillé (plein au centre quand
-elle invite), sans lien dessiné : Inviter, ou Rejoindre son réseau.
+sont sur l'arc « À portée », en cercle pointillé (une pastille au coin
+quand elle invite), sans lien dessiné : Inviter, ou Rejoindre son réseau.
+Un **poste non relié** — un BPM-Caddy d'aucun groupe sur le réseau local,
+peut-être un poste de l'officine — est un carré en tirets sur le cercle
+des postes. « Ce poste » montre comment les autres officines voient
+celle-ci : ses initiales, sa couleur, son nom et sa ville.
 Les **officines présentées par le réseau** — qui détiennent sa clé et
 déposent au dossier d'échange sans avoir été ajoutées ici — sont sur
 l'arc de leur réseau, en cercle creux, après une synchronisation : leurs

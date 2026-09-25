@@ -458,6 +458,8 @@ pub struct PeerSeen {
     pub member: bool,
     /// La dernière conversation avec lui : réussie, échouée, ou aucune.
     pub talked: Option<bool>,
+    /// D'aucun groupe : à relier.
+    pub alone: bool,
 }
 
 /// Ce qu'on demande au fil des postes.
@@ -681,6 +683,10 @@ pub enum Poke {
 pub struct Heard {
     pub device: String,
     pub address: String,
+    /// Un poste d'aucun groupe : un poste à relier, peut-être de cette
+    /// officine. Faux pour la première version de l'annonce, qui ne
+    /// venait que d'un poste d'un groupe.
+    pub alone: bool,
 }
 
 /// L'annonce qu'un poste envoie sur le réseau local : son identité et
@@ -691,20 +697,36 @@ pub fn beacon(device: &str, port: u16) -> String {
 
 /// L'inverse, avec l'adresse d'où l'annonce est venue.
 pub fn heard(text: &str, from: std::net::IpAddr) -> Option<Heard> {
-    let mut parts = text.split_whitespace();
-    if parts.next()? != "BPMPOSTE1" {
-        return None;
-    }
+    let parts: Vec<&str> = text.split_whitespace().collect();
+    let (device, port, alone) = match parts.as_slice() {
+        ["BPMPOSTE1", d, p] => (*d, *p, false),
+        // La seconde version dit le groupe — son empreinte, que la
+        // poignée de main montre de toute façon — ou « - » pour un poste
+        // seul.
+        ["BPMPOSTE2", d, p, "-"] => (*d, *p, true),
+        ["BPMPOSTE2", d, p, g] => {
+            unhex::<10>(g)?;
+            (*d, *p, false)
+        }
+        _ => return None,
+    };
     // Réécrite : une clé, une écriture — voir `network::heard_officine`.
-    let device = hex(&unhex::<32>(parts.next()?)?);
-    let port: u16 = parts.next()?.parse().ok()?;
-    if parts.next().is_some() {
-        return None;
-    }
+    let device = hex(&unhex::<32>(device)?);
+    let port: u16 = port.parse().ok()?;
     Some(Heard {
         device,
         address: std::net::SocketAddr::new(from, port).to_string(),
+        alone,
     })
+}
+
+/// La seconde version de l'annonce : envoyée **aussi par un poste seul**,
+/// pour qu'un poste de l'officine qu'on n'a pas encore relié se voie sur
+/// la carte ; `group` est l'empreinte du groupe (hex), ou rien pour un
+/// poste seul. Un poste d'un groupe envoie aussi la première version,
+/// pour ceux qui n'ont pas encore la mise à jour.
+pub fn beacon2(device: &str, port: u16, group: Option<&str>) -> String {
+    format!("BPMPOSTE2 {device} {port} {}", group.unwrap_or("-"))
 }
 
 /// Combien d'attente entre deux choses que le fil automatique fait
@@ -786,6 +808,56 @@ const ANSWER_BOUND: Duration = Duration::from_secs(60);
 /// les trois secondes, et une annonce contrefaite non plus.
 const REDIAL: Duration = Duration::from_secs(600);
 
+/// Les répondeurs de la porte des officines : [`MOST_ANSWERS`] fils, et le
+/// canal où leur remettre une conversation — sans file : un lien qu'aucun
+/// n'attend est lâché.
+fn answerers(
+    path: &Path,
+    password: &str,
+    tx: &std::sync::mpsc::Sender<Progress>,
+) -> std::sync::mpsc::SyncSender<bpm_sync::link::TcpLink> {
+    let (give, take) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(0);
+    let take = std::sync::Arc::new(std::sync::Mutex::new(take));
+    for _ in 0..MOST_ANSWERS {
+        let take = std::sync::Arc::clone(&take);
+        let (path, password, tx) = (path.to_path_buf(), password.to_owned(), tx.clone());
+        std::thread::spawn(move || {
+            let mut db: Option<Db> = None;
+            loop {
+                let next = match take.lock() {
+                    Ok(t) => t.recv(),
+                    Err(_) => return,
+                };
+                let Ok(mut link) = next else {
+                    return;
+                };
+                if db.is_none() {
+                    db = Db::open(&path, &password).ok();
+                }
+                let Some(db) = &db else {
+                    continue;
+                };
+                if let Ok(device) = crate::network::answer(db, &mut link) {
+                    let who = db
+                        .net_peers()
+                        .ok()
+                        .and_then(|p| p.into_iter().find(|p| p.device == device))
+                        .map(|p| {
+                            [p.name, p.seen_as]
+                                .into_iter()
+                                .find(|n| !n.trim().is_empty())
+                                .unwrap_or_default()
+                        })
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or_else(|| crate::network::peer_groups(&device));
+                    let _ = tx.send(Progress::Status(crate::strings::trf("net_answered", who)));
+                }
+            }
+        });
+    }
+    give
+}
+
 /// Ce que le fil sait d'un poste entendu.
 struct Seen {
     heard: Heard,
@@ -831,7 +903,11 @@ fn auto(
     let mut net_door: Option<bpm_sync::link::Door> = None;
     let mut net_door_looked: Option<Instant> = None;
     let mut net_door_said = false;
-    let answering = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    // **Deux répondeurs, ouverts une fois** : chacun a sa connexion à la
+    // base, ouverte à sa première conversation et gardée — frapper à la
+    // porte ne coûte plus une dérivation de clé à chaque fois. Une porte
+    // où les deux sont pris lâche la conversation aussitôt.
+    let answers = (side.listen != 0).then(|| answerers(path, password, tx));
     // Les officines appairées, relues de temps en temps : ce qu'une
     // annonce entendue fait apprendre, et qui on a déjà composé.
     let mut paired: Vec<String> = Vec::new();
@@ -907,40 +983,12 @@ fn auto(
                 }
             }
         }
-        if let Some(d) = &net_door {
+        if let (Some(d), Some(give)) = (&net_door, &answers) {
             if let Ok(link) = d.accept_with(Duration::from_millis(100), TALK_PATIENCE) {
                 // Toute la conversation en une minute au plus : qui écrit
-                // un octet de temps en temps ne tient pas la porte.
-                let mut link = link.with_deadline(ANSWER_BOUND);
-                use std::sync::atomic::Ordering;
-                if answering.load(Ordering::SeqCst) < MOST_ANSWERS {
-                    answering.fetch_add(1, Ordering::SeqCst);
-                    let (busy, tx) = (std::sync::Arc::clone(&answering), tx.clone());
-                    let (path, password) = (path.to_path_buf(), password.to_owned());
-                    std::thread::spawn(move || {
-                        if let Ok(db) = Db::open(&path, &password) {
-                            if let Ok(device) = crate::network::answer(&db, &mut link) {
-                                let who = db
-                                    .net_peers()
-                                    .ok()
-                                    .and_then(|p| p.into_iter().find(|p| p.device == device))
-                                    .map(|p| {
-                                        [p.name, p.seen_as]
-                                            .into_iter()
-                                            .find(|n| !n.trim().is_empty())
-                                            .unwrap_or_default()
-                                    })
-                                    .filter(|n| !n.is_empty())
-                                    .unwrap_or_else(|| crate::network::peer_groups(&device));
-                                let _ = tx.send(Progress::Status(crate::strings::trf(
-                                    "net_answered",
-                                    who,
-                                )));
-                            }
-                        }
-                        busy.fetch_sub(1, Ordering::SeqCst);
-                    });
-                }
+                // un octet de temps en temps ne tient pas la porte. Remise
+                // à un répondeur libre, ou lâchée sur-le-champ.
+                let _ = give.try_send(link.with_deadline(ANSWER_BOUND));
             }
         }
         if paired_read.is_none_or(|t| t.elapsed() >= Duration::from_secs(30)) {
@@ -1019,9 +1067,14 @@ fn auto(
                 }
             }
             if last_beacon.elapsed() >= pace.beacon {
+                let group = trousseau.as_ref().map(|t| hex(&t.name().bytes()));
                 if trousseau.is_some() {
                     let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
                 }
+                let _ = u.send_to(
+                    beacon2(&me, port, group.as_deref()).as_bytes(),
+                    ("255.255.255.255", port),
+                );
                 if let Some((device, name, place)) = &officine {
                     let listening = if net_door.is_some() { side.listen } else { 0 };
                     let b =
@@ -1086,6 +1139,7 @@ fn auto(
                 address: x.heard.address.clone(),
                 member: known.contains(&x.heard.device),
                 talked: x.talked,
+                alone: x.heard.alone,
             })
             .collect();
         if now != told {
@@ -1389,5 +1443,29 @@ mod tests {
         let n = found.expect("entendue");
         assert_eq!(n.name, "Pharmacie du Port");
         assert_eq!(n.invite.as_deref(), Some("127.0.0.1:7742"));
+    }
+
+    /// **La seconde annonce dit si le poste est seul** : un poste d'aucun
+    /// groupe s'annonce aussi, avec « - », et la première version s'entend
+    /// toujours.
+    #[test]
+    fn a_post_on_its_own_announces_itself_as_such() {
+        let d = hex(&[7u8; 32]);
+        let ip: std::net::IpAddr = "192.168.1.14".parse().unwrap();
+        let alone = heard(&beacon2(&d, 7743, None), ip).unwrap();
+        assert!(alone.alone);
+        assert_eq!(alone.address, "192.168.1.14:7743");
+        let g = hex(&[3u8; 10]);
+        let grouped = heard(&beacon2(&d, 7743, Some(&g)), ip).unwrap();
+        assert!(!grouped.alone);
+        assert!(!heard(&beacon(&d, 7743), ip).unwrap().alone);
+        for bad in [
+            format!("BPMPOSTE2 {d} 7743"),
+            format!("BPMPOSTE2 {d} 7743 zz"),
+            format!("BPMPOSTE2 {d} 7743 - de-trop"),
+            format!("BPMPOSTE2 {d} x -"),
+        ] {
+            assert!(heard(&bad, ip).is_none(), "{bad}");
+        }
     }
 }

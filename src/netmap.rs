@@ -17,6 +17,9 @@ pub enum NodeKind {
     Me,
     /// Un autre poste de l'officine.
     Post,
+    /// Un poste d'aucun groupe qu'on entend sur le réseau local : peut-être
+    /// un poste de cette officine, pas encore relié.
+    PostAlone,
     /// Une officine du réseau.
     Officine,
     /// Une officine qui s'annonce sur le réseau local et n'est d'aucun
@@ -72,6 +75,8 @@ pub struct PostIn<'a> {
 pub struct HeardIn<'a> {
     pub device: &'a str,
     pub talked: Option<bool>,
+    /// Un poste d'aucun groupe, entendu sur le réseau local.
+    pub alone: bool,
 }
 
 /// Ce qu'on sait d'une officine du réseau.
@@ -164,6 +169,20 @@ pub fn nodes(
             },
             state: post_state(p.device, heard),
             device: p.device.to_owned(),
+            group: 0,
+        });
+    }
+    // Les postes seuls qu'on entend — à relier, sur le cercle des postes.
+    for h in heard.iter().filter(|h| h.alone) {
+        if out.iter().any(|x| x.device == h.device) {
+            continue;
+        }
+        out.push(Node {
+            key: format!("alone:{}", h.device),
+            kind: NodeKind::PostAlone,
+            label: unnamed_officine(h.device),
+            state: LinkState::Heard,
+            device: h.device.to_owned(),
             group: 0,
         });
     }
@@ -271,7 +290,7 @@ fn outer(kind: NodeKind) -> bool {
 pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
     let ring = |kind: NodeKind| nodes.iter().filter(|n| n.kind == kind).count();
     let (n_posts, n_net) = (
-        ring(NodeKind::Post),
+        ring(NodeKind::Post) + ring(NodeKind::PostAlone),
         nodes.iter().filter(|n| outer(n.kind)).count(),
     );
     let (mut i_post, mut i_net) = (0usize, 0usize);
@@ -286,7 +305,7 @@ pub fn layout(nodes: &[Node]) -> Vec<(f32, f32)> {
             };
             match n.kind {
                 NodeKind::Me => (0.5, 0.5),
-                NodeKind::Post => {
+                NodeKind::Post | NodeKind::PostAlone => {
                     i_post += 1;
                     at(i_post - 1, n_posts, 0.22, 0.0)
                 }
@@ -521,14 +540,17 @@ mod tests {
             HeardIn {
                 device: "p1",
                 talked: Some(true),
+                alone: false,
             },
             HeardIn {
                 device: "p2",
                 talked: None,
+                alone: false,
             },
             HeardIn {
                 device: "p3",
                 talked: Some(false),
+                alone: false,
             },
         ];
         assert_eq!(post_state("p1", &heard), LinkState::Ok);
@@ -684,7 +706,7 @@ mod tests {
             let r = (x - 0.5).hypot(y - 0.5);
             match n.kind {
                 NodeKind::Me => assert!(r < 1e-6),
-                NodeKind::Post => assert!((r - 0.22).abs() < 1e-4),
+                NodeKind::Post | NodeKind::PostAlone => assert!((r - 0.22).abs() < 1e-4),
                 NodeKind::Officine | NodeKind::Introduced | NodeKind::Nearby => {
                     assert!((r - 0.40).abs() < 1e-4)
                 }
@@ -894,5 +916,45 @@ mod tests {
         assert_ne!(badge(&"a1".repeat(32)), badge(&"b2".repeat(32)));
         assert!((0..=255u8).all(|b| (1..=7).contains(&badge(&format!("{b:02x}")))));
         assert_eq!(badge("zz"), 1);
+    }
+
+    /// **Un poste seul qu'on entend** se pose sur le cercle des postes, à
+    /// relier ; un poste du groupe n'y est qu'une fois.
+    #[test]
+    fn a_post_on_its_own_sits_on_the_posts_ring() {
+        let posts = [PostIn {
+            post: 2,
+            device: "d2",
+            name: "Comptoir 2",
+            left: false,
+        }];
+        let heard = [
+            HeardIn {
+                device: "d2",
+                talked: Some(true),
+                alone: false,
+            },
+            HeardIn {
+                device: "s1",
+                talked: None,
+                alone: true,
+            },
+        ];
+        let list = nodes(
+            "me",
+            Some(1),
+            &posts,
+            &heard,
+            &[],
+            &[],
+            &[],
+            &|n| n.to_string(),
+            &|d| format!("[{d}]"),
+        );
+        let keys: Vec<&str> = list.iter().map(|n| n.key.as_str()).collect();
+        assert_eq!(keys, ["me", "post:2", "alone:s1"]);
+        let places = layout(&list);
+        let r = (places[2].0 - 0.5).hypot(places[2].1 - 0.5);
+        assert!((r - 0.22).abs() < 1e-4);
     }
 }
