@@ -7126,7 +7126,10 @@ impl Session {
     fn start_posts_auto(&mut self, config: &Config) {
         // A post on its own starts it too: it only listens, and that is
         // how the connections view knows which posts announce themselves.
-        if self.posts_auto.is_some() || !config.postes.automatique {
+        // Le fil sert aussi l'officine — l'annonce, la porte des officines
+        // appairées : il tourne dès que l'un ou l'autre est voulu.
+        let officine_wants = config.reseau.ecouter || config.reseau.annoncer;
+        if self.posts_auto.is_some() || !(config.postes.automatique || officine_wants) {
             return;
         }
         let Some(path) = self.db.path() else {
@@ -7158,6 +7161,7 @@ impl Session {
                     0
                 },
                 name: config.pharmacy.name.clone(),
+                posts_paused: !config.postes.automatique,
             },
             crate::postes::Pace::default(),
         ));
@@ -56280,7 +56284,7 @@ impl App {
             let mut settle: Option<(i64, bool)> = None;
             let mut open_card: Option<i64> = None;
             let peers = session.posts_peers.clone();
-            let auto_on = session.posts_auto.is_some();
+            let auto_on = session.posts_auto.is_some() && config.postes.automatique;
             let posts_status = session.posts_status.clone();
             let net_status = session.net_status.clone();
             let net_running = session.net_auto.is_some();
@@ -57840,7 +57844,7 @@ impl App {
         let mut leave = false;
         let mut sync_now = false;
         let busy = w.job.is_some();
-        let auto_on = session.posts_auto.is_some();
+        let auto_on = session.posts_auto.is_some() && config.postes.automatique;
         let status = session.posts_status.clone();
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("posts_title"))

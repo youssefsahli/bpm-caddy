@@ -3159,6 +3159,7 @@ mod tests {
                 announce: None,
                 listen,
                 name: "Pharmacie A".to_owned(),
+                posts_paused: false,
             },
             crate::postes::Pace::default(),
         );

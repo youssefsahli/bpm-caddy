@@ -793,6 +793,10 @@ pub struct OfficineSide {
     pub listen: u16,
     /// Le nom sous lequel l'officine signe ce qu'elle publie.
     pub name: String,
+    /// La synchronisation des postes est coupée (`[postes] automatique`),
+    /// mais le fil tourne pour l'officine : il n'ouvre pas la porte des
+    /// postes et ne les compose pas.
+    pub posts_paused: bool,
 }
 
 /// Combien de conversations d'officines à la fois, au plus : chacune a
@@ -922,7 +926,14 @@ fn auto(
     let mut near: Vec<(crate::network::Nearby, std::net::IpAddr, Instant)> = Vec::new();
     let mut told_near: Vec<crate::network::Nearby> = Vec::new();
     let mut posts = Posts::load(&db)?;
-    let trousseau = posts.trousseau.clone();
+    // Le groupe dont ce poste est, pour l'annonce ; celui qu'on synchronise,
+    // seulement si la synchronisation des postes est voulue.
+    let group_trousseau = posts.trousseau.clone();
+    let trousseau = if side.posts_paused {
+        None
+    } else {
+        group_trousseau.clone()
+    };
     // A post on its own listens and opens nothing.
     let door = trousseau
         .as_ref()
@@ -1067,7 +1078,7 @@ fn auto(
                 }
             }
             if last_beacon.elapsed() >= pace.beacon {
-                let group = trousseau.as_ref().map(|t| hex(&t.name().bytes()));
+                let group = group_trousseau.as_ref().map(|t| hex(&t.name().bytes()));
                 if trousseau.is_some() {
                     let _ = u.send_to(beacon(&me, port).as_bytes(), ("255.255.255.255", port));
                 }
@@ -1418,6 +1429,7 @@ mod tests {
                 announce: Some(("Pharmacie du Centre".to_owned(), "Épinal".to_owned())),
                 listen: 0,
                 name: "Pharmacie du Centre".to_owned(),
+                posts_paused: false,
             },
             Pace::default(),
         );
