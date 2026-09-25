@@ -11305,8 +11305,27 @@ fn merge_introduced(
     }
 }
 
+/// **L'insigne d'une officine** hors de la carte — ses initiales dans la
+/// couleur de son empreinte, comme sur la carte des connexions : la même
+/// officine se reconnaît d'un écran à l'autre.
 #[cfg(feature = "sync")]
+fn officine_badge(ui: &mut egui::Ui, device: &str, name: &str) {
+    let r = motif::pt(ui, 7.5);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(r * 2.4, r * 2.4), egui::Sense::hover());
+    let hue = motif::chart::series_color(crate::netmap::badge(device));
+    ui.painter()
+        .circle_stroke(rect.center(), r, egui::Stroke::new(1.5_f32, hue));
+    ui.painter().text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        crate::netmap::initials(name),
+        egui::FontId::proportional(motif::pt(ui, 7.0)),
+        hue,
+    );
+}
+
 /// Ce qu'on sait d'une officine voisine : elle invite, ou elle s'annonce.
+#[cfg(feature = "sync")]
 fn conn_nearby_text(s: crate::netmap::LinkState) -> &'static str {
     match s {
         crate::netmap::LinkState::Ok => tr("conn_near_inviting"),
@@ -55888,6 +55907,9 @@ impl App {
                                 {
                                     star = Some(key);
                                 }
+                                // Le même insigne que sur la carte.
+                                #[cfg(feature = "sync")]
+                                officine_badge(ui, device, &label);
                                 let mut picked = session.msg.new_peers.contains(device);
                                 if motif::checkbox(ui, &mut picked, &label).changed() {
                                     if picked {
