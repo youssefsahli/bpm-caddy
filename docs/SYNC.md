@@ -275,14 +275,32 @@ facultative.
    devenir une comparaison bâclée. Une preuve fausse ferme l'invitation :
    quatre-vingts bits, une tentative. `Sync` ne prend pas de ticket.
 
-**Le dossier d'échange garde aussi ce qu'écrivent les officines qu'on
-n'a pas appairées soi-même** (0.318.0), pourvu que la clé du réseau les
-ouvre : un membre les a fait entrer, et une conversation directe relayait
-déjà leurs enregistrements. Gardés, **pas lus** — `absorb` ne lit que les
-officines ajoutées ; la carte les propose (« présentées par le réseau »),
-et les ajouter est un geste en deux clics, sous le nom qu'elles écrivent
-et avec leur empreinte. Une officine écartée (`net_ignored`) n'est plus
-proposée.
+**Les officines qu'on n'a pas ajoutées sont comptées, jamais gardées.**
+Le dossier d'échange montre aussi ce que déposent des officines qui
+détiennent la clé du réseau sans avoir été ajoutées ici (qu'un autre
+membre a fait entrer, ou qu'on a retirées — la clé ne change pas). 0.318.0
+les gardait au journal ; une revue de sécurité a montré qu'un tel auteur
+pouvait alors **effacer** l'enregistrement d'une officine appairée (une
+« correction » n'est pas liée à l'auteur de ce qu'elle corrige) ou porter
+le rang de Lamport au plafond et brouiller pour de bon l'ordre du réseau,
+et qu'un dossier inondé d'identités jetables figeait la vue. Depuis
+0.320.0 : le dossier ne les fait pas entrer au journal ; ils sont
+seulement **comptés** (32 identités au plus, les écartées non comptées)
+et rapportés à
+l'écran par la synchronisation ; la carte les propose, avec une alerte
+quand le nom qu'elles écrivent est celui d'une officine déjà ajoutée. Les
+ajouter (deux clics) relit le dossier, qui garde alors ce qu'elles
+déposent ; le nom qu'elles écrivent n'est pas repris comme nom. Une
+officine retirée est écartée d'office (`net_ignored`).
+
+Ce qu'une **conversation directe** relaie d'auteurs qu'on n'a pas ajoutés
+(les officines d'une officine appairée) reste gardé et relayé, comme
+avant — le redemander à chaque échange coûterait tout le trafic. Mais
+`absorb` lit à travers une **vue de confiance** (`trusted_view` : cette
+officine et les siennes) : une correction venue d'un autre n'y efface
+rien. Reste ouvert, comme avant 0.318.0 : un tel auteur relayé peut
+porter le rang de Lamport au plafond ; la parade (ne laisser monter
+`high` qu'aux auteurs de confiance) est dans `bpm-sync`, à décider.
 
 Les invitations faites **à une officine voisine** depuis la carte (vue
 par son annonce UDP `BPMOFFICINE1`, nom déclaré par elle-même) n'ont pas

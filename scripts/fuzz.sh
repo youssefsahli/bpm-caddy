@@ -13,6 +13,7 @@
 #   ./scripts/fuzz.sh explorer 60     # une vue, une minute
 #   FUZZ_SEED=42 ./scripts/fuzz.sh    # une graine choisie, pour rejouer
 #   FUZZ_SHAPE=1024x700 FUZZ_SCALE=1.6 ./scripts/fuzz.sh
+#   FUZZ_LAYOUT='nav_width = 360\ndocs_width = 360' ./scripts/fuzz.sh
 #
 # Les vues sont celles de `smoke.sh`, lues dans son texte : une seule
 # liste à tenir. Contre une base de démonstration jetable, jamais celle
@@ -54,7 +55,9 @@ mapfile -t views < <(
 cfg="$tmp/config"
 mkdir -p "$cfg/bpm-caddy"
 printf '[ui]\ntext_scale = %s\n' "$scale" > "$cfg/bpm-caddy/config.toml"
-: > "$cfg/bpm-caddy/layout.toml"
+# La forme du plan de travail, au besoin — les volets tirés larges :
+#   FUZZ_LAYOUT='nav_width = 360\ndocs_width = 360' ./scripts/fuzz.sh
+printf '%b\n' "${FUZZ_LAYOUT:-}" > "$cfg/bpm-caddy/layout.toml"
 demo_home "$cfg"
 export XDG_CONFIG_HOME="$cfg" BPM_CADDY_WINDOW="$size" bin secs
 

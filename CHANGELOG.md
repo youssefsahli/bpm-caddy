@@ -5,6 +5,24 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.320.0] - 2026-09-25
+
+### Security
+- **Les officines présentées par le réseau ne touchent plus au journal.**
+  Leurs envois déposés au dossier d'échange sont comptés, jamais gardés,
+  tant qu'elles ne sont pas ajoutées ; et ce qu'on lit des autres
+  officines ne peut plus être effacé par un envoi d'une officine qu'on
+  n'a pas ajoutée. Au plus 32 officines proposées à la fois.
+- Une alerte signale une officine présentée qui porte le nom d'une
+  officine déjà ajoutée : comparer son empreinte par téléphone avant de
+  l'ajouter. Ajoutée, elle ne prend pas d'office le nom qu'elle se donne.
+- Une officine retirée n'est plus proposée de nouveau.
+
+### Changed
+- Les officines présentées apparaissent après une synchronisation avec
+  le dossier d'échange.
+- Le champ « Rejoindre » garde une invite lisible sur un écran étroit.
+
 ## [0.319.0] - 2026-09-25
 
 ### Changed

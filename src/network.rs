@@ -98,6 +98,9 @@ pub struct Net {
     /// Le dossier d'échange propre à ce réseau (les autres que le
     /// principal) ; celui du principal vient de la configuration.
     pub folder: String,
+    /// Ce que le dossier d'échange a montré d'officines qu'on n'a pas
+    /// ajoutées — **compté, jamais gardé** : voir [`Net::introduced`].
+    strangers: Vec<Introduced>,
 }
 
 impl Net {
@@ -112,22 +115,19 @@ impl Net {
             .setting("net_trousseau")
             .and_then(|t| unhex::<32>(&t))
             .map(Trousseau::from_secret);
-        let mut journal = Journal::new();
-        for bytes in db.net_records_of("")? {
-            if let Ok(record) = Record::decode(&bytes) {
-                journal.insert(record);
-            }
-        }
         let peers = db.net_members("")?;
+        let device = Device::from_seed(seed);
+        let journal = stored_journal(db.net_records_of("")?);
         Ok(Self {
             id: String::new(),
             label: String::new(),
-            device: Device::from_seed(seed),
+            device,
             trousseau,
             journal,
             peers,
             shares: db.principal_shares(),
             folder: String::new(),
+            strangers: Vec::new(),
         })
     }
 
@@ -143,21 +143,19 @@ impl Net {
             .ok_or_else(|| crate::strings::tr("net_err_no_network").to_owned())?;
         let seed = db.net_key("net_seed", &hex(&random32()))?;
         let seed = unhex::<32>(&seed).ok_or("identité du réseau illisible")?;
-        let mut journal = Journal::new();
-        for bytes in db.net_records_of(id)? {
-            if let Ok(record) = Record::decode(&bytes) {
-                journal.insert(record);
-            }
-        }
+        let device = Device::from_seed(seed);
+        let peers = db.net_members(id)?;
+        let journal = stored_journal(db.net_records_of(id)?);
         Ok(Self {
             id: n.id.clone(),
             label: n.label.clone(),
-            device: Device::from_seed(seed),
+            device,
             trousseau: unhex::<32>(&n.secret).map(Trousseau::from_secret),
             journal,
-            peers: db.net_members(id)?,
+            peers,
             shares: n.shares,
             folder: n.folder.clone(),
+            strangers: Vec::new(),
         })
     }
 
@@ -242,48 +240,24 @@ impl Net {
             .collect()
     }
 
-    /// **Les officines du réseau qu'on n'a pas appairées soi-même** : elles
-    /// écrivent au journal sous la clé de ce réseau — une autre officine
-    /// les y a donc fait entrer —, et le journal voyage entier d'une
-    /// officine à l'autre. `absorb` ne les lit pas tant qu'on ne les a pas
-    /// ajoutées : la carte les montre, l'officine décide.
+    /// **Les officines du réseau qu'on n'a pas ajoutées**, telles que le
+    /// dernier passage au dossier d'échange les a vues : elles déposent des
+    /// enregistrements que la clé du réseau ouvre — elles la détiennent.
     ///
-    /// Leur nom est celui qu'elles écrivent dans leurs envois ; celles
-    /// qu'on a écartées (`ignored`, clés de [`ignore_key`]) n'y sont pas.
+    /// **Comptées, jamais gardées.** Leurs enregistrements n'entrent pas
+    /// au journal tant qu'on ne les a pas ajoutées : gardés, ils voyageaient
+    /// ensuite d'officine en officine, et un enregistrement d'un inconnu
+    /// pouvait en corriger — donc effacer — un d'une officine appairée, ou
+    /// porter un rang de Lamport au plafond et brouiller pour de bon l'ordre
+    /// du réseau (revue de sécurité de 0.318.0). Au plus
+    /// [`MOST_STRANGERS`] identités, pour qu'un dossier inondé
+    /// d'identités jetables ne fige rien.
     pub fn introduced(&self, ignored: &[String]) -> Vec<Introduced> {
-        let Some(trousseau) = &self.trousseau else {
-            return Vec::new();
-        };
-        let me = self.device.id();
-        let known = self.known();
-        let mut out: Vec<Introduced> = Vec::new();
-        for f in self.journal.read(trousseau, Stream::Reseau).facts {
-            if f.author == me || known.contains(&f.author) {
-                continue;
-            }
-            let device = hex(&f.author.0);
-            if ignored.contains(&ignore_key(&self.id, &device)) {
-                continue;
-            }
-            let name = serde_json::from_slice::<serde_json::Value>(&f.payload)
-                .ok()
-                .and_then(|v| v.get("officine")?.as_str().map(str::to_owned));
-            match out.iter_mut().find(|o| o.device == device) {
-                Some(o) => {
-                    o.records += 1;
-                    if let Some(n) = name.filter(|n| !n.trim().is_empty()) {
-                        o.name = n;
-                    }
-                }
-                None => out.push(Introduced {
-                    device,
-                    name: name.unwrap_or_default(),
-                    records: 1,
-                }),
-            }
-        }
-        out.sort_by(|a, b| a.name.cmp(&b.name).then(a.device.cmp(&b.device)));
-        out
+        self.strangers
+            .iter()
+            .filter(|o| !ignored.contains(&ignore_key(&self.id, &o.device)))
+            .cloned()
+            .collect()
     }
 
     /// Créer un réseau : une clé neuve, que cette officine donnera à
@@ -548,8 +522,12 @@ impl Net {
         };
         let me = self.device.id();
         let known = self.known();
+        // **Lu à travers la vue de confiance** : ce que les conversations
+        // relaient d'auteurs qu'on n'a pas ajoutés reste au journal — pour
+        // qu'on ne le redemande pas à chaque échange —, mais ne corrige
+        // rien ici. Voir `trusted_view`.
         let facts: Vec<bpm_sync::Fact> = self
-            .journal
+            .trusted_view()
             .read(trousseau, Stream::Reseau)
             .facts
             .into_iter()
@@ -675,6 +653,16 @@ impl Net {
         let part = folder.join(format!("{name}.bpmnet.part"));
         std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
         std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
+        let known = self.known();
+        // Les officines écartées ne prennent pas de place parmi les
+        // trente-deux : sans cela, trente-deux identités jetables, même
+        // écartées, cachaient pour de bon une vraie nouvelle venue.
+        let set_aside: Vec<DeviceId> = ignored(db)
+            .iter()
+            .filter_map(|k| k.strip_prefix(&format!("{}|", self.id)))
+            .filter_map(|d| unhex::<32>(d).map(DeviceId::from_bytes))
+            .collect();
+        self.strangers.clear();
         let mut added = 0;
         for entry in std::fs::read_dir(folder)
             .map_err(|e| e.to_string())?
@@ -698,30 +686,74 @@ impl Net {
                     break;
                 };
                 at += len;
-                // Signé par son auteur et **scellé sous la clé de ce
-                // réseau** : un dossier partagé par deux réseaux — ou le
-                // principal d'une officine qui est le second d'une autre —
-                // ne mêle pas leurs enregistrements.
+                // Signé par son auteur, d'une officine appairée, et **scellé
+                // sous la clé de ce réseau** : un dossier partagé par deux
+                // réseaux — ou le principal d'une officine qui est le second
+                // d'une autre — ne mêle pas leurs enregistrements.
                 //
-                // **Gardé au journal même d'une officine qu'on n'a pas
-                // appairée** : la clé du réseau prouve qu'un membre l'a fait
-                // entrer, comme ce qu'une conversation directe relaie déjà.
-                // Gardé, pas lu : `absorb` ne lit que les officines
-                // ajoutées, et la carte propose les autres — voir
-                // `introduced`.
+                // D'une officine qu'on n'a pas ajoutée : **comptée, pas
+                // gardée** — voir `introduced`.
                 if let Ok(record) = Record::decode(chunk) {
-                    let ours = self
-                        .trousseau
-                        .as_ref()
-                        .is_some_and(|t| record.open(t).is_ok());
-                    if ours && self.journal.insert(record) {
-                        added += 1;
+                    let opened = self.trousseau.as_ref().and_then(|t| record.open(t).ok());
+                    let Some(payload) = opened else {
+                        continue;
+                    };
+                    if known.contains(&record.author()) {
+                        if self.journal.insert(record) {
+                            added += 1;
+                        }
+                    } else if record.author() != me && !set_aside.contains(&record.author()) {
+                        self.saw_stranger(&record.author(), &payload);
                     }
                 }
             }
         }
         self.keep(db)?;
         Ok(added)
+    }
+
+    /// **La vue de confiance du journal** : ce que cette officine et les
+    /// siennes ont écrit, rien d'autre. Une « correction » ne dit pas qui
+    /// a le droit de corriger : lue sur le journal entier, celle d'un
+    /// auteur qu'on n'a pas ajouté — relayée par une officine qui, elle,
+    /// l'a ajouté — effaçait ici l'enregistrement d'une officine appairée.
+    fn trusted_view(&self) -> Journal {
+        let mut trusted = self.known();
+        trusted.push(self.device.id());
+        let mut view = Journal::new();
+        for r in self.journal.records() {
+            if trusted.contains(&r.author()) {
+                view.insert(r.clone());
+            }
+        }
+        view
+    }
+
+    /// Compter un enregistrement d'une officine qu'on n'a pas ajoutée : son
+    /// nom (le dernier lu, nettoyé comme celui d'une annonce) et combien.
+    fn saw_stranger(&mut self, author: &DeviceId, payload: &[u8]) {
+        let device = hex(&author.0);
+        let name = serde_json::from_slice::<serde_json::Value>(payload)
+            .ok()
+            .and_then(|v| v.get("officine")?.as_str().map(clean_name))
+            .filter(|n| !n.is_empty());
+        let full = self.strangers.len() >= MOST_STRANGERS;
+        match self.strangers.iter_mut().find(|o| o.device == device) {
+            Some(o) => {
+                o.records += 1;
+                if let Some(n) = name {
+                    o.name = n;
+                }
+            }
+            None if !full => {
+                self.strangers.push(Introduced {
+                    device,
+                    name: name.unwrap_or_default(),
+                    records: 1,
+                });
+            }
+            None => {}
+        }
     }
 
     /// Converser avec une officine appairée qui a une porte ouverte. Rend
@@ -769,6 +801,9 @@ pub enum Progress {
     /// Le code que les deux officines comparent. L'écran le montre, et
     /// répond par le canal qu'il a reçu avec la tâche.
     Code(String),
+    /// Ce que les dossiers d'échange ont montré d'officines non ajoutées,
+    /// réseau par réseau : `(id du réseau, officines)`.
+    Introduced(Vec<(String, Vec<Introduced>)>),
     /// Fini : ce qui s'est passé, en une phrase.
     Done(String),
     Failed(String),
@@ -800,6 +835,20 @@ pub enum Job {
     /// Composer l'adresse d'**une** officine : savoir si elle répond,
     /// sans attendre toutes les autres ni le dossier d'échange.
     Dial { device: String },
+}
+
+/// Combien d'officines non ajoutées un passage au dossier compte au plus.
+pub const MOST_STRANGERS: usize = 32;
+
+/// Le journal tel que la base le garde.
+fn stored_journal(records: Vec<Vec<u8>>) -> Journal {
+    let mut journal = Journal::new();
+    for bytes in records {
+        if let Ok(record) = Record::decode(&bytes) {
+            journal.insert(record);
+        }
+    }
+    journal
 }
 
 /// Une officine du réseau présentée par une autre : voir
@@ -834,62 +883,47 @@ pub fn set_ignored(
     on: bool,
     day: &str,
 ) -> Result<(), String> {
-    let was = db.setting("net_ignored");
-    let mut list = ignored(db);
-    let key = ignore_key(network, device);
-    list.retain(|k| *k != key);
-    if on {
-        list.push(key);
+    // Contre la valeur lue ; un autre poste qui écrit entre-temps, et on
+    // relit pour réessayer — perdu, le geste ne se tait pas.
+    for _ in 0..3 {
+        let was = db.setting("net_ignored");
+        let mut list = ignored(db);
+        let key = ignore_key(network, device);
+        list.retain(|k| *k != key);
+        if on {
+            list.push(key);
+        }
+        let value = serde_json::to_string(&list).map_err(|e| e.to_string())?;
+        if db.set_setting("net_ignored", &value, was.as_deref(), day, "")? {
+            return Ok(());
+        }
     }
-    let value = serde_json::to_string(&list).map_err(|e| e.to_string())?;
-    db.set_setting("net_ignored", &value, was.as_deref(), day, "")?;
-    Ok(())
+    Err(crate::strings::tr("net_peer_stale").to_owned())
 }
 
 /// **Ajouter une officine présentée par le réseau** : l'inscrire comme
-/// si on l'avait appairée — elle tient déjà la clé du réseau, qu'une
-/// autre officine lui a donnée —, sous le nom qu'elle écrit, puis lire
-/// ce qu'elle a envoyé.
-pub fn adopt(db: &Db, network: &str, device: &str, name: &str, day: &str) -> Result<usize, String> {
+/// si on l'avait appairée — elle tient déjà la clé du réseau —, puis
+/// relire le dossier d'échange, qui garde désormais ce qu'elle dépose, et
+/// lire ce qu'elle a envoyé. **Sans lui donner de nom** : celui qu'elle
+/// écrit n'est pas un nom que l'officine a choisi — il s'affiche déjà
+/// comme celui qu'elle signe ; l'opérateur la nomme s'il le veut.
+pub fn adopt(
+    db: &Db,
+    network: &str,
+    device: &str,
+    folder: Option<&Path>,
+    day: &str,
+) -> Result<usize, String> {
     unhex::<32>(device).ok_or("identité illisible")?;
     let was = db.net_members("")?.iter().any(|p| p.device == device);
     db.add_net_peer(device, "", day)?;
     db.add_net_membership(network, device, was)?;
-    if !name.trim().is_empty() {
-        let _ = db.set_net_peer(device, name.trim(), "", ("", ""));
+    let _ = set_ignored(db, network, device, false, day);
+    let mut net = Net::load_network(db, network)?;
+    if let Some(dir) = folder {
+        net.exchange_folder(db, dir)?;
     }
-    set_ignored(db, network, device, false, day)?;
-    Net::load_network(db, network)?.absorb(db)
-}
-
-/// **Pour la démonstration** : une officine qu'un autre membre aurait fait
-/// entrer dans le réseau principal — une identité tirée de `seed`, et une
-/// annonce de sa boîte sous ce nom, au journal. Ce que la carte montre
-/// alors « présentée par le réseau ».
-pub fn demo_introduce(db: &Db, seed: [u8; 32], name: &str) -> Result<(), String> {
-    let mut net = Net::load(db)?;
-    let Some(trousseau) = net.trousseau.clone() else {
-        return Ok(());
-    };
-    let other = Device::from_seed(seed);
-    let payload = serde_json::json!({
-        "t": "boite",
-        "k": hex(&other.box_public()),
-        "officine": name,
-    })
-    .to_string()
-    .into_bytes();
-    net.journal
-        .write(
-            &other,
-            &trousseau,
-            Stream::Reseau,
-            &payload,
-            None,
-            &mut bpm_sync::OsEntropy,
-        )
-        .map_err(|e| format!("{e:?}"))?;
-    net.keep(db).map(|_| ())
+    net.absorb(db)
 }
 
 /// Le code d'invitation : le ticket, puis où composer —
@@ -1163,6 +1197,7 @@ pub fn run(
             }
             let (mut sent, mut received) = (0, 0);
             let mut failed = Vec::new();
+            let mut introduced = Vec::new();
             for mut net in nets {
                 // Un réseau qui échoue n'arrête pas les autres.
                 match net.publish(&db, officine) {
@@ -1176,9 +1211,13 @@ pub fn run(
                 } else {
                     (!net.folder.trim().is_empty()).then(|| PathBuf::from(net.folder.trim()))
                 };
+                // Ce que le dossier a montré — seulement d'un dossier lu :
+                // sans lui, rien de neuf n'a été vu, et l'écran garde ce
+                // qu'il savait.
                 if let Some(dir) = &dir {
-                    if let Err(e) = net.exchange_folder(&db, dir) {
-                        failed.push(format!("{} : {e}", dir.display()));
+                    match net.exchange_folder(&db, dir) {
+                        Ok(_) => introduced.push((net.id.clone(), net.introduced(&[]))),
+                        Err(e) => failed.push(format!("{} : {e}", dir.display())),
                     }
                 }
                 let peers = net.peers.clone();
@@ -1209,6 +1248,7 @@ pub fn run(
                     Err(e) => failed.push(e),
                 }
             }
+            let _ = tx.send(Progress::Introduced(introduced));
             let mut said = trn("net_done_synced", &[&sent, &received]);
             if !failed.is_empty() {
                 said.push_str(&crate::strings::trf(
@@ -2743,17 +2783,122 @@ mod tests {
         set_ignored(&a, "", &c_device, false, "2026-09-24").unwrap();
         assert_eq!(net_a.introduced(&ignored(&a)).len(), 1);
         // Ajoutée : ce qu'elle a envoyé entre, sous son nom.
-        adopt(&a, "", &c_device, "Pharmacie du Canal", "2026-09-24").unwrap();
+        // Rien de C au journal ni dans la base : compté, pas gardé.
+        assert!(!net_a
+            .journal
+            .records()
+            .any(|r| hex(&r.author().0) == c_device));
+        assert!(!a
+            .net_records()
+            .unwrap()
+            .iter()
+            .filter_map(|b| Record::decode(b).ok())
+            .any(|r| hex(&r.author().0) == c_device));
+        adopt(&a, "", &c_device, Some(&folder), "2026-09-24").unwrap();
         assert_eq!(
             crate::ruptures::tried(&a.supply_events().unwrap(), "Diprosone").len(),
             1
         );
-        assert!(a
-            .net_members("")
-            .unwrap()
-            .iter()
-            .any(|p| p.device == c_device && p.name == "Pharmacie du Canal"));
+        assert!(
+            a.net_members("")
+                .unwrap()
+                .iter()
+                .any(|p| p.device == c_device
+                    && p.seen_as == "Pharmacie du Canal"
+                    && p.name.is_empty()),
+            "ajoutée sans prendre pour nom celui qu'elle écrit"
+        );
         assert!(Net::load(&a).unwrap().introduced(&ignored(&a)).is_empty());
-        assert!(adopt(&a, "", "pas une clé", "", "2026-09-24").is_err());
+        assert!(adopt(&a, "", "pas une clé", None, "2026-09-24").is_err());
+    }
+
+    /// **Un inconnu qui détient la clé ne touche pas au journal** (revue de
+    /// sécurité de 0.318.0) : un enregistrement qui en « corrige » un d'une
+    /// officine appairée ne le fait pas disparaître, et un dossier inondé
+    /// d'identités jetables n'en propose que [`MOST_STRANGERS`].
+    #[test]
+    fn a_key_holder_nobody_added_neither_hides_records_nor_floods_the_map() {
+        let (dir_a, _sa, a) = officine("quarantine-a");
+        let (dir_b, _sb, b) = officine("quarantine-b");
+        Net::create(&a).unwrap();
+        drop((a, b));
+        let (da, db_) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+        assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let folder = dir_a.join("echange");
+        std::fs::create_dir_all(&folder).unwrap();
+        // B signale une substitution et la dépose.
+        b.add_supply_event(&subst("Diprosone", "Locoid")).unwrap();
+        let mut net_b = Net::load(&b).unwrap();
+        net_b.publish(&b, "Pharmacie B").unwrap();
+        net_b.exchange_folder(&b, &folder).unwrap();
+        let target = net_b
+            .journal
+            .records()
+            .find(|r| r.author() == net_b.device.id())
+            .map(|r| r.id())
+            .expect("un enregistrement de B");
+        // Quelqu'un qui détient la clé — une officine retirée — « corrige »
+        // cet enregistrement, et inonde le dossier d'identités jetables.
+        let trousseau = net_b.trousseau.clone().unwrap();
+        let mut rogue = Journal::new();
+        let mut framed = Vec::new();
+        for n in 0..40u8 {
+            let d = Device::from_seed([n.wrapping_add(100); 32]);
+            let corrects = (n == 0).then_some(target);
+            rogue
+                .write(
+                    &d,
+                    &trousseau,
+                    Stream::Reseau,
+                    br#"{"t":"boite","officine":"Pharmacie B"}"#,
+                    corrects,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap();
+        }
+        for r in rogue.records() {
+            let bytes = r.encode();
+            framed.extend((bytes.len() as u32).to_be_bytes());
+            framed.extend(bytes);
+        }
+        std::fs::write(folder.join("rogue.bpmnet"), framed).unwrap();
+        let mut net_a = Net::load(&a).unwrap();
+        net_a.exchange_folder(&a, &folder).unwrap();
+        net_a.absorb(&a).unwrap();
+        assert_eq!(
+            crate::ruptures::tried(&a.supply_events().unwrap(), "Diprosone").len(),
+            1,
+            "ce que B a écrit est lu, malgré la « correction »"
+        );
+        let intro = net_a.introduced(&[]);
+        assert_eq!(intro.len(), MOST_STRANGERS, "plafonné");
+        assert!(net_a
+            .journal
+            .records()
+            .all(|r| r.author() == net_a.device.id() || r.author() == net_b.device.id()));
+        // Et gardés dans la base — relayés par une conversation, ou par
+        // 0.318.0 —, ils ne corrigent rien à la lecture.
+        a.keep_net_records_of(
+            "",
+            &rogue
+                .records()
+                .map(|r| (hex(&r.id().0), r.encode()))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let again = Net::load(&a).unwrap();
+        let t = again.trousseau.clone().unwrap();
+        let read = again.trusted_view().read(&t, Stream::Reseau);
+        assert!(
+            read.facts.iter().any(|f| f.id == target),
+            "gardée dans la base, la « correction » n'efface rien à la lecture"
+        );
+        assert!(read
+            .facts
+            .iter()
+            .all(|f| f.author == again.device.id() || f.author == net_b.device.id()));
     }
 }

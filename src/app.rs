@@ -4637,6 +4637,11 @@ struct Session {
     /// La largeur de carte où la légende s'est repliée : elle passe au
     /// volet tant que la carte garde cette largeur.
     conn_legend_aside: Option<i32>,
+    /// Ce que la dernière synchronisation a vu, dans les dossiers
+    /// d'échange, d'officines non ajoutées — par réseau. En mémoire
+    /// seulement : rien d'elles n'est gardé avant qu'on les ajoute.
+    #[cfg(feature = "sync")]
+    net_introduced: Vec<(String, Vec<crate::network::Introduced>)>,
     /// Quand relire la vue des connexions après une lecture tombée.
     conn_retry: Option<Instant>,
     /// The officines' network synchronisation running in the background,
@@ -5477,6 +5482,8 @@ impl Session {
             #[cfg(feature = "sync")]
             conn_adopt_armed: None,
             conn_legend_aside: None,
+            #[cfg(feature = "sync")]
+            net_introduced: Vec::new(),
             conn_retry: None,
             #[cfg(feature = "sync")]
             net_auto: None,
@@ -7230,9 +7237,15 @@ impl Session {
                 for (id, label) in all {
                     let g = map_groups.len();
                     map_groups.push(label);
-                    if let Ok(net) = crate::network::Net::load_network(&self.db, &id) {
-                        for i in net.introduced(&ignored) {
-                            map_introduced.push((i, g, id.clone()));
+                    let members = self.db.net_members(&id).unwrap_or_default();
+                    for (_, list) in self.net_introduced.iter().filter(|(n, _)| *n == id) {
+                        for i in list {
+                            if members.iter().any(|m| m.device == i.device)
+                                || ignored.contains(&crate::network::ignore_key(&id, &i.device))
+                            {
+                                continue;
+                            }
+                            map_introduced.push((i.clone(), g, id.clone()));
                         }
                     }
                     for p in self.db.net_members(&id).unwrap_or_default() {
@@ -7377,6 +7390,11 @@ impl Session {
                         .map(|l| l.0.clone())
                         .unwrap_or_default();
                     self.net_status = Some((true, said, at));
+                }
+                Ok(crate::network::Progress::Introduced(list)) => {
+                    merge_introduced(&mut self.net_introduced, list);
+                    self.conn_dirty = true;
+                    ctx.request_repaint();
                 }
                 Ok(_) | Err(std::sync::mpsc::TryRecvError::Empty) => {
                     ctx.request_repaint_after(Duration::from_millis(500));
@@ -11174,6 +11192,20 @@ fn conn_link_stroke(painter: &egui::Painter, line: [egui::Pos2; 2], st: crate::n
     }
 }
 
+/// Ce qu'une synchronisation rapporte des officines non ajoutées remplace
+/// ce qu'on savait **des réseaux dont elle a lu le dossier**, et de ceux-là
+/// seulement.
+#[cfg(feature = "sync")]
+fn merge_introduced(
+    known: &mut Vec<(String, Vec<crate::network::Introduced>)>,
+    seen: Vec<(String, Vec<crate::network::Introduced>)>,
+) {
+    for (network, list) in seen {
+        known.retain(|(n, _)| *n != network);
+        known.push((network, list));
+    }
+}
+
 /// Ce qu'on sait d'une officine voisine : elle invite, ou elle s'annonce.
 fn conn_nearby_text(s: crate::netmap::LinkState) -> &'static str {
     match s {
@@ -14122,11 +14154,17 @@ impl App {
                                 // Une officine qu'un autre membre a fait
                                 // entrer : l'arc du réseau la montre, à
                                 // ajouter ou à écarter.
-                                let _ = crate::network::demo_introduce(
-                                    &session.db,
-                                    [0x42; 32],
-                                    "Pharmacie du Canal",
-                                );
+                                // **En mémoire, comme la synchronisation le
+                                // rapporte** : rien n'est écrit au journal
+                                // d'une base, qui pourrait être la vraie.
+                                session.net_introduced = vec![(
+                                    String::new(),
+                                    vec![crate::network::Introduced {
+                                        device: "42".repeat(32),
+                                        name: "Pharmacie du Canal".to_owned(),
+                                        records: 3,
+                                    }],
+                                )];
                                 session.reload_connections();
                                 // Deux officines voisines, l'une qui
                                 // invite : l'arc « À portée » et, choisie,
@@ -24764,6 +24802,17 @@ impl App {
     /// « Chercher une prépa » dès qu'on grossissait le texte. Le
     /// panneau porte déjà son titre — « Patients », « Préparations » —,
     /// donc quand le nom ne tient pas, on garde le verbe.
+    /// L'invite d'un champ « Rejoindre », ou sa forme courte quand elle ne
+    /// tient pas dans ses vingt-deux caractères — « code d'invitation ou
+    /// adres » ne dit plus ce qu'on y colle.
+    fn join_hint(ui: &egui::Ui, key: &'static str) -> &'static str {
+        if Self::field_width(ui, [tr(key)].into_iter()) <= chars_wide(ui, 22.0) {
+            tr(key)
+        } else {
+            tr("net_join_hint_short")
+        }
+    }
+
     fn hint_that_fits<'a>(ui: &egui::Ui, width: f32, hint: &'a str) -> &'a str {
         if Self::field_width(ui, [hint].into_iter()) <= width {
             hint
@@ -57142,6 +57191,31 @@ impl App {
                                     .iter()
                                     .find(|(i, g, _)| i.device == n.device && *g == n.group);
                                 ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                if let Some((i, _, _)) = found.filter(|(i, _, _)| {
+                                    !i.name.trim().is_empty()
+                                        && peers.iter().any(|p| {
+                                            [p.name.as_str(), p.seen_as.as_str()].iter().any(|n| {
+                                                n.trim().to_lowercase()
+                                                    == i.name.trim().to_lowercase()
+                                            })
+                                        })
+                                }) {
+                                    // **Le même nom qu'une officine déjà
+                                    // ajoutée** : une officine retirée — qui
+                                    // détient toujours la clé — ou quelqu'un
+                                    // qui se fait passer pour elle.
+                                    ui.add(
+                                        egui::Label::new(
+                                            egui::RichText::new(trf(
+                                                "conn_intro_same_name",
+                                                &i.name,
+                                            ))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::alert()),
+                                        )
+                                        .wrap(),
+                                    );
+                                }
                                 if let Some((i, g, _)) = found {
                                     ui.add(
                                         egui::Label::new(small(
@@ -57237,7 +57311,27 @@ impl App {
         }
         if let Some((network, device, name)) = adopt {
             session.conn_adopt_armed = None;
-            match crate::network::adopt(&session.db, &network, &device, &name, &session.today) {
+            // Le dossier d'échange de ce réseau : celui de la configuration
+            // pour le principal, le sien pour un autre.
+            let folder = if network.is_empty() {
+                Some(config.reseau.dossier.trim().to_owned())
+            } else {
+                session
+                    .db
+                    .net_networks()
+                    .ok()
+                    .and_then(|n| n.into_iter().find(|n| n.id == network))
+                    .map(|n| n.folder.trim().to_owned())
+            }
+            .filter(|f| !f.is_empty())
+            .map(std::path::PathBuf::from);
+            match crate::network::adopt(
+                &session.db,
+                &network,
+                &device,
+                folder.as_deref(),
+                &session.today,
+            ) {
                 Ok(n) => {
                     let who = if name.trim().is_empty() {
                         crate::network::peer_groups(&device)
@@ -57533,8 +57627,9 @@ impl App {
                                 motif::field(
                                     ui,
                                     chars_wide(ui, 22.0),
-                                    egui::TextEdit::singleline(&mut w.join_address)
-                                        .hint_text(motif::hint(tr("posts_join_hint"))),
+                                    egui::TextEdit::singleline(&mut w.join_address).hint_text(
+                                        motif::hint(App::join_hint(ui, "posts_join_hint")),
+                                    ),
                                 );
                                 let ready = !busy && !w.join_address.trim().is_empty();
                                 if !w.join_armed {
@@ -57891,11 +57986,13 @@ impl App {
         };
         // What the thread said since the last frame.
         let mut finished = false;
+        let mut introduced = None;
         if let Some((rx, _)) = &w.job {
             loop {
                 match rx.try_recv() {
                     Ok(Progress::Waiting(at)) => w.waiting = Some(at),
                     Ok(Progress::Code(code)) => w.code = Some(code),
+                    Ok(Progress::Introduced(list)) => introduced = Some(list),
                     Ok(Progress::Done(said)) => {
                         w.note = Some((false, said));
                         finished = true;
@@ -57917,6 +58014,13 @@ impl App {
                 }
             }
         }
+        if let Some(list) = introduced {
+            merge_introduced(&mut session.net_introduced, list);
+            session.conn_dirty = true;
+        }
+        let Some(w) = &mut session.net_window else {
+            return;
+        };
         if finished {
             w.job = None;
             w.code = None;
@@ -58063,8 +58167,9 @@ impl App {
                                 motif::field(
                                     ui,
                                     chars_wide(ui, 22.0),
-                                    egui::TextEdit::singleline(&mut w.join_address)
-                                        .hint_text(motif::hint(tr("net_join_hint"))),
+                                    egui::TextEdit::singleline(&mut w.join_address).hint_text(
+                                        motif::hint(App::join_hint(ui, "net_join_hint")),
+                                    ),
                                 );
                                 if motif::button_enabled(
                                     ui,
@@ -58135,7 +58240,7 @@ impl App {
                                 ui,
                                 chars_wide(ui, 22.0),
                                 egui::TextEdit::singleline(&mut w.join_address)
-                                    .hint_text(motif::hint(tr("net_join_hint"))),
+                                    .hint_text(motif::hint(App::join_hint(ui, "net_join_hint"))),
                             );
                             if motif::button_enabled(
                                 ui,
@@ -58461,6 +58566,14 @@ impl App {
         }
         if let Some(device) = remove_peer {
             // Dans un réseau de plus, l'officine ne quitte que lui.
+            // Retirée, elle n'est pas proposée de nouveau : elle détient
+            // toujours la clé, et ce qu'elle déposera la montrerait sinon
+            // parmi les officines « présentées ».
+            if let Err(e) =
+                crate::network::set_ignored(&session.db, &w.network, &device, true, &session.today)
+            {
+                w.note = Some((true, e));
+            }
             if let Err(e) = session.db.remove_net_membership(&w.network, &device) {
                 w.note = Some((true, e));
             }
