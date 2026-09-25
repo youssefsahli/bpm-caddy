@@ -324,6 +324,15 @@ annonce contrefaite ne remplace pas une adresse saisie. La ville annoncée
 ne s'affiche que pour une officine qu'on n'a pas ajoutée. Au-delà du réseau local, sans serveur,
 rien ne se découvre : restent les adresses saisies et le dossier.
 
+**Entre deux sites** (0.326.0) : une officine joignable de l'extérieur
+(routeur, VPN) déclare son adresse (`net_public_address`, fenêtre du
+réseau) ; `publish` l'envoie une fois par valeur, **aux seuls membres du
+réseau**, chiffrée et signée. `absorb` range la dernière adresse annoncée
+par chaque officine appairée à part (`net_announced:<empreinte>`), jamais à
+la place de l'adresse saisie ; la synchronisation l'essaie pour une
+officine sans adresse ou dont l'adresse ne répond plus, et ne la retient
+qu'une fois l'officine attendue jointe (`dial_heard`).
+
 **L'horloge ne se règle que sur les auteurs de confiance** (0.321.0) :
 `Journal::trust` — cette officine et les siennes — et un rang venu d'un
 autre (relayé par une officine appairée) ne déplace plus celui des

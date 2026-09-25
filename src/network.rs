@@ -364,6 +364,33 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(key);
         }
+        // **L'adresse où l'officine se joint de l'extérieur**, quand elle
+        // en déclare une : annoncée une fois par valeur, aux seuls membres
+        // du réseau — c'est ce qui permet la connexion au lancement entre
+        // officines de deux sites.
+        let public = db.setting(PUBLIC_ADDRESS).unwrap_or_default();
+        let public = public.trim();
+        let key = format!("adresse:{public}");
+        if !public.is_empty() && !already.contains(&key) {
+            let payload = serde_json::json!({
+                "t": "adresse",
+                "a": public,
+                "officine": officine,
+            })
+            .to_string()
+            .into_bytes();
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(key);
+        }
         // **La clé de boîte**, annoncée une fois : ce qui permet aux
         // autres officines de sceller un message pour celle-ci seule.
         let box_public = hex(&self.device.box_public());
@@ -583,6 +610,26 @@ impl Net {
         // came in — written after, it would silently answer it.
         db.version_shared_entries("")?;
         db.receive_card_edits(&versions)?;
+        // **Les adresses annoncées** par les officines appairées : la
+        // dernière de chacune, gardée à part — jamais à la place de
+        // l'adresse saisie ; la synchronisation l'essaie quand celle-ci
+        // ne répond pas, et ne la retient qu'une fois l'officine jointe.
+        for f in &facts {
+            if let Some(a) = serde_json::from_slice::<serde_json::Value>(&f.payload)
+                .ok()
+                .filter(|v| v.get("t").and_then(|t| t.as_str()) == Some("adresse"))
+                .and_then(|v| v.get("a").and_then(|a| a.as_str()).map(str::to_owned))
+            {
+                let a: String = a.trim().chars().take(120).collect();
+                if !a.is_empty() && !a.contains(char::is_whitespace) {
+                    let key = announced_key(&hex(&f.author.0));
+                    let was = db.setting(&key);
+                    if was.as_deref() != Some(a.as_str()) {
+                        let _ = db.set_setting(&key, &a, was.as_deref(), "", "");
+                    }
+                }
+            }
+        }
         // Les clés de boîte annoncées, puis les messages scellés pour
         // celle-ci — ceux qui ne s'ouvrent pas sont pour d'autres.
         for f in &facts {
@@ -837,6 +884,15 @@ pub enum Job {
     /// Composer l'adresse d'**une** officine : savoir si elle répond,
     /// sans attendre toutes les autres ni le dossier d'échange.
     Dial { device: String },
+}
+
+/// Le réglage de l'officine : l'adresse où elle se joint de l'extérieur
+/// (routeur, VPN), annoncée aux membres de ses réseaux. Vide : aucune.
+pub const PUBLIC_ADDRESS: &str = "net_public_address";
+
+/// Où ranger l'adresse qu'une officine appairée a annoncée.
+pub fn announced_key(device: &str) -> String {
+    format!("net_announced:{device}")
 }
 
 /// Combien d'officines non ajoutées un passage au dossier compte au plus.
@@ -1338,6 +1394,14 @@ pub fn run(
                     }
                 }
                 let peers = net.peers.clone();
+                // **L'adresse annoncée, en second** : pour une officine sans
+                // adresse, ou dont l'adresse ne répond plus. Retenue
+                // seulement une fois l'officine jointe (`dial_heard`).
+                for p in peers.iter().filter(|p| p.address.trim().is_empty()) {
+                    if let Some(a) = db.setting(&announced_key(&p.device)) {
+                        let _ = dial_heard(&db, &p.device, &a, officine);
+                    }
+                }
                 for p in peers.iter().filter(|p| !p.address.trim().is_empty()) {
                     // Chaque conversation est notée, réussie ou non, avec sa
                     // raison ; une note qui ne s'écrit pas n'arrête pas les
@@ -1348,6 +1412,14 @@ pub fn run(
                                 db.note_net_dial(answered.as_deref().unwrap_or(&p.device), None);
                         }
                         Err(e) => {
+                            let announced = db
+                                .setting(&announced_key(&p.device))
+                                .filter(|a| a.trim() != p.address.trim());
+                            if let Some(a) = announced {
+                                if dial_heard(&db, &p.device, &a, officine).is_ok() {
+                                    continue;
+                                }
+                            }
                             let _ = db.note_net_dial(&p.device, Some(&dial_reason(&e)));
                             let who = if p.name.trim().is_empty() {
                                 p.address.clone()
@@ -3187,5 +3259,53 @@ mod tests {
         }
         poke.send(crate::postes::Poke::Stop).unwrap();
         assert!(said, "la connexion est dite à l'écran");
+    }
+
+    /// **L'adresse d'un autre site** : A déclare où elle se joint de
+    /// l'extérieur ; B, appairée, l'apprend par le réseau et sa
+    /// synchronisation la joint là, puis retient l'adresse. Une officine
+    /// non appairée qui annoncerait une adresse n'est pas écoutée.
+    #[test]
+    fn an_officine_announces_where_it_can_be_reached_and_is_reached_there() {
+        let (dir_a, _sa, a) = officine("public-a");
+        let (dir_b, _sb, b) = officine("public-b");
+        Net::create(&a).unwrap();
+        drop((a, b));
+        let (da, db_) = pair(&dir_a, &dir_b, "");
+        assert!(matches!(da, Some(Progress::Done(_))), "{da:?}");
+        assert!(matches!(db_, Some(Progress::Done(_))), "{db_:?}");
+        let a = Db::open(&dir_a.join("net.db"), "secret").unwrap();
+        let b = Db::open(&dir_b.join("net.db"), "secret").unwrap();
+        let a_device = device_hex(&a).unwrap();
+        // B ne garde aucune adresse de A : celle de l'invitation est fermée.
+        b.set_net_peer(&a_device, "", "", ("", "")).ok();
+        let door = bpm_sync::link::Door::open("127.0.0.1:0").unwrap();
+        let at = door.address().unwrap().to_string();
+        a.set_setting(PUBLIC_ADDRESS, &at, None, "2026-09-25", "")
+            .unwrap();
+        let folder = dir_a.join("echange");
+        let mut net_a = Net::load(&a).unwrap();
+        net_a.publish(&a, "Pharmacie A").unwrap();
+        net_a.exchange_folder(&a, &folder).unwrap();
+        let mut net_b = Net::load(&b).unwrap();
+        net_b.exchange_folder(&b, &folder).unwrap();
+        net_b.absorb(&b).unwrap();
+        assert_eq!(b.setting(&announced_key(&a_device)), Some(at.clone()));
+        // A tient sa porte ; B synchronise : jointe à l'adresse annoncée.
+        let path_a = dir_a.join("net.db");
+        let answering = std::thread::spawn(move || {
+            let db = Db::open(&path_a, "secret").unwrap();
+            let mut link = door.accept(Duration::from_secs(20)).unwrap();
+            answer(&db, &mut link)
+        });
+        dial_heard(&b, &a_device, &at, "Pharmacie B").expect("jointe");
+        assert!(answering.join().unwrap().is_ok());
+        let stored = b
+            .net_peers()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.device == a_device)
+            .map(|p| p.address);
+        assert_eq!(stored, Some(at), "retenue une fois jointe");
     }
 }

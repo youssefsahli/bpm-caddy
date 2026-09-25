@@ -11082,6 +11082,9 @@ struct NetWindow {
     /// Une tâche demandée d'ailleurs — la carte, pour une officine
     /// voisine — que la fenêtre lance dès qu'elle est libre.
     pending: Option<crate::network::Job>,
+    /// L'adresse joignable de l'extérieur : ce qu'on tape, et ce que la
+    /// base disait quand on a commencé (la référence du compare-and-set).
+    public: Option<(String, Option<String>)>,
 }
 
 /// What the base says about the network, read when the window opens and
@@ -58339,6 +58342,7 @@ impl App {
         let mut save_meta = false;
         let mut leave = false;
         let mut join_typed = false;
+        let mut save_public: Option<(String, Option<String>)> = None;
         let busy = w.job.is_some();
         if !busy {
             start = w.pending.take();
@@ -58514,6 +58518,33 @@ impl App {
                                 save_shares = Some(sh);
                             }
                         });
+                        // **L'adresse joignable de l'extérieur**, pour les
+                        // officines d'un autre site : annoncée aux membres
+                        // du réseau, essayée par eux au lancement.
+                        {
+                            let (typed, was) = w.public.get_or_insert_with(|| {
+                                let v = session.db.setting(crate::network::PUBLIC_ADDRESS);
+                                (v.clone().unwrap_or_default(), v)
+                            });
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(
+                                    egui::RichText::new(tr("net_public_label"))
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                );
+                                motif::field(
+                                    ui,
+                                    chars_wide(ui, 22.0),
+                                    egui::TextEdit::singleline(typed)
+                                        .hint_text(motif::hint(tr("net_public_hint"))),
+                                )
+                                .on_hover_text(tr("net_public_tooltip"));
+                                let changed = typed.trim() != was.as_deref().unwrap_or("").trim();
+                                if motif::button_enabled(ui, tr("form_save"), changed).clicked() {
+                                    save_public = Some((typed.trim().to_owned(), was.clone()));
+                                }
+                            });
+                        }
                         // Rejoindre un réseau de plus, sans quitter celui-ci.
                         ui.horizontal_wrapped(|ui| {
                             ui.label(
@@ -58864,6 +58895,20 @@ impl App {
             }
             w.edits.remove(&device);
             w.reread(&session.db);
+        }
+        if let Some((value, was)) = save_public {
+            match session.db.set_setting(
+                crate::network::PUBLIC_ADDRESS,
+                &value,
+                was.as_deref(),
+                &session.today,
+                "",
+            ) {
+                Ok(true) => {}
+                Ok(false) => network_stale = true,
+                Err(e) => w.note = Some((true, e)),
+            }
+            w.public = None;
         }
         // Un code d'invitation, ou une adresse seule ; un code abîmé est
         // dit, jamais changé en comparaison de code à l'insu de qui l'a
