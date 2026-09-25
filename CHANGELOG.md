@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.335.0] - 2026-09-25
+
+### Security
+- Une officine qui prend le nom d'une autre, ou celui de cette
+  officine, est affichée avec son empreinte : envois, messagerie, carte
+  des connexions, fenêtre du réseau.
+- Une annonce contrefaite sur le réseau local ne retarde plus la
+  connexion à une officine appairée.
+- Connexion à une officine appairée ou à un poste, et invitation à une
+  voisine, bornées dans le temps.
+- Limite des tentatives de connexion appliquée par réseau en IPv6.
+
 ## [0.334.0] - 2026-09-25
 
 ### Security

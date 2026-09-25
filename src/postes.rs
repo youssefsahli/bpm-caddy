@@ -398,7 +398,12 @@ impl Posts {
         let Some(trousseau) = self.trousseau.clone() else {
             return Ok(());
         };
-        let mut link = bpm_sync::link::dial(address, patience).map_err(|e| format!("{e:?}"))?;
+        // Bornée en tout : l'adresse vient d'une annonce que personne ne
+        // signe, et une machine qui écrirait un octet de temps en temps
+        // tiendrait sinon le fil des postes — réponses, annonces, appels.
+        let mut link = bpm_sync::link::dial(address, patience)
+            .map_err(|e| format!("{e:?}"))?
+            .with_deadline(POSTS_DIAL_BOUND);
         self.talk(db, &trousseau, &mut link, true)
     }
 
@@ -814,6 +819,10 @@ pub struct OfficineSide {
 /// dire — n'en retient aucune autre, ni les postes.
 const MOST_ANSWERS: usize = 2;
 
+/// Le temps qu'un appel à un poste peut durer en tout — large : une
+/// première copie de la base passe par là.
+const POSTS_DIAL_BOUND: Duration = Duration::from_secs(600);
+
 /// Le temps qu'une conversation d'officine peut durer en tout.
 const ANSWER_BOUND: Duration = Duration::from_secs(60);
 
@@ -826,6 +835,42 @@ type Knock = (bpm_sync::link::TcpLink, std::net::IpAddr);
 
 /// Les adresses dont une conversation est en cours.
 type BusyIps = std::sync::Arc<std::sync::Mutex<std::collections::HashSet<std::net::IpAddr>>>;
+
+/// La fin d'un appel à une officine entendue, rendue au fil quand l'appel
+/// se termine, de quelque façon que ce soit.
+struct DialDone {
+    done: std::sync::mpsc::Sender<(String, std::net::IpAddr, bool)>,
+    busy: std::sync::Arc<std::sync::atomic::AtomicUsize>,
+    device: String,
+    ip: std::net::IpAddr,
+    ok: bool,
+}
+
+impl Drop for DialDone {
+    fn drop(&mut self) {
+        let _ = self
+            .done
+            .send((std::mem::take(&mut self.device), self.ip, self.ok));
+        self.busy.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+    }
+}
+
+/// L'adresse sous laquelle on compte qui frappe : une adresse IPv4, ou le
+/// préfixe /64 d'une adresse IPv6 — un seul poste en tient des milliards,
+/// et en changer à chaque coup contournerait la limite.
+fn knock_key(ip: std::net::IpAddr) -> std::net::IpAddr {
+    match ip {
+        std::net::IpAddr::V6(v6) => match v6.to_ipv4_mapped() {
+            Some(v4) => std::net::IpAddr::V4(v4),
+            None => {
+                let mut s = v6.segments();
+                s[4..].fill(0);
+                std::net::IpAddr::V6(std::net::Ipv6Addr::from(s))
+            }
+        },
+        v4 => v4,
+    }
+}
 
 /// Une officine appairée entendue n'est composée de nouveau qu'après ce
 /// délai — une annonce toutes les trois secondes n'est pas un appel toutes
@@ -862,18 +907,9 @@ fn answerers(
                 }
                 if let Some(db) = &db {
                     if let Ok(device) = crate::network::answer(db, &mut link) {
-                        let who = db
-                            .net_peers()
-                            .ok()
-                            .and_then(|p| p.into_iter().find(|p| p.device == device))
-                            .map(|p| {
-                                [p.name, p.seen_as]
-                                    .into_iter()
-                                    .find(|n| !n.trim().is_empty())
-                                    .unwrap_or_default()
-                            })
-                            .filter(|n| !n.is_empty())
-                            .unwrap_or_else(|| crate::peer_groups(&device));
+                        let own = db.officine().map(|o| o.name).unwrap_or_default();
+                        let who =
+                            crate::peer_label(&device, &db.net_peers().unwrap_or_default(), &own);
                         let _ = tx.send(Progress::Status(crate::strings::trf("net_answered", who)));
                     }
                 }
@@ -939,7 +975,9 @@ fn auto(
     let mut knocks: Vec<(std::net::IpAddr, Instant)> = Vec::new();
     // Les officines appairées, relues de temps en temps : ce qu'une
     // annonce entendue fait apprendre, et qui on a déjà composé.
-    let mut paired: Vec<String> = Vec::new();
+    // Les officines appairées, et les adresses où on les connaît déjà
+    // (saisie, ou dernière réponse).
+    let mut paired: Vec<(String, Vec<std::net::SocketAddr>)> = Vec::new();
     let mut paired_read: Option<Instant> = None;
     // Les appels aux officines appairées entendues : la dernière réussite
     // et le dernier essai de chacune, et les adresses qui ont échoué.
@@ -947,6 +985,7 @@ fn auto(
     let mut dial_any: std::collections::HashMap<String, Instant> = std::collections::HashMap::new();
     let mut dial_failed: std::collections::HashMap<(String, std::net::IpAddr), Instant> =
         std::collections::HashMap::new();
+    let mut dialing_to: std::collections::HashSet<String> = Default::default();
     let (dial_done_tx, dial_done) = std::sync::mpsc::channel::<(String, std::net::IpAddr, bool)>();
     let dialing = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let mut inviting: u16 = 0;
@@ -1028,7 +1067,7 @@ fn auto(
                 // minute** : qui frappe en boucle ou tient la porte depuis
                 // une seule adresse ne prend pas les deux répondeurs aux
                 // officines appairées.
-                let ip = link.peer_ip();
+                let ip = link.peer_ip().map(knock_key);
                 let now = Instant::now();
                 knocks.retain(|(_, at)| now.duration_since(*at) < Duration::from_secs(60));
                 let recent = knocks.iter().filter(|(k, _)| Some(*k) == ip).count();
@@ -1060,7 +1099,19 @@ fn auto(
             paired_read = Some(Instant::now());
             paired = db
                 .net_peers()
-                .map(|p| p.into_iter().map(|p| p.device).collect())
+                .map(|p| {
+                    p.into_iter()
+                        .map(|p| {
+                            let reached = db.setting(&crate::network::reached_key(&p.device));
+                            let known = [Some(p.address), reached]
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|a| a.trim().parse::<std::net::SocketAddr>().ok())
+                                .collect();
+                            (p.device, known)
+                        })
+                        .collect()
+                })
                 .unwrap_or_default();
         }
         // Who announced themselves.
@@ -1087,6 +1138,7 @@ fn auto(
                     // qui a échoué mise de côté dix minutes. L'adresse n'est
                     // gardée qu'une fois l'officine jointe (`dial_heard`).
                     for (device, ip, ok) in dial_done.try_iter() {
+                        dialing_to.remove(&device);
                         if ok {
                             dial_ok.insert(device, Instant::now());
                         } else {
@@ -1094,23 +1146,34 @@ fn auto(
                         }
                     }
                     dial_failed.retain(|_, t| t.elapsed() < REDIAL);
-                    if paired.contains(&o.device) {
+                    if let Some((_, known)) = paired.iter().find(|(d, _)| *d == o.device) {
                         use std::sync::atomic::Ordering;
                         let at_ip = o
                             .listen
                             .as_deref()
                             .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
                             .map(|a| a.ip());
+                        // Une annonce de l'adresse (IP et port) où on la
+                        // connaît déjà passe outre la minute : une annonce
+                        // contrefaite chaque minute ne retient pas la vraie.
+                        let known_ip = o
+                            .listen
+                            .as_deref()
+                            .and_then(|a| a.parse::<std::net::SocketAddr>().ok())
+                            .is_some_and(|a| known.contains(&a));
                         let due = dial_ok.get(&o.device).is_none_or(|t| t.elapsed() >= REDIAL)
-                            && dial_any
-                                .get(&o.device)
-                                .is_none_or(|t| t.elapsed() >= Duration::from_secs(60))
+                            && !dialing_to.contains(&o.device)
+                            && (known_ip
+                                || dial_any
+                                    .get(&o.device)
+                                    .is_none_or(|t| t.elapsed() >= Duration::from_secs(60)))
                             && at_ip.is_some_and(|ip| {
                                 !dial_failed.contains_key(&(o.device.clone(), ip))
                             });
                         if let (Some(at), Some(ip), true) = (&o.listen, at_ip, due) {
                             if dialing.load(Ordering::SeqCst) < MOST_ANSWERS {
                                 dial_any.insert(o.device.clone(), Instant::now());
+                                dialing_to.insert(o.device.clone());
                                 dialing.fetch_add(1, Ordering::SeqCst);
                                 let (busy, tx) = (std::sync::Arc::clone(&dialing), tx.clone());
                                 let done = dial_done_tx.clone();
@@ -1118,17 +1181,25 @@ fn auto(
                                 let (device, name, at) =
                                     (o.device.clone(), side.name.clone(), at.clone());
                                 std::thread::spawn(move || {
-                                    let mut ok = false;
+                                    // Rendu quoi qu'il arrive — même si
+                                    // l'appel tombe en panique : sinon
+                                    // l'officine ne serait plus jamais
+                                    // appelée.
+                                    let mut guard = DialDone {
+                                        done,
+                                        busy,
+                                        device: device.clone(),
+                                        ip,
+                                        ok: false,
+                                    };
                                     if let Ok(db) = Db::open(&path, &password) {
                                         if let Ok(said) =
                                             crate::network::dial_heard(&db, &device, &at, &name)
                                         {
-                                            ok = true;
+                                            guard.ok = true;
                                             let _ = tx.send(Progress::Status(said));
                                         }
                                     }
-                                    let _ = done.send((device, ip, ok));
-                                    busy.fetch_sub(1, Ordering::SeqCst);
                                 });
                             }
                         }
@@ -1593,5 +1664,18 @@ mod tests {
             .expect("une réponse");
         release.join().unwrap();
         assert!(matches!(first, Progress::Waiting(_)), "{first:?}");
+    }
+
+    #[test]
+    fn knocks_from_one_ipv6_prefix_count_as_one_address() {
+        let a: std::net::IpAddr = "2001:db8:1:2::1".parse().unwrap();
+        let b: std::net::IpAddr = "2001:db8:1:2:ffff::9".parse().unwrap();
+        let c: std::net::IpAddr = "2001:db8:1:3::1".parse().unwrap();
+        assert_eq!(super::knock_key(a), super::knock_key(b));
+        assert_ne!(super::knock_key(a), super::knock_key(c));
+        let v4: std::net::IpAddr = "192.168.1.14".parse().unwrap();
+        let mapped: std::net::IpAddr = "::ffff:192.168.1.14".parse().unwrap();
+        assert_eq!(super::knock_key(mapped), v4);
+        assert_eq!(super::knock_key(v4), v4);
     }
 }

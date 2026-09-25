@@ -622,26 +622,38 @@ impl Net {
         // hostile signait ses ruptures du nom d'une autre. Le nom que
         // l'officine lui a donné ici, sinon celui qu'elle signe elle-même.
         let peers = &self.peers;
+        // Les noms que portent les autres officines : ceux donnés ici, ceux
+        // qu'elles signent, et ceux qu'elles écrivent dans ce passage.
+        let own = db.officine().map(|o| o.name).unwrap_or_default();
+        let mut names = crate::peer_names(peers, &own);
+        names.extend(
+            claimed
+                .iter()
+                .filter(|(_, n)| !n.trim().is_empty())
+                .map(|(a, n)| (hex(&a.0), n.trim().to_owned())),
+        );
         let signer = |author: &DeviceId| -> String {
             let device = hex(&author.0);
-            peers
-                .iter()
-                .find(|p| p.device == device)
-                .and_then(|p| {
-                    [p.name.trim(), p.seen_as.trim()]
-                        .into_iter()
-                        .find(|n| !n.is_empty())
-                        .map(str::to_owned)
-                })
-                // Le nom que **cette** officine écrit dans ses propres
-                // envois — lu à l'instant, `seen_as` ne l'a pas encore.
+            let peer = peers.iter().find(|p| p.device == device);
+            // Le nom que l'officine lui a donné ici fait foi.
+            if let Some(n) = peer.map(|p| p.name.trim()).filter(|n| !n.is_empty()) {
+                return n.to_owned();
+            }
+            // Sinon le nom qu'elle se donne — `seen_as`, ou celui qu'elle
+            // écrit dans ce passage même.
+            let claimed_name = peer
+                .map(|p| p.seen_as.trim().to_owned())
+                .filter(|n| !n.is_empty())
                 .or_else(|| {
                     claimed
                         .get(author)
                         .map(|n| n.trim().to_owned())
                         .filter(|n| !n.is_empty())
-                })
-                .unwrap_or_else(|| peer_groups(&device))
+                });
+            match claimed_name {
+                Some(n) => crate::disambiguated(&n, &device, &names),
+                None => peer_groups(&device),
+            }
         };
         let events: Vec<crate::ruptures::Event> = facts
             .iter()
@@ -894,7 +906,12 @@ impl Net {
         let Some(trousseau) = self.trousseau.clone() else {
             return Ok(None);
         };
-        let mut link = bpm_sync::link::dial(address, patience).map_err(|e| format!("{e:?}"))?;
+        // **Toute la conversation bornée**, comme du côté qui répond : une
+        // machine qui se fait passer pour une officine appairée et écrit un
+        // octet de temps en temps ne tient pas l'appel.
+        let mut link = bpm_sync::link::dial(address, patience)
+            .map_err(|e| format!("{e:?}"))?
+            .with_deadline(DIAL_BOUND);
         let mut session = Session::new(
             &self.device,
             Some(&trousseau),
@@ -1367,16 +1384,16 @@ pub fn dial_heard_in(
     }
     let _ = db.note_net_dial(device, None);
     let received = net.absorb(db)?;
-    let name = [p.name, p.seen_as]
-        .into_iter()
-        .find(|n| !n.trim().is_empty())
-        .unwrap_or_else(|| peer_groups(device));
+    let own = db.officine().map(|o| o.name).unwrap_or_default();
+    let name = crate::peer_label(&p.device, &net.peers, &own);
     Ok(trn("net_done_dialed", &[&name, &sent, &received]))
 }
 
 /// Combien d'attente pour une invitation, et pour une conversation.
 const INVITE_PATIENCE: Duration = Duration::from_secs(300);
 const TALK_PATIENCE: Duration = Duration::from_secs(8);
+/// Le temps qu'un appel à une officine peut durer en tout.
+const DIAL_BOUND: Duration = Duration::from_secs(120);
 
 /// Lancer une tâche sur son propre fil, avec sa propre connexion à la
 /// base — la règle de `maintenance.rs`. `answers` porte la réponse de
@@ -1456,9 +1473,12 @@ pub fn run(
                 if left.is_zero() {
                     return Err(tr("net_err_nobody").to_owned());
                 }
+                // Borné à ce qui reste de l'invitation : qui écrirait un
+                // octet de temps en temps ne tient pas la porte au-delà.
                 let mut link = door
                     .accept_with(left, TALK_PATIENCE)
-                    .map_err(|_| tr("net_err_nobody").to_owned())?;
+                    .map_err(|_| tr("net_err_nobody").to_owned())?
+                    .with_deadline(left);
                 let mut session = Session::new(
                     &net.device,
                     Some(&trousseau),
@@ -3658,8 +3678,6 @@ mod tests {
             )
             .unwrap();
         net_b.exchange_folder(&b, &folder).unwrap();
-        a.set_net_peer(&hex(&net_b.device.id().0), "Pharmacie B", "", ("", ""))
-            .ok();
         let mut net_a = Net::load(&a).unwrap();
         net_a.exchange_folder(&a, &folder).unwrap();
         net_a.absorb(&a).unwrap();

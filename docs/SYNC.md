@@ -355,7 +355,19 @@ officine retirée perd l'adresse qu'elle avait annoncée.
   jamais à la place de l'adresse saisie, et l'appel aux officines
   appairées entendues ne dépend plus de la règle d'affichage « la
   première adresse tient » (un essai par minute et par officine, une
-  adresse en échec écartée dix minutes) ;
+  adresse en échec écartée dix minutes ; une annonce venue de l'adresse et du port
+  où on la connaît déjà passe outre la minute, un appel à la fois) ;
+- une officine sans adresse saisie est appelée à `net_reached:` : une
+  machine qui relaierait vers elle ne lit rien (la poignée de main exige
+  sa clé), mais elle sait quand les deux officines se parlent ;
+- un nom qu'une officine se donne et qu'une autre — ou celle-ci — porte
+  déjà se lit **avec son empreinte** (`peer_label`), partout où elle n'a
+  pas été nommée ici ; comparés sur leur squelette (lettres et chiffres),
+  et un nom à parenthèse ou hors de l'alphabet latin la prend toujours ;
+- la porte compte les coups par préfixe /64 en IPv6 ; l'invitation à une
+  voisine et l'appel d'une officine ou d'un poste sont bornés en tout
+  (`with_deadline`),
+  et un appel qui tombe rend sa place.
 - l'invitation faite à une voisine depuis la carte n'admet **qu'elle**
   (`Session::expecting`) : une autre est refusée avant tout code, et la
   porte reste ouverte pour la bonne ; de même pour « Rejoindre son
@@ -370,6 +382,12 @@ premier — désormais **attribué à qui l'a signé**, mais la bonne ligne est
 écartée. La parade (l'auteur rangé avec chaque ligne reçue, un identifiant
 déjà tenu par un autre auteur refusé) demande une colonne de plus dans
 deux tables répliquées : à décider.
+
+**Reste ouvert, de même** : le nom de l'expéditeur est choisi à la
+réception et rangé avec la ligne. Une officine qui signe un nom avant que
+celle qu'elle imite ne soit connue ici le garde sur ces lignes. La parade
+— l'auteur rangé avec chaque ligne, le nom lu à l'affichage — tient à la
+même colonne.
 
 **L'horloge ne se règle que sur les auteurs de confiance** (0.321.0) :
 `Journal::trust` — cette officine et les siennes — et un rang venu d'un

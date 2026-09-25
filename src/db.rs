@@ -34814,20 +34814,8 @@ impl Db {
         // Son nom est celui que cette officine lui connaît — donné à
         // l'appairage, sinon celui sous lequel il signe — jamais celui que
         // la boîte prétend.
-        let source = self
-            .net_peers()?
-            .into_iter()
-            .find(|p| p.device == author)
-            .map(|p| {
-                if !p.name.trim().is_empty() {
-                    p.name.trim().to_owned()
-                } else if !p.seen_as.trim().is_empty() {
-                    p.seen_as.trim().to_owned()
-                } else {
-                    crate::peer_groups(author)
-                }
-            })
-            .unwrap_or_else(|| crate::peer_groups(author));
+        let own = self.officine().map(|o| o.name).unwrap_or_default();
+        let source = crate::peer_label(author, &self.net_peers()?, &own);
         let conv = match existing.map(|c| c.id) {
             Some(id) => id,
             None => {

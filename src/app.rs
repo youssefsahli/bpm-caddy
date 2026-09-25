@@ -11217,16 +11217,11 @@ fn demo_net_peers(db: &Db) {
 }
 
 /// Le nom d'une officine appairée : celui qu'on lui a donné, sinon celui
-/// sous lequel elle signe, sinon son empreinte.
+/// sous lequel elle signe (avec son empreinte s'il est déjà pris), sinon
+/// son empreinte.
 #[cfg(feature = "sync")]
-fn net_peer_title(p: &crate::network::Peer) -> String {
-    if !p.name.trim().is_empty() {
-        p.name.trim().to_owned()
-    } else if !p.seen_as.trim().is_empty() {
-        p.seen_as.trim().to_owned()
-    } else {
-        crate::peer_groups(&p.device)
-    }
+fn net_peer_title(p: &crate::network::Peer, peers: &[crate::network::Peer], own: &str) -> String {
+    crate::peer_label(&p.device, peers, own)
 }
 
 /// « 2026-09-24 14:32 » rendu « 24/09/2026 14:32 ».
@@ -56571,8 +56566,9 @@ impl App {
                         }
                         for peer in &n.peers {
                             ui.horizontal_wrapped(|ui| {
-                                officine_badge(ui, &peer.device, &net_peer_title(peer));
-                                ui.label(egui::RichText::new(net_peer_title(peer)).strong());
+                                let title = net_peer_title(peer, &n.peers, &config.pharmacy.name);
+                                officine_badge(ui, &peer.device, &title);
+                                ui.label(egui::RichText::new(title).strong());
                                 ui.label(small(
                                     ui,
                                     if peer.address.trim().is_empty() {
@@ -56801,6 +56797,14 @@ impl App {
         let peers: Vec<crate::network::Peer> =
             sum.map_peers.iter().map(|(p, _)| p.clone()).collect();
         let groups_of: Vec<usize> = sum.map_peers.iter().map(|(_, g)| *g).collect();
+        // Le nom sous lequel chacune se lit — un nom déjà pris, avec son
+        // empreinte.
+        let labels: Vec<String> = peers
+            .iter()
+            .map(|p| {
+                crate::peer_claim(&p.device, &peers, &config.pharmacy.name).unwrap_or_default()
+            })
+            .collect();
         let group_names = sum.map_groups.clone();
         let heard = session.posts_peers.clone();
         let near = session.near_officines.clone();
@@ -56827,11 +56831,12 @@ impl App {
             &peers
                 .iter()
                 .zip(&groups_of)
-                .map(|(p, g)| crate::netmap::OfficineIn {
+                .zip(&labels)
+                .map(|((p, g), claim)| crate::netmap::OfficineIn {
                     group: *g,
                     device: &p.device,
                     name: &p.name,
-                    seen_as: &p.seen_as,
+                    seen_as: claim,
                     received: p.received,
                     last_ok: &p.last_ok,
                     last_try: &p.last_try,
@@ -58729,8 +58734,9 @@ impl App {
                             // l'empreinte de l'officine suivante.
                             ui.add_space(4.0);
                             ui.horizontal_wrapped(|ui| {
-                                officine_badge(ui, &p.device, &net_peer_title(p));
-                                ui.label(egui::RichText::new(net_peer_title(p)).strong());
+                                let title = net_peer_title(p, &sum.peers, &config.pharmacy.name);
+                                officine_badge(ui, &p.device, &title);
+                                ui.label(egui::RichText::new(title).strong());
                                 ui.label(
                                     egui::RichText::new(crate::peer_groups(&p.device))
                                         .monospace()
@@ -58755,11 +58761,9 @@ impl App {
                                 // l'officine signe, quand on le sait :
                                 // c'est celui qu'on voudra le plus
                                 // souvent recopier.
-                                let hint = if p.seen_as.trim().is_empty() {
-                                    tr("net_peer_name_hint")
-                                } else {
-                                    p.seen_as.trim()
-                                };
+                                let claim =
+                                    crate::peer_claim(&p.device, &sum.peers, &config.pharmacy.name);
+                                let hint = claim.as_deref().unwrap_or(tr("net_peer_name_hint"));
                                 let field_w = Self::net_peer_field_width(ui, ui.available_width());
                                 motif::field(
                                     ui,
