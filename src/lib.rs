@@ -41,6 +41,7 @@ pub mod maintenance;
 pub mod messages;
 #[cfg(feature = "sync")]
 pub mod netmap;
+#[cfg(feature = "sync")]
 pub mod network;
 pub mod ordonnance;
 pub mod ordonnancier;
@@ -71,3 +72,21 @@ pub mod versions;
 pub mod vigilance;
 pub mod vitale;
 pub mod winscard;
+
+/// L'empreinte d'une officine, en cinq groupes — ce qu'on se lit au
+/// téléphone. Sans la synchronisation, qui sait la calculer, le début de
+/// son identité.
+pub fn peer_groups(device: &str) -> String {
+    #[cfg(feature = "sync")]
+    {
+        network::peer_groups(device)
+    }
+    #[cfg(not(feature = "sync"))]
+    {
+        let head: Vec<char> = device.chars().take(20).collect();
+        head.chunks(4)
+            .map(|c| c.iter().collect::<String>())
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+}

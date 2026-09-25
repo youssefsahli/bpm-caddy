@@ -4583,6 +4583,10 @@ struct Session {
     /// Ce qu'une synchronisation automatique du réseau vient d'apprendre,
     /// et quand : la barre d'état le dit un moment.
     net_news: Option<(Instant, String)>,
+    /// Une officine voisine vient d'ouvrir une invitation : quand, ce que
+    /// la barre d'état en dit, et son empreinte — un clic l'ouvre sur la
+    /// carte.
+    near_news: Option<(Instant, String, String)>,
     /// What the journal says about the open card.
     drug_supply: DrugSupply,
     drug_supply_key: Option<(i64, u64, String)>,
@@ -4636,6 +4640,7 @@ struct Session {
     conn_adopt_armed: Option<String>,
     /// La largeur de carte où la légende s'est repliée : elle passe au
     /// volet tant que la carte garde cette largeur.
+    #[cfg(feature = "sync")]
     conn_legend_aside: Option<i32>,
     /// Ce que la dernière synchronisation a vu, dans les dossiers
     /// d'échange, d'officines non ajoutées — par réseau. En mémoire
@@ -4643,6 +4648,7 @@ struct Session {
     #[cfg(feature = "sync")]
     net_introduced: Vec<(String, Vec<crate::network::Introduced>)>,
     /// Quand relire la vue des connexions après une lecture tombée.
+    #[cfg(feature = "sync")]
     conn_retry: Option<Instant>,
     /// The officines' network synchronisation running in the background,
     /// at launch and then at its interval.
@@ -5456,6 +5462,7 @@ impl Session {
             dash_shortages: Vec::new(),
             dash_shortages_key: None,
             net_news: None,
+            near_news: None,
             drug_supply: DrugSupply::default(),
             drug_supply_key: None,
             subst_form: None,
@@ -5483,9 +5490,11 @@ impl Session {
             near_officines: Vec::new(),
             #[cfg(feature = "sync")]
             conn_adopt_armed: None,
+            #[cfg(feature = "sync")]
             conn_legend_aside: None,
             #[cfg(feature = "sync")]
             net_introduced: Vec::new(),
+            #[cfg(feature = "sync")]
             conn_retry: None,
             #[cfg(feature = "sync")]
             net_auto: None,
@@ -7486,6 +7495,7 @@ impl Session {
         self.log_connection(false, tr("conn_dial_asked"));
     }
 
+    #[cfg(feature = "sync")]
     fn start_net_sync(&mut self, config: &Config) {
         if self.net_auto.is_some() {
             return;
@@ -7544,7 +7554,41 @@ impl Session {
                     self.conn_dirty = true;
                 }
                 crate::postes::Progress::Peers(peers) => self.posts_peers = peers,
-                crate::postes::Progress::Officines(near) => self.near_officines = near,
+                crate::postes::Progress::Officines(near) => {
+                    // **Une voisine qui vient d'ouvrir une invitation** se
+                    // dit dans la barre d'état : on n'attend pas que
+                    // quelqu'un regarde la carte.
+                    let paired = self
+                        .conn_summary
+                        .as_ref()
+                        .map(|s| {
+                            s.map_peers
+                                .iter()
+                                .map(|(p, _)| p.device.clone())
+                                .collect::<Vec<_>>()
+                        })
+                        .unwrap_or_default();
+                    if let Some(n) = near.iter().find(|n| {
+                        n.invite.is_some()
+                            && !paired.contains(&n.device)
+                            && !self
+                                .near_officines
+                                .iter()
+                                .any(|o| o.device == n.device && o.invite.is_some())
+                    }) {
+                        let name = if n.name.trim().is_empty() {
+                            crate::peer_groups(&n.device)
+                        } else {
+                            n.name.clone()
+                        };
+                        self.near_news = Some((
+                            Instant::now(),
+                            trf("conn_near_invites", name),
+                            n.device.clone(),
+                        ));
+                    }
+                    self.near_officines = near;
+                }
                 crate::postes::Progress::Failed(line) => {
                     self.log_connection(true, &line);
                     self.posts_status = Some((true, line));
@@ -10819,6 +10863,7 @@ struct ConnSummary {
 /// Une ligne de « Derniers reçus » : le jour, l'officine, ce qu'elle a
 /// envoyé.
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[cfg(feature = "sync")]
 struct FeedRow {
     day: String,
     officine: String,
@@ -10837,6 +10882,7 @@ struct FeedRow {
 ///
 /// Un retrait n'est pas une nouvelle : l'événement retiré et le retrait
 /// sortent tous deux de la liste, comme du journal.
+#[cfg(feature = "sync")]
 fn network_feed(
     events: &[crate::ruptures::Event],
     edits: &[crate::versions::Edit],
@@ -11171,7 +11217,7 @@ fn net_peer_title(p: &crate::network::Peer) -> String {
     } else if !p.seen_as.trim().is_empty() {
         p.seen_as.trim().to_owned()
     } else {
-        crate::network::peer_groups(&p.device)
+        crate::peer_groups(&p.device)
     }
 }
 
@@ -11207,6 +11253,7 @@ fn conn_state_text(s: crate::netmap::LinkState) -> &'static str {
 /// Le trait d'un lien de la carte des connexions — **la forme dit l'état
 /// autant que la couleur** : plein, fin, tirets, pointillés. Le même pour
 /// la carte et pour sa légende.
+#[cfg(feature = "sync")]
 fn conn_link_stroke(painter: &egui::Painter, line: [egui::Pos2; 2], st: crate::netmap::LinkState) {
     use crate::netmap::LinkState;
     let c = match st {
@@ -11250,6 +11297,7 @@ fn merge_introduced(
     }
 }
 
+#[cfg(feature = "sync")]
 /// Ce qu'on sait d'une officine voisine : elle invite, ou elle s'annonce.
 fn conn_nearby_text(s: crate::netmap::LinkState) -> &'static str {
     match s {
@@ -11258,6 +11306,7 @@ fn conn_nearby_text(s: crate::netmap::LinkState) -> &'static str {
     }
 }
 
+#[cfg(feature = "sync")]
 fn net_peer_status(p: &crate::network::Peer) -> Vec<(bool, String)> {
     let mut out = Vec::new();
     // Le nom sous lequel elle signe, **quand ce n'est pas déjà le titre**
@@ -24441,6 +24490,7 @@ impl App {
     /// `text_scale` 1,6 la croix qui retire l'officine tombait seule à
     /// la ligne. Jamais moins de dix caractères : en deçà, la rangée
     /// enveloppe plutôt que d'écrire dans une fente.
+    #[cfg(feature = "sync")]
     fn net_peer_field_width(ui: &egui::Ui, width: f32) -> f32 {
         let buttons = Self::group_width(
             ui,
@@ -24870,6 +24920,7 @@ impl App {
     /// L'invite d'un champ « Rejoindre », ou sa forme courte quand elle ne
     /// tient pas dans ses vingt-deux caractères — « code d'invitation ou
     /// adres » ne dit plus ce qu'on y colle.
+    #[cfg(feature = "sync")]
     fn join_hint(ui: &egui::Ui, key: &'static str) -> &'static str {
         if Self::field_width(ui, [tr(key)].into_iter()) <= chars_wide(ui, 22.0) {
             tr(key)
@@ -55333,7 +55384,7 @@ impl App {
                         })
                         .map(|(d, n)| {
                             let name = if n.trim().is_empty() {
-                                crate::network::peer_groups(d)
+                                crate::peer_groups(d)
                             } else {
                                 n.trim().to_owned()
                             };
@@ -55808,7 +55859,7 @@ impl App {
                         let peers = session.msg.peer_names.clone();
                         for (device, name) in &peers {
                             let label = if name.trim().is_empty() {
-                                crate::network::peer_groups(device)
+                                crate::peer_groups(device)
                             } else {
                                 name.trim().to_owned()
                             };
@@ -56774,7 +56825,7 @@ impl App {
                 })
                 .collect::<Vec<_>>(),
             &|n| trf("conn_map_post", n),
-            &crate::network::peer_groups,
+            &crate::peer_groups,
         );
         // **Une officine appairée qui s'annonce en ce moment** sur le réseau
         // local est au moins « entendue » — le fil automatique la compose
@@ -57377,7 +57428,7 @@ impl App {
                                 if let Some(h) = heard.iter().find(|h| h.device == n.device) {
                                     ui.label(small(ui, h.address.clone()));
                                 }
-                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.label(small(ui, crate::peer_groups(&n.device)));
                                 ui.add(
                                     egui::Label::new(small(
                                         ui,
@@ -57393,7 +57444,7 @@ impl App {
                                 if let Some(h) = heard.iter().find(|h| h.device == n.device) {
                                     ui.label(small(ui, h.address.clone()));
                                 }
-                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.label(small(ui, crate::peer_groups(&n.device)));
                                 ui.horizontal_wrapped(|ui| {
                                     if motif::button(ui, tr("conn_map_sync_posts")).clicked() {
                                         if let Some((_, poke)) = &session.posts_auto {
@@ -57410,7 +57461,7 @@ impl App {
                                     ui.label(small(ui, tr("conn_near_here").to_owned()));
                                 }
                                 if let Some(p) = peers.iter().find(|p| p.device == n.device) {
-                                    ui.label(small(ui, crate::network::peer_groups(&p.device)));
+                                    ui.label(small(ui, crate::peer_groups(&p.device)));
                                     if !p.address.trim().is_empty() {
                                         ui.label(small(ui, p.address.clone()));
                                     }
@@ -57475,7 +57526,7 @@ impl App {
                                     .map_introduced
                                     .iter()
                                     .find(|(i, g, _)| i.device == n.device && *g == n.group);
-                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.label(small(ui, crate::peer_groups(&n.device)));
                                 if let Some((i, _, _)) = found.filter(|(i, _, _)| {
                                     !i.name.trim().is_empty()
                                         && peers.iter().any(|p| {
@@ -57560,7 +57611,7 @@ impl App {
                                 if let Some(x) = near.filter(|x| !x.place.trim().is_empty()) {
                                     ui.label(small(ui, x.place.clone()));
                                 }
-                                ui.label(small(ui, crate::network::peer_groups(&n.device)));
+                                ui.label(small(ui, crate::peer_groups(&n.device)));
                                 ui.add(
                                     egui::Label::new(small(ui, tr("conn_near_note").to_owned()))
                                         .wrap(),
@@ -57622,7 +57673,7 @@ impl App {
             ) {
                 Ok(n) => {
                     let who = if name.trim().is_empty() {
-                        crate::network::peer_groups(&device)
+                        crate::peer_groups(&device)
                     } else {
                         name.clone()
                     };
@@ -58598,7 +58649,7 @@ impl App {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(egui::RichText::new(net_peer_title(p)).strong());
                                 ui.label(
-                                    egui::RichText::new(crate::network::peer_groups(&p.device))
+                                    egui::RichText::new(crate::peer_groups(&p.device))
                                         .monospace()
                                         .size(motif::pt(ui, 10.0))
                                         .color(motif::text_dim()),
@@ -67381,6 +67432,7 @@ impl eframe::App for App {
         // post is on (multi-post support aid).
         let mut status_goto: Option<WorkTab> = None;
         let mut clear_news = false;
+        let mut open_near: Option<String> = None;
         if let State::Unlocked(session) = &self.state {
             let in_progress: i64 = session.pending.values().sum();
             let summary = trn(
@@ -67419,6 +67471,22 @@ impl eframe::App for App {
                 .as_ref()
                 .filter(|(at, _)| at.elapsed() < Duration::from_secs(600))
                 .map(|(_, said)| said.clone());
+            // L'invitation d'une voisine : tant qu'elle est ouverte (cinq
+            // minutes au plus).
+            #[cfg(not(feature = "sync"))]
+            let near_news: Option<(String, String)> = None;
+            #[cfg(feature = "sync")]
+            let near_news = session
+                .near_news
+                .as_ref()
+                .filter(|(at, _, _)| at.elapsed() < Duration::from_secs(300))
+                .filter(|(_, _, d)| {
+                    session
+                        .near_officines
+                        .iter()
+                        .any(|o| o.device == *d && o.invite.is_some())
+                })
+                .map(|(_, said, d)| (said.clone(), d.clone()));
             let conn_mark = session.conn_mark();
             let db_file = self
                 .config
@@ -67575,6 +67643,23 @@ impl eframe::App for App {
                                     .color(motif::accent()),
                             );
                         }
+                        if let Some((news, device)) = &near_news {
+                            if ui
+                                .add(
+                                    egui::Label::new(
+                                        egui::RichText::new(news.as_str())
+                                            .size(motif::pt(ui, 11.0))
+                                            .color(motif::accent()),
+                                    )
+                                    .truncate()
+                                    .sense(egui::Sense::click()),
+                                )
+                                .on_hover_text(tr("conn_near_invites_tooltip"))
+                                .clicked()
+                            {
+                                open_near = Some(device.clone());
+                            }
+                        }
                         if let Some(news) = &net_news {
                             let fits_news = ui
                                 .painter()
@@ -67607,6 +67692,13 @@ impl eframe::App for App {
                     });
                 });
             });
+        }
+        // L'invitation d'une voisine : la carte des connexions, elle choisie.
+        if let (Some(device), State::Unlocked(session)) = (open_near, &mut self.state) {
+            session.conn_map = true;
+            session.conn_pick = Some(format!("near:{device}"));
+            session.near_news = None;
+            session.activate_tab(&WorkTab::Connexions);
         }
         if let (Some(to), State::Unlocked(session)) = (status_goto, &mut self.state) {
             if to == WorkTab::Ruptures {

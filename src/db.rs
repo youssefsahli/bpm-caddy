@@ -34824,10 +34824,10 @@ impl Db {
                 } else if !p.seen_as.trim().is_empty() {
                     p.seen_as.trim().to_owned()
                 } else {
-                    crate::network::peer_groups(author)
+                    crate::peer_groups(author)
                 }
             })
-            .unwrap_or_else(|| crate::network::peer_groups(author));
+            .unwrap_or_else(|| crate::peer_groups(author));
         let conv = match existing.map(|c| c.id) {
             Some(id) => id,
             None => {
