@@ -553,8 +553,18 @@ pub fn run(
                 .clone()
                 .ok_or_else(|| tr("posts_err_no_group").to_owned())?;
             posts.publish(&db, today)?;
-            let door = bpm_sync::link::Door::open(&format!("0.0.0.0:{port}"))
-                .map_err(|_| tr("posts_err_port").to_owned())?;
+            // Le fil automatique tenait ce port : arrêté par l'écran, il le
+            // rend dans la demi-seconde. On le lui laisse, plutôt que de
+            // dire « port pris » à qui vient de cliquer.
+            let mut door = None;
+            for _ in 0..15 {
+                door = bpm_sync::link::Door::open(&format!("0.0.0.0:{port}")).ok();
+                if door.is_some() {
+                    break;
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            let door = door.ok_or_else(|| tr("posts_err_port").to_owned())?;
             // Un ticket par invitation, comme entre officines.
             let ticket = bpm_sync::Ticket::generate(&mut bpm_sync::OsEntropy);
             let _ = tx.send(Progress::Waiting(crate::network::invitation_code(
@@ -1479,5 +1489,37 @@ mod tests {
         ] {
             assert!(heard(&bad, ip).is_none(), "{bad}");
         }
+    }
+
+    /// **Une invitation attend que le port se libère** : le fil automatique,
+    /// arrêté par l'écran, rend son port dans la demi-seconde ; l'invitation
+    /// ne dit pas « port pris » pour autant.
+    #[test]
+    fn an_invitation_waits_for_the_port_the_auto_thread_is_releasing() {
+        let (dir, _s, db) = post("port-release");
+        Posts::load(&db)
+            .unwrap()
+            .found(&db, "Comptoir 1", "2026-09-25")
+            .unwrap();
+        drop(db);
+        let held = bpm_sync::link::Door::open("0.0.0.0:0").unwrap();
+        let port = held.address().unwrap().port();
+        let release = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(500));
+            drop(held);
+        });
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite { port },
+            dir.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-25".to_owned(),
+            answers,
+        );
+        let first = rx
+            .recv_timeout(Duration::from_secs(10))
+            .expect("une réponse");
+        release.join().unwrap();
+        assert!(matches!(first, Progress::Waiting(_)), "{first:?}");
     }
 }
