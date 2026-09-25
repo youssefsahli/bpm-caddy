@@ -37,7 +37,11 @@ set -uo pipefail
 # marge. La logique reste à 89, et pour la raison écrite juste au-dessus
 # plutôt que par prudence : quatre dixièmes de marge, c'est moins que
 # les huit qui n'avaient déjà pas suffi.
-TOTAL_FLOOR=49
+#
+# Mesuré le 25/09/2026, après la connexion au lancement et les tests de
+# vues sans tête : 56,0 % le workspace, 90,5 % la logique. Le workspace
+# monte de 49 à 53 — trois points de marge. La logique reste à 89.
+TOTAL_FLOOR=53
 LOGIC_FLOOR=89
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
