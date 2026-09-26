@@ -11,6 +11,11 @@ import androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import uniffi.bpm_caddy_mobile.tr as rustTr
 
@@ -35,12 +40,27 @@ fun <T> withMulticast(context: Context, block: () -> T): T {
     }
 }
 
+/** Tous les combien le téléphone échange, tant qu'il est à l'écran. */
+private const val SYNC_EVERY_MS = 60_000L
+
 class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val state = AppState(applicationContext)
         setContent {
             CompanionApp(state = state, unlock = { unlock(state) })
+        }
+        // **Tant que l'application est à l'écran**, un échange à chaque
+        // retour au premier plan puis toutes les minutes — la messagerie
+        // reste à jour pendant qu'on la lit. Rien quand elle n'est pas à
+        // l'écran : c'est la décision de l'officine, pas d'arrière-plan.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    if (state.status?.inGroup == true) state.sync()
+                    delay(SYNC_EVERY_MS)
+                }
+            }
         }
     }
 
