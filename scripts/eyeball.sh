@@ -105,7 +105,7 @@ demo_vitale_card "$card"
 views=(
     verrou search dashboard patient patient_edit patient_new drugs drug_card drug_edit drug_kin
     agenda agenda_day agenda_filtre agenda_month planning planning_mois trame tables tables_search calc carnet
-    vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance ordonnance_lignes vaccins_grossesse vaccins_catalogue ruptures reseau versions postes postes_seul connexions
+    vaccins bio watch rein grossesse age cyp ddi ddi_crush libelles listes revue locations conciliation vaccine_map ordonnance ordonnance_lignes vaccins_grossesse vaccins_catalogue ruptures reseau versions postes postes_seul postes_telephone connexions
     protocols protocol_open codex codex_open dispositifs dispositif_open
     finances stats companion companion_poso companion_conseils companion_soins companion_dossier companion_vide companion_doublon companion_boite script carnets carnets_edit textes graph graph_zoom graph_wide graph_ordonnance graph_filtre stup stup_catalogue saisie ordonnancier vigilance destruction scans patient_scans patient_dose fil registres regles mentions honoraires forfaits aide
     explorer explorer_organ classes classes_outside export
@@ -143,7 +143,7 @@ for view in "${views[@]}"; do
     fi
     # Fonder un groupe écrit le journal des postes — plusieurs secondes
     # en debug : à trois, l'image était noire.
-    case "$view" in postes | postes_seul | connexions* | reseau) wait=12 ;; *) wait=3 ;; esac
+    case "$view" in postes | postes_seul | postes_telephone | connexions* | reseau) wait=12 ;; *) wait=3 ;; esac
     # La vue qui sème la base vierge a le temps de finir : c'est sa base
     # que toutes les suivantes recevront.
     if [ -n "$fresh" ] && [ ! -e "$tmp/vierge/demo.db" ]; then wait=15; fi

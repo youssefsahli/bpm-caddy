@@ -11112,10 +11112,20 @@ fn qr_code(ui: &mut egui::Ui, text: &str, side: f32) {
         }
     };
     let n = qr.size();
+    // **Des modules d'un nombre entier de pixels**, posés sur la grille de
+    // l'écran : un module de 5,9 pixels a des bords flous, et le lecteur
+    // qui lisait le grand code ne lisait plus le petit.
+    let ppp = ui.ctx().pixels_per_point();
+    let cell = ((side * ppp) / (n + 8) as f32).floor().max(2.0) / ppp;
+    let side = cell * (n + 8) as f32;
     let (rect, _) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+    let origin = egui::pos2(
+        (rect.min.x * ppp).round() / ppp,
+        (rect.min.y * ppp).round() / ppp,
+    );
+    let rect = egui::Rect::from_min_size(origin, egui::vec2(side, side));
     let painter = ui.painter_at(rect);
     painter.rect_filled(rect, 0.0, paper);
-    let cell = side / (n + 8) as f32;
     for y in 0..n {
         for x in 0..n {
             if qr.get_module(x, y) {
@@ -58815,6 +58825,74 @@ impl App {
                     .id_salt("posts_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
+                        // **L'invitation d'abord** : pendant qu'elle est
+                        // ouverte, son code est ce qu'on est venu lire —
+                        // en bas de la liste, il fallait le chercher.
+                        if let Some(code) = &w.waiting {
+                            // **Le code seul, en grand** : l'invitation
+                            // s'annonce sur le réseau local, l'autre poste
+                            // n'a que lui à saisir. Le code complet, adresse
+                            // comprise, en dessous — pour un poste qui ne
+                            // l'entend pas (autre réseau, pare-feu).
+                            let short = code.split('@').next().unwrap_or(code);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr(if w.inviting_phone {
+                                        "posts_waiting_phone"
+                                    } else {
+                                        "posts_waiting"
+                                    }))
+                                    .strong()
+                                    .color(motif::accent()),
+                                )
+                                .wrap(),
+                            );
+                            ui.label(
+                                egui::RichText::new(short)
+                                    .size(motif::pt(ui, 20.0))
+                                    .monospace()
+                                    .strong(),
+                            );
+                            // A phone scans it rather than typing it.
+                            if w.inviting_phone {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("posts_waiting_scan"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                // Whole in the visible body at any shape: a
+                                // code cut by the scroll does not scan.
+                                let used = ui.min_rect().height() + ui.spacing().item_spacing.y;
+                                let side = (motif::button_height(ui) * 7.0)
+                                    .min(ui.available_width())
+                                    .min(body_h - used)
+                                    .max(motif::button_height(ui) * 3.0);
+                                qr_code(ui, code, side);
+                            }
+
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr(if w.inviting_phone {
+                                        "posts_waiting_full_phone"
+                                    } else {
+                                        "posts_waiting_full"
+                                    }))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(code.as_str()).monospace());
+                                if motif::button(ui, tr("net_code_copy")).clicked() {
+                                    ui.ctx().copy_text(code.clone());
+                                }
+                            });
+                        }
                         let Some(sum) = &w.summary else {
                             ui.label(tr("posts_unreadable"));
                             return;
@@ -59108,57 +59186,6 @@ impl App {
                                 },
                                 said.as_str(),
                             );
-                        }
-                        if let Some(code) = &w.waiting {
-                            // **Le code seul, en grand** : l'invitation
-                            // s'annonce sur le réseau local, l'autre poste
-                            // n'a que lui à saisir. Le code complet, adresse
-                            // comprise, en dessous — pour un poste qui ne
-                            // l'entend pas (autre réseau, pare-feu).
-                            let short = code.split('@').next().unwrap_or(code);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(tr("posts_waiting"))
-                                        .strong()
-                                        .color(motif::accent()),
-                                )
-                                .wrap(),
-                            );
-                            ui.label(
-                                egui::RichText::new(short)
-                                    .size(motif::pt(ui, 20.0))
-                                    .monospace()
-                                    .strong(),
-                            );
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(tr("posts_waiting_full"))
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_dim()),
-                                )
-                                .wrap(),
-                            );
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(egui::RichText::new(code.as_str()).monospace());
-                                if motif::button(ui, tr("net_code_copy")).clicked() {
-                                    ui.ctx().copy_text(code.clone());
-                                }
-                            });
-                            // A phone scans it rather than typing it.
-                            if w.inviting_phone {
-                                ui.add(
-                                    egui::Label::new(
-                                        egui::RichText::new(tr("posts_waiting_scan"))
-                                            .size(motif::pt(ui, 10.5))
-                                            .color(motif::text_dim()),
-                                    )
-                                    .wrap(),
-                                );
-                                let side =
-                                    (motif::button_height(ui) * 7.0).min(ui.available_width());
-                                qr_code(ui, code, side);
-                            }
                         }
                     });
                 if let Some((bad, note)) = &w.note {
