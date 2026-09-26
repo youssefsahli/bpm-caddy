@@ -1,7 +1,11 @@
 package io.github.youssefsahli.bpmcaddy
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -22,7 +26,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +64,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import uniffi.bpm_caddy_mobile.Caddy
 import uniffi.bpm_caddy_mobile.displayDate
+import uniffi.bpm_caddy_mobile.eventCategories
 
 private enum class Tab(val key: String, val mark: String) {
     Fiches("mobile_tab_cards", "F"),
@@ -254,6 +261,7 @@ private fun dayName(iso: String): String {
     return T(DAYS[d.dayOfWeek.value - 1]) + " " + displayDate(iso)
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AgendaScreen(state: AppState, caddy: Caddy) {
     var start by rememberSaveable { mutableStateOf(monday(LocalDate.now()).toString()) }
@@ -263,9 +271,32 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             runCatching { caddy.agenda(start, from.plusDays(6).toString()) }.getOrDefault(emptyList())
         }
     }
+    var adding by rememberSaveable { mutableStateOf(false) }
+    var removing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.AgendaItem?>(null) }
+    if (adding) {
+        EventForm(state) { adding = false }
+    }
+    removing?.let { e ->
+        AlertDialog(
+            onDismissRequest = { removing = null },
+            title = { Text(T("mobile_agenda_delete")) },
+            text = { Text(e.title + " · " + dayName(e.day)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    state.deleteEvent(e.id, e.title)
+                    removing = null
+                }) { Text(T("mobile_delete")) }
+            },
+            dismissButton = { TextButton(onClick = { removing = null }) { Text(T("mobile_cancel")) } },
+        )
+    }
     Column(Modifier.fillMaxSize()) {
         WeekBar(from) { step ->
             start = if (step == 0L) monday(LocalDate.now()).toString() else from.plusWeeks(step).toString()
+        }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
+            Spacer(Modifier.weight(1f))
+            OutlinedButton(onClick = { adding = true }) { Text(T("mobile_agenda_add")) }
         }
         HorizontalDivider()
         if (items.isEmpty()) Hint(T("mobile_agenda_empty"))
@@ -273,7 +304,11 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             items.groupBy { it.day }.toSortedMap().forEach { (day, list) ->
                 item(key = "d$day") { DayHeader(dayName(day)) }
                 items(list.sortedBy { it.time }, key = { "e${it.id}-${it.day}" }) { e ->
-                    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                    Row(
+                        Modifier.fillMaxWidth()
+                            .combinedClickable(onClick = {}, onLongClick = { removing = e })
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
+                    ) {
                         val hours = listOf(e.time, e.endTime).filter { it.isNotBlank() }.joinToString("–")
                         Text(hours, Modifier.width(96.dp), style = MaterialTheme.typography.bodyMedium)
                         Column(Modifier.weight(1f)) {
@@ -285,6 +320,47 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
             }
         }
     }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun EventForm(state: AppState, close: () -> Unit) {
+    var day by rememberSaveable { mutableStateOf(displayDate(today())) }
+    var from by rememberSaveable { mutableStateOf("") }
+    var to by rememberSaveable { mutableStateOf("") }
+    var title by rememberSaveable { mutableStateOf("") }
+    val kinds = remember { eventCategories() }
+    var kind by rememberSaveable { mutableStateOf(kinds.lastOrNull()?.key ?: "") }
+    AlertDialog(
+        onDismissRequest = close,
+        title = { Text(T("mobile_agenda_new")) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(day, { day = it }, label = { Text(T("mobile_agenda_day")) }, singleLine = true)
+                Row {
+                    OutlinedTextField(from, { from = it }, Modifier.weight(1f), label = { Text(T("mobile_agenda_from")) }, singleLine = true)
+                    Spacer(Modifier.width(8.dp))
+                    OutlinedTextField(to, { to = it }, Modifier.weight(1f), label = { Text(T("mobile_agenda_to")) }, singleLine = true)
+                }
+                OutlinedTextField(
+                    title, { title = it }, label = { Text(T("mobile_agenda_title")) }, singleLine = true,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                )
+                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    kinds.forEach { c ->
+                        FilterChip(selected = kind == c.key, onClick = { kind = c.key }, label = { Text(c.label) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { state.addEvent(day, from, to, title, kind) { ok -> if (ok) close() } },
+                enabled = title.isNotBlank(),
+            ) { Text(T("mobile_save")) }
+        },
+        dismissButton = { TextButton(onClick = close) { Text(T("mobile_cancel")) } },
+    )
 }
 
 @Composable

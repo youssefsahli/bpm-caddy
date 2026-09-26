@@ -173,6 +173,25 @@ pub struct Said {
     pub cites_patient: bool,
 }
 
+/// Une nature d'entrée d'agenda : la clé rangée, le libellé montré.
+#[derive(uniffi::Record)]
+pub struct Choice {
+    pub key: String,
+    pub label: String,
+}
+
+/// Les natures d'une entrée d'agenda, dans l'ordre du bureau.
+#[uniffi::export]
+pub fn event_categories() -> Vec<Choice> {
+    bpm_caddy::db::EventCategory::ALL
+        .iter()
+        .map(|c| Choice {
+            key: c.as_str().to_owned(),
+            label: c.label().to_owned(),
+        })
+        .collect()
+}
+
 /// Ce qu'une synchronisation a fait.
 #[derive(uniffi::Record)]
 pub struct SyncDone {
@@ -424,6 +443,51 @@ impl Caddy {
             .collect())
     }
 
+    /// **Ajouter une entrée à l'agenda**, comme sur le bureau : le jour
+    /// tapé à la française (`260926`, `2609`, `26/09/2026`), les heures
+    /// à la volée (`9h30`), un titre, une nature. `today` donne l'année
+    /// d'un jour tapé sans elle. Part à la synchronisation suivante.
+    pub fn add_event(
+        &self,
+        day: String,
+        time: String,
+        end_time: String,
+        title: String,
+        category: String,
+        today: String,
+    ) -> Result<i64> {
+        use bpm_caddy::db::{parse_french_date, parse_hour, EventCategory, YearHint};
+        use bpm_caddy::strings::tr;
+        let year = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+        let day = parse_french_date(&day, year, YearHint::Future)?;
+        let hour = |text: &str| -> Result<String> {
+            if text.trim().is_empty() {
+                return Ok(String::new());
+            }
+            parse_hour(text).ok_or_else(|| CaddyError::Failed {
+                reason: tr("mobile_agenda_bad_hour").to_owned(),
+            })
+        };
+        let (time, end_time) = (hour(&time)?, hour(&end_time)?);
+        let title = title.trim();
+        if title.is_empty() {
+            return Err(CaddyError::Failed {
+                reason: tr("mobile_agenda_no_title").to_owned(),
+            });
+        }
+        let category = EventCategory::parse(&category).unwrap_or(EventCategory::Autre);
+        Ok(self
+            .db()
+            .add_event_span(&day, &time, &end_time, title, category, "", "")?)
+    }
+
+    /// **Retirer une entrée**, seulement si elle porte encore le titre
+    /// que le téléphone montrait : une entrée qu'un collègue vient de
+    /// changer n'est pas détruite. `false` : l'agenda a changé, à relire.
+    pub fn delete_event(&self, id: i64, shown_title: String) -> Result<bool> {
+        Ok(self.db().delete_event(id, &shown_title)?)
+    }
+
     /// Le planning de `from` à `to` : qui travaille quand. En lecture.
     pub fn planning(&self, from: String, to: String) -> Result<Vec<ShiftItem>> {
         Ok(self
@@ -604,6 +668,58 @@ mod tests {
             }
         }
         assert!(missing.is_empty(), "clés absentes : {missing:?}");
+    }
+
+    /// An entry typed the counter's way lands on the agenda, and is
+    /// removed only while it still says what the phone showed.
+    #[test]
+    fn an_agenda_entry_is_added_the_desktop_way_and_removed_by_what_was_shown() {
+        let d = dir("agenda");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        let id = c
+            .add_event(
+                "2909".into(),
+                "11h".into(),
+                "12".into(),
+                "Formation vaccination".into(),
+                "FORMATION".into(),
+                "2026-09-26".into(),
+            )
+            .unwrap();
+        let week = c.agenda("2026-09-28".into(), "2026-10-04".into()).unwrap();
+        assert_eq!(week.len(), 1);
+        assert_eq!(
+            (
+                week[0].day.as_str(),
+                week[0].time.as_str(),
+                week[0].end_time.as_str()
+            ),
+            ("2026-09-29", "11:00", "12:00")
+        );
+        assert!(c
+            .add_event(
+                "32/13".into(),
+                "".into(),
+                "".into(),
+                "x".into(),
+                "".into(),
+                "2026-09-26".into()
+            )
+            .is_err());
+        assert!(c
+            .add_event(
+                "2909".into(),
+                "".into(),
+                "".into(),
+                "  ".into(),
+                "".into(),
+                "2026-09-26".into()
+            )
+            .is_err());
+        assert!(!c.delete_event(id, "Autre titre".into()).unwrap());
+        assert!(c.delete_event(id, "Formation vaccination".into()).unwrap());
+        assert_eq!(event_categories().len(), 5);
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     #[test]

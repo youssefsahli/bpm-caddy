@@ -105,6 +105,34 @@ class AppState(private val context: Context) {
         }
     }
 
+    /** Ajouter à l'agenda ; `then(true)` quand c'est écrit. */
+    fun addEvent(day: String, from: String, to: String, title: String, category: String, then: (Boolean) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.addEvent(day, from, to, title, category, today()) }
+            }
+            done.onFailure { note = said(it) }
+            then(done.isSuccess)
+            if (done.isSuccess) {
+                revision++
+                sync()
+            }
+        }
+    }
+
+    /** Retirer une entrée, si elle dit encore ce que l'écran montrait. */
+    fun deleteEvent(id: Long, shownTitle: String) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) { runCatching { c.deleteEvent(id, shownTitle) } }
+            done.onFailure { note = said(it) }
+            if (done.getOrNull() == false) note = T("mobile_agenda_stale")
+            revision++
+            if (done.getOrNull() == true) sync()
+        }
+    }
+
     private fun work(block: () -> String) {
         if (busy) return
         busy = true
