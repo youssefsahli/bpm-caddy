@@ -1,3 +1,5 @@
+import java.util.Properties
+
 // Le compagnon Android de BPM-Caddy. L'interface est ici (Compose) ; tout
 // le reste — la base SQLCipher, la synchronisation, les fiches — est la
 // bibliothèque Rust de l'application, construite par `../build-rust.sh`
@@ -6,6 +8,20 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// La clé de signature du Play Store ne vit pas dans le dépôt : un fichier
+// `keystore.properties` à côté de ce dossier (storeFile, storePassword,
+// keyAlias, keyPassword), ou les mêmes noms en variables d'environnement
+// (BPM_ANDROID_STORE_FILE…) pour la publication. Sans eux, la version
+// « release » se construit non signée.
+val signing = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+    System.getenv("BPM_ANDROID_STORE_FILE")?.let { setProperty("storeFile", it) }
+    System.getenv("BPM_ANDROID_STORE_PASSWORD")?.let { setProperty("storePassword", it) }
+    System.getenv("BPM_ANDROID_KEY_ALIAS")?.let { setProperty("keyAlias", it) }
+    System.getenv("BPM_ANDROID_KEY_PASSWORD")?.let { setProperty("keyPassword", it) }
 }
 
 android {
@@ -22,8 +38,20 @@ android {
         versionName = "0.351.0"
     }
 
+    signingConfigs {
+        if (signing.getProperty("storeFile") != null) {
+            create("play") {
+                storeFile = file(signing.getProperty("storeFile"))
+                storePassword = signing.getProperty("storePassword")
+                keyAlias = signing.getProperty("keyAlias")
+                keyPassword = signing.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
+            signingConfigs.findByName("play")?.let { signingConfig = it }
             isMinifyEnabled = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
