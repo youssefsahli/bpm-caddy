@@ -611,7 +611,11 @@ impl Caddy {
                 operator: s.operator,
                 start_time: s.start_time,
                 end_time: s.end_time,
-                kind: s.kind,
+                // The label the desktop shows, not the key it stores; a
+                // kind a later version adds reads as written.
+                kind: bpm_caddy::planning::ShiftKind::parse(&s.kind)
+                    .map(|k| k.label().to_owned())
+                    .unwrap_or(s.kind),
                 note: s.note,
             })
             .collect())
