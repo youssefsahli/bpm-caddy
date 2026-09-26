@@ -998,7 +998,10 @@ jour.
 corrige depuis n'importe quel poste, dans Options › Officine. Deux postes
 qui la corrigent en même temps ne perdent rien : ce que chacun a changé
 se réunit ; un même champ changé des deux côtés est signalé, la valeur
-saisie reste affichée, et « Enregistrer » la garde.
+saisie reste affichée, et « Enregistrer » la garde. Après un
+enregistrement refusé, « Remplacer par ces valeurs » enregistre
+l'officine telle qu'affichée, pour tous les postes, sans tenir compte de
+ce qu'un autre poste y a écrit.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
