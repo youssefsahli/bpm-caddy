@@ -15449,6 +15449,9 @@ impl App {
             || start_view == "base"
             || start_view == "peaux"
             || start_view == "regles"
+            || start_view == "mentions"
+            || start_view == "honoraires"
+            || start_view == "forfaits"
         {
             Some(OptionsEditor {
                 page: match start_view.as_str() {
@@ -15468,6 +15471,13 @@ impl App {
                     // s'imprime. Une page qu'aucune clé de vue
                     // n'atteint est une page que personne ne regarde.
                     "regles" => OptionsPage::Rules,
+                    // Les trois pages qu'aucune clé n'atteignait : les
+                    // mentions imprimées, les honoraires et les forfaits
+                    // de location. Jamais capturées, jamais ouvertes par
+                    // la passe de fumée.
+                    "mentions" => OptionsPage::Mentions,
+                    "honoraires" => OptionsPage::Fees,
+                    "forfaits" => OptionsPage::Locations,
                     _ => OptionsPage::Pharmacy,
                 },
                 loc_fee_text: config
@@ -40694,7 +40704,15 @@ impl App {
             |ui| {
                 let inner = ui.max_rect();
                 motif::inside(ui, inner, |ui| {
-                    let row_h = Self::row_height(ui);
+                    // **La hauteur de la ligne de texte**, pas celle d'un
+                    // bouton : la rangée ne porte que du texte, et à la
+                    // hauteur d'un bouton plus sa gouttière la liste en
+                    // montrait trois à 1024 en texte 1,6, séparées par
+                    // du vide.
+                    let row_h = ui
+                        .fonts(|f| f.row_height(&egui::FontId::proportional(motif::pt(ui, 11.5))))
+                        + 8.0;
+                    ui.spacing_mut().item_spacing.y = 2.0;
                     egui::ScrollArea::vertical()
                         .id_salt("ui_texts_list")
                         .auto_shrink([false, false])
@@ -41536,7 +41554,7 @@ impl App {
         // geste, et quatre des six se lisaient comme n'existant pas —,
         // donc ses douze pixels manquent au dessin, et une mesure qui
         // les ignore annonce une rangée là où il en faut deux.
-        let kinds = Self::wrapped_rows(
+        let kinds_needed = Self::wrapped_rows(
             ui,
             Self::scrolled_width(ui, rect.width() - 24.0),
             DocKind::ALL.iter().map(|k| tr(k.label_key())),
@@ -41565,11 +41583,29 @@ impl App {
         // bout à bout ils tiennent sur une rangée à la largeur d'un
         // comptoir, et deux rangées coûtaient cinquante pixels à une
         // liste qui n'en a que cent.
-        let mut widths = vec![
-            label_w,
-            Self::button_width(ui, tr("scan_day_hint")) + 8.0,
-            Self::button_width(ui, tr("scan_import")),
-        ];
+        // **Le genre en menu quand ses pastilles prendraient la liste** :
+        // à 1024 en texte 1,6 les six genres, le libellé et « Importer… »
+        // faisaient quatre rangées, et la seule pièce de la liste était
+        // tranchée à travers ses boutons. Le menu ouvre la rangée des
+        // champs et montre le genre choisi ; les pastilles restent
+        // partout où elles tiennent dans leur part.
+        let kind_w = motif::select_width(ui, DocKind::ALL.iter().map(|k| tr(k.label_key())));
+        let base_widths = |ui: &egui::Ui| {
+            vec![
+                label_w,
+                Self::button_width(ui, tr("scan_day_hint")) + 8.0,
+                Self::button_width(ui, tr("scan_import")),
+            ]
+        };
+        let plain_rows = Self::wrapped_rows_of(ui, inner_w, base_widths(ui).into_iter());
+        let kind_menu = kinds_needed > 1.0
+            && (kinds_needed + plain_rows) * step + motif::panel_chrome(ui, true)
+                > rect.height() * 0.45;
+        let kinds = if kind_menu { 0.0 } else { kinds_needed };
+        let mut widths = base_widths(ui);
+        if kind_menu {
+            widths.insert(0, kind_w);
+        }
         if !config.scans.command.trim().is_empty() {
             widths.push(Self::button_width(ui, tr("scan_scan")));
         }
@@ -41652,6 +41688,9 @@ impl App {
             // les pastilles qui défilent dans ce qui reste.
             let split = motif::split_rows(body, &[0.0, field_row], 4.0);
             motif::inside(ui, split[0], |ui| {
+                if kind_menu {
+                    return;
+                }
                 // **Barre pleine.** Ce qui est sous le pli ici est un
                 // geste : le genre de la pièce. Sur un onglet de dossier
                 // à `text_scale = 1,6` la bande ne montrait que la
@@ -41680,6 +41719,19 @@ impl App {
             motif::inside(ui, split[1], |ui| {
                 {
                     ui.horizontal_wrapped(|ui| {
+                        if kind_menu {
+                            let options: Vec<(DocKind, String)> = DocKind::ALL
+                                .iter()
+                                .map(|k| (*k, tr(k.label_key()).to_owned()))
+                                .collect();
+                            motif::select(
+                                ui,
+                                "scan_kind",
+                                kind_w,
+                                &mut session.scan_new_kind,
+                                &options,
+                            );
+                        }
                         motif::field_sized(
                             ui,
                             egui::vec2(label_w, Self::button_height(ui)),
@@ -69448,24 +69500,44 @@ impl eframe::App for App {
                                 });
                                 ui.add_space(6.0);
                                 let mut drop: Option<usize> = None;
+                                // **Le libellé et la ligne LPP prennent ce
+                                // que les colonnes chiffrées laissent**,
+                                // dans le rapport de leurs largeurs d'avant
+                                // (21 : 25) : fixes, les sept colonnes
+                                // sortaient de la fenêtre à 1024 en texte
+                                // 1,6 et « Renouvellement » se lisait
+                                // « Renouvellem ».
+                                let gap = 8.0;
+                                let fixed = chars_wide(ui, 11.0)
+                                    + chars_wide(ui, 9.0)
+                                    + 2.0 * chars_wide(ui, 7.0)
+                                    + Self::button_width(ui, tr("itv_delete"))
+                                    + 6.0 * gap;
+                                let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
+                                    .clamp(chars_wide(ui, 24.0), chars_wide(ui, 80.0));
+                                let label_w = flex * 21.0 / 46.0;
+                                let lpp_w = flex - label_w;
                                 egui::Grid::new("opts_locations")
                                     .num_columns(7)
-                                    .spacing([8.0, 6.0])
+                                    .spacing([gap, 6.0])
                                     .show(ui, |ui| {
-                                        for header in [
-                                            tr("loc_opt_label"),
-                                            tr("loc_opt_lpp"),
-                                            tr("loc_opt_period"),
-                                            tr("loc_opt_fee"),
-                                            tr("loc_opt_renewal"),
-                                            tr("loc_opt_max"),
-                                            "",
+                                        for (header, tip) in [
+                                            (tr("loc_opt_label"), ""),
+                                            (tr("loc_opt_lpp"), ""),
+                                            (tr("loc_opt_period"), ""),
+                                            (tr("loc_opt_fee"), ""),
+                                            (tr("loc_opt_renewal"), tr("loc_opt_renewal_tooltip")),
+                                            (tr("loc_opt_max"), tr("loc_opt_max_tooltip")),
+                                            ("", ""),
                                         ] {
-                                            ui.label(
+                                            let r = ui.label(
                                                 egui::RichText::new(header)
                                                     .size(motif::pt(ui, 11.0))
                                                     .color(motif::text_dim()),
                                             );
+                                            if !tip.is_empty() {
+                                                r.on_hover_text(tip);
+                                            }
                                         }
                                         ui.end_row();
                                         // Le texte des montants sort de
@@ -69485,14 +69557,15 @@ impl eframe::App for App {
                                         {
                                             motif::field(
                                                 ui,
-                                                chars_wide(ui, 21.0),
+                                                label_w,
                                                 egui::TextEdit::singleline(&mut f.label),
                                             );
                                             motif::field(
                                                 ui,
-                                                chars_wide(ui, 25.0),
+                                                lpp_w,
                                                 egui::TextEdit::singleline(&mut f.lpp),
-                                            );
+                                            )
+                                            .on_hover_text(f.lpp.clone());
                                             let periods: Vec<(crate::config::Period, String)> =
                                                 crate::config::Period::ALL
                                                     .into_iter()
@@ -70829,6 +70902,17 @@ impl eframe::App for App {
                                     .num_columns(7)
                                     .spacing([10.0, 5.0])
                                     .show(ui, |ui| {
+                                        // Un montant tient en cinq caractères
+                                        // (« 20 € ») : à la largeur par défaut
+                                        // d'un champ, les quatre rangs et le
+                                        // total sortaient de la fenêtre en
+                                        // grand texte.
+                                        // Un DragValue se taille sur sa
+                                        // marge de bouton (quatorze points
+                                        // de chaque côté ici), pas sur
+                                        // `interact_size`.
+                                        ui.spacing_mut().interact_size.x = chars_wide(ui, 5.0);
+                                        ui.spacing_mut().button_padding.x = 4.0;
                                         let themes: [(&str, &mut ActFees); 10] = [
                                             ("BPM", &mut editor.cfg.billing.bpm),
                                             ("AOD", &mut editor.cfg.billing.aod),
@@ -70852,8 +70936,19 @@ impl eframe::App for App {
                                         // the year's total.
                                         ui.label("");
                                         ui.label(dim(tr("opts_fee_code")));
+                                        // Le rang, en ordinal court : « 1e entretien »
+                                        // en tête de chaque colonne faisait
+                                        // quatre colonnes larges pour des
+                                        // montants de deux chiffres, et la
+                                        // quatrième sortait de la fenêtre.
                                         for i in 1..=ActFees::STEPS {
-                                            ui.label(dim(&format!("{i}{}", tr("opts_fee_nth"))));
+                                            let head = if i == 1 {
+                                                tr("opts_fee_first").to_owned()
+                                            } else {
+                                                trf("opts_fee_nth", i)
+                                            };
+                                            ui.label(dim(&head))
+                                                .on_hover_text(tr("opts_fee_rank_tooltip"));
                                         }
                                         ui.label(dim(tr("opts_fee_total")));
                                         ui.end_row();

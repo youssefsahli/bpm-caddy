@@ -2207,7 +2207,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_NO_KEYRING=1` — skip the OS credential manager
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
-  tables_search|regles|calc|carnet|vaccins|bio|watch|revue|conciliation|
+  tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
@@ -2223,6 +2223,9 @@ add clicking and typing; it is not the price of entry.
   dialog on its « À propos » page, `base` on « Base », and `peaux` on
   « Interface », where the ten skins are picked — each drawn in its
   own palette, which is the one thing only a screenshot can check.
+  `regles`, `mentions`, `honoraires` and `forfaits` open its « Règles »,
+  « Mentions », « Honoraires » and « Locations » pages: the last three had
+  no key until 0.349, so no sweep had ever captured them.
   `caisse` opens the till count **with a drawer already counted**:
   fifteen lines at zero show neither the summary, nor the gap, nor the
   red it carries — that is, none of what the view exists to draw.

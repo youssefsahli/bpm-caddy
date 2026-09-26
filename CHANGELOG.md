@@ -5,6 +5,19 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.349.0] - 2026-09-26
+
+### Fixed
+- Options › Honoraires : le barème tient dans la fenêtre en grand texte,
+  total de l'année compris ; les rangs s'écrivent « 1er, 2e, 3e, 4e ».
+- Options › Locations : les colonnes tiennent dans la fenêtre ; libellé et
+  ligne LPP prennent la place disponible, la ligne entière au survol.
+- Libellés de l'interface : la liste des textes à la hauteur d'une ligne
+  de texte — deux fois plus de libellés visibles en grand texte.
+- Pièces numérisées (officine et dossier) : quand les six genres
+  prendraient la liste, le genre devient un menu en tête de la rangée du
+  libellé ; la pièce archivée se voit avec ses boutons.
+
 ## [0.348.0] - 2026-09-26
 
 ### Fixed
