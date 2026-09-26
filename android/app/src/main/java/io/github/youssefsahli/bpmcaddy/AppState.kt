@@ -59,6 +59,17 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         note = T("mobile_wiped")
     }
 
+    /**
+     * **Refermer la base** : après cinq minutes hors de l'écran, le
+     * téléphone redemande le verrouillage — un téléphone oublié ouvert
+     * dans une poche ne montre pas la messagerie de l'officine.
+     */
+    fun lock() {
+        caddy?.destroy()
+        caddy = null
+        status = null
+    }
+
     /** Ce que l'écran a écrit lui-même (une conversation lue) : relire. */
     fun touched() {
         revision++

@@ -44,10 +44,29 @@ fun <T> withMulticast(context: Context, block: () -> T): T {
 /** Tous les combien le téléphone échange, tant qu'il est à l'écran. */
 private const val SYNC_EVERY_MS = 60_000L
 
+/** Hors de l'écran plus longtemps que ceci, la base se referme. */
+private const val LOCK_AFTER_MS = 5 * 60_000L
+
 class MainActivity : FragmentActivity() {
+    private val state: AppState by viewModels()
+    private var leftAt: Long = 0L
+
+    override fun onStop() {
+        super.onStop()
+        // Not when the screen is only being recreated (turned, dark mode).
+        if (!isChangingConfigurations) leftAt = android.os.SystemClock.elapsedRealtime()
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (leftAt != 0L && android.os.SystemClock.elapsedRealtime() - leftAt > LOCK_AFTER_MS) {
+            state.lock()
+        }
+        leftAt = 0L
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val state: AppState by viewModels()
         setContent {
             CompanionApp(state = state, unlock = { unlock(state) })
         }
