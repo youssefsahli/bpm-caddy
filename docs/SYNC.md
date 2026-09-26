@@ -767,10 +767,38 @@ clé absente.
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
    du premier.
-4. **Le relais par les autres officines.** Un poste qu'on ne peut pas
-   joindre (CGNAT sans IPv6) pourrait passer ses enregistrements scellés
-   par le poste joignable d'une autre officine du réseau, qui ne les lit
-   pas. Pas construit. NAT-PMP / PCP non plus : UPnP seul.
+4. **Le relais par les autres officines — pas construit, à décider.**
+   Pour l'officine qu'aucun chemin ne rend joignable (CGNAT sans IPv6),
+   un poste joignable d'une officine amie du réseau tiendrait une
+   *boîte* : la copie scellée du journal des postes de l'officine
+   relayée, qu'il ne peut pas ouvrir.
+
+   *Comment* : l'officine A désigne, parmi les officines de son réseau,
+   celle qui la relaie (B) ; un enregistrement du réseau adressé à B lui
+   donne le nom du groupe de A et les identités de ses postes et
+   téléphones. B, s'il a accepté de relayer (réglage éteint par défaut),
+   répond sur sa porte des officines à ces identités-là, sous une
+   « part » vide (le nom du groupe, aucune clé) — la conversation est
+   celle de § 5, B n'y est qu'un journal de plus. Les postes de A et
+   leurs téléphones y déposent et y reprennent, et l'adresse de B se
+   publie dans la ligne des postes de A comme leurs propres adresses.
+
+   *Ce que cela coûte* : B garde **tout** le journal de A — dossiers
+   compris, chiffrés, qu'il ne lit pas — plusieurs centaines de
+   mégaoctets au fil des ans ; B voit quand et combien A échange ; B
+   peut cesser de relayer. Une limite de taille par officine relayée
+   serait nécessaire.
+
+   *La question à trancher avant tout code* : une officine qui conserve,
+   même chiffrées de bout en bout, les données de santé d'une autre fait
+   de l'hébergement pour compte de tiers — ce que le cadre de
+   l'hébergement de données de santé (HDS) et le RGPD encadrent. Le
+   chiffrement de bout en bout pèse dans l'analyse, il ne la remplace
+   pas. Alternative sans hébergement : un relais qui ne garde rien (il
+   passe les octets d'une conversation en cours, comme un commutateur) —
+   il demande que les deux bouts soient en ligne en même temps.
+
+   NAT-PMP / PCP non plus : UPnP seul.
 5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
    seulement. Pas de fichier joint depuis le téléphone.
