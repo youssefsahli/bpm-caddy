@@ -662,7 +662,8 @@ private fun PostsScreen(state: AppState) {
 private fun WipeButton(state: AppState) {
     var asking by remember { mutableStateOf(false) }
     Hint(T("mobile_wipe_hint"))
-    OutlinedButton(onClick = { asking = true }) { Text(T("mobile_wipe")) }
+    // Not during an exchange: it writes the base the wipe would delete.
+    OutlinedButton(onClick = { asking = true }, enabled = !state.busy) { Text(T("mobile_wipe")) }
     if (asking) {
         AlertDialog(
             onDismissRequest = { asking = false },
