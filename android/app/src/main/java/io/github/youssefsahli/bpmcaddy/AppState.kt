@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import uniffi.bpm_caddy_mobile.Caddy
@@ -19,10 +19,14 @@ import uniffi.bpm_caddy_mobile.Status
  * la dernière phrase à montrer. Tout appel à la bibliothèque passe ici,
  * sur un fil d'arrière-plan — une synchronisation parle au réseau.
  */
-class AppState(private val context: Context) {
+class AppState(application: android.app.Application) : androidx.lifecycle.AndroidViewModel(application) {
+    // A ViewModel outlives the activity: turning the phone, or the system
+    // switching to dark mode, recreates the screen — not the open base,
+    // which would otherwise lock again mid-message.
+    private val context: Context = application
     val settings = Settings(context)
     private val vault = Vault(context)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private val scope: CoroutineScope get() = viewModelScope
 
     var caddy: Caddy? by mutableStateOf(null)
         private set
