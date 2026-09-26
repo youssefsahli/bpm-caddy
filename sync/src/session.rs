@@ -48,6 +48,7 @@ use std::collections::{BTreeSet, VecDeque};
 use crate::journal::Journal;
 use crate::keys::{
     short_code, Device, DeviceId, Fingerprint, Ticket, Trousseau, ROLE_INVITE, ROLE_JOIN,
+    ROLE_JOIN_COMPANION,
 };
 use crate::meter::{Meter, Signal};
 use crate::seal::{Hash, Record};
@@ -142,6 +143,9 @@ pub struct Session {
     /// Inviting a companion: the streams its share opens. `None` hands
     /// over the whole trousseau.
     sharing: Option<Vec<crate::seal::Stream>>,
+    /// Joining as a companion: the ticket is proved under the companion's
+    /// role, which only an invitation for a companion accepts.
+    companion: bool,
 
     phase: Phase,
     out: VecDeque<Frame>,
@@ -216,6 +220,7 @@ impl Session {
             welcome: None,
             adopted: false,
             sharing: None,
+            companion: false,
             phase: Phase::Handshake,
             out: VecDeque::new(),
             peer_heads: Vec::new(),
@@ -257,6 +262,27 @@ impl Session {
         }
         self.sharing = Some(streams.to_vec());
         Ok(self)
+    }
+
+    /// **Join as a companion**: the ticket is proved under the companion's
+    /// role, so an invitation meant for a post (which would hand over the
+    /// whole key) refuses this joiner before anything crosses, and an
+    /// invitation for a companion refuses a post. Only a join takes it.
+    pub fn as_companion(mut self) -> Result<Self> {
+        if self.intent != Intent::Join {
+            return Err(Error::Protocol);
+        }
+        self.companion = true;
+        Ok(self)
+    }
+
+    /// The role a joiner proves the ticket under.
+    fn join_role(&self) -> u8 {
+        if self.companion || self.sharing.is_some() {
+            ROLE_JOIN_COMPANION
+        } else {
+            ROLE_JOIN
+        }
     }
 
     /// **Answer an ordinary sync for whichever of several officines the
@@ -640,7 +666,8 @@ impl Session {
                 }
                 self.phase = Phase::Confirm;
                 let hash = self.hash.ok_or(Error::Handshake)?;
-                let proof = self.ticket.map(|t| *t.proof(ROLE_JOIN, &hash).as_bytes());
+                let role = self.join_role();
+                let proof = self.ticket.map(|t| *t.proof(role, &hash).as_bytes());
                 self.out.push_back(Frame::Proof(proof));
                 Ok(())
             }
@@ -674,7 +701,9 @@ impl Session {
                     // connection that never answers — somebody quicker to
                     // the open door than the invited post is then one hurried
                     // « same code » away from the key.
-                    (Some(p), Some(t)) if blake3::Hash::from(p) == t.proof(ROLE_JOIN, &hash) => {
+                    (Some(p), Some(t))
+                        if blake3::Hash::from(p) == t.proof(self.join_role(), &hash) =>
+                    {
                         let mine = *t.proof(ROLE_INVITE, &hash).as_bytes();
                         self.out.push_back(Frame::Proof(Some(mine)));
                         self.accept(journal, meter)
@@ -1556,6 +1585,58 @@ mod tests {
         for frame in &talked.wire {
             assert!(!contains(frame, &ticket.bytes()), "le ticket a traversé");
         }
+    }
+
+    /// **A code says which kind of post it invites.** A phone that types
+    /// a post's code gets no key — not the whole one it would then have
+    /// to refuse — and a post that types a phone's code gets no share;
+    /// the matching pair joins without a code to compare.
+    #[test]
+    fn a_code_for_one_kind_of_post_hands_nothing_to_the_other() {
+        let t = officine(5);
+        for (sharing, companion, joins) in [
+            (false, true, false),
+            (true, false, false),
+            (true, true, true),
+            (false, false, true),
+        ] {
+            let mut a = Post::new(1, Some(t.clone()));
+            let mut b = Post::new(2, None);
+            let ticket = Ticket::generate(&mut Counted(23));
+            let mut sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, false, &[])
+                .unwrap()
+                .with_ticket(ticket)
+                .unwrap();
+            if sharing {
+                sa = sa.sharing(&[Stream::Agenda]).unwrap();
+            }
+            let mut sb = Session::new(&b.device, None, Intent::Join, true, &[])
+                .unwrap()
+                .with_ticket(ticket)
+                .unwrap();
+            if companion {
+                sb = sb.as_companion().unwrap();
+            }
+            let talked = converse(&mut a, &mut b, sa, sb, false);
+            match talked {
+                Ok(t2) => {
+                    assert!(joins, "{sharing} {companion}");
+                    let got = t2.sb.joined().expect("une clé");
+                    assert_eq!(got.is_whole(), !sharing);
+                }
+                Err(_) => assert!(!joins, "{sharing} {companion}"),
+            }
+        }
+        assert!(Session::new(
+            &Post::new(9, Some(t.clone())).device,
+            Some(&t),
+            Intent::Sync,
+            true,
+            &[]
+        )
+        .unwrap()
+        .as_companion()
+        .is_err());
     }
 
     /// A wrong ticket ends the pairing, from either side's point of view,

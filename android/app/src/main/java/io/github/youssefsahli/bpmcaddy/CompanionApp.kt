@@ -462,7 +462,9 @@ private fun MessagesScreen(state: AppState, caddy: Caddy) {
         return
     }
     val talks by produceState(emptyList(), state.revision) {
-        value = withContext(Dispatchers.IO) { runCatching { caddy.conversations() }.getOrDefault(emptyList()) }
+        value = withContext(Dispatchers.IO) {
+            runCatching { caddy.conversations(state.settings.initials) }.getOrDefault(emptyList())
+        }
     }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -478,6 +480,14 @@ private fun MessagesScreen(state: AppState, caddy: Caddy) {
                 ) {
                     Row {
                         Text(t.title.ifBlank { T("mobile_messages_team") }, Modifier.weight(1f), fontWeight = FontWeight.SemiBold)
+                        if (t.unread > 0u) {
+                            Text(
+                                T("mobile_messages_unread").replace("{}", t.unread.toString()),
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(end = 8.dp),
+                            )
+                        }
                         Text(t.lastAt, style = MaterialTheme.typography.bodySmall)
                     }
                     if (t.last.isNotBlank()) Text(t.last, maxLines = 1, style = MaterialTheme.typography.bodySmall)
@@ -496,7 +506,15 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
     }
     var draft by rememberSaveable { mutableStateOf("") }
     val list = rememberLazyListState()
-    LaunchedEffect(said.size) { if (said.isNotEmpty()) list.scrollToItem(said.size - 1) }
+    LaunchedEffect(said.size) {
+        if (said.isNotEmpty()) {
+            list.scrollToItem(said.size - 1)
+            val marked = withContext(Dispatchers.IO) {
+                runCatching { caddy.markRead(id, state.settings.initials) }.isSuccess
+            }
+            if (marked) state.touched()
+        }
+    }
     Column(Modifier.fillMaxSize()) {
         TextButton(onClick = back) { Text(T("mobile_back")) }
         LazyColumn(Modifier.weight(1f).fillMaxWidth(), state = list) {

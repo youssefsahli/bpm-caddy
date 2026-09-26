@@ -40978,6 +40978,15 @@ const NUMBERED_MOVES: &str = "(SELECT m.id, m.stup_id, m.kind, m.happened_on, m.
         m.remark, m.cancels, m.lot, m.expiry, m.created_at
    FROM stup_moves m LEFT JOIN stup_numbers n ON n.move_id = m.id) AS stup_moves";
 
+/// What a record read off the posts' journal carries besides its ops:
+/// the flux it was sealed on, its author's identity (hex), and whether
+/// this post holds the whole key. See [`Db::apply_gated`].
+pub struct Gate {
+    pub sealed: crate::replica::Flux,
+    pub author: String,
+    pub strict: bool,
+}
+
 /// Un poste de l'officine.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PostRow {
@@ -41757,6 +41766,21 @@ impl Db {
         day: &str,
         ops: &[crate::replica::Op],
     ) -> Result<Applied, String> {
+        self.apply_gated(record, author, day, ops, None)
+    }
+
+    /// [`Db::apply_record`] for a record read off the journal: `gate` says
+    /// which flux it was sealed on, who wrote it, and whether this post
+    /// holds the whole key — and an op the flux does not admit is not
+    /// ranged (`replica::admissible`).
+    pub fn apply_gated(
+        &self,
+        record: &str,
+        author: &str,
+        day: &str,
+        ops: &[crate::replica::Op],
+        gate: Option<&Gate>,
+    ) -> Result<Applied, String> {
         use crate::replica::{decide, table, Action, File, Kind};
         let mut done = Applied::default();
         if self.sync_applied(record) {
@@ -41797,6 +41821,12 @@ impl Db {
                 continue;
             }
             let local = Self::local_row(conn, &op.table, cols, &op.key)?;
+            if let Some(g) = gate {
+                if !crate::replica::admissible(t, op, g.sealed, &g.author, local.as_ref(), g.strict)
+                {
+                    continue;
+                }
+            }
             let mut outcome = decide(op, t.append_only, local.as_ref());
             crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
             let kind = match (&outcome.action, op.kind) {

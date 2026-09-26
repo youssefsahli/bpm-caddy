@@ -408,6 +408,60 @@ impl Outcome {
 /// **Une écriture reçue ne s'applique que sur la valeur qu'elle
 /// remplaçait.** `local` est la ligne telle qu'elle est ici, lue de la
 /// même façon qu'elle a été capturée.
+/// **Une écriture reçue n'est rangée que si elle a été scellée sur le
+/// flux de sa table.** La clé d'un flux dit qui peut y écrire : un
+/// compagnon (le téléphone) tient celles de quatre flux, et une écriture
+/// sur `patients`, le registre ou `settings` qu'il glisserait dans un
+/// enregistrement de l'équipe n'est pas rangée — sans ce contrôle, la
+/// seule barrière était le téléphone lui-même.
+///
+/// Deux exceptions, pour les postes d'avant le flux de l'équipe : les
+/// tables de l'équipe arrivent aussi sous `Dossiers` (la messagerie) et
+/// `Officine` (la liste des postes) — des flux qu'un compagnon ne scelle
+/// pas. Et la liste des postes voyage toujours aussi sous `Officine` :
+/// c'est là que passent les gestes sur les autres postes (retirer,
+/// nommer), qu'un compagnon ne peut pas faire.
+///
+/// Sous le flux de l'équipe, un poste qui tient la clé entière (`strict`)
+/// n'accepte pour `sync_posts` que ce qu'un poste dit **de lui-même** :
+/// sa propre ligne à l'arrivée, son nom et ses adresses ensuite. Un
+/// téléphone ne retire pas un poste, ne s'en ajoute pas un autre, ne se
+/// change pas en poste de bureau. `local` : la ligne telle que ce poste
+/// la tient ; `author` : l'identité de qui a écrit, en hexadécimal.
+pub fn admissible(
+    t: &Table,
+    op: &Op,
+    sealed: Flux,
+    author: &str,
+    local: Option<&Map<String, Value>>,
+    strict: bool,
+) -> bool {
+    let legacy = t.flux == Flux::Equipe && matches!(sealed, Flux::Dossiers | Flux::Officine);
+    if t.flux != sealed && !legacy {
+        return false;
+    }
+    if !(strict && t.name == "sync_posts" && sealed == Flux::Equipe) {
+        return true;
+    }
+    let device_is_author =
+        |row: &Map<String, Value>| row.get("device").and_then(Value::as_str) == Some(author);
+    match op.kind {
+        Kind::Insert => {
+            device_is_author(&op.new)
+                && op
+                    .new
+                    .get("left_on")
+                    .and_then(Value::as_str)
+                    .is_none_or(str::is_empty)
+        }
+        Kind::Update | Kind::Patch => {
+            local.is_some_and(device_is_author)
+                && op.new.keys().all(|c| c == "name" || c == "reach")
+        }
+        Kind::Delete => false,
+    }
+}
+
 pub fn decide(op: &Op, append_only: bool, local: Option<&Map<String, Value>>) -> Outcome {
     if append_only && op.kind != Kind::Insert {
         return Outcome::clean(Action::Refused);
@@ -792,6 +846,193 @@ pub fn merge_officine(op: &Op, local: Option<&Map<String, Value>>, outcome: &mut
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn op(table: &str, kind: Kind, new: serde_json::Value) -> Op {
+        Op {
+            file: if table.starts_with("stup") {
+                File::Stups
+            } else {
+                File::Main
+            },
+            table: table.into(),
+            kind,
+            key: Map::new(),
+            old: Map::new(),
+            new: new.as_object().cloned().unwrap_or_default(),
+        }
+    }
+
+    /// **Une écriture n'entre que par le flux de sa table.** Un compagnon
+    /// qui glisse dans un enregistrement de l'équipe une ligne de patient,
+    /// du registre ou des réglages n'est pas rangé ; les postes d'avant
+    /// le flux de l'équipe écrivent encore la messagerie sous `Dossiers`
+    /// et la liste des postes sous `Officine`, et sont rangés.
+    #[test]
+    fn a_write_enters_only_through_the_stream_of_its_table() {
+        let t = |name: &str| {
+            table(
+                if name.starts_with("stup") {
+                    File::Stups
+                } else {
+                    File::Main
+                },
+                name,
+            )
+            .unwrap()
+        };
+        let any = serde_json::json!({"x": 1});
+        for name in [
+            "patients",
+            "stupefiants",
+            "settings",
+            "caisse_counts",
+            "prescribers",
+        ] {
+            assert!(
+                !admissible(
+                    t(name),
+                    &op(name, Kind::Patch, any.clone()),
+                    Flux::Equipe,
+                    "aa",
+                    None,
+                    true
+                ),
+                "{name} sous le flux de l'équipe"
+            );
+        }
+        assert!(admissible(
+            t("messages"),
+            &op("messages", Kind::Insert, any.clone()),
+            Flux::Equipe,
+            "aa",
+            None,
+            true
+        ));
+        assert!(admissible(
+            t("messages"),
+            &op("messages", Kind::Insert, any.clone()),
+            Flux::Dossiers,
+            "aa",
+            None,
+            true
+        ));
+        assert!(admissible(
+            t("drugs"),
+            &op("drugs", Kind::Update, any.clone()),
+            Flux::Fiches,
+            "aa",
+            None,
+            false
+        ));
+        assert!(!admissible(
+            t("drugs"),
+            &op("drugs", Kind::Update, any.clone()),
+            Flux::Agenda,
+            "aa",
+            None,
+            false
+        ));
+        assert!(!admissible(
+            t("patients"),
+            &op("patients", Kind::Insert, any),
+            Flux::Fiches,
+            "aa",
+            None,
+            true
+        ));
+    }
+
+    /// **Sous le flux de l'équipe, un poste ne parle que de lui-même.**
+    /// Les gestes sur les autres postes passent sous `Officine`.
+    #[test]
+    fn under_the_team_stream_a_post_speaks_only_for_itself() {
+        let t = table(File::Main, "sync_posts").unwrap();
+        let mine = serde_json::json!({"device": "aa", "name": "Tel", "left_on": ""});
+        let local_mine = mine.as_object().cloned().unwrap();
+        let local_other = serde_json::json!({"device": "bb"})
+            .as_object()
+            .cloned()
+            .unwrap();
+        let yes = |o: &Op, local: Option<&Map<String, Value>>| {
+            admissible(t, o, Flux::Equipe, "aa", local, true)
+        };
+        assert!(yes(&op("sync_posts", Kind::Insert, mine.clone()), None));
+        assert!(!yes(
+            &op(
+                "sync_posts",
+                Kind::Insert,
+                serde_json::json!({"device": "cc"})
+            ),
+            None
+        ));
+        assert!(!yes(
+            &op(
+                "sync_posts",
+                Kind::Insert,
+                serde_json::json!({"device": "aa", "left_on": "2026-01-01"})
+            ),
+            None
+        ));
+        assert!(yes(
+            &op(
+                "sync_posts",
+                Kind::Update,
+                serde_json::json!({"reach": "1.2.3.4:1"})
+            ),
+            Some(&local_mine)
+        ));
+        assert!(!yes(
+            &op(
+                "sync_posts",
+                Kind::Update,
+                serde_json::json!({"left_on": ""})
+            ),
+            Some(&local_mine)
+        ));
+        assert!(!yes(
+            &op("sync_posts", Kind::Update, serde_json::json!({"kind": ""})),
+            Some(&local_mine)
+        ));
+        assert!(!yes(
+            &op(
+                "sync_posts",
+                Kind::Update,
+                serde_json::json!({"left_on": "2026-01-01"})
+            ),
+            Some(&local_other)
+        ));
+        assert!(!yes(
+            &op("sync_posts", Kind::Delete, serde_json::json!({})),
+            Some(&local_mine)
+        ));
+        // Under the officine stream (only whole keys seal there), anything.
+        assert!(admissible(
+            t,
+            &op(
+                "sync_posts",
+                Kind::Update,
+                serde_json::json!({"left_on": "2026-01-01"})
+            ),
+            Flux::Officine,
+            "aa",
+            Some(&local_other),
+            true
+        ));
+        // A companion reading cannot tell a desktop from a phone: it takes
+        // what the team stream carries.
+        assert!(admissible(
+            t,
+            &op(
+                "sync_posts",
+                Kind::Update,
+                serde_json::json!({"left_on": "2026-01-01"})
+            ),
+            Flux::Equipe,
+            "aa",
+            Some(&local_other),
+            false
+        ));
+    }
 
     /// Deux postes, deux champs de l'officine : la ligne reçue prend la
     /// fusion au lieu d'attendre un arbitrage ; un même champ changé des

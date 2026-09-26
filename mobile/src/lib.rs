@@ -163,6 +163,9 @@ pub struct Talk {
     /// Le dernier message, pour la liste.
     pub last: String,
     pub last_at: String,
+    /// Ce qui reste à lire pour qui tient le téléphone — les mêmes marques
+    /// que sur les postes, sous ses initiales.
+    pub unread: u32,
 }
 
 #[derive(uniffi::Record)]
@@ -605,8 +608,13 @@ impl Caddy {
     /// Les conversations de l'équipe, la plus récente d'abord. Celles
     /// avec d'autres officines passent par le réseau, que le téléphone
     /// n'a pas : elles n'y sont pas.
-    pub fn conversations(&self) -> Result<Vec<Talk>> {
+    pub fn conversations(&self, operator: String) -> Result<Vec<Talk>> {
         let db = self.db();
+        let unread = if operator.trim().is_empty() {
+            Default::default()
+        } else {
+            db.unread_counts(&operator)?
+        };
         let mut out = Vec::new();
         for c in db.conversations()? {
             if c.channel != bpm_caddy::messages::Channel::Equipe {
@@ -618,6 +626,7 @@ impl Caddy {
                 .map(|m| (format!("{} : {}", m.author, m.body), stamp(&m.sent_at)))
                 .unwrap_or_default();
             out.push(Talk {
+                unread: unread.get(&c.id).copied().unwrap_or(0) as u32,
                 id: c.id,
                 title: c.title,
                 members: c.members,
@@ -641,6 +650,20 @@ impl Caddy {
                 cites_patient: m.patient_id.is_some(),
             })
             .collect())
+    }
+
+    /// Noter la conversation lue par `operator` jusqu'à son dernier
+    /// message — la marque que les postes lisent aussi. Sans initiales,
+    /// rien.
+    pub fn mark_read(&self, conversation: i64, operator: String) -> Result<()> {
+        if operator.trim().is_empty() {
+            return Ok(());
+        }
+        let db = self.db();
+        if let Some(last) = db.conversation_messages(conversation)?.last() {
+            db.mark_read(conversation, &operator, &last.sent_at)?;
+        }
+        Ok(())
     }
 
     /// Écrire dans une conversation de l'équipe. `author` : les initiales

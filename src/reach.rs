@@ -31,10 +31,14 @@ pub const LEASE: Duration = Duration::from_secs(3600);
 
 /// Une adresse IPv6 qu'on peut composer depuis Internet : unicast
 /// globale (`2000::/3`). Ni boucle locale, ni lien local, ni adresse
-/// privée (`fc00::/7`), ni documentation (`2001:db8::/32`).
+/// privée (`fc00::/7`), ni documentation (`2001:db8::/32`), ni les
+/// tunnels de transition — Teredo (`2001::/32`) et 6to4 (`2002::/16`) —
+/// qui ne mènent pas sûrement au poste.
 pub fn is_global_v6(a: &Ipv6Addr) -> bool {
     let s = a.segments();
-    (s[0] & 0xe000) == 0x2000 && !(s[0] == 0x2001 && s[1] == 0x0db8)
+    (s[0] & 0xe000) == 0x2000
+        && !(s[0] == 0x2001 && (s[1] == 0x0db8 || s[1] == 0))
+        && s[0] != 0x2002
 }
 
 /// Une adresse IPv4 publique : ni privée, ni partagée par l'opérateur
@@ -48,7 +52,11 @@ pub fn is_public_v4(a: &Ipv4Addr) -> bool {
         || a.is_broadcast()
         || a.is_documentation()
         || a.is_multicast()
-        || (o[0] == 100 && (64..128).contains(&o[1])))
+        || o[0] == 0
+        || o[0] >= 240
+        || (o[0] == 100 && (64..128).contains(&o[1]))
+        || (o[0] == 192 && o[1] == 0 && o[2] == 0)
+        || (o[0] == 198 && (o[1] == 18 || o[1] == 19)))
 }
 
 /// Les adresses IPv6 publiques de cette machine.
@@ -155,7 +163,15 @@ mod tests {
         for a in ["2a01:e0a:1::5", "2001:41d0::1"] {
             assert!(is_global_v6(&a.parse().unwrap()), "{a}");
         }
-        for a in ["::1", "fe80::1", "fd00::1", "2001:db8::1", "ff02::1"] {
+        for a in [
+            "::1",
+            "fe80::1",
+            "fd00::1",
+            "2001:db8::1",
+            "ff02::1",
+            "2001:0:4136:e378::1",
+            "2002:c000:204::1",
+        ] {
             assert!(!is_global_v6(&a.parse().unwrap()), "{a}");
         }
         for a in ["82.64.1.2", "5.6.7.8"] {
@@ -170,6 +186,10 @@ mod tests {
             "127.0.0.1",
             "169.254.1.1",
             "203.0.113.5",
+            "0.1.2.3",
+            "192.0.0.8",
+            "198.18.0.1",
+            "240.0.0.1",
         ] {
             assert!(!is_public_v4(&a.parse().unwrap()), "{a}");
         }

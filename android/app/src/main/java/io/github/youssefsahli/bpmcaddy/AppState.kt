@@ -37,6 +37,11 @@ class AppState(private val context: Context) {
     var revision by mutableIntStateOf(0)
         private set
 
+    /** Ce que l'écran a écrit lui-même (une conversation lue) : relire. */
+    fun touched() {
+        revision++
+    }
+
     fun notice(text: String) {
         note = text
     }

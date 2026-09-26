@@ -77,6 +77,21 @@ pub fn stream(flux: Flux) -> Stream {
     }
 }
 
+/// Le flux de l'officine d'un flux `bpm-sync` — aucun pour celui du réseau.
+pub fn flux_of(s: Stream) -> Option<Flux> {
+    Some(match s {
+        Stream::Dossiers => Flux::Dossiers,
+        Stream::Registre => Flux::Registre,
+        Stream::Caisse => Flux::Caisse,
+        Stream::Planning => Flux::Planning,
+        Stream::Agenda => Flux::Agenda,
+        Stream::Officine => Flux::Officine,
+        Stream::Fiches => Flux::Fiches,
+        Stream::Equipe => Flux::Equipe,
+        Stream::Reseau | Stream::Autre(_) => return None,
+    })
+}
+
 /// Les flux que les postes lisent : tous ceux de l'officine, jamais
 /// celui du réseau d'officines.
 const STREAMS: [Stream; 8] = [
@@ -254,19 +269,30 @@ impl Posts {
         let Some(trousseau) = self.trousseau.clone() else {
             return Ok(0);
         };
+        // Each op on its table's flux — and a change to the list of posts
+        // from a post holding the whole key **also** under `Officine`:
+        // there, a post may speak of the others (retire, rename), which it
+        // may not under the team's flux (`replica::admissible`), and the
+        // posts of an older version, which do not read the team's flux,
+        // learn who is in the group.
+        let mut routed: Vec<(Flux, crate::replica::Op)> = Vec::with_capacity(ops.len());
+        for op in ops {
+            let flux = crate::replica::table(op.file, &op.table)
+                .map(|t| t.flux)
+                .unwrap_or(Flux::Officine);
+            if op.table == "sync_posts" && trousseau.is_whole() {
+                routed.push((Flux::Officine, op.clone()));
+            }
+            routed.push((flux, op.clone()));
+        }
+        let fluxes: Vec<Flux> = routed.iter().map(|(f, _)| *f).collect();
+        let ops: Vec<crate::replica::Op> = routed.into_iter().map(|(_, o)| o).collect();
         let mut written = 0;
         let mut start = 0;
         while start < ops.len() {
-            let flux = crate::replica::table(ops[start].file, &ops[start].table)
-                .map(|t| t.flux)
-                .unwrap_or(Flux::Officine);
+            let flux = fluxes[start];
             let mut end = start;
-            while end < ops.len()
-                && crate::replica::table(ops[end].file, &ops[end].table)
-                    .map(|t| t.flux)
-                    .unwrap_or(Flux::Officine)
-                    == flux
-            {
+            while end < ops.len() && fluxes[end] == flux {
                 end += 1;
             }
             // A companion seals only what its share opens; a write to
@@ -299,19 +325,26 @@ impl Posts {
         Ok(written)
     }
 
-    /// **Sceller à nouveau les tables de l'équipe sur leur flux**, une
-    /// fois par poste : la messagerie et la liste des postes voyageaient
-    /// avant sous d'autres flux (dossiers, officine), qu'un compagnon ne
-    /// lit pas. Fait avant d'inviter un compagnon, pour qu'il sache quels
-    /// postes existent — et ne prenne pas un numéro déjà pris. Reçues par
-    /// un poste qui les a déjà, ces lignes ne changent rien.
+    /// **Sceller à nouveau la liste des postes et les conversations sur le
+    /// flux de l'équipe**, une fois par poste : elles voyageaient avant
+    /// sous `Officine` et `Dossiers`, qu'un compagnon ne lit pas. Fait
+    /// avant d'inviter un compagnon, pour qu'il sache quels postes existent
+    /// — et ne prenne pas un numéro déjà pris — et dans quelles
+    /// conversations écrire. Pas les messages d'avant : identiques partout
+    /// sauf leurs marques de lecture, qui changent sur place, ils feraient
+    /// à chaque poste autant de questions « à arbitrer » ; le téléphone
+    /// reçoit ceux écrits depuis.
     pub fn reseal_team(&mut self, db: &Db, day: &str) -> Result<usize, String> {
         if !self.trousseau.as_ref().is_some_and(Trousseau::is_whole)
             || db.sync_local("team_resealed").is_some()
         {
             return Ok(0);
         }
-        let ops = db.snapshot_of(Flux::Equipe)?;
+        let ops: Vec<crate::replica::Op> = db
+            .snapshot_of(Flux::Equipe)?
+            .into_iter()
+            .filter(|o| o.table == "sync_posts" || o.table == "conversations")
+            .collect();
         let n = self.seal(db, &ops, day)?;
         db.set_sync_local("team_resealed", day)?;
         Ok(n)
@@ -348,16 +381,18 @@ impl Posts {
         };
         let me = self.device.id();
         let retired = Self::retired(db);
-        let mut facts: Vec<bpm_sync::Fact> = Vec::new();
+        let mut facts: Vec<(Flux, bpm_sync::Fact)> = Vec::new();
         // A companion reads only what its share opens; the rest it holds
         // sealed and relays — not « unopened », just not its to read.
         for s in STREAMS.into_iter().filter(|s| trousseau.opens(*s)) {
+            let Some(flux) = flux_of(s) else { continue };
             let reading = self.journal.read(trousseau, s);
             report.unopened += reading.unopened.len();
-            facts.extend(reading.facts);
+            facts.extend(reading.facts.into_iter().map(|f| (flux, f)));
         }
-        facts.sort_by_key(|f| (f.lamport, f.author.0, f.id.0));
-        for f in facts {
+        facts.sort_by_key(|(_, f)| (f.lamport, f.author.0, f.id.0));
+        let strict = trousseau.is_whole();
+        for (flux, f) in facts {
             let id = hex(&f.id.0);
             if db.sync_applied(&id) {
                 continue;
@@ -373,7 +408,18 @@ impl Posts {
                 db.mark_sync_applied(&id)?;
                 continue;
             };
-            let got = db.apply_record(&id, &f.author.fingerprint().groups(), day, &ops)?;
+            let gate = crate::db::Gate {
+                sealed: flux,
+                author: hex(&f.author.0),
+                strict,
+            };
+            let got = db.apply_gated(
+                &id,
+                &f.author.fingerprint().groups(),
+                day,
+                &ops,
+                Some(&gate),
+            )?;
             report.received.written += got.written;
             report.received.conflicts += got.conflicts;
             report.received.refused += got.refused;
@@ -486,16 +532,18 @@ impl Posts {
         )
         .map_err(|e| format!("{e:?}"))?;
         let mut meter = Meter::new();
-        bpm_sync::drive(
+        let said = bpm_sync::drive(
             &mut session,
             link,
             &mut self.journal,
             &mut meter,
             &mut |_| true,
-        )
-        .map_err(|e| format!("{e:?}"))?;
+        );
+        // Kept even when the conversation was cut: every record that came
+        // in was checked on arrival, and a long catch-up cut by the bound
+        // goes on from there next time instead of starting over for ever.
         self.keep(db)?;
-        Ok(())
+        said.map_err(|e| format!("{e:?}"))
     }
 }
 
@@ -763,12 +811,12 @@ pub fn run(
                 )
                 .is_ok()
                 {
-                    break Some(session);
+                    break Some((session, from));
                 }
                 let _ = tx.send(Progress::Status(tr("posts_invite_retry").to_owned()));
             };
             announcing.store(false, std::sync::atomic::Ordering::SeqCst);
-            let Some(session) = outcome else {
+            let Some((session, admitted_ip)) = outcome else {
                 return Err(tr(if tries == 0 {
                     "posts_err_nobody"
                 } else {
@@ -785,10 +833,29 @@ pub fn run(
             // Fermée, il le gardait jusqu'à sa synchronisation suivante, et
             // une seconde invitation d'ici là lui donnait le même numéro.
             let _ = tx.send(Progress::Status(tr("posts_invite_first_word").to_owned()));
-            if let Ok(mut link) = door.accept_with(FIRST_WORD, TALK_PATIENCE) {
-                let _ = posts.talk(&db, &trousseau, &mut link, false);
-                posts.absorb(&db, today)?;
+            // Any knock may come first — a stranger, or, with the port open
+            // to the internet, anybody: each gets a bounded conversation,
+            // and the door waits on until the minute is out or a post of
+            // the group has spoken.
+            let until = Instant::now() + FIRST_WORD;
+            loop {
+                let left = until.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                let Ok(link) = door.accept_with(left, TALK_PATIENCE) else {
+                    break;
+                };
+                // The admitted post's own knock ends the wait, whatever it
+                // says — it may be refusing an invitation meant for the
+                // other kind of post.
+                let from_admitted = link.peer_ip() == admitted_ip;
+                let mut link = link.with_deadline(left.min(POSTS_ANSWER_BOUND));
+                if posts.talk(&db, &trousseau, &mut link, false).is_ok() || from_admitted {
+                    break;
+                }
             }
+            posts.absorb(&db, today)?;
             Ok(tr("posts_done_invited").to_owned())
         }
         Job::Join {
@@ -858,6 +925,7 @@ pub fn join(
             Some(t) => s.with_ticket(t),
             None => Ok(s),
         })
+        .and_then(|s| if companion { s.as_companion() } else { Ok(s) })
         .map_err(|e| format!("{e:?}"))?;
     let mut meter = Meter::new();
     bpm_sync::drive(
@@ -1139,6 +1207,13 @@ const POSTS_DIAL_BOUND: Duration = Duration::from_secs(600);
 /// Le temps qu'une conversation d'officine peut durer en tout.
 const ANSWER_BOUND: Duration = Duration::from_secs(60);
 
+/// Le temps qu'une conversation **reçue à la porte des postes** peut durer
+/// en tout : large pour un rattrapage (ce qui est arrivé est gardé, et le
+/// suivant reprend de là), borné pour qu'une connexion qui écrit un octet
+/// toutes les sept secondes ne tienne pas le fil des postes — surtout
+/// quand la porte est joignable depuis Internet.
+const POSTS_ANSWER_BOUND: Duration = Duration::from_secs(180);
+
 /// Combien de fois une même adresse peut frapper par minute.
 const KNOCKS_PER_MINUTE: usize = 6;
 
@@ -1332,7 +1407,9 @@ fn auto(
     let door6 = internet
         .then(|| bpm_sync::link::Door::open_v6_only(port).ok())
         .flatten();
-    let (reach_tx, reach_rx) = std::sync::mpsc::channel::<String>();
+    let mut door_knocks = Knocks::default();
+    let (reach_tx, reach_rx) = std::sync::mpsc::channel::<(bool, String)>();
+    let mut published = false;
     let mut reach_looked: Option<Instant> = None;
     let mut mapped = false;
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
@@ -1363,20 +1440,30 @@ fn auto(
         if internet && reach_looked.is_none_or(|t| t.elapsed() >= REACH_EVERY) {
             reach_looked = Some(Instant::now());
             let tx = reach_tx.clone();
+            // IPv6 only when its door opened; the router's address only
+            // when it opened the port.
+            let with_v6 = door6.is_some();
             std::thread::spawn(move || {
                 let v4 = crate::reach::open_mapping(port);
-                let v6 = crate::reach::global_ipv6();
-                let _ = tx.send(crate::reach::reach_text(v4, &v6, port));
+                let v6 = if with_v6 {
+                    crate::reach::global_ipv6()
+                } else {
+                    Vec::new()
+                };
+                let _ = tx.send((v4.is_some(), crate::reach::reach_text(v4, &v6, port)));
             });
         }
-        if let Ok(reach) = reach_rx.try_recv() {
-            mapped = true;
+        if let Ok((router, reach)) = reach_rx.try_recv() {
+            mapped |= router;
+            published = true;
             db.set_post_reach(&me, &reach)?;
         }
         // A post knocking at our IPv6 door, from outside the officine.
         if let (Some(door6), Some(t)) = (&door6, &trousseau) {
-            if let Ok(mut link) = door6.accept_with(Duration::from_millis(50), TALK_PATIENCE) {
-                if posts.talk(&db, t, &mut link, false).is_ok() {
+            if let Ok(link) = door6.accept_with(Duration::from_millis(50), TALK_PATIENCE) {
+                let ip = link.peer_ip();
+                let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
+                if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
                     talked = true;
                 }
             }
@@ -1387,8 +1474,10 @@ fn auto(
                 // Looked at for 400 ms between other work, but the
                 // conversation gets the posts' own patience: a phone on the
                 // Wi-Fi answering in half a second was dropped mid-sync.
-                if let Ok(mut link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
-                    if posts.talk(&db, t, &mut link, false).is_ok() {
+                if let Ok(link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
+                    let ip = link.peer_ip();
+                    let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
+                    if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
                         talked = true;
                     }
                 }
@@ -1696,11 +1785,47 @@ fn auto(
     // What the router opened for this post closes with it; the addresses
     // it published go with it too, so a phone does not dial a door
     // nobody holds.
-    if mapped {
+    if published {
         let _ = db.set_post_reach(&me, "");
+    }
+    if mapped {
         crate::reach::close_mapping(port);
     }
     Ok(())
+}
+
+/// **Combien de fois une adresse d'Internet frappe à la porte des
+/// postes** : au-delà de deux fois [`KNOCKS_PER_MINUTE`] dans la minute,
+/// la connexion est lâchée sans conversation — une adresse qui insiste
+/// n'occupe plus le fil. Les adresses du réseau local ne sont pas
+/// comptées : les postes s'y synchronisent quelques secondes après
+/// chaque écriture, et un comptoir chargé écrit souvent.
+#[derive(Default)]
+struct Knocks(std::collections::HashMap<std::net::IpAddr, Vec<Instant>>);
+
+impl Knocks {
+    fn admit(&mut self, ip: Option<std::net::IpAddr>) -> bool {
+        let Some(ip) = ip else { return true };
+        let public = match ip {
+            std::net::IpAddr::V4(a) => crate::reach::is_public_v4(&a),
+            std::net::IpAddr::V6(a) => crate::reach::is_global_v6(&a),
+        };
+        if !public {
+            return true;
+        }
+        let now = Instant::now();
+        self.0.retain(|_, v| {
+            v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+            !v.is_empty()
+        });
+        // Bounded memory: a flood of addresses forgets the oldest.
+        if self.0.len() > 256 {
+            self.0.clear();
+        }
+        let seen = self.0.entry(ip).or_default();
+        seen.push(now);
+        seen.len() <= KNOCKS_PER_MINUTE * 2
+    }
 }
 
 /// Tous les combien le poste renouvelle ce que le routeur a ouvert et
@@ -2020,14 +2145,15 @@ mod tests {
             "2026-09-26",
             &mut |_| true,
         );
+        // Refused at the handshake: the code proves a phone's role, which a
+        // post does not — no share crossed to be refused afterwards.
         assert_eq!(
             said.err().as_deref(),
-            Some(crate::strings::tr("posts_err_companion_invite"))
+            Some(crate::strings::tr("posts_err_refused"))
         );
         assert!(wrong.sync_post().is_none());
-        finish(rx);
 
-        let (port, ticket, rx, _y) = invite(true);
+        // The invitation stays open for the phone it was meant for.
         let (post, _) = join(
             &phone,
             &format!("127.0.0.1:{port}"),
@@ -2112,6 +2238,66 @@ mod tests {
                 .map(|p| p.reach.as_str()),
             Some("82.64.1.2:7743")
         );
+
+        // **A tampered phone forges a team record** that writes a patient,
+        // retires the desktop and replaces the network key. Sealed under a
+        // key it holds, signed by itself — and ranged nowhere.
+        use crate::replica::{Kind, Op};
+        let obj = |v: serde_json::Value| v.as_object().cloned().unwrap();
+        let forged = vec![
+            Op {
+                file: crate::replica::File::Main,
+                table: "patients".into(),
+                kind: Kind::Insert,
+                key: obj(serde_json::json!({"id": 424242})),
+                old: Default::default(),
+                new: obj(
+                    serde_json::json!({"id": 424242, "last_name": "Forgé", "first_name": "X", "birth_date": "2000-01-01"}),
+                ),
+            },
+            Op {
+                file: crate::replica::File::Main,
+                table: "sync_posts".into(),
+                kind: Kind::Update,
+                key: obj(serde_json::json!({"post": 0})),
+                old: obj(serde_json::json!({"left_on": ""})),
+                new: obj(serde_json::json!({"left_on": "2026-09-26"})),
+            },
+            Op {
+                file: crate::replica::File::Main,
+                table: "settings".into(),
+                kind: Kind::Patch,
+                key: obj(serde_json::json!({"key": "net_trousseau"})),
+                old: Default::default(),
+                new: obj(serde_json::json!({"value": "00"})),
+            },
+        ];
+        let (lots, _) = crate::replica::batches(&forged, crate::replica::LIMIT);
+        let share = pp.trousseau.clone().unwrap();
+        for lot in lots {
+            pp.journal
+                .write(
+                    &pp.device,
+                    &share,
+                    Stream::Equipe,
+                    &lot,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap();
+        }
+        pp.keep(&phone).unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        let net_before = a.setting("net_trousseau");
+        pa.exchange_folder(&a, &folder).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        assert!(!a.patients().unwrap().iter().any(|p| p.last_name == "Forgé"));
+        assert!(a
+            .sync_posts()
+            .unwrap()
+            .iter()
+            .any(|p| p.post == 0 && p.left_on.is_empty()));
+        assert_eq!(a.setting("net_trousseau"), net_before);
     }
 
     /// **Le compagnon, une fois appairé, parle à la porte du poste** :
@@ -2207,6 +2393,21 @@ mod tests {
         assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
     }
 
+    /// An internet address that knocks too often is let go; the local
+    /// network is never counted.
+    #[test]
+    fn only_an_insistent_internet_address_is_let_go() {
+        let mut k = Knocks::default();
+        let lan: std::net::IpAddr = "192.168.1.20".parse().unwrap();
+        let far: std::net::IpAddr = "82.64.1.2".parse().unwrap();
+        for _ in 0..100 {
+            assert!(k.admit(Some(lan)));
+        }
+        let admitted = (0..30).filter(|_| k.admit(Some(far))).count();
+        assert_eq!(admitted, KNOCKS_PER_MINUTE * 2);
+        assert!(k.admit(None));
+    }
+
     /// **Les tables de l'équipe se scellent à nouveau une fois** : un
     /// groupe fondé quand la messagerie voyageait avec les dossiers la
     /// rend lisible au compagnon, et un poste qui la reçoit une seconde
@@ -2217,7 +2418,7 @@ mod tests {
         let mut pa = Posts::load(&a).unwrap();
         pa.found(&a, "Comptoir 1", "2026-09-26").unwrap();
         let first = pa.reseal_team(&a, "2026-09-26").unwrap();
-        assert!(first >= 1, "la liste des postes au moins");
+        assert!(first >= 1, "la liste des postes");
         assert_eq!(pa.reseal_team(&a, "2026-09-27").unwrap(), 0);
         let t = pa.trousseau.clone().unwrap();
         let share = t.share(&COMPANION);

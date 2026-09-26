@@ -421,6 +421,10 @@ const TICKET_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// author is not a proof from the other end.
 pub(crate) const ROLE_JOIN: u8 = 1;
 pub(crate) const ROLE_INVITE: u8 = 2;
+/// A **companion** joining: its proof is not a post's, so an invitation
+/// for a post refuses a phone — and one for a phone refuses a post —
+/// before either key crosses.
+pub(crate) const ROLE_JOIN_COMPANION: u8 = 3;
 
 impl Ticket {
     pub fn generate(e: &mut dyn Entropy) -> Self {
