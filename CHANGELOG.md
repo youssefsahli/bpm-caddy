@@ -9,16 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Postes de l'officine : « Inviter un téléphone… ». Le téléphone Android
-  d'un membre de l'équipe rejoint l'officine avec le code affiché : il
-  lit les fiches, l'agenda, le planning et la messagerie d'équipe, et
-  écrit à l'équipe. Il ne reçoit jamais de quoi ouvrir un dossier, le
-  registre ni la caisse ; sa base s'ouvre avec le verrouillage du
-  téléphone.
+  d'un membre de l'équipe rejoint l'officine avec le code affiché. Il lit
+  les fiches, l'agenda, le planning et la messagerie d'équipe ; il écrit
+  à l'équipe (fichiers joints compris), ajoute ou retire une entrée
+  d'agenda et corrige une fiche. Il ne reçoit jamais la clé des dossiers,
+  du registre, de la caisse ni des réglages ; sa base s'ouvre avec le
+  verrouillage du téléphone. Dans la liste des postes, il se lit
+  « téléphone » et n'est jamais poste de référence.
+- Options › Base : « Joignable depuis Internet » (éteint par défaut). Le
+  poste écoute aussi en IPv6, demande au routeur d'ouvrir son port et
+  communique ses adresses aux téléphones de l'équipe, qui le joignent
+  hors de l'officine. Seuls les postes du groupe obtiennent une réponse.
 
 ### Changed
-- Messagerie d'équipe et liste des postes : elles voyagent désormais à
-  part des dossiers. Mettre à jour tous les postes : un poste d'une
-  version antérieure ne lit les nouveaux messages qu'une fois à jour.
+- Messagerie d'équipe et liste des postes : elles voyagent à part des
+  dossiers. Mettre à jour tous les postes : un poste d'une version
+  antérieure ne lit les nouveaux messages qu'une fois à jour.
+- Postes de l'officine : une écriture reçue n'est rangée que si elle
+  vient d'un poste qui détient la clé de ce qu'elle modifie.
 
 ## [0.351.0] - 2026-09-26
 
