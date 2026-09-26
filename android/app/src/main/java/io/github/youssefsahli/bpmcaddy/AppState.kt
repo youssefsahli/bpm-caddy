@@ -233,7 +233,13 @@ class AppState(private val context: Context) {
             val view = android.content.Intent(android.content.Intent.ACTION_VIEW)
                 .setDataAndType(uri, type)
                 .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-            runCatching { context.startActivity(view) }.onFailure { note = said(it) }
+            runCatching { context.startActivity(view) }.onFailure {
+                note = if (it is android.content.ActivityNotFoundException) {
+                    T("mobile_file_no_app")
+                } else {
+                    said(it)
+                }
+            }
         }
     }
 

@@ -528,7 +528,11 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
                     m.files.forEach { f ->
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                f.name + " · " + (f.size / 1024u).toString() + " Kio",
+                                f.name + " · " + if (f.size < 1024u) {
+                                    T("mobile_file_bytes").replace("{}", f.size.toString())
+                                } else {
+                                    T("mobile_file_kib").replace("{}", (f.size / 1024u).toString())
+                                },
                                 Modifier.weight(1f),
                                 style = MaterialTheme.typography.bodySmall,
                             )
