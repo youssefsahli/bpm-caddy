@@ -709,7 +709,8 @@ deux postes.
 
 **Le transport.** Le téléphone est toujours celui qui compose : il
 n'ouvre aucune porte et ne tourne pas en arrière-plan ; il synchronise à
-l'ouverture, au bouton et après chaque écriture. Il écoute les annonces
+l'ouverture, au retour à l'écran, chaque minute tant qu'il y reste, au
+bouton et après chaque écriture. Il écoute les annonces
 des postes sur le Wi-Fi (3,5 s) ; chaque poste du groupe est composé
 une fois — à l'adresse où il s'est annoncé, sinon aux adresses qu'il
 publie — puis viennent les adresses écrites dans les réglages du
