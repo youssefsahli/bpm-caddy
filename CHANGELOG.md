@@ -5,6 +5,21 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Postes de l'officine : « Inviter un téléphone… ». Le téléphone Android
+  d'un membre de l'équipe rejoint l'officine avec le code affiché : il
+  lit les fiches, l'agenda, le planning et la messagerie d'équipe, et
+  écrit à l'équipe. Il ne reçoit jamais de quoi ouvrir un dossier, le
+  registre ni la caisse ; sa base s'ouvre avec le verrouillage du
+  téléphone.
+
+### Changed
+- Messagerie d'équipe et liste des postes : elles voyagent désormais à
+  part des dossiers. Mettre à jour tous les postes : un poste d'une
+  version antérieure ne lit les nouveaux messages qu'une fois à jour.
+
 ## [0.351.0] - 2026-09-26
 
 ### Fixed

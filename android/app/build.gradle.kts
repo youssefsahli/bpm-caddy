@@ -12,7 +12,6 @@ android {
     namespace = "io.github.youssefsahli.bpmcaddy"
     compileSdk = 36
     buildToolsVersion = "36.0.0"
-    ndkVersion = "27.2.12479018"
 
     defaultConfig {
         applicationId = "io.github.youssefsahli.bpmcaddy"

@@ -41,6 +41,11 @@ line in that test.
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).
+- `mobile/` + `android/` — the Android companion (a post holding a
+  *share* of the key: cards, agenda, planning, team chat, never a
+  patient). `mobile/` is the UniFFI bridge over the library built
+  without `desktop`; `android/` the Compose app (`build-rust.sh`, then
+  Gradle). Map: `docs/SYNC.md` § 7.8.
 - `sync/` — `bpm-sync`, the P2P encrypted journal (feature `sync`, on by
   default since 0.273.0). Two uses: the officines' network
   (`src/network.rs`, `Stream::Reseau` only — never a patient — under a

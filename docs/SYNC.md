@@ -627,6 +627,67 @@ suivante. Deux postes qui absorbent la même boîte avant de se
 synchroniser entre eux peuvent l'écrire deux fois ; l'`uid` évite tout
 autre doublon.
 
+### 7.8 Le compagnon : le téléphone d'un membre de l'équipe
+
+Décidé avec l'officine le 26/09/2026 : un téléphone Android personnel,
+par personne, rejoint le groupe des postes comme **compagnon**. Il lit
+les fiches, l'agenda, le planning et la messagerie d'équipe ; il écrit
+à l'équipe. Il ne tient jamais de quoi ouvrir un dossier.
+
+**Une part de la clé, jamais la clé.** La clé des postes (`Trousseau`)
+dérive une clé par flux ; un compagnon reçoit, au lieu du secret, une
+**part** (`Trousseau::share`) : le nom du groupe et les clés de quatre
+flux, `postes::COMPANION` — `Fiches`, `Agenda`, `Planning`, `Equipe`.
+Il ne peut rien dériver d'autre : il n'y a pas de secret dans une part.
+La part passe par la même trame chiffrée que la clé d'un poste, au même
+moment, après la même preuve (`Frame::Share`, `Session::sharing`).
+Un poste de bureau refuse une part, un compagnon refuse une clé entière
+(`posts_err_companion_invite`, `posts_err_not_companion_invite`).
+
+**Il tient tout, il n'ouvre que sa part.** Le journal est un graphe :
+un enregistrement nomme ses parents, de tous les flux. Le compagnon
+reçoit donc tous les enregistrements — scellés — pour que son graphe
+reste entier, et les relaie comme un poste d'une version antérieure
+relaie un flux qu'il ne connaît pas (`Stream::Autre`). Il ne range que
+ce que sa part ouvre (`Posts::absorb`) et ne scelle que dans ses flux
+(`Posts::seal` laisse le reste sur le téléphone). Un téléphone perdu
+porte des dossiers chiffrés sous une clé qu'il n'a pas, dans une base
+chiffrée sous une clé du Keystore que seul le verrouillage de l'écran
+ouvre.
+
+**Le flux de l'équipe.** La messagerie voyageait sous `Dossiers` (un
+message peut citer un patient) et la liste des postes sous `Officine`
+(qui porte aussi la clé du réseau d'officines). Les deux passent sur un
+flux à eux, `Equipe` (code 9) : `conversations`, `messages`,
+`message_reads`, `message_files`, `message_chunks`, `sync_posts`. Un
+message cite un patient par son numéro, jamais par son dossier ; le
+téléphone l'indique et ne l'ouvre pas. Ce qui avait voyagé avant sous
+les anciens flux, un poste le scelle à nouveau une fois, avant sa
+première invitation d'un compagnon (`Posts::reseal_team`) : reçu par un
+poste qui l'a déjà, cela ne change rien. Un poste d'une version
+antérieure garde ces enregistrements sans les lire jusqu'à sa mise à
+jour — le lanceur l'y amène.
+
+**Le premier mot.** Un poste admis (compagnon ou non) range ce qu'il a
+reçu, prend son numéro et le dit aussitôt à la porte qui l'a admis ;
+elle l'attend une minute (`FIRST_WORD`). Sans cela, une seconde
+invitation avant sa synchronisation suivante donnait le même numéro à
+deux postes.
+
+**Le transport.** Le téléphone est toujours celui qui compose : il
+écoute les annonces des postes sur le Wi-Fi (3,5 s), leur parle, puis
+compose les adresses écrites dans ses réglages. Il n'ouvre aucune porte
+et ne tourne pas en arrière-plan : il synchronise à l'ouverture, au
+bouton et après un message envoyé. La suite — un poste joignable depuis
+Internet (IPv6, ouverture de port), le relais par les postes d'autres
+officines, le dossier d'échange sur le téléphone — est au § 8.
+
+**Le code.** `mobile/` (crate `bpm-caddy-mobile`, UniFFI) traduit la
+bibliothèque — sans la fonction `desktop` — pour l'application Kotlin de
+`android/`. Les libellés du téléphone sont dans `strings.fr.toml`
+(`mobile_…`) ; un test du crate lit les sources Kotlin et refuse une
+clé absente.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
@@ -635,7 +696,16 @@ autre doublon.
    précède, viendront quand un groupe en aura besoin.
 2. **Deux appairages simultanés** sur deux postes différents, hors
    ligne, donneraient le même numéro aux deux arrivants. Appairer un
-   poste à la fois.
+   poste à la fois. (Deux appairages *successifs* au même poste ne le
+   font plus : le premier mot, § 7.8.)
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
    du premier.
+4. **Le compagnon hors du Wi-Fi de l'officine.** Il compose les adresses
+   écrites dans ses réglages ; un poste joignable depuis Internet (écoute
+   IPv6, ouverture de port UPnP / NAT-PMP, adresses publiées au journal)
+   et le relais par les postes des autres officines du réseau restent à
+   construire. Le dossier d'échange reste possible côté téléphone.
+5. **Le compagnon écrit l'équipe** ; l'agenda et les fiches depuis le
+   téléphone viendront avec leur arbitrage (comparer-et-écrire, comme
+   sur le bureau).

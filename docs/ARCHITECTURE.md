@@ -867,6 +867,22 @@ The one that was missing — « combien de fois un autre poste avait
   skin: it is the first window of the evening, and it does not depend on
   the application crate
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
+- The library builds without the desktop: feature `desktop` (on by
+  default) carries eframe/egui, `motif`, Typst, the keyring, file dialogs
+  and the modules that use them (`app`, `audit_window`, `pdf`); the two
+  binaries require it. `cargo check --lib --no-default-features
+  --features sync` is the core the phone links, and it cross-compiles for
+  Android as it stands (SQLCipher included).
+- `mobile/` — `bpm-caddy-mobile`, the Android companion's Rust side: a
+  UniFFI bridge over the library without `desktop` (open the base, join
+  as a companion, sync, read cards/agenda/planning/messages, write to the
+  team). No clinical decision and no clock of its own.
+- `android/` — the Compose app (`io.github.youssefsahli.bpmcaddy`, min
+  SDK 26). `build-rust.sh` builds `libbpm_caddy_mobile.so` with
+  `cargo-ndk` and writes the Kotlin bindings; then `./gradlew
+  assembleDebug`. Its labels are `mobile_…` keys of `strings.fr.toml`; the
+  base key lives in the Android Keystore behind the screen lock. What the
+  phone may hold and why: `docs/SYNC.md` § 7.8.
 - `sync/` — `bpm-sync`: a versioned, end-to-end encrypted journal two
   posts reconcile between themselves, with no server. **Optional and off
   by default** (`--features sync`), and that is the rule rather than a
