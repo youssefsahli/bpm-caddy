@@ -2068,6 +2068,8 @@ mod tests {
         let posts = phone.sync_posts().unwrap();
         assert_eq!(posts.len(), 2);
         assert!(posts.iter().any(|p| p.post == 1 && p.companion));
+        // Never the reference: it holds no key to the register.
+        assert!(phone.set_sync_reference(1, "2026-09-26").is_err());
         // The desktop heard who joined at once, at its own door.
         {
             let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();

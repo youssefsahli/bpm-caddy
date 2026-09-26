@@ -41104,6 +41104,15 @@ impl Db {
     /// Désigner le poste de référence. Capturé : tous les postes le
     /// savent.
     pub fn set_sync_reference(&self, post: i64, day: &str) -> Result<(), String> {
+        // A companion holds no key to the register it would number, nor to
+        // the settings it would seed: it is never the reference.
+        if self
+            .sync_posts()?
+            .iter()
+            .any(|p| p.post == post && p.companion)
+        {
+            return Err(crate::strings::tr("posts_err_companion_reference").to_owned());
+        }
         self.conn
             .execute(
                 "INSERT INTO settings (key, value, updated_on, updated_by)

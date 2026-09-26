@@ -58939,7 +58939,16 @@ impl App {
                                 {
                                     rename = Some((p.post, typed.clone(), p.name.clone()));
                                 }
-                                if p.post == sum.reference {
+                                if p.companion {
+                                    // A phone: never the reference — it
+                                    // cannot open the register it would
+                                    // number.
+                                    ui.label(
+                                        egui::RichText::new(tr("posts_companion"))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .on_hover_text(tr("posts_companion_tooltip"));
+                                } else if p.post == sum.reference {
                                     ui.label(
                                         egui::RichText::new(tr("posts_reference"))
                                             .strong()

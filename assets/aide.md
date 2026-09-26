@@ -1002,11 +1002,28 @@ saisie reste affichée, et « Enregistrer » la garde.
 
 Les pièces scannées restent sur le poste qui les a numérisées.
 
+**Téléphones de l'équipe.** « Inviter un téléphone… » relie le téléphone
+Android d'un membre de l'équipe : il lit les fiches, l'agenda, le
+planning et la messagerie, écrit à l'équipe, ajoute ou retire une
+entrée d'agenda, corrige une fiche. Il ne reçoit jamais la clé des
+dossiers, du registre, de la caisse ni des réglages : il transporte ces
+données chiffrées sans pouvoir les lire. Sa base s'ouvre avec le
+verrouillage du téléphone. Il se synchronise à l'ouverture et après
+chaque écriture ; il n'est jamais poste de référence.
+
+**Hors de l'officine**, un téléphone joint un poste « Joignable depuis
+Internet » (Options › Base, éteint par défaut) : le poste écoute aussi
+en IPv6, demande au routeur d'ouvrir son port (UPnP) et communique ses
+adresses aux téléphones. Seuls les postes du groupe obtiennent une
+réponse. À défaut, le dossier d'échange ou des adresses saisies sur le
+téléphone.
+
 # Messagerie
 
 La vue **Messages** (barre d'état, « Aller à… » : « messages ») réunit
 les conversations de l'équipe. Elles passent d'un poste à l'autre de
-l'officine avec les dossiers, chiffrées sous la clé des postes.
+l'officine, et aux téléphones de l'équipe, chiffrées sous la clé des
+postes — à part des dossiers.
 
 Chacun lit et écrit **en son nom** : le nom choisi dans le volet
 (« Opérateur »). Sans nom choisi, seules les conversations de toute
