@@ -758,6 +758,20 @@ impl Caddy {
         Ok(())
     }
 
+    /// **Ouvrir une conversation d'équipe**, pour toute l'équipe (sans
+    /// membres nommés, comme sur un poste). Rend son numéro.
+    pub fn new_conversation(&self, title: String, author: String) -> Result<i64> {
+        Ok(self.db().create_conversation(
+            "",
+            bpm_caddy::messages::Channel::Equipe,
+            title.trim(),
+            &[],
+            None,
+            &[],
+            author.trim(),
+        )?)
+    }
+
     /// Noter la conversation lue par `operator` jusqu'à son dernier
     /// message — la marque que les postes lisent aussi. Sans initiales,
     /// rien.

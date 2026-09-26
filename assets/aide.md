@@ -1003,7 +1003,8 @@ saisie reste affichée, et « Enregistrer » la garde.
 Les pièces scannées restent sur le poste qui les a numérisées.
 
 **Téléphones de l'équipe.** « Inviter un téléphone… » relie le téléphone
-Android d'un membre de l'équipe : il lit les fiches, l'agenda, le
+Android d'un membre de l'équipe — sur le téléphone, onglet Poste,
+« Scanner le code » lit le code QR affiché, ou saisir le code : il lit les fiches, l'agenda, le
 planning et la messagerie, écrit à l'équipe, ajoute ou retire une
 entrée d'agenda, corrige une fiche. Il ne reçoit jamais la clé des
 dossiers, du registre, de la caisse ni des réglages : il transporte ces

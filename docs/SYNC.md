@@ -647,7 +647,9 @@ compagnon prouve le ticket sous un rôle à lui (`ROLE_JOIN_COMPANION`,
 inversement. Un téléphone qui saisit le code d'un poste ne reçoit donc
 rien, pas même une clé entière qu'il refuserait ensuite ; un poste qui
 saisit celui d'un téléphone non plus, et l'invitation reste ouverte pour
-celui à qui elle était destinée.
+celui à qui elle était destinée. Le poste montre aussi le code complet
+(ticket et adresse) en QR, que le téléphone lit avec le lecteur des
+services Google (sans autorisation caméra pour l'application).
 
 **Écrire, c'est sceller sur le flux de la table.** Une écriture reçue
 n'est rangée que si l'enregistrement qui la porte a été scellé sur le

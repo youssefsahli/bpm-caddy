@@ -230,6 +230,22 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         }
     }
 
+    /** Ouvrir une conversation d'équipe ; `then(numéro)` quand c'est fait. */
+    fun newConversation(title: String, then: (Long) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.newConversation(title, settings.initials) }
+            }
+            done.onFailure { note = said(it) }
+            done.getOrNull()?.let {
+                revision++
+                then(it)
+                sync()
+            }
+        }
+    }
+
     /** Ouvrir un fichier joint dans l'application qui sait le montrer. */
     fun openFile(conversation: Long, fileUid: String) {
         val c = caddy ?: return

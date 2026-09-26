@@ -474,9 +474,35 @@ private fun MessagesScreen(state: AppState, caddy: Caddy) {
             runCatching { caddy.conversations(state.settings.initials) }.getOrDefault(emptyList())
         }
     }
+    var creating by remember { mutableStateOf(false) }
+    if (creating) {
+        var title by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { creating = false },
+            title = { Text(T("mobile_conversation_new")) },
+            text = {
+                OutlinedTextField(
+                    title, { title = it }, singleLine = true,
+                    label = { Text(T("mobile_conversation_title")) },
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        creating = false
+                        state.newConversation(title) { open = it }
+                    },
+                    enabled = state.settings.initials.isNotBlank(),
+                ) { Text(T("mobile_save")) }
+            },
+            dismissButton = { TextButton(onClick = { creating = false }) { Text(T("mobile_cancel")) } },
+        )
+    }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text(T("mobile_tab_messages"), Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+            TextButton(onClick = { creating = true }) { Text(T("mobile_conversation_add")) }
             OutlinedButton(onClick = { state.sync() }, enabled = !state.busy) { Text(T("mobile_sync")) }
         }
         if (talks.isEmpty()) Hint(T("mobile_messages_empty"))
