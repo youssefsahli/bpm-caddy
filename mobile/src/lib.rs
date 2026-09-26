@@ -1042,6 +1042,27 @@ mod tests {
         phone
             .send_message(talks[0].id, "AB".into(), "Reçu".into())
             .unwrap();
+        // And a file, which must reach the desktop whole and matching its
+        // fingerprint; one over the posts' limit is refused on the phone.
+        let photo: Vec<u8> = (0..40_000u32).map(|i| (i % 251) as u8).collect();
+        phone
+            .send_file(
+                talks[0].id,
+                "AB".into(),
+                "Le frigo".into(),
+                "frigo.jpg".into(),
+                photo.clone(),
+            )
+            .unwrap();
+        assert!(phone
+            .send_file(
+                talks[0].id,
+                "AB".into(),
+                String::new(),
+                "gros.bin".into(),
+                vec![0u8; bpm_caddy::messages::MAX_FILE + 1],
+            )
+            .is_err());
 
         // The desktop holds its door; the phone dials it by address.
         let (_auto, poke) = spawn_auto(
@@ -1074,6 +1095,12 @@ mod tests {
         let conv = db.conversations().unwrap()[0].id;
         let back = db.conversation_messages(conv).unwrap();
         assert!(back.iter().any(|m| m.body == "Reçu" && m.author == "AB"));
+        let files = db.conversation_files(conv).unwrap();
+        let (meta, _) = files
+            .iter()
+            .find(|(f, _)| f.name == "frigo.jpg")
+            .expect("le fichier est arrivé");
+        assert_eq!(db.file_bytes(meta).unwrap(), Some(photo));
         let _ = std::fs::remove_dir_all(&desk_dir);
         let _ = std::fs::remove_dir_all(&phone_dir);
     }
