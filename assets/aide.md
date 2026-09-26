@@ -1008,7 +1008,8 @@ planning et la messagerie, écrit à l'équipe, ajoute ou retire une
 entrée d'agenda, corrige une fiche. Il ne reçoit jamais la clé des
 dossiers, du registre, de la caisse ni des réglages : il transporte ces
 données chiffrées sans pouvoir les lire. Sa base s'ouvre avec le
-verrouillage du téléphone. Il se synchronise tant qu'il est à l'écran
+verrouillage du téléphone et se referme après cinq minutes hors de
+l'écran. Il se synchronise tant qu'il est à l'écran
 (à l'ouverture, puis chaque minute) et après chaque écriture, jamais en
 arrière-plan ; il n'est jamais poste de référence.
 
