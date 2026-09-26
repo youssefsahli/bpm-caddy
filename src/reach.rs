@@ -138,12 +138,43 @@ pub fn reach_text(v4: Option<SocketAddrV4>, v6: &[Ipv6Addr], port: u16) -> Strin
     out.join(",")
 }
 
+/// Le préfixe d'une adresse de **relais** dans la ligne publiée : ce poste
+/// attend là qu'on le demande (`relay.rs`).
+pub const RELAY_TAG: &str = "relais:";
+
+/// Ajouter à une ligne publiée les relais où ce poste attend.
+pub fn with_relays(text: &str, relays: &[String]) -> String {
+    let mut out: Vec<String> = text
+        .split(',')
+        .filter(|a| !a.trim().is_empty() && !a.starts_with(RELAY_TAG))
+        .map(str::to_owned)
+        .collect();
+    out.extend(
+        addresses(&relays.join(","))
+            .into_iter()
+            .map(|a| format!("{RELAY_TAG}{a}")),
+    );
+    out.truncate(MOST * 2);
+    out.join(",")
+}
+
+/// Les relais d'une ligne publiée — lus avec la même méfiance que les
+/// adresses.
+pub fn relays(text: &str) -> Vec<String> {
+    let tagged: Vec<&str> = text
+        .split(',')
+        .filter_map(|a| a.trim().strip_prefix(RELAY_TAG))
+        .collect();
+    addresses(&tagged.join(","))
+}
+
 /// Relire une ligne publiée : les adresses qui en sont, au plus [`MOST`].
 /// Ce qui ne se lit pas comme une adresse composable est laissé : la
 /// ligne vient d'un autre poste, et un téléphone ne compose pas
 /// n'importe quoi.
 pub fn addresses(text: &str) -> Vec<String> {
     text.split(',')
+        .filter(|a| !a.trim().starts_with(RELAY_TAG))
         .filter_map(|a| a.trim().parse::<SocketAddr>().ok())
         .filter(|a| match a.ip() {
             IpAddr::V4(v4) => is_public_v4(&v4),
@@ -215,5 +246,19 @@ mod tests {
             .collect::<Vec<_>>()
             .join(",");
         assert_eq!(addresses(&many).len(), MOST);
+    }
+
+    /// Relays travel in the same line, tagged, read apart from the
+    /// post's own addresses and with the same suspicion.
+    #[test]
+    fn relays_ride_in_the_published_line_and_read_apart() {
+        let line = with_relays(
+            "82.64.1.2:7743,relais:5.5.5.5:7745",
+            &["5.6.7.8:7745".into(), "192.168.1.9:7745".into()],
+        );
+        assert_eq!(line, "82.64.1.2:7743,relais:5.6.7.8:7745");
+        assert_eq!(addresses(&line), vec!["82.64.1.2:7743".to_owned()]);
+        assert_eq!(relays(&line), vec!["5.6.7.8:7745".to_owned()]);
+        assert_eq!(with_relays("", &[]), "");
     }
 }

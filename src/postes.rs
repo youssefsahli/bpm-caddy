@@ -431,6 +431,29 @@ impl Posts {
         Ok(report)
     }
 
+    /// Le nom du groupe en hexadécimal — ce qu'un relais connaît.
+    pub fn group_hex(&self) -> Option<String> {
+        self.trousseau.as_ref().map(|t| hex(&t.name().bytes()))
+    }
+
+    /// Converser, en appelant, sur une connexion déjà ouverte — celle
+    /// qu'un relais a mise en relation (`relay::call`).
+    pub fn sync_over<L: bpm_sync::Link>(&mut self, db: &Db, link: &mut L) -> Result<(), String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(());
+        };
+        self.talk(db, &trousseau, link, true)
+    }
+
+    /// Répondre sur une connexion déjà ouverte — celle qu'un relais a
+    /// mise en relation avec ce poste qui attendait (`relay::wait`).
+    pub fn answer_over<L: bpm_sync::Link>(&mut self, db: &Db, link: &mut L) -> Result<(), String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(());
+        };
+        self.talk(db, &trousseau, link, false)
+    }
+
     /// Le nom du fichier de ce poste dans un dossier d'échange.
     pub fn folder_file(&self) -> String {
         format!("{}.bpmposte", hex(&self.device.id().0[..10]))
@@ -2391,6 +2414,118 @@ mod tests {
         pa.absorb(&a, "2026-09-26").unwrap();
         let back = a.conversation_messages(talk).unwrap();
         assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+    }
+
+    /// **Through a relay that keeps nothing**: the desktop waits at the
+    /// relay, the phone calls it, and the ordinary conversation — end to
+    /// end, the relay holding no key — carries the phone's message.
+    #[test]
+    fn a_phone_reaches_its_desktop_through_a_relay() {
+        let (dir_a, _sa, a) = post("relay-desk");
+        let (_dir_p, _sp, phone) = post("relay-phone");
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: true,
+            },
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            answers,
+        );
+        let ticket = match rx.recv().unwrap() {
+            Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+            other => panic!("{other:?}"),
+        };
+        join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        loop {
+            if let Progress::Done(_) | Progress::Failed(_) = rx.recv().unwrap() {
+                break;
+            }
+        }
+
+        // The relay, knowing only the group's name.
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let group = Posts::load(&a).unwrap().group_hex().unwrap();
+        let relay_port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let allowed: crate::relay::Allowed =
+            std::sync::Arc::new(std::sync::Mutex::new([group.clone()].into_iter().collect()));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        crate::relay::serve(relay_port, allowed, std::sync::Arc::clone(&stop)).unwrap();
+        let at = format!("127.0.0.1:{relay_port}");
+
+        let desk = {
+            let (at, group, path) = (at.clone(), group.clone(), dir_a.join("poste.db"));
+            std::thread::spawn(move || {
+                let db = Db::open(&path, "secret").unwrap();
+                let mut posts = Posts::load(&db).unwrap();
+                let stream = crate::relay::wait(&at, &group, Duration::from_secs(5)).unwrap();
+                let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
+                posts.answer_over(&db, &mut link).unwrap();
+                posts.absorb(&db, "2026-09-26").unwrap();
+            })
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let conv = phone.conversations().unwrap()[0].id;
+        phone
+            .post_message(conv, "m2", "AB", "Par le relais", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        // The desktop registers at the relay once its journal is loaded;
+        // a call before that finds nobody waiting and is let go, as a
+        // phone's would — and is tried again.
+        let mut said = Err(String::new());
+        for _ in 0..40 {
+            let stream = crate::relay::call(&at, &group, Duration::from_secs(5)).unwrap();
+            let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
+            said = pp.sync_over(&phone, &mut link);
+            if said.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        said.unwrap();
+        desk.join().unwrap();
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Par le relais"), "{back:?}");
     }
 
     /// An internet address that knocks too often is let go; the local

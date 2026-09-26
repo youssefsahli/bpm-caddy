@@ -56,6 +56,8 @@ pub mod postes;
 pub mod prescribers;
 #[cfg(feature = "sync")]
 pub mod reach;
+#[cfg(feature = "sync")]
+pub mod relay;
 pub mod release;
 pub mod renal;
 pub mod renewal;
