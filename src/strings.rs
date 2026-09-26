@@ -413,6 +413,7 @@ mod tests {
             include_str!(
                 "../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/MainActivity.kt"
             ),
+            include_str!("../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/Folder.kt"),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

@@ -24,6 +24,11 @@ class Settings(context: Context) {
             .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
         set(v) = prefs.edit().putString("adresses", v.joinToString("\n")).apply()
 
+    /** Le dossier d'échange choisi (un arbre de documents), ou rien. */
+    var folder: String?
+        get() = prefs.getString("dossier", null)
+        set(v) = prefs.edit().putString("dossier", v).apply()
+
     companion object {
         const val DEFAULT_PORT = 7743
     }

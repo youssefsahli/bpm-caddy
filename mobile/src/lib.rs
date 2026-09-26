@@ -194,6 +194,14 @@ pub fn event_categories() -> Vec<Choice> {
         .collect()
 }
 
+/// Ce qu'un passage par le dossier d'échange a fait.
+#[derive(uniffi::Record)]
+pub struct FolderDone {
+    /// Le fichier de ce téléphone, à recopier dans le dossier choisi.
+    pub mine: String,
+    pub said: String,
+}
+
 /// Ce qu'une synchronisation a fait.
 #[derive(uniffi::Record)]
 pub struct SyncDone {
@@ -397,6 +405,33 @@ impl Caddy {
             written: report.received.written as u32,
             conflicts: report.received.conflicts as u32,
             said,
+        })
+    }
+
+    /// **Le dossier d'échange, sur le téléphone** : `dir` est une copie
+    /// locale que l'application fait du dossier choisi (Android ne donne
+    /// pas de chemin, seulement des documents) — les fichiers `.bpmposte`
+    /// des postes. Ce téléphone y dépose le sien, lit les autres, range.
+    /// Rend le nom du fichier à recopier dans le dossier choisi.
+    pub fn exchange_folder(&self, dir: String, today: String) -> Result<FolderDone> {
+        let db = Db::open(&self.path, &self.password)?;
+        let mut posts = Posts::load(&db)?;
+        if !posts.in_group() {
+            return Err(CaddyError::Failed {
+                reason: bpm_caddy::strings::tr("posts_err_no_group").to_owned(),
+            });
+        }
+        let sent = posts.publish(&db, &today)?;
+        let added = posts.exchange_folder(&db, std::path::Path::new(&dir))?;
+        let report = posts.absorb(&db, &today)?;
+        drop(db);
+        self.forget_cards();
+        Ok(FolderDone {
+            mine: posts.folder_file(),
+            said: bpm_caddy::strings::trn(
+                "mobile_folder_done",
+                &[&sent, &added, &report.received.written],
+            ),
         })
     }
 
@@ -713,6 +748,9 @@ mod tests {
             ),
             include_str!(
                 "../../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/AppState.kt"
+            ),
+            include_str!(
+                "../../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/Folder.kt"
             ),
         ];
         let mut missing = Vec::new();

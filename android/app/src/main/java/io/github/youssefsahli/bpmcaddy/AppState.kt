@@ -86,9 +86,13 @@ class AppState(private val context: Context) {
     fun sync() {
         val c = caddy ?: return
         work {
-            withMulticast(context) {
+            val said = withMulticast(context) {
                 c.sync(today(), settings.port.toUShort(), settings.addresses).said
             }
+            val tree = settings.folder ?: return@work said
+            val more = runCatching { Folder.exchange(context, c, tree, today()) }
+                .getOrElse { said(it) }
+            "$said $more"
         }
     }
 

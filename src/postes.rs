@@ -385,6 +385,11 @@ impl Posts {
         Ok(report)
     }
 
+    /// Le nom du fichier de ce poste dans un dossier d'échange.
+    pub fn folder_file(&self) -> String {
+        format!("{}.bpmposte", hex(&self.device.id().0[..10]))
+    }
+
     /// Déposer ses enregistrements dans le dossier d'échange, et lire ceux
     /// des autres postes. Un fichier par poste, écrit à côté puis mis en
     /// place. N'entre que ce que la clé des postes ouvre.
@@ -406,9 +411,8 @@ impl Posts {
                 framed
             })
             .collect();
-        let name = hex(&me.0[..10]);
-        let target = folder.join(format!("{name}.bpmposte"));
-        let part = folder.join(format!("{name}.bpmposte.part"));
+        let target = folder.join(self.folder_file());
+        let part = folder.join(format!("{}.part", self.folder_file()));
         std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
         std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
         let mut added = 0;
@@ -2101,7 +2105,9 @@ mod tests {
         pp.absorb(&phone, "2026-09-26").unwrap();
         let seen = phone.sync_posts().unwrap();
         assert_eq!(
-            seen.iter().find(|p| p.device == desk).map(|p| p.reach.as_str()),
+            seen.iter()
+                .find(|p| p.device == desk)
+                .map(|p| p.reach.as_str()),
             Some("82.64.1.2:7743")
         );
     }

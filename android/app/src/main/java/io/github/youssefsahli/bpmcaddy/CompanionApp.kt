@@ -1,6 +1,10 @@
 package io.github.youssefsahli.bpmcaddy
 
+import android.content.Intent
+import android.net.Uri
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -54,11 +58,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -138,6 +144,12 @@ private fun Opened(state: AppState, caddy: Caddy) {
             }
         },
         snackbarHost = {
+            // Lu, puis parti : une phrase longue reste le temps de la lire.
+            LaunchedEffect(state.note) {
+                val shown = state.note ?: return@LaunchedEffect
+                delay(4000L + 60L * shown.length)
+                if (state.note == shown) state.dismiss()
+            }
             state.note?.let {
                 Snackbar(
                     modifier = Modifier.padding(8.dp),
@@ -607,6 +619,7 @@ private fun PhoneSettings(state: AppState) {
         modifier = Modifier.fillMaxWidth(),
         minLines = 2,
     )
+    FolderSetting(state)
     Button(
         onClick = {
             state.settings.initials = initials
@@ -616,6 +629,38 @@ private fun PhoneSettings(state: AppState) {
         },
         modifier = Modifier.padding(top = 8.dp),
     ) { Text(T("mobile_save")) }
+}
+
+@Composable
+private fun FolderSetting(state: AppState) {
+    val context = LocalContext.current
+    var folder by remember { mutableStateOf(state.settings.folder) }
+    val pick = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri ->
+        if (uri != null) {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+            state.settings.folder = uri.toString()
+            folder = uri.toString()
+        }
+    }
+    Text(T("mobile_folder"), style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+    Hint(T("mobile_folder_hint"))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            folder?.let { Uri.decode(it).substringAfterLast(':') } ?: T("mobile_folder_none"),
+            Modifier.weight(1f),
+            maxLines = 1,
+        )
+        TextButton(onClick = { pick.launch(null) }) { Text(T("mobile_folder_choose")) }
+        if (folder != null) {
+            TextButton(onClick = {
+                state.settings.folder = null
+                folder = null
+            }) { Text(T("mobile_folder_forget")) }
+        }
+    }
 }
 
 // ---------------------------------------------------------------- Petits
