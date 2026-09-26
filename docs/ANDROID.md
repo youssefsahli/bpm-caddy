@@ -18,10 +18,17 @@ cargo install cargo-ndk
 Puis :
 
 ```
-android/build-rust.sh            # libbpm_caddy_mobile.so (arm64, x86_64) + liaisons Kotlin
 cd android && ./gradlew assembleDebug      # un APK d'essai
 cd android && ./gradlew bundleRelease      # l'AAB pour le Play Store
 ```
+
+Gradle lance lui-même `build-rust.sh` (tâche `buildRust`) dès qu'une
+source Rust, `Cargo.lock` ou `assets/strings.fr.toml` a changé : **les
+libellés du téléphone sont compilés dans la bibliothèque**, et un APK
+construit sur une bibliothèque d'avant montrait les clés (`mobile_…`) à
+la place du français. Les liaisons Kotlin se tirent toujours de la
+version de débogage de l'hôte — le profil release de l'atelier retire
+les symboles, et le générateur n'écrirait rien.
 
 `build-rust.sh --debug` va plus vite pour essayer, mais la bibliothèque
 de débogage pèse 200 Mo et synchronise lentement ; la version release
@@ -107,9 +114,13 @@ Réponses à vérifier par l'officine avant de les soumettre :
   par enregistrement).
 - **Suppression** : désinstaller l'application supprime la base ; un
   poste peut retirer le téléphone du groupe.
-- **Catégorie santé** : les fiches médicaments ne sont pas des données
-  personnelles. Un message d'équipe peut citer un numéro de dossier
-  patient ; le téléphone n'a pas la clé du dossier lui-même.
+- **Catégorie santé — à déclarer** : les fiches médicaments ne sont pas
+  des données personnelles, mais la messagerie d'équipe peut en porter :
+  un message peut citer un numéro de dossier patient (le téléphone n'a
+  pas la clé du dossier lui-même) et un fichier joint peut être un
+  document de patient envoyé par l'équipe. Déclarer « informations de
+  santé » comme données *traitées sur l'appareil*, non collectées par
+  le développeur.
 - **Autorisations** : `INTERNET`, `ACCESS_WIFI_STATE`,
   `CHANGE_WIFI_MULTICAST_STATE` (entendre les annonces des postes sur
   le Wi-Fi), `USE_BIOMETRIC` (ouvrir la base).
@@ -127,7 +138,8 @@ exemple).
 > mesure d'audience, ni rapport d'erreur envoyé à distance.
 >
 > Les données affichées (fiches médicaments, agenda, planning,
-> messagerie de l'équipe) proviennent des postes de l'officine auxquels
+> messagerie de l'équipe et ses fichiers joints, qui peuvent concerner
+> des patients) proviennent des postes de l'officine auxquels
 > l'utilisateur a relié son téléphone, et n'en sortent que vers ces
 > mêmes postes, chiffrées de bout en bout. Elles sont conservées sur le
 > téléphone dans une base chiffrée, dont la clé est protégée par le

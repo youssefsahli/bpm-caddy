@@ -55,10 +55,11 @@ jobs:
           distribution: temurin
           java-version: "21"
       - run: cargo install cargo-ndk --locked
-      - name: Rust side
-        run: ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME" ./android/build-rust.sh --debug
+      # Gradle builds the Rust side itself (`buildRust`, before `preBuild`).
       - name: APK
         working-directory: android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: ./gradlew assembleDebug --console=plain
 
   coverage:

@@ -74,6 +74,24 @@ kotlin {
     }
 }
 
+// **La bibliothèque Rust est reconstruite avec l'application** : les
+// libellés (`assets/strings.fr.toml`) y sont compilés, et un APK construit
+// sur une bibliothèque d'avant montrait des clés à la place du français.
+// Gradle ne relance `build-rust.sh` que si une source a changé.
+val buildRust by tasks.registering(Exec::class) {
+    val root = rootProject.projectDir.parentFile
+    workingDir = rootProject.projectDir
+    commandLine("./build-rust.sh")
+    inputs.dir(File(root, "src"))
+    inputs.dir(File(root, "sync/src"))
+    inputs.dir(File(root, "mobile/src"))
+    inputs.file(File(root, "assets/strings.fr.toml"))
+    inputs.file(File(root, "Cargo.lock"))
+    outputs.dir(file("src/main/jniLibs"))
+    outputs.dir(file("src/main/java/uniffi"))
+}
+tasks.named("preBuild") { dependsOn(buildRust) }
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.06.01")
     implementation(composeBom)
