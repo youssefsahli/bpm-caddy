@@ -33,6 +33,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Postes de l'officine : une écriture reçue n'est rangée que si elle
   vient d'un poste qui détient la clé de ce qu'elle modifie.
 
+## [0.352.0] - 2026-09-26
+
+### Fixed
+- Options › Officine : les informations de l'officine ne restent plus
+  bloquées. Un enregistrement n'est plus refusé quand la base les tient
+  sous une autre forme, ou illisibles, et après un refus, « Remplacer par
+  ces valeurs » les enregistre telles qu'affichées pour tous les postes.
+
 ## [0.351.0] - 2026-09-26
 
 ### Fixed

@@ -35696,9 +35696,13 @@ impl Db {
 
     /// Ranger l'officine dans la base, contre ce qu'on avait lu.
     ///
-    /// Le fragment TOML est celui de serde : l'aller-retour est exact,
-    /// et c'est lui qui est comparé — deux postes qui enregistrent la
-    /// même chose ne se refusent pas l'un l'autre pour un espace.
+    /// **Comparée sur ce qu'elle dit, pas sur son texte.** La comparaison
+    /// portait sur le fragment TOML, octet pour octet : un texte que la
+    /// base tenait sous une autre forme — écrit par une autre version, ou
+    /// illisible — ne ressemblait jamais à ce que l'écran avait lu, et
+    /// l'officine se faisait refuser sur tous les postes, sans fin. Une
+    /// valeur que cette version ne sait pas lire ne protège rien : elle
+    /// est remplacée. Ce qui est déjà écrit tel quel passe sans écrire.
     pub fn set_officine(
         &self,
         new: &crate::config::PharmacyConfig,
@@ -35706,12 +35710,68 @@ impl Db {
         day: &str,
         who: &str,
     ) -> Result<bool, String> {
+        self.write_officine(new, Some(was), day, who)
+    }
+
+    /// **Remplacer l'officine**, quoi que la base porte : le geste
+    /// « Remplacer par ces valeurs », quand un enregistrement a été
+    /// refusé et que ce qui est à l'écran doit l'emporter.
+    pub fn force_officine(
+        &self,
+        new: &crate::config::PharmacyConfig,
+        day: &str,
+        who: &str,
+    ) -> Result<(), String> {
+        self.write_officine(new, None, day, who).map(|_| ())
+    }
+
+    /// `guard` : `None` écrit sans condition ; `Some(was)` seulement si
+    /// la base porte encore `was` (ou rien de lisible).
+    fn write_officine(
+        &self,
+        new: &crate::config::PharmacyConfig,
+        guard: Option<Option<&crate::config::PharmacyConfig>>,
+        day: &str,
+        who: &str,
+    ) -> Result<bool, String> {
+        use rusqlite::OptionalExtension;
         let text = toml::to_string(new).map_err(|e| e.to_string())?;
-        let before = was
-            .map(toml::to_string)
-            .transpose()
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let raw: Option<String> = tx
+            .query_row(
+                "SELECT value FROM settings WHERE key = ?1",
+                [Self::OFFICINE],
+                |r| r.get(0),
+            )
+            .optional()
             .map_err(|e| e.to_string())?;
-        self.set_setting(Self::OFFICINE, &text, before.as_deref(), day, who)
+        let current = raw
+            .as_deref()
+            .and_then(|r| toml::from_str::<crate::config::PharmacyConfig>(r).ok());
+        if current.as_ref() == Some(new) {
+            return Ok(true);
+        }
+        if let (Some(was), Some(current)) = (guard, &current) {
+            if was != Some(current) {
+                return Ok(false);
+            }
+        }
+        if raw.is_some() {
+            tx.execute(
+                "UPDATE settings SET value = ?2, updated_on = ?3, updated_by = ?4
+                 WHERE key = ?1",
+                (Self::OFFICINE, &text, day, who),
+            )
+        } else {
+            tx.execute(
+                "INSERT INTO settings (key, value, updated_on, updated_by)
+                 VALUES (?1, ?2, ?3, ?4)",
+                (Self::OFFICINE, &text, day, who),
+            )
+        }
+        .map_err(|e| e.to_string())?;
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
     }
 
     /// The « toxicité » section used to carry the same sentence on
@@ -46765,6 +46825,76 @@ mod tests {
         let after = db.officine().unwrap();
         assert_eq!(after.operators.len(), 2);
         assert_eq!(after.phone, "01 23 45 67 89");
+    }
+
+    /// **L'officine ne se bloque plus sur tous les postes.** La
+    /// comparaison portait sur le texte : une valeur rangée sous une autre
+    /// forme que celle que cette version écrit — même sens, autres
+    /// octets — ou illisible, refusait tout enregistrement, sur chaque
+    /// poste, sans fin, et l'écran ne proposait rien d'autre que
+    /// « Enregistrer » encore. Le même sens passe ; l'illisible est
+    /// remplacé ; et « Remplacer par ces valeurs » écrit quoi qu'il y ait.
+    #[test]
+    fn a_stored_officine_in_another_form_does_not_lock_every_post() {
+        use crate::config::PharmacyConfig;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-offi-lock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("offi.db"), "secret").unwrap();
+        let day = "2026-09-26";
+        let put = |raw: &str| {
+            db.conn
+                .execute(
+                    "INSERT INTO settings (key, value, updated_on, updated_by)
+                     VALUES ('pharmacy', ?1, '', '')
+                     ON CONFLICT(key) DO UPDATE SET value = ?1",
+                    [raw],
+                )
+                .unwrap();
+        };
+
+        // Même sens, autre texte : champs dans un autre ordre, guillemets
+        // simples, espaces — ce qu'une autre version ou une main écrit.
+        put("phone = '01'\nname   =   \"Pharmacie de l'Église\"\n");
+        let seen = db.officine().expect("lisible");
+        assert_eq!(seen.name, "Pharmacie de l'Église");
+        let mine = PharmacyConfig {
+            address: "2 place de l'Église".to_owned(),
+            ..seen.clone()
+        };
+        assert!(
+            db.set_officine(&mine, Some(&seen), day, "CL").unwrap(),
+            "ce que l'écran a lu est ce que la base porte : l'écriture passe"
+        );
+        assert_eq!(db.officine().unwrap(), mine);
+
+        // Illisible : rien à protéger, la première écriture le remplace —
+        // celle du formulaire comme celle de la reprise au lancement.
+        put("name = [pas du toml");
+        assert!(db.officine().is_none());
+        assert!(db.set_officine(&mine, Some(&seen), day, "CL").unwrap());
+        assert_eq!(db.officine().unwrap(), mine);
+        put("name = [pas du toml");
+        assert!(db.set_officine(&mine, None, day, "CL").unwrap());
+        assert_eq!(db.officine().unwrap(), mine);
+
+        // Un autre poste a vraiment écrit autre chose : refusé, comme
+        // avant — et « Remplacer par ces valeurs » l'emporte.
+        let theirs = PharmacyConfig {
+            phone: "02".to_owned(),
+            ..mine.clone()
+        };
+        assert!(db.set_officine(&theirs, Some(&mine), day, "MB").unwrap());
+        let late = PharmacyConfig {
+            phone: "03".to_owned(),
+            ..mine.clone()
+        };
+        assert!(!db.set_officine(&late, Some(&mine), day, "CL").unwrap());
+        db.force_officine(&late, day, "CL").unwrap();
+        assert_eq!(db.officine().unwrap(), late);
+        // Écrire ce qui est déjà là n'est jamais refusé.
+        assert!(db.set_officine(&late, Some(&mine), day, "CL").unwrap());
     }
 
     /// **Une feuille part entière, ou elle ne part pas.**

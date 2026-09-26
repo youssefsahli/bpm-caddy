@@ -5051,8 +5051,9 @@ struct Session {
     /// train de taper serait pire que l'écran périmé que cela corrige.
     /// Il attend donc que le dialogue se ferme.
     officine_fresh: Option<crate::config::PharmacyConfig>,
-    /// Un autre poste a enregistré l'officine avant nous, et ce qui est
-    /// à l'écran vient d'être remplacé par ce qu'il a écrit.
+    /// Le dernier enregistrement de l'officine a été refusé (un autre
+    /// poste avait écrit) : Options › Officine offre alors « Remplacer
+    /// par ces valeurs ».
     officine_stale: bool,
     /// Ce que les trois fichiers portaient au dernier regard — voir
     /// [`db::Db::data_version`]. Quand le témoin bouge, un autre poste a
@@ -6957,6 +6958,7 @@ impl Session {
         {
             Ok(true) => {
                 self.officine_seen = Some(mine.clone());
+                self.officine_stale = false;
                 (None, None)
             }
             Ok(false) => {
@@ -6984,6 +6986,7 @@ impl Session {
                 match self.db.set_officine(&m.merged, Some(&theirs), day, who) {
                     Ok(true) => {
                         self.officine_seen = Some(m.merged.clone());
+                        self.officine_stale = false;
                         (
                             Some(m.merged),
                             Some((false, tr("opts_officine_merged").to_owned())),
@@ -7004,6 +7007,27 @@ impl Session {
                 None,
                 Some((true, trf("opts_officine_error", plain_error(&e)))),
             ),
+        }
+    }
+
+    /// **Remplacer l'officine par ce qui est à l'écran**, sans comparer :
+    /// la sortie d'un enregistrement refusé, quand ce poste doit
+    /// l'emporter. Ce qu'un autre poste avait écrit est perdu, et le
+    /// bouton le dit.
+    fn force_officine(
+        &mut self,
+        mine: &crate::config::PharmacyConfig,
+        day: &str,
+        who: &str,
+    ) -> (bool, String) {
+        match self.db.force_officine(mine, day, who) {
+            Ok(()) => {
+                self.officine_seen = Some(mine.clone());
+                self.officine_fresh = None;
+                self.officine_stale = false;
+                (false, tr("opts_officine_forced").to_owned())
+            }
+            Err(e) => (true, trf("opts_officine_error", plain_error(&e))),
         }
     }
 
@@ -69216,6 +69240,10 @@ impl eframe::App for App {
         let mut close_opts = false;
         let mut open_pw = false;
         let mut saved_cfg: Option<Config> = None;
+        // « Remplacer par ces valeurs » : offert quand le dernier
+        // enregistrement de l'officine a été refusé.
+        let officine_refused = matches!(&self.state, State::Unlocked(s) if s.officine_stale);
+        let mut force_officine: Option<crate::config::PharmacyConfig> = None;
         // (target, also_point_config_at_it) requested from the DB tools.
         let mut db_export: Option<(std::path::PathBuf, bool)> = None;
         let mut db_seed = false;
@@ -71419,6 +71447,14 @@ impl eframe::App for App {
                         if motif::button(ui, tr("tpl_close")).clicked() {
                             close_opts = true;
                         }
+                        if officine_refused
+                            && editor.page == OptionsPage::Pharmacy
+                            && motif::button(ui, tr("opts_officine_force"))
+                                .on_hover_text(tr("opts_officine_force_tooltip"))
+                                .clicked()
+                        {
+                            force_officine = Some(editor.cfg.pharmacy.clone());
+                        }
                     });
                     if let Some((is_error, msg)) = &editor.message {
                         let color = if *is_error {
@@ -71752,6 +71788,23 @@ impl eframe::App for App {
                 }
                 session.refresh_dashboard();
             }
+        }
+        if let (Some(mine), State::Unlocked(session)) = (force_officine, &mut self.state) {
+            let day = session.today.clone();
+            let who = mine
+                .operators
+                .first()
+                .map_or_else(String::new, |o| o.initials.clone());
+            let said = session.force_officine(&mine, &day, &who);
+            if !said.0 {
+                self.config.pharmacy = mine;
+                // Le fichier du poste suit, comme après « Enregistrer ».
+                let _ = self.config.save();
+            }
+            if let Some(editor) = &mut self.options {
+                editor.message = Some(said);
+            }
+            session.refresh_dashboard();
         }
         if open_pw {
             self.pw_change = Some(PwChangeForm::default());
@@ -80093,6 +80146,27 @@ mod tests {
             session.db.officine().map(|o| o.phone),
             Some("04".to_owned())
         );
+        assert!(!session.officine_stale, "rien à remplacer");
+
+        // Refusé encore : « Remplacer par ces valeurs » est offert, et
+        // l'emporte sans comparer.
+        let now = session.db.officine().unwrap();
+        let there = crate::config::PharmacyConfig {
+            phone: "05".to_owned(),
+            ..now.clone()
+        };
+        assert!(other.set_officine(&there, Some(&now), day, "MB").unwrap());
+        let here = crate::config::PharmacyConfig {
+            phone: "06".to_owned(),
+            ..now
+        };
+        let _ = session.save_officine(&here, day, "CL");
+        assert!(session.officine_stale, "le bouton est offert");
+        let (is_error, _) = session.force_officine(&here, day, "CL");
+        assert!(!is_error);
+        assert!(!session.officine_stale);
+        assert_eq!(session.db.officine().as_ref(), Some(&here));
+        assert_eq!(session.officine_seen.as_ref(), Some(&here));
     }
 
     /// **Ouvrir la trame et la reposer sans rien changer ne réécrit
