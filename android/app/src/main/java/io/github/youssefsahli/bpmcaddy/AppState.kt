@@ -185,6 +185,58 @@ class AppState(private val context: Context) {
         }
     }
 
+    /** Écrire avec un fichier joint (lu depuis le document choisi). */
+    fun sendFile(conversation: Long, body: String, uri: android.net.Uri, then: () -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching {
+                    val resolver = context.contentResolver
+                    val name = resolver.query(uri, null, null, null, null)?.use { cur ->
+                        val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (cur.moveToFirst() && i >= 0) cur.getString(i) else null
+                    } ?: "fichier"
+                    // Lu en entier au plus un octet au-delà de la limite : la
+                    // bibliothèque refuse un fichier trop lourd, sans que le
+                    // téléphone en charge cent mégaoctets pour l'apprendre.
+                    val bytes = resolver.openInputStream(uri)?.use { it.readNBytes(5 * 1024 * 1024 + 1) }
+                        ?: ByteArray(0)
+                    c.sendFile(conversation, settings.initials, body, name, bytes)
+                }
+            }
+            done.onFailure { note = said(it) }
+            then()
+            sync()
+        }
+    }
+
+    /** Ouvrir un fichier joint dans l'application qui sait le montrer. */
+    fun openFile(conversation: Long, fileUid: String) {
+        val c = caddy ?: return
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(context.cacheDir, "fichiers").apply {
+                        deleteRecursively()
+                        mkdirs()
+                    }
+                    java.io.File(c.saveFile(conversation, fileUid, dir.absolutePath))
+                }
+            }
+            saved.onFailure { note = said(it) }
+            val file = saved.getOrNull() ?: return@launch
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".fichiers", file,
+            )
+            val type = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+            val view = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                .setDataAndType(uri, type)
+                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(view) }.onFailure { note = said(it) }
+        }
+    }
+
     private fun work(block: () -> String) {
         if (busy) return
         busy = true

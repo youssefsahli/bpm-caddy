@@ -524,7 +524,21 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
                         Text(m.author, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
                         Text(m.sentAt, style = MaterialTheme.typography.bodySmall)
                     }
-                    Text(m.body)
+                    if (m.body.isNotBlank()) Text(m.body)
+                    m.files.forEach { f ->
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                f.name + " · " + (f.size / 1024u).toString() + " Kio",
+                                Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            if (f.complete) {
+                                TextButton(onClick = { state.openFile(id, f.uid) }) { Text(T("mobile_file_open")) }
+                            } else {
+                                Text(T("mobile_file_pending"), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
                     if (m.citesPatient) Hint(T("mobile_message_cites_patient"))
                 }
             }
@@ -533,7 +547,17 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
         if (who.isBlank()) {
             Hint(T("mobile_messages_need_initials"))
         } else {
+            val attach = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+                if (uri != null) {
+                    val body = draft
+                    draft = ""
+                    state.sendFile(id, body, uri) { tick++ }
+                }
+            }
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = { attach.launch(arrayOf("*/*")) }, contentPadding = PaddingValues(4.dp)) {
+                    Text(T("mobile_file_attach"))
+                }
                 OutlinedTextField(
                     value = draft,
                     onValueChange = { draft = it },

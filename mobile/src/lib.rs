@@ -176,6 +176,18 @@ pub struct Said {
     pub sent_at: String,
     /// Le message cite un dossier : le téléphone ne l'ouvre pas.
     pub cites_patient: bool,
+    /// Les fichiers joints.
+    pub files: Vec<Attachment>,
+}
+
+/// Un fichier joint à un message.
+#[derive(uniffi::Record)]
+pub struct Attachment {
+    pub uid: String,
+    pub name: String,
+    pub size: u64,
+    /// Tous ses morceaux sont arrivés : il s'ouvre.
+    pub complete: bool,
 }
 
 /// Une nature d'entrée d'agenda : la clé rangée, le libellé montré.
@@ -638,11 +650,22 @@ impl Caddy {
     }
 
     pub fn messages(&self, conversation: i64) -> Result<Vec<Said>> {
-        Ok(self
-            .db()
+        let db = self.db();
+        let files = db.conversation_files(conversation)?;
+        Ok(db
             .conversation_messages(conversation)?
             .into_iter()
             .map(|m| Said {
+                files: files
+                    .iter()
+                    .filter(|(f, _)| f.message == m.uid)
+                    .map(|(f, got)| Attachment {
+                        uid: f.uid.clone(),
+                        name: f.name.clone(),
+                        size: u64::try_from(f.size).unwrap_or(0),
+                        complete: *got >= f.chunks,
+                    })
+                    .collect(),
                 id: m.id,
                 author: m.author,
                 body: m.body,
@@ -650,6 +673,53 @@ impl Caddy {
                 cites_patient: m.patient_id.is_some(),
             })
             .collect())
+    }
+
+    /// **Enregistrer un fichier joint** dans `dir`, recollé et vérifié
+    /// contre son empreinte — rien s'il n'est pas entier ou pas conforme.
+    /// Rend le chemin écrit.
+    pub fn save_file(&self, conversation: i64, file_uid: String, dir: String) -> Result<String> {
+        let db = self.db();
+        let failed = || CaddyError::Failed {
+            reason: bpm_caddy::strings::tr("mobile_file_incomplete").to_owned(),
+        };
+        let (meta, _) = db
+            .conversation_files(conversation)?
+            .into_iter()
+            .find(|(f, _)| f.uid == file_uid)
+            .ok_or_else(failed)?;
+        let bytes = db.file_bytes(&meta)?.ok_or_else(failed)?;
+        let path = PathBuf::from(dir).join(bpm_caddy::messages::safe_name(&meta.name));
+        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
+        Ok(path.display().to_string())
+    }
+
+    /// Écrire un message avec un fichier joint (5 Mio au plus, comme sur
+    /// les postes). Part à la synchronisation suivante.
+    pub fn send_file(
+        &self,
+        conversation: i64,
+        author: String,
+        body: String,
+        name: String,
+        bytes: Vec<u8>,
+    ) -> Result<()> {
+        let db = self.db();
+        if bytes.len() > bpm_caddy::messages::MAX_FILE {
+            return Err(CaddyError::Failed {
+                reason: bpm_caddy::strings::trf(
+                    "msg_file_too_big",
+                    bpm_caddy::messages::MAX_FILE / (1024 * 1024),
+                ),
+            });
+        }
+        let Some(id) = db.post_message(conversation, "", author.trim(), body.trim(), None, "", None)?
+        else {
+            return Ok(());
+        };
+        let uid = db.message_uid(id)?;
+        db.attach_file(&uid, &name, &bytes)?;
+        Ok(())
     }
 
     /// Noter la conversation lue par `operator` jusqu'à son dernier
