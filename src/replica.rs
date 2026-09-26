@@ -71,6 +71,9 @@ pub enum Flux {
     Agenda,
     Officine,
     Fiches,
+    /// L'équipe : la messagerie et la liste des postes. À part des
+    /// dossiers pour qu'un compagnon (le téléphone) la reçoive sans eux.
+    Equipe,
 }
 
 /// Une table qui voyage.
@@ -111,14 +114,16 @@ pub const TABLES: &[Table] = &[
     // Un favori peut nommer un dossier : il voyage sous la clé des
     // dossiers.
     t("favorites", Main, Dossiers, false, true),
-    // La messagerie d'équipe : elle peut nommer un patient. Un message
-    // ne se réécrit pas.
-    t("conversations", Main, Dossiers, false, true),
-    t("messages", Main, Dossiers, true, true),
-    t("message_reads", Main, Dossiers, false, true),
+    // La messagerie d'équipe, sur son propre flux depuis le compagnon
+    // Android : le téléphone d'un membre de l'équipe la lit sans tenir
+    // la clé des dossiers. Un message peut citer un patient par son
+    // numéro, jamais par son dossier. Un message ne se réécrit pas.
+    t("conversations", Main, Equipe, false, true),
+    t("messages", Main, Equipe, true, true),
+    t("message_reads", Main, Equipe, false, true),
     // Un fichier joint : sa description et ses morceaux, en ajout seul.
-    t("message_files", Main, Dossiers, true, true),
-    t("message_chunks", Main, Dossiers, true, true),
+    t("message_files", Main, Equipe, true, true),
+    t("message_chunks", Main, Equipe, true, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
     t("drugs", Main, Fiches, false, true),
@@ -146,7 +151,9 @@ pub const TABLES: &[Table] = &[
     t("vaccine_catalogue", Main, Officine, false, true),
     t("trod_lines", Main, Officine, false, true),
     t("content_overrides", Main, Officine, false, false),
-    t("sync_posts", Main, Officine, false, false),
+    // Qui est de l'officine : lu par chaque poste, compagnons compris,
+    // pour savoir à qui parler.
+    t("sync_posts", Main, Equipe, false, false),
     t("events", Main, Agenda, false, true),
     t("shifts", Main, Planning, false, true),
     t("caisse_counts", Main, Caisse, true, true),

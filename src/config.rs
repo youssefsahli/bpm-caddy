@@ -1570,6 +1570,11 @@ pub struct UiConfig {
     pub seen_notes: String,
 }
 
+/// The palette a fresh `config.toml` names: `motif::THEMES[0]`, spelt
+/// out so the library builds without the desktop crates (a test holds
+/// the two together).
+const DEFAULT_THEME: &str = "motif";
+
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
@@ -1577,7 +1582,7 @@ impl Default for UiConfig {
             show_nav_on_start: true,
             text_scale: 1.0,
             density: "confortable".to_owned(),
-            theme: motif::THEMES[0].key.to_owned(),
+            theme: DEFAULT_THEME.to_owned(),
             icons: true,
             font_path: None,
             side_pane: "docs".to_owned(),
@@ -1815,11 +1820,13 @@ impl Config {
     /// Put the chosen palette in force. Called once at start-up and
     /// again whenever the options are saved; an unknown name is not an
     /// error, it is the classic theme.
+    #[cfg(feature = "desktop")]
     pub fn apply_theme(&self) {
         motif::set_theme(&self.ui.theme);
     }
 
     /// The density chosen in the options, as the `motif` enum.
+    #[cfg(feature = "desktop")]
     pub fn density(&self) -> motif::Density {
         if self.ui.density.trim().eq_ignore_ascii_case("compact") {
             motif::Density::Compact
@@ -2744,6 +2751,13 @@ mod tests {
                 t.key
             );
         }
+    }
+
+    /// `DEFAULT_THEME` is `motif::THEMES[0]` spelt out so the library
+    /// builds without the desktop crates; the two must not part.
+    #[test]
+    fn the_default_theme_is_the_first_that_ships() {
+        assert_eq!(DEFAULT_THEME, motif::THEMES[0].key);
     }
 
     #[test]

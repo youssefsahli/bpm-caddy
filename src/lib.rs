@@ -9,8 +9,10 @@
 
 pub mod agenda;
 pub mod annuaire;
+#[cfg(feature = "desktop")]
 pub mod app;
 pub mod audit;
+#[cfg(feature = "desktop")]
 pub mod audit_window;
 pub mod biology;
 pub mod bulletin;
@@ -45,6 +47,7 @@ pub mod netmap;
 pub mod network;
 pub mod ordonnance;
 pub mod ordonnancier;
+#[cfg(feature = "desktop")]
 pub mod pdf;
 pub mod pk;
 pub mod planning;

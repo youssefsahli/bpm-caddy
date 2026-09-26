@@ -57,7 +57,8 @@ CI enforces, and a change is not done until all pass:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo check --no-default-features   # SYNC.md promises a build with no network code
+cargo check --no-default-features --features desktop  # SYNC.md: an app with no network code
+cargo check --lib --no-default-features --features sync  # the core mobile/ links (no egui)
 ./scripts/coverage.sh      # two floors that only move up
 ./scripts/smoke.sh         # every view, four shapes, fails on panic (~70 min)
 ```

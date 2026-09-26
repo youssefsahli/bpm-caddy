@@ -10665,25 +10665,7 @@ fn sentence_around(text: &str, from: usize, len: usize) -> String {
     text[start..end].trim().to_owned()
 }
 
-/// The prose of a card, field by field, as the full-text search reads
-/// it: the label the section carries on screen, and how to get at it.
-type MonoField = (&'static str, fn(&Drug) -> &str);
-
-const MONO_FIELDS: [MonoField; 13] = [
-    ("drug_sec_indications", |d| d.indications.as_str()),
-    ("drug_sec_mechanism", |d| d.mechanism.as_str()),
-    ("mono_f_dosage", |d| d.dosage.as_str()),
-    ("drug_sec_ci", |d| d.contraindications.as_str()),
-    ("mono_f_ddi", |d| d.ddi.as_str()),
-    ("drug_sec_adverse", |d| d.adverse.as_str()),
-    ("drug_sec_toxicity", |d| d.toxicity.as_str()),
-    ("drug_sec_monitoring", |d| d.monitoring.as_str()),
-    ("mono_f_iup", |d| d.iup.as_str()),
-    ("mono_f_missed", |d| d.missed_dose.as_str()),
-    ("mono_f_flags", |d| d.red_flags.as_str()),
-    ("mono_f_forms", |d| d.forms.as_str()),
-    ("mono_f_notes", |d| d.notes.as_str()),
-];
+pub use crate::db::{MonoField, MONO_FIELDS};
 
 /// One place a searched word was found in the prose of the base.
 pub struct MonoHit {
@@ -58703,6 +58685,7 @@ impl App {
                 start = Some(Job::Invite {
                     port: config.postes.port,
                     for_device: w.invite_target.take(),
+                    companion: false,
                 });
             }
         }
@@ -59111,6 +59094,17 @@ impl App {
                             start = Some(Job::Invite {
                                 port: config.postes.port,
                                 for_device: None,
+                                companion: false,
+                            });
+                        }
+                        if motif::button_enabled(ui, tr("posts_invite_phone"), !busy)
+                            .on_hover_text(tr("posts_invite_phone_tooltip"))
+                            .clicked()
+                        {
+                            start = Some(Job::Invite {
+                                port: config.postes.port,
+                                for_device: None,
+                                companion: true,
                             });
                         }
                         if !w.leave_armed {

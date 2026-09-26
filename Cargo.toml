@@ -1,5 +1,5 @@
 [workspace]
-members = ["motif", "launcher", "sync"]
+members = ["motif", "launcher", "sync", "mobile"]
 
 [package]
 name = "bpm-caddy"
@@ -11,20 +11,20 @@ repository = "https://github.com/youssefsahli/bpm-caddy"
 publish = false
 
 [dependencies]
-eframe = "0.29"
-motif = { path = "motif" }
+eframe = { version = "0.29", optional = true }
+motif = { path = "motif", optional = true }
 dirs = "5"
 rusqlite = { version = "0.32", features = ["bundled-sqlcipher-vendored-openssl", "backup"] }
 serde = { version = "1.0.229", features = ["derive"] }
 toml = "1.1.4"
-typst = "0.13"
-typst-pdf = "0.13"
-typst-assets = { version = "0.13", features = ["fonts"] }
-open = "5.4.1"
-keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
-rfd = "0.15"
+typst = { version = "0.13", optional = true }
+typst-pdf = { version = "0.13", optional = true }
+typst-assets = { version = "0.13", features = ["fonts"], optional = true }
+open = { version = "5.4.1", optional = true }
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"], optional = true }
+rfd = { version = "0.15", optional = true }
 # Validates a chosen font file before egui is asked to parse it.
-ab_glyph = "0.2"
+ab_glyph = { version = "0.2", optional = true }
 lopdf = { version = "0.44.0", default-features = false }
 # Only ever used by Options › À propos, on a button press, on a worker
 # thread: the application asks GitHub which release is the latest and
@@ -63,10 +63,36 @@ bpm-sync = { path = "sync", optional = true }
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
 # partage que les ruptures et les substitutions, sous sa propre clé, et
 # n'ouvre une porte que le temps d'une invitation — rien n'écoute en
-# permanence. Un binaire construit avec `--no-default-features` n'en
-# contient toujours rien.
-default = ["sync"]
+# permanence. Un binaire construit avec `--no-default-features
+# --features desktop` n'en contient toujours rien.
+default = ["sync", "desktop"]
 sync = ["dep:bpm-sync"]
+# The desktop application: the egui window, Typst printing, the system
+# keyring and file dialogs. Everything else in the library — the base,
+# the clinical tables, replication, the posts' and the network's sync —
+# builds without it, which is what the Android companion (`mobile/`)
+# links against. The two binaries require it.
+desktop = [
+    "dep:eframe",
+    "dep:motif",
+    "dep:typst",
+    "dep:typst-pdf",
+    "dep:typst-assets",
+    "dep:open",
+    "dep:keyring",
+    "dep:rfd",
+    "dep:ab_glyph",
+]
+
+[[bin]]
+name = "bpm-caddy"
+path = "src/main.rs"
+required-features = ["desktop"]
+
+[[bin]]
+name = "bpm-audit"
+path = "src/bin/bpm-audit.rs"
+required-features = ["desktop"]
 
 
 [profile.release]

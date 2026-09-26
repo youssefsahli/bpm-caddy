@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Le seul libellé qu'Android lit avant que la bibliothèque soit chargée :
+     le nom sous l'icône. Tous les autres viennent de
+     assets/strings.fr.toml, par la bibliothèque Rust (clés mobile_…). -->
+<resources>
+    <string name="app_name">BPM-Caddy</string>
+</resources>

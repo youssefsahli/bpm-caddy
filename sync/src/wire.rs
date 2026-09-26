@@ -1,7 +1,7 @@
 //! What two posts actually say to each other.
 //!
-//! Seven frames, and that is the whole vocabulary. Everything but the
-//! first two is about one question — *which records do you not have* —
+//! Eight frames, and that is the whole vocabulary. Everything but the
+//! greeting and the two keys is about one question — *which records do you not have* —
 //! and the design that keeps it to one question is [`Frame::Want`]
 //! carrying both halves: what I need, and what I already hold. The peer
 //! can then work out the whole set to send in one pass, instead of the
@@ -81,7 +81,16 @@ pub enum Frame {
     /// is talking to; an inviting post answers with its own only once
     /// the joiner's has checked. See [`crate::Ticket`].
     Proof(Option<[u8; 32]>),
+    /// A **share** of the officine's key — a few streams, never the
+    /// secret — handed to a companion that is joining in place of
+    /// [`Frame::Welcome`]. The same moment, the same consent. See
+    /// [`crate::Trousseau::share`].
+    Share(Vec<u8>),
 }
+
+/// The longest share a frame carries: a tag, a name, a count, and a key
+/// for every stream code there could be.
+const MAX_SHARE: usize = 12 + 33 * 255;
 
 impl Frame {
     fn tag(&self) -> u8 {
@@ -93,6 +102,7 @@ impl Frame {
             Frame::Give(_) => 5,
             Frame::EndRound { .. } => 6,
             Frame::Proof(_) => 7,
+            Frame::Share(_) => 8,
         }
     }
 
@@ -139,6 +149,9 @@ impl Frame {
                     w.u8(0).raw(&[0u8; 32]);
                 }
             },
+            Frame::Share(bytes) => {
+                w.bytes(bytes);
+            }
         }
         w.finish()
     }
@@ -189,6 +202,7 @@ impl Frame {
                     _ => return Err(Error::Malformed),
                 })
             }
+            8 => Frame::Share(r.bytes(MAX_SHARE)?.to_vec()),
             // Not `Malformed`: a tag this version does not know is a
             // peer speaking a protocol this one did not agree to, and
             // that is what `Hello` exists to settle before anything is
@@ -248,6 +262,7 @@ mod tests {
             Frame::EndRound { more: true },
             Frame::Proof(None),
             Frame::Proof(Some([6; 32])),
+            Frame::Share(vec![0x53, 1, 2, 3]),
         ]
     }
 
@@ -284,7 +299,7 @@ mod tests {
     /// so that the pane can say « mettez les deux postes à jour ».
     #[test]
     fn a_frame_this_version_does_not_know_is_a_protocol_refusal() {
-        for tag in [0u8, 8, 200, 255] {
+        for tag in [0u8, 9, 200, 255] {
             assert_eq!(Frame::decode(&[tag]), Err(Error::Protocol), "tag {tag}");
         }
     }

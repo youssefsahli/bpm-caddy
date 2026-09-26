@@ -2571,7 +2571,7 @@ officine asks it to: every printed or displayed mention lives in
 default. Never hardcode a new caveat — add a key there.
 
 A new prose field on a drug card is not searchable until it is in
-`MONO_FIELDS` (`src/app.rs`) with a label key: « Dans le texte… » reads
+`MONO_FIELDS` (`src/db.rs`) with a label key: « Dans le texte… » reads
 that table and nothing else, so a field left out of it is a field nobody
 will ever find by its words.
 

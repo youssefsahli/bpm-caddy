@@ -27,8 +27,8 @@ Il s'adresse à qui reprend le sujet, y compris à moi-même dans six mois.
 > une porte tenue ouverte aux seules officines appairées, voir plus
 > bas** ; et, en plus des adresses, un **dossier d'échange** où
 > chaque officine dépose ses enregistrements scellés. La fonction `sync`
-> est donc allumée par défaut ; `--no-default-features` rend toujours un
-> binaire sans aucun code réseau. Les autres flux (dossiers, registre,
+> est donc allumée par défaut ; `--no-default-features --features desktop`
+> rend toujours un binaire sans aucun code réseau. Les autres flux (dossiers, registre,
 > caisse…) restent non branchés, et le § 7 vaut toujours pour eux.
 
 ---

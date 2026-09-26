@@ -135,8 +135,13 @@ pub struct Session {
     /// The inviting side has not yet read the joiner's [`Frame::Proof`]:
     /// it neither shows a code nor hands over a key until it has.
     proof_due: bool,
-    welcome: Option<[u8; 32]>,
+    /// What the inviter handed over, held until this side's operator
+    /// has said yes.
+    welcome: Option<Trousseau>,
     adopted: bool,
+    /// Inviting a companion: the streams its share opens. `None` hands
+    /// over the whole trousseau.
+    sharing: Option<Vec<crate::seal::Stream>>,
 
     phase: Phase,
     out: VecDeque<Frame>,
@@ -210,6 +215,7 @@ impl Session {
             to_open: false,
             welcome: None,
             adopted: false,
+            sharing: None,
             phase: Phase::Handshake,
             out: VecDeque::new(),
             peer_heads: Vec::new(),
@@ -238,6 +244,18 @@ impl Session {
             return Err(Error::Protocol);
         }
         self.ticket = Some(ticket);
+        Ok(self)
+    }
+
+    /// **Invite a companion with a share of the key**: on consent the
+    /// joiner receives the keys of `streams` and nothing else — never the
+    /// secret — so a phone that holds the team's agenda cannot open the
+    /// patients' files it relays. Only an invitation takes one.
+    pub fn sharing(mut self, streams: &[crate::seal::Stream]) -> Result<Self> {
+        if self.intent != Intent::Invite {
+            return Err(Error::Protocol);
+        }
+        self.sharing = Some(streams.to_vec());
         Ok(self)
     }
 
@@ -349,14 +367,21 @@ impl Session {
         self.accepted = true;
         match self.intent {
             Intent::Invite => {
-                let secret = self.trousseau.as_ref().ok_or(Error::Protocol)?.secret();
-                self.out.push_back(Frame::Welcome(secret));
+                let trousseau = self.trousseau.as_ref().ok_or(Error::Protocol)?;
+                // A share when a companion is invited — and always from a
+                // share, which has no secret to hand over.
+                let frame = match (&self.sharing, trousseau.secret()) {
+                    (None, Some(secret)) => Frame::Welcome(secret),
+                    (Some(streams), _) => Frame::Share(trousseau.share(streams).encode()),
+                    (None, None) => Frame::Share(trousseau.encode()),
+                };
+                self.out.push_back(frame);
                 meter.note(Signal::Pairing);
                 self.open_exchange(journal);
             }
             Intent::Join => {
-                if let Some(secret) = self.welcome.take() {
-                    self.adopt(secret, journal, meter);
+                if let Some(trousseau) = self.welcome.take() {
+                    self.adopt(trousseau, journal, meter);
                 }
                 // Otherwise the welcome has not arrived yet: `deliver`
                 // will adopt it when it does, now that consent is given.
@@ -476,18 +501,29 @@ impl Session {
                 meter.met(device.fingerprint());
                 self.greeted(device, officine, journal, meter)
             }
-            (Phase::Confirm, Frame::Welcome(secret)) => {
+            (Phase::Confirm, frame @ (Frame::Welcome(_) | Frame::Share(_))) => {
                 if self.intent != Intent::Join {
                     meter.refuse(Error::Protocol);
                     return Err(Error::Protocol);
                 }
+                let trousseau = match frame {
+                    Frame::Welcome(secret) => Trousseau::from_secret(secret),
+                    Frame::Share(bytes) => match Trousseau::decode(&bytes) {
+                        Some(t) if !t.is_whole() => t,
+                        _ => {
+                            meter.refuse(Error::Malformed);
+                            return Err(Error::Malformed);
+                        }
+                    },
+                    _ => return Err(Error::Protocol),
+                };
                 if self.accepted {
-                    self.adopt(secret, journal, meter);
+                    self.adopt(trousseau, journal, meter);
                 } else {
                     // Held until a human has compared the code. A key
                     // adopted before that is a key from whoever was in
                     // the middle.
-                    self.welcome = Some(secret);
+                    self.welcome = Some(trousseau);
                 }
                 Ok(())
             }
@@ -665,8 +701,8 @@ impl Session {
         }
     }
 
-    fn adopt(&mut self, secret: [u8; 32], journal: &Journal, meter: &mut Meter) {
-        self.trousseau = Some(Trousseau::from_secret(secret));
+    fn adopt(&mut self, trousseau: Trousseau, journal: &Journal, meter: &mut Meter) {
+        self.trousseau = Some(trousseau);
         self.adopted = true;
         meter.note(Signal::Pairing);
         self.open_exchange(journal);
@@ -996,9 +1032,75 @@ mod tests {
         converse(a, b, sa, sb, true).unwrap();
     }
 
+    /// **A companion joins with a share**: it opens the streams it was
+    /// given, holds every record — the register too, sealed — so the
+    /// graph stays whole and it relays what it cannot read, and the
+    /// secret never crosses.
+    #[test]
+    fn a_companion_gets_a_share_and_reads_only_its_streams() {
+        let t = officine(9);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut phone = Post::new(3, None);
+        a.write(b"12 comprimes");
+        let agenda = {
+            let mut e = OsEntropy;
+            a.journal
+                .write(&a.device, &t, Stream::Agenda, b"rdv 9h", None, &mut e)
+                .unwrap()
+        };
+        let sa = Session::new(&a.device, a.trousseau.as_ref(), Intent::Invite, true, &[])
+            .unwrap()
+            .sharing(&[Stream::Agenda, Stream::Equipe])
+            .unwrap();
+        let sb = Session::new(&phone.device, None, Intent::Join, false, &[]).unwrap();
+        let talked = converse(&mut a, &mut phone, sa, sb, true).unwrap();
+        let share = talked.sb.joined().cloned().expect("une part");
+        assert!(!share.is_whole());
+        assert!(share.secret().is_none());
+        assert_eq!(share.name(), t.name());
+        assert!(share.opens(Stream::Agenda) && !share.opens(Stream::Registre));
+        // Everything crossed; only the agenda opens.
+        assert_eq!(phone.journal.len(), 2);
+        assert!(phone.journal.has(&agenda));
+        let reg = phone.journal.read(&share, Stream::Registre);
+        assert!(reg.facts.is_empty());
+        assert_eq!(reg.unopened.len(), 1);
+        let rdv = phone.journal.read(&share, Stream::Agenda);
+        assert_eq!(rdv.facts.len(), 1);
+        assert_eq!(rdv.facts[0].payload, b"rdv 9h");
+        // The secret never crossed.
+        let secret = t.secret().unwrap();
+        assert!(talked.wire.iter().all(|w| !contains(w, &secret)));
+        // It writes the streams it has, and no other.
+        let mut e = OsEntropy;
+        assert!(phone
+            .journal
+            .write(
+                &phone.device,
+                &share,
+                Stream::Equipe,
+                b"bonjour",
+                None,
+                &mut e
+            )
+            .is_ok());
+        assert!(phone
+            .journal
+            .write(&phone.device, &share, Stream::Dossiers, b"x", None, &mut e)
+            .is_err());
+        // And the two sync afterwards under the share's name.
+        phone.trousseau = Some(share);
+        a.known.push(phone.device.id());
+        phone.known.push(a.device.id());
+        sync_posts(&mut phone, &mut a);
+        assert_eq!(a.journal.len(), 3);
+        let said = a.journal.read(&t, Stream::Equipe);
+        assert_eq!(said.facts[0].payload, b"bonjour");
+    }
+
     /// **Two posts that both wrote since they met exchange what is new,
     /// not their journals.** Their heads are strangers to each other; the
-    /// records a step or two under them are what both hold.
+    /// latest record of each author is what both hold.
     #[test]
     fn two_posts_that_both_wrote_send_only_what_is_new() {
         let t = officine(13);
@@ -1019,6 +1121,29 @@ mod tests {
         );
         assert_eq!(sent, (1, 1), "seul le neuf passe");
         assert_eq!(a.journal.heads(), b.journal.heads());
+    }
+
+    /// A share read back is the same share; a malformed one is nothing.
+    #[test]
+    fn a_share_is_kept_and_read_back_as_itself() {
+        let t = officine(11);
+        let share = t.share(&[Stream::Fiches, Stream::Agenda, Stream::Fiches]);
+        assert_eq!(share.streams(), vec![Stream::Agenda, Stream::Fiches]);
+        let back = Trousseau::decode(&share.encode()).unwrap();
+        assert!(back.same(&share));
+        assert_eq!(back.name(), t.name());
+        // A whole one reads back from its thirty-two bytes, as every base
+        // stored it before shares.
+        assert!(Trousseau::decode(&t.encode()).unwrap().same(&t));
+        let bytes = share.encode();
+        for cut in 0..bytes.len() {
+            if cut != 32 {
+                assert!(Trousseau::decode(&bytes[..cut]).is_none(), "coupé à {cut}");
+            }
+        }
+        // A share of a share keeps only what both hold.
+        let narrower = share.share(&[Stream::Agenda, Stream::Registre]);
+        assert_eq!(narrower.streams(), vec![Stream::Agenda]);
     }
 
     /// The whole thing, once: a post with a register, a post with
@@ -1253,7 +1378,7 @@ mod tests {
         // And neither did the key that opens them, although it is the
         // one thing this conversation exists to hand over.
         assert!(
-            !contains(&carried, &t.secret()),
+            !contains(&carried, &t.secret().unwrap()),
             "le trousseau a traversé en clair"
         );
         assert!(

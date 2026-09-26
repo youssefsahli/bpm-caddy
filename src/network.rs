@@ -1559,6 +1559,11 @@ pub fn run(
                 .joined()
                 .cloned()
                 .ok_or_else(|| tr("net_err_refused").to_owned())?;
+            // Un réseau se rejoint avec sa clé entière : une part (celle
+            // d'un compagnon) n'a rien à faire ici.
+            let secret = joined
+                .secret()
+                .ok_or_else(|| tr("net_err_refused").to_owned())?;
             // Un réseau dont l'officine est déjà — principal ou autre — ne
             // se range pas une seconde fois sous un autre nom.
             let fingerprint = hex(&joined.name().bytes());
@@ -1570,10 +1575,10 @@ pub fn run(
             }
             let id = if second {
                 let id = fingerprint;
-                db.add_net_network(&id, &hex(&joined.secret()), "", today)?;
+                db.add_net_network(&id, &hex(&secret), "", today)?;
                 id
             } else {
-                db.net_key("net_trousseau", &hex(&joined.secret()))?;
+                db.net_key("net_trousseau", &hex(&secret))?;
                 String::new()
             };
             if let Some(peer) = session.peer() {

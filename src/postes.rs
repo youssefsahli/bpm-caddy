@@ -46,6 +46,17 @@ fn unhex<const N: usize>(text: &str) -> Option<[u8; N]> {
     Some(out)
 }
 
+fn unhex_vec(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
 fn random32() -> [u8; 32] {
     let mut out = [0u8; 32];
     bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, &mut out);
@@ -62,12 +73,13 @@ pub fn stream(flux: Flux) -> Stream {
         Flux::Agenda => Stream::Agenda,
         Flux::Officine => Stream::Officine,
         Flux::Fiches => Stream::Fiches,
+        Flux::Equipe => Stream::Equipe,
     }
 }
 
 /// Les flux que les postes lisent : tous ceux de l'officine, jamais
 /// celui du réseau d'officines.
-const STREAMS: [Stream; 7] = [
+const STREAMS: [Stream; 8] = [
     Stream::Dossiers,
     Stream::Registre,
     Stream::Caisse,
@@ -75,6 +87,19 @@ const STREAMS: [Stream; 7] = [
     Stream::Agenda,
     Stream::Officine,
     Stream::Fiches,
+    Stream::Equipe,
+];
+
+/// Ce qu'un **compagnon** (le téléphone d'un membre de l'équipe) reçoit
+/// la clé de lire : le contenu, l'agenda, le planning et l'équipe.
+/// Jamais les dossiers, le registre, la caisse ni les réglages de
+/// l'officine (qui portent la clé du réseau d'officines). Il tient les
+/// autres enregistrements scellés, sans les ouvrir, et les relaie.
+pub const COMPANION: [Stream; 4] = [
+    Stream::Fiches,
+    Stream::Agenda,
+    Stream::Planning,
+    Stream::Equipe,
 ];
 
 /// L'empreinte d'une identité en hexadécimal, en cinq groupes.
@@ -115,10 +140,12 @@ impl Posts {
             }
         };
         let seed = unhex::<32>(&seed).ok_or("identité du poste illisible")?;
+        // Thirty-two bytes for a desktop post's whole key; a longer,
+        // tagged list for a companion's share (`Trousseau::decode`).
         let trousseau = db
             .sync_local("trousseau")
-            .and_then(|t| unhex::<32>(&t))
-            .map(Trousseau::from_secret);
+            .and_then(|t| unhex_vec(&t))
+            .and_then(|b| Trousseau::decode(&b));
         let mut journal = Journal::new();
         for bytes in db.sync_records()? {
             if let Ok(record) = Record::decode(&bytes) {
@@ -242,6 +269,12 @@ impl Posts {
             {
                 end += 1;
             }
+            // A companion seals only what its share opens; a write to
+            // anything else stays on it (it has no business writing there).
+            if !trousseau.opens(stream(flux)) {
+                start = end;
+                continue;
+            }
             let (lots, refused) = crate::replica::batches(&ops[start..end], crate::replica::LIMIT);
             db.note_oversize(&refused, day)?;
             for lot in lots {
@@ -264,6 +297,24 @@ impl Posts {
         }
         self.keep(db)?;
         Ok(written)
+    }
+
+    /// **Sceller à nouveau les tables de l'équipe sur leur flux**, une
+    /// fois par poste : la messagerie et la liste des postes voyageaient
+    /// avant sous d'autres flux (dossiers, officine), qu'un compagnon ne
+    /// lit pas. Fait avant d'inviter un compagnon, pour qu'il sache quels
+    /// postes existent — et ne prenne pas un numéro déjà pris. Reçues par
+    /// un poste qui les a déjà, ces lignes ne changent rien.
+    pub fn reseal_team(&mut self, db: &Db, day: &str) -> Result<usize, String> {
+        if !self.trousseau.as_ref().is_some_and(Trousseau::is_whole)
+            || db.sync_local("team_resealed").is_some()
+        {
+            return Ok(0);
+        }
+        let ops = db.snapshot_of(Flux::Equipe)?;
+        let n = self.seal(db, &ops, day)?;
+        db.set_sync_local("team_resealed", day)?;
+        Ok(n)
     }
 
     /// Sceller au journal les écritures de ce poste pas encore parties.
@@ -298,7 +349,9 @@ impl Posts {
         let me = self.device.id();
         let retired = Self::retired(db);
         let mut facts: Vec<bpm_sync::Fact> = Vec::new();
-        for s in STREAMS {
+        // A companion reads only what its share opens; the rest it holds
+        // sealed and relays — not « unopened », just not its to read.
+        for s in STREAMS.into_iter().filter(|s| trousseau.opens(*s)) {
             let reading = self.journal.read(trousseau, s);
             report.unopened += reading.unopened.len();
             facts.extend(reading.facts);
@@ -341,6 +394,7 @@ impl Posts {
         };
         std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
         let me = self.device.id();
+        let known = self.known(db);
         let mine: Vec<u8> = self
             .journal
             .records()
@@ -380,10 +434,15 @@ impl Posts {
                 };
                 at += len;
                 if let Ok(record) = Record::decode(chunk) {
-                    if !self.journal.has(&record.id())
-                        && record.open(&trousseau).is_ok()
-                        && self.journal.insert(record)
-                    {
+                    // A record of a stream this post's key opens must open
+                    // under it; one a companion's share does not open is
+                    // kept for the graph, from a post of the group only.
+                    let ours = if trousseau.opens(record.stream()) {
+                        record.open(&trousseau).is_ok()
+                    } else {
+                        known.contains(&record.author())
+                    };
+                    if !self.journal.has(&record.id()) && ours && self.journal.insert(record) {
                         added += 1;
                     }
                 }
@@ -486,6 +545,9 @@ pub enum Job {
     Invite {
         port: u16,
         for_device: Option<String>,
+        /// Un compagnon (téléphone) : il reçoit une part de la clé,
+        /// [`COMPANION`], jamais la clé entière.
+        companion: bool,
     },
     /// Rejoindre le groupe en composant l'adresse du poste qui invite.
     /// **Ce que ce poste contenait est remplacé.**
@@ -582,12 +644,19 @@ pub fn run(
             let n = posts.found(&db, name, today)?;
             Ok(trn("posts_done_founded", &[&n]))
         }
-        Job::Invite { port, for_device } => {
+        Job::Invite {
+            port,
+            for_device,
+            companion,
+        } => {
             let trousseau = posts
                 .trousseau
                 .clone()
                 .ok_or_else(|| tr("posts_err_no_group").to_owned())?;
             posts.publish(&db, today)?;
+            if *companion {
+                posts.reseal_team(&db, today)?;
+            }
             // Le fil automatique tenait ce port : arrêté par l'écran, il le
             // rend dans la demi-seconde. On le lui laisse, plutôt que de
             // dire « port pris » à qui vient de cliquer.
@@ -672,6 +741,13 @@ pub fn run(
                     &posts.known(&db),
                 )
                 .and_then(|s| s.with_ticket(ticket))
+                .and_then(|s| {
+                    if *companion {
+                        s.sharing(&COMPANION)
+                    } else {
+                        Ok(s)
+                    }
+                })
                 .map_err(|e| format!("{e:?}"))?;
                 let mut meter = Meter::new();
                 if bpm_sync::drive(
@@ -716,47 +792,7 @@ pub fn run(
             name,
             ticket,
         } => {
-            if posts.in_group() || db.sync_post().is_some() {
-                return Err(tr("posts_err_already").to_owned());
-            }
-            // A fresh identity: a base copied from another post carries
-            // that post's, and two posts under one name would each take
-            // the other's records for their own.
-            db.set_sync_local("device", &hex(&random32()))?;
-            let mut posts = Posts::load(&db)?;
-            let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
-                .map_err(|_| tr("posts_err_unreachable").to_owned())?;
-            let mut session = Session::new(&posts.device, None, Intent::Join, true, &[])
-                .and_then(|s| match ticket {
-                    Some(t) => s.with_ticket(*t),
-                    None => Ok(s),
-                })
-                .map_err(|e| format!("{e:?}"))?;
-            let mut meter = Meter::new();
-            bpm_sync::drive(
-                &mut session,
-                &mut link,
-                &mut posts.journal,
-                &mut meter,
-                &mut confirm,
-            )
-            .map_err(|_| tr("posts_err_refused").to_owned())?;
-            let joined = session
-                .joined()
-                .cloned()
-                .ok_or_else(|| tr("posts_err_refused").to_owned())?;
-            // Only now, with the key and the journal in hand, is what this
-            // post held replaced.
-            db.prepare_join()?;
-            db.set_sync_local("trousseau", &hex(&joined.secret()))?;
-            posts.trousseau = Some(joined);
-            posts.keep(&db)?;
-            let report = posts.absorb(&db, today)?;
-            let post = db.finish_join(&posts.device_hex(), name, today)?;
-            posts.publish(&db, today)?;
-            // Tell the inviting post at once who joined, so it hears this
-            // post's next records without waiting for anybody.
-            let _ = posts.sync_with(&db, address, TALK_PATIENCE);
+            let (post, report) = join(&db, address, name, *ticket, false, today, &mut confirm)?;
             Ok(trn(
                 "posts_done_joined",
                 &[&(post + 1), &report.received.written],
@@ -787,6 +823,77 @@ pub fn run(
             Ok(said)
         }
     }
+}
+
+/// **Rejoindre le groupe** en composant l'adresse du poste qui invite.
+/// Ce que ce poste contenait est remplacé. `companion` : ce poste est un
+/// compagnon (le téléphone) — il n'accepte qu'une part de la clé, et se
+/// déclare comme tel. Rend son numéro et ce qu'il a rangé.
+pub fn join(
+    db: &Db,
+    address: &str,
+    name: &str,
+    ticket: Option<bpm_sync::Ticket>,
+    companion: bool,
+    today: &str,
+    confirm: &mut dyn FnMut(bpm_sync::Fingerprint) -> bool,
+) -> Result<(i64, Report), String> {
+    use crate::strings::tr;
+    if db.sync_post().is_some() || db.sync_local("trousseau").is_some() {
+        return Err(tr("posts_err_already").to_owned());
+    }
+    // A fresh identity: a base copied from another post carries
+    // that post's, and two posts under one name would each take
+    // the other's records for their own.
+    db.set_sync_local("device", &hex(&random32()))?;
+    let mut posts = Posts::load(db)?;
+    let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
+        .map_err(|_| tr("posts_err_unreachable").to_owned())?;
+    let mut session = Session::new(&posts.device, None, Intent::Join, true, &[])
+        .and_then(|s| match ticket {
+            Some(t) => s.with_ticket(t),
+            None => Ok(s),
+        })
+        .map_err(|e| format!("{e:?}"))?;
+    let mut meter = Meter::new();
+    bpm_sync::drive(
+        &mut session,
+        &mut link,
+        &mut posts.journal,
+        &mut meter,
+        confirm,
+    )
+    .map_err(|_| tr("posts_err_refused").to_owned())?;
+    let joined = session
+        .joined()
+        .cloned()
+        .ok_or_else(|| tr("posts_err_refused").to_owned())?;
+    // A desktop post takes the whole key, a companion a share: the other
+    // way round is an invitation meant for another kind of post.
+    if joined.is_whole() == companion {
+        // Knock once and leave: the inviting post, which waits for this
+        // post's first word, stops waiting.
+        drop(bpm_sync::link::dial(address, TALK_PATIENCE));
+        return Err(tr(if companion {
+            "posts_err_not_companion_invite"
+        } else {
+            "posts_err_companion_invite"
+        })
+        .to_owned());
+    }
+    // Only now, with the key and the journal in hand, is what this
+    // post held replaced.
+    db.prepare_join()?;
+    db.set_sync_local("trousseau", &hex(&joined.encode()))?;
+    posts.trousseau = Some(joined);
+    posts.keep(db)?;
+    let report = posts.absorb(db, today)?;
+    let post = db.finish_join(&posts.device_hex(), name, today, companion)?;
+    posts.publish(db, today)?;
+    // Tell the inviting post at once who joined, so it hears this
+    // post's next records without waiting for anybody.
+    let _ = posts.sync_with(db, address, TALK_PATIENCE);
+    Ok((post, report))
 }
 
 /// Ce que l'écran demande au fil automatique.
@@ -1238,7 +1345,7 @@ fn auto(
         match (&door, &trousseau) {
             (Some(door), Some(t)) => {
                 // Looked at for 400 ms between other work, but the
-                // conversation gets the posts' own patience: a post on the
+                // conversation gets the posts' own patience: a phone on the
                 // Wi-Fi answering in half a second was dropped mid-sync.
                 if let Ok(mut link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
                     if posts.talk(&db, t, &mut link, false).is_ok() {
@@ -1657,6 +1764,7 @@ mod tests {
             Job::Invite {
                 port,
                 for_device: None,
+                companion: false,
             },
             dir_a.join("poste.db"),
             "secret".to_owned(),
@@ -1778,6 +1886,273 @@ mod tests {
         pa.exchange_folder(&a, &folder).unwrap();
         pa.absorb(&a, "2026-09-24").unwrap();
         assert!(!a.patients().unwrap().iter().any(|p| p.last_name == "Après"));
+    }
+
+    /// **Un téléphone rejoint en compagnon** : il reçoit une part de la
+    /// clé, range les fiches, l'agenda et la messagerie, et aucun dossier
+    /// — qu'il tient pourtant, scellés, pour les relayer. Un poste de
+    /// bureau refuse cette invitation-là.
+    #[test]
+    fn a_phone_joins_as_a_companion_and_never_reads_a_patient() {
+        let (dir_a, _sa, a) = post("desk");
+        let (_dir_p, _sp, phone) = post("phone");
+        let (_dir_w, _sw, wrong) = post("wrongkind");
+        a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let card = a.add_drug("Amoxicilline").unwrap();
+        a.add_event_span(
+            "2026-09-26",
+            "09:00",
+            "09:30",
+            "Réunion d'équipe",
+            crate::db::EventCategory::Autre,
+            "",
+            "",
+        )
+        .unwrap();
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        a.post_message(talk, "m1", "AB", "Livraison à 14 h", None, "", None)
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let invite = |companion: bool| {
+            let port = std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port();
+            let (_yes, answers) = std::sync::mpsc::channel();
+            let rx = spawn(
+                Job::Invite {
+                    port,
+                    for_device: None,
+                    companion,
+                },
+                dir_a.join("poste.db"),
+                "secret".to_owned(),
+                "2026-09-26".to_owned(),
+                answers,
+            );
+            let ticket = match rx.recv().unwrap() {
+                Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+                other => panic!("{other:?}"),
+            };
+            (port, ticket, rx, _yes)
+        };
+        let finish = |rx: std::sync::mpsc::Receiver<Progress>| loop {
+            match rx.recv_timeout(Duration::from_secs(20)).expect("fin") {
+                Progress::Done(_) | Progress::Failed(_) => break,
+                _ => {}
+            }
+        };
+
+        // A desktop post refuses an invitation meant for a phone.
+        let (port, ticket, rx, _y) = invite(true);
+        let said = join(
+            &wrong,
+            &format!("127.0.0.1:{port}"),
+            "Comptoir 2",
+            ticket,
+            false,
+            "2026-09-26",
+            &mut |_| true,
+        );
+        assert_eq!(
+            said.err().as_deref(),
+            Some(crate::strings::tr("posts_err_companion_invite"))
+        );
+        assert!(wrong.sync_post().is_none());
+        finish(rx);
+
+        let (port, ticket, rx, _y) = invite(true);
+        let (post, _) = join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        finish(rx);
+        assert_eq!(post, 1);
+        let held = Posts::load(&phone).unwrap();
+        let share = held.trousseau.clone().unwrap();
+        assert!(!share.is_whole());
+        let mut want = COMPANION.to_vec();
+        want.sort();
+        assert_eq!(share.streams(), want);
+        // The patients crossed sealed, and stay sealed.
+        assert!(phone.patients().unwrap().is_empty());
+        assert!(held
+            .journal
+            .records()
+            .any(|r| r.stream() == Stream::Dossiers));
+        // What it reads.
+        assert!(phone.drugs().unwrap().iter().any(|d| d.id == card));
+        assert_eq!(
+            phone
+                .events_between("2026-09-26", "2026-09-26")
+                .unwrap()
+                .len(),
+            1
+        );
+        let talks = phone.conversations().unwrap();
+        assert_eq!(talks.len(), 1);
+        let said = phone.conversation_messages(talks[0].id).unwrap();
+        assert_eq!(said[0].body, "Livraison à 14 h");
+        let posts = phone.sync_posts().unwrap();
+        assert_eq!(posts.len(), 2);
+        assert!(posts.iter().any(|p| p.post == 1 && p.companion));
+        // The desktop heard who joined at once, at its own door.
+        {
+            let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+            assert!(
+                a.sync_posts()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p.companion && p.post == 1),
+                "le téléphone s'est présenté à la porte qui l'a admis"
+            );
+        }
+        // And what the phone writes to the team crosses a folder too.
+        let folder = dir_a.join("echange-compagnon");
+        phone
+            .post_message(talks[0].id, "m2", "CD", "Reçu", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let mut pa = Posts::load(&a).unwrap();
+        pa.exchange_folder(&a, &folder).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        assert!(a.sync_posts().unwrap().iter().any(|p| p.companion));
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+    }
+
+    /// **Le compagnon, une fois appairé, parle à la porte du poste** :
+    /// ce qu'il écrit à l'équipe arrive par la synchronisation ordinaire,
+    /// sans dossier d'échange.
+    #[test]
+    fn a_companion_syncs_through_the_desktop_door() {
+        let (dir_a, _sa, a) = post("desk-door");
+        let (_dir_p, _sp, phone) = post("phone-door");
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: true,
+            },
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            answers,
+        );
+        let ticket = match rx.recv().unwrap() {
+            Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+            other => panic!("{other:?}"),
+        };
+        join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        loop {
+            if let Progress::Done(_) | Progress::Failed(_) = rx.recv().unwrap() {
+                break;
+            }
+        }
+        let (_auto, poke) = spawn_auto(
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            port,
+            None,
+            Vec::new(),
+            OfficineSide::default(),
+            Pace::default(),
+        );
+        let talk_here = phone.conversations().unwrap()[0].id;
+        phone
+            .post_message(talk_here, "m2", "CD", "Reçu", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        let mut said = Err(String::new());
+        for _ in 0..20 {
+            said = pp.sync_with(&phone, &format!("127.0.0.1:{port}"), Duration::from_secs(4));
+            if said.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        let _ = poke.send(Poke::Stop);
+        said.unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let mut pa = Posts::load(&a).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+    }
+
+    /// **Les tables de l'équipe se scellent à nouveau une fois** : un
+    /// groupe fondé quand la messagerie voyageait avec les dossiers la
+    /// rend lisible au compagnon, et un poste qui la reçoit une seconde
+    /// fois ne change rien.
+    #[test]
+    fn the_team_tables_are_resealed_once_on_their_stream() {
+        let (_dir, _s, a) = post("reseal");
+        let mut pa = Posts::load(&a).unwrap();
+        pa.found(&a, "Comptoir 1", "2026-09-26").unwrap();
+        let first = pa.reseal_team(&a, "2026-09-26").unwrap();
+        assert!(first >= 1, "la liste des postes au moins");
+        assert_eq!(pa.reseal_team(&a, "2026-09-27").unwrap(), 0);
+        let t = pa.trousseau.clone().unwrap();
+        let share = t.share(&COMPANION);
+        assert!(!pa.journal.read(&share, Stream::Equipe).facts.is_empty());
     }
 
     /// **La clé des postes n'ouvre pas le réseau d'officines, et
@@ -1956,6 +2331,7 @@ mod tests {
             Job::Invite {
                 port,
                 for_device: None,
+                companion: false,
             },
             dir.join("poste.db"),
             "secret".to_owned(),

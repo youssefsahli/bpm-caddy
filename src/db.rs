@@ -840,7 +840,10 @@ CREATE TABLE IF NOT EXISTS sync_posts (
     joined  TEXT NOT NULL DEFAULT '',
     -- Le jour où l'officine l'a retiré ; vide tant qu'il en est. Un poste
     -- retiré n'est plus écouté, et ce qu'il écrit n'est plus rangé.
-    left_on TEXT NOT NULL DEFAULT ''
+    left_on TEXT NOT NULL DEFAULT '',
+    -- '' : un poste de bureau ; 'compagnon' : le téléphone d'un membre
+    -- de l'équipe, qui ne tient qu'une part de la clé (`postes::COMPANION`).
+    kind    TEXT NOT NULL DEFAULT ''
 );
 -- Tout ce qui suit est **propre à ce poste** et ne voyage jamais : son
 -- identité et sa clé, ce qu'il a déjà rangé, ses questions, ses
@@ -1448,6 +1451,8 @@ const MIGRATIONS: &[&str] = &[
         high INTEGER NOT NULL
     )",
     "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
+    // Un poste de bureau ou un compagnon — voir `SCHEMA`.
+    "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -2913,6 +2918,28 @@ impl DrugStatus {
         }
     }
 }
+
+/// The prose of a card, field by field, as the full-text search reads
+/// it: the label the section carries on screen, and how to get at it.
+/// Here and not in the window, so the Android companion reads a card
+/// the way the desktop does.
+pub type MonoField = (&'static str, fn(&Drug) -> &str);
+
+pub const MONO_FIELDS: [MonoField; 13] = [
+    ("drug_sec_indications", |d| d.indications.as_str()),
+    ("drug_sec_mechanism", |d| d.mechanism.as_str()),
+    ("mono_f_dosage", |d| d.dosage.as_str()),
+    ("drug_sec_ci", |d| d.contraindications.as_str()),
+    ("mono_f_ddi", |d| d.ddi.as_str()),
+    ("drug_sec_adverse", |d| d.adverse.as_str()),
+    ("drug_sec_toxicity", |d| d.toxicity.as_str()),
+    ("drug_sec_monitoring", |d| d.monitoring.as_str()),
+    ("mono_f_iup", |d| d.iup.as_str()),
+    ("mono_f_missed", |d| d.missed_dose.as_str()),
+    ("mono_f_flags", |d| d.red_flags.as_str()),
+    ("mono_f_forms", |d| d.forms.as_str()),
+    ("mono_f_notes", |d| d.notes.as_str()),
+];
 
 /// One entry of the team's drug reference base (shared, encrypted with
 /// the patient data): the facts wanted at the counter in one glance.
@@ -40935,6 +40962,8 @@ pub struct PostRow {
     pub joined: String,
     /// Vide tant qu'il fait partie du groupe.
     pub left_on: String,
+    /// Un compagnon (téléphone) : il ne tient qu'une part de la clé.
+    pub companion: bool,
 }
 
 /// Une écriture capturée : son numéro, sa table, sa nature, la ligne
@@ -41182,7 +41211,10 @@ impl Db {
     pub fn sync_posts(&self) -> Result<Vec<PostRow>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT post, device, name, joined, left_on FROM sync_posts ORDER BY post")
+            .prepare(
+                "SELECT post, device, name, joined, left_on, kind = 'compagnon'
+                 FROM sync_posts ORDER BY post",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -41192,6 +41224,7 @@ impl Db {
                     name: r.get(2)?,
                     joined: r.get(3)?,
                     left_on: r.get(4)?,
+                    companion: r.get(5)?,
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -41410,9 +41443,27 @@ impl Db {
 
     /// Toutes les lignes de toutes les tables qui voyagent, en créations.
     pub fn snapshot(&self) -> Result<Vec<crate::replica::Op>, String> {
+        self.snapshot_where(|_| true)
+    }
+
+    /// Les lignes des tables d'un flux, en créations : ce qu'un poste
+    /// scelle à nouveau sur un flux où des tables sont venues d'un autre
+    /// (`Posts::reseal`). Reçues par un poste qui les a déjà, elles ne
+    /// changent rien.
+    pub fn snapshot_of(
+        &self,
+        flux: crate::replica::Flux,
+    ) -> Result<Vec<crate::replica::Op>, String> {
+        self.snapshot_where(|t| t.flux == flux)
+    }
+
+    fn snapshot_where(
+        &self,
+        keep: impl Fn(&crate::replica::Table) -> bool,
+    ) -> Result<Vec<crate::replica::Op>, String> {
         use crate::replica::{Kind, Op, TABLES};
         let mut out = Vec::new();
-        for t in TABLES {
+        for t in TABLES.iter().filter(|t| keep(t)) {
             let conn = self.conn_of(t.file);
             let (cols, key) = Self::table_shape(conn, t.name)?;
             if cols.is_empty() || key.is_empty() {
@@ -41476,7 +41527,13 @@ impl Db {
     /// Finir de rejoindre : ce poste prend son numéro, ses blocs, pose sa
     /// capture et se déclare aux autres — cette ligne-là part avec sa
     /// première synchronisation.
-    pub fn finish_join(&self, device: &str, name: &str, day: &str) -> Result<i64, String> {
+    pub fn finish_join(
+        &self,
+        device: &str,
+        name: &str,
+        day: &str,
+        companion: bool,
+    ) -> Result<i64, String> {
         let taken: Vec<i64> = self.sync_posts()?.into_iter().map(|p| p.post).collect();
         let post = crate::replica::next_post(&taken);
         self.set_sync_local("post", &post.to_string())?;
@@ -41484,8 +41541,8 @@ impl Db {
         self.install_capture(true)?;
         self.conn
             .execute(
-                "INSERT INTO sync_posts (post, device, name, joined) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![post, device, name, day],
+                "INSERT INTO sync_posts (post, device, name, joined, kind) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![post, device, name, day, if companion { "compagnon" } else { "" }],
             )
             .map_err(|e| e.to_string())?;
         Ok(post)
@@ -43190,7 +43247,11 @@ mod tests {
             b.apply_record(&format!("snap{i}"), "aa", "2026-09-23", &ops)
                 .unwrap();
         }
-        assert_eq!(b.finish_join("bb", "Comptoir 2", "2026-09-23").unwrap(), 1);
+        assert_eq!(
+            b.finish_join("bb", "Comptoir 2", "2026-09-23", false)
+                .unwrap(),
+            1
+        );
         // What B held before joining is gone; what A had is there.
         let names: Vec<String> = b
             .patients()
@@ -43290,7 +43351,7 @@ mod tests {
         b.prepare_join().unwrap();
         b.apply_record("snap", "aa", "2026-09-23", &snapshot)
             .unwrap();
-        b.finish_join("bb", "", "2026-09-23").unwrap();
+        b.finish_join("bb", "", "2026-09-23", false).unwrap();
         let file = b.add_patient("Durand", "Paul", "1950-05-05").unwrap();
         let sid = b
             .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)

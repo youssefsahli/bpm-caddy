@@ -1,0 +1,8 @@
+.gradle/
+build/
+local.properties
+*.iml
+.idea/
+# Built by build-rust.sh from the workspace:
+app/src/main/jniLibs/
+app/src/main/java/uniffi/
