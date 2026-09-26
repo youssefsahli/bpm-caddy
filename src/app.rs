@@ -69362,6 +69362,29 @@ impl eframe::App for App {
                                 );
                                 ui.add_space(4.0);
                                 let mut drop: Option<usize> = None;
+                                // **Le tableau tient dans la fenêtre** : le
+                                // menu des qualités à la mesure de la plus
+                                // longue, et le nom et le libellé libre
+                                // prennent ce qui reste (25 : 22), jamais
+                                // moins de douze caractères. En largeurs
+                                // fixes le tableau débordait à 1024 en
+                                // texte 1,6, et le menu élidait
+                                // « Préparateur en pharmacie » à 1400.
+                                let role_w = motif::select_width(
+                                    ui,
+                                    crate::config::Role::ALL
+                                        .iter()
+                                        .map(|r| r.label())
+                                        .chain(std::iter::once(tr("opts_op_role_other"))),
+                                );
+                                let fixed = chars_wide(ui, 7.0)
+                                    + role_w
+                                    + Self::button_width(ui, tr("itv_delete"))
+                                    + 4.0 * 8.0;
+                                let flex = (Self::scrolled_width(ui, ui.available_width()) - fixed)
+                                    .clamp(chars_wide(ui, 24.0), chars_wide(ui, 47.0));
+                                let name_w = flex * 25.0 / 47.0;
+                                let free_w = flex - name_w;
                                 egui::Grid::new("opts_operators")
                                     .num_columns(5)
                                     .spacing([8.0, 6.0])
@@ -69390,7 +69413,7 @@ impl eframe::App for App {
                                             );
                                             motif::field(
                                                 ui,
-                                                chars_wide(ui, 25.0),
+                                                name_w,
                                                 egui::TextEdit::singleline(&mut op.name),
                                             );
                                             // **Le menu écrit dans la
@@ -69428,7 +69451,7 @@ impl eframe::App for App {
                                             if motif::select(
                                                 ui,
                                                 ("opts_op_role", i),
-                                                chars_wide(ui, 20.0),
+                                                role_w,
                                                 &mut picked,
                                                 &roles,
                                             )
@@ -69438,7 +69461,7 @@ impl eframe::App for App {
                                             }
                                             motif::field(
                                                 ui,
-                                                chars_wide(ui, 22.0),
+                                                free_w,
                                                 egui::TextEdit::singleline(&mut op.role).hint_text(
                                                     motif::hint(tr("opts_op_role_hint")),
                                                 ),
@@ -70108,6 +70131,7 @@ impl eframe::App for App {
                                         .color(motif::text_dim()),
                                 );
                                 ui.add_space(6.0);
+                                let mut fields: Vec<(&str, &mut String)> = Vec::new();
                                 for (label, value) in [
                                     (
                                         tr("opts_mention_ord_header"),
@@ -70139,16 +70163,43 @@ impl eframe::App for App {
                                         &mut editor.cfg.disclaimers.conciliation,
                                     ),
                                 ] {
-                                    ui.label(dim(label));
-                                    motif::area(
-                                        ui,
-                                        egui::vec2(
-                                            ui.available_width().min(520.0),
-                                            Self::row_height(ui) * 2.0,
-                                        ),
-                                        egui::TextEdit::multiline(value)
-                                            .hint_text(motif::hint(tr("opts_mention_hint"))),
-                                    );
+                                    fields.push((label, value));
+                                }
+                                // **Deux colonnes quand la fenêtre les
+                                // porte** : une seule colonne de 520 pixels
+                                // laissait à 1400 les deux tiers de la
+                                // fenêtre vides et les huit mentions sur
+                                // deux écrans. Chaque case à la largeur de
+                                // sa colonne, en caractères.
+                                let gap = 16.0;
+                                let avail = Self::scrolled_width(ui, ui.available_width());
+                                let two = avail >= 2.0 * chars_wide(ui, 44.0) + gap;
+                                let col_w = if two {
+                                    ((avail - gap) / 2.0).min(chars_wide(ui, 70.0))
+                                } else {
+                                    avail.min(chars_wide(ui, 70.0))
+                                };
+                                let mut it = fields.into_iter();
+                                loop {
+                                    let left = it.next();
+                                    let right = if two { it.next() } else { None };
+                                    let Some(left) = left else { break };
+                                    ui.horizontal_top(|ui| {
+                                        for (label, value) in std::iter::once(left).chain(right) {
+                                            ui.vertical(|ui| {
+                                                ui.set_width(col_w);
+                                                ui.label(dim(label));
+                                                motif::area(
+                                                    ui,
+                                                    egui::vec2(col_w, Self::row_height(ui) * 2.0),
+                                                    egui::TextEdit::multiline(value).hint_text(
+                                                        motif::hint(tr("opts_mention_hint")),
+                                                    ),
+                                                );
+                                            });
+                                            ui.add_space(gap - ui.spacing().item_spacing.x);
+                                        }
+                                    });
                                     ui.add_space(6.0);
                                 }
                             }

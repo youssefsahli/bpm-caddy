@@ -5,6 +5,14 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.350.0] - 2026-09-26
+
+### Changed
+- Options › Mentions : sur grand écran, les huit mentions en deux colonnes,
+  toutes visibles sans défiler.
+- Options › Officine : le tableau de l'équipe tient dans la fenêtre en
+  grand texte, et la qualité « Préparateur en pharmacie » s'écrit en entier.
+
 ## [0.349.0] - 2026-09-26
 
 ### Fixed
