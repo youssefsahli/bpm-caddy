@@ -621,6 +621,8 @@ private fun PostsScreen(state: AppState) {
             )
             Spacer(Modifier.padding(6.dp))
             Button(onClick = { state.sync() }, enabled = !state.busy) { Text(T("mobile_sync")) }
+            val last = state.settings.lastSync
+            Hint(if (last.isBlank()) T("mobile_sync_never") else T("mobile_sync_last").replace("{}", last))
             Hint(T("mobile_sync_hint"))
         }
         HorizontalDivider(Modifier.padding(vertical = 12.dp))

@@ -24,6 +24,11 @@ class Settings(context: Context) {
             .split('\n').map { it.trim() }.filter { it.isNotEmpty() }
         set(v) = prefs.edit().putString("adresses", v.joinToString("\n")).apply()
 
+    /** La dernière fois qu'un poste a répondu, « JJ/MM/AAAA HH:MM ». */
+    var lastSync: String
+        get() = prefs.getString("derniere", "") ?: ""
+        set(v) = prefs.edit().putString("derniere", v).apply()
+
     /** Le dossier d'échange choisi (un arbre de documents), ou rien. */
     var folder: String?
         get() = prefs.getString("dossier", null)

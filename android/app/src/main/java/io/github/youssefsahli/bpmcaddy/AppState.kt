@@ -119,9 +119,14 @@ class AppState(private val context: Context) {
     fun sync() {
         val c = caddy ?: return
         work {
-            val said = withMulticast(context) {
-                c.sync(today(), settings.port.toUShort(), settings.addresses).said
+            val done = withMulticast(context) {
+                c.sync(today(), settings.port.toUShort(), settings.addresses)
             }
+            if (done.reached > 0u) {
+                settings.lastSync = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            }
+            val said = done.said
             val tree = settings.folder ?: return@work said
             val more = runCatching { Folder.exchange(context, c, tree, today()) }
                 .getOrElse { said(it) }
