@@ -37,6 +37,24 @@ class AppState(private val context: Context) {
     var revision by mutableIntStateOf(0)
         private set
 
+    /**
+     * **Effacer ce téléphone** : la base, sa clé du Keystore, les réglages.
+     * Le téléphone redevient celui d'avant l'invitation ; sur un poste, le
+     * retirer de la liste des postes pour qu'il ne soit plus écouté.
+     */
+    fun wipe() {
+        // The base is closed before its files go: SQLite holds them open.
+        caddy?.destroy()
+        caddy = null
+        status = null
+        vault.forget()
+        context.filesDir.listFiles()
+            ?.filter { it.name.startsWith("bpm-caddy") }
+            ?.forEach { it.delete() }
+        context.getSharedPreferences("reglages", Context.MODE_PRIVATE).edit().clear().apply()
+        note = T("mobile_wiped")
+    }
+
     /** Ce que l'écran a écrit lui-même (une conversation lue) : relire. */
     fun touched() {
         revision++

@@ -589,6 +589,29 @@ private fun PostsScreen(state: AppState) {
         }
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
         PhoneSettings(state)
+        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+        WipeButton(state)
+    }
+}
+
+@Composable
+private fun WipeButton(state: AppState) {
+    var asking by remember { mutableStateOf(false) }
+    Hint(T("mobile_wipe_hint"))
+    OutlinedButton(onClick = { asking = true }) { Text(T("mobile_wipe")) }
+    if (asking) {
+        AlertDialog(
+            onDismissRequest = { asking = false },
+            title = { Text(T("mobile_wipe_confirm")) },
+            text = { Text(T("mobile_wipe_hint")) },
+            confirmButton = {
+                TextButton(onClick = {
+                    asking = false
+                    state.wipe()
+                }) { Text(T("mobile_wipe")) }
+            },
+            dismissButton = { TextButton(onClick = { asking = false }) { Text(T("mobile_cancel")) } },
+        )
     }
 }
 
