@@ -1627,6 +1627,7 @@ fn auto(
                 let ip = link.peer_ip();
                 let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
                 if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
+                    door_knocks.forgive(ip);
                     talked = true;
                 }
             }
@@ -1641,6 +1642,7 @@ fn auto(
                     let ip = link.peer_ip();
                     let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
                     if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
+                        door_knocks.forgive(ip);
                         talked = true;
                     }
                 }
@@ -1985,7 +1987,10 @@ fn relay_names(waited: &[(String, std::sync::Arc<std::sync::atomic::AtomicBool>)
 /// la connexion est lâchée sans conversation — une adresse qui insiste
 /// n'occupe plus le fil. Les adresses du réseau local ne sont pas
 /// comptées : les postes s'y synchronisent quelques secondes après
-/// chaque écriture, et un comptoir chargé écrit souvent.
+/// chaque écriture, et un comptoir chargé écrit souvent. Une frappe
+/// suivie d'une conversation réussie n'est pas comptée non plus : c'est un
+/// poste du groupe, et plusieurs postes d'un site distant derrière une
+/// seule adresse ne se ferment pas la porte les uns aux autres.
 #[derive(Default)]
 struct Knocks(std::collections::HashMap<std::net::IpAddr, Vec<Instant>>);
 
@@ -2011,6 +2016,14 @@ impl Knocks {
         let seen = self.0.entry(ip).or_default();
         seen.push(now);
         seen.len() <= KNOCKS_PER_MINUTE * 2
+    }
+
+    /// A knock that became a conversation with a post of the group: taken
+    /// back from the count.
+    fn forgive(&mut self, ip: Option<std::net::IpAddr>) {
+        if let Some(seen) = ip.and_then(|ip| self.0.get_mut(&ip)) {
+            seen.pop();
+        }
     }
 }
 
@@ -2704,6 +2717,13 @@ mod tests {
         let admitted = (0..30).filter(|_| k.admit(Some(far))).count();
         assert_eq!(admitted, KNOCKS_PER_MINUTE * 2);
         assert!(k.admit(None));
+        // Posts of the group behind one address: every talk succeeds and
+        // is taken back, so the door never closes on them.
+        let site: std::net::IpAddr = "5.6.7.8".parse().unwrap();
+        for _ in 0..100 {
+            assert!(k.admit(Some(site)));
+            k.forgive(Some(site));
+        }
     }
 
     /// **Les tables de l'équipe se scellent à nouveau une fois** : un

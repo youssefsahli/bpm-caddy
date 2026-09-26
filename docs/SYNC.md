@@ -702,6 +702,12 @@ les nouveaux messages, ni un poste relié par un poste à jour, ni un
 retrait fait sur un poste à jour — sauf la liste des postes, qui voyage
 aussi sous `Officine`. Le lanceur met chaque poste à jour à son
 démarrage ; tant qu'un poste ne l'est pas, la messagerie le contourne.
+Pendant ce temps, deux traces bénignes : une même conversation lue sur
+un poste à jour puis sur un ancien donne une question « à arbitrer »
+sur l'heure de lecture ; et un poste mis à jour tard relit la copie
+`Equipe` des lignes de postes, ce qui peut poser la même question pour
+un poste renommé entre-temps. Rien n'est perdu ; la question se ferme
+en gardant l'une ou l'autre valeur.
 
 **Le premier mot.** Un poste admis (compagnon ou non) range ce qu'il a
 reçu, prend son numéro et le dit aussitôt à la porte qui l'a admis ;
@@ -739,7 +745,9 @@ poste BPM-Caddy à cette adresse, et une porte qu'un inconnu peut tenir
 occupée — une conversation reçue dure au plus trois minutes
 (`POSTS_ANSWER_BOUND`, ce qui est arrivé est gardé), et une adresse
 d'Internet qui frappe plus de douze fois dans la minute est lâchée sans
-conversation (`Knocks` ; le réseau local n'est pas compté). C'est la
+conversation (`Knocks` ; le réseau local n'est pas compté, ni une
+frappe devenue conversation avec un poste du groupe — plusieurs postes
+d'un site derrière une seule adresse ne se ferment pas la porte). C'est la
 synchronisation des postes qu'on peut ralentir ainsi, pas les données.
 Le port ouvert par le routeur est aussi celui des invitations : une
 invitation ouverte l'est alors depuis Internet, protégée par son code de
