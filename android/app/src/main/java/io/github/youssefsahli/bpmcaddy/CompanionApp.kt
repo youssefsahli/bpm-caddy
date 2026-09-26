@@ -30,7 +30,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -58,6 +65,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -72,12 +80,12 @@ import uniffi.bpm_caddy_mobile.Caddy
 import uniffi.bpm_caddy_mobile.displayDate
 import uniffi.bpm_caddy_mobile.eventCategories
 
-private enum class Tab(val key: String, val mark: String) {
-    Fiches("mobile_tab_cards", "F"),
-    Agenda("mobile_tab_agenda", "A"),
-    Planning("mobile_tab_planning", "P"),
-    Messages("mobile_tab_messages", "M"),
-    Postes("mobile_tab_posts", "O"),
+private enum class Tab(val key: String, val icon: ImageVector) {
+    Fiches("mobile_tab_cards", Icons.Filled.Search),
+    Agenda("mobile_tab_agenda", Icons.Filled.DateRange),
+    Planning("mobile_tab_planning", Icons.Filled.Person),
+    Messages("mobile_tab_messages", Icons.Filled.Email),
+    Postes("mobile_tab_posts", Icons.Filled.Settings),
 }
 
 /** Les coins carrés du bureau (Motif), adoucis d'un rien pour le doigt. */
@@ -129,15 +137,19 @@ private fun Locked(state: AppState, unlock: () -> Unit) {
 @Composable
 private fun Opened(state: AppState, caddy: Caddy) {
     val inGroup = state.status?.inGroup == true
-    var tab by rememberSaveable { mutableStateOf(if (inGroup) Tab.Fiches else Tab.Postes) }
+    // Chosen by a tap, or else by what the phone is: the cards once it
+    // has joined, the joining form before. Read at each composition, so
+    // the status arriving after the first frame still decides.
+    var chosen by rememberSaveable { mutableStateOf<Tab?>(null) }
+    val tab = chosen ?: if (inGroup) Tab.Fiches else Tab.Postes
     Scaffold(
         bottomBar = {
             NavigationBar {
                 Tab.entries.forEach { t ->
                     NavigationBarItem(
                         selected = tab == t,
-                        onClick = { tab = t },
-                        icon = { Text(t.mark, fontWeight = FontWeight.Bold) },
+                        onClick = { chosen = t },
+                        icon = { Icon(t.icon, contentDescription = null) },
                         label = { Text(T(t.key), maxLines = 1) },
                     )
                 }
