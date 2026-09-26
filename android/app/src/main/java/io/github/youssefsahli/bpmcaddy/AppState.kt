@@ -55,7 +55,17 @@ class AppState(private val context: Context) {
                 }
             }
             val c = opened.getOrElse {
-                note = said(it)
+                if (it is android.security.keystore.KeyPermanentlyInvalidatedException) {
+                    // La clé n'ouvrira plus jamais cette base : repartir
+                    // d'une base neuve, à relier de nouveau.
+                    vault.forget()
+                    context.filesDir.listFiles()
+                        ?.filter { f -> f.name.startsWith("bpm-caddy") }
+                        ?.forEach { f -> f.delete() }
+                    note = T("mobile_key_invalidated")
+                } else {
+                    note = said(it)
+                }
                 return@launch
             }
             caddy = c

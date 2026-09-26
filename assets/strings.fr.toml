@@ -2922,6 +2922,7 @@ mobile_locked = "Base chiffrée : déverrouiller avec l'empreinte ou le code du 
 mobile_unlock = "Déverrouiller"
 mobile_unlock_title = "BPM-Caddy"
 mobile_unlock_subtitle = "Ouvrir la base du téléphone"
+mobile_key_invalidated = "Le verrouillage du téléphone a changé : sa clé n'ouvre plus l'ancienne base. Déverrouiller, puis rejoindre l'officine à nouveau (onglet Poste)."
 mobile_unlock_no_lock = "Aucun verrouillage d'écran : en définir un (code, empreinte) dans les réglages d'Android. La base ne s'ouvre pas sans."
 mobile_ok = "OK"
 mobile_back = "‹ Retour"

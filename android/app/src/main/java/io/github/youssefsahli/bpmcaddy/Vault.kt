@@ -46,6 +46,20 @@ class Vault(private val context: Context) {
         return fresh
     }
 
+    /**
+     * Oublier la clé et la phrase — quand Android a invalidé la clé (une
+     * empreinte ajoutée, le verrouillage retiré) : la base qu'elle
+     * ouvrait ne s'ouvrira plus, le téléphone rejoint l'officine à
+     * nouveau et reçoit tout. Rien n'est perdu : tout vient des postes, et
+     * ce que ce téléphone avait écrit y est déjà s'il s'était synchronisé.
+     */
+    fun forget() {
+        prefs.edit().clear().apply()
+        runCatching {
+            KeyStore.getInstance("AndroidKeyStore").apply { load(null) }.deleteEntry(ALIAS)
+        }
+    }
+
     private fun key(): SecretKey {
         val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (store.getKey(ALIAS, null) as? SecretKey)?.let { return it }
