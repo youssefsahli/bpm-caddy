@@ -41293,7 +41293,13 @@ impl Db {
             .execute(
                 "INSERT OR IGNORE INTO sync_posts (post, device, name, joined, kind)
                  VALUES (?1, ?2, ?3, ?4, ?5)",
-                rusqlite::params![post, device, name, day, if companion { "compagnon" } else { "" }],
+                rusqlite::params![
+                    post,
+                    device,
+                    name,
+                    day,
+                    if companion { "compagnon" } else { "" }
+                ],
             )
             .map(|_| ())
             .map_err(|e| e.to_string())

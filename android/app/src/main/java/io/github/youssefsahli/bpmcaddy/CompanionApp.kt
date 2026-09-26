@@ -654,7 +654,9 @@ private fun WipeButton(state: AppState) {
 @Composable
 private fun JoinForm(state: AppState) {
     var code by rememberSaveable { mutableStateOf("") }
-    var name by rememberSaveable { mutableStateOf("") }
+    // Le modèle du téléphone, à défaut d'un nom : un nom dans la liste des
+    // postes vaut mieux que « Sans nom ».
+    var name by rememberSaveable { mutableStateOf(android.os.Build.MODEL ?: "") }
     Text(T("mobile_join_title"), style = MaterialTheme.typography.titleMedium)
     Hint(T("mobile_join_hint"))
     OutlinedTextField(

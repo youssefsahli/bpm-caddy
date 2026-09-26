@@ -713,7 +713,8 @@ impl Caddy {
                 ),
             });
         }
-        let Some(id) = db.post_message(conversation, "", author.trim(), body.trim(), None, "", None)?
+        let Some(id) =
+            db.post_message(conversation, "", author.trim(), body.trim(), None, "", None)?
         else {
             return Ok(());
         };
@@ -913,6 +914,119 @@ mod tests {
         assert!(c.delete_event(id, "Formation vaccination".into()).unwrap());
         assert_eq!(event_categories().len(), 5);
         let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// **The phone's whole path, through its own API**: a desktop in this
+    /// process founds a group and invites a phone; the bridge joins with
+    /// the full code, reads a card and the team's message, writes back,
+    /// and the desktop's door receives it.
+    #[test]
+    fn the_bridge_joins_reads_writes_and_syncs_with_a_desktop() {
+        use bpm_caddy::postes::{spawn, spawn_auto, Job, OfficineSide, Pace, Poke, Progress};
+        let desk_dir = dir("bridge-desk");
+        let phone_dir = dir("bridge-phone");
+        let desk_path = desk_dir.join("poste.db");
+        {
+            let db = Db::open(&desk_path, "secret").unwrap();
+            db.add_drug("Amoxicilline").unwrap();
+            let talk = db
+                .create_conversation(
+                    "u1",
+                    bpm_caddy::messages::Channel::Equipe,
+                    "Équipe",
+                    &[],
+                    None,
+                    &[],
+                    "YS",
+                )
+                .unwrap();
+            db.post_message(talk, "m1", "YS", "Bonjour", None, "", None)
+                .unwrap();
+            Posts::load(&db)
+                .unwrap()
+                .found(&db, "Comptoir 1", "2026-09-26")
+                .unwrap();
+        }
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: true,
+            },
+            desk_path.clone(),
+            "secret".into(),
+            "2026-09-26".into(),
+            answers,
+        );
+        let code = match rx.recv().unwrap() {
+            Progress::Waiting(code) => {
+                // The code names the machine's network address; here, the
+                // loop-back.
+                format!("{}@127.0.0.1:{port}", code.split('@').next().unwrap())
+            }
+            other => panic!("{other:?}"),
+        };
+        let phone = Caddy::open(phone_dir.display().to_string(), "k".into()).unwrap();
+        let said = phone
+            .join(code, "Téléphone".into(), "2026-09-26".into(), port)
+            .unwrap();
+        assert!(said.contains('2'), "{said}");
+        loop {
+            if let Progress::Done(_) | Progress::Failed(_) = rx.recv().unwrap() {
+                break;
+            }
+        }
+        let status = phone.status().unwrap();
+        assert!(status.in_group && status.cards == 1);
+        assert_eq!(phone.search_cards("amox".into(), 5).len(), 1);
+        let talks = phone.conversations("AB".into()).unwrap();
+        assert_eq!(talks.len(), 1);
+        assert_eq!(talks[0].unread, 1);
+        phone.mark_read(talks[0].id, "AB".into()).unwrap();
+        assert_eq!(phone.conversations("AB".into()).unwrap()[0].unread, 0);
+        phone
+            .send_message(talks[0].id, "AB".into(), "Reçu".into())
+            .unwrap();
+
+        // The desktop holds its door; the phone dials it by address.
+        let (_auto, poke) = spawn_auto(
+            desk_path.clone(),
+            "secret".into(),
+            "2026-09-26".into(),
+            port,
+            None,
+            Vec::new(),
+            OfficineSide::default(),
+            Pace::default(),
+        );
+        let mut reached = 0;
+        for _ in 0..20 {
+            reached = phone
+                .sync("2026-09-26".into(), 0, vec![format!("127.0.0.1:{port}")])
+                .unwrap()
+                .reached;
+            if reached == 1 {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(300));
+        }
+        let _ = poke.send(Poke::Stop);
+        assert_eq!(reached, 1);
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        let db = Db::open(&desk_path, "secret").unwrap();
+        let mut posts = Posts::load(&db).unwrap();
+        posts.absorb(&db, "2026-09-26").unwrap();
+        let conv = db.conversations().unwrap()[0].id;
+        let back = db.conversation_messages(conv).unwrap();
+        assert!(back.iter().any(|m| m.body == "Reçu" && m.author == "AB"));
+        let _ = std::fs::remove_dir_all(&desk_dir);
+        let _ = std::fs::remove_dir_all(&phone_dir);
     }
 
     #[test]
