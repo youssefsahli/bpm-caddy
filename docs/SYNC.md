@@ -641,8 +641,29 @@ flux, `postes::COMPANION` — `Fiches`, `Agenda`, `Planning`, `Equipe`.
 Il ne peut rien dériver d'autre : il n'y a pas de secret dans une part.
 La part passe par la même trame chiffrée que la clé d'un poste, au même
 moment, après la même preuve (`Frame::Share`, `Session::sharing`).
-Un poste de bureau refuse une part, un compagnon refuse une clé entière
-(`posts_err_companion_invite`, `posts_err_not_companion_invite`).
+**Le code d'invitation dit à quelle sorte de poste il est destiné** : un
+compagnon prouve le ticket sous un rôle à lui (`ROLE_JOIN_COMPANION`,
+`Session::as_companion`), qu'une invitation de poste n'accepte pas — et
+inversement. Un téléphone qui saisit le code d'un poste ne reçoit donc
+rien, pas même une clé entière qu'il refuserait ensuite ; un poste qui
+saisit celui d'un téléphone non plus, et l'invitation reste ouverte pour
+celui à qui elle était destinée.
+
+**Écrire, c'est sceller sur le flux de la table.** Une écriture reçue
+n'est rangée que si l'enregistrement qui la porte a été scellé sur le
+flux de sa table (`replica::admissible`, appelé par `Db::apply_gated`) :
+une ligne de patient, du registre ou des réglages glissée par un
+téléphone modifié dans un enregistrement de l'équipe n'est pas rangée,
+parce qu'il ne tient pas la clé qui scelle ces flux. Deux exceptions,
+pour les postes d'avant : les tables de l'équipe arrivent aussi sous
+`Dossiers` et `Officine`. Et sous le flux de l'équipe, un poste qui tient
+la clé entière n'accepte pour `sync_posts` que ce qu'un poste dit de
+lui-même — sa ligne à l'arrivée, son nom et ses adresses ensuite ; les
+gestes sur les autres postes (retirer, nommer) voyagent **aussi** sous
+`Officine`, que seuls les postes de bureau scellent. Ce qu'un téléphone
+modifié peut encore écrire : les fiches, l'agenda, le planning et la
+messagerie — ses quatre flux, comme un poste de bureau. L'application
+ne lui propose pas d'écrire le planning ; rien d'autre ne l'en empêche.
 
 **Il tient tout, il n'ouvre que sa part.** Le journal est un graphe :
 un enregistrement nomme ses parents, de tous les flux. Le compagnon
@@ -661,12 +682,24 @@ message peut citer un patient) et la liste des postes sous `Officine`
 flux à eux, `Equipe` (code 9) : `conversations`, `messages`,
 `message_reads`, `message_files`, `message_chunks`, `sync_posts`. Un
 message cite un patient par son numéro, jamais par son dossier ; le
-téléphone l'indique et ne l'ouvre pas. Ce qui avait voyagé avant sous
-les anciens flux, un poste le scelle à nouveau une fois, avant sa
-première invitation d'un compagnon (`Posts::reseal_team`) : reçu par un
-poste qui l'a déjà, cela ne change rien. Un poste d'une version
-antérieure garde ces enregistrements sans les lire jusqu'à sa mise à
-jour — le lanceur l'y amène.
+téléphone l'indique et ne l'ouvre pas. **Ce que le téléphone reçoit
+aussi**, et qu'il faut savoir : les fichiers joints aux messages
+d'équipe (une pièce jointe peut être un document de patient — c'est
+alors l'équipe qui l'a envoyé), et les conversations avec les autres
+officines (rangées dans les mêmes tables ; l'application ne les montre
+pas).
+
+La liste des postes et les conversations qui existaient avant, un poste
+les scelle à nouveau une fois, avant sa première invitation d'un
+compagnon (`Posts::reseal_team`). Pas les messages d'avant : le
+téléphone reçoit ceux écrits depuis.
+
+**Mettre à jour tous les postes.** Un poste d'une version antérieure
+garde les enregistrements de l'équipe sans les lire : il ne voit pas
+les nouveaux messages, ni un poste relié par un poste à jour, ni un
+retrait fait sur un poste à jour — sauf la liste des postes, qui voyage
+aussi sous `Officine`. Le lanceur met chaque poste à jour à son
+démarrage ; tant qu'un poste ne l'est pas, la messagerie le contourne.
 
 **Le premier mot.** Un poste admis (compagnon ou non) range ce qu'il a
 reçu, prend son numéro et le dit aussitôt à la porte qui l'a admis ;
@@ -700,11 +733,19 @@ local. Elle ne change rien à la conversation : la poignée de main
 chiffrée, puis une réponse aux seuls postes du groupe ; un inconnu
 n'obtient pas un octet du journal. Ce qu'elle expose : l'existence d'un
 poste BPM-Caddy à cette adresse, et une porte qu'un inconnu peut tenir
-occupée le temps de la patience d'une conversation (8 s) — la
-synchronisation des postes, pas les données. En IPv6, la box doit
-laisser passer le port (certaines le refusent par défaut) ; derrière un
-CGNAT sans IPv6, rien ne rend le poste joignable : le téléphone
-synchronise au retour sur le Wi-Fi.
+occupée — une conversation reçue dure au plus trois minutes
+(`POSTS_ANSWER_BOUND`, ce qui est arrivé est gardé), et une adresse
+d'Internet qui frappe plus de douze fois dans la minute est lâchée sans
+conversation (`Knocks` ; le réseau local n'est pas compté). C'est la
+synchronisation des postes qu'on peut ralentir ainsi, pas les données.
+Le port ouvert par le routeur est aussi celui des invitations : une
+invitation ouverte l'est alors depuis Internet, protégée par son code de
+quatre-vingts bits et ses vingt essais. En IPv6, la box doit laisser
+passer le port (certaines le refusent par défaut) ; derrière un CGNAT
+sans IPv6, rien ne rend le poste joignable : le téléphone synchronise au
+retour sur le Wi-Fi. Deux postes « joignables » d'une même officine sur
+le même port se disputent l'ouverture du routeur : un seul par officine,
+ou des ports différents.
 
 **Le code.** `mobile/` (crate `bpm-caddy-mobile`, UniFFI) traduit la
 bibliothèque — sans la fonction `desktop` — pour l'application Kotlin de
