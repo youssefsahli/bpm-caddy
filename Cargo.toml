@@ -25,6 +25,9 @@ keyring = { version = "3", features = ["apple-native", "windows-native", "sync-s
 rfd = { version = "0.15", optional = true }
 # Validates a chosen font file before egui is asked to parse it.
 ab_glyph = { version = "0.2", optional = true }
+# L'invitation d'un téléphone se montre aussi en code QR, que le téléphone
+# scanne au lieu de recopier le code (Rust pur, sans dépendance).
+qrcodegen = { version = "1.8", optional = true }
 lopdf = { version = "0.44.0", default-features = false }
 # Only ever used by Options › À propos, on a button press, on a worker
 # thread: the application asks GitHub which release is the latest and
@@ -88,6 +91,7 @@ desktop = [
     "dep:keyring",
     "dep:rfd",
     "dep:ab_glyph",
+    "dep:qrcodegen",
 ]
 
 [[bin]]

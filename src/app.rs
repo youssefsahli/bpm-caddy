@@ -11088,6 +11088,46 @@ struct PostsWindow {
     invite_now: bool,
     /// Le poste choisi sur la carte : l'invitation s'annonce pour lui.
     invite_target: Option<String>,
+    /// L'invitation en cours est pour un téléphone : son code se montre
+    /// aussi en QR.
+    inviting_phone: bool,
+}
+
+/// **Un code QR**, peint : sombre sur clair quel que soit le thème — un
+/// lecteur ne lit pas un code inversé —, pris dans la feuille et l'encre
+/// de la palette (`motif::paper`, `motif::ink`), échangées si une palette
+/// les donnait dans l'autre sens. Une marge de quatre modules autour,
+/// comme la norme la demande.
+fn qr_code(ui: &mut egui::Ui, text: &str, side: f32) {
+    let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium) else {
+        return;
+    };
+    let (paper, ink) = {
+        let (p, i) = (motif::paper(), motif::ink());
+        let light = |c: egui::Color32| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b());
+        if light(p) >= light(i) {
+            (p, i)
+        } else {
+            (i, p)
+        }
+    };
+    let n = qr.size();
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, paper);
+    let cell = side / (n + 8) as f32;
+    for y in 0..n {
+        for x in 0..n {
+            if qr.get_module(x, y) {
+                let min = rect.min + egui::vec2((x + 4) as f32 * cell, (y + 4) as f32 * cell);
+                painter.rect_filled(
+                    egui::Rect::from_min_size(min, egui::vec2(cell, cell)),
+                    0.0,
+                    ink,
+                );
+            }
+        }
+    }
 }
 
 /// What the base says about the posts, read when the window opens and
@@ -14417,7 +14457,9 @@ impl App {
                         // les gestes. La synchronisation automatique ne
                         // part pas — une capture n'ouvre pas de porte.
                         #[cfg(feature = "sync")]
-                        Ok("postes") => {
+                        // « postes_telephone » : la même, une invitation
+                        // de téléphone ouverte — le code et son QR.
+                        Ok(key @ ("postes" | "postes_telephone")) => {
                             session.posts_auto_tried = true;
                             if session.db.sync_post().is_none() {
                                 let _ =
@@ -14442,8 +14484,12 @@ impl App {
                                 &session.today,
                                 true,
                             );
+                            let phone = key == "postes_telephone";
                             session.posts_window = Some(PostsWindow {
                                 summary: PostsSummary::read(&session.db).ok(),
+                                waiting: phone
+                                    .then(|| "ZQHE-4675-V9JE-GCS0@192.168.1.10:7743".to_owned()),
+                                inviting_phone: phone,
                                 ..PostsWindow::default()
                             });
                         }
@@ -59099,6 +59145,20 @@ impl App {
                                     ui.ctx().copy_text(code.clone());
                                 }
                             });
+                            // A phone scans it rather than typing it.
+                            if w.inviting_phone {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("posts_waiting_scan"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                let side =
+                                    (motif::button_height(ui) * 7.0).min(ui.available_width());
+                                qr_code(ui, code, side);
+                            }
                         }
                     });
                 if let Some((bad, note)) = &w.note {
@@ -59228,6 +59288,16 @@ impl App {
             // The door and the base are the task's while it runs.
             session.stop_posts_auto();
             session.posts_auto_tried = true;
+            let phone = matches!(
+                job,
+                Job::Invite {
+                    companion: true,
+                    ..
+                }
+            );
+            if let Some(w) = &mut session.posts_window {
+                w.inviting_phone = phone;
+            }
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
             let rx = crate::postes::spawn(

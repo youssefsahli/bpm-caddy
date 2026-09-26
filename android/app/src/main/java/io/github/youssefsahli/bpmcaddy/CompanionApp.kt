@@ -661,6 +661,16 @@ private fun JoinForm(state: AppState) {
     var name by rememberSaveable { mutableStateOf(android.os.Build.MODEL ?: "") }
     Text(T("mobile_join_title"), style = MaterialTheme.typography.titleMedium)
     Hint(T("mobile_join_hint"))
+    val context = LocalContext.current
+    OutlinedButton(
+        onClick = {
+            com.google.mlkit.vision.codescanner.GmsBarcodeScanning.getClient(context)
+                .startScan()
+                .addOnSuccessListener { found -> found.rawValue?.let { code = it.trim() } }
+                .addOnFailureListener { state.notice(T("mobile_join_scan_failed")) }
+        },
+        modifier = Modifier.padding(vertical = 4.dp),
+    ) { Text(T("mobile_join_scan")) }
     OutlinedTextField(
         value = code,
         onValueChange = { code = it },

@@ -104,6 +104,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.9.1")
     implementation("androidx.biometric:biometric:1.1.0")
     implementation("androidx.documentfile:documentfile:1.1.0")
+    // Le lecteur de codes de Google : il ouvre sa propre caméra, sans que
+    // l'application demande l'autorisation de la caméra.
+    implementation("com.google.android.gms:play-services-code-scanner:16.1.0")
     implementation("androidx.fragment:fragment-ktx:1.8.8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
     // UniFFI's Kotlin bindings call the Rust library through JNA.
