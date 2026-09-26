@@ -413,6 +413,44 @@ mod tests {
         stop.store(true, Ordering::SeqCst);
     }
 
+    /// A preface trickled one byte at a time is let go when its whole
+    /// deadline passes, not a byte's: nobody holds a thread for minutes.
+    #[test]
+    fn a_trickled_preface_is_let_go_on_time() {
+        let (port, stop) = relay(&[G]);
+        let mut s = TcpStream::connect(("127.0.0.1", port)).unwrap();
+        let begun = Instant::now();
+        let mut closed = false;
+        for b in b"BPMRELAIS1 attente ".iter() {
+            if s.write_all(&[*b]).is_err() {
+                closed = true;
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(700));
+            if begun.elapsed() > PREFACE_WAIT + Duration::from_secs(2) {
+                break;
+            }
+        }
+        if !closed {
+            s.set_read_timeout(Some(Duration::from_secs(3))).unwrap();
+            let mut buf = [0u8; 1];
+            // Closed reads as 0 (or a reset); still open would time out.
+            match s.read(&mut buf) {
+                Ok(0) => {}
+                Err(e) => assert!(
+                    !matches!(
+                        e.kind(),
+                        std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                    ),
+                    "toujours ouverte"
+                ),
+                Ok(_) => panic!("le relais a répondu"),
+            }
+        }
+        assert!(begun.elapsed() < PREFACE_WAIT + Duration::from_secs(6));
+        stop.store(true, Ordering::SeqCst);
+    }
+
     /// A group nobody asked to relay gets nothing, and a caller with no
     /// post waiting is let go at once.
     #[test]
