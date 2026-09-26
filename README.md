@@ -113,6 +113,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Encrypted at rest** — SQLCipher (256-bit AES); the key comes from a master password or the OS credential manager. Daily encrypted snapshots in `backups/`.
 - **Several posts, one base** — compare-and-set writes, periodic reload, merged team notes; optional encrypted peer-to-peer replication between posts.
 - **Network of officines** — shortages and substitutions, sourced pharmacokinetic values, and versioned drug cards, preparations, protocols, TROD lines and the vaccine catalogue travel between the officines of a groupement (never a patient), field by field with arbitration. Each paired officine shows what it sent, when news last came, and whether it answers directly — with a readable reason when it does not.
+- **Android companion** — a team member's phone joins the officine by scanning a QR code on a post: drug cards (search, reading, correcting), the agenda, the team planning and the team chat with attachments. It holds a *share* of the posts' key — never the key to patient files, the stupéfiants register or the till, which it carries sealed without being able to open — and its base opens with the phone's screen lock. It talks to the posts directly: on the officine Wi-Fi, over the internet to a post made reachable (IPv6, UPnP; off by default), through a relay offered by a friendly officine that passes the encrypted conversation without reading or keeping it, or through an exchange folder. No server. See [`docs/SYNC.md`](docs/SYNC.md) § 7.8–7.9 and [`docs/ANDROID.md`](docs/ANDROID.md).
 - **Configurable text** — every UI string lives in an embedded TOML and can be overridden by a `strings.toml` next to `config.toml`, or in-app under « Libellés ». A rewrite whose original changes in a later version is flagged for review. No built-in disclaimer: mentions live in `[disclaimers]`, empty by default.
 - **Auto-updating launcher** — `bpm-caddy-launcher` checks GitHub Releases at startup, with an offline fallback to the installed copy.
 - **Test coverage** — `./scripts/coverage.sh` enforces two floors that only move up; `scripts/smoke.sh` opens every view at four window shapes and fails on any panic.
@@ -138,6 +139,9 @@ The repository is a Cargo workspace:
 | `bpm-caddy` (root) | The main application |
 | `launcher/` | Auto-updating launcher (`bpm-caddy-launcher`) |
 | `motif/` | X/Motif look-and-feel for egui (palette, bevels, widgets) |
+| `sync/` | `bpm-sync`, the encrypted peer-to-peer journal between posts and officines |
+| `mobile/` | The Android companion's Rust side (UniFFI bridge over the library, without the desktop) |
+| `android/` | The Android companion app (Kotlin, Jetpack Compose) |
 
 ## Installing
 
