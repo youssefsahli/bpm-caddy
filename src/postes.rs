@@ -1216,6 +1216,12 @@ pub struct OfficineSide {
     /// postes écoute aussi en IPv6, le routeur ouvre son port (UPnP), et
     /// le poste publie ses adresses (`reach.rs`).
     pub posts_internet: bool,
+    /// **Relayer** pour les officines du réseau (`[reseau] relais`) : le
+    /// port du relais (`relay.rs`) ; 0, ce poste ne relaie pas.
+    pub relay_port: u16,
+    /// **Se faire relayer** (`[postes] relais`) : attendre aux relais que
+    /// les officines du réseau offrent.
+    pub posts_relay: bool,
 }
 
 /// Combien de conversations d'officines à la fois, au plus : chacune a
@@ -1435,6 +1441,33 @@ fn auto(
     let mut published = false;
     let mut reach_looked: Option<Instant> = None;
     let mut mapped = false;
+    // What this post publishes: its own addresses, and the relays where
+    // it waits — joined into its line of `sync_posts`.
+    let mut direct_reach = String::new();
+    // **Le relais** que cette officine tient pour les autres, et ce qu'il
+    // accepte — relu chaque minute des demandes reçues du réseau.
+    let relay_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let relay_allowed: crate::relay::Allowed = Default::default();
+    let serving = side.relay_port != 0
+        && crate::relay::serve(
+            side.relay_port,
+            std::sync::Arc::clone(&relay_allowed),
+            std::sync::Arc::clone(&relay_stop),
+        )
+        .is_ok();
+    let (offer_tx, offer_rx) = std::sync::mpsc::channel::<(bool, String)>();
+    let mut relay_mapped = false;
+    let mut relay_read: Option<Instant> = None;
+    // **Les relais où ce poste attend** : un fil par adresse offerte, qui
+    // passe au fil des postes chaque conversation qu'un relais lui met en
+    // relation.
+    let group = trousseau
+        .as_ref()
+        .filter(|t| t.is_whole())
+        .map(|t| hex(&t.name().bytes()));
+    let waiting_relays = side.posts_relay && group.is_some();
+    let (relayed_tx, relayed_rx) = std::sync::mpsc::channel::<bpm_sync::link::TcpLink>();
+    let mut relays_waited: Vec<String> = Vec::new();
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
     if let Some(u) = &udp {
         let _ = u.set_broadcast(true);
@@ -1478,8 +1511,88 @@ fn auto(
         }
         if let Ok((router, reach)) = reach_rx.try_recv() {
             mapped |= router;
+            direct_reach = reach;
             published = true;
-            db.set_post_reach(&me, &reach)?;
+            db.set_post_reach(
+                &me,
+                &crate::reach::with_relays(&direct_reach, &relays_waited),
+            )?;
+        }
+        // Once a minute: what the relay accepts, where it can be reached,
+        // and the relays this post waits at.
+        if (serving || waiting_relays) && relay_read.is_none_or(|t| t.elapsed() >= RELAY_EVERY) {
+            relay_read = Some(Instant::now());
+            if serving {
+                if let Ok(mut a) = relay_allowed.lock() {
+                    *a = db
+                        .setting(crate::network::RELAY_GROUPS)
+                        .unwrap_or_default()
+                        .split(',')
+                        .filter(|g| !g.is_empty())
+                        .map(str::to_owned)
+                        .collect();
+                }
+                let tx = offer_tx.clone();
+                let relay_port = side.relay_port;
+                std::thread::spawn(move || {
+                    let v4 = crate::reach::open_mapping(relay_port);
+                    let _ = tx.send((v4.is_some(), crate::reach::reach_text(v4, &[], relay_port)));
+                });
+            }
+            if let (true, Some(g)) = (waiting_relays, group.as_ref()) {
+                let was = db.setting(crate::network::RELAY_REQUEST);
+                if was.as_deref() != Some(g.as_str()) {
+                    let _ =
+                        db.set_setting(crate::network::RELAY_REQUEST, g, was.as_deref(), "", "");
+                }
+                for address in crate::network::offered_relays(&db) {
+                    if relays_waited.contains(&address) {
+                        continue;
+                    }
+                    relays_waited.push(address.clone());
+                    let (tx, g, stop) = (
+                        relayed_tx.clone(),
+                        g.clone(),
+                        std::sync::Arc::clone(&relay_stop),
+                    );
+                    std::thread::spawn(move || {
+                        while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                            match crate::relay::wait(&address, &g, TALK_PATIENCE) {
+                                Ok(stream) => {
+                                    if let Ok(link) =
+                                        bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE)
+                                    {
+                                        if tx.send(link.with_deadline(POSTS_ANSWER_BOUND)).is_err()
+                                        {
+                                            return;
+                                        }
+                                    }
+                                }
+                                Err(_) => std::thread::sleep(Duration::from_secs(30)),
+                            }
+                        }
+                    });
+                }
+                published = true;
+                db.set_post_reach(
+                    &me,
+                    &crate::reach::with_relays(&direct_reach, &relays_waited),
+                )?;
+            }
+        }
+        if let Ok((router, offer)) = offer_rx.try_recv() {
+            relay_mapped |= router;
+            let was = db.setting(crate::network::RELAY_OFFER);
+            if was.as_deref().unwrap_or_default() != offer {
+                let _ = db.set_setting(crate::network::RELAY_OFFER, &offer, was.as_deref(), "", "");
+            }
+        }
+        // A phone the relay put in touch with this post: the conversation
+        // is answered here, like one knocking at the door.
+        while let (Ok(mut link), Some(t)) = (relayed_rx.try_recv(), &trousseau) {
+            if posts.talk(&db, t, &mut link, false).is_ok() {
+                talked = true;
+            }
         }
         // A post knocking at our IPv6 door, from outside the officine.
         if let (Some(door6), Some(t)) = (&door6, &trousseau) {
@@ -1814,8 +1927,25 @@ fn auto(
     if mapped {
         crate::reach::close_mapping(port);
     }
+    relay_stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    if serving {
+        let _ = db.set_setting(
+            crate::network::RELAY_OFFER,
+            "",
+            db.setting(crate::network::RELAY_OFFER).as_deref(),
+            "",
+            "",
+        );
+    }
+    if relay_mapped {
+        crate::reach::close_mapping(side.relay_port);
+    }
     Ok(())
 }
+
+/// Tous les combien le relais relit ce qu'il accepte, et le poste les
+/// relais où il attend.
+const RELAY_EVERY: Duration = Duration::from_secs(60);
 
 /// **Combien de fois une adresse d'Internet frappe à la porte des
 /// postes** : au-delà de deux fois [`KNOCKS_PER_MINUTE`] dans la minute,
@@ -2664,6 +2794,8 @@ mod tests {
                 name: "Pharmacie du Centre".to_owned(),
                 posts_paused: false,
                 posts_internet: false,
+                relay_port: 0,
+                posts_relay: false,
             },
             Pace::default(),
         );

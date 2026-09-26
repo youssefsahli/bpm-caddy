@@ -20,6 +20,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   poste écoute aussi en IPv6, demande au routeur d'ouvrir son port et
   communique ses adresses aux téléphones de l'équipe, qui le joignent
   hors de l'officine. Seuls les postes du groupe obtiennent une réponse.
+- Options › Base : « Relayer les téléphones des officines du réseau » et
+  « Se faire relayer par le réseau » (éteints par défaut). Une officine
+  qu'on ne peut pas joindre se fait relayer par une officine amie :
+  celle-ci met en relation son poste et le téléphone de son équipe, sans
+  rien lire ni rien garder.
 
 ### Changed
 - Messagerie d'équipe et liste des postes : elles voyagent à part des

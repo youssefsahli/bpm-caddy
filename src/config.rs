@@ -526,6 +526,12 @@ pub struct ReseauConfig {
     /// invitation : une porte tenue ouverte ne doit pas prendre la place
     /// de celle qu'on ouvre pour inviter.
     pub port_ecoute: u16,
+    /// **Relayer les téléphones des officines du réseau** : tenir, sur
+    /// `port_relais`, un relais qui met en relation le poste injoignable
+    /// d'une officine amie et le téléphone de son équipe, sans rien
+    /// garder ni rien lire (`relay.rs`). Éteint par défaut.
+    pub relais: bool,
+    pub port_relais: u16,
 }
 
 impl Default for ReseauConfig {
@@ -539,6 +545,8 @@ impl Default for ReseauConfig {
             annoncer: true,
             ecouter: true,
             port_ecoute: 7745,
+            relais: false,
+            port_relais: 7746,
         }
     }
 }
@@ -564,6 +572,11 @@ pub struct PostesConfig {
     /// porte que l'application tient ouverte sur Internet, et l'officine
     /// la décide. Seuls les postes du groupe obtiennent une réponse.
     pub internet: bool,
+    /// **Se faire relayer** par les officines du réseau qui relaient : ce
+    /// poste les appelle et attend qu'un téléphone de l'équipe le demande
+    /// — pour l'officine qu'aucun chemin ne rend joignable. Éteint par
+    /// défaut.
+    pub relais: bool,
 }
 
 impl Default for PostesConfig {
@@ -575,6 +588,7 @@ impl Default for PostesConfig {
             adresses: Vec::new(),
             a_la_fermeture: true,
             internet: false,
+            relais: false,
         }
     }
 }

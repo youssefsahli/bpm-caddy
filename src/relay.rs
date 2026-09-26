@@ -33,8 +33,10 @@ use std::time::{Duration, Instant};
 pub const PREFACE: &str = "BPMRELAIS1";
 /// Ce que le relais écrit au poste qui attendait : quelqu'un est là.
 pub const ENTER: &str = "ENTRE";
-/// Le port proposé pour relayer, quand l'officine n'en a pas écrit.
-pub const DEFAULT_PORT: u16 = 7745;
+/// Le port proposé pour relayer, quand l'officine n'en a pas écrit — à
+/// côté de ceux des postes (7743), des invitations d'officines (7742) et
+/// de la porte des officines (7745).
+pub const DEFAULT_PORT: u16 = 7746;
 
 /// Combien de postes d'un même groupe peuvent attendre à la fois.
 const WAITING_PER_GROUP: usize = 4;

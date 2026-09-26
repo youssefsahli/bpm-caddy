@@ -366,7 +366,13 @@ impl Caddy {
             if ways.is_empty() {
                 ways = bpm_caddy::reach::addresses(&p.reach);
             }
-            if ways.is_empty() {
+            // Its relays last: a relay puts the phone in touch with any
+            // post of the group waiting there, which is as good.
+            let relays: Vec<String> = bpm_caddy::reach::relays(&p.reach)
+                .into_iter()
+                .filter(|r| !tried.contains(&format!("relais:{r}")))
+                .collect();
+            if ways.is_empty() && relays.is_empty() {
                 continue;
             }
             targets += 1;
@@ -380,6 +386,26 @@ impl Caddy {
                         break;
                     }
                     Err(e) => last = format!("{address} ({})", bpm_caddy::strings::plain_error(&e)),
+                }
+            }
+            if let (false, Some(group)) = (ok, posts.group_hex()) {
+                for relay in relays {
+                    tried.push(format!("relais:{relay}"));
+                    let said = bpm_caddy::relay::call(&relay, &group, TALK)
+                        .map_err(|_| "Link".to_owned())
+                        .and_then(|s| {
+                            bpm_sync::link::TcpLink::new(s, TALK).map_err(|e| format!("{e:?}"))
+                        })
+                        .and_then(|mut link| posts.sync_over(&db, &mut link));
+                    match said {
+                        Ok(()) => {
+                            ok = true;
+                            break;
+                        }
+                        Err(e) => {
+                            last = format!("{relay} ({})", bpm_caddy::strings::plain_error(&e))
+                        }
+                    }
                 }
             }
             if ok {

@@ -1019,6 +1019,13 @@ adresses aux téléphones. Seuls les postes du groupe obtiennent une
 réponse. À défaut, le dossier d'échange ou des adresses saisies sur le
 téléphone.
 
+**Sans rien de joignable** (pas d'IPv6, adresse partagée par
+l'opérateur) : « Se faire relayer par le réseau » sur un poste, et une
+officine amie du réseau qui coche « Relayer les téléphones des officines
+du réseau ». Le poste attend chez elle ; le téléphone l'y demande. Elle
+ne lit ni ne garde rien : la conversation, chiffrée de bout en bout, ne
+fait que passer.
+
 # Messagerie
 
 La vue **Messages** (barre d'état, « Aller à… » : « messages ») réunit

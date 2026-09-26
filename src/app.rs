@@ -7287,6 +7287,12 @@ impl Session {
                 name: config.pharmacy.name.clone(),
                 posts_paused: !config.postes.automatique,
                 posts_internet: config.postes.internet,
+                relay_port: if config.reseau.relais {
+                    config.reseau.port_relais
+                } else {
+                    0
+                },
+                posts_relay: config.postes.relais,
             },
             crate::postes::Pace::default(),
         ));
@@ -70013,6 +70019,19 @@ impl eframe::App for App {
                                             .color(motif::alert()),
                                     );
                                 }
+                                ui.horizontal_wrapped(|ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.relais,
+                                        tr("opts_reseau_relay"),
+                                    )
+                                    .on_hover_text(tr("opts_reseau_relay_tooltip"));
+                                    ui.label(dim(tr("opts_reseau_listen_port")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.reseau.port_relais)
+                                            .range(1024..=65535),
+                                    );
+                                });
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.
@@ -70045,6 +70064,12 @@ impl eframe::App for App {
                                         tr("opts_postes_internet"),
                                     )
                                     .on_hover_text(tr("opts_postes_internet_tooltip"));
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.relais,
+                                        tr("opts_postes_relay"),
+                                    )
+                                    .on_hover_text(tr("opts_postes_relay_tooltip"));
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(dim(tr("opts_reseau_port")));
                                         ui.add(

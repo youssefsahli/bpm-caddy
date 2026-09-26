@@ -35618,6 +35618,18 @@ impl Db {
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
+    /// The settings whose key begins with `prefix`, key and value.
+    pub fn settings_with_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key, value FROM settings WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn setting(&self, key: &str) -> Option<String> {
         self.conn
             .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {

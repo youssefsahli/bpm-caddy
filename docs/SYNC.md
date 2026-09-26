@@ -754,6 +754,46 @@ bibliothèque — sans la fonction `desktop` — pour l'application Kotlin de
 (`mobile_…`) ; un test du crate lit les sources Kotlin et refuse une
 clé absente.
 
+### 7.9 Le relais sans mémoire
+
+Pour l'officine qu'aucun chemin ne rend joignable (CGNAT sans IPv6) :
+une **officine amie du réseau** met en relation son poste et le
+téléphone de son équipe, **sans rien lire ni rien garder**
+(`src/relay.rs`). Deux réglages, éteints par défaut :
+
+* **« Relayer les téléphones des officines du réseau »** (`[reseau]
+  relais`, port `port_relais`, 7746) sur un poste de l'officine qui
+  relaie — joignable, par UPnP ou un transfert dans sa box. Il annonce
+  où au réseau (`{"t":"relais","a":…}`, retiré en l'éteignant) et
+  n'accepte que les groupes de postes que des officines du réseau lui
+  ont demandé de relayer.
+* **« Se faire relayer par le réseau »** (`[postes] relais`) sur un
+  poste de l'officine relayée. Il demande au réseau de relayer son
+  groupe (`{"t":"relais_demande","g":…}`, le nom du groupe, rien
+  d'autre), **appelle** chaque relais offert et y **attend** ; il publie
+  ces relais dans sa ligne de `sync_posts` (`relais:hôte:port`), où les
+  téléphones les lisent.
+
+Le téléphone qui ne joint aucun poste ni sur le Wi-Fi, ni à ses
+adresses, **appelle** un relais en disant le nom du groupe ; le relais
+le met en relation avec un poste du groupe qui attend, et passe les
+octets de l'un à l'autre (`BPMRELAIS1 attente|appel <groupe>`, puis
+`ENTRE`). Ce qui passe est la conversation du § 5, chiffrée de bout en
+bout : la poignée de main prouve de chaque côté qu'on parle au bon
+poste, le relais n'a aucune clé. Il sait qu'un groupe échange, quand et
+combien ; il borne chaque conversation (dix minutes, 256 Mio par sens,
+90 s de silence), le nombre d'attentes par groupe et d'appels par
+adresse. Un inconnu qui se présenterait comme poste du groupe à
+attendre n'obtiendrait que l'échec d'une poignée de main.
+
+Ce qui n'est pas couvert par un test de bout en bout : le fil
+automatique qui sert ou attend — un relais n'est accepté qu'à une
+adresse publique, et servir demande au routeur un port. Le relais
+lui-même, la conversation relayée et les enregistrements du réseau le
+sont (`relay::tests`, `a_phone_reaches_its_desktop_through_a_relay`,
+`a_relay_offer_and_a_relay_request_cross_the_network`). Un seul poste
+par officine devrait relayer : l'offre est un réglage de l'officine.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
@@ -767,37 +807,12 @@ clé absente.
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
    du premier.
-4. **Le relais par les autres officines — pas construit, à décider.**
-   Pour l'officine qu'aucun chemin ne rend joignable (CGNAT sans IPv6),
-   un poste joignable d'une officine amie du réseau tiendrait une
-   *boîte* : la copie scellée du journal des postes de l'officine
-   relayée, qu'il ne peut pas ouvrir.
-
-   *Comment* : l'officine A désigne, parmi les officines de son réseau,
-   celle qui la relaie (B) ; un enregistrement du réseau adressé à B lui
-   donne le nom du groupe de A et les identités de ses postes et
-   téléphones. B, s'il a accepté de relayer (réglage éteint par défaut),
-   répond sur sa porte des officines à ces identités-là, sous une
-   « part » vide (le nom du groupe, aucune clé) — la conversation est
-   celle de § 5, B n'y est qu'un journal de plus. Les postes de A et
-   leurs téléphones y déposent et y reprennent, et l'adresse de B se
-   publie dans la ligne des postes de A comme leurs propres adresses.
-
-   *Ce que cela coûte* : B garde **tout** le journal de A — dossiers
-   compris, chiffrés, qu'il ne lit pas — plusieurs centaines de
-   mégaoctets au fil des ans ; B voit quand et combien A échange ; B
-   peut cesser de relayer. Une limite de taille par officine relayée
-   serait nécessaire.
-
-   *La question à trancher avant tout code* : une officine qui conserve,
-   même chiffrées de bout en bout, les données de santé d'une autre fait
-   de l'hébergement pour compte de tiers — ce que le cadre de
-   l'hébergement de données de santé (HDS) et le RGPD encadrent. Le
-   chiffrement de bout en bout pèse dans l'analyse, il ne la remplace
-   pas. Alternative sans hébergement : un relais qui ne garde rien (il
-   passe les octets d'une conversation en cours, comme un commutateur) —
-   il demande que les deux bouts soient en ligne en même temps.
-
+4. **Un relais qui garde** (une boîte chez une autre officine, pour
+   échanger sans que les deux bouts soient en ligne en même temps) : pas
+   construit, et pas sans décision — l'officine qui garderait, même
+   chiffrées de bout en bout, les données de santé d'une autre ferait de
+   l'hébergement pour compte de tiers, que le cadre HDS et le RGPD
+   encadrent. Le relais construit (§ 7.9) ne garde rien.
    NAT-PMP / PCP non plus : UPnP seul.
 5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
    chemins du bureau (comparer-et-écrire) ; le planning, il le lit
