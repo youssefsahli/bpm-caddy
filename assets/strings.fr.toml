@@ -3017,6 +3017,8 @@ stup_no_pending_tooltip = "Délivrance saisie sur un poste qui ne numérote pas 
 opts_postes = "Postes de l'officine"
 opts_postes_hint = "Réglages propres à ce poste. La clé des postes et leur liste sont dans la base chiffrée."
 opts_postes_auto = "Synchroniser automatiquement sur le réseau local"
+opts_postes_internet = "Joignable depuis Internet (téléphones hors de l'officine)"
+opts_postes_internet_tooltip = "Écoute aussi en IPv6, demande au routeur d'ouvrir le port des postes (UPnP) et dit ses adresses aux téléphones de l'équipe. Seuls les postes du groupe obtiennent une réponse."
 opts_postes_addresses = "Adresses des postes"
 opts_postes_addresses_hint = "192.168.1.14:7743, 192.168.1.15:7743"
 

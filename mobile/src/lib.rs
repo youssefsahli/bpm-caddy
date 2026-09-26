@@ -320,39 +320,67 @@ impl Caddy {
         }
         let sent = posts.publish(&db, &today)?;
         let me = posts.device_hex();
-        let members: Vec<String> = db
+        let members: Vec<bpm_caddy::db::PostRow> = db
             .sync_posts()?
             .into_iter()
-            .filter(|p| p.left_on.is_empty() && p.device != me)
-            .map(|p| p.device)
+            .filter(|p| p.left_on.is_empty() && p.device != me && !p.companion)
             .collect();
-        let mut targets: Vec<String> = listen(port, LISTEN)
-            .into_iter()
-            .filter(|h| members.contains(&h.device))
-            .map(|h| h.address)
-            .collect();
-        for a in addresses {
-            let a = a.trim().to_owned();
-            if !a.is_empty() && !targets.contains(&a) {
-                targets.push(a);
-            }
-        }
+        let heard = listen(port, LISTEN);
+        // Each post once: on the Wi-Fi when it is heard there, otherwise
+        // at the addresses it publishes when reachable from the internet
+        // (`[postes] internet`) — the first that answers. Then the
+        // addresses written in the phone's settings.
         let mut reached = 0u32;
         let mut failed: Vec<String> = Vec::new();
-        for address in &targets {
-            match posts.sync_with(&db, address, TALK) {
+        let mut targets = 0usize;
+        let mut tried: Vec<String> = Vec::new();
+        for p in &members {
+            let mut ways: Vec<String> = heard
+                .iter()
+                .filter(|h| h.device == p.device)
+                .map(|h| h.address.clone())
+                .collect();
+            if ways.is_empty() {
+                ways = bpm_caddy::reach::addresses(&p.reach);
+            }
+            if ways.is_empty() {
+                continue;
+            }
+            targets += 1;
+            let mut last = String::new();
+            let mut ok = false;
+            for address in ways {
+                tried.push(address.clone());
+                match posts.sync_with(&db, &address, TALK) {
+                    Ok(()) => {
+                        ok = true;
+                        break;
+                    }
+                    Err(e) => last = format!("{address} ({})", bpm_caddy::strings::plain_error(&e)),
+                }
+            }
+            if ok {
+                reached += 1;
+            } else {
+                failed.push(last);
+            }
+        }
+        for a in addresses {
+            let a = a.trim().to_owned();
+            if a.is_empty() || tried.contains(&a) {
+                continue;
+            }
+            targets += 1;
+            match posts.sync_with(&db, &a, TALK) {
                 Ok(()) => reached += 1,
-                Err(e) => failed.push(format!(
-                    "{address} ({})",
-                    bpm_caddy::strings::plain_error(&e)
-                )),
+                Err(e) => failed.push(format!("{a} ({})", bpm_caddy::strings::plain_error(&e))),
             }
         }
         let report = posts.absorb(&db, &today)?;
         drop(db);
         self.forget_cards();
         use bpm_caddy::strings::{tr, trf, trn};
-        let mut said = if targets.is_empty() {
+        let mut said = if targets == 0 {
             tr("mobile_sync_nobody").to_owned()
         } else {
             trn(

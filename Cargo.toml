@@ -58,6 +58,12 @@ rhai = { version = "1.25", default-features = false, features = ["std", "sync"] 
 # l'atelier, donc l'intégration continue le compile et le teste à
 # chaque fois : optionnel ne veut pas dire non surveillé.
 bpm-sync = { path = "sync", optional = true }
+# **Joignable depuis Internet** (`[postes] internet`, éteint par défaut,
+# voir `src/reach.rs`) : demander au routeur d'ouvrir le port des postes
+# (UPnP IGD, sans tokio) et lire les adresses IPv6 de la machine. Sous
+# `sync` : un binaire sans réseau n'en contient rien.
+igd-next = { version = "0.17", optional = true }
+if-addrs = { version = "0.15", optional = true }
 
 [features]
 # Le réseau d'officines (voir `src/network.rs`) est livré : il ne
@@ -66,7 +72,7 @@ bpm-sync = { path = "sync", optional = true }
 # permanence. Un binaire construit avec `--no-default-features
 # --features desktop` n'en contient toujours rien.
 default = ["sync", "desktop"]
-sync = ["dep:bpm-sync"]
+sync = ["dep:bpm-sync", "dep:igd-next", "dep:if-addrs"]
 # The desktop application: the egui window, Typst printing, the system
 # keyring and file dialogs. Everything else in the library — the base,
 # the clinical tables, replication, the posts' and the network's sync —

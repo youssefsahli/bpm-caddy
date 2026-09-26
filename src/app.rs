@@ -7286,6 +7286,7 @@ impl Session {
                 },
                 name: config.pharmacy.name.clone(),
                 posts_paused: !config.postes.automatique,
+                posts_internet: config.postes.internet,
             },
             crate::postes::Pace::default(),
         ));
@@ -70012,6 +70013,12 @@ impl eframe::App for App {
                                         &mut editor.cfg.postes.automatique,
                                         tr("opts_postes_auto"),
                                     );
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.internet,
+                                        tr("opts_postes_internet"),
+                                    )
+                                    .on_hover_text(tr("opts_postes_internet_tooltip"));
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(dim(tr("opts_reseau_port")));
                                         ui.add(

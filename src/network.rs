@@ -3510,6 +3510,7 @@ mod tests {
                 listen,
                 name: "Pharmacie A".to_owned(),
                 posts_paused: false,
+                posts_internet: false,
             },
             crate::postes::Pace::default(),
         );

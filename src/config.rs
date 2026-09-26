@@ -557,6 +557,13 @@ pub struct PostesConfig {
     pub dossier: String,
     pub adresses: Vec<String>,
     pub a_la_fermeture: bool,
+    /// **Joignable depuis Internet** : la porte des postes écoute aussi en
+    /// IPv6, demande au routeur d'ouvrir son port (UPnP) et dit ses
+    /// adresses aux autres postes — pour qu'un téléphone de l'équipe,
+    /// hors de l'officine, le compose. Éteint par défaut : c'est la seule
+    /// porte que l'application tient ouverte sur Internet, et l'officine
+    /// la décide. Seuls les postes du groupe obtiennent une réponse.
+    pub internet: bool,
 }
 
 impl Default for PostesConfig {
@@ -567,6 +574,7 @@ impl Default for PostesConfig {
             dossier: String::new(),
             adresses: Vec::new(),
             a_la_fermeture: true,
+            internet: false,
         }
     }
 }

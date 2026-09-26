@@ -1117,6 +1117,10 @@ pub struct OfficineSide {
     /// mais le fil tourne pour l'officine : il n'ouvre pas la porte des
     /// postes et ne les compose pas.
     pub posts_paused: bool,
+    /// **Joignable depuis Internet** (`[postes] internet`) : la porte des
+    /// postes écoute aussi en IPv6, le routeur ouvre son port (UPnP), et
+    /// le poste publie ses adresses (`reach.rs`).
+    pub posts_internet: bool,
 }
 
 /// Combien de conversations d'officines à la fois, au plus : chacune a
@@ -1316,6 +1320,17 @@ fn auto(
     if trousseau.is_some() && door.is_none() {
         let _ = tx.send(Progress::Status(tr("posts_auto_no_door").to_owned()));
     }
+    // **Joignable depuis Internet** : une seconde porte, IPv6 seulement,
+    // et ce que le routeur ouvre — cherché sur un fil à part (la recherche
+    // du routeur prend quelques secondes), renouvelé toutes les vingt
+    // minutes, publié dans la ligne de ce poste quand cela change.
+    let internet = side.posts_internet && door.is_some();
+    let door6 = internet
+        .then(|| bpm_sync::link::Door::open_v6_only(port).ok())
+        .flatten();
+    let (reach_tx, reach_rx) = std::sync::mpsc::channel::<String>();
+    let mut reach_looked: Option<Instant> = None;
+    let mut mapped = false;
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
     if let Some(u) = &udp {
         let _ = u.set_broadcast(true);
@@ -1341,6 +1356,27 @@ fn auto(
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
         let mut talked = false;
+        if internet && reach_looked.is_none_or(|t| t.elapsed() >= REACH_EVERY) {
+            reach_looked = Some(Instant::now());
+            let tx = reach_tx.clone();
+            std::thread::spawn(move || {
+                let v4 = crate::reach::open_mapping(port);
+                let v6 = crate::reach::global_ipv6();
+                let _ = tx.send(crate::reach::reach_text(v4, &v6, port));
+            });
+        }
+        if let Ok(reach) = reach_rx.try_recv() {
+            mapped = true;
+            db.set_post_reach(&me, &reach)?;
+        }
+        // A post knocking at our IPv6 door, from outside the officine.
+        if let (Some(door6), Some(t)) = (&door6, &trousseau) {
+            if let Ok(mut link) = door6.accept_with(Duration::from_millis(50), TALK_PATIENCE) {
+                if posts.talk(&db, t, &mut link, false).is_ok() {
+                    talked = true;
+                }
+            }
+        }
         // A post knocking at our door.
         match (&door, &trousseau) {
             (Some(door), Some(t)) => {
@@ -1653,8 +1689,19 @@ fn auto(
             told = now;
         }
     }
+    // What the router opened for this post closes with it; the addresses
+    // it published go with it too, so a phone does not dial a door
+    // nobody holds.
+    if mapped {
+        let _ = db.set_post_reach(&me, "");
+        crate::reach::close_mapping(port);
+    }
     Ok(())
 }
+
+/// Tous les combien le poste renouvelle ce que le routeur a ouvert et
+/// relit ses adresses — bien avant la fin du bail (`reach::LEASE`).
+const REACH_EVERY: Duration = Duration::from_secs(20 * 60);
 
 /// L'adresse de ce poste sur le réseau local — un `connect` UDP ne
 /// transmet rien, il demande seulement par quelle interface on enverrait.
@@ -2043,6 +2090,20 @@ mod tests {
         assert!(a.sync_posts().unwrap().iter().any(|p| p.companion));
         let back = a.conversation_messages(talk).unwrap();
         assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+        // A desktop reachable from the internet publishes where; the
+        // phone reads it — it travels with the team, which it opens.
+        let desk = pa.device_hex();
+        assert!(a.set_post_reach(&desk, "82.64.1.2:7743").unwrap());
+        assert!(!a.set_post_reach(&desk, "82.64.1.2:7743").unwrap());
+        pa.publish(&a, "2026-09-26").unwrap();
+        pa.exchange_folder(&a, &folder).unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        pp.absorb(&phone, "2026-09-26").unwrap();
+        let seen = phone.sync_posts().unwrap();
+        assert_eq!(
+            seen.iter().find(|p| p.device == desk).map(|p| p.reach.as_str()),
+            Some("82.64.1.2:7743")
+        );
     }
 
     /// **Le compagnon, une fois appairé, parle à la porte du poste** :
@@ -2132,7 +2193,7 @@ mod tests {
         said.unwrap();
         std::thread::sleep(Duration::from_millis(500));
         let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
-        let mut pa = Posts::load(&a).unwrap();
+        let pa = Posts::load(&a).unwrap();
         pa.absorb(&a, "2026-09-26").unwrap();
         let back = a.conversation_messages(talk).unwrap();
         assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
@@ -2258,6 +2319,7 @@ mod tests {
                 listen: 0,
                 name: "Pharmacie du Centre".to_owned(),
                 posts_paused: false,
+                posts_internet: false,
             },
             Pace::default(),
         );

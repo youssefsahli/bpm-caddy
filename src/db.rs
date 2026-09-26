@@ -843,7 +843,10 @@ CREATE TABLE IF NOT EXISTS sync_posts (
     left_on TEXT NOT NULL DEFAULT '',
     -- '' : un poste de bureau ; 'compagnon' : le téléphone d'un membre
     -- de l'équipe, qui ne tient qu'une part de la clé (`postes::COMPANION`).
-    kind    TEXT NOT NULL DEFAULT ''
+    kind    TEXT NOT NULL DEFAULT '',
+    -- Où le composer depuis Internet (`reach::reach_text`) : écrit par le
+    -- poste lui-même quand `[postes] internet` est allumé ; vide sinon.
+    reach   TEXT NOT NULL DEFAULT ''
 );
 -- Tout ce qui suit est **propre à ce poste** et ne voyage jamais : son
 -- identité et sa clé, ce qu'il a déjà rangé, ses questions, ses
@@ -1453,6 +1456,7 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
     // Un poste de bureau ou un compagnon — voir `SCHEMA`.
     "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -40986,6 +40990,8 @@ pub struct PostRow {
     pub left_on: String,
     /// Un compagnon (téléphone) : il ne tient qu'une part de la clé.
     pub companion: bool,
+    /// Ses adresses composables depuis Internet, telles qu'il les publie.
+    pub reach: String,
 }
 
 /// Une écriture capturée : son numéro, sa table, sa nature, la ligne
@@ -41234,7 +41240,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT post, device, name, joined, left_on, kind = 'compagnon'
+                "SELECT post, device, name, joined, left_on, kind = 'compagnon', reach
                  FROM sync_posts ORDER BY post",
             )
             .map_err(|e| e.to_string())?;
@@ -41247,10 +41253,24 @@ impl Db {
                     joined: r.get(3)?,
                     left_on: r.get(4)?,
                     companion: r.get(5)?,
+                    reach: r.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Publier où ce poste se compose depuis Internet — sa propre ligne,
+    /// que lui seul écrit. Capturé : l'adresse voyage. Rien n'est écrit
+    /// quand elle n'a pas changé. Rend s'il a écrit.
+    pub fn set_post_reach(&self, device: &str, reach: &str) -> Result<bool, String> {
+        self.conn
+            .execute(
+                "UPDATE sync_posts SET reach = ?2 WHERE device = ?1 AND reach <> ?2",
+                [device, reach],
+            )
+            .map(|n| n == 1)
+            .map_err(|e| e.to_string())
     }
 
     /// Nommer un poste — compare-and-set sur le nom affiché. Capturé :

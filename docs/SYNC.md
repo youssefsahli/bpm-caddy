@@ -675,12 +675,36 @@ invitation avant sa synchronisation suivante donnait le même numéro à
 deux postes.
 
 **Le transport.** Le téléphone est toujours celui qui compose : il
-écoute les annonces des postes sur le Wi-Fi (3,5 s), leur parle, puis
-compose les adresses écrites dans ses réglages. Il n'ouvre aucune porte
-et ne tourne pas en arrière-plan : il synchronise à l'ouverture, au
-bouton et après un message envoyé. La suite — un poste joignable depuis
-Internet (IPv6, ouverture de port), le relais par les postes d'autres
-officines, le dossier d'échange sur le téléphone — est au § 8.
+n'ouvre aucune porte et ne tourne pas en arrière-plan ; il synchronise à
+l'ouverture, au bouton et après chaque écriture. Il écoute les annonces
+des postes sur le Wi-Fi (3,5 s) ; chaque poste du groupe est composé
+une fois — à l'adresse où il s'est annoncé, sinon aux adresses qu'il
+publie — puis viennent les adresses écrites dans les réglages du
+téléphone.
+
+**Joignable depuis Internet** (`[postes] internet`, Options › Base,
+**éteint par défaut**, poste par poste). Un poste qui l'allume :
+
+* ouvre une seconde porte, **IPv6 seulement** (`Door::open_v6_only`), à
+  côté de celle du réseau local, sur le même port ;
+* demande au routeur d'ouvrir ce port en IPv4 (UPnP IGD, bail d'une
+  heure, renouvelé toutes les vingt minutes, refermé à la sortie) ;
+* **publie** ses adresses composables dans sa ligne de `sync_posts`
+  (colonne `reach`, flux `Equipe`) : l'adresse publique du routeur, et
+  ses adresses IPv6 globales. Une adresse privée, ou derrière une
+  traduction d'opérateur (`100.64.0.0/10`), n'est pas publiée
+  (`reach.rs`) ; le téléphone relit la ligne avec la même méfiance.
+
+C'est la seule porte que l'application tient ouverte au-delà du réseau
+local. Elle ne change rien à la conversation : la poignée de main
+chiffrée, puis une réponse aux seuls postes du groupe ; un inconnu
+n'obtient pas un octet du journal. Ce qu'elle expose : l'existence d'un
+poste BPM-Caddy à cette adresse, et une porte qu'un inconnu peut tenir
+occupée le temps de la patience d'une conversation (8 s) — la
+synchronisation des postes, pas les données. En IPv6, la box doit
+laisser passer le port (certaines le refusent par défaut) ; derrière un
+CGNAT sans IPv6, rien ne rend le poste joignable : le téléphone
+synchronise au retour sur le Wi-Fi.
 
 **Le code.** `mobile/` (crate `bpm-caddy-mobile`, UniFFI) traduit la
 bibliothèque — sans la fonction `desktop` — pour l'application Kotlin de
@@ -701,11 +725,10 @@ clé absente.
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
    du premier.
-4. **Le compagnon hors du Wi-Fi de l'officine.** Il compose les adresses
-   écrites dans ses réglages ; un poste joignable depuis Internet (écoute
-   IPv6, ouverture de port UPnP / NAT-PMP, adresses publiées au journal)
-   et le relais par les postes des autres officines du réseau restent à
-   construire. Le dossier d'échange reste possible côté téléphone.
-5. **Le compagnon écrit l'équipe** ; l'agenda et les fiches depuis le
-   téléphone viendront avec leur arbitrage (comparer-et-écrire, comme
-   sur le bureau).
+4. **Le relais par les autres officines.** Un poste qu'on ne peut pas
+   joindre (CGNAT sans IPv6) pourrait passer ses enregistrements scellés
+   par le poste joignable d'une autre officine du réseau, qui ne les lit
+   pas. Pas construit. NAT-PMP / PCP non plus : UPnP seul.
+5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
+   chemins du bureau (comparer-et-écrire) ; le planning, il le lit
+   seulement. Pas de fichier joint depuis le téléphone.
