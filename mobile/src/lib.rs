@@ -1020,7 +1020,7 @@ mod tests {
         assert_eq!(reached, 1);
         std::thread::sleep(std::time::Duration::from_millis(500));
         let db = Db::open(&desk_path, "secret").unwrap();
-        let mut posts = Posts::load(&db).unwrap();
+        let posts = Posts::load(&db).unwrap();
         posts.absorb(&db, "2026-09-26").unwrap();
         let conv = db.conversations().unwrap()[0].id;
         let back = db.conversation_messages(conv).unwrap();
