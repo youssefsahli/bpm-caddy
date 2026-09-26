@@ -37784,9 +37784,17 @@ impl App {
                 // La même expression que le champ lui-même, pas une
                 // seconde mesure du même besoin : deux mesures d'une
                 // chose divergent toujours.
-                Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
                 Self::button_width(ui, tr("dash_print")),
-                Self::button_width(ui, tr("codex_new")),
+                // Le nom et le bouton qui le crée, **un seul article** : ils
+                // se dessinent d'un seul tenant.
+                Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
+                        Self::button_width(ui, tr("codex_new")),
+                    ]
+                    .into_iter(),
+                ),
             ]
             .into_iter(),
             tr("codex_subtitle"),
@@ -37799,15 +37807,6 @@ impl App {
                     session.show_codex = false;
                     session.codex_edit = None;
                 }
-                motif::field_sized(
-                    ui,
-                    egui::vec2(
-                        Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
-                        Self::button_height(ui),
-                    ),
-                    egui::TextEdit::singleline(&mut session.codex_new_name)
-                        .hint_text(motif::hint(tr("codex_new_hint"))),
-                );
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("codex_print_all_tooltip"))
                     .clicked()
@@ -37818,25 +37817,47 @@ impl App {
                         session.error = Some(e);
                     }
                 }
-                if motif::button(ui, tr("codex_new")).clicked()
-                    && !session.codex_new_name.trim().is_empty()
-                {
-                    let name = session.codex_new_name.trim().to_owned();
-                    match session.db.add_preparation(&name) {
-                        Ok(id) => {
-                            session.codex_new_name.clear();
-                            session.reload_codex();
-                            session.codex_open = Some(id);
-                            // A new preparation is empty: it opens in
-                            // the form, since there is nothing to read.
-                            if let Some(p) = session.preparation(id) {
-                                session.codex_base = Some(p.clone());
-                                session.codex_edit = Some(p);
+                let pair = Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
+                        Self::button_width(ui, tr("codex_new")),
+                    ]
+                    .into_iter(),
+                );
+                // Le champ du nom **ne quitte pas** le bouton qui crée : à
+                // 1024 en grand texte « Créer » passait seul à la ligne
+                // sous le titre, loin du nom qu'il reçoit.
+                Self::keep_together(ui, egui::vec2(pair, Self::row_height(ui)), |ui| {
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
+                            Self::field_width(ui, [tr("codex_new_hint")].into_iter()).max(220.0),
+                            Self::button_height(ui),
+                        ),
+                        egui::TextEdit::singleline(&mut session.codex_new_name)
+                            .hint_text(motif::hint(tr("codex_new_hint"))),
+                    );
+                    if motif::button(ui, tr("codex_new")).clicked()
+                        && !session.codex_new_name.trim().is_empty()
+                    {
+                        let name = session.codex_new_name.trim().to_owned();
+                        match session.db.add_preparation(&name) {
+                            Ok(id) => {
+                                session.codex_new_name.clear();
+                                session.reload_codex();
+                                session.codex_open = Some(id);
+                                // A new preparation is empty: it opens in
+                                // the form, since there is nothing to read.
+                                if let Some(p) = session.preparation(id) {
+                                    session.codex_base = Some(p.clone());
+                                    session.codex_edit = Some(p);
+                                }
                             }
+                            Err(e) => session.error = Some(e),
                         }
-                        Err(e) => session.error = Some(e),
                     }
-                }
+                });
             });
             ui.add(
                 egui::Label::new(
@@ -47455,9 +47476,17 @@ impl App {
             [
                 Self::heading_width(ui, tr("dispo_title")),
                 Self::button_width(ui, tr("patient_back")),
-                Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
                 Self::button_width(ui, tr("dash_print")),
-                Self::button_width(ui, tr("dispo_new")),
+                // Le nom et le bouton qui le crée, **un seul article** : ils
+                // se dessinent d'un seul tenant.
+                Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
+                        Self::button_width(ui, tr("dispo_new")),
+                    ]
+                    .into_iter(),
+                ),
             ]
             .into_iter(),
             tr("dispo_subtitle"),
@@ -47470,15 +47499,6 @@ impl App {
                     session.show_dispositifs = false;
                     session.dispo_edit = None;
                 }
-                motif::field_sized(
-                    ui,
-                    egui::vec2(
-                        Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
-                        Self::button_height(ui),
-                    ),
-                    egui::TextEdit::singleline(&mut session.dispo_new_name)
-                        .hint_text(motif::hint(tr("dispo_new_hint"))),
-                );
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("dispo_print_all_tooltip"))
                     .clicked()
@@ -47492,25 +47512,47 @@ impl App {
                         session.error = Some(e);
                     }
                 }
-                if motif::button(ui, tr("dispo_new")).clicked()
-                    && !session.dispo_new_name.trim().is_empty()
-                {
-                    let name = session.dispo_new_name.trim().to_owned();
-                    match session.db.add_dispositif(&name) {
-                        Ok(id) => {
-                            session.dispo_new_name.clear();
-                            session.reload_dispositifs();
-                            session.dispo_open = Some(id);
-                            // A new fiche is empty: it opens in the
-                            // form, since there is nothing to read.
-                            if let Some(d) = session.dispositif(id) {
-                                session.dispo_base = Some(d.clone());
-                                session.dispo_edit = Some(d);
+                let pair = Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
+                        Self::button_width(ui, tr("dispo_new")),
+                    ]
+                    .into_iter(),
+                );
+                // Le champ du nom **ne quitte pas** le bouton qui crée : à
+                // 1024 en grand texte « Créer » passait seul à la ligne
+                // sous le titre, loin du nom qu'il reçoit.
+                Self::keep_together(ui, egui::vec2(pair, Self::row_height(ui)), |ui| {
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
+                            Self::field_width(ui, [tr("dispo_new_hint")].into_iter()).max(220.0),
+                            Self::button_height(ui),
+                        ),
+                        egui::TextEdit::singleline(&mut session.dispo_new_name)
+                            .hint_text(motif::hint(tr("dispo_new_hint"))),
+                    );
+                    if motif::button(ui, tr("dispo_new")).clicked()
+                        && !session.dispo_new_name.trim().is_empty()
+                    {
+                        let name = session.dispo_new_name.trim().to_owned();
+                        match session.db.add_dispositif(&name) {
+                            Ok(id) => {
+                                session.dispo_new_name.clear();
+                                session.reload_dispositifs();
+                                session.dispo_open = Some(id);
+                                // A new fiche is empty: it opens in the
+                                // form, since there is nothing to read.
+                                if let Some(d) = session.dispositif(id) {
+                                    session.dispo_base = Some(d.clone());
+                                    session.dispo_edit = Some(d);
+                                }
                             }
+                            Err(e) => session.error = Some(e),
                         }
-                        Err(e) => session.error = Some(e),
                     }
-                }
+                });
             });
             ui.add(
                 egui::Label::new(
@@ -47916,8 +47958,16 @@ impl App {
             [
                 Self::heading_width(ui, tr("proto_title")),
                 Self::button_width(ui, tr("patient_back")),
-                Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
-                Self::button_width(ui, tr("proto_new")),
+                // Le nom et le bouton qui le crée, **un seul article** : ils
+                // se dessinent d'un seul tenant.
+                Self::group_width(
+                    ui,
+                    [
+                        Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
+                        Self::button_width(ui, tr("proto_new")),
+                    ]
+                    .into_iter(),
+                ),
             ]
             .into_iter(),
             tr("proto_subtitle"),
@@ -47931,20 +47981,33 @@ impl App {
                     session.show_protocols = false;
                     session.protocol_open = None;
                 }
-                motif::field_sized(
+                let pair = Self::group_width(
                     ui,
-                    egui::vec2(
+                    [
                         Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
-                        Self::button_height(ui),
-                    ),
-                    egui::TextEdit::singleline(&mut session.protocol_new_title)
-                        .hint_text(motif::hint(tr("proto_new_hint"))),
+                        Self::button_width(ui, tr("proto_new")),
+                    ]
+                    .into_iter(),
                 );
-                if motif::button(ui, tr("proto_new")).clicked()
-                    && !session.protocol_new_title.trim().is_empty()
-                {
-                    create = true;
-                }
+                // Le champ du nom **ne quitte pas** le bouton qui crée : à
+                // 1024 en grand texte « Créer » passait seul à la ligne
+                // sous le titre, loin du nom qu'il reçoit.
+                Self::keep_together(ui, egui::vec2(pair, Self::row_height(ui)), |ui| {
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
+                            Self::field_width(ui, [tr("proto_new_hint")].into_iter()).max(220.0),
+                            Self::button_height(ui),
+                        ),
+                        egui::TextEdit::singleline(&mut session.protocol_new_title)
+                            .hint_text(motif::hint(tr("proto_new_hint"))),
+                    );
+                    if motif::button(ui, tr("proto_new")).clicked()
+                        && !session.protocol_new_title.trim().is_empty()
+                    {
+                        create = true;
+                    }
+                });
             });
             ui.add(
                 egui::Label::new(
