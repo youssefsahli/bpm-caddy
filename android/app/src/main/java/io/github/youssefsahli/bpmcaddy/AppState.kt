@@ -121,6 +121,21 @@ class AppState(private val context: Context) {
         }
     }
 
+    /** Récrire une section de fiche ; `then(true)` quand c'est écrit. */
+    fun editSection(id: Long, key: String, shown: String, text: String, then: (Boolean) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.editCardSection(id, key, shown, text, settings.initials) }
+            }
+            done.onFailure { note = said(it) }
+            if (done.getOrNull() == false) note = T("mobile_card_stale")
+            revision++
+            then(done.getOrNull() == true)
+            if (done.getOrNull() == true) sync()
+        }
+    }
+
     /** Retirer une entrée, si elle dit encore ce que l'écran montrait. */
     fun deleteEvent(id: Long, shownTitle: String) {
         val c = caddy ?: return

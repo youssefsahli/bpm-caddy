@@ -128,6 +128,8 @@ pub struct Card {
 
 #[derive(uniffi::Record)]
 pub struct Section {
+    /// La clé de la section (`MONO_FIELDS`) : ce que l'écriture nomme.
+    pub key: String,
     pub label: String,
     pub text: String,
 }
@@ -418,11 +420,43 @@ impl Caddy {
                 .iter()
                 .filter(|(_, get)| !get(d).trim().is_empty())
                 .map(|(key, get)| Section {
+                    key: (*key).to_owned(),
                     label: bpm_caddy::strings::tr(key).to_owned(),
                     text: get(d).trim().to_owned(),
                 })
                 .collect(),
         })
+    }
+
+    /// **Récrire une section d'une fiche**, par le même chemin que le
+    /// bureau (`update_drug_by` : comparer-et-écrire sur la fiche entière,
+    /// journal des modifications au nom de `operator`). Seulement si la
+    /// section dit encore ce que le téléphone montrait : `false`, la fiche
+    /// a changé ailleurs — elle est relue, rien n'est écrasé.
+    pub fn edit_card_section(
+        &self,
+        id: i64,
+        key: String,
+        shown: String,
+        text: String,
+        operator: String,
+    ) -> Result<bool> {
+        let db = self.db();
+        let Some(current) = db.drugs()?.into_iter().find(|d| d.id == id) else {
+            return Ok(false);
+        };
+        let mut next = current.clone();
+        let Some(slot) = bpm_caddy::db::mono_field_mut(&mut next, &key) else {
+            return Ok(false);
+        };
+        if slot.trim() != shown.trim() {
+            return Ok(false);
+        }
+        *slot = text.trim().to_owned();
+        let written = db.update_drug_by(&next, &current, operator.trim(), false)?;
+        drop(db);
+        self.forget_cards();
+        Ok(written)
     }
 
     /// L'agenda de `from` à `to` (ISO, bornes comprises), répétitions
@@ -745,6 +779,22 @@ mod tests {
         let card = c.card(id).unwrap();
         let labels: Vec<&str> = card.sections.iter().map(|s| s.text.as_str()).collect();
         assert_eq!(labels, vec!["Angine", "Rash"]);
+        // A section rewritten from what the phone showed; one it no longer
+        // shows is refused and nothing is lost.
+        let key = card.sections[1].key.clone();
+        assert!(c
+            .edit_card_section(
+                id,
+                key.clone(),
+                "Rash".into(),
+                "Éruption".into(),
+                "AB".into()
+            )
+            .unwrap());
+        assert!(!c
+            .edit_card_section(id, key, "Rash".into(), "Autre".into(), "AB".into())
+            .unwrap());
+        assert_eq!(c.card(id).unwrap().sections[1].text, "Éruption");
         let _ = std::fs::remove_dir_all(&d);
     }
 }

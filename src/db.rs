@@ -2941,6 +2941,28 @@ pub const MONO_FIELDS: [MonoField; 13] = [
     ("mono_f_notes", |d| d.notes.as_str()),
 ];
 
+/// The same prose, to write: the field a [`MONO_FIELDS`] key names. The
+/// Android companion edits a card one section at a time through this;
+/// a test holds the two lists to the same fields.
+pub fn mono_field_mut<'a>(d: &'a mut Drug, key: &str) -> Option<&'a mut String> {
+    Some(match key {
+        "drug_sec_indications" => &mut d.indications,
+        "drug_sec_mechanism" => &mut d.mechanism,
+        "mono_f_dosage" => &mut d.dosage,
+        "drug_sec_ci" => &mut d.contraindications,
+        "mono_f_ddi" => &mut d.ddi,
+        "drug_sec_adverse" => &mut d.adverse,
+        "drug_sec_toxicity" => &mut d.toxicity,
+        "drug_sec_monitoring" => &mut d.monitoring,
+        "mono_f_iup" => &mut d.iup,
+        "mono_f_missed" => &mut d.missed_dose,
+        "mono_f_flags" => &mut d.red_flags,
+        "mono_f_forms" => &mut d.forms,
+        "mono_f_notes" => &mut d.notes,
+        _ => return None,
+    })
+}
+
 /// One entry of the team's drug reference base (shared, encrypted with
 /// the patient data): the facts wanted at the counter in one glance.
 #[derive(Clone, Debug, PartialEq, Default)]
@@ -42032,6 +42054,26 @@ impl Drop for Swept {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every section the search reads can be written through
+    /// `mono_field_mut`, and the setter names the very field the getter
+    /// reads — a second list that drifted would save the phone's edit of
+    /// « Posologie » into « Interactions ».
+    #[test]
+    fn every_prose_field_is_written_where_it_is_read() {
+        for (key, get) in MONO_FIELDS {
+            let mut d = Drug::default();
+            let slot = mono_field_mut(&mut d, key).unwrap_or_else(|| panic!("{key} sans écriture"));
+            *slot = format!("marque {key}");
+            assert_eq!(get(&d), format!("marque {key}"), "{key}");
+            for (other, get_other) in MONO_FIELDS {
+                if other != key {
+                    assert!(get_other(&d).is_empty(), "{key} écrit dans {other}");
+                }
+            }
+        }
+        assert!(mono_field_mut(&mut Drug::default(), "name").is_none());
+    }
 
     /// Shorthand for the full-form tests: the hint only matters for
     /// two-digit years.

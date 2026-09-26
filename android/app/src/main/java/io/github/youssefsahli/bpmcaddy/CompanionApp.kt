@@ -170,7 +170,7 @@ private fun CardsScreen(state: AppState, caddy: Caddy) {
     val shown = open
     if (shown != null) {
         BackHandler { open = null }
-        CardScreen(caddy, shown) { open = null }
+        CardScreen(state, caddy, shown) { open = null }
         return
     }
     val hits by produceState(emptyList(), query, state.revision) {
@@ -204,9 +204,30 @@ private fun CardsScreen(state: AppState, caddy: Caddy) {
 }
 
 @Composable
-private fun CardScreen(caddy: Caddy, id: Long, back: () -> Unit) {
-    val card by produceState<uniffi.bpm_caddy_mobile.Card?>(null, id) {
+private fun CardScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Unit) {
+    val card by produceState<uniffi.bpm_caddy_mobile.Card?>(null, id, state.revision) {
         value = withContext(Dispatchers.IO) { caddy.card(id) }
+    }
+    var editing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.Section?>(null) }
+    editing?.let { s ->
+        var text by remember(s.key) { mutableStateOf(s.text) }
+        AlertDialog(
+            onDismissRequest = { editing = null },
+            title = { Text(s.label) },
+            text = {
+                OutlinedTextField(
+                    text, { text = it }, Modifier.fillMaxWidth(), minLines = 6,
+                    keyboardOptions = KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { state.editSection(id, s.key, s.text, text) { editing = null } },
+                    enabled = state.settings.initials.isNotBlank(),
+                ) { Text(T("mobile_save")) }
+            },
+            dismissButton = { TextButton(onClick = { editing = null }) { Text(T("mobile_cancel")) } },
+        )
     }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(12.dp)) {
         TextButton(onClick = back, contentPadding = PaddingValues(0.dp)) { Text(T("mobile_back")) }
@@ -215,13 +236,21 @@ private fun CardScreen(caddy: Caddy, id: Long, back: () -> Unit) {
         val sub = listOf(c.dci, c.`class`, c.status).filter { it.isNotBlank() }.joinToString(" · ")
         if (sub.isNotEmpty()) Text(sub, style = MaterialTheme.typography.bodyMedium)
         if (c.sections.isEmpty()) Hint(T("mobile_card_empty"))
+        if (state.settings.initials.isBlank()) Hint(T("mobile_card_need_initials"))
         c.sections.forEach { s ->
-            Text(
-                s.label,
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 12.dp, bottom = 2.dp),
-            )
+            Row(Modifier.padding(top = 12.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    s.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.weight(1f),
+                )
+                if (state.settings.initials.isNotBlank()) {
+                    TextButton(onClick = { editing = s }, contentPadding = PaddingValues(0.dp)) {
+                        Text(T("mobile_card_edit"))
+                    }
+                }
+            }
             Text(s.text, style = MaterialTheme.typography.bodyMedium)
         }
         Hint(T("mobile_card_caveat"))
