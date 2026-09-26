@@ -5,6 +5,18 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.351.0] - 2026-09-26
+
+### Fixed
+- Postes de l'officine : un poste qui répond lentement (Wi-Fi chargé)
+  n'est plus lâché en pleine synchronisation.
+- Postes de l'officine : deux postes qui ont écrit chacun de leur côté
+  n'échangent plus que ce qui est nouveau, au lieu de tout ce qu'ils
+  avaient déjà en commun.
+- Postes de l'officine : un poste qui vient d'être admis se présente
+  aussitôt au poste qui l'a invité ; une invitation suivante ne lui donne
+  plus le même numéro.
+
 ## [0.350.0] - 2026-09-26
 
 ### Changed

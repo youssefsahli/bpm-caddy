@@ -504,6 +504,9 @@ pub enum Job {
 }
 
 const INVITE_PATIENCE: Duration = Duration::from_secs(300);
+/// Combien la porte attend le premier mot du poste qu'elle vient
+/// d'admettre : le temps qu'il range ce qu'il a reçu.
+const FIRST_WORD: Duration = Duration::from_secs(60);
 const TALK_PATIENCE: Duration = Duration::from_secs(8);
 
 /// Combien de connexions une invitation accepte avant de se fermer, en
@@ -697,6 +700,15 @@ pub fn run(
                 Posts::admit(&db, &peer)?;
             }
             posts.keep(&db)?;
+            // **Le premier mot du poste admis** : il range ce qu'il a reçu,
+            // prend son numéro et le dit aussitôt — à cette porte-ci.
+            // Fermée, il le gardait jusqu'à sa synchronisation suivante, et
+            // une seconde invitation d'ici là lui donnait le même numéro.
+            let _ = tx.send(Progress::Status(tr("posts_invite_first_word").to_owned()));
+            if let Ok(mut link) = door.accept_with(FIRST_WORD, TALK_PATIENCE) {
+                let _ = posts.talk(&db, &trousseau, &mut link, false);
+                posts.absorb(&db, today)?;
+            }
             Ok(tr("posts_done_invited").to_owned())
         }
         Job::Join {
@@ -1225,7 +1237,10 @@ fn auto(
         // A post knocking at our door.
         match (&door, &trousseau) {
             (Some(door), Some(t)) => {
-                if let Ok(mut link) = door.accept(Duration::from_millis(400)) {
+                // Looked at for 400 ms between other work, but the
+                // conversation gets the posts' own patience: a post on the
+                // Wi-Fi answering in half a second was dropped mid-sync.
+                if let Ok(mut link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
                     if posts.talk(&db, t, &mut link, false).is_ok() {
                         talked = true;
                     }
@@ -1676,6 +1691,7 @@ mod tests {
                             codes.push(c);
                             yes_a.send(true).unwrap();
                         }
+                        Progress::Status(_) => {}
                         other => done_a = Some(other),
                     }
                 }
@@ -1699,6 +1715,12 @@ mod tests {
         let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
         let b = Db::open(&dir_b.join("poste.db"), "secret").unwrap();
         assert_eq!(b.sync_post(), Some(1));
+        // B said who it is at the door that admitted it: A knows its
+        // number before any other invitation can hand it out again.
+        assert!(
+            a.sync_posts().unwrap().iter().any(|p| p.post == 1),
+            "B s'est présenté à la porte qui l'a admis"
+        );
         let names: Vec<String> = b
             .patients()
             .unwrap()

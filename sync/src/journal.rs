@@ -114,6 +114,43 @@ impl Journal {
         self.heads.iter().copied().collect()
     }
 
+    /// **What a peer can place this post by**: the heads, and a few of
+    /// their ancestors at doubling distances — one back, two, four,
+    /// eight…
+    ///
+    /// Heads alone are not enough the moment both posts have written
+    /// since they last met: each post's heads are records the other has
+    /// never seen, so the answering post cannot walk down from them, finds
+    /// no common ground, and sends its whole journal — three thousand
+    /// records to a phone that held all but one. An ancestor one step
+    /// back is almost always one the other post holds, and everything
+    /// under it is then known to be shared; the doubling distances find
+    /// the common ground after longer separations too, at a cost of a
+    /// few hashes per head rather than one per record.
+    pub fn frontier(&self) -> Vec<Hash> {
+        let mut out: Vec<Hash> = self.heads();
+        for head in self.heads() {
+            let mut at = head;
+            let mut step = 0usize;
+            let mut next_mark = 1usize;
+            while let Some(parent) = self
+                .records
+                .get(&at)
+                .and_then(|r| r.parents().first().copied())
+            {
+                step += 1;
+                at = parent;
+                if step == next_mark {
+                    if !out.contains(&at) {
+                        out.push(at);
+                    }
+                    next_mark *= 2;
+                }
+            }
+        }
+        out
+    }
+
     /// Parents named by records we hold, that we do not hold.
     ///
     /// This is the want list: a post asks for these, gets them, and asks

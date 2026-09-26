@@ -697,7 +697,7 @@ impl Session {
         self.peer_want_empty = None;
         self.out.push_back(Frame::Want {
             need,
-            have: capped(journal.heads()),
+            have: capped(journal.frontier()),
         });
     }
 
@@ -994,6 +994,31 @@ mod tests {
         )
         .unwrap();
         converse(a, b, sa, sb, true).unwrap();
+    }
+
+    /// **Two posts that both wrote since they met exchange what is new,
+    /// not their journals.** Their heads are strangers to each other; the
+    /// records a step or two under them are what both hold.
+    #[test]
+    fn two_posts_that_both_wrote_send_only_what_is_new() {
+        let t = officine(13);
+        let mut a = Post::new(1, Some(t.clone()));
+        let mut b = Post::new(2, None);
+        for i in 0..300u32 {
+            a.write(format!("ligne {i}").as_bytes());
+        }
+        pair_posts(&mut a, &mut b);
+        assert_eq!(b.journal.len(), 300);
+        a.write(b"a de son cote");
+        b.write(b"b de son cote");
+        let before = (a.meter.report().sent, b.meter.report().sent);
+        sync_posts(&mut a, &mut b);
+        let sent = (
+            a.meter.report().sent - before.0,
+            b.meter.report().sent - before.1,
+        );
+        assert_eq!(sent, (1, 1), "seul le neuf passe");
+        assert_eq!(a.journal.heads(), b.journal.heads());
     }
 
     /// The whole thing, once: a post with a register, a post with
