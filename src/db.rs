@@ -41278,6 +41278,27 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Écrire la ligne d'un autre poste telle qu'il la déclarerait — pour
+    /// la démonstration de l'écran des postes (un second poste, un
+    /// téléphone). Un poste réel écrit la sienne en rejoignant.
+    pub fn add_post_row(
+        &self,
+        post: i64,
+        device: &str,
+        name: &str,
+        day: &str,
+        companion: bool,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO sync_posts (post, device, name, joined, kind)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![post, device, name, day, if companion { "compagnon" } else { "" }],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
     /// Publier où ce poste se compose depuis Internet — sa propre ligne,
     /// que lui seul écrit. Capturé : l'adresse voyage. Rien n'est écrit
     /// quand elle n'a pas changé. Rend s'il a écrit.

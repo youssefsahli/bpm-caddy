@@ -14419,6 +14419,23 @@ impl App {
                                         p.found(&session.db, "Comptoir 1", &session.today)
                                     });
                             }
+                            // Un second poste et le téléphone d'une
+                            // préparatrice : la liste a ses trois sortes
+                            // de lignes à montrer.
+                            let _ = session.db.add_post_row(
+                                1,
+                                &"c3".repeat(32),
+                                "Comptoir 2",
+                                &session.today,
+                                false,
+                            );
+                            let _ = session.db.add_post_row(
+                                2,
+                                &"d4".repeat(32),
+                                "Téléphone de Claire",
+                                &session.today,
+                                true,
+                            );
                             session.posts_window = Some(PostsWindow {
                                 summary: PostsSummary::read(&session.db).ok(),
                                 ..PostsWindow::default()
