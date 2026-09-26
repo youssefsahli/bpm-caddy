@@ -286,20 +286,28 @@ private fun CardScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Unit
 /** Le lundi de la semaine de `day`. */
 private fun monday(day: LocalDate): LocalDate = day.with(DayOfWeek.MONDAY)
 
+/**
+ * La semaine montrée : ‹ et › pour changer, les dates pour revenir à
+ * celle-ci, et, à droite, le geste de l'écran (« Ajouter » pour l'agenda).
+ */
 @Composable
-private fun WeekBar(start: LocalDate, move: (Long) -> Unit) {
+private fun WeekBar(start: LocalDate, move: (Long) -> Unit, action: @Composable () -> Unit = {}) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         TextButton(onClick = { move(-1) }) { Text("‹") }
-        Text(
-            displayDate(start.toString()) + " – " + displayDate(start.plusDays(6).toString()),
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.titleSmall,
-        )
-        TextButton(onClick = { move(0) }) { Text(T("mobile_week_now")) }
+        Column(Modifier.weight(1f).clickable { move(0) }) {
+            Text(
+                displayDate(start.toString()) + " – " + displayDate(start.plusDays(6).toString()),
+                style = MaterialTheme.typography.titleSmall,
+            )
+            if (start != monday(LocalDate.now())) {
+                Text(T("mobile_week_now"), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+            }
+        }
         TextButton(onClick = { move(1) }) { Text("›") }
+        action()
     }
 }
 
@@ -344,12 +352,12 @@ private fun AgendaScreen(state: AppState, caddy: Caddy) {
         )
     }
     Column(Modifier.fillMaxSize()) {
-        WeekBar(from) { step ->
+        WeekBar(from, { step ->
             start = if (step == 0L) monday(LocalDate.now()).toString() else from.plusWeeks(step).toString()
-        }
-        Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp)) {
-            Spacer(Modifier.weight(1f))
-            OutlinedButton(onClick = { adding = true }) { Text(T("mobile_agenda_add")) }
+        }) {
+            OutlinedButton(onClick = { adding = true }, contentPadding = PaddingValues(horizontal = 12.dp)) {
+                Text(T("mobile_agenda_add"))
+            }
         }
         HorizontalDivider()
         if (items.isEmpty()) Hint(T("mobile_agenda_empty"))
@@ -426,9 +434,9 @@ private fun PlanningScreen(state: AppState, caddy: Caddy) {
         }
     }
     Column(Modifier.fillMaxSize()) {
-        WeekBar(from) { step ->
+        WeekBar(from, move = { step ->
             start = if (step == 0L) monday(LocalDate.now()).toString() else from.plusWeeks(step).toString()
-        }
+        })
         HorizontalDivider()
         if (shifts.isEmpty()) Hint(T("mobile_planning_empty"))
         LazyColumn(Modifier.fillMaxSize()) {
