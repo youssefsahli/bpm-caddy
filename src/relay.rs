@@ -38,12 +38,21 @@ pub const ENTER: &str = "ENTRE";
 /// de la porte des officines (7745).
 pub const DEFAULT_PORT: u16 = 7746;
 
-/// Combien de postes d'un même groupe peuvent attendre à la fois.
+/// Combien de postes d'un même groupe peuvent attendre à la fois — au-delà,
+/// une nouvelle attente est refusée, jamais mise à la place d'une autre :
+/// qui connaîtrait le nom du groupe ne chasse pas le poste qui attend.
 const WAITING_PER_GROUP: usize = 4;
 /// Combien de groupes à la fois.
 const MOST_GROUPS: usize = 64;
-/// Une attente se renouvelle : au-delà, le relais la lâche.
-const WAIT_BOUND: Duration = Duration::from_secs(10 * 60);
+/// Une attente dure au plus ceci chez le relais…
+const WAIT_BOUND: Duration = Duration::from_secs(5 * 60);
+/// …et le poste qui attend rappelle un peu avant : une connexion
+/// silencieuse plus longtemps, une traduction d'adresse d'opérateur
+/// l'oublie, et le téléphone serait mis en relation avec un mort.
+pub const WAIT_RENEW: Duration = Duration::from_secs(4 * 60);
+/// Combien de connexions le relais tient à la fois, en tout — attentes,
+/// préfaces en cours, conversations (deux fils chacune).
+const MOST_CONNECTIONS: usize = 256;
 /// Une conversation relayée dure au plus…
 const TALK_BOUND: Duration = Duration::from_secs(10 * 60);
 /// …et porte au plus, dans chaque sens :
@@ -109,6 +118,7 @@ pub fn serve(port: u16, allowed: Allowed, stop: Arc<AtomicBool>) -> std::io::Res
     listener.set_nonblocking(true)?;
     let waiting: Arc<Mutex<HashMap<String, Vec<Waiting>>>> = Arc::default();
     let calls: Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>> = Arc::default();
+    let open = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     std::thread::spawn(move || {
         while !stop.load(Ordering::SeqCst) {
             let (stream, from) = match listener.accept() {
@@ -117,14 +127,25 @@ pub fn serve(port: u16, allowed: Allowed, stop: Arc<AtomicBool>) -> std::io::Res
                     std::thread::sleep(Duration::from_millis(100));
                     continue;
                 }
-                Err(_) => continue,
+                // Out of descriptors, or anything else: breathe rather than
+                // spin a core on a failing accept.
+                Err(_) => {
+                    std::thread::sleep(Duration::from_millis(500));
+                    continue;
+                }
             };
-            if !admit(&calls, from.ip()) {
+            if !admit(&calls, from.ip()) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
                 continue;
             }
-            let (allowed, waiting) = (Arc::clone(&allowed), Arc::clone(&waiting));
+            open.fetch_add(1, Ordering::SeqCst);
+            let (allowed, waiting, open) = (
+                Arc::clone(&allowed),
+                Arc::clone(&waiting),
+                Arc::clone(&open),
+            );
             std::thread::spawn(move || {
-                let _ = take(stream, &allowed, &waiting);
+                let _ = take(stream, &allowed, &waiting, &open);
+                open.fetch_sub(1, Ordering::SeqCst);
             });
         }
     });
@@ -141,8 +162,10 @@ fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
         v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
         !v.is_empty()
     });
-    if calls.len() > 1024 {
-        calls.clear();
+    // Bounded memory, without forgetting who has been calling: past a
+    // thousand addresses in the minute, a new one is refused.
+    if calls.len() >= 1024 && !calls.contains_key(&ip) {
+        return false;
     }
     let seen = calls.entry(ip).or_default();
     seen.push(now);
@@ -155,6 +178,7 @@ fn take(
     stream: TcpStream,
     allowed: &Allowed,
     waiting: &Mutex<HashMap<String, Vec<Waiting>>>,
+    open: &std::sync::atomic::AtomicUsize,
 ) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
     stream.set_read_timeout(Some(PREFACE_WAIT))?;
@@ -171,7 +195,9 @@ fn take(
                 return Ok(());
             };
             w.retain(|_, v| {
+                let before = v.len();
                 v.retain(|x| x.since.elapsed() < WAIT_BOUND);
+                open.fetch_sub(before - v.len(), Ordering::SeqCst);
                 !v.is_empty()
             });
             if !w.contains_key(&group) && w.len() >= MOST_GROUPS {
@@ -179,8 +205,12 @@ fn take(
             }
             let list = w.entry(group).or_default();
             if list.len() >= WAITING_PER_GROUP {
-                list.remove(0);
+                return Ok(());
             }
+            // Held, not in a thread: the connection counts until it is
+            // put in touch or dropped (`open` is released by the caller's
+            // thread ending; the held one is counted again below).
+            open.fetch_add(1, Ordering::SeqCst);
             list.push(Waiting {
                 stream,
                 since: Instant::now(),
@@ -188,13 +218,16 @@ fn take(
             Ok(())
         }
         Role::Appel => loop {
-            let next = waiting
-                .lock()
-                .ok()
-                .and_then(|mut w| w.get_mut(&group).and_then(|v| v.pop()));
+            // The one that has waited longest: first in, first out.
+            let next = waiting.lock().ok().and_then(|mut w| {
+                w.get_mut(&group)
+                    .and_then(|v| (!v.is_empty()).then(|| v.remove(0)))
+            });
             let Some(mut other) = next else {
                 return Ok(());
             };
+            // Out of the list: no longer counted as held.
+            open.fetch_sub(1, Ordering::SeqCst);
             if other.since.elapsed() >= WAIT_BOUND {
                 continue;
             }
@@ -216,9 +249,17 @@ fn take(
 /// La ligne de préface, lue **octet par octet** : ce qui la suit est déjà
 /// la conversation, et un tampon de lecture en aurait avalé le début.
 fn read_line(mut stream: &TcpStream) -> std::io::Result<String> {
+    // One deadline for the whole line, not one per byte: a byte every few
+    // seconds does not hold a thread for ten minutes.
+    let until = Instant::now() + PREFACE_WAIT;
     let mut out = Vec::with_capacity(64);
     let mut byte = [0u8; 1];
     while out.len() < 128 {
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(std::io::Error::from(std::io::ErrorKind::TimedOut));
+        }
+        stream.set_read_timeout(Some(left))?;
         stream.read_exact(&mut byte)?;
         if byte[0] == b'\n' {
             break;
@@ -283,7 +324,7 @@ fn connect(address: &str, patience: Duration) -> std::io::Result<TcpStream> {
 pub fn wait(address: &str, group: &str, patience: Duration) -> std::io::Result<TcpStream> {
     let mut s = connect(address, patience)?;
     s.write_all(preface(Role::Attente, group).as_bytes())?;
-    s.set_read_timeout(Some(WAIT_BOUND))?;
+    s.set_read_timeout(Some(WAIT_RENEW))?;
     let mut line = [0u8; 6];
     s.read_exact(&mut line)?;
     if &line[..] != format!("{ENTER}\n").as_bytes() {

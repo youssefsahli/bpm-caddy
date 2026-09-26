@@ -781,10 +781,23 @@ octets de l'un à l'autre (`BPMRELAIS1 attente|appel <groupe>`, puis
 `ENTRE`). Ce qui passe est la conversation du § 5, chiffrée de bout en
 bout : la poignée de main prouve de chaque côté qu'on parle au bon
 poste, le relais n'a aucune clé. Il sait qu'un groupe échange, quand et
-combien ; il borne chaque conversation (dix minutes, 256 Mio par sens,
-90 s de silence), le nombre d'attentes par groupe et d'appels par
-adresse. Un inconnu qui se présenterait comme poste du groupe à
-attendre n'obtiendrait que l'échec d'une poignée de main.
+combien. Ses bornes : 256 connexions en tout ; la préface dite en cinq
+secondes, pas un octet à la fois pendant dix minutes ; quatre attentes
+par groupe, **refusées au-delà** — jamais mises à la place d'une autre ;
+une attente de cinq minutes, que le poste renouvelle toutes les quatre
+(une traduction d'adresse d'opérateur oublie une connexion muette) ;
+trente appels par adresse et par minute ; chaque conversation dix
+minutes, 256 Mio par sens, 90 s de silence. Le poste qui attend reçoit
+une conversation relayée à la fois, au plus douze par minute, d'une
+minute chacune : qui connaît le nom du groupe ne tient pas son fil. Un
+inconnu qui se présenterait comme poste du groupe n'obtiendrait que
+l'échec d'une poignée de main.
+
+L'offre et la demande s'annoncent une fois **par numéro**
+(`set_relay_value`), pas par valeur : un relais qui redémarre à la même
+adresse est annoncé de nouveau. Chaque officine ne retient que le
+dernier mot de chacune — une demande retirée ne laisse pas son groupe
+accepté.
 
 Ce qui n'est pas couvert par un test de bout en bout : le fil
 automatique qui sert ou attend — un relais n'est accepté qu'à une

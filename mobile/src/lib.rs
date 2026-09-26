@@ -36,6 +36,9 @@ const LISTEN: Duration = Duration::from_millis(3_500);
 /// La patience d'une conversation avec un poste.
 const TALK: Duration = Duration::from_secs(8);
 
+/// Le temps qu'une conversation par un relais peut durer en tout.
+const RELAYED_BOUND: Duration = Duration::from_secs(120);
+
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum CaddyError {
     /// Une phrase en français, prête à montrer.
@@ -394,7 +397,9 @@ impl Caddy {
                     let said = bpm_caddy::relay::call(&relay, &group, TALK)
                         .map_err(|_| "Link".to_owned())
                         .and_then(|s| {
-                            bpm_sync::link::TcpLink::new(s, TALK).map_err(|e| format!("{e:?}"))
+                            bpm_sync::link::TcpLink::new(s, TALK)
+                                .map(|l| l.with_deadline(RELAYED_BOUND))
+                                .map_err(|e| format!("{e:?}"))
                         })
                         .and_then(|mut link| posts.sync_over(&db, &mut link));
                     match said {

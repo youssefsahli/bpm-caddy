@@ -1466,8 +1466,12 @@ fn auto(
         .filter(|t| t.is_whole())
         .map(|t| hex(&t.name().bytes()));
     let waiting_relays = side.posts_relay && group.is_some();
-    let (relayed_tx, relayed_rx) = std::sync::mpsc::channel::<bpm_sync::link::TcpLink>();
-    let mut relays_waited: Vec<String> = Vec::new();
+    // One conversation handed over at a time: a waiter that finds the
+    // hand-off full waits for the fil to take it, rather than piling up.
+    let (relayed_tx, relayed_rx) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(1);
+    let mut relays_waited: Vec<(String, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
+        Vec::new();
+    let mut relayed_talks: Vec<Instant> = Vec::new();
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
     if let Some(u) = &udp {
         let _ = u.set_broadcast(true);
@@ -1515,7 +1519,7 @@ fn auto(
             published = true;
             db.set_post_reach(
                 &me,
-                &crate::reach::with_relays(&direct_reach, &relays_waited),
+                &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
             )?;
         }
         // Once a minute: what the relay accepts, where it can be reached,
@@ -1540,34 +1544,54 @@ fn auto(
                 });
             }
             if let (true, Some(g)) = (waiting_relays, group.as_ref()) {
-                let was = db.setting(crate::network::RELAY_REQUEST);
-                if was.as_deref() != Some(g.as_str()) {
-                    let _ =
-                        db.set_setting(crate::network::RELAY_REQUEST, g, was.as_deref(), "", "");
-                }
-                for address in crate::network::offered_relays(&db) {
-                    if relays_waited.contains(&address) {
+                crate::network::set_relay_value(&db, crate::network::RELAY_REQUEST, g);
+                let offered: Vec<String> = crate::network::offered_relays(&db)
+                    .into_iter()
+                    .take(MOST_RELAYS)
+                    .collect();
+                // A relay no longer offered: its waiter stops.
+                relays_waited.retain(|(a, stop)| {
+                    let kept = offered.contains(a);
+                    if !kept {
+                        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    kept
+                });
+                for address in offered {
+                    if relays_waited.iter().any(|(a, _)| *a == address) {
                         continue;
                     }
-                    relays_waited.push(address.clone());
-                    let (tx, g, stop) = (
+                    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    relays_waited.push((address.clone(), std::sync::Arc::clone(&stop)));
+                    let (tx, g, all) = (
                         relayed_tx.clone(),
                         g.clone(),
                         std::sync::Arc::clone(&relay_stop),
                     );
                     std::thread::spawn(move || {
-                        while !stop.load(std::sync::atomic::Ordering::SeqCst) {
+                        let stopped = || {
+                            stop.load(std::sync::atomic::Ordering::SeqCst)
+                                || all.load(std::sync::atomic::Ordering::SeqCst)
+                        };
+                        while !stopped() {
                             match crate::relay::wait(&address, &g, TALK_PATIENCE) {
                                 Ok(stream) => {
                                     if let Ok(link) =
                                         bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE)
                                     {
-                                        if tx.send(link.with_deadline(POSTS_ANSWER_BOUND)).is_err()
-                                        {
+                                        if tx.send(link.with_deadline(RELAYED_BOUND)).is_err() {
                                             return;
                                         }
                                     }
                                 }
+                                // The wait ran out with nobody: wait again
+                                // at once, or a phone would find no post.
+                                Err(e)
+                                    if matches!(
+                                        e.kind(),
+                                        std::io::ErrorKind::WouldBlock
+                                            | std::io::ErrorKind::TimedOut
+                                    ) => {}
                                 Err(_) => std::thread::sleep(Duration::from_secs(30)),
                             }
                         }
@@ -1576,22 +1600,25 @@ fn auto(
                 published = true;
                 db.set_post_reach(
                     &me,
-                    &crate::reach::with_relays(&direct_reach, &relays_waited),
+                    &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
                 )?;
             }
         }
         if let Ok((router, offer)) = offer_rx.try_recv() {
             relay_mapped |= router;
-            let was = db.setting(crate::network::RELAY_OFFER);
-            if was.as_deref().unwrap_or_default() != offer {
-                let _ = db.set_setting(crate::network::RELAY_OFFER, &offer, was.as_deref(), "", "");
-            }
+            crate::network::set_relay_value(&db, crate::network::RELAY_OFFER, &offer);
         }
-        // A phone the relay put in touch with this post: the conversation
-        // is answered here, like one knocking at the door.
-        while let (Ok(mut link), Some(t)) = (relayed_rx.try_recv(), &trousseau) {
-            if posts.talk(&db, t, &mut link, false).is_ok() {
-                talked = true;
+        // A phone the relay put in touch with this post: answered here,
+        // like one knocking at the door — one per turn, and no more than
+        // a dozen a minute, so that whoever knows the group's name cannot
+        // hold this post's fil through the relay.
+        if let (Ok(mut link), Some(t)) = (relayed_rx.try_recv(), &trousseau) {
+            relayed_talks.retain(|at| at.elapsed() < Duration::from_secs(60));
+            if relayed_talks.len() < KNOCKS_PER_MINUTE * 2 {
+                relayed_talks.push(Instant::now());
+                if posts.talk(&db, t, &mut link, false).is_ok() {
+                    talked = true;
+                }
             }
         }
         // A post knocking at our IPv6 door, from outside the officine.
@@ -1929,13 +1956,7 @@ fn auto(
     }
     relay_stop.store(true, std::sync::atomic::Ordering::SeqCst);
     if serving {
-        let _ = db.set_setting(
-            crate::network::RELAY_OFFER,
-            "",
-            db.setting(crate::network::RELAY_OFFER).as_deref(),
-            "",
-            "",
-        );
+        crate::network::set_relay_value(&db, crate::network::RELAY_OFFER, "");
     }
     if relay_mapped {
         crate::reach::close_mapping(side.relay_port);
@@ -1946,6 +1967,18 @@ fn auto(
 /// Tous les combien le relais relit ce qu'il accepte, et le poste les
 /// relais où il attend.
 const RELAY_EVERY: Duration = Duration::from_secs(60);
+
+/// Combien de relais un poste attend à la fois.
+const MOST_RELAYS: usize = 4;
+
+/// Le temps qu'une conversation reçue par un relais peut durer : plus
+/// court qu'à la porte — ce qu'un téléphone échange tient en moins, et le
+/// fil des postes ne l'attend pas davantage.
+const RELAYED_BOUND: Duration = Duration::from_secs(60);
+
+fn relay_names(waited: &[(String, std::sync::Arc<std::sync::atomic::AtomicBool>)]) -> Vec<String> {
+    waited.iter().map(|(a, _)| a.clone()).collect()
+}
 
 /// **Combien de fois une adresse d'Internet frappe à la porte des
 /// postes** : au-delà de deux fois [`KNOCKS_PER_MINUTE`] dans la minute,

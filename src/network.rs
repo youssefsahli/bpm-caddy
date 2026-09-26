@@ -443,7 +443,8 @@ impl Net {
         ] {
             let value = db.setting(setting).unwrap_or_default();
             let value = value.trim();
-            let key = format!("{t}:{value}");
+            let seq = db.setting(&format!("{setting}_seq")).unwrap_or_default();
+            let key = format!("{t}:{seq}:{value}");
             let said_before = already.iter().any(|k| k.starts_with(&format!("{t}:")));
             if already.contains(&key) || (value.is_empty() && !said_before) {
                 continue;
@@ -740,43 +741,55 @@ impl Net {
         // **Les relais offerts** par les officines du réseau, et **les
         // groupes** qu'elles demandent de relayer — ce que le relais de
         // cette officine accepte, si elle relaie.
-        let mut groups: std::collections::BTreeSet<String> = db
-            .setting(RELAY_GROUPS)
-            .unwrap_or_default()
-            .split(',')
-            .filter(|g| !g.is_empty())
-            .map(str::to_owned)
-            .collect();
-        let groups_before = groups.clone();
+        // The **last** word of each officine only — its offer, its request
+        // — so a history of offers and withdrawals is not written again at
+        // every reading, and a withdrawn request is forgotten.
+        let mut offers: std::collections::BTreeMap<String, String> = Default::default();
+        let mut requests: std::collections::BTreeMap<String, String> = Default::default();
         for f in &facts {
             let Some(v) = serde_json::from_slice::<serde_json::Value>(&f.payload).ok() else {
                 continue;
             };
+            let author = hex(&f.author.0);
             match v.get("t").and_then(|t| t.as_str()) {
                 Some("relais") => {
                     let a = v.get("a").and_then(|a| a.as_str()).unwrap_or_default();
-                    let a = crate::reach::addresses(a).join(",");
-                    let key = relay_key(&hex(&f.author.0));
-                    let was = db.setting(&key);
-                    if was.as_deref().unwrap_or_default() != a {
-                        let _ = db.set_setting(&key, &a, was.as_deref(), "", "");
-                    }
+                    offers.insert(author, crate::reach::addresses(a).join(","));
                 }
                 Some("relais_demande") => {
-                    if let Some(g) = v.get("g").and_then(|g| g.as_str()) {
-                        let g = g.trim().to_ascii_lowercase();
-                        if g.len() == 20 && g.chars().all(|c| c.is_ascii_hexdigit()) {
-                            groups.insert(g);
-                        }
-                    }
+                    let g = v
+                        .get("g")
+                        .and_then(|g| g.as_str())
+                        .unwrap_or_default()
+                        .trim()
+                        .to_ascii_lowercase();
+                    let g = if g.len() == 20 && g.chars().all(|c| c.is_ascii_hexdigit()) {
+                        g
+                    } else {
+                        String::new()
+                    };
+                    requests.insert(author, g);
                 }
                 _ => {}
             }
         }
-        if groups != groups_before {
+        for (author, a) in offers {
+            let key = relay_key(&author);
+            let was = db.setting(&key);
+            if was.as_deref().unwrap_or_default() != a {
+                let _ = db.set_setting(&key, &a, was.as_deref(), "", "");
+            }
+        }
+        if !requests.is_empty() {
+            let mut groups: Vec<String> =
+                requests.into_values().filter(|g| !g.is_empty()).collect();
+            groups.sort();
+            groups.dedup();
+            let now = groups.join(",");
             let was = db.setting(RELAY_GROUPS);
-            let now: Vec<String> = groups.into_iter().collect();
-            let _ = db.set_setting(RELAY_GROUPS, &now.join(","), was.as_deref(), "", "");
+            if was.as_deref().unwrap_or_default() != now {
+                let _ = db.set_setting(RELAY_GROUPS, &now, was.as_deref(), "", "");
+            }
         }
         // Les clés de boîte annoncées, puis les messages scellés pour
         // celle-ci — ceux qui ne s'ouvrent pas sont pour d'autres.
@@ -1074,6 +1087,26 @@ pub const RELAY_OFFER: &str = "net_relay_offer";
 pub const RELAY_REQUEST: &str = "net_relay_request";
 /// Les groupes que les officines du réseau ont demandé de relayer.
 pub const RELAY_GROUPS: &str = "net_relay_groups";
+
+/// **Écrire un réglage du relais**, et son numéro quand la valeur change :
+/// l'annonce se fait une fois par numéro, pas par valeur — revenir à une
+/// offre d'avant (un redémarrage, une adresse retrouvée) l'annonce de
+/// nouveau. Rien n'est écrit quand rien ne change.
+pub fn set_relay_value(db: &Db, key: &str, value: &str) {
+    let was = db.setting(key);
+    if was.as_deref().unwrap_or_default() == value {
+        return;
+    }
+    let _ = db.set_setting(key, value, was.as_deref(), "", "");
+    let seq_key = format!("{key}_seq");
+    let seq = db.setting(&seq_key);
+    let next = seq
+        .as_deref()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
+        + 1;
+    let _ = db.set_setting(&seq_key, &next.to_string(), seq.as_deref(), "", "");
+}
 
 /// Où ranger les adresses de relais qu'une officine du réseau offre.
 pub fn relay_key(device: &str) -> String {
@@ -2688,10 +2721,8 @@ mod tests {
             .unwrap();
         b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-26")
             .unwrap();
-        a.set_setting(RELAY_OFFER, "82.64.1.2:7746", None, "", "")
-            .unwrap();
-        b.set_setting(RELAY_REQUEST, "0123456789abcdef0123", None, "", "")
-            .unwrap();
+        set_relay_value(&a, RELAY_OFFER, "82.64.1.2:7746");
+        set_relay_value(&b, RELAY_REQUEST, "0123456789abcdef0123");
         let cross = || {
             let mut na = Net::load(&a).unwrap();
             let mut nb = Net::load(&b).unwrap();
@@ -2709,12 +2740,16 @@ mod tests {
             a.setting(RELAY_GROUPS).as_deref(),
             Some("0123456789abcdef0123")
         );
-        // Withdrawn: the other officine forgets it.
-        let was = a.setting(RELAY_OFFER);
-        a.set_setting(RELAY_OFFER, "", was.as_deref(), "", "")
-            .unwrap();
+        // Withdrawn: the other officine forgets it — and offered again
+        // with the same address (a restart), it is announced again.
+        set_relay_value(&a, RELAY_OFFER, "");
+        set_relay_value(&b, RELAY_REQUEST, "");
         cross();
         assert!(offered_relays(&b).is_empty());
+        assert_eq!(a.setting(RELAY_GROUPS).as_deref(), Some(""));
+        set_relay_value(&a, RELAY_OFFER, "82.64.1.2:7746");
+        cross();
+        assert_eq!(offered_relays(&b), vec!["82.64.1.2:7746".to_owned()]);
     }
 
     #[test]
