@@ -36,7 +36,11 @@ line in that test.
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
   `bulletin`, `content`, `script` (Rhai console), `telemetry`, `audit`,
-  `replica` (what travels between posts, field-by-field apply),
+  `replica` (what travels between posts, field-by-field apply, and
+  `admissible`: an op only through its table's stream), `reach` (a post
+  reachable from the internet: IPv6, UPnP, published addresses) and
+  `relay` (the stateless relay between an unreachable post and a phone)
+  — both under `sync`,
   `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
