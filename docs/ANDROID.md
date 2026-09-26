@@ -124,6 +124,11 @@ Réponses à vérifier par l'officine avant de les soumettre :
 - **Autorisations** : `INTERNET`, `ACCESS_WIFI_STATE`,
   `CHANGE_WIFI_MULTICAST_STATE` (entendre les annonces des postes sur
   le Wi-Fi), `USE_BIOMETRIC` (ouvrir la base).
+- **Lecteur de code QR** : celui des services Google Play
+  (`play-services-code-scanner`), qui ouvre sa propre caméra — pas
+  d'autorisation caméra pour l'application — et lit le code sur
+  l'appareil. À vérifier dans la documentation de Google au moment de
+  la soumission, puisque le formulaire couvre aussi les bibliothèques.
 
 Une **politique de confidentialité** publique est exigée : le texte
 ci-dessous peut être publié tel quel (page GitHub du dépôt, par
