@@ -41825,7 +41825,8 @@ impl App {
             // posée au-dessus prenait le tiers de la hauteur pour montrer
             // trois titres, et les cases — ce qu'on vient manipuler —
             // tombaient sous sa barre de défilement.
-            let strip_h = Self::cascades_strip_height(ui, session, body.width(), body.height());
+            let (strip_h, _) =
+                Self::cascades_strip_fit(ui, session, body.width(), body.height() * 0.3);
             let split = motif::split_rows(body, &[strip_h, 0.0], 6.0);
             Self::cascades_strip(ui, session, split[0], now);
             Self::cascade_main(ui, session, split[1], config, now);
@@ -41867,16 +41868,25 @@ impl App {
         out
     }
 
-    fn cascades_strip_height(ui: &egui::Ui, session: &Session, width: f32, height: f32) -> f32 {
+    /// La hauteur de la bande sous le plafond `cap`, et la largeur où
+    /// elle se dessine.
+    ///
+    /// **La barre ne prend sa place que si elle paraît** : une bande
+    /// qui tient sous son plafond se dessine sur toute la largeur, et la
+    /// mesurer à la largeur d'une barre absente annonçait une rangée de
+    /// plus — une bande vide sous les cases, docks larges.
+    fn cascades_strip_fit(ui: &egui::Ui, session: &Session, width: f32, cap: f32) -> (f32, f32) {
+        let row_h = Self::row_height(ui);
+        let gap = ui.spacing().item_spacing.y;
+        let full = Self::cascades_strip_widths(ui, session, width);
+        let rows = Self::wrapped_rows_of(ui, width, full.into_iter());
+        if rows * row_h + (rows - 1.0).max(0.0) * gap <= cap.max(row_h) + 0.5 {
+            return (whole_rows(cap, row_h, gap, rows), width);
+        }
         let inner = Self::scrolled_width(ui, width);
         let widths = Self::cascades_strip_widths(ui, session, inner);
         let rows = Self::wrapped_rows_of(ui, inner, widths.into_iter());
-        whole_rows(
-            height * 0.3,
-            Self::row_height(ui),
-            ui.spacing().item_spacing.y,
-            rows,
-        )
+        (whole_rows(cap, row_h, gap, rows), inner)
     }
 
     /// La bande de l'écran étroit : la cascade, et ses molécules.
@@ -41889,8 +41899,8 @@ impl App {
         let t = session.cascade_t;
         let in_file = session.cascade_in_file();
         let mut give_file = false;
-        let widths =
-            Self::cascades_strip_widths(ui, session, Self::scrolled_width(ui, rect.width()));
+        let (_, drawn) = Self::cascades_strip_fit(ui, session, rect.width(), rect.height());
+        let widths = Self::cascades_strip_widths(ui, session, drawn);
         motif::inside(ui, rect, |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
