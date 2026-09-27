@@ -567,9 +567,18 @@ conseils à tenir à jour deux fois.
   ampleur relative. Le temps est en pas, sans unité : **aucun délai
   clinique n'est écrit nulle part**.
 - **`adaptation`** ne se met que là où la tolérance et le rebond sont
-  établis (bêta-1, mu central, GABA-A). Le mu intestinal est un nœud à
-  part, sans adaptation, parce que la constipation sous opioïde ne
-  s'épuise pas — la même molécule agit sur les deux.
+  établis : bêta-1 et bêta-2, les deux GABA-A, et pour l'opioïde
+  l'**adénylate cyclase**, dont la surexpression fait le manque — le
+  récepteur mu intestinal reste sans adaptation, parce que la
+  constipation sous opioïde ne s'épuise pas.
+- **`tonus faible`** dit qu'un nœud est presque au repos sans molécule :
+  les récepteurs mu, sur lesquels la naloxone seule ne fait rien. Sans
+  lui, le modèle — où tout vaut 1 au repos — montrait une hyperalgésie
+  sous naloxone seule. Une relecture pharmacologique de la première
+  version l'a trouvé, avec le zolpidem lu comme une benzodiazépine
+  (d'où les deux GABA-A, alpha-1 et alpha-2/3), la cellule ECL nommée
+  entérochromaffine, et une source qui laissait croire les
+  cardiosélectifs permis dans l'asthme sévère.
 - **Une molécule nomme une fiche** par sa DCI exacte, repliée : c'est
   par elle que la fiche ouvre sa cascade (`Session::cascades_naming`),
   et un nom entier, jamais une sous-chaîne.
@@ -580,7 +589,10 @@ conseils à tenir à jour deux fois.
   mort. Des tests tiennent aussi les affirmations qu'on vient y lire :
   le bisoprolol épargne les bronches et le propranolol non, l'IEC fait
   tousser et le sartan non, le coxib épargne l'estomac et les
-  plaquettes mais pas le rein, l'arrêt brutal d'une benzodiazépine
+  plaquettes mais ni le rein ni la balance thrombotique, le zolpidem
+  endort sans anxiolyse, la naloxone seule ne fait rien et précipite le
+  manque après une longue morphine, l'énoxaparine et le fondaparinux
+  agissent sur le Xa, l'arrêt brutal d'une benzodiazépine
   abaisse le seuil convulsif, la buprénorphine donnée sur la morphine
   en baisse l'effet, la constipation survit à la tolérance. Le nombre
   de cascades livrées ne baisse jamais (`the_shipped_cascades_only_ever_grow`).

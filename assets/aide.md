@@ -711,8 +711,8 @@ un clic dans les courbes place le temps. Chaque effet a sa courbe, le
 filet horizontal étant l'état de repos ; un clic sur une clé de la
 légende masque ou rend une courbe. Un récepteur qui s'adapte se
 multiplie quand il est longtemps bloqué et se raréfie quand il est
-longtemps stimulé — sa densité est tracée en tirets, et le filet sous
-sa case la montre sur la figure. C'est ce qui fait la tolérance, et le
+longtemps stimulé — son adaptation est tracée en tirets, et le filet
+sous sa case la montre sur la figure. C'est ce qui fait la tolérance, et le
 rebond à l'arrêt brutal : donner un bêtabloquant, avancer, le décocher,
 avancer encore.
 
@@ -736,6 +736,9 @@ mesure qu'on écrit. Une instruction par ligne :
   sont agoniste, agoniste partiel, agoniste partiel faible, antagoniste,
   inhibiteur, activateur et potentialisateur, séparées par `;` ;
 - `adaptation Bêta-1` : le nœud s'adapte avec le temps ;
+- `tonus faible Récepteur mu central` : le nœud est presque au repos
+  sans molécule — le bloquer ne retire presque rien, le stimuler ajoute
+  tout (la naloxone seule ne fait rien, sur la morphine elle la renverse) ;
 - `#` commente la fin de la ligne.
 
 Ce qui ne se lit pas est signalé sous le texte avec son numéro de ligne,

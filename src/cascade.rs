@@ -75,6 +75,10 @@
 //!   ce qu'il reçoit : bloqué longtemps il se multiplie, stimulé
 //!   longtemps il se raréfie. C'est ce qui fait la tolérance et le
 //!   rebond.
+//! * `tonus faible <nœud>[, <nœud>…]` — le nœud est presque au repos à
+//!   l'état de base : le bloquer ne retire presque rien, le stimuler
+//!   ajoute tout. C'est le récepteur opioïde sans opioïde : la naloxone
+//!   seule n'y fait rien, la naloxone sur la morphine la renverse.
 
 use crate::fuzzy;
 
@@ -214,6 +218,8 @@ pub struct Node {
     pub note: String,
     /// Règle-t-il sa densité ? Voir `adaptation`.
     pub adapts: bool,
+    /// Presque rien au repos : voir `tonus faible`.
+    pub low_tone: bool,
     /// Déclaré explicitement, ou seulement nommé par une flèche.
     pub declared: bool,
 }
@@ -427,6 +433,7 @@ pub fn parse(text: &str) -> Cascade {
     // plus bas peut encore introduire : elles se résolvent à la fin.
     let mut pending_mols: Vec<Pending> = Vec::new();
     let mut pending_adapt: Vec<(usize, String)> = Vec::new();
+    let mut pending_tone: Vec<(usize, String)> = Vec::new();
     fn node(c: &mut Cascade, name: &str, kind: Option<Kind>, note: &str, line: usize) -> usize {
         let name = tidy(name);
         match c.find(&name) {
@@ -451,6 +458,7 @@ pub fn parse(text: &str) -> Cascade {
                     kind: kind.unwrap_or(Kind::Relais),
                     note: note.to_owned(),
                     adapts: false,
+                    low_tone: false,
                     declared: kind.is_some(),
                 });
                 c.nodes.len() - 1
@@ -520,6 +528,28 @@ pub fn parse(text: &str) -> Cascade {
                 }
             }
             pending_mols.push((line, name, list));
+            continue;
+        }
+        if let Some(rest) = keyword(body, "tonus") {
+            let rest = rest.trim_start_matches(':').trim_start();
+            match keyword(rest, "faible") {
+                Some(names) => {
+                    let names: Vec<String> = names
+                        .trim_start_matches(':')
+                        .split(',')
+                        .map(tidy)
+                        .filter(|t| !t.is_empty())
+                        .collect();
+                    if names.is_empty() {
+                        c.faults.push(Fault::MissingName { line });
+                    }
+                    pending_tone.extend(names.into_iter().map(|n| (line, n)));
+                }
+                None => c.faults.push(Fault::UnknownAction {
+                    line,
+                    text: rest.trim().to_owned(),
+                }),
+            }
             continue;
         }
         if let Some(rest) = keyword(body, "adaptation") {
@@ -595,6 +625,12 @@ pub fn parse(text: &str) -> Cascade {
     for (line, name) in pending_adapt {
         match c.find(&name) {
             Some(i) => c.nodes[i].adapts = true,
+            None => c.faults.push(Fault::UnknownNode { line, name }),
+        }
+    }
+    for (line, name) in pending_tone {
+        match c.find(&name) {
+            Some(i) => c.nodes[i].low_tone = true,
             None => c.faults.push(Fault::UnknownNode { line, name }),
         }
     }
@@ -680,6 +716,7 @@ pub fn colour(text: &str) -> Vec<(usize, usize, Ink)> {
             "molécule",
             "molecules",
             "adaptation",
+            "tonus",
             "recepteurs",
             "effets",
         ]);
@@ -788,6 +825,9 @@ pub const BOOST: f32 = 2.0;
 /// Le plafond d'un nœud, trois fois son repos : au-delà, le dessin ne
 /// distingue plus rien et le calcul d'une boucle pourrait s'emballer.
 pub const CEILING: f32 = 3.0;
+/// Ce qu'un nœud au tonus faible perd de ce qu'on lui retire : le
+/// dixième, parce qu'il n'avait presque rien à perdre.
+pub const LOW_TONE: f32 = 0.1;
 /// Les bornes de la densité d'un nœud qui s'adapte.
 pub const DENSITY_MIN: f32 = 0.4;
 pub const DENSITY_MAX: f32 = 2.5;
@@ -940,7 +980,13 @@ fn drive_of(c: &Cascade, i: usize, level: &[f32], given: &[bool]) -> f32 {
         // prennent pas, et elles se le partagent à parts égales.
         x = x * (1.0 - OCCUPIED) + OCCUPIED * efficacy / occupants as f32;
     }
-    (x * factor).clamp(0.0, CEILING)
+    let mut x = x * factor;
+    // Au tonus faible, ce qui descend sous le repos n'en retire que le
+    // dixième : il n'y avait presque rien à retirer.
+    if c.nodes.get(i).is_some_and(|n| n.low_tone) && x < 1.0 {
+        x = 1.0 - (1.0 - x) * LOW_TONE;
+    }
+    x.clamp(0.0, CEILING)
 }
 
 /// L'état établi d'une chaîne pour ces molécules et ces densités — ce
@@ -1675,6 +1721,30 @@ adaptation Bêta-1
     }
 
     #[test]
+    fn a_low_tone_node_loses_little_when_blocked_and_gains_everything_when_stimulated() {
+        let c = parse(
+            "ligand Endorphines\nrécepteur Mu\nEndorphines -> Mu -> Effet\n\
+             tonus faible Mu\nmolécule morphine : agoniste Mu\n\
+             molécule naloxone : antagoniste Mu\ntonus fort Mu",
+        );
+        assert_eq!(c.faults.len(), 1, "{:?}", c.faults);
+        assert!(matches!(c.faults[0], Fault::UnknownAction { line: 7, .. }));
+        assert!(c.nodes[c.find("Mu").unwrap()].low_tone);
+        let e = idx(&c, "Effet");
+        assert_eq!(
+            trend(settle(&c, &with(&c, &["naloxone"]), &[]).level[e]),
+            Trend::Rest
+        );
+        assert_eq!(
+            trend(settle(&c, &with(&c, &["morphine"]), &[]).level[e]),
+            Trend::Up
+        );
+        // Et sur la morphine, elle la renverse.
+        let both = settle(&c, &with(&c, &["morphine", "naloxone"]), &[]).level[e];
+        assert_eq!(trend(both), Trend::Rest);
+    }
+
+    #[test]
     fn a_straight_chain_is_laid_straight() {
         let c = parse("A -> B -> C -> D");
         let l = layout(&c);
@@ -1745,7 +1815,6 @@ adaptation Bêta-1
         let cards: Vec<&str> = crate::db::STARTER_DRUGS.iter().map(|d| d.1).collect();
         for text in STARTER_CASCADES {
             let c = parse(text);
-            let rest = settle(&c, &with(&c, &[]), &[]);
             for (m, mol) in c.molecules.iter().enumerate() {
                 assert!(
                     cards.iter().any(|d| fuzzy::eq_folded(d, &mol.name))
@@ -1755,14 +1824,24 @@ adaptation Bêta-1
                     mol.name
                 );
                 // Une molécule qui ne change aucun effet ne montre rien :
-                // sa case se cocherait sur une figure immobile.
-                let mut given = vec![false; c.molecules.len()];
-                given[m] = true;
-                let f = settle(&c, &given, &[]);
-                assert!(
+                // sa case se cocherait sur une figure immobile. Seule, ou
+                // donnée sur une autre — la naloxone ne fait rien sans
+                // morphinique, et tout sur lui.
+                let moves = |base: Option<usize>| {
+                    let mut without = vec![false; c.molecules.len()];
+                    if let Some(b) = base {
+                        without[b] = true;
+                    }
+                    let before = settle(&c, &without, &[]);
+                    let mut with = without.clone();
+                    with[m] = true;
+                    let after = settle(&c, &with, &[]);
                     c.outcomes()
                         .iter()
-                        .any(|&o| trend(f.level[o]) != trend(rest.level[o])),
+                        .any(|&o| trend(after.level[o]) != trend(before.level[o]))
+                };
+                assert!(
+                    moves(None) || (0..c.molecules.len()).any(|b| b != m && moves(Some(b))),
                     "{} : « {} » ne change aucun effet",
                     c.title,
                     mol.name
@@ -1837,9 +1916,15 @@ adaptation Bêta-1
         let stomach = "Protection de la muqueuse gastrique";
         assert_eq!(trend(level(&c, &["ibuprofène"], stomach)), Trend::Down);
         assert_eq!(trend(level(&c, &["célécoxib"], stomach)), Trend::Rest);
+        // La prostacycline baisse seule : l'agrégation monte — le risque
+        // thrombotique des coxibs. Un AINS non sélectif la baisse.
         assert_eq!(
             trend(level(&c, &["célécoxib"], "Agrégation plaquettaire")),
-            Trend::Rest
+            Trend::Up
+        );
+        assert_eq!(
+            trend(level(&c, &["ibuprofène"], "Agrégation plaquettaire")),
+            Trend::Down
         );
         assert_eq!(
             trend(level(&c, &["célécoxib"], "Inflammation")),
@@ -1884,6 +1969,15 @@ adaptation Bêta-1
         let pain = "Transmission de la douleur";
         assert!(level(&c, &["morphine", "buprénorphine"], pain) > level(&c, &["morphine"], pain));
         assert!(level(&c, &["morphine", "naloxone"], pain) > level(&c, &["morphine"], pain));
+        // Seule, la naloxone ne fait rien : le récepteur est presque au
+        // repos sans opioïde.
+        for effect in [pain, "Commande respiratoire", "Motricité intestinale"] {
+            assert_eq!(
+                trend(level(&c, &["naloxone"], effect)),
+                Trend::Rest,
+                "{effect}"
+            );
+        }
         let m = c
             .molecules
             .iter()
@@ -1903,6 +1997,59 @@ adaptation Bêta-1
         assert!(frames[60].level[p] > frames[0].level[p]);
         assert_eq!(frames[60].level[gut], frames[0].level[gut]);
         assert_eq!(trend(frames[60].level[gut]), Trend::Down);
+        // Le manque précipité : la naloxone donnée après une longue
+        // morphine fait déborder l'AMPc — la douleur au-dessus du repos.
+        let n = c
+            .molecules
+            .iter()
+            .position(|m| m.name == "naloxone")
+            .unwrap();
+        let frames = run(
+            &c,
+            &[
+                Dose {
+                    molecule: m,
+                    from: 0,
+                    until: None,
+                },
+                Dose {
+                    molecule: n,
+                    from: 60,
+                    until: None,
+                },
+            ],
+            61,
+        );
+        assert_eq!(trend(frames[61].level[p]), Trend::Up);
+        assert_eq!(trend(frames[61].level[idx(&c, "AMPc")]), Trend::Up);
+    }
+
+    #[test]
+    fn zolpidem_puts_to_sleep_without_the_anxiolysis_of_a_benzodiazepine() {
+        let c = shipped("Récepteur GABA-A");
+        assert_eq!(trend(level(&c, &["zolpidem"], "Vigilance")), Trend::Down);
+        for effect in ["Anxiété", "Tonus musculaire", "Seuil convulsif"] {
+            assert_eq!(
+                trend(level(&c, &["zolpidem"], effect)),
+                Trend::Rest,
+                "{effect}"
+            );
+            assert_ne!(
+                trend(level(&c, &["diazépam"], effect)),
+                Trend::Rest,
+                "{effect}"
+            );
+        }
+    }
+
+    #[test]
+    fn enoxaparin_and_fondaparinux_act_on_xa_and_heparin_on_both() {
+        let c = shipped("Coagulation");
+        let (xa, iia) = ("Facteur Xa", "Thrombine");
+        for m in ["héparine sodique", "énoxaparine", "fondaparinux"] {
+            assert_eq!(trend(level(&c, &[m], xa)), Trend::Down, "{m}");
+        }
+        assert!(level(&c, &["héparine sodique"], iia) < level(&c, &["fondaparinux"], iia));
     }
 
     #[test]

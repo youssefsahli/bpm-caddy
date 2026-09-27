@@ -24495,15 +24495,16 @@ pub const STARTER_CASCADES: &[&str] = &[
 titre : Récepteurs bêta-adrénergiques
 sujet : Bêtabloquants, salbutamol — cœur et bronches
 source : Rang & Dale's Pharmacology
-source : RCP des bêtabloquants : arrêt progressif, contre-indication de l'asthme pour les non cardiosélectifs
+source : RCP des bêtabloquants : arrêt progressif ; asthme et BPCO sévères contre-indiqués, cardiosélectifs compris
 
 ligand Noradrénaline
 ligand Adrénaline
-récepteur Bêta-1 : myocarde, couplé à la protéine Gs
+récepteur Bêta-1 : myocarde et nœud sinusal, couplé à la protéine Gs
 récepteur Bêta-2 : muscle lisse bronchique, couplé à la protéine Gs
 relais Protéine Gs
 enzyme Adénylate cyclase
 messager AMPc myocardique
+canal Courant If : canal HCN du nœud sinusal, ouvert par l'AMPc
 enzyme Protéine kinase A
 canal Canaux calciques L : entrée de calcium dans la cellule myocardique
 messager AMPc bronchique : via la protéine Gs et l'adénylate cyclase du muscle lisse
@@ -24513,11 +24514,13 @@ effet Bronchodilatation
 
 Noradrénaline, Adrénaline -> Bêta-1
 Adrénaline -> Bêta-2
-Bêta-1 -> Protéine Gs -> Adénylate cyclase -> AMPc myocardique -> Protéine kinase A
-Protéine kinase A -> Canaux calciques L -> Fréquence cardiaque, Contractilité
+Bêta-1 -> Protéine Gs -> Adénylate cyclase -> AMPc myocardique
+AMPc myocardique -> Courant If -> Fréquence cardiaque
+AMPc myocardique -> Protéine kinase A -> Canaux calciques L -> Contractilité
 Bêta-2 -> AMPc bronchique -> Bronchodilatation
 
-# Cardiosélectifs : le bêta-1 seul.
+# Cardiosélectifs : surtout le bêta-1. La sélectivité est relative et
+# se perd aux fortes doses — le dessin ne le montre pas.
 molécule bisoprolol : antagoniste Bêta-1
 molécule aténolol : antagoniste Bêta-1
 molécule métoprolol : antagoniste Bêta-1
@@ -24525,14 +24528,16 @@ molécule nébivolol : antagoniste Bêta-1
 # Activité sympathomimétique intrinsèque : un agoniste partiel dont
 # l'efficacité reste sous le tonus de repos — moins de bradycardie.
 molécule acébutolol : agoniste partiel faible Bêta-1
-# Non cardiosélectifs : les bronches aussi.
+# Non cardiosélectifs : les bronches aussi. Le carvédilol bloque en plus
+# l'alpha-1, qui n'est pas dessiné.
 molécule propranolol : antagoniste Bêta-1, Bêta-2
 molécule carvédilol : antagoniste Bêta-1, Bêta-2
 molécule salbutamol : agoniste Bêta-2
 
 # Bloqués longtemps, les récepteurs bêta-1 se multiplient : l'arrêt
-# brutal les découvre tous, d'où le rebond.
-adaptation Bêta-1
+# brutal les découvre tous, d'où le rebond. Stimulés longtemps, les
+# bêta-2 se désensibilisent.
+adaptation Bêta-1, Bêta-2
 ",
     "\
 titre : Récepteur opioïde mu
@@ -24541,10 +24546,10 @@ source : Rang & Dale's Pharmacology
 source : RCP de la buprénorphine : manque précipité si la première prise est trop précoce
 
 ligand Endorphines
-récepteur Récepteur mu central : couplé aux protéines Gi/o ; tolérance à l'analgésie et à la dépression respiratoire
+récepteur Récepteur mu central : couplé aux protéines Gi/o
 récepteur Récepteur mu intestinal : peu de tolérance, d'où une constipation qui dure
 relais Protéine Gi
-enzyme Adénylate cyclase
+enzyme Adénylate cyclase : surexprimée sous opioïde au long cours, elle fait le manque à l'arrêt
 messager AMPc
 canal Canaux potassiques : leur ouverture hyperpolarise le neurone
 relais Excitabilité neuronale
@@ -24562,6 +24567,10 @@ Excitabilité neuronale -> Libération de neuromédiateurs
 Libération de neuromédiateurs -> Transmission de la douleur, Commande respiratoire
 Récepteur mu intestinal -| Motricité intestinale
 
+# Sans opioïde, le récepteur est presque au repos : la naloxone seule
+# n'y fait rien de notable, elle se joue sur un morphinique.
+tonus faible Récepteur mu central, Récepteur mu intestinal
+
 molécule morphine : agoniste Récepteur mu central, Récepteur mu intestinal
 molécule oxycodone : agoniste Récepteur mu central, Récepteur mu intestinal
 molécule fentanyl : agoniste Récepteur mu central, Récepteur mu intestinal
@@ -24569,7 +24578,9 @@ molécule fentanyl : agoniste Récepteur mu central, Récepteur mu intestinal
 molécule buprénorphine : agoniste partiel Récepteur mu central, Récepteur mu intestinal
 molécule naloxone : antagoniste Récepteur mu central, Récepteur mu intestinal
 
-adaptation Récepteur mu central
+# La tolérance et le manque : freinée longtemps, l'adénylate cyclase se
+# renforce ; à l'arrêt, ou sous naloxone, l'AMPc déborde.
+adaptation Adénylate cyclase
 ",
     "\
 titre : Récepteur GABA-A
@@ -24578,31 +24589,33 @@ source : Rang & Dale's Pharmacology
 source : HAS, arrêt des benzodiazépines : décroissance progressive, risque de convulsions au sevrage brutal
 
 ligand GABA
-récepteur GABA-A : canal chlorure ; site benzodiazépine distinct du site du GABA
-canal Entrée de chlorure
-relais Hyperpolarisation
-relais Excitabilité neuronale
+récepteur GABA-A alpha-1 : sous-unité alpha-1, la sédation ; cible préférentielle du zolpidem
+récepteur GABA-A alpha-2/3 : sous-unités alpha-2 et alpha-3, l'anxiolyse et la myorelaxation
+relais Inhibition corticale : entrée de chlorure, hyperpolarisation
+relais Inhibition limbique et spinale : entrée de chlorure, hyperpolarisation
 effet Vigilance : baissée, c'est la sédation
 effet Anxiété
 effet Tonus musculaire : baissé, c'est la myorelaxation
 effet Seuil convulsif : monté, c'est l'effet anticonvulsivant ; baissé au sevrage
 
-GABA -> GABA-A -> Entrée de chlorure -> Hyperpolarisation
-Hyperpolarisation -| Excitabilité neuronale
-Excitabilité neuronale -> Vigilance, Anxiété, Tonus musculaire
-Excitabilité neuronale -| Seuil convulsif
+GABA -> GABA-A alpha-1, GABA-A alpha-2/3
+GABA-A alpha-1 -> Inhibition corticale -| Vigilance
+GABA-A alpha-2/3 -> Inhibition limbique et spinale -| Anxiété, Tonus musculaire
+Inhibition limbique et spinale -> Seuil convulsif
 
 # Ils augmentent l'effet du GABA, et ne font rien sans lui.
-molécule alprazolam : potentialisateur GABA-A
-molécule bromazépam : potentialisateur GABA-A
-molécule diazépam : potentialisateur GABA-A
-molécule lorazépam : potentialisateur GABA-A
-molécule oxazépam : potentialisateur GABA-A
-molécule prazépam : potentialisateur GABA-A
-molécule zolpidem : potentialisateur GABA-A
-molécule zopiclone : potentialisateur GABA-A
+molécule alprazolam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+molécule bromazépam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+molécule diazépam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+molécule lorazépam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+molécule oxazépam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+molécule prazépam : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
+# Oméga-1 préférentiel : hypnotique, peu anxiolytique, myorelaxant ou
+# anticonvulsivant aux doses usuelles.
+molécule zolpidem : potentialisateur GABA-A alpha-1
+molécule zopiclone : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
 
-adaptation GABA-A
+adaptation GABA-A alpha-1, GABA-A alpha-2/3
 ",
     "\
 titre : Système rénine-angiotensine-aldostérone
@@ -24669,21 +24682,24 @@ AMPc plaquettaire -| Activation plaquettaire
 Activation plaquettaire -> Agrégation plaquettaire
 
 molécule acide acétylsalicylique : inhibiteur COX-1 plaquettaire
+# Promédicaments, bloquent le récepteur de façon irréversible.
 molécule clopidogrel : antagoniste Récepteur P2Y12
 molécule prasugrel : antagoniste Récepteur P2Y12
+# Actif d'emblée et réversible, sur un site distinct de celui de l'ADP.
 molécule ticagrélor : antagoniste Récepteur P2Y12
 ",
     "\
 titre : Cyclo-oxygénases
 sujet : AINS, coxibs
 source : Rang & Dale's Pharmacology
-source : RCP des AINS : ulcère, insuffisance rénale aiguë, surtout avec un IEC, un sartan ou un diurétique
+source : RCP des AINS : ulcère, insuffisance rénale aiguë surtout avec un IEC, un sartan ou un diurétique ; risque thrombotique des coxibs
 
 relais Acide arachidonique
 enzyme COX-1 : constitutive
-enzyme COX-2 : inductible par l'inflammation
+enzyme COX-2 : inductible par l'inflammation, et dans l'endothélium
 relais Prostaglandines gastriques
-relais Thromboxane A2
+relais Thromboxane A2 : plaquettaire, par la COX-1
+relais Prostacycline : endothéliale, surtout par la COX-2 ; elle freine l'agrégation
 relais Prostaglandines rénales
 relais Prostaglandines de l'inflammation
 effet Protection de la muqueuse gastrique
@@ -24696,6 +24712,7 @@ effet Fièvre
 Acide arachidonique -> COX-1, COX-2
 COX-1 -> Prostaglandines gastriques -> Protection de la muqueuse gastrique
 COX-1 -> Thromboxane A2 -> Agrégation plaquettaire
+COX-2 -> Prostacycline -| Agrégation plaquettaire
 COX-1, COX-2 -> Prostaglandines rénales -> Débit sanguin rénal
 COX-2 -> Prostaglandines de l'inflammation -> Inflammation, Douleur, Fièvre
 
@@ -24703,8 +24720,11 @@ molécule ibuprofène : inhibiteur COX-1, COX-2
 molécule kétoprofène : inhibiteur COX-1, COX-2
 molécule diclofénac : inhibiteur COX-1, COX-2
 molécule naproxène : inhibiteur COX-1, COX-2
+# Aux doses anti-inflammatoires ; à faible dose, surtout la COX-1 des
+# plaquettes (voir « Activation plaquettaire »).
 molécule acide acétylsalicylique : inhibiteur COX-1, COX-2
-# Sélectif : la muqueuse et les plaquettes épargnées, pas le rein.
+# Sélectif : muqueuse et plaquettes moins touchées — ni le rein, ni le
+# risque thrombotique épargnés, la prostacycline baissant seule.
 molécule célécoxib : inhibiteur COX-2
 ",
     "\
@@ -24719,7 +24739,8 @@ relais Facteurs vitamine K-dépendants : II, VII, IX et X, carboxylés dans le f
 relais Facteur tissulaire
 enzyme Facteur Xa
 enzyme Thrombine : facteur IIa
-relais Antithrombine
+relais Antithrombine sur le Xa
+relais Antithrombine sur la thrombine : il faut la chaîne longue de l'héparine non fractionnée
 relais Fibrine
 effet Formation du caillot
 
@@ -24727,18 +24748,21 @@ VKORC1 -> Vitamine K réduite -> Facteurs vitamine K-dépendants
 Facteur tissulaire, Facteurs vitamine K-dépendants -> Facteur Xa
 Facteur Xa, Facteurs vitamine K-dépendants -> Thrombine
 Thrombine -> Fibrine -> Formation du caillot
-Antithrombine -| Facteur Xa, Thrombine
+Antithrombine sur le Xa -| Facteur Xa
+Antithrombine sur la thrombine -| Thrombine
 
 molécule warfarine : inhibiteur VKORC1
 molécule fluindione : inhibiteur VKORC1
 molécule acénocoumarol : inhibiteur VKORC1
 molécule apixaban : inhibiteur Facteur Xa
 molécule rivaroxaban : inhibiteur Facteur Xa
-molécule edoxaban : inhibiteur Facteur Xa
+molécule édoxaban : inhibiteur Facteur Xa
 molécule dabigatran : inhibiteur Thrombine
-# Elles agissent par l'antithrombine, qu'elles accélèrent.
-molécule héparine sodique : potentialisateur Antithrombine
-molécule énoxaparine : potentialisateur Antithrombine
+# Par l'antithrombine, qu'elles accélèrent : l'héparine sur les deux,
+# l'énoxaparine surtout sur le Xa, le fondaparinux sur le Xa seul.
+molécule héparine sodique : potentialisateur Antithrombine sur le Xa, Antithrombine sur la thrombine
+molécule énoxaparine : potentialisateur Antithrombine sur le Xa
+molécule fondaparinux : potentialisateur Antithrombine sur le Xa
 ",
     "\
 titre : Sécrétion acide gastrique
@@ -24747,7 +24771,7 @@ source : Rang & Dale's Pharmacology
 source : RCP des inhibiteurs de la pompe à protons
 
 ligand Gastrine
-relais Cellule entérochromaffine
+relais Cellule ECL : entérochromaffine-like, libère l'histamine sous la gastrine
 ligand Histamine
 récepteur Récepteur H2 : cellule pariétale, couplé à la protéine Gs
 ligand Acétylcholine
@@ -24757,10 +24781,12 @@ messager Calcium intracellulaire
 transporteur Pompe à protons : H+/K+ ATPase, dernière étape commune
 effet Sécrétion acide
 
-Gastrine -> Cellule entérochromaffine -> Histamine -> Récepteur H2 -> AMPc -> Pompe à protons
+Gastrine -> Cellule ECL -> Histamine -> Récepteur H2 -> AMPc -> Pompe à protons
 Acétylcholine -> Récepteur M3 -> Calcium intracellulaire -> Pompe à protons
 Pompe à protons -> Sécrétion acide
-# L'acidité freine la gastrine : l'abaisser la fait monter.
+# L'acidité freine la gastrine : l'abaisser la fait monter. L'hyperplasie
+# des cellules ECL qui suit, et le rebond acide à l'arrêt d'un IPP, ne
+# sont pas dessinés.
 Sécrétion acide -| Gastrine
 
 molécule oméprazole : inhibiteur Pompe à protons
