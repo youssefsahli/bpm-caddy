@@ -12,10 +12,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   base médicaments) : un mécanisme d'action dessiné du ligand jusqu'aux
   effets. Cocher une molécule montre ce qui monte et ce qui baisse, étage
   par étage ; « Lecture » fait avancer le temps, et les courbes montrent
-  la tolérance qui s'installe et le rebond à l'arrêt brutal. Huit
-  cascades livrées : bêta-adrénergiques, opioïde mu, GABA-A,
-  rénine-angiotensine-aldostérone, activation plaquettaire,
-  cyclo-oxygénases, coagulation, sécrétion acide gastrique.
+  la tolérance qui s'installe et le rebond à l'arrêt brutal. Dix
+  cascades livrées : bêta-adrénergiques, muscariniques, dopaminergiques
+  D2, opioïde mu, GABA-A, rénine-angiotensine-aldostérone, activation
+  plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide
+  gastrique.
 - « Décrire » : une cascade s'écrit en quelques lignes (« Noradrénaline
   -> Bêta-1 », « molécule bisoprolol : antagoniste Bêta-1 ») et la figure
   se redessine à mesure qu'on tape. « Nouvelle cascade » part d'un

@@ -24795,6 +24795,88 @@ molécule lansoprazole : inhibiteur Pompe à protons
 molécule pantoprazole : inhibiteur Pompe à protons
 molécule famotidine : antagoniste Récepteur H2
 ",
+    "\
+titre : Récepteurs muscariniques
+sujet : Anticholinestérasiques, anticholinergiques
+source : Rang & Dale's Pharmacology
+source : RCP des anticholinestérasiques et des anticholinergiques urinaires : bradycardie, rétention, confusion du sujet âgé
+
+enzyme Acétylcholinestérase : dégrade l'acétylcholine dans la synapse
+ligand Acétylcholine
+récepteur M1 central : cortex et hippocampe
+récepteur M2 cardiaque : nœud sinusal
+récepteur M3 vésical : détrusor
+récepteur M3 bronchique : muscle lisse bronchique
+récepteur M3 salivaire : glandes salivaires
+effet Mémoire et vigilance : baissées, c'est la confusion du sujet âgé
+effet Fréquence cardiaque
+effet Contraction vésicale : baissée, c'est la rétention ; montée, l'urgence mictionnelle
+effet Bronchoconstriction
+effet Salivation : baissée, c'est la bouche sèche
+
+Acétylcholinestérase -| Acétylcholine
+Acétylcholine -> M1 central, M2 cardiaque, M3 vésical, M3 bronchique, M3 salivaire
+M1 central -> Mémoire et vigilance
+M2 cardiaque -| Fréquence cardiaque
+M3 vésical -> Contraction vésicale
+M3 bronchique -> Bronchoconstriction
+M3 salivaire -> Salivation
+
+# Ils ralentissent la dégradation : plus d'acétylcholine partout, le
+# cerveau comme le cœur et la vessie.
+molécule donépézil : inhibiteur Acétylcholinestérase
+molécule rivastigmine : inhibiteur Acétylcholinestérase
+molécule galantamine : inhibiteur Acétylcholinestérase
+# Anticholinergiques urinaires : l'oxybutynine passe dans le cerveau, le
+# trospium non.
+molécule oxybutynine : antagoniste M3 vésical, M3 salivaire, M1 central
+molécule solifénacine : antagoniste M3 vésical, M3 salivaire
+molécule trospium : antagoniste M3 vésical, M3 salivaire
+# Inhalés : les bronches.
+molécule tiotropium : antagoniste M3 bronchique
+molécule ipratropium : antagoniste M3 bronchique
+# Anticholinergiques à côté de leur action principale, qui n'est pas
+# dessinée : ils comptent dans la charge anticholinergique.
+molécule amitriptyline : antagoniste M1 central, M2 cardiaque, M3 vésical, M3 salivaire
+molécule hydroxyzine : antagoniste M1 central, M3 vésical, M3 salivaire
+",
+    "\
+titre : Récepteurs dopaminergiques D2
+sujet : Antipsychotiques, antiémétiques, agonistes dopaminergiques
+source : Rang & Dale's Pharmacology
+source : RCP du métoclopramide et de la dompéridone : syndrome extrapyramidal, hyperprolactinémie, association à la lévodopa
+
+ligand Dopamine
+récepteur D2 nigrostrié : voie nigrostriée, le mouvement
+récepteur D2 mésolimbique : voie mésolimbique
+récepteur D2 hypophysaire : cellules lactotropes, hors barrière hémato-encéphalique
+récepteur D2 de l'area postrema : zone chémoréceptrice du vomissement, hors barrière hémato-encéphalique
+effet Contrôle moteur : baissé, c'est le syndrome extrapyramidal
+effet Activité mésolimbique : baissée, c'est l'effet antipsychotique ; montée, les hallucinations
+effet Prolactinémie
+effet Nausées et vomissements
+
+Dopamine -> D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+D2 nigrostrié -> Contrôle moteur
+D2 mésolimbique -> Activité mésolimbique
+D2 hypophysaire -| Prolactinémie
+D2 de l'area postrema -> Nausées et vomissements
+
+# Ils passent la barrière : les quatre voies.
+molécule halopéridol : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+molécule rispéridone : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+molécule amisulpride : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+molécule métoclopramide : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+# Ils restent hors du cerveau : ni syndrome extrapyramidal ni effet
+# central, la prolactine seule.
+molécule dompéridone : antagoniste D2 hypophysaire, D2 de l'area postrema
+molécule métopimazine : antagoniste D2 hypophysaire, D2 de l'area postrema
+molécule ropinirole : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+molécule pramipexole : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+molécule bromocriptine : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
+# Le précurseur : plus de dopamine, partout où elle agit.
+molécule lévodopa + carbidopa : activateur Dopamine
+",
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.

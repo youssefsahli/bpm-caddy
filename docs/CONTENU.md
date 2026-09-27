@@ -592,7 +592,10 @@ conseils à tenir à jour deux fois.
   plaquettes mais ni le rein ni la balance thrombotique, le zolpidem
   endort sans anxiolyse, la naloxone seule ne fait rien et précipite le
   manque après une longue morphine, l'énoxaparine et le fondaparinux
-  agissent sur le Xa, l'arrêt brutal d'une benzodiazépine
+  agissent sur le Xa, la dompéridone monte la prolactine sans syndrome
+  extrapyramidal quand le métoclopramide défait la lévodopa,
+  l'oxybutynine défait le donépézil dans le cerveau quand le trospium
+  ne passe pas, l'arrêt brutal d'une benzodiazépine
   abaisse le seuil convulsif, la buprénorphine donnée sur la morphine
   en baisse l'effet, la constipation survit à la tolérance. Le nombre
   de cascades livrées ne baisse jamais (`the_shipped_cascades_only_ever_grow`).

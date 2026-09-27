@@ -1938,6 +1938,56 @@ adaptation Bêta-1
     }
 
     #[test]
+    fn domperidone_stays_outside_the_brain_and_metoclopramide_does_not() {
+        let c = shipped("Récepteurs dopaminergiques D2");
+        let (motor, prl, vom) = (
+            "Contrôle moteur",
+            "Prolactinémie",
+            "Nausées et vomissements",
+        );
+        assert_eq!(trend(level(&c, &["dompéridone"], motor)), Trend::Rest);
+        assert_eq!(trend(level(&c, &["dompéridone"], prl)), Trend::Up);
+        assert_eq!(trend(level(&c, &["dompéridone"], vom)), Trend::Down);
+        assert_eq!(trend(level(&c, &["métoclopramide"], motor)), Trend::Down);
+        // Le métoclopramide défait la lévodopa ; la dompéridone lui ôte
+        // les nausées sans toucher au mouvement.
+        let l = "lévodopa + carbidopa";
+        assert!(level(&c, &[l, "métoclopramide"], motor) < level(&c, &[l], motor));
+        assert_eq!(
+            level(&c, &[l, "dompéridone"], motor),
+            level(&c, &[l], motor)
+        );
+        assert!(level(&c, &[l, "dompéridone"], vom) < level(&c, &[l], vom));
+        assert_eq!(trend(level(&c, &["bromocriptine"], prl)), Trend::Down);
+    }
+
+    #[test]
+    fn oxybutynin_undoes_donepezil_in_the_brain_and_trospium_does_not() {
+        let c = shipped("Récepteurs muscariniques");
+        let (mind, hr, bladder) = (
+            "Mémoire et vigilance",
+            "Fréquence cardiaque",
+            "Contraction vésicale",
+        );
+        assert_eq!(trend(level(&c, &["donépézil"], mind)), Trend::Up);
+        assert_eq!(trend(level(&c, &["donépézil"], hr)), Trend::Down);
+        assert_eq!(trend(level(&c, &["donépézil"], bladder)), Trend::Up);
+        assert_eq!(trend(level(&c, &["oxybutynine"], mind)), Trend::Down);
+        assert_eq!(trend(level(&c, &["trospium"], mind)), Trend::Rest);
+        assert!(level(&c, &["donépézil", "oxybutynine"], mind) < level(&c, &["donépézil"], mind));
+        assert_eq!(
+            level(&c, &["donépézil", "trospium"], mind),
+            level(&c, &["donépézil"], mind)
+        );
+        assert_eq!(trend(level(&c, &["amitriptyline"], hr)), Trend::Up);
+        assert_eq!(
+            trend(level(&c, &["tiotropium"], "Bronchoconstriction")),
+            Trend::Down
+        );
+        assert_eq!(trend(level(&c, &["tiotropium"], "Salivation")), Trend::Rest);
+    }
+
+    #[test]
     fn a_straight_chain_is_laid_straight() {
         let c = parse("A -> B -> C -> D");
         let l = layout(&c);
@@ -1952,7 +2002,7 @@ adaptation Bêta-1
 
     /// Le plancher : une cascade retirée est une question à laquelle le
     /// comptoir ne sait plus répondre. Il ne peut que monter.
-    const SHIPPED: usize = 8;
+    const SHIPPED: usize = 10;
 
     /// Les molécules qu'un mécanisme ne peut pas taire et que la base
     /// n'a pas en fiche. Tenues ici par leur nom : ailleurs, une faute de

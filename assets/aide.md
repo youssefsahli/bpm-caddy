@@ -754,8 +754,9 @@ un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
 pour un effet — posé en creux.
 
-**Huit cascades livrées** : bêta-adrénergiques, opioïde mu, GABA-A,
-système rénine-angiotensine-aldostérone, activation plaquettaire,
+**Dix cascades livrées** : bêta-adrénergiques, muscariniques,
+dopaminergiques D2, opioïde mu, GABA-A, système
+rénine-angiotensine-aldostérone, activation plaquettaire,
 cyclo-oxygénases, coagulation, sécrétion acide. Semées une fois : une
 cascade réécrite ou supprimée par l'équipe ne revient pas.
 
