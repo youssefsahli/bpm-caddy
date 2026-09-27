@@ -24799,7 +24799,7 @@ molécule famotidine : antagoniste Récepteur H2
 titre : Récepteurs muscariniques
 sujet : Anticholinestérasiques, anticholinergiques
 source : Rang & Dale's Pharmacology
-source : RCP des anticholinestérasiques et des anticholinergiques urinaires : bradycardie, rétention, confusion du sujet âgé
+source : RCP des anticholinestérasiques et des anticholinergiques urinaires : bradycardie, tachycardie, rétention, confusion du sujet âgé
 
 enzyme Acétylcholinestérase : dégrade l'acétylcholine dans la synapse
 ligand Acétylcholine
@@ -24823,20 +24823,24 @@ M3 bronchique -> Bronchoconstriction
 M3 salivaire -> Salivation
 
 # Ils ralentissent la dégradation : plus d'acétylcholine partout, le
-# cerveau comme le cœur et la vessie.
+# cerveau comme le cœur et la vessie. La rivastigmine freine aussi la
+# butyrylcholinestérase, la galantamine module aussi le récepteur
+# nicotinique — ni l'une ni l'autre n'est dessinée.
 molécule donépézil : inhibiteur Acétylcholinestérase
 molécule rivastigmine : inhibiteur Acétylcholinestérase
 molécule galantamine : inhibiteur Acétylcholinestérase
 # Anticholinergiques urinaires : l'oxybutynine passe dans le cerveau, le
-# trospium non.
-molécule oxybutynine : antagoniste M3 vésical, M3 salivaire, M1 central
+# trospium non ; tous deux touchent aussi le M2 — la tachycardie. La
+# solifénacine est plus sélective du M3.
+molécule oxybutynine : antagoniste M3 vésical, M3 salivaire, M1 central, M2 cardiaque
 molécule solifénacine : antagoniste M3 vésical, M3 salivaire
-molécule trospium : antagoniste M3 vésical, M3 salivaire
+molécule trospium : antagoniste M3 vésical, M3 salivaire, M2 cardiaque
 # Inhalés : les bronches.
 molécule tiotropium : antagoniste M3 bronchique
 molécule ipratropium : antagoniste M3 bronchique
 # Anticholinergiques à côté de leur action principale, qui n'est pas
-# dessinée : ils comptent dans la charge anticholinergique.
+# dessinée : ils comptent dans la charge anticholinergique. Le risque de
+# QT long de l'hydroxyzine n'est pas dessiné non plus.
 molécule amitriptyline : antagoniste M1 central, M2 cardiaque, M3 vésical, M3 salivaire
 molécule hydroxyzine : antagoniste M1 central, M3 vésical, M3 salivaire
 ",
@@ -24844,7 +24848,8 @@ molécule hydroxyzine : antagoniste M1 central, M3 vésical, M3 salivaire
 titre : Récepteurs dopaminergiques D2
 sujet : Antipsychotiques, antiémétiques, agonistes dopaminergiques
 source : Rang & Dale's Pharmacology
-source : RCP du métoclopramide et de la dompéridone : syndrome extrapyramidal, hyperprolactinémie, association à la lévodopa
+source : RCP du métoclopramide : syndrome extrapyramidal, contre-indiqué avec la lévodopa et les agonistes dopaminergiques
+source : RCP de la dompéridone : allongement du QT, dose et durée limitées
 
 ligand Dopamine
 récepteur D2 nigrostrié : voie nigrostriée, le mouvement
@@ -24852,7 +24857,7 @@ récepteur D2 mésolimbique : voie mésolimbique
 récepteur D2 hypophysaire : cellules lactotropes, hors barrière hémato-encéphalique
 récepteur D2 de l'area postrema : zone chémoréceptrice du vomissement, hors barrière hémato-encéphalique
 effet Contrôle moteur : baissé, c'est le syndrome extrapyramidal
-effet Activité mésolimbique : baissée, c'est l'effet antipsychotique ; montée, les hallucinations
+effet Activité mésolimbique : baissée, c'est le blocage mésolimbique, l'effet antipsychotique ; montée, hallucinations et troubles du contrôle des impulsions
 effet Prolactinémie
 effet Nausées et vomissements
 
@@ -24862,19 +24867,29 @@ D2 mésolimbique -> Activité mésolimbique
 D2 hypophysaire -| Prolactinémie
 D2 de l'area postrema -> Nausées et vomissements
 
-# Ils passent la barrière : les quatre voies.
+# Sans stimulation, l'area postrema ne fait presque rien : un
+# antiémétique seul n'y retire rien de visible, il empêche la montée —
+# celle de la lévodopa, par exemple.
+tonus faible D2 de l'area postrema
+
+# Ils passent la barrière : les quatre voies. La rispéridone et
+# l'amisulpride donnent moins de syndrome extrapyramidal aux doses
+# usuelles, par ce qui n'est pas dessiné ; l'amisulpride, peu entré dans
+# le cerveau, monte surtout la prolactine.
 molécule halopéridol : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
 molécule rispéridone : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
 molécule amisulpride : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
 molécule métoclopramide : antagoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
-# Ils restent hors du cerveau : ni syndrome extrapyramidal ni effet
-# central, la prolactine seule.
+# Peu ou pas de passage de la barrière : l'area postrema et l'hypophyse.
+# Antiémétiques sans syndrome extrapyramidal notable, prolactine montée.
 molécule dompéridone : antagoniste D2 hypophysaire, D2 de l'area postrema
 molécule métopimazine : antagoniste D2 hypophysaire, D2 de l'area postrema
 molécule ropinirole : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
 molécule pramipexole : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
 molécule bromocriptine : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophysaire, D2 de l'area postrema
-# Le précurseur : plus de dopamine, partout où elle agit.
+# Le précurseur : plus de dopamine, partout où elle agit. La carbidopa
+# freine sa conversion hors du cerveau : les nausées montent moins que
+# le dessin ne le montre.
 molécule lévodopa + carbidopa : activateur Dopamine
 ",
 ];

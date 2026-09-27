@@ -1947,7 +1947,9 @@ adaptation Bêta-1
         );
         assert_eq!(trend(level(&c, &["dompéridone"], motor)), Trend::Rest);
         assert_eq!(trend(level(&c, &["dompéridone"], prl)), Trend::Up);
-        assert_eq!(trend(level(&c, &["dompéridone"], vom)), Trend::Down);
+        // Seule, rien à retirer : l'area postrema est au repos sans
+        // stimulation.
+        assert_eq!(trend(level(&c, &["dompéridone"], vom)), Trend::Rest);
         assert_eq!(trend(level(&c, &["métoclopramide"], motor)), Trend::Down);
         // Le métoclopramide défait la lévodopa ; la dompéridone lui ôte
         // les nausées sans toucher au mouvement.
@@ -1980,6 +1982,8 @@ adaptation Bêta-1
             level(&c, &["donépézil"], mind)
         );
         assert_eq!(trend(level(&c, &["amitriptyline"], hr)), Trend::Up);
+        assert_eq!(trend(level(&c, &["trospium"], hr)), Trend::Up);
+        assert_eq!(trend(level(&c, &["solifénacine"], hr)), Trend::Rest);
         assert_eq!(
             trend(level(&c, &["tiotropium"], "Bronchoconstriction")),
             Trend::Down
