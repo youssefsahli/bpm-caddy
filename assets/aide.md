@@ -751,6 +751,10 @@ mesure qu'on écrit. Une instruction par ligne :
   tout (la naloxone seule ne fait rien, sur la morphine elle la renverse) ;
 - `#` commente la fin de la ligne.
 
+« Dupliquer » en fait une copie à retravailler : une cascade livrée
+réécrite ou supprimée ne revient pas, et sa copie laisse l'originale
+intacte.
+
 Ce qui ne se lit pas est signalé sous le texte avec son numéro de ligne,
 et le reste est dessiné quand même. En orange, ce qui se lit mais
 ressemble à une erreur : une molécule dont aucune fiche ne porte le nom

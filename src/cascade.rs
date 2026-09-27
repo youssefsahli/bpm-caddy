@@ -832,6 +832,35 @@ pub fn lineage(c: &Cascade, of: usize) -> Vec<bool> {
     keep
 }
 
+/// Le texte d'une copie : le même, le titre suivi de `suffix` — ou un
+/// titre posé en tête quand le texte n'en avait pas. Une cascade livrée
+/// se retravaille sur sa copie : l'originale réécrite ne reviendrait
+/// jamais.
+pub fn copy_text(text: &str, suffix: &str) -> String {
+    let mut done = false;
+    let mut out: Vec<String> = text
+        .lines()
+        .map(|line| {
+            if !done {
+                if let Some(rest) = heads(line.trim(), "titre") {
+                    done = true;
+                    let title = rest.trim_start_matches(':').trim();
+                    return format!("titre : {title} {suffix}");
+                }
+            }
+            line.to_owned()
+        })
+        .collect();
+    if !done {
+        out.insert(0, format!("titre : {}", suffix.trim()));
+    }
+    let mut joined = out.join("\n");
+    if text.ends_with('\n') {
+        joined.push('\n');
+    }
+    joined
+}
+
 /// Ce qui se lit sans faute mais ressemble à une erreur d'écriture.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Lint {
@@ -2200,6 +2229,16 @@ adaptation Bêta-1
         // La boucle ramène tout ce qui touche à B ; Y et Z restent dehors.
         assert_eq!(kept, vec!["A", "B", "C", "X", "D"]);
         assert!(lineage(&c, 99).iter().all(|k| !k));
+    }
+
+    #[test]
+    fn a_copy_keeps_everything_but_its_title() {
+        let text = "# note\ntitre : Bêta\nA -> B\n";
+        let copy = copy_text(text, "(copie)");
+        assert_eq!(copy, "# note\ntitre : Bêta (copie)\nA -> B\n");
+        assert_eq!(parse(&copy).title, "Bêta (copie)");
+        assert_eq!(parse(&copy).edges, parse(text).edges);
+        assert_eq!(copy_text("A -> B", "(copie)"), "titre : (copie)\nA -> B");
     }
 
     #[test]

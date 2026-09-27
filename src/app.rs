@@ -42547,6 +42547,7 @@ impl App {
         let mut delete = false;
         let mut force = false;
         let mut retake = false;
+        let mut copy = false;
         let mut curves: Option<bool> = None;
         motif::panel(ui, rect, Some(&title), |ui| {
             let inner = ui.max_rect();
@@ -42564,6 +42565,7 @@ impl App {
                     tr("cascade_describe"),
                     tr("cascade_save"),
                     tr("cascade_cancel"),
+                    tr("cascade_copy"),
                     if session.cascade_confirm_delete {
                         tr("cascade_delete_confirm")
                     } else {
@@ -42660,6 +42662,12 @@ impl App {
                                 }
                                 if motif::button(ui, tr("cascade_cancel")).clicked() {
                                     cancel = true;
+                                }
+                                if motif::button(ui, tr("cascade_copy"))
+                                    .on_hover_text(tr("cascade_copy_tooltip"))
+                                    .clicked()
+                                {
+                                    copy = true;
                                 }
                                 let del = if session.cascade_confirm_delete {
                                     tr("cascade_delete_confirm")
@@ -42795,6 +42803,26 @@ impl App {
             session.cascade_t = t;
             session.cascade_playing = false;
             session.cascade_wave = None;
+        }
+        // Dupliquer : la copie du texte **tel qu'il est tapé**, ouverte
+        // dans l'éditeur ; l'originale reste comme la base l'a. Rien ne
+        // se perd — le texte tapé part dans la copie —, donc rien à
+        // confirmer.
+        if copy {
+            session.cascade_leave_armed = false;
+            let typed = session
+                .cascade_edit
+                .as_ref()
+                .map_or_else(|| read.text.clone(), |(t, _)| t.clone());
+            let text = crate::cascade::copy_text(&typed, tr("cascade_copy_suffix"));
+            match session.db.add_cascade(&text) {
+                Ok(id) => {
+                    session.reload_cascades();
+                    session.open_cascade(id, None);
+                    session.cascade_edit = Some((text.clone(), text));
+                }
+                Err(e) => session.error = Some(e),
+            }
         }
         if cancel && session.cascade_may_leave() {
             // **Une nouvelle cascade fermée sans avoir été écrite
