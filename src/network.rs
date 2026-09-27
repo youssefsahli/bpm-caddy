@@ -433,6 +433,36 @@ impl Net {
                 .map_err(|e| format!("{e:?}"))?;
             done.push(key);
         }
+        // **Le relais** (`relay.rs`) : l'officine qui relaie dit où, une
+        // fois par valeur — une valeur vide aussi, qui retire l'offre ;
+        // celle qui demande à être relayée dit le nom de son groupe de
+        // postes, qu'un relais n'accepte que d'une officine du réseau.
+        for (setting, t, field) in [
+            (RELAY_OFFER, "relais", "a"),
+            (RELAY_REQUEST, "relais_demande", "g"),
+        ] {
+            let value = db.setting(setting).unwrap_or_default();
+            let value = value.trim();
+            let seq = db.setting(&format!("{setting}_seq")).unwrap_or_default();
+            let key = format!("{t}:{seq}:{value}");
+            let said_before = already.iter().any(|k| k.starts_with(&format!("{t}:")));
+            if already.contains(&key) || (value.is_empty() && !said_before) {
+                continue;
+            }
+            let mut payload = serde_json::json!({ "t": t, "officine": officine });
+            payload[field] = serde_json::Value::String(value.to_owned());
+            self.journal
+                .write(
+                    &self.device,
+                    trousseau,
+                    Stream::Reseau,
+                    &payload.to_string().into_bytes(),
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .map_err(|e| format!("{e:?}"))?;
+            done.push(key);
+        }
         // **Les messages**, scellés pour leurs seules officines — et pour
         // celle-ci, qui les relit comme les autres. Un message dont une
         // destinataire n'a pas encore annoncé sa clé attend la prochaine
@@ -706,6 +736,59 @@ impl Net {
                         let _ = db.set_setting(&key, &a, was.as_deref(), "", "");
                     }
                 }
+            }
+        }
+        // **Les relais offerts** par les officines du réseau, et **les
+        // groupes** qu'elles demandent de relayer — ce que le relais de
+        // cette officine accepte, si elle relaie.
+        // The **last** word of each officine only — its offer, its request
+        // — so a history of offers and withdrawals is not written again at
+        // every reading, and a withdrawn request is forgotten.
+        let mut offers: std::collections::BTreeMap<String, String> = Default::default();
+        let mut requests: std::collections::BTreeMap<String, String> = Default::default();
+        for f in &facts {
+            let Some(v) = serde_json::from_slice::<serde_json::Value>(&f.payload).ok() else {
+                continue;
+            };
+            let author = hex(&f.author.0);
+            match v.get("t").and_then(|t| t.as_str()) {
+                Some("relais") => {
+                    let a = v.get("a").and_then(|a| a.as_str()).unwrap_or_default();
+                    offers.insert(author, crate::reach::addresses(a).join(","));
+                }
+                Some("relais_demande") => {
+                    let g = v
+                        .get("g")
+                        .and_then(|g| g.as_str())
+                        .unwrap_or_default()
+                        .trim()
+                        .to_ascii_lowercase();
+                    let g = if g.len() == 20 && g.chars().all(|c| c.is_ascii_hexdigit()) {
+                        g
+                    } else {
+                        String::new()
+                    };
+                    requests.insert(author, g);
+                }
+                _ => {}
+            }
+        }
+        for (author, a) in offers {
+            let key = relay_key(&author);
+            let was = db.setting(&key);
+            if was.as_deref().unwrap_or_default() != a {
+                let _ = db.set_setting(&key, &a, was.as_deref(), "", "");
+            }
+        }
+        if !requests.is_empty() {
+            let mut groups: Vec<String> =
+                requests.into_values().filter(|g| !g.is_empty()).collect();
+            groups.sort();
+            groups.dedup();
+            let now = groups.join(",");
+            let was = db.setting(RELAY_GROUPS);
+            if was.as_deref().unwrap_or_default() != now {
+                let _ = db.set_setting(RELAY_GROUPS, &now, was.as_deref(), "", "");
             }
         }
         // Les clés de boîte annoncées, puis les messages scellés pour
@@ -994,6 +1077,54 @@ pub enum Job {
 /// Le réglage de l'officine : l'adresse où elle se joint de l'extérieur
 /// (routeur, VPN), annoncée aux membres de ses réseaux. Vide : aucune.
 pub const PUBLIC_ADDRESS: &str = "net_public_address";
+
+/// Où ce poste relaie, quand l'officine relaie (`[reseau] relais`) : ses
+/// adresses composables pour le port du relais, écrites par le fil des
+/// postes, annoncées au réseau.
+pub const RELAY_OFFER: &str = "net_relay_offer";
+/// Le groupe de postes que cette officine demande de relayer
+/// (`[postes] relais`), en hexadécimal ; vide : aucun.
+pub const RELAY_REQUEST: &str = "net_relay_request";
+/// Les groupes que les officines du réseau ont demandé de relayer.
+pub const RELAY_GROUPS: &str = "net_relay_groups";
+
+/// **Écrire un réglage du relais**, et son numéro quand la valeur change :
+/// l'annonce se fait une fois par numéro, pas par valeur — revenir à une
+/// offre d'avant (un redémarrage, une adresse retrouvée) l'annonce de
+/// nouveau. Rien n'est écrit quand rien ne change.
+pub fn set_relay_value(db: &Db, key: &str, value: &str) {
+    let was = db.setting(key);
+    if was.as_deref().unwrap_or_default() == value {
+        return;
+    }
+    let _ = db.set_setting(key, value, was.as_deref(), "", "");
+    let seq_key = format!("{key}_seq");
+    let seq = db.setting(&seq_key);
+    let next = seq
+        .as_deref()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(0)
+        + 1;
+    let _ = db.set_setting(&seq_key, &next.to_string(), seq.as_deref(), "", "");
+}
+
+/// Où ranger les adresses de relais qu'une officine du réseau offre.
+pub fn relay_key(device: &str) -> String {
+    format!("net_relay:{device}")
+}
+
+/// Les adresses de relais offertes par les officines du réseau.
+pub fn offered_relays(db: &Db) -> Vec<String> {
+    let mut out: Vec<String> = db
+        .settings_with_prefix("net_relay:")
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|(_, v)| crate::reach::addresses(&v))
+        .collect();
+    out.sort();
+    out.dedup();
+    out
+}
 
 /// Combien de fois l'adresse externe a été enregistrée : ce qui fait
 /// repartir l'annonce, même vers une adresse d'avant.
@@ -1559,6 +1690,11 @@ pub fn run(
                 .joined()
                 .cloned()
                 .ok_or_else(|| tr("net_err_refused").to_owned())?;
+            // Un réseau se rejoint avec sa clé entière : une part (celle
+            // d'un compagnon) n'a rien à faire ici.
+            let secret = joined
+                .secret()
+                .ok_or_else(|| tr("net_err_refused").to_owned())?;
             // Un réseau dont l'officine est déjà — principal ou autre — ne
             // se range pas une seconde fois sous un autre nom.
             let fingerprint = hex(&joined.name().bytes());
@@ -1570,10 +1706,10 @@ pub fn run(
             }
             let id = if second {
                 let id = fingerprint;
-                db.add_net_network(&id, &hex(&joined.secret()), "", today)?;
+                db.add_net_network(&id, &hex(&secret), "", today)?;
                 id
             } else {
-                db.net_key("net_trousseau", &hex(&joined.secret()))?;
+                db.net_key("net_trousseau", &hex(&secret))?;
                 String::new()
             };
             if let Some(peer) = session.peer() {
@@ -2567,6 +2703,55 @@ mod tests {
         );
     }
 
+    /// **Le relais passe par le réseau** : l'officine qui relaie annonce
+    /// où ; celle qui veut être relayée dit le nom de son groupe de
+    /// postes, que le relais accepte alors — et une offre retirée l'est
+    /// aussi chez les autres.
+    #[test]
+    fn a_relay_offer_and_a_relay_request_cross_the_network() {
+        let (dir_a, _sa, a) = officine("relais-a");
+        let (_dir_b, _sb, b) = officine("relais-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        let key = a.setting("net_trousseau").unwrap();
+        b.net_key("net_trousseau", &key).unwrap();
+        let na = Net::load(&a).unwrap();
+        let nb = Net::load(&b).unwrap();
+        a.add_net_peer(&hex(&nb.device.id().0), "", "2026-09-26")
+            .unwrap();
+        b.add_net_peer(&hex(&na.device.id().0), "", "2026-09-26")
+            .unwrap();
+        set_relay_value(&a, RELAY_OFFER, "82.64.1.2:7746");
+        set_relay_value(&b, RELAY_REQUEST, "0123456789abcdef0123");
+        let cross = || {
+            let mut na = Net::load(&a).unwrap();
+            let mut nb = Net::load(&b).unwrap();
+            na.publish(&a, "A").unwrap();
+            nb.publish(&b, "B").unwrap();
+            na.exchange_folder(&a, &folder).unwrap();
+            nb.exchange_folder(&b, &folder).unwrap();
+            na.exchange_folder(&a, &folder).unwrap();
+            na.absorb(&a).unwrap();
+            nb.absorb(&b).unwrap();
+        };
+        cross();
+        assert_eq!(offered_relays(&b), vec!["82.64.1.2:7746".to_owned()]);
+        assert_eq!(
+            a.setting(RELAY_GROUPS).as_deref(),
+            Some("0123456789abcdef0123")
+        );
+        // Withdrawn: the other officine forgets it — and offered again
+        // with the same address (a restart), it is announced again.
+        set_relay_value(&a, RELAY_OFFER, "");
+        set_relay_value(&b, RELAY_REQUEST, "");
+        cross();
+        assert!(offered_relays(&b).is_empty());
+        assert_eq!(a.setting(RELAY_GROUPS).as_deref(), Some(""));
+        set_relay_value(&a, RELAY_OFFER, "82.64.1.2:7746");
+        cross();
+        assert_eq!(offered_relays(&b), vec!["82.64.1.2:7746".to_owned()]);
+    }
+
     #[test]
     fn two_officines_share_a_substitution_through_a_folder_and_nothing_readable_crosses() {
         let (dir_a, _sa, a) = officine("a");
@@ -3505,6 +3690,9 @@ mod tests {
                 listen,
                 name: "Pharmacie A".to_owned(),
                 posts_paused: false,
+                posts_internet: false,
+                relay_port: 0,
+                posts_relay: false,
             },
             crate::postes::Pace::default(),
         );

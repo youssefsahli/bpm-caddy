@@ -32,8 +32,12 @@ subtle = "2"
 # The one place randomness enters: `OsEntropy`, at the edge.
 getrandom = "0.3"
 
+# The IPv6 door is bound « IPv6 only », so that it sits beside the IPv4
+# one on every system — `std` cannot set that before binding.
+socket2 = { version = "0.6", optional = true }
+
 [features]
 default = ["tcp"]
 # `TcpLink` — the only socket in this crate, and it uses nothing but
 # `std::net`. Off by default: a build without it carries no listener.
-tcp = []
+tcp = ["dep:socket2"]

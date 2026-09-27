@@ -9,8 +9,10 @@
 
 pub mod agenda;
 pub mod annuaire;
+#[cfg(feature = "desktop")]
 pub mod app;
 pub mod audit;
+#[cfg(feature = "desktop")]
 pub mod audit_window;
 pub mod biology;
 pub mod bulletin;
@@ -46,12 +48,17 @@ pub mod netmap;
 pub mod network;
 pub mod ordonnance;
 pub mod ordonnancier;
+#[cfg(feature = "desktop")]
 pub mod pdf;
 pub mod pk;
 pub mod planning;
 #[cfg(feature = "sync")]
 pub mod postes;
 pub mod prescribers;
+#[cfg(feature = "sync")]
+pub mod reach;
+#[cfg(feature = "sync")]
+pub mod relay;
 pub mod release;
 pub mod renal;
 pub mod renewal;

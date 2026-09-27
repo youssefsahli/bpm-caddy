@@ -1,0 +1,297 @@
+package io.github.youssefsahli.bpmcaddy
+
+import android.content.Context
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import uniffi.bpm_caddy_mobile.Caddy
+import uniffi.bpm_caddy_mobile.CaddyException
+import uniffi.bpm_caddy_mobile.Status
+
+/**
+ * Ce que l'écran sait : la base ouverte ou non, où en est le téléphone,
+ * la dernière phrase à montrer. Tout appel à la bibliothèque passe ici,
+ * sur un fil d'arrière-plan — une synchronisation parle au réseau.
+ */
+class AppState(application: android.app.Application) : androidx.lifecycle.AndroidViewModel(application) {
+    // A ViewModel outlives the activity: turning the phone, or the system
+    // switching to dark mode, recreates the screen — not the open base,
+    // which would otherwise lock again mid-message.
+    private val context: Context = application
+    val settings = Settings(context)
+    private val vault = Vault(context)
+    private val scope: CoroutineScope get() = viewModelScope
+
+    var caddy: Caddy? by mutableStateOf(null)
+        private set
+    var status: Status? by mutableStateOf(null)
+        private set
+    var busy by mutableStateOf(false)
+        private set
+    var note: String? by mutableStateOf(null)
+        private set
+
+    /** Monte à chaque synchronisation : les listes se relisent. */
+    var revision by mutableIntStateOf(0)
+        private set
+
+    /**
+     * **Effacer ce téléphone** : la base, sa clé du Keystore, les réglages.
+     * Le téléphone redevient celui d'avant l'invitation ; sur un poste, le
+     * retirer de la liste des postes pour qu'il ne soit plus écouté.
+     */
+    fun wipe() {
+        // The base is closed before its files go: SQLite holds them open.
+        caddy?.destroy()
+        caddy = null
+        status = null
+        vault.forget()
+        context.filesDir.listFiles()
+            ?.filter { it.name.startsWith("bpm-caddy") }
+            ?.forEach { it.delete() }
+        context.getSharedPreferences("reglages", Context.MODE_PRIVATE).edit().clear().apply()
+        note = T("mobile_wiped")
+    }
+
+    /**
+     * **Refermer la base** : après cinq minutes hors de l'écran, le
+     * téléphone redemande le verrouillage — un téléphone oublié ouvert
+     * dans une poche ne montre pas la messagerie de l'officine.
+     */
+    fun lock() {
+        caddy?.destroy()
+        caddy = null
+        status = null
+    }
+
+    /** Ce que l'écran a écrit lui-même (une conversation lue) : relire. */
+    fun touched() {
+        revision++
+    }
+
+    fun notice(text: String) {
+        note = text
+    }
+
+    fun dismiss() {
+        note = null
+    }
+
+    /** Ouvrir la base, juste après l'authentification. */
+    fun open() {
+        scope.launch {
+            val opened = withContext(Dispatchers.IO) {
+                runCatching {
+                    val phrase = vault.passphrase()
+                    Caddy.open(context.filesDir.absolutePath, phrase)
+                }
+            }
+            val c = opened.getOrElse {
+                if (it is android.security.keystore.KeyPermanentlyInvalidatedException) {
+                    // La clé n'ouvrira plus jamais cette base : repartir
+                    // d'une base neuve, à relier de nouveau.
+                    vault.forget()
+                    context.filesDir.listFiles()
+                        ?.filter { f -> f.name.startsWith("bpm-caddy") }
+                        ?.forEach { f -> f.delete() }
+                    note = T("mobile_key_invalidated")
+                } else {
+                    note = said(it)
+                }
+                return@launch
+            }
+            caddy = c
+            status = withContext(Dispatchers.IO) { runCatching { c.status() }.getOrNull() }
+            revision++
+            // Ouvert, il va chercher ce qui a changé.
+            if (status?.inGroup == true) sync()
+        }
+    }
+
+    fun refresh() {
+        val c = caddy ?: return
+        scope.launch {
+            status = withContext(Dispatchers.IO) { runCatching { c.status() }.getOrNull() }
+            revision++
+        }
+    }
+
+    fun join(code: String, name: String) {
+        val c = caddy ?: return
+        work {
+            withMulticast(context) {
+                c.join(code.trim(), name.trim(), today(), settings.port.toUShort())
+            }
+        }
+    }
+
+    fun sync() {
+        val c = caddy ?: return
+        work {
+            val done = withMulticast(context) {
+                c.sync(today(), settings.port.toUShort(), settings.addresses)
+            }
+            if (done.reached > 0u) {
+                settings.lastSync = java.time.LocalDateTime.now()
+                    .format(java.time.format.DateTimeFormatter.ofPattern("dd/MM/yyyy HH:mm"))
+            }
+            val said = done.said
+            val tree = settings.folder ?: return@work said
+            val more = runCatching { Folder.exchange(context, c, tree, today()) }
+                .getOrElse { said(it) }
+            "$said $more"
+        }
+    }
+
+    fun send(conversation: Long, body: String, then: () -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.sendMessage(conversation, settings.initials, body) }
+            }
+            done.onFailure { note = said(it) }
+            then()
+            // Part tout de suite si un poste est là.
+            sync()
+        }
+    }
+
+    /** Ajouter à l'agenda ; `then(true)` quand c'est écrit. */
+    fun addEvent(day: String, from: String, to: String, title: String, category: String, then: (Boolean) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.addEvent(day, from, to, title, category, today()) }
+            }
+            done.onFailure { note = said(it) }
+            then(done.isSuccess)
+            if (done.isSuccess) {
+                revision++
+                sync()
+            }
+        }
+    }
+
+    /** Récrire une section de fiche ; `then(true)` quand c'est écrit. */
+    fun editSection(id: Long, key: String, shown: String, text: String, then: (Boolean) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.editCardSection(id, key, shown, text, settings.initials) }
+            }
+            done.onFailure { note = said(it) }
+            if (done.getOrNull() == false) note = T("mobile_card_stale")
+            revision++
+            then(done.getOrNull() == true)
+            if (done.getOrNull() == true) sync()
+        }
+    }
+
+    /** Retirer une entrée, si elle dit encore ce que l'écran montrait. */
+    fun deleteEvent(id: Long, shownTitle: String) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) { runCatching { c.deleteEvent(id, shownTitle) } }
+            done.onFailure { note = said(it) }
+            if (done.getOrNull() == false) note = T("mobile_agenda_stale")
+            revision++
+            if (done.getOrNull() == true) sync()
+        }
+    }
+
+    /** Écrire avec un fichier joint (lu depuis le document choisi). */
+    fun sendFile(conversation: Long, body: String, uri: android.net.Uri, then: () -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching {
+                    val resolver = context.contentResolver
+                    val name = resolver.query(uri, null, null, null, null)?.use { cur ->
+                        val i = cur.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                        if (cur.moveToFirst() && i >= 0) cur.getString(i) else null
+                    } ?: "fichier"
+                    // Lu en entier au plus un octet au-delà de la limite : la
+                    // bibliothèque refuse un fichier trop lourd, sans que le
+                    // téléphone en charge cent mégaoctets pour l'apprendre.
+                    val bytes = resolver.openInputStream(uri)?.use { it.readNBytes(5 * 1024 * 1024 + 1) }
+                        ?: ByteArray(0)
+                    c.sendFile(conversation, settings.initials, body, name, bytes)
+                }
+            }
+            done.onFailure { note = said(it) }
+            then()
+            sync()
+        }
+    }
+
+    /** Ouvrir une conversation d'équipe ; `then(numéro)` quand c'est fait. */
+    fun newConversation(title: String, then: (Long) -> Unit) {
+        val c = caddy ?: return
+        scope.launch {
+            val done = withContext(Dispatchers.IO) {
+                runCatching { c.newConversation(title, settings.initials) }
+            }
+            done.onFailure { note = said(it) }
+            done.getOrNull()?.let {
+                revision++
+                then(it)
+                sync()
+            }
+        }
+    }
+
+    /** Ouvrir un fichier joint dans l'application qui sait le montrer. */
+    fun openFile(conversation: Long, fileUid: String) {
+        val c = caddy ?: return
+        scope.launch {
+            val saved = withContext(Dispatchers.IO) {
+                runCatching {
+                    val dir = java.io.File(context.cacheDir, "fichiers").apply {
+                        deleteRecursively()
+                        mkdirs()
+                    }
+                    java.io.File(c.saveFile(conversation, fileUid, dir.absolutePath))
+                }
+            }
+            saved.onFailure { note = said(it) }
+            val file = saved.getOrNull() ?: return@launch
+            val uri = androidx.core.content.FileProvider.getUriForFile(
+                context, context.packageName + ".fichiers", file,
+            )
+            val type = android.webkit.MimeTypeMap.getSingleton()
+                .getMimeTypeFromExtension(file.extension.lowercase()) ?: "application/octet-stream"
+            val view = android.content.Intent(android.content.Intent.ACTION_VIEW)
+                .setDataAndType(uri, type)
+                .addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+            runCatching { context.startActivity(view) }.onFailure {
+                note = if (it is android.content.ActivityNotFoundException) {
+                    T("mobile_file_no_app")
+                } else {
+                    said(it)
+                }
+            }
+        }
+    }
+
+    private fun work(block: () -> String) {
+        if (busy) return
+        busy = true
+        scope.launch {
+            val done = withContext(Dispatchers.IO) { runCatching(block) }
+            busy = false
+            note = done.fold({ it }, { said(it) })
+            refresh()
+        }
+    }
+
+    private fun said(e: Throwable): String = when (e) {
+        is CaddyException.Failed -> e.reason
+        else -> e.message ?: e.toString()
+    }
+}

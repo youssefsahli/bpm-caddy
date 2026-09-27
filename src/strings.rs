@@ -404,6 +404,19 @@ mod tests {
             // Les erreurs des couches du dessous, dites en clair
             // (`plain_error`) : ce fichier-ci nomme leurs phrases.
             include_str!("strings.rs"),
+            // Le compagnon Android : son pont Rust et ses écrans Kotlin
+            // lisent leurs libellés ici (`mobile_…`).
+            include_str!("../mobile/src/lib.rs"),
+            include_str!(
+                "../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/CompanionApp.kt"
+            ),
+            include_str!(
+                "../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/MainActivity.kt"
+            ),
+            include_str!("../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/Folder.kt"),
+            include_str!(
+                "../android/app/src/main/java/io/github/youssefsahli/bpmcaddy/AppState.kt"
+            ),
         ];
         let literal = |key: &str| {
             let quoted = format!("\"{key}\"");

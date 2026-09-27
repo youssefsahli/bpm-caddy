@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Les fichiers joints ouverts depuis la messagerie : recopiés dans le
+     cache, prêtés à l'application qui les montre, jamais ailleurs. -->
+<paths>
+    <cache-path name="fichiers" path="fichiers/" />
+</paths>

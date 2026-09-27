@@ -210,6 +210,23 @@ mod tcp {
                 .map_err(|_| Error::Link)
         }
 
+        /// A door on every IPv6 address of this machine, and **only** IPv6
+        /// — so that it opens beside an IPv4 door on the same port on
+        /// every system (Linux binds `[::]` to both families by default,
+        /// and the second bind would then fail). What a post reachable
+        /// from the internet adds to its ordinary door.
+        pub fn open_v6_only(port: u16) -> Result<Self> {
+            use socket2::{Domain, Protocol, Socket, Type};
+            let socket = Socket::new(Domain::IPV6, Type::STREAM, Some(Protocol::TCP))
+                .map_err(|_| Error::Link)?;
+            socket.set_only_v6(true).map_err(|_| Error::Link)?;
+            let _ = socket.set_reuse_address(true);
+            let at: SocketAddr = (std::net::Ipv6Addr::UNSPECIFIED, port).into();
+            socket.bind(&at.into()).map_err(|_| Error::Link)?;
+            socket.listen(128).map_err(|_| Error::Link)?;
+            Ok(Door(socket.into()))
+        }
+
         /// Where this door is, to be read out or copied across.
         pub fn address(&self) -> Result<SocketAddr> {
             self.0.local_addr().map_err(|_| Error::Link)
@@ -431,6 +448,30 @@ mod tests {
         let mut caller = dial(&address, patience).unwrap();
         caller.send(b"enfin").unwrap();
         assert_eq!(waiter.join().unwrap().recv().unwrap(), b"enfin");
+    }
+
+    /// The IPv6 door opens beside an IPv4 door on the same port, and
+    /// answers on IPv6. A machine with no IPv6 at all says so and has
+    /// nothing to prove here.
+    #[cfg(feature = "tcp")]
+    #[test]
+    fn an_ipv6_door_opens_beside_the_ipv4_one() {
+        use std::time::Duration;
+        let four = Door::open("0.0.0.0:0").unwrap();
+        let port = four.address().unwrap().port();
+        let Ok(six) = Door::open_v6_only(port) else {
+            eprintln!("pas d'IPv6 sur cette machine");
+            return;
+        };
+        let patience = Duration::from_secs(5);
+        let waiter = std::thread::spawn(move || six.accept(patience).unwrap());
+        let Ok(mut caller) = dial(&format!("[::1]:{port}"), patience) else {
+            eprintln!("pas de boucle locale IPv6");
+            return;
+        };
+        caller.send(b"v6").unwrap();
+        assert_eq!(waiter.join().unwrap().recv().unwrap(), b"v6");
+        drop(four);
     }
 
     /// Knocking where there is nobody says so, and says so quickly.

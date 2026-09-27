@@ -200,51 +200,190 @@ impl Device {
 /// disk somebody owns, behind the officine's password — and the defence
 /// against it travelling is that it only ever crosses a link inside the
 /// handshake's own encryption, once, at pairing.
+///
+/// A trousseau is **whole** — the secret every stream key derives from —
+/// or a **share**: the name and the keys of a few streams, derived from
+/// a whole one and nothing more. A share is what a companion (a phone)
+/// holds: it opens the streams it was given and no other, and it cannot
+/// hand on more than it has, because there is no secret in it to derive
+/// from. A record of a stream it lacks is still stored and relayed —
+/// placed in the graph, never read — like a stream a later version
+/// names ([`Stream::Autre`]).
 #[derive(Clone, Zeroize, ZeroizeOnDrop)]
 pub struct Trousseau {
+    /// The whole secret; all zeroes in a share.
     secret: [u8; 32],
+    whole: bool,
+    /// A share's own name: it cannot derive it.
+    name: [u8; 10],
+    /// A share's stream keys, by stream code. Empty for a whole one.
+    keys: Vec<(u8, [u8; 32])>,
 }
+
+/// A share on the wire and at rest: `SHARE_TAG`, the name, a count, then
+/// a code and a key per stream. Thirty-two bytes flat is a whole
+/// trousseau, which is how every base written before shares stores one.
+const SHARE_TAG: u8 = 0x53;
 
 impl Trousseau {
     /// A new officine.
     pub fn generate(entropy: &mut dyn Entropy) -> Self {
         let mut secret = [0u8; 32];
         entropy.fill(&mut secret);
-        Self { secret }
+        Self::from_secret(secret)
     }
 
     pub fn from_secret(secret: [u8; 32]) -> Self {
-        Self { secret }
+        Self {
+            secret,
+            whole: true,
+            name: [0u8; 10],
+            keys: Vec::new(),
+        }
     }
 
     /// The secret, to be written to the encrypted base and nowhere else.
-    pub fn secret(&self) -> [u8; 32] {
-        self.secret
+    /// `None` for a share, which has none.
+    pub fn secret(&self) -> Option<[u8; 32]> {
+        self.whole.then_some(self.secret)
+    }
+
+    /// Whole, or a share of a few streams.
+    pub fn is_whole(&self) -> bool {
+        self.whole
+    }
+
+    /// The part of this trousseau that opens `streams` and nothing else.
+    /// A share of a share keeps only what both hold.
+    pub fn share(&self, streams: &[Stream]) -> Trousseau {
+        let mut keys: Vec<(u8, [u8; 32])> = Vec::new();
+        for s in streams {
+            if let Some(k) = self.stream_key(*s) {
+                if !keys.iter().any(|(c, _)| *c == s.code()) {
+                    keys.push((s.code(), k));
+                }
+            }
+        }
+        keys.sort_by_key(|(c, _)| *c);
+        Trousseau {
+            secret: [0u8; 32],
+            whole: false,
+            name: self.name().bytes(),
+            keys,
+        }
+    }
+
+    /// Whether this trousseau opens a stream.
+    pub fn opens(&self, stream: Stream) -> bool {
+        self.whole || self.keys.iter().any(|(c, _)| *c == stream.code())
+    }
+
+    /// The streams a share opens; every stream this version knows for a
+    /// whole one.
+    pub fn streams(&self) -> Vec<Stream> {
+        if self.whole {
+            return Stream::ALL.to_vec();
+        }
+        self.keys
+            .iter()
+            .map(|(c, _)| Stream::from_code(*c))
+            .collect()
+    }
+
+    /// The bytes that keep it: the secret for a whole one (what every
+    /// base already holds), a tagged list for a share.
+    pub fn encode(&self) -> Vec<u8> {
+        if self.whole {
+            return self.secret.to_vec();
+        }
+        let mut out = vec![SHARE_TAG];
+        out.extend_from_slice(&self.name);
+        out.push(self.keys.len() as u8);
+        for (c, k) in &self.keys {
+            out.push(*c);
+            out.extend_from_slice(k);
+        }
+        out
+    }
+
+    /// Reads [`Trousseau::encode`] back. `None` for anything malformed.
+    pub fn decode(bytes: &[u8]) -> Option<Trousseau> {
+        if bytes.len() == 32 {
+            let mut secret = [0u8; 32];
+            secret.copy_from_slice(bytes);
+            return Some(Self::from_secret(secret));
+        }
+        let (&tag, rest) = bytes.split_first()?;
+        if tag != SHARE_TAG || rest.len() < 11 {
+            return None;
+        }
+        let mut name = [0u8; 10];
+        name.copy_from_slice(&rest[..10]);
+        let count = rest[10] as usize;
+        let body = &rest[11..];
+        if body.len() != count * 33 {
+            return None;
+        }
+        // Des morceaux de taille fixe, vus comme des tableaux : la longueur
+        // a été vérifiée plus haut, le reste (`.1`) est donc vide.
+        let mut keys: Vec<(u8, [u8; 32])> = body
+            .as_chunks::<33>()
+            .0
+            .iter()
+            .map(|c| {
+                let mut k = [0u8; 32];
+                k.copy_from_slice(&c[1..]);
+                (c[0], k)
+            })
+            .collect();
+        keys.sort_by_key(|(c, _)| *c);
+        keys.dedup_by_key(|(c, _)| *c);
+        if keys.len() != count {
+            return None;
+        }
+        Some(Trousseau {
+            secret: [0u8; 32],
+            whole: false,
+            name,
+            keys,
+        })
     }
 
     /// A name two posts can compare to know they belong to the same
     /// officine, that tells nobody anything about the key.
     ///
     /// It is a *derivation* and not the first bytes of the secret, which
-    /// is the difference between a name and a leak.
+    /// is the difference between a name and a leak. A share carries the
+    /// name of the trousseau it was cut from.
     pub fn name(&self) -> Fingerprint {
-        Fingerprint::of("bpm-caddy/trousseau-name/v1", &self.secret)
+        if self.whole {
+            Fingerprint::of("bpm-caddy/trousseau-name/v1", &self.secret)
+        } else {
+            Fingerprint(self.name)
+        }
     }
 
-    /// The key a given stream's records are sealed with.
+    /// The key a given stream's records are sealed with — `None` for a
+    /// stream a share was not given.
     ///
     /// Per stream rather than one key for everything, so that handing a
-    /// colleague the register alone stays possible without re-encrypting
-    /// anything: the shape is already there the day it is wanted.
-    pub(crate) fn stream_key(&self, stream: Stream) -> [u8; 32] {
-        blake3::derive_key(&stream.seal_context(), &self.secret)
+    /// companion a few streams is possible without re-encrypting
+    /// anything: see [`Trousseau::share`].
+    pub(crate) fn stream_key(&self, stream: Stream) -> Option<[u8; 32]> {
+        if self.whole {
+            return Some(blake3::derive_key(&stream.seal_context(), &self.secret));
+        }
+        self.keys
+            .iter()
+            .find(|(c, _)| *c == stream.code())
+            .map(|(_, k)| *k)
     }
 
     /// Constant time, because a trousseau is compared where someone can
     /// watch how long it takes.
     pub fn same(&self, other: &Trousseau) -> bool {
         use subtle::ConstantTimeEq;
-        self.secret.ct_eq(&other.secret).into()
+        self.encode().ct_eq(&other.encode()).into()
     }
 }
 
@@ -286,6 +425,10 @@ const TICKET_ALPHABET: &[u8; 32] = b"0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 /// author is not a proof from the other end.
 pub(crate) const ROLE_JOIN: u8 = 1;
 pub(crate) const ROLE_INVITE: u8 = 2;
+/// A **companion** joining: its proof is not a post's, so an invitation
+/// for a post refuses a phone — and one for a phone refuses a post —
+/// before either key crosses.
+pub(crate) const ROLE_JOIN_COMPANION: u8 = 3;
 
 impl Ticket {
     pub fn generate(e: &mut dyn Entropy) -> Self {
@@ -410,12 +553,12 @@ mod tests {
     fn a_trousseau_is_named_without_being_shown() {
         let mut e = Counted(40);
         let t = Trousseau::generate(&mut e);
-        assert_ne!(&t.name().bytes()[..], &t.secret()[..10]);
+        assert_ne!(&t.name().bytes()[..], &t.secret().unwrap()[..10]);
         // Two officines have two names; one officine has one.
         let other = Trousseau::generate(&mut e);
         assert_ne!(t.name(), other.name());
-        assert_eq!(Trousseau::from_secret(t.secret()).name(), t.name());
-        assert!(t.same(&Trousseau::from_secret(t.secret())));
+        assert_eq!(Trousseau::from_secret(t.secret().unwrap()).name(), t.name());
+        assert!(t.same(&Trousseau::from_secret(t.secret().unwrap())));
         assert!(!t.same(&other));
     }
 

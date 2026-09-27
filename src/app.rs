@@ -5828,7 +5828,7 @@ impl Session {
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
-            // The five standing views are always in the strip, in a
+            // The standing views are always in the strip, in a
             // fixed order, so their position never moves under the
             // pointer; opened files are appended after them.
             tabs: vec![
@@ -5839,6 +5839,11 @@ impl Session {
                 WorkTab::Carnet,
                 WorkTab::Map,
                 WorkTab::Registres,
+                // Les récepteurs et cascades : sans onglet, la vue
+                // n'avait que des portes qu'il fallait connaître — le
+                // bouton de la base médicaments, la boîte « Aller à… »,
+                // la fiche d'une molécule — et on la cherchait.
+                WorkTab::Cascades,
             ],
             error: None,
         };
@@ -6121,6 +6126,7 @@ impl Session {
             WorkTab::Carnet,
             WorkTab::Map,
             WorkTab::Registres,
+            WorkTab::Cascades,
             WorkTab::Explorer,
             WorkTab::Classes,
             WorkTab::Stats,
@@ -7417,6 +7423,13 @@ impl Session {
                 },
                 name: config.pharmacy.name.clone(),
                 posts_paused: !config.postes.automatique,
+                posts_internet: config.postes.internet,
+                relay_port: if config.reseau.relais {
+                    config.reseau.port_relais
+                } else {
+                    0
+                },
+                posts_relay: config.postes.relais,
             },
             crate::postes::Pace::default(),
         ));
@@ -11273,25 +11286,7 @@ fn sentence_around(text: &str, from: usize, len: usize) -> String {
     text[start..end].trim().to_owned()
 }
 
-/// The prose of a card, field by field, as the full-text search reads
-/// it: the label the section carries on screen, and how to get at it.
-type MonoField = (&'static str, fn(&Drug) -> &str);
-
-const MONO_FIELDS: [MonoField; 13] = [
-    ("drug_sec_indications", |d| d.indications.as_str()),
-    ("drug_sec_mechanism", |d| d.mechanism.as_str()),
-    ("mono_f_dosage", |d| d.dosage.as_str()),
-    ("drug_sec_ci", |d| d.contraindications.as_str()),
-    ("mono_f_ddi", |d| d.ddi.as_str()),
-    ("drug_sec_adverse", |d| d.adverse.as_str()),
-    ("drug_sec_toxicity", |d| d.toxicity.as_str()),
-    ("drug_sec_monitoring", |d| d.monitoring.as_str()),
-    ("mono_f_iup", |d| d.iup.as_str()),
-    ("mono_f_missed", |d| d.missed_dose.as_str()),
-    ("mono_f_flags", |d| d.red_flags.as_str()),
-    ("mono_f_forms", |d| d.forms.as_str()),
-    ("mono_f_notes", |d| d.notes.as_str()),
-];
+pub use crate::db::{MonoField, MONO_FIELDS};
 
 /// One place a searched word was found in the prose of the base.
 pub struct MonoHit {
@@ -11707,6 +11702,56 @@ struct PostsWindow {
     invite_now: bool,
     /// Le poste choisi sur la carte : l'invitation s'annonce pour lui.
     invite_target: Option<String>,
+    /// L'invitation en cours est pour un téléphone : son code se montre
+    /// aussi en QR.
+    inviting_phone: bool,
+}
+
+/// **Un code QR**, peint : sombre sur clair quel que soit le thème — un
+/// lecteur ne lit pas un code inversé —, pris dans la feuille et l'encre
+/// de la palette (`motif::paper`, `motif::ink`), échangées si une palette
+/// les donnait dans l'autre sens. Une marge de quatre modules autour,
+/// comme la norme la demande.
+fn qr_code(ui: &mut egui::Ui, text: &str, side: f32) {
+    let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium) else {
+        return;
+    };
+    let (paper, ink) = {
+        let (p, i) = (motif::paper(), motif::ink());
+        let light = |c: egui::Color32| u32::from(c.r()) + u32::from(c.g()) + u32::from(c.b());
+        if light(p) >= light(i) {
+            (p, i)
+        } else {
+            (i, p)
+        }
+    };
+    let n = qr.size();
+    // **Des modules d'un nombre entier de pixels**, posés sur la grille de
+    // l'écran : un module de 5,9 pixels a des bords flous, et le lecteur
+    // qui lisait le grand code ne lisait plus le petit.
+    let ppp = ui.ctx().pixels_per_point();
+    let cell = ((side * ppp) / (n + 8) as f32).floor().max(2.0) / ppp;
+    let side = cell * (n + 8) as f32;
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+    let origin = egui::pos2(
+        (rect.min.x * ppp).round() / ppp,
+        (rect.min.y * ppp).round() / ppp,
+    );
+    let rect = egui::Rect::from_min_size(origin, egui::vec2(side, side));
+    let painter = ui.painter_at(rect);
+    painter.rect_filled(rect, 0.0, paper);
+    for y in 0..n {
+        for x in 0..n {
+            if qr.get_module(x, y) {
+                let min = rect.min + egui::vec2((x + 4) as f32 * cell, (y + 4) as f32 * cell);
+                painter.rect_filled(
+                    egui::Rect::from_min_size(min, egui::vec2(cell, cell)),
+                    0.0,
+                    ink,
+                );
+            }
+        }
+    }
 }
 
 /// What the base says about the posts, read when the window opens and
@@ -13510,7 +13555,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 16] {
+fn standing_views() -> [(WorkTab, &'static str); 17] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -13519,6 +13564,7 @@ fn standing_views() -> [(WorkTab, &'static str); 16] {
         (WorkTab::Carnet, "carnet"),
         (WorkTab::Map, "carte"),
         (WorkTab::Registres, "registres"),
+        (WorkTab::Cascades, "cascades"),
         (WorkTab::Explorer, "explorateur"),
         (WorkTab::Classes, "classes"),
         (WorkTab::Stats, "statistiques"),
@@ -15036,7 +15082,9 @@ impl App {
                         // les gestes. La synchronisation automatique ne
                         // part pas — une capture n'ouvre pas de porte.
                         #[cfg(feature = "sync")]
-                        Ok("postes") => {
+                        // « postes_telephone » : la même, une invitation
+                        // de téléphone ouverte — le code et son QR.
+                        Ok(key @ ("postes" | "postes_telephone")) => {
                             session.posts_auto_tried = true;
                             if session.db.sync_post().is_none() {
                                 let _ =
@@ -15044,8 +15092,29 @@ impl App {
                                         p.found(&session.db, "Comptoir 1", &session.today)
                                     });
                             }
+                            // Un second poste et le téléphone d'une
+                            // préparatrice : la liste a ses trois sortes
+                            // de lignes à montrer.
+                            let _ = session.db.add_post_row(
+                                1,
+                                &"c3".repeat(32),
+                                "Comptoir 2",
+                                &session.today,
+                                false,
+                            );
+                            let _ = session.db.add_post_row(
+                                2,
+                                &"d4".repeat(32),
+                                "Téléphone de Claire",
+                                &session.today,
+                                true,
+                            );
+                            let phone = key == "postes_telephone";
                             session.posts_window = Some(PostsWindow {
                                 summary: PostsSummary::read(&session.db).ok(),
+                                waiting: phone
+                                    .then(|| "ZQHE-4675-V9JE-GCS0@192.168.1.10:7743".to_owned()),
+                                inviting_phone: phone,
                                 ..PostsWindow::default()
                             });
                         }
@@ -61396,6 +61465,7 @@ impl App {
                 start = Some(Job::Invite {
                     port: config.postes.port,
                     for_device: w.invite_target.take(),
+                    companion: false,
                 });
             }
         }
@@ -61455,6 +61525,74 @@ impl App {
                     .id_salt("posts_body")
                     .max_height(body_h)
                     .show(ui, |ui| {
+                        // **L'invitation d'abord** : pendant qu'elle est
+                        // ouverte, son code est ce qu'on est venu lire —
+                        // en bas de la liste, il fallait le chercher.
+                        if let Some(code) = &w.waiting {
+                            // **Le code seul, en grand** : l'invitation
+                            // s'annonce sur le réseau local, l'autre poste
+                            // n'a que lui à saisir. Le code complet, adresse
+                            // comprise, en dessous — pour un poste qui ne
+                            // l'entend pas (autre réseau, pare-feu).
+                            let short = code.split('@').next().unwrap_or(code);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr(if w.inviting_phone {
+                                        "posts_waiting_phone"
+                                    } else {
+                                        "posts_waiting"
+                                    }))
+                                    .strong()
+                                    .color(motif::accent()),
+                                )
+                                .wrap(),
+                            );
+                            ui.label(
+                                egui::RichText::new(short)
+                                    .size(motif::pt(ui, 20.0))
+                                    .monospace()
+                                    .strong(),
+                            );
+                            // A phone scans it rather than typing it.
+                            if w.inviting_phone {
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(tr("posts_waiting_scan"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap(),
+                                );
+                                // Whole in the visible body at any shape: a
+                                // code cut by the scroll does not scan.
+                                let used = ui.min_rect().height() + ui.spacing().item_spacing.y;
+                                let side = (motif::button_height(ui) * 7.0)
+                                    .min(ui.available_width())
+                                    .min(body_h - used)
+                                    .max(motif::button_height(ui) * 3.0);
+                                qr_code(ui, code, side);
+                            }
+
+                            ui.add_space(4.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr(if w.inviting_phone {
+                                        "posts_waiting_full_phone"
+                                    } else {
+                                        "posts_waiting_full"
+                                    }))
+                                    .size(motif::pt(ui, 10.5))
+                                    .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(code.as_str()).monospace());
+                                if motif::button(ui, tr("net_code_copy")).clicked() {
+                                    ui.ctx().copy_text(code.clone());
+                                }
+                            });
+                        }
                         let Some(sum) = &w.summary else {
                             ui.label(tr("posts_unreadable"));
                             return;
@@ -61648,7 +61786,16 @@ impl App {
                                 {
                                     rename = Some((p.post, typed.clone(), p.name.clone()));
                                 }
-                                if p.post == sum.reference {
+                                if p.companion {
+                                    // A phone: never the reference — it
+                                    // cannot open the register it would
+                                    // number.
+                                    ui.label(
+                                        egui::RichText::new(tr("posts_companion"))
+                                            .color(motif::text_dim()),
+                                    )
+                                    .on_hover_text(tr("posts_companion_tooltip"));
+                                } else if p.post == sum.reference {
                                     ui.label(
                                         egui::RichText::new(tr("posts_reference"))
                                             .strong()
@@ -61740,43 +61887,6 @@ impl App {
                                 said.as_str(),
                             );
                         }
-                        if let Some(code) = &w.waiting {
-                            // **Le code seul, en grand** : l'invitation
-                            // s'annonce sur le réseau local, l'autre poste
-                            // n'a que lui à saisir. Le code complet, adresse
-                            // comprise, en dessous — pour un poste qui ne
-                            // l'entend pas (autre réseau, pare-feu).
-                            let short = code.split('@').next().unwrap_or(code);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(tr("posts_waiting"))
-                                        .strong()
-                                        .color(motif::accent()),
-                                )
-                                .wrap(),
-                            );
-                            ui.label(
-                                egui::RichText::new(short)
-                                    .size(motif::pt(ui, 20.0))
-                                    .monospace()
-                                    .strong(),
-                            );
-                            ui.add_space(4.0);
-                            ui.add(
-                                egui::Label::new(
-                                    egui::RichText::new(tr("posts_waiting_full"))
-                                        .size(motif::pt(ui, 10.5))
-                                        .color(motif::text_dim()),
-                                )
-                                .wrap(),
-                            );
-                            ui.horizontal_wrapped(|ui| {
-                                ui.label(egui::RichText::new(code.as_str()).monospace());
-                                if motif::button(ui, tr("net_code_copy")).clicked() {
-                                    ui.ctx().copy_text(code.clone());
-                                }
-                            });
-                        }
                     });
                 if let Some((bad, note)) = &w.note {
                     ui.colored_label(
@@ -61804,6 +61914,17 @@ impl App {
                             start = Some(Job::Invite {
                                 port: config.postes.port,
                                 for_device: None,
+                                companion: false,
+                            });
+                        }
+                        if motif::button_enabled(ui, tr("posts_invite_phone"), !busy)
+                            .on_hover_text(tr("posts_invite_phone_tooltip"))
+                            .clicked()
+                        {
+                            start = Some(Job::Invite {
+                                port: config.postes.port,
+                                for_device: None,
+                                companion: true,
                             });
                         }
                         if !w.leave_armed {
@@ -61894,6 +62015,16 @@ impl App {
             // The door and the base are the task's while it runs.
             session.stop_posts_auto();
             session.posts_auto_tried = true;
+            let phone = matches!(
+                job,
+                Job::Invite {
+                    companion: true,
+                    ..
+                }
+            );
+            if let Some(w) = &mut session.posts_window {
+                w.inviting_phone = phone;
+            }
             let (answers_tx, answers_rx) = std::sync::mpsc::channel();
             let path = session.db.path().unwrap_or_default();
             let rx = crate::postes::spawn(
@@ -72690,6 +72821,19 @@ impl eframe::App for App {
                                             .color(motif::alert()),
                                     );
                                 }
+                                ui.horizontal_wrapped(|ui| {
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.reseau.relais,
+                                        tr("opts_reseau_relay"),
+                                    )
+                                    .on_hover_text(tr("opts_reseau_relay_tooltip"));
+                                    ui.label(dim(tr("opts_reseau_listen_port")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.reseau.port_relais)
+                                            .range(1024..=65535),
+                                    );
+                                });
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.
@@ -72716,6 +72860,18 @@ impl eframe::App for App {
                                         &mut editor.cfg.postes.automatique,
                                         tr("opts_postes_auto"),
                                     );
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.internet,
+                                        tr("opts_postes_internet"),
+                                    )
+                                    .on_hover_text(tr("opts_postes_internet_tooltip"));
+                                    motif::checkbox(
+                                        ui,
+                                        &mut editor.cfg.postes.relais,
+                                        tr("opts_postes_relay"),
+                                    )
+                                    .on_hover_text(tr("opts_postes_relay_tooltip"));
                                     ui.horizontal_wrapped(|ui| {
                                         ui.label(dim(tr("opts_reseau_port")));
                                         ui.add(

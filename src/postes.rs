@@ -46,6 +46,17 @@ fn unhex<const N: usize>(text: &str) -> Option<[u8; N]> {
     Some(out)
 }
 
+fn unhex_vec(text: &str) -> Option<Vec<u8>> {
+    let text = text.trim();
+    if !text.len().is_multiple_of(2) {
+        return None;
+    }
+    (0..text.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(text.get(i..i + 2)?, 16).ok())
+        .collect()
+}
+
 fn random32() -> [u8; 32] {
     let mut out = [0u8; 32];
     bpm_sync::Entropy::fill(&mut bpm_sync::OsEntropy, &mut out);
@@ -62,12 +73,28 @@ pub fn stream(flux: Flux) -> Stream {
         Flux::Agenda => Stream::Agenda,
         Flux::Officine => Stream::Officine,
         Flux::Fiches => Stream::Fiches,
+        Flux::Equipe => Stream::Equipe,
     }
+}
+
+/// Le flux de l'officine d'un flux `bpm-sync` — aucun pour celui du réseau.
+pub fn flux_of(s: Stream) -> Option<Flux> {
+    Some(match s {
+        Stream::Dossiers => Flux::Dossiers,
+        Stream::Registre => Flux::Registre,
+        Stream::Caisse => Flux::Caisse,
+        Stream::Planning => Flux::Planning,
+        Stream::Agenda => Flux::Agenda,
+        Stream::Officine => Flux::Officine,
+        Stream::Fiches => Flux::Fiches,
+        Stream::Equipe => Flux::Equipe,
+        Stream::Reseau | Stream::Autre(_) => return None,
+    })
 }
 
 /// Les flux que les postes lisent : tous ceux de l'officine, jamais
 /// celui du réseau d'officines.
-const STREAMS: [Stream; 7] = [
+const STREAMS: [Stream; 8] = [
     Stream::Dossiers,
     Stream::Registre,
     Stream::Caisse,
@@ -75,6 +102,19 @@ const STREAMS: [Stream; 7] = [
     Stream::Agenda,
     Stream::Officine,
     Stream::Fiches,
+    Stream::Equipe,
+];
+
+/// Ce qu'un **compagnon** (le téléphone d'un membre de l'équipe) reçoit
+/// la clé de lire : le contenu, l'agenda, le planning et l'équipe.
+/// Jamais les dossiers, le registre, la caisse ni les réglages de
+/// l'officine (qui portent la clé du réseau d'officines). Il tient les
+/// autres enregistrements scellés, sans les ouvrir, et les relaie.
+pub const COMPANION: [Stream; 4] = [
+    Stream::Fiches,
+    Stream::Agenda,
+    Stream::Planning,
+    Stream::Equipe,
 ];
 
 /// L'empreinte d'une identité en hexadécimal, en cinq groupes.
@@ -115,10 +155,12 @@ impl Posts {
             }
         };
         let seed = unhex::<32>(&seed).ok_or("identité du poste illisible")?;
+        // Thirty-two bytes for a desktop post's whole key; a longer,
+        // tagged list for a companion's share (`Trousseau::decode`).
         let trousseau = db
             .sync_local("trousseau")
-            .and_then(|t| unhex::<32>(&t))
-            .map(Trousseau::from_secret);
+            .and_then(|t| unhex_vec(&t))
+            .and_then(|b| Trousseau::decode(&b));
         let mut journal = Journal::new();
         for bytes in db.sync_records()? {
             if let Ok(record) = Record::decode(&bytes) {
@@ -227,20 +269,37 @@ impl Posts {
         let Some(trousseau) = self.trousseau.clone() else {
             return Ok(0);
         };
+        // Each op on its table's flux — and a change to the list of posts
+        // from a post holding the whole key **also** under `Officine`:
+        // there, a post may speak of the others (retire, rename), which it
+        // may not under the team's flux (`replica::admissible`), and the
+        // posts of an older version, which do not read the team's flux,
+        // learn who is in the group.
+        let mut routed: Vec<(Flux, crate::replica::Op)> = Vec::with_capacity(ops.len());
+        for op in ops {
+            let flux = crate::replica::table(op.file, &op.table)
+                .map(|t| t.flux)
+                .unwrap_or(Flux::Officine);
+            if op.table == "sync_posts" && trousseau.is_whole() {
+                routed.push((Flux::Officine, op.clone()));
+            }
+            routed.push((flux, op.clone()));
+        }
+        let fluxes: Vec<Flux> = routed.iter().map(|(f, _)| *f).collect();
+        let ops: Vec<crate::replica::Op> = routed.into_iter().map(|(_, o)| o).collect();
         let mut written = 0;
         let mut start = 0;
         while start < ops.len() {
-            let flux = crate::replica::table(ops[start].file, &ops[start].table)
-                .map(|t| t.flux)
-                .unwrap_or(Flux::Officine);
+            let flux = fluxes[start];
             let mut end = start;
-            while end < ops.len()
-                && crate::replica::table(ops[end].file, &ops[end].table)
-                    .map(|t| t.flux)
-                    .unwrap_or(Flux::Officine)
-                    == flux
-            {
+            while end < ops.len() && fluxes[end] == flux {
                 end += 1;
+            }
+            // A companion seals only what its share opens; a write to
+            // anything else stays on it (it has no business writing there).
+            if !trousseau.opens(stream(flux)) {
+                start = end;
+                continue;
             }
             let (lots, refused) = crate::replica::batches(&ops[start..end], crate::replica::LIMIT);
             db.note_oversize(&refused, day)?;
@@ -264,6 +323,31 @@ impl Posts {
         }
         self.keep(db)?;
         Ok(written)
+    }
+
+    /// **Sceller à nouveau la liste des postes et les conversations sur le
+    /// flux de l'équipe**, une fois par poste : elles voyageaient avant
+    /// sous `Officine` et `Dossiers`, qu'un compagnon ne lit pas. Fait
+    /// avant d'inviter un compagnon, pour qu'il sache quels postes existent
+    /// — et ne prenne pas un numéro déjà pris — et dans quelles
+    /// conversations écrire. Pas les messages d'avant : identiques partout
+    /// sauf leurs marques de lecture, qui changent sur place, ils feraient
+    /// à chaque poste autant de questions « à arbitrer » ; le téléphone
+    /// reçoit ceux écrits depuis.
+    pub fn reseal_team(&mut self, db: &Db, day: &str) -> Result<usize, String> {
+        if !self.trousseau.as_ref().is_some_and(Trousseau::is_whole)
+            || db.sync_local("team_resealed").is_some()
+        {
+            return Ok(0);
+        }
+        let ops: Vec<crate::replica::Op> = db
+            .snapshot_of(Flux::Equipe)?
+            .into_iter()
+            .filter(|o| o.table == "sync_posts" || o.table == "conversations")
+            .collect();
+        let n = self.seal(db, &ops, day)?;
+        db.set_sync_local("team_resealed", day)?;
+        Ok(n)
     }
 
     /// Sceller au journal les écritures de ce poste pas encore parties.
@@ -297,14 +381,18 @@ impl Posts {
         };
         let me = self.device.id();
         let retired = Self::retired(db);
-        let mut facts: Vec<bpm_sync::Fact> = Vec::new();
-        for s in STREAMS {
+        let mut facts: Vec<(Flux, bpm_sync::Fact)> = Vec::new();
+        // A companion reads only what its share opens; the rest it holds
+        // sealed and relays — not « unopened », just not its to read.
+        for s in STREAMS.into_iter().filter(|s| trousseau.opens(*s)) {
+            let Some(flux) = flux_of(s) else { continue };
             let reading = self.journal.read(trousseau, s);
             report.unopened += reading.unopened.len();
-            facts.extend(reading.facts);
+            facts.extend(reading.facts.into_iter().map(|f| (flux, f)));
         }
-        facts.sort_by_key(|f| (f.lamport, f.author.0, f.id.0));
-        for f in facts {
+        facts.sort_by_key(|(_, f)| (f.lamport, f.author.0, f.id.0));
+        let strict = trousseau.is_whole();
+        for (flux, f) in facts {
             let id = hex(&f.id.0);
             if db.sync_applied(&id) {
                 continue;
@@ -320,7 +408,18 @@ impl Posts {
                 db.mark_sync_applied(&id)?;
                 continue;
             };
-            let got = db.apply_record(&id, &f.author.fingerprint().groups(), day, &ops)?;
+            let gate = crate::db::Gate {
+                sealed: flux,
+                author: hex(&f.author.0),
+                strict,
+            };
+            let got = db.apply_gated(
+                &id,
+                &f.author.fingerprint().groups(),
+                day,
+                &ops,
+                Some(&gate),
+            )?;
             report.received.written += got.written;
             report.received.conflicts += got.conflicts;
             report.received.refused += got.refused;
@@ -332,6 +431,34 @@ impl Posts {
         Ok(report)
     }
 
+    /// Le nom du groupe en hexadécimal — ce qu'un relais connaît.
+    pub fn group_hex(&self) -> Option<String> {
+        self.trousseau.as_ref().map(|t| hex(&t.name().bytes()))
+    }
+
+    /// Converser, en appelant, sur une connexion déjà ouverte — celle
+    /// qu'un relais a mise en relation (`relay::call`).
+    pub fn sync_over<L: bpm_sync::Link>(&mut self, db: &Db, link: &mut L) -> Result<(), String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(());
+        };
+        self.talk(db, &trousseau, link, true)
+    }
+
+    /// Répondre sur une connexion déjà ouverte — celle qu'un relais a
+    /// mise en relation avec ce poste qui attendait (`relay::wait`).
+    pub fn answer_over<L: bpm_sync::Link>(&mut self, db: &Db, link: &mut L) -> Result<(), String> {
+        let Some(trousseau) = self.trousseau.clone() else {
+            return Ok(());
+        };
+        self.talk(db, &trousseau, link, false)
+    }
+
+    /// Le nom du fichier de ce poste dans un dossier d'échange.
+    pub fn folder_file(&self) -> String {
+        format!("{}.bpmposte", hex(&self.device.id().0[..10]))
+    }
+
     /// Déposer ses enregistrements dans le dossier d'échange, et lire ceux
     /// des autres postes. Un fichier par poste, écrit à côté puis mis en
     /// place. N'entre que ce que la clé des postes ouvre.
@@ -341,6 +468,7 @@ impl Posts {
         };
         std::fs::create_dir_all(folder).map_err(|e| e.to_string())?;
         let me = self.device.id();
+        let known = self.known(db);
         let mine: Vec<u8> = self
             .journal
             .records()
@@ -352,9 +480,8 @@ impl Posts {
                 framed
             })
             .collect();
-        let name = hex(&me.0[..10]);
-        let target = folder.join(format!("{name}.bpmposte"));
-        let part = folder.join(format!("{name}.bpmposte.part"));
+        let target = folder.join(self.folder_file());
+        let part = folder.join(format!("{}.part", self.folder_file()));
         std::fs::write(&part, &mine).map_err(|e| e.to_string())?;
         std::fs::rename(&part, &target).map_err(|e| e.to_string())?;
         let mut added = 0;
@@ -380,10 +507,15 @@ impl Posts {
                 };
                 at += len;
                 if let Ok(record) = Record::decode(chunk) {
-                    if !self.journal.has(&record.id())
-                        && record.open(&trousseau).is_ok()
-                        && self.journal.insert(record)
-                    {
+                    // A record of a stream this post's key opens must open
+                    // under it; one a companion's share does not open is
+                    // kept for the graph, from a post of the group only.
+                    let ours = if trousseau.opens(record.stream()) {
+                        record.open(&trousseau).is_ok()
+                    } else {
+                        known.contains(&record.author())
+                    };
+                    if !self.journal.has(&record.id()) && ours && self.journal.insert(record) {
                         added += 1;
                     }
                 }
@@ -423,16 +555,18 @@ impl Posts {
         )
         .map_err(|e| format!("{e:?}"))?;
         let mut meter = Meter::new();
-        bpm_sync::drive(
+        let said = bpm_sync::drive(
             &mut session,
             link,
             &mut self.journal,
             &mut meter,
             &mut |_| true,
-        )
-        .map_err(|e| format!("{e:?}"))?;
+        );
+        // Kept even when the conversation was cut: every record that came
+        // in was checked on arrival, and a long catch-up cut by the bound
+        // goes on from there next time instead of starting over for ever.
         self.keep(db)?;
-        Ok(())
+        said.map_err(|e| format!("{e:?}"))
     }
 }
 
@@ -486,6 +620,9 @@ pub enum Job {
     Invite {
         port: u16,
         for_device: Option<String>,
+        /// Un compagnon (téléphone) : il reçoit une part de la clé,
+        /// [`COMPANION`], jamais la clé entière.
+        companion: bool,
     },
     /// Rejoindre le groupe en composant l'adresse du poste qui invite.
     /// **Ce que ce poste contenait est remplacé.**
@@ -582,12 +719,19 @@ pub fn run(
             let n = posts.found(&db, name, today)?;
             Ok(trn("posts_done_founded", &[&n]))
         }
-        Job::Invite { port, for_device } => {
+        Job::Invite {
+            port,
+            for_device,
+            companion,
+        } => {
             let trousseau = posts
                 .trousseau
                 .clone()
                 .ok_or_else(|| tr("posts_err_no_group").to_owned())?;
             posts.publish(&db, today)?;
+            if *companion {
+                posts.reseal_team(&db, today)?;
+            }
             // Le fil automatique tenait ce port : arrêté par l'écran, il le
             // rend dans la demi-seconde. On le lui laisse, plutôt que de
             // dire « port pris » à qui vient de cliquer.
@@ -672,6 +816,13 @@ pub fn run(
                     &posts.known(&db),
                 )
                 .and_then(|s| s.with_ticket(ticket))
+                .and_then(|s| {
+                    if *companion {
+                        s.sharing(&COMPANION)
+                    } else {
+                        Ok(s)
+                    }
+                })
                 .map_err(|e| format!("{e:?}"))?;
                 let mut meter = Meter::new();
                 if bpm_sync::drive(
@@ -683,12 +834,12 @@ pub fn run(
                 )
                 .is_ok()
                 {
-                    break Some(session);
+                    break Some((session, from));
                 }
                 let _ = tx.send(Progress::Status(tr("posts_invite_retry").to_owned()));
             };
             announcing.store(false, std::sync::atomic::Ordering::SeqCst);
-            let Some(session) = outcome else {
+            let Some((session, admitted_ip)) = outcome else {
                 return Err(tr(if tries == 0 {
                     "posts_err_nobody"
                 } else {
@@ -705,10 +856,29 @@ pub fn run(
             // Fermée, il le gardait jusqu'à sa synchronisation suivante, et
             // une seconde invitation d'ici là lui donnait le même numéro.
             let _ = tx.send(Progress::Status(tr("posts_invite_first_word").to_owned()));
-            if let Ok(mut link) = door.accept_with(FIRST_WORD, TALK_PATIENCE) {
-                let _ = posts.talk(&db, &trousseau, &mut link, false);
-                posts.absorb(&db, today)?;
+            // Any knock may come first — a stranger, or, with the port open
+            // to the internet, anybody: each gets a bounded conversation,
+            // and the door waits on until the minute is out or a post of
+            // the group has spoken.
+            let until = Instant::now() + FIRST_WORD;
+            loop {
+                let left = until.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    break;
+                }
+                let Ok(link) = door.accept_with(left, TALK_PATIENCE) else {
+                    break;
+                };
+                // The admitted post's own knock ends the wait, whatever it
+                // says — it may be refusing an invitation meant for the
+                // other kind of post.
+                let from_admitted = link.peer_ip() == admitted_ip;
+                let mut link = link.with_deadline(left.min(POSTS_ANSWER_BOUND));
+                if posts.talk(&db, &trousseau, &mut link, false).is_ok() || from_admitted {
+                    break;
+                }
             }
+            posts.absorb(&db, today)?;
             Ok(tr("posts_done_invited").to_owned())
         }
         Job::Join {
@@ -716,47 +886,7 @@ pub fn run(
             name,
             ticket,
         } => {
-            if posts.in_group() || db.sync_post().is_some() {
-                return Err(tr("posts_err_already").to_owned());
-            }
-            // A fresh identity: a base copied from another post carries
-            // that post's, and two posts under one name would each take
-            // the other's records for their own.
-            db.set_sync_local("device", &hex(&random32()))?;
-            let mut posts = Posts::load(&db)?;
-            let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
-                .map_err(|_| tr("posts_err_unreachable").to_owned())?;
-            let mut session = Session::new(&posts.device, None, Intent::Join, true, &[])
-                .and_then(|s| match ticket {
-                    Some(t) => s.with_ticket(*t),
-                    None => Ok(s),
-                })
-                .map_err(|e| format!("{e:?}"))?;
-            let mut meter = Meter::new();
-            bpm_sync::drive(
-                &mut session,
-                &mut link,
-                &mut posts.journal,
-                &mut meter,
-                &mut confirm,
-            )
-            .map_err(|_| tr("posts_err_refused").to_owned())?;
-            let joined = session
-                .joined()
-                .cloned()
-                .ok_or_else(|| tr("posts_err_refused").to_owned())?;
-            // Only now, with the key and the journal in hand, is what this
-            // post held replaced.
-            db.prepare_join()?;
-            db.set_sync_local("trousseau", &hex(&joined.secret()))?;
-            posts.trousseau = Some(joined);
-            posts.keep(&db)?;
-            let report = posts.absorb(&db, today)?;
-            let post = db.finish_join(&posts.device_hex(), name, today)?;
-            posts.publish(&db, today)?;
-            // Tell the inviting post at once who joined, so it hears this
-            // post's next records without waiting for anybody.
-            let _ = posts.sync_with(&db, address, TALK_PATIENCE);
+            let (post, report) = join(&db, address, name, *ticket, false, today, &mut confirm)?;
             Ok(trn(
                 "posts_done_joined",
                 &[&(post + 1), &report.received.written],
@@ -787,6 +917,78 @@ pub fn run(
             Ok(said)
         }
     }
+}
+
+/// **Rejoindre le groupe** en composant l'adresse du poste qui invite.
+/// Ce que ce poste contenait est remplacé. `companion` : ce poste est un
+/// compagnon (le téléphone) — il n'accepte qu'une part de la clé, et se
+/// déclare comme tel. Rend son numéro et ce qu'il a rangé.
+pub fn join(
+    db: &Db,
+    address: &str,
+    name: &str,
+    ticket: Option<bpm_sync::Ticket>,
+    companion: bool,
+    today: &str,
+    confirm: &mut dyn FnMut(bpm_sync::Fingerprint) -> bool,
+) -> Result<(i64, Report), String> {
+    use crate::strings::tr;
+    if db.sync_post().is_some() || db.sync_local("trousseau").is_some() {
+        return Err(tr("posts_err_already").to_owned());
+    }
+    // A fresh identity: a base copied from another post carries
+    // that post's, and two posts under one name would each take
+    // the other's records for their own.
+    db.set_sync_local("device", &hex(&random32()))?;
+    let mut posts = Posts::load(db)?;
+    let mut link = bpm_sync::link::dial(address, TALK_PATIENCE)
+        .map_err(|_| tr("posts_err_unreachable").to_owned())?;
+    let mut session = Session::new(&posts.device, None, Intent::Join, true, &[])
+        .and_then(|s| match ticket {
+            Some(t) => s.with_ticket(t),
+            None => Ok(s),
+        })
+        .and_then(|s| if companion { s.as_companion() } else { Ok(s) })
+        .map_err(|e| format!("{e:?}"))?;
+    let mut meter = Meter::new();
+    bpm_sync::drive(
+        &mut session,
+        &mut link,
+        &mut posts.journal,
+        &mut meter,
+        confirm,
+    )
+    .map_err(|_| tr("posts_err_refused").to_owned())?;
+    let joined = session
+        .joined()
+        .cloned()
+        .ok_or_else(|| tr("posts_err_refused").to_owned())?;
+    // A desktop post takes the whole key, a companion a share: the other
+    // way round is an invitation meant for another kind of post.
+    if joined.is_whole() == companion {
+        // Knock once and leave: the inviting post, which waits for this
+        // post's first word, stops waiting.
+        drop(bpm_sync::link::dial(address, TALK_PATIENCE));
+        return Err(tr(if companion {
+            "posts_err_not_companion_invite"
+        } else {
+            "posts_err_companion_invite"
+        })
+        .to_owned());
+    }
+    // Only now, with the key and the journal in hand, is what this
+    // post held replaced.
+    db.prepare_join()?;
+    db.set_sync_local("trousseau", &hex(&joined.encode()))?;
+    posts.trousseau = Some(joined);
+    posts.keep(db)?;
+    let report = posts.absorb(db, today)?;
+    let post = db.finish_join(&posts.device_hex(), name, today, companion)?;
+    posts.publish(db, today)?;
+    // Tell the inviting post at once who joined, so it hears this
+    // post's next records without waiting for anybody.
+    let _ = posts.sync_with(db, address, TALK_PATIENCE);
+    Ok((post, report))
 }
 
 /// Ce que l'écran demande au fil automatique.
@@ -1010,6 +1212,16 @@ pub struct OfficineSide {
     /// mais le fil tourne pour l'officine : il n'ouvre pas la porte des
     /// postes et ne les compose pas.
     pub posts_paused: bool,
+    /// **Joignable depuis Internet** (`[postes] internet`) : la porte des
+    /// postes écoute aussi en IPv6, le routeur ouvre son port (UPnP), et
+    /// le poste publie ses adresses (`reach.rs`).
+    pub posts_internet: bool,
+    /// **Relayer** pour les officines du réseau (`[reseau] relais`) : le
+    /// port du relais (`relay.rs`) ; 0, ce poste ne relaie pas.
+    pub relay_port: u16,
+    /// **Se faire relayer** (`[postes] relais`) : attendre aux relais que
+    /// les officines du réseau offrent.
+    pub posts_relay: bool,
 }
 
 /// Combien de conversations d'officines à la fois, au plus : chacune a
@@ -1023,6 +1235,13 @@ const POSTS_DIAL_BOUND: Duration = Duration::from_secs(600);
 
 /// Le temps qu'une conversation d'officine peut durer en tout.
 const ANSWER_BOUND: Duration = Duration::from_secs(60);
+
+/// Le temps qu'une conversation **reçue à la porte des postes** peut durer
+/// en tout : large pour un rattrapage (ce qui est arrivé est gardé, et le
+/// suivant reprend de là), borné pour qu'une connexion qui écrit un octet
+/// toutes les sept secondes ne tienne pas le fil des postes — surtout
+/// quand la porte est joignable depuis Internet.
+const POSTS_ANSWER_BOUND: Duration = Duration::from_secs(180);
 
 /// Combien de fois une même adresse peut frapper par minute.
 const KNOCKS_PER_MINUTE: usize = 6;
@@ -1209,6 +1428,50 @@ fn auto(
     if trousseau.is_some() && door.is_none() {
         let _ = tx.send(Progress::Status(tr("posts_auto_no_door").to_owned()));
     }
+    // **Joignable depuis Internet** : une seconde porte, IPv6 seulement,
+    // et ce que le routeur ouvre — cherché sur un fil à part (la recherche
+    // du routeur prend quelques secondes), renouvelé toutes les vingt
+    // minutes, publié dans la ligne de ce poste quand cela change.
+    let internet = side.posts_internet && door.is_some();
+    let door6 = internet
+        .then(|| bpm_sync::link::Door::open_v6_only(port).ok())
+        .flatten();
+    let mut door_knocks = Knocks::default();
+    let (reach_tx, reach_rx) = std::sync::mpsc::channel::<(bool, String)>();
+    let mut published = false;
+    let mut reach_looked: Option<Instant> = None;
+    let mut mapped = false;
+    // What this post publishes: its own addresses, and the relays where
+    // it waits — joined into its line of `sync_posts`.
+    let mut direct_reach = String::new();
+    // **Le relais** que cette officine tient pour les autres, et ce qu'il
+    // accepte — relu chaque minute des demandes reçues du réseau.
+    let relay_stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let relay_allowed: crate::relay::Allowed = Default::default();
+    let serving = side.relay_port != 0
+        && crate::relay::serve(
+            side.relay_port,
+            std::sync::Arc::clone(&relay_allowed),
+            std::sync::Arc::clone(&relay_stop),
+        )
+        .is_ok();
+    let (offer_tx, offer_rx) = std::sync::mpsc::channel::<(bool, String)>();
+    let mut relay_mapped = false;
+    let mut relay_read: Option<Instant> = None;
+    // **Les relais où ce poste attend** : un fil par adresse offerte, qui
+    // passe au fil des postes chaque conversation qu'un relais lui met en
+    // relation.
+    let group = trousseau
+        .as_ref()
+        .filter(|t| t.is_whole())
+        .map(|t| hex(&t.name().bytes()));
+    let waiting_relays = side.posts_relay && group.is_some();
+    // One conversation handed over at a time: a waiter that finds the
+    // hand-off full waits for the fil to take it, rather than piling up.
+    let (relayed_tx, relayed_rx) = std::sync::mpsc::sync_channel::<bpm_sync::link::TcpLink>(1);
+    let mut relays_waited: Vec<(String, std::sync::Arc<std::sync::atomic::AtomicBool>)> =
+        Vec::new();
+    let mut relayed_talks: Vec<Instant> = Vec::new();
     let udp = std::net::UdpSocket::bind(("0.0.0.0", port)).ok();
     if let Some(u) = &udp {
         let _ = u.set_broadcast(true);
@@ -1234,14 +1497,152 @@ fn auto(
             Err(std::sync::mpsc::TryRecvError::Empty) => {}
         }
         let mut talked = false;
+        if internet && reach_looked.is_none_or(|t| t.elapsed() >= REACH_EVERY) {
+            reach_looked = Some(Instant::now());
+            let tx = reach_tx.clone();
+            // IPv6 only when its door opened; the router's address only
+            // when it opened the port.
+            let with_v6 = door6.is_some();
+            std::thread::spawn(move || {
+                let v4 = crate::reach::open_mapping(port);
+                let v6 = if with_v6 {
+                    crate::reach::global_ipv6()
+                } else {
+                    Vec::new()
+                };
+                let _ = tx.send((v4.is_some(), crate::reach::reach_text(v4, &v6, port)));
+            });
+        }
+        if let Ok((router, reach)) = reach_rx.try_recv() {
+            mapped |= router;
+            direct_reach = reach;
+            published = true;
+            db.set_post_reach(
+                &me,
+                &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+            )?;
+        }
+        // Once a minute: what the relay accepts, where it can be reached,
+        // and the relays this post waits at.
+        if (serving || waiting_relays) && relay_read.is_none_or(|t| t.elapsed() >= RELAY_EVERY) {
+            relay_read = Some(Instant::now());
+            if serving {
+                if let Ok(mut a) = relay_allowed.lock() {
+                    *a = db
+                        .setting(crate::network::RELAY_GROUPS)
+                        .unwrap_or_default()
+                        .split(',')
+                        .filter(|g| !g.is_empty())
+                        .map(str::to_owned)
+                        .collect();
+                }
+                let tx = offer_tx.clone();
+                let relay_port = side.relay_port;
+                std::thread::spawn(move || {
+                    let v4 = crate::reach::open_mapping(relay_port);
+                    let _ = tx.send((v4.is_some(), crate::reach::reach_text(v4, &[], relay_port)));
+                });
+            }
+            if let (true, Some(g)) = (waiting_relays, group.as_ref()) {
+                crate::network::set_relay_value(&db, crate::network::RELAY_REQUEST, g);
+                let offered: Vec<String> = crate::network::offered_relays(&db)
+                    .into_iter()
+                    .take(MOST_RELAYS)
+                    .collect();
+                // A relay no longer offered: its waiter stops.
+                relays_waited.retain(|(a, stop)| {
+                    let kept = offered.contains(a);
+                    if !kept {
+                        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    kept
+                });
+                for address in offered {
+                    if relays_waited.iter().any(|(a, _)| *a == address) {
+                        continue;
+                    }
+                    let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+                    relays_waited.push((address.clone(), std::sync::Arc::clone(&stop)));
+                    let (tx, g, all) = (
+                        relayed_tx.clone(),
+                        g.clone(),
+                        std::sync::Arc::clone(&relay_stop),
+                    );
+                    std::thread::spawn(move || {
+                        let stopped = || {
+                            stop.load(std::sync::atomic::Ordering::SeqCst)
+                                || all.load(std::sync::atomic::Ordering::SeqCst)
+                        };
+                        while !stopped() {
+                            match crate::relay::wait(&address, &g, TALK_PATIENCE) {
+                                Ok(stream) => {
+                                    if let Ok(link) =
+                                        bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE)
+                                    {
+                                        if tx.send(link.with_deadline(RELAYED_BOUND)).is_err() {
+                                            return;
+                                        }
+                                    }
+                                }
+                                // The wait ran out with nobody: wait again
+                                // at once, or a phone would find no post.
+                                Err(e)
+                                    if matches!(
+                                        e.kind(),
+                                        std::io::ErrorKind::WouldBlock
+                                            | std::io::ErrorKind::TimedOut
+                                    ) => {}
+                                Err(_) => std::thread::sleep(Duration::from_secs(30)),
+                            }
+                        }
+                    });
+                }
+                published = true;
+                db.set_post_reach(
+                    &me,
+                    &crate::reach::with_relays(&direct_reach, &relay_names(&relays_waited)),
+                )?;
+            }
+        }
+        if let Ok((router, offer)) = offer_rx.try_recv() {
+            relay_mapped |= router;
+            crate::network::set_relay_value(&db, crate::network::RELAY_OFFER, &offer);
+        }
+        // A phone the relay put in touch with this post: answered here,
+        // like one knocking at the door — one per turn, and no more than
+        // a dozen a minute, so that whoever knows the group's name cannot
+        // hold this post's fil through the relay.
+        if let (Ok(mut link), Some(t)) = (relayed_rx.try_recv(), &trousseau) {
+            relayed_talks.retain(|at| at.elapsed() < Duration::from_secs(60));
+            if relayed_talks.len() < KNOCKS_PER_MINUTE * 2 {
+                relayed_talks.push(Instant::now());
+                if posts.talk(&db, t, &mut link, false).is_ok() {
+                    talked = true;
+                }
+            }
+        }
+        // A post knocking at our IPv6 door, from outside the officine.
+        if let (Some(door6), Some(t)) = (&door6, &trousseau) {
+            if let Ok(link) = door6.accept_with(Duration::from_millis(50), TALK_PATIENCE) {
+                let ip = link.peer_ip();
+                let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
+                if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
+                    door_knocks.forgive(ip);
+                    talked = true;
+                }
+            }
+        }
         // A post knocking at our door.
         match (&door, &trousseau) {
             (Some(door), Some(t)) => {
                 // Looked at for 400 ms between other work, but the
-                // conversation gets the posts' own patience: a post on the
+                // conversation gets the posts' own patience: a phone on the
                 // Wi-Fi answering in half a second was dropped mid-sync.
-                if let Ok(mut link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
-                    if posts.talk(&db, t, &mut link, false).is_ok() {
+                if let Ok(link) = door.accept_with(Duration::from_millis(400), TALK_PATIENCE) {
+                    let ip = link.peer_ip();
+                    let mut link = link.with_deadline(POSTS_ANSWER_BOUND);
+                    if door_knocks.admit(ip) && posts.talk(&db, t, &mut link, false).is_ok() {
+                        door_knocks.forgive(ip);
                         talked = true;
                     }
                 }
@@ -1546,8 +1947,89 @@ fn auto(
             told = now;
         }
     }
+    // What the router opened for this post closes with it; the addresses
+    // it published go with it too, so a phone does not dial a door
+    // nobody holds.
+    if published {
+        let _ = db.set_post_reach(&me, "");
+    }
+    if mapped {
+        crate::reach::close_mapping(port);
+    }
+    relay_stop.store(true, std::sync::atomic::Ordering::SeqCst);
+    if serving {
+        crate::network::set_relay_value(&db, crate::network::RELAY_OFFER, "");
+    }
+    if relay_mapped {
+        crate::reach::close_mapping(side.relay_port);
+    }
     Ok(())
 }
+
+/// Tous les combien le relais relit ce qu'il accepte, et le poste les
+/// relais où il attend.
+const RELAY_EVERY: Duration = Duration::from_secs(60);
+
+/// Combien de relais un poste attend à la fois.
+const MOST_RELAYS: usize = 4;
+
+/// Le temps qu'une conversation reçue par un relais peut durer : plus
+/// court qu'à la porte — ce qu'un téléphone échange tient en moins, et le
+/// fil des postes ne l'attend pas davantage.
+const RELAYED_BOUND: Duration = Duration::from_secs(60);
+
+fn relay_names(waited: &[(String, std::sync::Arc<std::sync::atomic::AtomicBool>)]) -> Vec<String> {
+    waited.iter().map(|(a, _)| a.clone()).collect()
+}
+
+/// **Combien de fois une adresse d'Internet frappe à la porte des
+/// postes** : au-delà de deux fois [`KNOCKS_PER_MINUTE`] dans la minute,
+/// la connexion est lâchée sans conversation — une adresse qui insiste
+/// n'occupe plus le fil. Les adresses du réseau local ne sont pas
+/// comptées : les postes s'y synchronisent quelques secondes après
+/// chaque écriture, et un comptoir chargé écrit souvent. Une frappe
+/// suivie d'une conversation réussie n'est pas comptée non plus : c'est un
+/// poste du groupe, et plusieurs postes d'un site distant derrière une
+/// seule adresse ne se ferment pas la porte les uns aux autres.
+#[derive(Default)]
+struct Knocks(std::collections::HashMap<std::net::IpAddr, Vec<Instant>>);
+
+impl Knocks {
+    fn admit(&mut self, ip: Option<std::net::IpAddr>) -> bool {
+        let Some(ip) = ip else { return true };
+        let public = match ip {
+            std::net::IpAddr::V4(a) => crate::reach::is_public_v4(&a),
+            std::net::IpAddr::V6(a) => crate::reach::is_global_v6(&a),
+        };
+        if !public {
+            return true;
+        }
+        let now = Instant::now();
+        self.0.retain(|_, v| {
+            v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
+            !v.is_empty()
+        });
+        // Bounded memory: a flood of addresses forgets the oldest.
+        if self.0.len() > 256 {
+            self.0.clear();
+        }
+        let seen = self.0.entry(ip).or_default();
+        seen.push(now);
+        seen.len() <= KNOCKS_PER_MINUTE * 2
+    }
+
+    /// A knock that became a conversation with a post of the group: taken
+    /// back from the count.
+    fn forgive(&mut self, ip: Option<std::net::IpAddr>) {
+        if let Some(seen) = ip.and_then(|ip| self.0.get_mut(&ip)) {
+            seen.pop();
+        }
+    }
+}
+
+/// Tous les combien le poste renouvelle ce que le routeur a ouvert et
+/// relit ses adresses — bien avant la fin du bail (`reach::LEASE`).
+const REACH_EVERY: Duration = Duration::from_secs(20 * 60);
 
 /// L'adresse de ce poste sur le réseau local — un `connect` UDP ne
 /// transmet rien, il demande seulement par quelle interface on enverrait.
@@ -1657,6 +2139,7 @@ mod tests {
             Job::Invite {
                 port,
                 for_device: None,
+                companion: false,
             },
             dir_a.join("poste.db"),
             "secret".to_owned(),
@@ -1780,6 +2263,486 @@ mod tests {
         assert!(!a.patients().unwrap().iter().any(|p| p.last_name == "Après"));
     }
 
+    /// **Un téléphone rejoint en compagnon** : il reçoit une part de la
+    /// clé, range les fiches, l'agenda et la messagerie, et aucun dossier
+    /// — qu'il tient pourtant, scellés, pour les relayer. Un poste de
+    /// bureau refuse cette invitation-là.
+    #[test]
+    fn a_phone_joins_as_a_companion_and_never_reads_a_patient() {
+        let (dir_a, _sa, a) = post("desk");
+        let (_dir_p, _sp, phone) = post("phone");
+        let (_dir_w, _sw, wrong) = post("wrongkind");
+        a.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let card = a.add_drug("Amoxicilline").unwrap();
+        a.add_event_span(
+            "2026-09-26",
+            "09:00",
+            "09:30",
+            "Réunion d'équipe",
+            crate::db::EventCategory::Autre,
+            "",
+            "",
+        )
+        .unwrap();
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        a.post_message(talk, "m1", "AB", "Livraison à 14 h", None, "", None)
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let invite = |companion: bool| {
+            let port = std::net::TcpListener::bind("127.0.0.1:0")
+                .unwrap()
+                .local_addr()
+                .unwrap()
+                .port();
+            let (_yes, answers) = std::sync::mpsc::channel();
+            let rx = spawn(
+                Job::Invite {
+                    port,
+                    for_device: None,
+                    companion,
+                },
+                dir_a.join("poste.db"),
+                "secret".to_owned(),
+                "2026-09-26".to_owned(),
+                answers,
+            );
+            let ticket = match rx.recv().unwrap() {
+                Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+                other => panic!("{other:?}"),
+            };
+            (port, ticket, rx, _yes)
+        };
+        let finish = |rx: std::sync::mpsc::Receiver<Progress>| loop {
+            match rx.recv_timeout(Duration::from_secs(20)).expect("fin") {
+                Progress::Done(_) | Progress::Failed(_) => break,
+                _ => {}
+            }
+        };
+
+        // A desktop post refuses an invitation meant for a phone.
+        let (port, ticket, rx, _y) = invite(true);
+        let said = join(
+            &wrong,
+            &format!("127.0.0.1:{port}"),
+            "Comptoir 2",
+            ticket,
+            false,
+            "2026-09-26",
+            &mut |_| true,
+        );
+        // Refused at the handshake: the code proves a phone's role, which a
+        // post does not — no share crossed to be refused afterwards.
+        assert_eq!(
+            said.err().as_deref(),
+            Some(crate::strings::tr("posts_err_refused"))
+        );
+        assert!(wrong.sync_post().is_none());
+
+        // The invitation stays open for the phone it was meant for.
+        let (post, _) = join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        finish(rx);
+        assert_eq!(post, 1);
+        let held = Posts::load(&phone).unwrap();
+        let share = held.trousseau.clone().unwrap();
+        assert!(!share.is_whole());
+        let mut want = COMPANION.to_vec();
+        want.sort();
+        assert_eq!(share.streams(), want);
+        // The patients crossed sealed, and stay sealed.
+        assert!(phone.patients().unwrap().is_empty());
+        assert!(held
+            .journal
+            .records()
+            .any(|r| r.stream() == Stream::Dossiers));
+        // What it reads.
+        assert!(phone.drugs().unwrap().iter().any(|d| d.id == card));
+        assert_eq!(
+            phone
+                .events_between("2026-09-26", "2026-09-26")
+                .unwrap()
+                .len(),
+            1
+        );
+        let talks = phone.conversations().unwrap();
+        assert_eq!(talks.len(), 1);
+        let said = phone.conversation_messages(talks[0].id).unwrap();
+        assert_eq!(said[0].body, "Livraison à 14 h");
+        let posts = phone.sync_posts().unwrap();
+        assert_eq!(posts.len(), 2);
+        assert!(posts.iter().any(|p| p.post == 1 && p.companion));
+        // Never the reference: it holds no key to the register.
+        assert!(phone.set_sync_reference(1, "2026-09-26").is_err());
+        // The desktop heard who joined at once, at its own door.
+        {
+            let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+            assert!(
+                a.sync_posts()
+                    .unwrap()
+                    .iter()
+                    .any(|p| p.companion && p.post == 1),
+                "le téléphone s'est présenté à la porte qui l'a admis"
+            );
+        }
+        // And what the phone writes to the team crosses a folder too.
+        let folder = dir_a.join("echange-compagnon");
+        phone
+            .post_message(talks[0].id, "m2", "CD", "Reçu", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let mut pa = Posts::load(&a).unwrap();
+        pa.exchange_folder(&a, &folder).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        assert!(a.sync_posts().unwrap().iter().any(|p| p.companion));
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+        // A desktop reachable from the internet publishes where; the
+        // phone reads it — it travels with the team, which it opens.
+        let desk = pa.device_hex();
+        assert!(a.set_post_reach(&desk, "82.64.1.2:7743").unwrap());
+        assert!(!a.set_post_reach(&desk, "82.64.1.2:7743").unwrap());
+        pa.publish(&a, "2026-09-26").unwrap();
+        pa.exchange_folder(&a, &folder).unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        pp.absorb(&phone, "2026-09-26").unwrap();
+        let seen = phone.sync_posts().unwrap();
+        assert_eq!(
+            seen.iter()
+                .find(|p| p.device == desk)
+                .map(|p| p.reach.as_str()),
+            Some("82.64.1.2:7743")
+        );
+
+        // **A tampered phone forges a team record** that writes a patient,
+        // retires the desktop and replaces the network key. Sealed under a
+        // key it holds, signed by itself — and ranged nowhere.
+        use crate::replica::{Kind, Op};
+        let obj = |v: serde_json::Value| v.as_object().cloned().unwrap();
+        let forged = vec![
+            Op {
+                file: crate::replica::File::Main,
+                table: "patients".into(),
+                kind: Kind::Insert,
+                key: obj(serde_json::json!({"id": 424242})),
+                old: Default::default(),
+                new: obj(
+                    serde_json::json!({"id": 424242, "last_name": "Forgé", "first_name": "X", "birth_date": "2000-01-01"}),
+                ),
+            },
+            Op {
+                file: crate::replica::File::Main,
+                table: "sync_posts".into(),
+                kind: Kind::Update,
+                key: obj(serde_json::json!({"post": 0})),
+                old: obj(serde_json::json!({"left_on": ""})),
+                new: obj(serde_json::json!({"left_on": "2026-09-26"})),
+            },
+            Op {
+                file: crate::replica::File::Main,
+                table: "settings".into(),
+                kind: Kind::Patch,
+                key: obj(serde_json::json!({"key": "net_trousseau"})),
+                old: Default::default(),
+                new: obj(serde_json::json!({"value": "00"})),
+            },
+        ];
+        let (lots, _) = crate::replica::batches(&forged, crate::replica::LIMIT);
+        let share = pp.trousseau.clone().unwrap();
+        for lot in lots {
+            pp.journal
+                .write(
+                    &pp.device,
+                    &share,
+                    Stream::Equipe,
+                    &lot,
+                    None,
+                    &mut bpm_sync::OsEntropy,
+                )
+                .unwrap();
+        }
+        pp.keep(&phone).unwrap();
+        pp.exchange_folder(&phone, &folder).unwrap();
+        let net_before = a.setting("net_trousseau");
+        pa.exchange_folder(&a, &folder).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        assert!(!a.patients().unwrap().iter().any(|p| p.last_name == "Forgé"));
+        assert!(a
+            .sync_posts()
+            .unwrap()
+            .iter()
+            .any(|p| p.post == 0 && p.left_on.is_empty()));
+        assert_eq!(a.setting("net_trousseau"), net_before);
+    }
+
+    /// **Le compagnon, une fois appairé, parle à la porte du poste** :
+    /// ce qu'il écrit à l'équipe arrive par la synchronisation ordinaire,
+    /// sans dossier d'échange.
+    #[test]
+    fn a_companion_syncs_through_the_desktop_door() {
+        let (dir_a, _sa, a) = post("desk-door");
+        let (_dir_p, _sp, phone) = post("phone-door");
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: true,
+            },
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            answers,
+        );
+        let ticket = match rx.recv().unwrap() {
+            Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+            other => panic!("{other:?}"),
+        };
+        join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        loop {
+            if let Progress::Done(_) | Progress::Failed(_) = rx.recv().unwrap() {
+                break;
+            }
+        }
+        let (_auto, poke) = spawn_auto(
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            port,
+            None,
+            Vec::new(),
+            OfficineSide::default(),
+            Pace::default(),
+        );
+        let talk_here = phone.conversations().unwrap()[0].id;
+        phone
+            .post_message(talk_here, "m2", "CD", "Reçu", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        let mut said = Err(String::new());
+        for _ in 0..20 {
+            said = pp.sync_with(&phone, &format!("127.0.0.1:{port}"), Duration::from_secs(4));
+            if said.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        let _ = poke.send(Poke::Stop);
+        said.unwrap();
+        std::thread::sleep(Duration::from_millis(500));
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let pa = Posts::load(&a).unwrap();
+        pa.absorb(&a, "2026-09-26").unwrap();
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Reçu"), "{back:?}");
+    }
+
+    /// **Through a relay that keeps nothing**: the desktop waits at the
+    /// relay, the phone calls it, and the ordinary conversation — end to
+    /// end, the relay holding no key — carries the phone's message.
+    #[test]
+    fn a_phone_reaches_its_desktop_through_a_relay() {
+        let (dir_a, _sa, a) = post("relay-desk");
+        let (_dir_p, _sp, phone) = post("relay-phone");
+        let talk = a
+            .create_conversation(
+                "u1",
+                crate::messages::Channel::Equipe,
+                "Équipe",
+                &[],
+                None,
+                &[],
+                "AB",
+            )
+            .unwrap();
+        Posts::load(&a)
+            .unwrap()
+            .found(&a, "Comptoir 1", "2026-09-26")
+            .unwrap();
+        drop(a);
+        let port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let (_yes, answers) = std::sync::mpsc::channel();
+        let rx = spawn(
+            Job::Invite {
+                port,
+                for_device: None,
+                companion: true,
+            },
+            dir_a.join("poste.db"),
+            "secret".to_owned(),
+            "2026-09-26".to_owned(),
+            answers,
+        );
+        let ticket = match rx.recv().unwrap() {
+            Progress::Waiting(code) => crate::network::read_join(&code).and_then(|(_, t)| t),
+            other => panic!("{other:?}"),
+        };
+        join(
+            &phone,
+            &format!("127.0.0.1:{port}"),
+            "Téléphone",
+            ticket,
+            true,
+            "2026-09-26",
+            &mut |_| true,
+        )
+        .unwrap();
+        loop {
+            if let Progress::Done(_) | Progress::Failed(_) = rx.recv().unwrap() {
+                break;
+            }
+        }
+
+        // The relay, knowing only the group's name.
+        let a = Db::open(&dir_a.join("poste.db"), "secret").unwrap();
+        let group = Posts::load(&a).unwrap().group_hex().unwrap();
+        let relay_port = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let allowed: crate::relay::Allowed =
+            std::sync::Arc::new(std::sync::Mutex::new([group.clone()].into_iter().collect()));
+        let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        crate::relay::serve(relay_port, allowed, std::sync::Arc::clone(&stop)).unwrap();
+        let at = format!("127.0.0.1:{relay_port}");
+
+        let desk = {
+            let (at, group, path) = (at.clone(), group.clone(), dir_a.join("poste.db"));
+            std::thread::spawn(move || {
+                let db = Db::open(&path, "secret").unwrap();
+                let mut posts = Posts::load(&db).unwrap();
+                let stream = crate::relay::wait(&at, &group, Duration::from_secs(5)).unwrap();
+                let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
+                posts.answer_over(&db, &mut link).unwrap();
+                posts.absorb(&db, "2026-09-26").unwrap();
+            })
+        };
+        std::thread::sleep(Duration::from_millis(300));
+        let conv = phone.conversations().unwrap()[0].id;
+        phone
+            .post_message(conv, "m2", "AB", "Par le relais", None, "", None)
+            .unwrap();
+        let mut pp = Posts::load(&phone).unwrap();
+        pp.publish(&phone, "2026-09-26").unwrap();
+        // The desktop registers at the relay once its journal is loaded;
+        // a call before that finds nobody waiting and is let go, as a
+        // phone's would — and is tried again.
+        let mut said = Err(String::new());
+        for _ in 0..40 {
+            let stream = crate::relay::call(&at, &group, Duration::from_secs(5)).unwrap();
+            let mut link = bpm_sync::link::TcpLink::new(stream, TALK_PATIENCE).unwrap();
+            said = pp.sync_over(&phone, &mut link);
+            if said.is_ok() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        said.unwrap();
+        desk.join().unwrap();
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        let back = a.conversation_messages(talk).unwrap();
+        assert!(back.iter().any(|m| m.body == "Par le relais"), "{back:?}");
+    }
+
+    /// An internet address that knocks too often is let go; the local
+    /// network is never counted.
+    #[test]
+    fn only_an_insistent_internet_address_is_let_go() {
+        let mut k = Knocks::default();
+        let lan: std::net::IpAddr = "192.168.1.20".parse().unwrap();
+        let far: std::net::IpAddr = "82.64.1.2".parse().unwrap();
+        for _ in 0..100 {
+            assert!(k.admit(Some(lan)));
+        }
+        let admitted = (0..30).filter(|_| k.admit(Some(far))).count();
+        assert_eq!(admitted, KNOCKS_PER_MINUTE * 2);
+        assert!(k.admit(None));
+        // Posts of the group behind one address: every talk succeeds and
+        // is taken back, so the door never closes on them.
+        let site: std::net::IpAddr = "5.6.7.8".parse().unwrap();
+        for _ in 0..100 {
+            assert!(k.admit(Some(site)));
+            k.forgive(Some(site));
+        }
+    }
+
+    /// **Les tables de l'équipe se scellent à nouveau une fois** : un
+    /// groupe fondé quand la messagerie voyageait avec les dossiers la
+    /// rend lisible au compagnon, et un poste qui la reçoit une seconde
+    /// fois ne change rien.
+    #[test]
+    fn the_team_tables_are_resealed_once_on_their_stream() {
+        let (_dir, _s, a) = post("reseal");
+        let mut pa = Posts::load(&a).unwrap();
+        pa.found(&a, "Comptoir 1", "2026-09-26").unwrap();
+        let first = pa.reseal_team(&a, "2026-09-26").unwrap();
+        assert!(first >= 1, "la liste des postes");
+        assert_eq!(pa.reseal_team(&a, "2026-09-27").unwrap(), 0);
+        let t = pa.trousseau.clone().unwrap();
+        let share = t.share(&COMPANION);
+        assert!(!pa.journal.read(&share, Stream::Equipe).facts.is_empty());
+    }
+
     /// **La clé des postes n'ouvre pas le réseau d'officines, et
     /// inversement** : un patient scellé pour les postes ne se lit pas
     /// avec la clé du réseau.
@@ -1883,6 +2846,9 @@ mod tests {
                 listen: 0,
                 name: "Pharmacie du Centre".to_owned(),
                 posts_paused: false,
+                posts_internet: false,
+                relay_port: 0,
+                posts_relay: false,
             },
             Pace::default(),
         );
@@ -1956,6 +2922,7 @@ mod tests {
             Job::Invite {
                 port,
                 for_device: None,
+                companion: false,
             },
             dir.join("poste.db"),
             "secret".to_owned(),

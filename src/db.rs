@@ -849,7 +849,13 @@ CREATE TABLE IF NOT EXISTS sync_posts (
     joined  TEXT NOT NULL DEFAULT '',
     -- Le jour où l'officine l'a retiré ; vide tant qu'il en est. Un poste
     -- retiré n'est plus écouté, et ce qu'il écrit n'est plus rangé.
-    left_on TEXT NOT NULL DEFAULT ''
+    left_on TEXT NOT NULL DEFAULT '',
+    -- '' : un poste de bureau ; 'compagnon' : le téléphone d'un membre
+    -- de l'équipe, qui ne tient qu'une part de la clé (`postes::COMPANION`).
+    kind    TEXT NOT NULL DEFAULT '',
+    -- Où le composer depuis Internet (`reach::reach_text`) : écrit par le
+    -- poste lui-même quand `[postes] internet` est allumé ; vide sinon.
+    reach   TEXT NOT NULL DEFAULT ''
 );
 -- Tout ce qui suit est **propre à ce poste** et ne voyage jamais : son
 -- identité et sa clé, ce qu'il a déjà rangé, ses questions, ses
@@ -1464,6 +1470,9 @@ const MIGRATIONS: &[&str] = &[
         high INTEGER NOT NULL
     )",
     "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
+    // Un poste de bureau ou un compagnon — voir `SCHEMA`.
+    "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -2936,6 +2945,50 @@ impl DrugStatus {
             None
         }
     }
+}
+
+/// The prose of a card, field by field, as the full-text search reads
+/// it: the label the section carries on screen, and how to get at it.
+/// Here and not in the window, so the Android companion reads a card
+/// the way the desktop does.
+pub type MonoField = (&'static str, fn(&Drug) -> &str);
+
+pub const MONO_FIELDS: [MonoField; 13] = [
+    ("drug_sec_indications", |d| d.indications.as_str()),
+    ("drug_sec_mechanism", |d| d.mechanism.as_str()),
+    ("mono_f_dosage", |d| d.dosage.as_str()),
+    ("drug_sec_ci", |d| d.contraindications.as_str()),
+    ("mono_f_ddi", |d| d.ddi.as_str()),
+    ("drug_sec_adverse", |d| d.adverse.as_str()),
+    ("drug_sec_toxicity", |d| d.toxicity.as_str()),
+    ("drug_sec_monitoring", |d| d.monitoring.as_str()),
+    ("mono_f_iup", |d| d.iup.as_str()),
+    ("mono_f_missed", |d| d.missed_dose.as_str()),
+    ("mono_f_flags", |d| d.red_flags.as_str()),
+    ("mono_f_forms", |d| d.forms.as_str()),
+    ("mono_f_notes", |d| d.notes.as_str()),
+];
+
+/// The same prose, to write: the field a [`MONO_FIELDS`] key names. The
+/// Android companion edits a card one section at a time through this;
+/// a test holds the two lists to the same fields.
+pub fn mono_field_mut<'a>(d: &'a mut Drug, key: &str) -> Option<&'a mut String> {
+    Some(match key {
+        "drug_sec_indications" => &mut d.indications,
+        "drug_sec_mechanism" => &mut d.mechanism,
+        "mono_f_dosage" => &mut d.dosage,
+        "drug_sec_ci" => &mut d.contraindications,
+        "mono_f_ddi" => &mut d.ddi,
+        "drug_sec_adverse" => &mut d.adverse,
+        "drug_sec_toxicity" => &mut d.toxicity,
+        "drug_sec_monitoring" => &mut d.monitoring,
+        "mono_f_iup" => &mut d.iup,
+        "mono_f_missed" => &mut d.missed_dose,
+        "mono_f_flags" => &mut d.red_flags,
+        "mono_f_forms" => &mut d.forms,
+        "mono_f_notes" => &mut d.notes,
+        _ => return None,
+    })
 }
 
 /// One entry of the team's drug reference base (shared, encrypted with
@@ -36106,6 +36159,18 @@ impl Db {
     }
 
     /// Un réglage qui appartient à l'officine, tel qu'il est rangé.
+    /// The settings whose key begins with `prefix`, key and value.
+    pub fn settings_with_prefix(&self, prefix: &str) -> Result<Vec<(String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT key, value FROM settings WHERE substr(key, 1, length(?1)) = ?1 ORDER BY key")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([prefix], |r| Ok((r.get(0)?, r.get(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn setting(&self, key: &str) -> Option<String> {
         self.conn
             .query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| {
@@ -41564,6 +41629,15 @@ const NUMBERED_MOVES: &str = "(SELECT m.id, m.stup_id, m.kind, m.happened_on, m.
         m.remark, m.cancels, m.lot, m.expiry, m.created_at
    FROM stup_moves m LEFT JOIN stup_numbers n ON n.move_id = m.id) AS stup_moves";
 
+/// What a record read off the posts' journal carries besides its ops:
+/// the flux it was sealed on, its author's identity (hex), and whether
+/// this post holds the whole key. See [`Db::apply_gated`].
+pub struct Gate {
+    pub sealed: crate::replica::Flux,
+    pub author: String,
+    pub strict: bool,
+}
+
 /// Un poste de l'officine.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct PostRow {
@@ -41574,6 +41648,10 @@ pub struct PostRow {
     pub joined: String,
     /// Vide tant qu'il fait partie du groupe.
     pub left_on: String,
+    /// Un compagnon (téléphone) : il ne tient qu'une part de la clé.
+    pub companion: bool,
+    /// Ses adresses composables depuis Internet, telles qu'il les publie.
+    pub reach: String,
 }
 
 /// Une écriture capturée : son numéro, sa table, sa nature, la ligne
@@ -41686,6 +41764,15 @@ impl Db {
     /// Désigner le poste de référence. Capturé : tous les postes le
     /// savent.
     pub fn set_sync_reference(&self, post: i64, day: &str) -> Result<(), String> {
+        // A companion holds no key to the register it would number, nor to
+        // the settings it would seed: it is never the reference.
+        if self
+            .sync_posts()?
+            .iter()
+            .any(|p| p.post == post && p.companion)
+        {
+            return Err(crate::strings::tr("posts_err_companion_reference").to_owned());
+        }
         self.conn
             .execute(
                 "INSERT INTO settings (key, value, updated_on, updated_by)
@@ -41821,7 +41908,10 @@ impl Db {
     pub fn sync_posts(&self) -> Result<Vec<PostRow>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT post, device, name, joined, left_on FROM sync_posts ORDER BY post")
+            .prepare(
+                "SELECT post, device, name, joined, left_on, kind = 'compagnon', reach
+                 FROM sync_posts ORDER BY post",
+            )
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -41831,10 +41921,52 @@ impl Db {
                     name: r.get(2)?,
                     joined: r.get(3)?,
                     left_on: r.get(4)?,
+                    companion: r.get(5)?,
+                    reach: r.get(6)?,
                 })
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire la ligne d'un autre poste telle qu'il la déclarerait — pour
+    /// la démonstration de l'écran des postes (un second poste, un
+    /// téléphone). Un poste réel écrit la sienne en rejoignant.
+    pub fn add_post_row(
+        &self,
+        post: i64,
+        device: &str,
+        name: &str,
+        day: &str,
+        companion: bool,
+    ) -> Result<(), String> {
+        self.conn
+            .execute(
+                "INSERT OR IGNORE INTO sync_posts (post, device, name, joined, kind)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    post,
+                    device,
+                    name,
+                    day,
+                    if companion { "compagnon" } else { "" }
+                ],
+            )
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+
+    /// Publier où ce poste se compose depuis Internet — sa propre ligne,
+    /// que lui seul écrit. Capturé : l'adresse voyage. Rien n'est écrit
+    /// quand elle n'a pas changé. Rend s'il a écrit.
+    pub fn set_post_reach(&self, device: &str, reach: &str) -> Result<bool, String> {
+        self.conn
+            .execute(
+                "UPDATE sync_posts SET reach = ?2 WHERE device = ?1 AND reach <> ?2",
+                [device, reach],
+            )
+            .map(|n| n == 1)
+            .map_err(|e| e.to_string())
     }
 
     /// Nommer un poste — compare-and-set sur le nom affiché. Capturé :
@@ -42049,9 +42181,27 @@ impl Db {
 
     /// Toutes les lignes de toutes les tables qui voyagent, en créations.
     pub fn snapshot(&self) -> Result<Vec<crate::replica::Op>, String> {
+        self.snapshot_where(|_| true)
+    }
+
+    /// Les lignes des tables d'un flux, en créations : ce qu'un poste
+    /// scelle à nouveau sur un flux où des tables sont venues d'un autre
+    /// (`Posts::reseal`). Reçues par un poste qui les a déjà, elles ne
+    /// changent rien.
+    pub fn snapshot_of(
+        &self,
+        flux: crate::replica::Flux,
+    ) -> Result<Vec<crate::replica::Op>, String> {
+        self.snapshot_where(|t| t.flux == flux)
+    }
+
+    fn snapshot_where(
+        &self,
+        keep: impl Fn(&crate::replica::Table) -> bool,
+    ) -> Result<Vec<crate::replica::Op>, String> {
         use crate::replica::{Kind, Op, TABLES};
         let mut out = Vec::new();
-        for t in TABLES {
+        for t in TABLES.iter().filter(|t| keep(t)) {
             let conn = self.conn_of(t.file);
             let (cols, key) = Self::table_shape(conn, t.name)?;
             if cols.is_empty() || key.is_empty() {
@@ -42115,7 +42265,13 @@ impl Db {
     /// Finir de rejoindre : ce poste prend son numéro, ses blocs, pose sa
     /// capture et se déclare aux autres — cette ligne-là part avec sa
     /// première synchronisation.
-    pub fn finish_join(&self, device: &str, name: &str, day: &str) -> Result<i64, String> {
+    pub fn finish_join(
+        &self,
+        device: &str,
+        name: &str,
+        day: &str,
+        companion: bool,
+    ) -> Result<i64, String> {
         let taken: Vec<i64> = self.sync_posts()?.into_iter().map(|p| p.post).collect();
         let post = crate::replica::next_post(&taken);
         self.set_sync_local("post", &post.to_string())?;
@@ -42123,8 +42279,8 @@ impl Db {
         self.install_capture(true)?;
         self.conn
             .execute(
-                "INSERT INTO sync_posts (post, device, name, joined) VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![post, device, name, day],
+                "INSERT INTO sync_posts (post, device, name, joined, kind) VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![post, device, name, day, if companion { "compagnon" } else { "" }],
             )
             .map_err(|e| e.to_string())?;
         Ok(post)
@@ -42288,6 +42444,21 @@ impl Db {
         day: &str,
         ops: &[crate::replica::Op],
     ) -> Result<Applied, String> {
+        self.apply_gated(record, author, day, ops, None)
+    }
+
+    /// [`Db::apply_record`] for a record read off the journal: `gate` says
+    /// which flux it was sealed on, who wrote it, and whether this post
+    /// holds the whole key — and an op the flux does not admit is not
+    /// ranged (`replica::admissible`).
+    pub fn apply_gated(
+        &self,
+        record: &str,
+        author: &str,
+        day: &str,
+        ops: &[crate::replica::Op],
+        gate: Option<&Gate>,
+    ) -> Result<Applied, String> {
         use crate::replica::{decide, table, Action, File, Kind};
         let mut done = Applied::default();
         if self.sync_applied(record) {
@@ -42328,6 +42499,12 @@ impl Db {
                 continue;
             }
             let local = Self::local_row(conn, &op.table, cols, &op.key)?;
+            if let Some(g) = gate {
+                if !crate::replica::admissible(t, op, g.sealed, &g.author, local.as_ref(), g.strict)
+                {
+                    continue;
+                }
+            }
             let mut outcome = decide(op, t.append_only, local.as_ref());
             crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
             let kind = match (&outcome.action, op.kind) {
@@ -42614,6 +42791,26 @@ impl Drop for Swept {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Every section the search reads can be written through
+    /// `mono_field_mut`, and the setter names the very field the getter
+    /// reads — a second list that drifted would save the phone's edit of
+    /// « Posologie » into « Interactions ».
+    #[test]
+    fn every_prose_field_is_written_where_it_is_read() {
+        for (key, get) in MONO_FIELDS {
+            let mut d = Drug::default();
+            let slot = mono_field_mut(&mut d, key).unwrap_or_else(|| panic!("{key} sans écriture"));
+            *slot = format!("marque {key}");
+            assert_eq!(get(&d), format!("marque {key}"), "{key}");
+            for (other, get_other) in MONO_FIELDS {
+                if other != key {
+                    assert!(get_other(&d).is_empty(), "{key} écrit dans {other}");
+                }
+            }
+        }
+        assert!(mono_field_mut(&mut Drug::default(), "name").is_none());
+    }
 
     /// Shorthand for the full-form tests: the hint only matters for
     /// two-digit years.
@@ -43858,7 +44055,11 @@ mod tests {
             b.apply_record(&format!("snap{i}"), "aa", "2026-09-23", &ops)
                 .unwrap();
         }
-        assert_eq!(b.finish_join("bb", "Comptoir 2", "2026-09-23").unwrap(), 1);
+        assert_eq!(
+            b.finish_join("bb", "Comptoir 2", "2026-09-23", false)
+                .unwrap(),
+            1
+        );
         // What B held before joining is gone; what A had is there.
         let names: Vec<String> = b
             .patients()
@@ -43958,7 +44159,7 @@ mod tests {
         b.prepare_join().unwrap();
         b.apply_record("snap", "aa", "2026-09-23", &snapshot)
             .unwrap();
-        b.finish_join("bb", "", "2026-09-23").unwrap();
+        b.finish_join("bb", "", "2026-09-23", false).unwrap();
         let file = b.add_patient("Durand", "Paul", "1950-05-05").unwrap();
         let sid = b
             .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)

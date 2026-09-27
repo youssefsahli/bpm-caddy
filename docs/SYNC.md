@@ -27,8 +27,8 @@ Il s'adresse à qui reprend le sujet, y compris à moi-même dans six mois.
 > une porte tenue ouverte aux seules officines appairées, voir plus
 > bas** ; et, en plus des adresses, un **dossier d'échange** où
 > chaque officine dépose ses enregistrements scellés. La fonction `sync`
-> est donc allumée par défaut ; `--no-default-features` rend toujours un
-> binaire sans aucun code réseau. Les autres flux (dossiers, registre,
+> est donc allumée par défaut ; `--no-default-features --features desktop`
+> rend toujours un binaire sans aucun code réseau. Les autres flux (dossiers, registre,
 > caisse…) restent non branchés, et le § 7 vaut toujours pour eux.
 
 ---
@@ -627,6 +627,196 @@ suivante. Deux postes qui absorbent la même boîte avant de se
 synchroniser entre eux peuvent l'écrire deux fois ; l'`uid` évite tout
 autre doublon.
 
+### 7.8 Le compagnon : le téléphone d'un membre de l'équipe
+
+Décidé avec l'officine le 26/09/2026 : un téléphone Android personnel,
+par personne, rejoint le groupe des postes comme **compagnon**. Il lit
+les fiches, l'agenda, le planning et la messagerie d'équipe ; il écrit
+à l'équipe. Il ne tient jamais de quoi ouvrir un dossier.
+
+**Une part de la clé, jamais la clé.** La clé des postes (`Trousseau`)
+dérive une clé par flux ; un compagnon reçoit, au lieu du secret, une
+**part** (`Trousseau::share`) : le nom du groupe et les clés de quatre
+flux, `postes::COMPANION` — `Fiches`, `Agenda`, `Planning`, `Equipe`.
+Il ne peut rien dériver d'autre : il n'y a pas de secret dans une part.
+La part passe par la même trame chiffrée que la clé d'un poste, au même
+moment, après la même preuve (`Frame::Share`, `Session::sharing`).
+**Le code d'invitation dit à quelle sorte de poste il est destiné** : un
+compagnon prouve le ticket sous un rôle à lui (`ROLE_JOIN_COMPANION`,
+`Session::as_companion`), qu'une invitation de poste n'accepte pas — et
+inversement. Un téléphone qui saisit le code d'un poste ne reçoit donc
+rien, pas même une clé entière qu'il refuserait ensuite ; un poste qui
+saisit celui d'un téléphone non plus, et l'invitation reste ouverte pour
+celui à qui elle était destinée. Le poste montre aussi le code complet
+(ticket et adresse) en QR, que le téléphone lit avec le lecteur des
+services Google (sans autorisation caméra pour l'application).
+
+**Écrire, c'est sceller sur le flux de la table.** Une écriture reçue
+n'est rangée que si l'enregistrement qui la porte a été scellé sur le
+flux de sa table (`replica::admissible`, appelé par `Db::apply_gated`) :
+une ligne de patient, du registre ou des réglages glissée par un
+téléphone modifié dans un enregistrement de l'équipe n'est pas rangée,
+parce qu'il ne tient pas la clé qui scelle ces flux. Deux exceptions,
+pour les postes d'avant : les tables de l'équipe arrivent aussi sous
+`Dossiers` et `Officine`. Et sous le flux de l'équipe, un poste qui tient
+la clé entière n'accepte pour `sync_posts` que ce qu'un poste dit de
+lui-même — sa ligne à l'arrivée, son nom et ses adresses ensuite ; les
+gestes sur les autres postes (retirer, nommer) voyagent **aussi** sous
+`Officine`, que seuls les postes de bureau scellent. Ce qu'un téléphone
+modifié peut encore écrire : les fiches, l'agenda, le planning et la
+messagerie — ses quatre flux, comme un poste de bureau. L'application
+ne lui propose pas d'écrire le planning ; rien d'autre ne l'en empêche.
+
+**Il tient tout, il n'ouvre que sa part.** Le journal est un graphe :
+un enregistrement nomme ses parents, de tous les flux. Le compagnon
+reçoit donc tous les enregistrements — scellés — pour que son graphe
+reste entier, et les relaie comme un poste d'une version antérieure
+relaie un flux qu'il ne connaît pas (`Stream::Autre`). Il ne range que
+ce que sa part ouvre (`Posts::absorb`) et ne scelle que dans ses flux
+(`Posts::seal` laisse le reste sur le téléphone). Un téléphone perdu
+porte des dossiers chiffrés sous une clé qu'il n'a pas, dans une base
+chiffrée sous une clé du Keystore que seul le verrouillage de l'écran
+ouvre.
+
+**Le flux de l'équipe.** La messagerie voyageait sous `Dossiers` (un
+message peut citer un patient) et la liste des postes sous `Officine`
+(qui porte aussi la clé du réseau d'officines). Les deux passent sur un
+flux à eux, `Equipe` (code 9) : `conversations`, `messages`,
+`message_reads`, `message_files`, `message_chunks`, `sync_posts`. Un
+message cite un patient par son numéro, jamais par son dossier ; le
+téléphone l'indique et ne l'ouvre pas. **Ce que le téléphone reçoit
+aussi**, et qu'il faut savoir : les fichiers joints aux messages
+d'équipe (une pièce jointe peut être un document de patient — c'est
+alors l'équipe qui l'a envoyé), et les conversations avec les autres
+officines (rangées dans les mêmes tables ; l'application ne les montre
+pas).
+
+La liste des postes et les conversations qui existaient avant, un poste
+les scelle à nouveau une fois, avant sa première invitation d'un
+compagnon (`Posts::reseal_team`). Pas les messages d'avant : le
+téléphone reçoit ceux écrits depuis.
+
+**Mettre à jour tous les postes.** Un poste d'une version antérieure
+garde les enregistrements de l'équipe sans les lire : il ne voit pas
+les nouveaux messages, ni un poste relié par un poste à jour, ni un
+retrait fait sur un poste à jour — sauf la liste des postes, qui voyage
+aussi sous `Officine`. Le lanceur met chaque poste à jour à son
+démarrage ; tant qu'un poste ne l'est pas, la messagerie le contourne.
+Pendant ce temps, deux traces bénignes : une même conversation lue sur
+un poste à jour puis sur un ancien donne une question « à arbitrer »
+sur l'heure de lecture ; et un poste mis à jour tard relit la copie
+`Equipe` des lignes de postes, ce qui peut poser la même question pour
+un poste renommé entre-temps. Rien n'est perdu ; la question se ferme
+en gardant l'une ou l'autre valeur.
+
+**Le premier mot.** Un poste admis (compagnon ou non) range ce qu'il a
+reçu, prend son numéro et le dit aussitôt à la porte qui l'a admis ;
+elle l'attend une minute (`FIRST_WORD`). Sans cela, une seconde
+invitation avant sa synchronisation suivante donnait le même numéro à
+deux postes.
+
+**Le transport.** Le téléphone est toujours celui qui compose : il
+n'ouvre aucune porte et ne tourne pas en arrière-plan ; il synchronise à
+l'ouverture, au retour à l'écran, chaque minute tant qu'il y reste, au
+bouton et après chaque écriture. Il écoute les annonces
+des postes sur le Wi-Fi (3,5 s) ; chaque poste du groupe est composé
+une fois — à l'adresse où il s'est annoncé, sinon aux adresses qu'il
+publie — puis viennent les adresses écrites dans les réglages du
+téléphone.
+
+**Joignable depuis Internet** (`[postes] internet`, Options › Base,
+**éteint par défaut**, poste par poste). Un poste qui l'allume :
+
+* ouvre une seconde porte, **IPv6 seulement** (`Door::open_v6_only`), à
+  côté de celle du réseau local, sur le même port ;
+* demande au routeur d'ouvrir ce port en IPv4 (UPnP IGD, bail d'une
+  heure, renouvelé toutes les vingt minutes, refermé à la sortie) ;
+* **publie** ses adresses composables dans sa ligne de `sync_posts`
+  (colonne `reach`, flux `Equipe`) : l'adresse publique du routeur, et
+  ses adresses IPv6 globales. Une adresse privée, ou derrière une
+  traduction d'opérateur (`100.64.0.0/10`), n'est pas publiée
+  (`reach.rs`) ; le téléphone relit la ligne avec la même méfiance.
+
+C'est la seule porte que l'application tient ouverte au-delà du réseau
+local. Elle ne change rien à la conversation : la poignée de main
+chiffrée, puis une réponse aux seuls postes du groupe ; un inconnu
+n'obtient pas un octet du journal. Ce qu'elle expose : l'existence d'un
+poste BPM-Caddy à cette adresse, et une porte qu'un inconnu peut tenir
+occupée — une conversation reçue dure au plus trois minutes
+(`POSTS_ANSWER_BOUND`, ce qui est arrivé est gardé), et une adresse
+d'Internet qui frappe plus de douze fois dans la minute est lâchée sans
+conversation (`Knocks` ; le réseau local n'est pas compté, ni une
+frappe devenue conversation avec un poste du groupe — plusieurs postes
+d'un site derrière une seule adresse ne se ferment pas la porte). C'est la
+synchronisation des postes qu'on peut ralentir ainsi, pas les données.
+Le port ouvert par le routeur est aussi celui des invitations : une
+invitation ouverte l'est alors depuis Internet, protégée par son code de
+quatre-vingts bits et ses vingt essais. En IPv6, la box doit laisser
+passer le port (certaines le refusent par défaut) ; derrière un CGNAT
+sans IPv6, rien ne rend le poste joignable : le téléphone synchronise au
+retour sur le Wi-Fi. Deux postes « joignables » d'une même officine sur
+le même port se disputent l'ouverture du routeur : un seul par officine,
+ou des ports différents.
+
+**Le code.** `mobile/` (crate `bpm-caddy-mobile`, UniFFI) traduit la
+bibliothèque — sans la fonction `desktop` — pour l'application Kotlin de
+`android/`. Les libellés du téléphone sont dans `strings.fr.toml`
+(`mobile_…`) ; un test du crate lit les sources Kotlin et refuse une
+clé absente.
+
+### 7.9 Le relais sans mémoire
+
+Pour l'officine qu'aucun chemin ne rend joignable (CGNAT sans IPv6) :
+une **officine amie du réseau** met en relation son poste et le
+téléphone de son équipe, **sans rien lire ni rien garder**
+(`src/relay.rs`). Deux réglages, éteints par défaut :
+
+* **« Relayer les téléphones des officines du réseau »** (`[reseau]
+  relais`, port `port_relais`, 7746) sur un poste de l'officine qui
+  relaie — joignable, par UPnP ou un transfert dans sa box. Il annonce
+  où au réseau (`{"t":"relais","a":…}`, retiré en l'éteignant) et
+  n'accepte que les groupes de postes que des officines du réseau lui
+  ont demandé de relayer.
+* **« Se faire relayer par le réseau »** (`[postes] relais`) sur un
+  poste de l'officine relayée. Il demande au réseau de relayer son
+  groupe (`{"t":"relais_demande","g":…}`, le nom du groupe, rien
+  d'autre), **appelle** chaque relais offert et y **attend** ; il publie
+  ces relais dans sa ligne de `sync_posts` (`relais:hôte:port`), où les
+  téléphones les lisent.
+
+Le téléphone qui ne joint aucun poste ni sur le Wi-Fi, ni à ses
+adresses, **appelle** un relais en disant le nom du groupe ; le relais
+le met en relation avec un poste du groupe qui attend, et passe les
+octets de l'un à l'autre (`BPMRELAIS1 attente|appel <groupe>`, puis
+`ENTRE`). Ce qui passe est la conversation du § 5, chiffrée de bout en
+bout : la poignée de main prouve de chaque côté qu'on parle au bon
+poste, le relais n'a aucune clé. Il sait qu'un groupe échange, quand et
+combien. Ses bornes : 256 connexions en tout ; la préface dite en cinq
+secondes, pas un octet à la fois pendant dix minutes ; quatre attentes
+par groupe, **refusées au-delà** — jamais mises à la place d'une autre ;
+une attente de cinq minutes, que le poste renouvelle toutes les quatre
+(une traduction d'adresse d'opérateur oublie une connexion muette) ;
+trente appels par adresse et par minute ; chaque conversation dix
+minutes, 256 Mio par sens, 90 s de silence. Le poste qui attend reçoit
+une conversation relayée à la fois, au plus douze par minute, d'une
+minute chacune : qui connaît le nom du groupe ne tient pas son fil. Un
+inconnu qui se présenterait comme poste du groupe n'obtiendrait que
+l'échec d'une poignée de main.
+
+L'offre et la demande s'annoncent une fois **par numéro**
+(`set_relay_value`), pas par valeur : un relais qui redémarre à la même
+adresse est annoncé de nouveau. Chaque officine ne retient que le
+dernier mot de chacune — une demande retirée ne laisse pas son groupe
+accepté.
+
+Ce qui n'est pas couvert par un test de bout en bout : le fil
+automatique qui sert ou attend — un relais n'est accepté qu'à une
+adresse publique, et servir demande au routeur un port. Le relais
+lui-même, la conversation relayée et les enregistrements du réseau le
+sont (`relay::tests`, `a_phone_reaches_its_desktop_through_a_relay`,
+`a_relay_offer_and_a_relay_request_cross_the_network`). Un seul poste
+par officine devrait relayer : l'offre est un réglage de l'officine.
+
 ## 8. Travaux restants
 
 1. **Le journal ne se compacte pas.** Chaque poste garde tout ce qui a
@@ -635,7 +825,18 @@ autre doublon.
    précède, viendront quand un groupe en aura besoin.
 2. **Deux appairages simultanés** sur deux postes différents, hors
    ligne, donneraient le même numéro aux deux arrivants. Appairer un
-   poste à la fois.
+   poste à la fois. (Deux appairages *successifs* au même poste ne le
+   font plus : le premier mot, § 7.8.)
 3. **L'ordre des lignes d'un même jour** se lit encore par numéro dans
    quelques vues ; entre deux postes, le bloc du second passe après celui
    du premier.
+4. **Un relais qui garde** (une boîte chez une autre officine, pour
+   échanger sans que les deux bouts soient en ligne en même temps) : pas
+   construit, et pas sans décision — l'officine qui garderait, même
+   chiffrées de bout en bout, les données de santé d'une autre ferait de
+   l'hébergement pour compte de tiers, que le cadre HDS et le RGPD
+   encadrent. Le relais construit (§ 7.9) ne garde rien.
+   NAT-PMP / PCP non plus : UPnP seul.
+5. **Le compagnon écrit l'équipe, l'agenda et les fiches**, par les
+   chemins du bureau (comparer-et-écrire) ; le planning, il le lit
+   seulement. Pas de fichier joint depuis le téléphone.

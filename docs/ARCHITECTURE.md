@@ -867,6 +867,22 @@ The one that was missing — « combien de fois un autre poste avait
   skin: it is the first window of the evening, and it does not depend on
   the application crate
 - `motif/` — X/Motif theme for egui (palette, bevels, custom widgets)
+- The library builds without the desktop: feature `desktop` (on by
+  default) carries eframe/egui, `motif`, Typst, the keyring, file dialogs
+  and the modules that use them (`app`, `audit_window`, `pdf`); the two
+  binaries require it. `cargo check --lib --no-default-features
+  --features sync` is the core the phone links, and it cross-compiles for
+  Android as it stands (SQLCipher included).
+- `mobile/` — `bpm-caddy-mobile`, the Android companion's Rust side: a
+  UniFFI bridge over the library without `desktop` (open the base, join
+  as a companion, sync, read cards/agenda/planning/messages, write to the
+  team). No clinical decision and no clock of its own.
+- `android/` — the Compose app (`io.github.youssefsahli.bpmcaddy`, min
+  SDK 26). `build-rust.sh` builds `libbpm_caddy_mobile.so` with
+  `cargo-ndk` and writes the Kotlin bindings; then `./gradlew
+  assembleDebug`. Its labels are `mobile_…` keys of `strings.fr.toml`; the
+  base key lives in the Android Keystore behind the screen lock. What the
+  phone may hold and why: `docs/SYNC.md` § 7.8.
 - `sync/` — `bpm-sync`: a versioned, end-to-end encrypted journal two
   posts reconcile between themselves, with no server. **Optional and off
   by default** (`--features sync`), and that is the rule rather than a
@@ -2208,7 +2224,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
+  vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
@@ -2571,7 +2587,7 @@ officine asks it to: every printed or displayed mention lives in
 default. Never hardcode a new caveat — add a key there.
 
 A new prose field on a drug card is not searchable until it is in
-`MONO_FIELDS` (`src/app.rs`) with a label key: « Dans le texte… » reads
+`MONO_FIELDS` (`src/db.rs`) with a label key: « Dans le texte… » reads
 that table and nothing else, so a field left out of it is a field nobody
 will ever find by its words.
 

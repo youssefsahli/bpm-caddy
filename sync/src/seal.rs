@@ -90,6 +90,10 @@ pub enum Stream {
     /// officine at all. Sealed under the network's own trousseau, never
     /// the officine's: a key that opens this stream opens no other.
     Reseau,
+    /// The team inside the officine: its conversations and messages, and
+    /// the list of its posts. Apart from `Dossiers` so that a companion
+    /// can be given the team's messages without the patients' files.
+    Equipe,
     /// A stream a later version named and this one does not know.
     Autre(u8),
 }
@@ -97,7 +101,7 @@ pub enum Stream {
 impl Stream {
     /// Every stream this version knows. Not `Autre`, which is not one
     /// stream but every stream that does not exist yet.
-    pub const ALL: [Stream; 8] = [
+    pub const ALL: [Stream; 9] = [
         Stream::Dossiers,
         Stream::Registre,
         Stream::Planning,
@@ -106,6 +110,7 @@ impl Stream {
         Stream::Fiches,
         Stream::Caisse,
         Stream::Reseau,
+        Stream::Equipe,
     ];
 
     pub fn code(self) -> u8 {
@@ -118,6 +123,7 @@ impl Stream {
             Stream::Fiches => 6,
             Stream::Caisse => 7,
             Stream::Reseau => 8,
+            Stream::Equipe => 9,
             Stream::Autre(code) => code,
         }
     }
@@ -134,6 +140,7 @@ impl Stream {
             6 => Stream::Fiches,
             7 => Stream::Caisse,
             8 => Stream::Reseau,
+            9 => Stream::Equipe,
             other => Stream::Autre(other),
         }
     }
@@ -271,7 +278,7 @@ impl Record {
             &nonce,
         );
 
-        let key = trousseau.stream_key(stream);
+        let key = trousseau.stream_key(stream).ok_or(Error::Seal)?;
         let cipher = XChaCha20Poly1305::new(&Key::from(key));
         let sealed = cipher
             .encrypt(
@@ -308,7 +315,7 @@ impl Record {
             self.corrects.as_ref(),
             &self.nonce,
         );
-        let key = trousseau.stream_key(self.stream);
+        let key = trousseau.stream_key(self.stream).ok_or(Error::Seal)?;
         let cipher = XChaCha20Poly1305::new(&Key::from(key));
         cipher
             .decrypt(

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Une fiche : la carte blanche et ses lignes, dans la zone sûre (66 dp)
+     d'une icône adaptative de 108 dp. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M36,30h36v48h-36z" />
+    <path
+        android:fillColor="#2D5E8C"
+        android:pathData="M42,38h24v4h-24zM42,48h24v3h-24zM42,56h24v3h-24zM42,64h16v3h-16z" />
+</vector>

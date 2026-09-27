@@ -1,0 +1,28 @@
+[package]
+name = "bpm-caddy-mobile"
+version = "0.354.0"
+edition = "2021"
+description = "BPM-Caddy's Android companion: the Rust core behind the Kotlin app."
+license-file = "../LICENSE"
+publish = false
+
+[lib]
+# `cdylib` is what the Android app loads (`libbpm_caddy_mobile.so`);
+# `lib` lets the tests and `uniffi-bindgen` link it.
+crate-type = ["cdylib", "lib"]
+name = "bpm_caddy_mobile"
+
+[[bin]]
+# Writes the Kotlin bindings from the built library:
+# `cargo run -p bpm-caddy-mobile --bin uniffi-bindgen -- generate …`
+# (see `android/build-rust.sh`).
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
+
+[dependencies]
+# The core only: no egui, no Typst, no keyring — `desktop` stays off.
+# `sync` is the posts' journal, which is the companion's whole reason.
+bpm-caddy = { path = "..", default-features = false, features = ["sync"] }
+bpm-sync = { path = "../sync" }
+uniffi = { version = "0.29", features = ["cli"] }
+thiserror = "2"

@@ -36,11 +36,20 @@ line in that test.
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
   `bulletin`, `content`, `script` (Rhai console), `telemetry`, `audit`,
-  `replica` (what travels between posts, field-by-field apply),
+  `replica` (what travels between posts, field-by-field apply, and
+  `admissible`: an op only through its table's stream), `reach` (a post
+  reachable from the internet: IPv6, UPnP, published addresses) and
+  `relay` (the stateless relay between an unreachable post and a phone)
+  — both under `sync`,
   `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).
+- `mobile/` + `android/` — the Android companion (a post holding a
+  *share* of the key: cards, agenda, planning, team chat, never a
+  patient). `mobile/` is the UniFFI bridge over the library built
+  without `desktop`; `android/` the Compose app (`build-rust.sh`, then
+  Gradle). Map: `docs/SYNC.md` § 7.8.
 - `sync/` — `bpm-sync`, the P2P encrypted journal (feature `sync`, on by
   default since 0.273.0). Two uses: the officines' network
   (`src/network.rs`, `Stream::Reseau` only — never a patient — under a
@@ -57,7 +66,8 @@ CI enforces, and a change is not done until all pass:
 cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace
-cargo check --no-default-features   # SYNC.md promises a build with no network code
+cargo check --no-default-features --features desktop  # SYNC.md: an app with no network code
+cargo check --lib --no-default-features --features sync  # the core mobile/ links (no egui)
 ./scripts/coverage.sh      # two floors that only move up
 ./scripts/smoke.sh         # every view, four shapes, fails on panic (~70 min)
 ```

@@ -528,6 +528,12 @@ pub struct ReseauConfig {
     /// invitation : une porte tenue ouverte ne doit pas prendre la place
     /// de celle qu'on ouvre pour inviter.
     pub port_ecoute: u16,
+    /// **Relayer les téléphones des officines du réseau** : tenir, sur
+    /// `port_relais`, un relais qui met en relation le poste injoignable
+    /// d'une officine amie et le téléphone de son équipe, sans rien
+    /// garder ni rien lire (`relay.rs`). Éteint par défaut.
+    pub relais: bool,
+    pub port_relais: u16,
 }
 
 impl Default for ReseauConfig {
@@ -541,6 +547,8 @@ impl Default for ReseauConfig {
             annoncer: true,
             ecouter: true,
             port_ecoute: 7745,
+            relais: false,
+            port_relais: 7746,
         }
     }
 }
@@ -559,6 +567,18 @@ pub struct PostesConfig {
     pub dossier: String,
     pub adresses: Vec<String>,
     pub a_la_fermeture: bool,
+    /// **Joignable depuis Internet** : la porte des postes écoute aussi en
+    /// IPv6, demande au routeur d'ouvrir son port (UPnP) et dit ses
+    /// adresses aux autres postes — pour qu'un téléphone de l'équipe,
+    /// hors de l'officine, le compose. Éteint par défaut : c'est la seule
+    /// porte que l'application tient ouverte sur Internet, et l'officine
+    /// la décide. Seuls les postes du groupe obtiennent une réponse.
+    pub internet: bool,
+    /// **Se faire relayer** par les officines du réseau qui relaient : ce
+    /// poste les appelle et attend qu'un téléphone de l'équipe le demande
+    /// — pour l'officine qu'aucun chemin ne rend joignable. Éteint par
+    /// défaut.
+    pub relais: bool,
 }
 
 impl Default for PostesConfig {
@@ -569,6 +589,8 @@ impl Default for PostesConfig {
             dossier: String::new(),
             adresses: Vec::new(),
             a_la_fermeture: true,
+            internet: false,
+            relais: false,
         }
     }
 }
@@ -1574,6 +1596,11 @@ pub struct UiConfig {
     pub seen_notes: String,
 }
 
+/// The palette a fresh `config.toml` names: `motif::THEMES[0]`, spelt
+/// out so the library builds without the desktop crates (a test holds
+/// the two together).
+const DEFAULT_THEME: &str = "motif";
+
 impl Default for UiConfig {
     fn default() -> Self {
         Self {
@@ -1581,7 +1608,7 @@ impl Default for UiConfig {
             show_nav_on_start: true,
             text_scale: 1.0,
             density: "confortable".to_owned(),
-            theme: motif::THEMES[0].key.to_owned(),
+            theme: DEFAULT_THEME.to_owned(),
             icons: true,
             font_path: None,
             side_pane: "docs".to_owned(),
@@ -1819,11 +1846,13 @@ impl Config {
     /// Put the chosen palette in force. Called once at start-up and
     /// again whenever the options are saved; an unknown name is not an
     /// error, it is the classic theme.
+    #[cfg(feature = "desktop")]
     pub fn apply_theme(&self) {
         motif::set_theme(&self.ui.theme);
     }
 
     /// The density chosen in the options, as the `motif` enum.
+    #[cfg(feature = "desktop")]
     pub fn density(&self) -> motif::Density {
         if self.ui.density.trim().eq_ignore_ascii_case("compact") {
             motif::Density::Compact
@@ -2749,6 +2778,13 @@ mod tests {
                 t.key
             );
         }
+    }
+
+    /// `DEFAULT_THEME` is `motif::THEMES[0]` spelt out so the library
+    /// builds without the desktop crates; the two must not part.
+    #[test]
+    fn the_default_theme_is_the_first_that_ships() {
+        assert_eq!(DEFAULT_THEME, motif::THEMES[0].key);
     }
 
     #[test]

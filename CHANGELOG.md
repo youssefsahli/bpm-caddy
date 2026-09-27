@@ -5,6 +5,38 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.354.0] - 2026-09-27
+
+### Added
+- Récepteurs et cascades : un onglet permanent « Cascades », à côté de
+  « Registres ». La vue n'avait que des portes qu'il fallait connaître.
+- Le compagnon Android est joint à la version :
+  bpm-caddy-compagnon.apk, à installer sur le téléphone de l'équipe.
+- Postes de l'officine : « Inviter un téléphone… ». Le téléphone Android
+  d'un membre de l'équipe rejoint l'officine avec le code affiché. Il lit
+  les fiches, l'agenda, le planning et la messagerie d'équipe ; il écrit
+  à l'équipe (fichiers joints compris), ajoute ou retire une entrée
+  d'agenda et corrige une fiche. Il ne reçoit jamais la clé des dossiers,
+  du registre, de la caisse ni des réglages ; sa base s'ouvre avec le
+  verrouillage du téléphone. Dans la liste des postes, il se lit
+  « téléphone » et n'est jamais poste de référence.
+- Options › Base : « Joignable depuis Internet » (éteint par défaut). Le
+  poste écoute aussi en IPv6, demande au routeur d'ouvrir son port et
+  communique ses adresses aux téléphones de l'équipe, qui le joignent
+  hors de l'officine. Seuls les postes du groupe obtiennent une réponse.
+- Options › Base : « Relayer les téléphones des officines du réseau » et
+  « Se faire relayer par le réseau » (éteints par défaut). Une officine
+  qu'on ne peut pas joindre se fait relayer par une officine amie :
+  celle-ci met en relation son poste et le téléphone de son équipe, sans
+  rien lire ni rien garder.
+
+### Changed
+- Messagerie d'équipe et liste des postes : elles voyagent à part des
+  dossiers. Mettre à jour tous les postes : un poste d'une version
+  antérieure ne lit les nouveaux messages qu'une fois à jour.
+- Postes de l'officine : une écriture reçue n'est rangée que si elle
+  vient d'un poste qui détient la clé de ce qu'elle modifie.
+
 ## [0.353.0] - 2026-09-27
 
 ### Added
