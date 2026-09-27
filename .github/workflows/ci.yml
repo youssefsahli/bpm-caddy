@@ -60,9 +60,11 @@ jobs:
         working-directory: android
         env:
         # Le NDK du runner : `ANDROID_NDK_LATEST_HOME` est une variable de
-        # son environnement, **pas** du contexte `env` des workflows —
-        # écrite `${{ env.… }}`, elle arrivait vide, et `build-rust.sh`
-        # cherchait le NDK r27 de l'atelier, absent de la machine.
+        # son environnement, **pas** du contexte `env` des workflows — lue
+        # comme une expression du workflow, elle arrivait vide, et
+        # `build-rust.sh` cherchait le NDK r27 de l'atelier, absent de la
+        # machine. (Et jamais d'accolades d'expression dans un commentaire
+        # d'ici : GitHub les évalue aussi, et le fichier entier tombe.)
         run: |
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           ./gradlew assembleDebug --console=plain
