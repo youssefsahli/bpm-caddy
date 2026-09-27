@@ -742,7 +742,17 @@ mesure qu'on écrit. Une instruction par ligne :
 - `#` commente la fin de la ligne.
 
 Ce qui ne se lit pas est signalé sous le texte avec son numéro de ligne,
-et le reste est dessiné quand même.
+et le reste est dessiné quand même. En orange, ce qui se lit mais
+ressemble à une erreur : une molécule dont aucune fiche ne porte le nom
+(aucune fiche ne mènera à la cascade), un nœud qu'aucune flèche ne
+relie. Le rappel de la syntaxe s'affiche au survol de sa ligne ; Ctrl+S
+enregistre.
+
+**Les marques des nœuds** disent leur nature avant le nom : un disque
+plein pour un ligand, un Y pour un récepteur, un cercle pour un relais,
+un losange pour un enzyme, deux points pour un messager, deux barres
+pour un canal, un carré traversé pour un transporteur, un carré plein
+pour un effet — posé en creux.
 
 **Huit cascades livrées** : bêta-adrénergiques, opioïde mu, GABA-A,
 système rénine-angiotensine-aldostérone, activation plaquettaire,
