@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Le compagnon Android est joint à la version :
+  bpm-caddy-compagnon.apk, à installer sur le téléphone de l'équipe.
 - Postes de l'officine : « Inviter un téléphone… ». Le téléphone Android
   d'un membre de l'équipe rejoint l'officine avec le code affiché. Il lit
   les fiches, l'agenda, le planning et la messagerie d'équipe ; il écrit
