@@ -42606,7 +42606,22 @@ impl App {
                 .size()
                 .x
             });
-            let scale_w = chars_wide(ui, 14.0);
+            // **La glissière cède avant le temps** : quand tout tient sur
+            // une rangée pour peu qu'elle raccourcisse — jusqu'à huit
+            // caractères —, elle raccourcit ; sinon « Temps 72 / 120 »
+            // partait seul sur une seconde rangée, et la barre prenait une
+            // hauteur de plus pour un mot.
+            let gap_x = ui.spacing().item_spacing.x;
+            let buttons: f32 = bar_labels
+                .iter()
+                .map(|l| Self::button_width(ui, l) + gap_x)
+                .sum();
+            let room = inner.width() - buttons - time_w - gap_x;
+            let scale_w = if room >= chars_wide(ui, 8.0) {
+                room.min(chars_wide(ui, 14.0))
+            } else {
+                chars_wide(ui, 14.0)
+            };
             let widths: Vec<f32> = bar_labels
                 .iter()
                 .map(|l| Self::button_width(ui, l))
