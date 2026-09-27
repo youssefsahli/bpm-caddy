@@ -113,9 +113,7 @@ jobs:
       - name: Verify signature
         run: |
           apk=android/app/build/outputs/apk/release/app-release.apk
-          test -f "$apk" || { echo "APK signé absent (non signé : $(ls android/app/build/outputs/apk/release/))" >&2; exit 1; }
-          signer=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          "$signer" verify --print-certs "$apk" | grep -E "Signer #1 certificate (DN|SHA-256)"
+          ./android/verify-apk.sh "$apk"
           cp "$apk" bpm-caddy-compagnon.apk
           rm -f "$RUNNER_TEMP/upload.jks"
       - name: Upload to release

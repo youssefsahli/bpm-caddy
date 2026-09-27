@@ -97,10 +97,7 @@ jobs:
           export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
           (cd android && ./gradlew assembleRelease --console=plain)
           rm -f "$RUNNER_TEMP/upload.jks"
-          apk=android/app/build/outputs/apk/release/app-release.apk
-          test -f "$apk" || { echo "APK signé absent" >&2; exit 1; }
-          signer=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
-          "$signer" verify --print-certs "$apk" | grep -E "Signer #1 certificate (DN|SHA-256)"
+          ./android/verify-apk.sh android/app/build/outputs/apk/release/app-release.apk
 
   coverage:
     runs-on: ubuntu-latest
