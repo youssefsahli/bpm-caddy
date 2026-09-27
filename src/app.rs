@@ -42454,13 +42454,38 @@ impl App {
         // de hauteur.
         let foot_font = egui::FontId::proportional(motif::pt(ui, 10.0));
         let foot_h = foot.len() as f32 * Self::label_line(ui);
-        let outcomes = read.parsed.outcomes();
+        // Les courbes : l'activité de chaque effet, puis **la densité de
+        // chaque nœud qui s'adapte**, en tirets. C'est elle qui explique
+        // le reste : les récepteurs qui se multiplient sous un
+        // bêtabloquant sont ceux que l'arrêt découvre tous à la fois.
+        let outcomes: Vec<(usize, bool)> = read
+            .parsed
+            .outcomes()
+            .into_iter()
+            .map(|i| (i, false))
+            .chain(
+                (0..read.parsed.nodes.len())
+                    .filter(|&i| read.parsed.nodes[i].adapts)
+                    .map(|i| (i, true)),
+            )
+            .collect();
+        let labels: Vec<String> = outcomes
+            .iter()
+            .map(|&(i, density)| {
+                let name = read.parsed.nodes[i].name.as_str();
+                if density {
+                    trf("cascade_density_series", name)
+                } else {
+                    name.to_owned()
+                }
+            })
+            .collect();
         // Le temps prend une part du volet, jamais moins que sa légende
-        // et quatre lignes de tracé.
-        let items: Vec<(&str, egui::Color32)> = outcomes
+        // et trois lignes de tracé.
+        let items: Vec<(&str, egui::Color32)> = labels
             .iter()
             .enumerate()
-            .map(|(k, &i)| (read.parsed.nodes[i].name.as_str(), Self::cascade_series(k)))
+            .map(|(k, l)| (l.as_str(), Self::cascade_series(k)))
             .collect();
         let legend_h = motif::chart::legend_height(ui, &items, rect.width());
         let chart_floor = legend_h + Self::label_line(ui) * 3.0;
@@ -43081,7 +43106,7 @@ impl App {
         session: &Session,
         read: &CascadeRead,
         rect: egui::Rect,
-        outcomes: &[usize],
+        outcomes: &[(usize, bool)],
         items: &[(&str, egui::Color32)],
     ) -> (Option<u32>, Option<usize>) {
         let Some(run) = session.cascade_run.as_ref() else {
@@ -43140,22 +43165,25 @@ impl App {
         );
         let series: Vec<Vec<f64>> = outcomes
             .iter()
-            .map(|&i| {
+            .map(|&(i, density)| {
                 run.frames
                     .iter()
-                    .map(|f| f64::from(f.level.get(i).copied().unwrap_or(1.0)))
+                    .map(|f| {
+                        let of = if density { &f.density } else { &f.level };
+                        f64::from(of.get(i).copied().unwrap_or(1.0))
+                    })
                     .collect()
             })
             .collect();
-        let lines: Vec<(&[f64], egui::Color32)> = series
+        let lines: Vec<(&[f64], egui::Color32, bool)> = series
             .iter()
             .enumerate()
             .filter(|(k, _)| !hidden[*k])
-            .map(|(k, v)| (v.as_slice(), Self::cascade_series(k)))
+            .map(|(k, v)| (v.as_slice(), Self::cascade_series(k), outcomes[k].1))
             .collect();
         // Aucune courbe n'est remplie : sous une courbe d'activité, la
         // surface ne voudrait rien dire.
-        for (values, color) in &lines {
+        for (values, color, dashed) in &lines {
             if values.len() < 2 {
                 continue;
             }
@@ -43169,7 +43197,13 @@ impl App {
                     )
                 })
                 .collect();
-            painter.add(egui::Shape::line(pts, egui::Stroke::new(1.8_f32, *color)));
+            let stroke = egui::Stroke::new(1.8_f32, *color);
+            if *dashed {
+                let dash = ui.fonts(|f| f.row_height(&small)) * 0.5;
+                painter.extend(egui::Shape::dashed_line(&pts, stroke, dash, dash * 0.7));
+            } else {
+                painter.add(egui::Shape::line(pts, stroke));
+            }
         }
         let x = x_of(session.cascade_t);
         painter.line_segment(

@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Récepteurs et cascades (onglet « Cascades », ou « Cascades… » dans la
+  base médicaments) : un mécanisme d'action dessiné du ligand jusqu'aux
+  effets. Cocher une molécule montre ce qui monte et ce qui baisse, étage
+  par étage ; « Lecture » fait avancer le temps, et les courbes montrent
+  la tolérance qui s'installe et le rebond à l'arrêt brutal. Huit
+  cascades livrées : bêta-adrénergiques, opioïde mu, GABA-A,
+  rénine-angiotensine-aldostérone, activation plaquettaire,
+  cyclo-oxygénases, coagulation, sécrétion acide gastrique.
+- « Décrire » : une cascade s'écrit en quelques lignes (« Noradrénaline
+  -> Bêta-1 », « molécule bisoprolol : antagoniste Bêta-1 ») et la figure
+  se redessine à mesure qu'on tape. « Nouvelle cascade » part d'un
+  modèle ; chaque ligne mal écrite est signalée avec son numéro.
+- Sur une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
+  la molécule déjà donnée.
+- Options › Mentions : une mention à afficher sous les cascades.
+
 ## [0.352.0] - 2026-09-26
 
 ### Fixed
