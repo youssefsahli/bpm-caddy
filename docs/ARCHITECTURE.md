@@ -2683,7 +2683,8 @@ time on the rebound), `cascades_decrire` (the editor and its live
 preview), `cascades_boucle` (the SRAA with an IEC — the one shipped shape
 with a loop, drawn round the side). `BPM_CADDY_CASCADE=<part of a title>` opens another
 shipped cascade under the same keys, its first molecule given — every
-figure can be captured, not only the β one.
+figure can be captured, not only the β one. `BPM_CADDY_CASCADE_FOCUS=<part of a node
+name>` follows that node's lineage, as a click would.
 
 ## Every printable document has an editable template
 

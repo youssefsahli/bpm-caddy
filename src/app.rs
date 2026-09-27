@@ -15338,6 +15338,18 @@ impl App {
                                     }
                                 }
                                 session.cascade_t = if v == "cascades_boucle" { 30 } else { 72 };
+                                // BPM_CADDY_CASCADE_FOCUS : la lignée d'un
+                                // nœud suivie, comme après un clic — une
+                                // capture ne clique pas.
+                                if let (Ok(w), Some(read)) = (
+                                    std::env::var("BPM_CADDY_CASCADE_FOCUS"),
+                                    session.cascade_read.clone(),
+                                ) {
+                                    session.cascade_focus =
+                                        read.parsed.nodes.iter().position(|n| {
+                                            crate::fuzzy::contains_loose(&n.name, &w)
+                                        });
+                                }
                                 if v == "cascades_decrire" {
                                     session.cascade_t = 0;
                                     session.cascade_doses.clear();
