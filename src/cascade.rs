@@ -1180,6 +1180,28 @@ pub fn layout(c: &Cascade) -> Layout {
             }
         }
     }
+    // **Une source descend jusqu'au-dessus de ce qu'elle nourrit.** Posée
+    // en haut par principe, l'antithrombine de la coagulation tirait deux
+    // flèches à travers toute la figure pour rejoindre le Xa et la
+    // thrombine, quatre étages plus bas ; juste au-dessus d'eux, elle se
+    // lit à côté de ce qu'elle freine. De la plus basse à la plus haute,
+    // pour qu'une source qui en nourrit une autre la suive.
+    let mut sources: Vec<usize> = (0..n)
+        .filter(|&i| c.edges.iter().zip(&back).all(|(e, b)| *b || e.to != i))
+        .collect();
+    sources.sort_by_key(|&i| std::cmp::Reverse(layer[i]));
+    for i in sources {
+        let below = c
+            .edges
+            .iter()
+            .zip(&back)
+            .filter(|(e, b)| !**b && e.from == i)
+            .map(|(e, _)| layer[e.to])
+            .min();
+        if let Some(below) = below {
+            layer[i] = layer[i].max(below.saturating_sub(1));
+        }
+    }
     // Un nœud isolé — nommé, déclaré, mais que rien ne relie encore —
     // se pose en haut ; c'est là qu'on le voit en écrivant.
     let layers = layer.iter().copied().max().map_or(0, |m| m + 1);
@@ -1742,6 +1764,14 @@ adaptation Bêta-1
         // Et sur la morphine, elle la renverse.
         let both = settle(&c, &with(&c, &["morphine", "naloxone"]), &[]).level[e];
         assert_eq!(trend(both), Trend::Rest);
+    }
+
+    #[test]
+    fn a_source_sits_just_above_what_it_feeds() {
+        let c = parse("A -> B -> C -> D\nX -| D");
+        let l = layout(&c);
+        assert_eq!(l.layer[c.find("X").unwrap()], 2);
+        assert_eq!(l.layer[c.find("A").unwrap()], 0);
     }
 
     #[test]

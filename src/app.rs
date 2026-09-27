@@ -15141,11 +15141,31 @@ impl App {
                             } else {
                                 ("bisoprolol", 10)
                             };
-                            let beta = session
-                                .cascade_index
-                                .iter()
-                                .find(|c| c.molecules.iter().any(|m| m == marker))
-                                .map(|c| c.id);
+                            // BPM_CADDY_CASCADE nomme la cascade à ouvrir
+                            // (un morceau de son titre), et la première
+                            // molécule y est donnée : chaque figure
+                            // livrée se capture, pas seulement la bêta.
+                            let wanted = std::env::var("BPM_CADDY_CASCADE").ok();
+                            let named = wanted.as_deref().and_then(|w| {
+                                session
+                                    .cascade_index
+                                    .iter()
+                                    .find(|c| crate::fuzzy::contains_loose(&c.title, w))
+                                    .map(|c| (c.id, c.molecules.first().cloned()))
+                            });
+                            let marker = named
+                                .as_ref()
+                                .and_then(|(_, m)| m.as_deref())
+                                .unwrap_or(marker)
+                                .to_owned();
+                            let marker = marker.as_str();
+                            let beta = named.map(|(id, _)| id).or_else(|| {
+                                session
+                                    .cascade_index
+                                    .iter()
+                                    .find(|c| c.molecules.iter().any(|m| m == marker))
+                                    .map(|c| c.id)
+                            });
                             if let Some(id) = beta {
                                 session.open_cascade(id, None);
                                 if let Some(read) = session.cascade_read.clone() {

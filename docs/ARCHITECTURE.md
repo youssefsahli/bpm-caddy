@@ -2657,6 +2657,11 @@ cycle among themselves, and an arrow going back up the text is cut only
 if it really closes a loop. Cutting by DFS instead drew the SRAA upside
 down (« rénine -> angiotensine I » cut rather than « pression -| rénine »).
 
+**A source sits just above what it feeds**: after longest-path layering,
+a node nothing points to drops to one layer above its highest child —
+put on top by principle, the antithrombin of the coagulation cascade drew
+two arrows across the whole figure to reach the Xa and the thrombin.
+
 **The figure's orientation follows the pane** (`cascade_fit`): layers go
 down in a tall pane and across in a wide low one, top-down winning ties;
 the figure then shrinks to 0.7 before overflowing into the pan/zoom of
@@ -2676,7 +2681,9 @@ nothing. The view requests a repaint every 40 ms while it is on screen.
 Start-view keys: `cascades` (β, bisoprolol given at 10 and stopped at 70,
 time on the rebound), `cascades_decrire` (the editor and its live
 preview), `cascades_boucle` (the SRAA with an IEC — the one shipped shape
-with a loop, drawn round the side).
+with a loop, drawn round the side). `BPM_CADDY_CASCADE=<part of a title>` opens another
+shipped cascade under the same keys, its first molecule given — every
+figure can be captured, not only the β one.
 
 ## Every printable document has an editable template
 
