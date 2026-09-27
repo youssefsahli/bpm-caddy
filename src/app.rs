@@ -4249,6 +4249,9 @@ struct Session {
     cascade_preview_look: crate::graph::Look,
     /// Le nœud dont on suit la lignée — un clic sur lui ; le reste pâlit.
     cascade_focus: Option<usize>,
+    /// La cascade que ce poste vient de créer par « Nouvelle cascade » et
+    /// qui n'a encore rien reçu : quittée telle quelle, elle disparaît.
+    cascade_fresh: Option<i64>,
     /// Quelles molécules le dossier ouvert prend, et lesquelles ont une
     /// fiche — lus contre la cascade, la base et le dossier, et relus
     /// quand l'un des trois change : pas huit cents fiches par image.
@@ -5450,6 +5453,7 @@ impl Session {
             cascade_leave_armed: false,
             cascade_preview_look: crate::graph::Look::default(),
             cascade_focus: None,
+            cascade_fresh: None,
             cascade_links: None,
             cascade_colour: (String::new(), Vec::new()),
             vacc_due: Vec::new(),
@@ -9092,6 +9096,9 @@ impl Session {
             self.cascades_read = true;
             self.reload_cascades();
         }
+        if self.cascade_fresh.is_some_and(|f| f != id) {
+            self.cascade_drop_fresh();
+        }
         self.view = MainView::Cascades;
         self.cascade_open = Some(id);
         self.cascade_edit = None;
@@ -9174,6 +9181,38 @@ impl Session {
             .as_ref()
             .map(|(_, in_file, _)| in_file.clone())
             .unwrap_or_default()
+    }
+
+    /// **Une nouvelle cascade quittée sans avoir été écrite disparaît** :
+    /// le modèle laissé tel quel n'est la cascade de personne, et il
+    /// s'accumulait dans la liste à chaque essai. Seulement celle que ce
+    /// poste vient de créer — un modèle ouvert depuis un autre poste est
+    /// peut-être celui qu'on y est en train d'écrire.
+    fn cascade_drop_fresh(&mut self) {
+        let Some(id) = self.cascade_fresh.take() else {
+            return;
+        };
+        let template = tr("cascade_template");
+        let untouched = self
+            .cascades
+            .iter()
+            .any(|c| c.id == id && c.text == template)
+            && (self.cascade_open != Some(id)
+                || self
+                    .cascade_edit
+                    .as_ref()
+                    .is_none_or(|(typed, _)| typed == template));
+        if untouched {
+            if let Ok(true) = self.db.delete_cascade(id, template) {
+                if self.cascade_open == Some(id) {
+                    self.cascade_open = None;
+                    self.cascade_read = None;
+                    self.cascade_edit = None;
+                    self.cascade_preview = None;
+                }
+                self.reload_cascades();
+            }
+        }
     }
 
     /// Les cascades qui nomment cette molécule — la porte d'une fiche.
@@ -9270,12 +9309,23 @@ impl Session {
             }));
         }
         // Les liens de la cascade : le dossier, et les fiches.
+        // Contre la lecture elle-même (une nouvelle à chaque texte), la
+        // révision de la base, et l'empreinte des traitements du dossier :
+        // des longueurs laissaient passer une faute corrigée d'une lettre
+        // ou un traitement remplacé par un autre.
+        let treats = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for d in &self.patient_treats {
+                (d.id, &d.dci).hash(&mut h);
+            }
+            h.finish()
+        };
         let key: CascadeLinksKey = (
-            read.id,
-            read.text.len(),
-            self.drugs.len(),
+            std::sync::Arc::as_ptr(&read) as usize,
+            self.drugs_rev,
             self.viewing.as_ref().map(|p| p.id),
-            self.patient_treats.len(),
+            treats,
         );
         if self
             .cascade_links
@@ -9311,9 +9361,10 @@ impl Session {
             let stale = self
                 .cascade_preview
                 .as_ref()
-                .is_none_or(|p| p.text != *typed);
+                .is_none_or(|p| p.text != *typed || p.drugs_rev != self.drugs_rev);
             if stale {
                 let mut preview = CascadeRead::of(read.id, typed);
+                preview.drugs_rev = self.drugs_rev;
                 preview.hints = crate::cascade::lint(&preview.parsed, |name| {
                     self.drugs
                         .iter()
@@ -10866,6 +10917,8 @@ struct CascadeRead {
     /// Ce qui se lit mais ressemble à une erreur d'écriture — rempli pour
     /// l'aperçu de l'éditeur seulement, et une fois par texte.
     hints: Vec<String>,
+    /// La révision de la base contre laquelle `hints` a été lu.
+    drugs_rev: u64,
 }
 
 impl CascadeRead {
@@ -10878,6 +10931,7 @@ impl CascadeRead {
             parsed,
             layout,
             hints: Vec::new(),
+            drugs_rev: 0,
         }
     }
 }
@@ -10902,11 +10956,11 @@ enum CascadeShow {
 /// Ce contre quoi les liens d'une cascade sont lus : la cascade (son
 /// numéro et son texte), la base (combien de fiches) et le dossier
 /// ouvert (lequel, combien de traitements).
-type CascadeLinksKey = (i64, usize, usize, Option<i64>, usize);
+type CascadeLinksKey = (usize, u64, Option<i64>, u64);
 
 /// Jusqu'où le temps court, en pas. Assez pour qu'une adaptation
 /// s'installe, puis qu'un arrêt montre son rebond et son retour.
-const CASCADE_HORIZON: u32 = 120;
+const CASCADE_HORIZON: u32 = crate::cascade::HORIZON;
 /// Combien de pas par seconde pendant la lecture.
 const CASCADE_PACE: f64 = 8.0;
 /// Le délai d'un étage à l'autre quand une molécule change, en secondes,
@@ -42060,12 +42114,14 @@ impl App {
             Self::button_width(ui, tr("cascades_new")),
         ];
         if let Some(read) = &session.cascade_read {
-            out.extend(
-                read.parsed
-                    .scenarios
-                    .iter()
-                    .map(|sc| Self::button_width(ui, &sc.name)),
-            );
+            if session.cascade_edit.is_none() {
+                out.extend(
+                    read.parsed
+                        .scenarios
+                        .iter()
+                        .map(|sc| Self::button_width(ui, &sc.name)),
+                );
+            }
             if session.cascade_in_file().iter().any(|b| *b) {
                 out.push(Self::button_width(ui, tr("cascade_give_file")));
             }
@@ -42143,7 +42199,12 @@ impl App {
                             make = true;
                         }
                         if let Some(read) = read.as_ref() {
-                            for (k, sc) in read.parsed.scenarios.iter().enumerate() {
+                            let stories = if session.cascade_edit.is_none() {
+                                read.parsed.scenarios.as_slice()
+                            } else {
+                                &[]
+                            };
+                            for (k, sc) in stories.iter().enumerate() {
                                 if motif::button(ui, &sc.name)
                                     .on_hover_text(tr("cascade_scenario_tooltip"))
                                     .clicked()
@@ -42321,6 +42382,7 @@ impl App {
                 Ok(id) => {
                     session.reload_cascades();
                     session.open_cascade(id, None);
+                    session.cascade_fresh = Some(id);
                     session.cascade_edit = Some((
                         tr("cascade_template").to_owned(),
                         tr("cascade_template").to_owned(),
@@ -42391,7 +42453,9 @@ impl App {
                         // courte dans ce que la cascade fait avec le
                         // temps, et sous neuf molécules personne ne les
                         // voyait.
-                        if !read.parsed.scenarios.is_empty() {
+                        // Pas en « Décrire » : la lecture courrait hors de
+                        // l'écran, sur le texte enregistré.
+                        if !read.parsed.scenarios.is_empty() && session.cascade_edit.is_none() {
                             ui.add_space(8.0);
                             motif::section(ui, tr("cascades_scenarios"));
                             ui.add_space(4.0);
@@ -42618,7 +42682,9 @@ impl App {
                 .iter()
                 .map(|l| Self::button_width(ui, l) + gap_x)
                 .sum();
-            let room = inner.width() - buttons - time_w - gap_x;
+            // Une gouttière de marge : au pixel près, l'arrondi des
+            // galées renvoyait le temps à la ligne.
+            let room = inner.width() - buttons - time_w - 2.0 * gap_x;
             let scale_w = if room >= chars_wide(ui, 8.0) {
                 room.min(chars_wide(ui, 14.0))
             } else {
@@ -42825,20 +42891,8 @@ impl App {
             }
         }
         if cancel && session.cascade_may_leave() {
-            // **Une nouvelle cascade fermée sans avoir été écrite
-            // disparaît** : le modèle laissé tel quel n'est la cascade de
-            // personne, et il s'accumulait dans la liste à chaque essai.
-            let untouched = read.text == tr("cascade_template")
-                && session
-                    .cascade_edit
-                    .as_ref()
-                    .is_none_or(|(typed, _)| typed == tr("cascade_template"));
-            if untouched {
-                if let Ok(true) = session.db.delete_cascade(read.id, &read.text) {
-                    session.cascade_open = None;
-                    session.cascade_read = None;
-                    session.reload_cascades();
-                }
+            if session.cascade_fresh == Some(read.id) {
+                session.cascade_drop_fresh();
             }
             session.cascade_edit = None;
             session.cascade_preview = None;
@@ -83597,12 +83651,12 @@ mod tests {
         session.reload_cascades();
         let beta = session.cascades_naming("bisoprolol")[0].0;
         session.open_cascade(beta, None);
-        session.drugs = vec![crate::db::Drug {
+        session.set_drugs(vec![crate::db::Drug {
             id: 7,
             name: "Cardensiel".into(),
             dci: "Bisoprolol".into(),
             ..Default::default()
-        }];
+        }]);
         let read = session.cascade_read.clone().unwrap();
         let m = read
             .parsed
@@ -83665,6 +83719,32 @@ mod tests {
         assert!(session.cascade_read.is_some());
         // « Garder mon texte » : la ligne n'existe plus, une nouvelle naît.
         assert_eq!(session.db.force_cascade(beta, &typed), Ok(false));
+    }
+
+    /// Une nouvelle cascade quittée sans avoir été écrite disparaît —
+    /// celle de ce poste seulement ; écrite, elle reste.
+    #[test]
+    fn a_fresh_untouched_cascade_vanishes_when_left_and_a_written_one_stays() {
+        let (mut session, _swept) = scratch_session("cascade-fresh");
+        session.reload_cascades();
+        session.cascades_read = true;
+        let before = session.cascades.len();
+        let template = tr("cascade_template").to_owned();
+        let id = session.db.add_cascade(&template).unwrap();
+        session.reload_cascades();
+        session.open_cascade(id, None);
+        session.cascade_fresh = Some(id);
+        session.cascade_edit = Some((template.clone(), template.clone()));
+        let other = session.cascade_index[0].id;
+        session.open_cascade(other, None);
+        assert_eq!(session.cascades.len(), before);
+        assert!(session.cascade_fresh.is_none());
+        // Un modèle venu d'ailleurs, lui, reste.
+        let foreign = session.db.add_cascade(&template).unwrap();
+        session.reload_cascades();
+        session.open_cascade(foreign, None);
+        session.open_cascade(other, None);
+        assert_eq!(session.cascades.len(), before + 1);
     }
 
     /// Un texte tapé dans « Décrire » ne se perd pas d'un clic : la

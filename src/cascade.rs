@@ -792,7 +792,7 @@ fn dose_of(part: &str) -> Option<Take> {
         "" => None,
         u => Some(u.parse::<u32>().ok()?),
     };
-    if until.is_some_and(|u| u <= from) {
+    if until.is_some_and(|u| u <= from) || from >= HORIZON {
         return None;
     }
     let name = tidy(name);
@@ -837,22 +837,28 @@ pub fn lineage(c: &Cascade, of: usize) -> Vec<bool> {
 /// se retravaille sur sa copie : l'originale réécrite ne reviendrait
 /// jamais.
 pub fn copy_text(text: &str, suffix: &str) -> String {
-    let mut done = false;
-    let mut out: Vec<String> = text
-        .lines()
-        .map(|line| {
-            if !done {
-                if let Some(rest) = heads(line.trim(), "titre") {
-                    done = true;
-                    let title = rest.trim_start_matches(':').trim();
-                    return format!("titre : {title} {suffix}");
-                }
-            }
-            line.to_owned()
-        })
-        .collect();
-    if !done {
-        out.insert(0, format!("titre : {}", suffix.trim()));
+    // Le titre que `parse` retient est le dernier, et il s'arrête au
+    // commentaire : c'est celui-là qui reçoit le suffixe, avant « # ».
+    let lines: Vec<&str> = text.lines().collect();
+    let last = lines.iter().rposition(|line| {
+        let body = line.find(" #").map_or(*line, |at| &line[..at]);
+        heads(body.trim(), "titre").is_some()
+    });
+    let mut out: Vec<String> = lines.iter().map(|l| (*l).to_owned()).collect();
+    match last {
+        Some(i) => {
+            let line = lines[i];
+            let (body, comment) = match line.find(" #") {
+                Some(at) => (&line[..at], &line[at..]),
+                None => (line, ""),
+            };
+            let title = heads(body.trim(), "titre")
+                .unwrap_or("")
+                .trim_start_matches(':')
+                .trim();
+            out[i] = format!("titre : {title} {suffix}{comment}");
+        }
+        None => out.insert(0, format!("titre : {}", suffix.trim())),
     }
     let mut joined = out.join("\n");
     if text.ends_with('\n') {
@@ -1300,6 +1306,11 @@ impl Wiring {
 pub fn settle(c: &Cascade, given: &[bool], density: &[f32]) -> Frame {
     Wiring::of(c).settle(given, density)
 }
+
+/// Jusqu'où le temps d'une partie court, en pas : assez pour qu'une
+/// adaptation s'installe, puis qu'un arrêt montre son rebond et son
+/// retour.
+pub const HORIZON: u32 = 120;
 
 /// Une prise : une molécule donnée à partir d'un pas, jusqu'à un autre
 /// ou jusqu'au bout.
@@ -2172,7 +2183,7 @@ adaptation Bêta-1
         let c = parse(
             "A -> B\nmolécule lévodopa + carbidopa : activateur A\nmolécule x : antagoniste B\n\
              scénario Arrêt : x 10-70 ; lévodopa + carbidopa 5-\n\
-             scénario Faux : x 70-10\nscénario Inconnu : y 1-2\nscénario sans deux points\n\
+             scénario Faux : x 70-10 ; x 130-\nscénario Inconnu : y 1-2\nscénario sans deux points\n\
              Scenario Vide :",
         );
         assert_eq!(c.scenarios.len(), 1);
@@ -2194,8 +2205,9 @@ adaptation Bêta-1
             ]
         );
         let lines: Vec<usize> = c.faults.iter().map(Fault::line).collect();
-        assert_eq!(lines, vec![5, 6, 7, 8], "{:?}", c.faults);
-        assert!(matches!(c.faults[1], Fault::UnknownMolecule { .. }));
+        // Deux prises refusées ligne 5 : à l'envers, et hors du temps.
+        assert_eq!(lines, vec![5, 5, 6, 7, 8], "{:?}", c.faults);
+        assert!(matches!(c.faults[2], Fault::UnknownMolecule { .. }));
     }
 
     #[test]
@@ -2239,6 +2251,10 @@ adaptation Bêta-1
         assert_eq!(parse(&copy).title, "Bêta (copie)");
         assert_eq!(parse(&copy).edges, parse(text).edges);
         assert_eq!(copy_text("A -> B", "(copie)"), "titre : (copie)\nA -> B");
+        // Le titre retenu est le dernier, coupé à son commentaire.
+        let copy = copy_text("titre : Un\ntitre : Bêta # v2\n", "(copie)");
+        assert_eq!(copy, "titre : Un\ntitre : Bêta (copie) # v2\n");
+        assert_eq!(parse(&copy).title, "Bêta (copie)");
     }
 
     #[test]
