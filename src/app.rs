@@ -83456,6 +83456,11 @@ mod tests {
     #[test]
     fn the_cascades_view_draws_with_no_cascade_at_all() {
         let (mut session, _swept) = scratch_session("cascade-empty");
+        for c in session.db.cascades().unwrap() {
+            assert!(session.db.delete_cascade(c.id, &c.text).unwrap());
+        }
+        session.reload_cascades();
+        session.cascades_read = true;
         let config = crate::config::Config::default();
         let ctx = egui::Context::default();
         for (w, h) in [(1400.0, 900.0), (700.0, 500.0)] {
