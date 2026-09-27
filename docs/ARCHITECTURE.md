@@ -2211,7 +2211,7 @@ add clicking and typing; it is not the price of entry.
   vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
-  trame|cascades|cascades_decrire|
+  trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|patient_dose|fil|explorer|explorer_organ|classes|classes_outside|export|

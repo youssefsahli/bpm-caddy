@@ -4238,6 +4238,9 @@ struct Session {
     /// Sur un volet trop bas pour les deux : les courbes plutôt que la
     /// figure.
     cascade_curves: bool,
+    /// Les courbes éteintes d'un clic sur leur clé — deux effets qui
+    /// suivent la même courbe se cachent l'un l'autre.
+    cascade_hidden: Vec<bool>,
     vacc_due: Vec<vaccines::DueLine>,
     /// The pregnancy date as typed in the carnet, for the file it was
     /// typed on.
@@ -5428,6 +5431,7 @@ impl Session {
             cascade_look: crate::graph::Look::default(),
             cascade_hover: None,
             cascade_curves: false,
+            cascade_hidden: Vec::new(),
             vacc_due: Vec::new(),
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
@@ -9064,6 +9068,7 @@ impl Session {
         self.cascade_playing = false;
         self.cascade_wave = None;
         self.cascade_look = crate::graph::Look::default();
+        self.cascade_hidden.clear();
         self.cascade_sync();
         if let (Some(name), Some(read)) = (give, self.cascade_read.clone()) {
             if let Some(m) = read
@@ -15081,29 +15086,45 @@ impl App {
                         // après l'arrêt — le rebond est ce que la vue
                         // existe pour montrer, et une chaîne au repos
                         // ne montre rien de ce qu'elle sait faire.
-                        Ok(v @ ("cascades" | "cascades_decrire")) => {
+                        // `cascades_boucle` : le système rénine-angiotensine,
+                        // un IEC donné — la seule forme livrée dont une
+                        // flèche remonte (la pression retient la rénine),
+                        // et la boucle se dessine par le côté.
+                        Ok(v @ ("cascades" | "cascades_decrire" | "cascades_boucle")) => {
                             let _ = session.db.seed_cascades();
                             session.reload_cascades();
                             session.cascades_read = true;
+                            let (marker, given) = if v == "cascades_boucle" {
+                                ("ramipril", 0)
+                            } else {
+                                ("bisoprolol", 10)
+                            };
                             let beta = session
                                 .cascade_index
                                 .iter()
-                                .find(|c| c.molecules.iter().any(|m| m == "bisoprolol"))
+                                .find(|c| c.molecules.iter().any(|m| m == marker))
                                 .map(|c| c.id);
                             if let Some(id) = beta {
                                 session.open_cascade(id, None);
                                 if let Some(read) = session.cascade_read.clone() {
-                                    let m = read
-                                        .parsed
-                                        .molecules
-                                        .iter()
-                                        .position(|m| m.name == "bisoprolol");
+                                    let m =
+                                        read.parsed.molecules.iter().position(|m| m.name == marker);
                                     if let Some(m) = m {
-                                        crate::cascade::toggle(&mut session.cascade_doses, m, 10);
-                                        crate::cascade::toggle(&mut session.cascade_doses, m, 70);
+                                        crate::cascade::toggle(
+                                            &mut session.cascade_doses,
+                                            m,
+                                            given,
+                                        );
+                                        if v != "cascades_boucle" {
+                                            crate::cascade::toggle(
+                                                &mut session.cascade_doses,
+                                                m,
+                                                70,
+                                            );
+                                        }
                                     }
                                 }
-                                session.cascade_t = 72;
+                                session.cascade_t = if v == "cascades_boucle" { 30 } else { 72 };
                                 if v == "cascades_decrire" {
                                     session.cascade_t = 0;
                                     session.cascade_doses.clear();
@@ -42270,10 +42291,18 @@ impl App {
                                         v.round().clamp(0.0, f64::from(CASCADE_HORIZON)) as u32
                                     );
                                 }
-                                ui.label(
-                                    egui::RichText::new(&time_label)
-                                        .font(time_font.clone())
-                                        .color(motif::text_dim()),
+                                // **D'un bloc** : dans une rangée qui
+                                // s'enroule, egui replie le texte d'une
+                                // étiquette au lieu de la passer à la ligne,
+                                // et « Temps » restait seul au bout de la
+                                // première rangée, « 30 / 120 » sous lui.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&time_label)
+                                            .font(time_font.clone())
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
                                 );
                             }
                         });
@@ -42464,11 +42493,17 @@ impl App {
         }
         if chart_h > 0.0 {
             let at = usize::from(figure);
-            if let Some(t) = Self::cascade_timeline(ui, session, read, split[at], &outcomes, &items)
-            {
+            let (t, flip) = Self::cascade_timeline(ui, session, read, split[at], &outcomes, &items);
+            if let Some(t) = t {
                 session.cascade_t = t;
                 session.cascade_playing = false;
                 session.cascade_wave = None;
+            }
+            if let Some(k) = flip {
+                if session.cascade_hidden.len() < outcomes.len() {
+                    session.cascade_hidden.resize(outcomes.len(), false);
+                }
+                session.cascade_hidden[k] = !session.cascade_hidden[k];
             }
         }
         if foot_h > 0.0 {
@@ -42793,7 +42828,8 @@ impl App {
         // vitesse faite de l'activité de la source : l'écart entre deux
         // points est le même sur toutes les flèches, et c'est la vitesse
         // seule qui dit l'intensité.
-        let spacing = motif::pt(ui, 30.0);
+        let small_line_h = ui.fonts(|f| f.row_height(&small));
+        let spacing = small_line_h * 3.5;
         for (shape, src, sign, length) in &beziers {
             if *src < 0.05 || *length < 1.0 {
                 continue;
@@ -42803,7 +42839,8 @@ impl App {
             for j in 0..n {
                 let phase = ((now * speed) + j as f64 / n as f64).fract() as f32;
                 let p = shape.sample(phase);
-                let r = motif::pt(ui, 1.8);
+                // Un point à l'échelle du texte : un cinquième de ligne.
+                let r = small_line_h * 0.2;
                 match sign {
                     Sign::Active => painter.circle_filled(p, r, pulse),
                     Sign::Inhibe => painter.circle_stroke(p, r, egui::Stroke::new(1.2_f32, pulse)),
@@ -43046,14 +43083,21 @@ impl App {
         rect: egui::Rect,
         outcomes: &[usize],
         items: &[(&str, egui::Color32)],
-    ) -> Option<u32> {
-        let run = session.cascade_run.as_ref()?;
+    ) -> (Option<u32>, Option<usize>) {
+        let Some(run) = session.cascade_run.as_ref() else {
+            return (None, None);
+        };
         let legend_h = motif::chart::legend_height(ui, items, rect.width());
         let split = motif::split_rows(rect, &[legend_h, 0.0], 4.0);
-        motif::inside(ui, split[0], |ui| motif::chart::legend(ui, items));
+        let hidden: Vec<bool> = (0..items.len())
+            .map(|k| session.cascade_hidden.get(k).copied().unwrap_or(false))
+            .collect();
+        let flipped = motif::inside(ui, split[0], |ui| {
+            motif::chart::legend_toggle(ui, items, &hidden, &[])
+        });
         let plot = motif::chart::frame(ui, split[1]);
         if plot.width() < 8.0 || plot.height() < 8.0 {
-            return None;
+            return (None, flipped);
         }
         let max = f64::from(crate::cascade::CEILING);
         let n = run.frames.len().max(2);
@@ -43106,6 +43150,7 @@ impl App {
         let lines: Vec<(&[f64], egui::Color32)> = series
             .iter()
             .enumerate()
+            .filter(|(k, _)| !hidden[*k])
             .map(|(k, v)| (v.as_slice(), Self::cascade_series(k)))
             .collect();
         // Aucune courbe n'est remplie : sous une courbe d'activité, la
@@ -43143,10 +43188,10 @@ impl App {
                 let t = ((p.x - plot.left()) / step)
                     .round()
                     .clamp(0.0, CASCADE_HORIZON as f32);
-                return Some(t as u32);
+                return (Some(t as u32), flipped);
             }
         }
-        None
+        (None, flipped)
     }
 
     /// « Décrire » : le texte, ce qu'il ne dit pas, et ce qu'il dessine.
