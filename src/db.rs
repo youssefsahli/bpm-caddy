@@ -42530,6 +42530,33 @@ mod tests {
     /// au lancement du poste de référence, cinq semis qui n'avaient rien à
     /// faire prenaient chacun la base en écriture, au moment même où la
     /// sauvegarde et les synchronisations démarrent.
+    /// Une cascade réécrite sur un autre poste refuse l'enregistrement
+    /// de celui qui lisait l'ancienne — puis « Garder mon texte » passe,
+    /// parce qu'un refus sans issue bloque un éditeur pour toujours. Et
+    /// une cascade supprimée, ou renommée, ne revient pas au semis.
+    #[test]
+    fn a_cascade_written_elsewhere_is_refused_then_kept_on_demand() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-cascade-cas-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("c.db"), "secret").unwrap();
+        assert_eq!(db.seed_cascades(), Ok(STARTER_CASCADES.len()));
+        let first = db.cascades().unwrap().remove(0);
+        let theirs = format!("{}\n# relu", first.text);
+        assert_eq!(db.update_cascade(first.id, &theirs, &first.text), Ok(true));
+        let mine = format!("{}\n# le mien", first.text);
+        assert_eq!(db.update_cascade(first.id, &mine, &first.text), Ok(false));
+        assert_eq!(db.force_cascade(first.id, &mine), Ok(true));
+        assert_eq!(db.cascades().unwrap()[0].text, mine);
+        // Supprimée : le semis ne la rend pas.
+        assert_eq!(db.delete_cascade(first.id, &first.text), Ok(false));
+        assert_eq!(db.delete_cascade(first.id, &mine), Ok(true));
+        assert_eq!(db.seed_cascades(), Ok(0));
+        assert_eq!(db.cascades().unwrap().len(), STARTER_CASCADES.len() - 1);
+    }
+
     #[test]
     fn seeding_what_is_already_seeded_takes_no_write_lock() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-seedlock-{}", std::process::id()));

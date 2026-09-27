@@ -688,6 +688,56 @@ décision ; une liste est une vérification d'exhaustivité.
 **Aucune liste livrée** : une base neuve n'en comporte aucune. Chaque
 officine rédige les siennes.
 
+# Récepteurs et cascades
+
+« Cascades » dessine un mécanisme d'action : le ligand en haut, son
+récepteur, les relais, les messagers, et les effets en bas. Les flèches
+pleines activent, les flèches barrées inhibent ; les points qui courent
+le long d'une flèche disent que le signal passe, et une flèche dont la
+source est éteinte ne porte plus rien.
+
+**Les molécules** se cochent dans la liste de gauche. Cochée, une
+molécule est donnée à partir du temps affiché ; décochée, elle s'arrête.
+La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
+qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
+nature, sa note et son état.
+
+**Le temps** : « Lecture » fait avancer les pas ; la courbe du bas suit
+chaque effet, le filet horizontal étant l'état de repos. Un récepteur qui
+s'adapte se multiplie quand il est longtemps bloqué et se raréfie quand
+il est longtemps stimulé — le filet sous sa case le montre. C'est ce qui
+fait la tolérance, et le rebond à l'arrêt brutal : donner un
+bêtabloquant, avancer, le décocher, avancer encore.
+
+Le modèle est **qualitatif** : il montre des sens de variation, jamais
+une dose ni un délai. Le temps est en pas, sans unité.
+
+**Décrire** ouvre le texte de la cascade, et la figure se redessine à
+mesure qu'on écrit. Une instruction par ligne :
+
+- `titre :`, `sujet :` et `source :` en tête ;
+- une déclaration : `ligand`, `récepteur`, `relais`, `enzyme`,
+  `messager`, `canal`, `transporteur` ou `effet`, puis le nom, puis
+  `: une note` au besoin ;
+- une flèche : `A -> B` active, `A -| B` inhibe, une virgule pour en
+  relier plusieurs, et elles s'enchaînent sur une ligne ;
+- une molécule : `molécule bisoprolol : antagoniste Bêta-1` — les actions
+  sont agoniste, agoniste partiel, agoniste partiel faible, antagoniste,
+  inhibiteur, activateur et potentialisateur, séparées par `;` ;
+- `adaptation Bêta-1` : le nœud s'adapte avec le temps ;
+- `#` commente la fin de la ligne.
+
+Ce qui ne se lit pas est signalé sous le texte avec son numéro de ligne,
+et le reste est dessiné quand même.
+
+**Huit cascades livrées** : bêta-adrénergiques, opioïde mu, GABA-A,
+système rénine-angiotensine-aldostérone, activation plaquettaire,
+cyclo-oxygénases, coagulation, sécrétion acide. Semées une fois : une
+cascade réécrite ou supprimée par l'équipe ne revient pas.
+
+Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
+la molécule déjà donnée.
+
 # Carte vaccinale
 
 Deux tables **indicatives**, chacune avec sa source à l'écran : le

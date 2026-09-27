@@ -413,6 +413,10 @@ fn action_of(text: &str) -> Option<(Action, &str)> {
         .find_map(|(w, a)| keyword(text, w).map(|rest| (a, rest)))
 }
 
+/// Une molécule lue, dont les nœuds se résolvent à la fin : sa ligne,
+/// son nom, et ce qu'elle fait à quel nom de nœud.
+type Pending = (usize, String, Vec<(Action, String)>);
+
 /// Lire une description. Ne refuse jamais : ce qui se lit est gardé, ce
 /// qui ne se lit pas est rapporté avec sa ligne, et la figure montre le
 /// reste — une faute de frappe à la ligne douze n'efface pas les onze
@@ -421,7 +425,7 @@ pub fn parse(text: &str) -> Cascade {
     let mut c = Cascade::default();
     // Les molécules et les adaptations nomment des nœuds qu'une flèche
     // plus bas peut encore introduire : elles se résolvent à la fin.
-    let mut pending_mols: Vec<(usize, String, Vec<(Action, String)>)> = Vec::new();
+    let mut pending_mols: Vec<Pending> = Vec::new();
     let mut pending_adapt: Vec<(usize, String)> = Vec::new();
     fn node(c: &mut Cascade, name: &str, kind: Option<Kind>, note: &str, line: usize) -> usize {
         let name = tidy(name);
@@ -625,6 +629,137 @@ pub fn parse(text: &str) -> Cascade {
     }
     c.faults.sort_by_key(Fault::line);
     c
+}
+
+/// L'encre d'un morceau de texte dans l'éditeur.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Ink {
+    Comment,
+    /// Le mot qui ouvre une instruction : `récepteur`, `molécule`…
+    Keyword,
+    /// `->` et `-|`.
+    Arrow,
+    /// Ce qu'une molécule fait : `antagoniste`, `inhibiteur`…
+    Action,
+    Plain,
+}
+
+/// Le texte découpé en morceaux d'une encre : `(début, fin, encre)` en
+/// octets, bout à bout, couvrant tout le texte. Lu ligne par ligne avec
+/// les mêmes règles que [`parse`], pour que ce qui se colore comme un
+/// mot-clé soit ce qui se lit comme un mot-clé.
+pub fn colour(text: &str) -> Vec<(usize, usize, Ink)> {
+    let mut out: Vec<(usize, usize, Ink)> = Vec::new();
+    let push = |out: &mut Vec<(usize, usize, Ink)>, from: usize, to: usize, ink: Ink| {
+        if from >= to {
+            return;
+        }
+        match out.last_mut() {
+            Some(last) if last.1 == from && last.2 == ink => last.1 = to,
+            _ => out.push((from, to, ink)),
+        }
+    };
+    let mut start = 0;
+    for line in text.split_inclusive('\n') {
+        let end = start + line.len();
+        let trimmed = line.trim_start();
+        let lead = line.len() - trimmed.len();
+        // Le commentaire : toute la ligne, ou ce qui suit « # ».
+        let body_end = if trimmed.starts_with('#') {
+            lead
+        } else {
+            line.find(" #").unwrap_or(line.len())
+        };
+        let body = &line[..body_end];
+        let mut words: Vec<&str> = Kind::ALL.iter().map(|k| k.keyword()).collect();
+        words.extend([
+            "titre",
+            "sujet",
+            "source",
+            "sources",
+            "molécule",
+            "molecules",
+            "adaptation",
+            "recepteurs",
+            "effets",
+        ]);
+        let head = if arrows(body.trim()).is_some() {
+            None
+        } else {
+            words
+                .iter()
+                .find(|w| keyword(body.trim_start(), w).is_some())
+                .map(|w| {
+                    lead + body
+                        .trim_start()
+                        .char_indices()
+                        .nth(w.chars().count())
+                        .map_or(body.trim_start().len(), |(i, _)| i)
+                })
+        };
+        let mut at = 0;
+        if let Some(h) = head {
+            push(&mut out, start, start + h, Ink::Keyword);
+            at = h;
+        }
+        // Après le « : » d'une molécule, l'action.
+        if head.is_some() && keyword(body.trim_start(), "molécule").is_some() {
+            if let Some(colon) = body[at..].find(':') {
+                let colon = at + colon + 1;
+                push(&mut out, start + at, start + colon, Ink::Plain);
+                at = colon;
+                for part in body[at..].split_inclusive(';') {
+                    let lead_ws = part.len() - part.trim_start().len();
+                    let action_len = action_of(part).map_or(0, |(_, rest)| {
+                        let rest_at = part.len() - rest.len();
+                        part[..rest_at].trim_end().len()
+                    });
+                    push(
+                        &mut out,
+                        start + at,
+                        start + at + lead_ws.min(action_len),
+                        Ink::Plain,
+                    );
+                    push(
+                        &mut out,
+                        start + at + lead_ws.min(action_len),
+                        start + at + action_len,
+                        Ink::Action,
+                    );
+                    push(
+                        &mut out,
+                        start + at + action_len,
+                        start + at + part.len(),
+                        Ink::Plain,
+                    );
+                    at += part.len();
+                }
+            }
+        }
+        // Les flèches, dans le reste du corps.
+        let mut i = at;
+        while i < body.len() {
+            let rest = &body[i..];
+            let next = [rest.find("->"), rest.find("-|")]
+                .into_iter()
+                .flatten()
+                .min();
+            match next {
+                Some(k) => {
+                    push(&mut out, start + i, start + i + k, Ink::Plain);
+                    push(&mut out, start + i + k, start + i + k + 2, Ink::Arrow);
+                    i += k + 2;
+                }
+                None => {
+                    push(&mut out, start + i, start + body.len(), Ink::Plain);
+                    i = body.len();
+                }
+            }
+        }
+        push(&mut out, start + body_end, end, Ink::Comment);
+        start = end;
+    }
+    out
 }
 
 // --- Le modèle --------------------------------------------------------
@@ -860,6 +995,61 @@ impl Dose {
     }
 }
 
+/// Cocher ou décocher une molécule **au pas `t`** — le geste de la
+/// vue : on se place dans le temps, et on donne ou on arrête.
+///
+/// Donnée à `t`, elle s'arrête là (et disparaît si elle commençait
+/// là : cocher puis décocher au même instant ne laisse rien). Pas
+/// donnée, elle commence à `t` et court jusqu'à sa prochaine prise
+/// écrite plus loin, ou jusqu'au bout. Les prises d'une molécule sont
+/// ensuite recousues : deux prises qui se touchent n'en font qu'une.
+pub fn toggle(doses: &mut Vec<Dose>, molecule: usize, t: u32) {
+    if let Some(k) = doses
+        .iter()
+        .position(|d| d.molecule == molecule && d.given_at(t))
+    {
+        if doses[k].from == t {
+            doses.remove(k);
+        } else {
+            doses[k].until = Some(t);
+        }
+    } else {
+        let next = doses
+            .iter()
+            .filter(|d| d.molecule == molecule && d.from > t)
+            .map(|d| d.from)
+            .min();
+        doses.push(Dose {
+            molecule,
+            from: t,
+            until: next,
+        });
+    }
+    stitch(doses);
+}
+
+/// Recoudre les prises : triées par molécule puis par début, et deux
+/// prises de la même molécule qui se touchent ou se chevauchent n'en
+/// font qu'une.
+fn stitch(doses: &mut Vec<Dose>) {
+    doses.sort_by_key(|d| (d.molecule, d.from));
+    let mut out: Vec<Dose> = Vec::with_capacity(doses.len());
+    for d in doses.drain(..) {
+        if let Some(last) = out.last_mut() {
+            let touches = last.molecule == d.molecule && last.until.is_none_or(|u| u >= d.from);
+            if touches {
+                last.until = match (last.until, d.until) {
+                    (None, _) | (_, None) => None,
+                    (Some(a), Some(b)) => Some(a.max(b)),
+                };
+                continue;
+            }
+        }
+        out.push(d);
+    }
+    *doses = out;
+}
+
 /// Les molécules données au pas `t`.
 pub fn given_at(c: &Cascade, doses: &[Dose], t: u32) -> Vec<bool> {
     (0..c.molecules.len())
@@ -877,17 +1067,16 @@ pub fn run(c: &Cascade, doses: &[Dose], steps: u32) -> Vec<Frame> {
     let mut out = Vec::with_capacity(steps as usize + 1);
     for t in 0..=steps {
         let frame = settle(c, &given_at(c, doses, t), &density);
-        for i in 0..n {
-            if !c.nodes[i].adapts {
+        for ((node, k), d) in c.nodes.iter().zip(density.iter_mut()).zip(&frame.drive) {
+            if !node.adapts {
                 continue;
             }
-            let d = frame.drive[i];
-            let target = if d > 1e-3 {
+            let target = if *d > 1e-3 {
                 (1.0 / d).clamp(DENSITY_MIN, DENSITY_MAX)
             } else {
                 DENSITY_MAX
             };
-            density[i] += RATE * (target - density[i]);
+            *k += RATE * (target - *k);
         }
         out.push(frame);
     }
@@ -1410,6 +1599,79 @@ adaptation Bêta-1
         let c = parse("B -> C\nA -> B");
         assert_eq!(back_edges(&c), vec![false, false]);
         assert_eq!(layout(&c).layer[c.find("A").unwrap()], 0);
+    }
+
+    #[test]
+    fn toggling_gives_from_now_stops_now_and_leaves_nothing_when_undone() {
+        let mut d = Vec::new();
+        toggle(&mut d, 0, 5);
+        assert_eq!(
+            d,
+            vec![Dose {
+                molecule: 0,
+                from: 5,
+                until: None
+            }]
+        );
+        toggle(&mut d, 0, 20);
+        assert_eq!(d[0].until, Some(20));
+        // Redonnée à l'instant où elle s'arrêtait : une seule prise.
+        toggle(&mut d, 0, 20);
+        assert_eq!(d.len(), 1);
+        assert_eq!(d[0].until, None);
+        // Cochée puis décochée au même instant : rien.
+        toggle(&mut d, 1, 7);
+        toggle(&mut d, 1, 7);
+        assert!(d.iter().all(|x| x.molecule == 0));
+        // Donnée avant une prise écrite plus loin : elle court jusqu'à
+        // elle, et les deux se recousent.
+        let mut d = vec![Dose {
+            molecule: 2,
+            from: 30,
+            until: Some(40),
+        }];
+        toggle(&mut d, 2, 10);
+        assert_eq!(
+            d,
+            vec![Dose {
+                molecule: 2,
+                from: 10,
+                until: Some(40)
+            }]
+        );
+        assert!(d[0].given_at(10) && d[0].given_at(39) && !d[0].given_at(40));
+        assert!(!d[0].given_at(9));
+    }
+
+    #[test]
+    fn the_colours_cover_the_text_end_to_end_and_mark_what_parse_reads() {
+        let text = "# titre\nrécepteur Bêta-1 : note\nA -> B -| C # fin\n\
+                    molécule x : agoniste partiel A ; inhibiteur B\nwhatever";
+        let spans = colour(text);
+        let mut at = 0;
+        for (from, to, _) in &spans {
+            assert_eq!(*from, at, "{spans:?}");
+            assert!(to > from);
+            assert!(text.is_char_boundary(*from) && text.is_char_boundary(*to));
+            at = *to;
+        }
+        assert_eq!(at, text.len());
+        let of = |ink: Ink| -> Vec<&str> {
+            spans
+                .iter()
+                .filter(|s| s.2 == ink)
+                .map(|s| &text[s.0..s.1])
+                .collect()
+        };
+        assert_eq!(of(Ink::Keyword), vec!["récepteur", "molécule"]);
+        assert_eq!(of(Ink::Arrow), vec!["->", "-|"]);
+        assert_eq!(of(Ink::Action), vec!["agoniste partiel", "inhibiteur"]);
+        assert!(of(Ink::Comment).iter().any(|c| c.starts_with("# titre")));
+        assert!(of(Ink::Comment).iter().any(|c| c.starts_with(" # fin")));
+        for text in STARTER_CASCADES {
+            let spans = colour(text);
+            assert_eq!(spans.last().map_or(0, |s| s.1), text.len());
+        }
     }
 
     #[test]
