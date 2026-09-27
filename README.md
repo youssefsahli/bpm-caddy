@@ -34,6 +34,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Protocoles de comptoir — liste, arbre décisionnel, déroulé pas à pas](docs/screenshot_protocols.png)
 
+![Récepteurs et cascades — bêtabloquant arrêté : les récepteurs multipliés pendant le traitement, le rebond à l'arrêt](docs/screenshot_cascades.png)
+
 ![Dispositifs médicaux — familles, pose, renouvellement, conditions LPP](docs/screenshot_dispositifs.png)
 
 ![Locations de matériel — périodes entamées, montant facturable, renouvellements dépassés](docs/screenshot_locations.png)

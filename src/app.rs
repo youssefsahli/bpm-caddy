@@ -4240,7 +4240,7 @@ struct Session {
     cascade_curves: bool,
     /// Les courbes éteintes d'un clic sur leur clé — deux effets qui
     /// suivent la même courbe se cachent l'un l'autre.
-    cascade_hidden: Vec<bool>,
+    cascade_hidden: Vec<String>,
     /// Quitter « Décrire » avec un texte non enregistré a été demandé une
     /// fois : la seconde l'abandonne.
     cascade_leave_armed: bool,
@@ -42916,6 +42916,17 @@ impl App {
         // chaque nœud qui s'adapte**, en tirets. C'est elle qui explique
         // le reste : les récepteurs qui se multiplient sous un
         // bêtabloquant sont ceux que l'arrêt découvre tous à la fois.
+        // L'adaptation d'un nœud seulement quand elle bouge dans la partie
+        // jouée : couchée sur le filet du repos, une courbe en tirets de
+        // plus ne dit rien et brouille celle qui parle.
+        let run = session.cascade_run.clone();
+        let moves = |i: usize| {
+            run.as_ref().is_some_and(|r| {
+                r.frames
+                    .iter()
+                    .any(|f| (f.density.get(i).copied().unwrap_or(1.0) - 1.0).abs() > 0.02)
+            })
+        };
         let outcomes: Vec<(usize, bool)> = read
             .parsed
             .outcomes()
@@ -42923,7 +42934,7 @@ impl App {
             .map(|i| (i, false))
             .chain(
                 (0..read.parsed.nodes.len())
-                    .filter(|&i| read.parsed.nodes[i].adapts)
+                    .filter(|&i| read.parsed.nodes[i].adapts && moves(i))
                     .map(|i| (i, true)),
             )
             .collect();
@@ -42982,11 +42993,16 @@ impl App {
                 session.cascade_playing = false;
                 session.cascade_wave = None;
             }
-            if let Some(k) = flip {
-                if session.cascade_hidden.len() < outcomes.len() {
-                    session.cascade_hidden.resize(outcomes.len(), false);
+            // Une courbe s'éteint **par son nom** : l'ensemble des courbes
+            // change avec ce qui est donné, et un rang désignerait une
+            // autre courbe à la partie suivante.
+            if let Some(label) = flip.and_then(|k| labels.get(k)) {
+                match session.cascade_hidden.iter().position(|h| h == label) {
+                    Some(at) => {
+                        session.cascade_hidden.remove(at);
+                    }
+                    None => session.cascade_hidden.push(label.clone()),
                 }
-                session.cascade_hidden[k] = !session.cascade_hidden[k];
             }
         }
         if foot_h > 0.0 {
@@ -43618,8 +43634,9 @@ impl App {
         };
         let legend_h = motif::chart::legend_height(ui, items, rect.width());
         let split = motif::split_rows(rect, &[legend_h, 0.0], 4.0);
-        let hidden: Vec<bool> = (0..items.len())
-            .map(|k| session.cascade_hidden.get(k).copied().unwrap_or(false))
+        let hidden: Vec<bool> = items
+            .iter()
+            .map(|(label, _)| session.cascade_hidden.iter().any(|h| h == label))
             .collect();
         let flipped = motif::inside(ui, split[0], |ui| {
             motif::chart::legend_toggle(ui, items, &hidden, &[])
@@ -83570,7 +83587,7 @@ mod tests {
         session.reload_cascades();
         let beta = session.cascades_naming("bisoprolol")[0].0;
         session.open_cascade(beta, Some("bisoprolol"));
-        session.cascade_hidden = vec![true];
+        session.cascade_hidden = vec!["Fréquence cardiaque".into()];
         let read = session.cascade_read.clone().unwrap();
         let moved = read.text.replace(
             "molécule bisoprolol :",

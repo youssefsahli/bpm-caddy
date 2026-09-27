@@ -1533,10 +1533,7 @@ livre = "Une phrase qui n'est plus livrée"
             (
                 "assets/aide.md",
                 AIDE,
-                format!(
-                    "**{} cascades livrées**",
-                    crate::db::STARTER_CASCADES.len()
-                ),
+                format!("**{} cascades livrées**", crate::db::STARTER_CASCADES.len()),
             ),
             (
                 "README.md",
