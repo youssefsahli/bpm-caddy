@@ -799,6 +799,39 @@ fn dose_of(part: &str) -> Option<Take> {
     (!name.is_empty()).then_some((name, from, until))
 }
 
+/// La lignée d'un nœud : lui, tout ce qui le nourrit et tout ce qu'il
+/// nourrit, de proche en proche. C'est ce qu'un clic sur un nœud garde
+/// en clair — une cascade de vingt nœuds se lit chemin par chemin.
+pub fn lineage(c: &Cascade, of: usize) -> Vec<bool> {
+    let n = c.nodes.len();
+    let mut keep = vec![false; n];
+    if of >= n {
+        return keep;
+    }
+    keep[of] = true;
+    for downstream in [true, false] {
+        let mut seen = vec![false; n];
+        let mut stack = vec![of];
+        while let Some(v) = stack.pop() {
+            if std::mem::replace(&mut seen[v], true) {
+                continue;
+            }
+            keep[v] = true;
+            for e in &c.edges {
+                let (from, to) = if downstream {
+                    (e.from, e.to)
+                } else {
+                    (e.to, e.from)
+                };
+                if from == v && !seen[to] {
+                    stack.push(to);
+                }
+            }
+        }
+    }
+    keep
+}
+
 /// Ce qui se lit sans faute mais ressemble à une erreur d'écriture.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Lint {
@@ -2151,6 +2184,22 @@ adaptation Bêta-1
                 assert!(moves, "{} : « {} » ne montre rien", c.title, sc.name);
             }
         }
+    }
+
+    #[test]
+    fn a_lineage_keeps_what_feeds_a_node_and_what_it_feeds() {
+        let c = parse("A -> B -> C\nX -> B\nB -> D\nY -> Z\nC -| A");
+        let keep = lineage(&c, c.find("C").unwrap());
+        let kept: Vec<&str> = c
+            .nodes
+            .iter()
+            .zip(&keep)
+            .filter(|(_, k)| **k)
+            .map(|(n, _)| n.name.as_str())
+            .collect();
+        // La boucle ramène tout ce qui touche à B ; Y et Z restent dehors.
+        assert_eq!(kept, vec!["A", "B", "C", "X", "D"]);
+        assert!(lineage(&c, 99).iter().all(|k| !k));
     }
 
     #[test]

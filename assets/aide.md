@@ -700,7 +700,9 @@ source est éteinte ne porte plus rien.
 molécule est donnée à partir du temps affiché ; décochée, elle s'arrête.
 La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
 qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
-nature, sa note et son état.
+nature, sa note et son état ; un clic suit sa lignée — ce qui le nourrit
+et ce qu'il nourrit restent en clair, le reste pâlit — et un second clic
+rend toute la figure.
 
 **Les scénarios**, sous les molécules, sont des histoires toutes prêtes
 — « Arrêt brutal du bisoprolol », « Cascade de prescription » : un clic

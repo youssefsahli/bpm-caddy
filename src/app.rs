@@ -4247,6 +4247,8 @@ struct Session {
     /// Où l'aperçu de l'éditeur est regardé — le sien, pas celui de la
     /// figure de « Voir ».
     cascade_preview_look: crate::graph::Look,
+    /// Le nœud dont on suit la lignée — un clic sur lui ; le reste pâlit.
+    cascade_focus: Option<usize>,
     /// Quelles molécules le dossier ouvert prend, et lesquelles ont une
     /// fiche — lus contre la cascade, la base et le dossier, et relus
     /// quand l'un des trois change : pas huit cents fiches par image.
@@ -5447,6 +5449,7 @@ impl Session {
             cascade_hidden: Vec::new(),
             cascade_leave_armed: false,
             cascade_preview_look: crate::graph::Look::default(),
+            cascade_focus: None,
             cascade_links: None,
             cascade_colour: (String::new(), Vec::new()),
             vacc_due: Vec::new(),
@@ -9099,6 +9102,7 @@ impl Session {
         self.cascade_playing = false;
         self.cascade_wave = None;
         self.cascade_look = crate::graph::Look::default();
+        self.cascade_focus = None;
         self.cascade_hidden.clear();
         self.cascade_sync();
         if let (Some(name), Some(read)) = (give, self.cascade_read.clone()) {
@@ -9232,6 +9236,7 @@ impl Session {
                     // texte.
                     self.cascade_hidden.clear();
                     self.cascade_wave = None;
+                    self.cascade_focus = None;
                     self.cascade_read = Some(std::sync::Arc::new(read));
                 }
             }
@@ -43197,6 +43202,12 @@ impl App {
             .cascade_hover
             .filter(|_| live)
             .and_then(|m| c.molecules.get(m));
+        // La lignée suivie : ce qui n'en est pas pâlit.
+        let related: Option<Vec<bool>> = session
+            .cascade_focus
+            .filter(|&f| live && f < c.nodes.len())
+            .map(|f| crate::cascade::lineage(c, f));
+        let dim = |i: usize| related.as_ref().is_some_and(|r| !r[i]);
         // --- Les flèches, sous les nœuds ----------------------------
         let ink = motif::text_dim();
         let faint = motif::chart::grid_color();
@@ -43204,7 +43215,11 @@ impl App {
         for (k, e) in c.edges.iter().enumerate() {
             let (a, b) = (rects[e.from], rects[e.to]);
             let src = level(e.from);
-            let color = if src < 0.25 { faint } else { ink };
+            let color = if src < 0.25 || dim(e.from) || dim(e.to) {
+                faint
+            } else {
+                ink
+            };
             let width = (0.8 + 0.9 * src).min(3.2);
             let stroke = egui::Stroke::new(width, color);
             let back = lay.back.get(k).copied().unwrap_or(false);
@@ -43276,6 +43291,8 @@ impl App {
                 .windows(2)
                 .map(|w| (w[1] - w[0]).length())
                 .sum::<f32>();
+            // Hors de la lignée suivie, le signal ne se montre pas courir.
+            let src = if dim(e.from) || dim(e.to) { 0.0 } else { src };
             beziers.push((shape, src, e.sign, length));
         }
         // --- Le signal qui passe ------------------------------------
@@ -43308,6 +43325,7 @@ impl App {
         }
         // --- Les nœuds -----------------------------------------------
         let mut hovered: Option<usize> = None;
+        let mut focus_click: Option<usize> = None;
         for (i, node) in c.nodes.iter().enumerate() {
             let r = rects[i];
             if !field.intersects(r) {
@@ -43317,6 +43335,7 @@ impl App {
             let trend = crate::cascade::trend(l);
             let strength = (l.max(0.01).ln().abs() / 3.0_f32.ln()).min(1.0);
             let fill = match Self::cascade_tone(trend) {
+                _ if dim(i) => motif::bg(),
                 Some(tone) => motif::bg_light().lerp_to_gamma(tone, 0.25 + 0.6 * strength),
                 None => motif::bg_light(),
             };
@@ -43329,7 +43348,11 @@ impl App {
                     egui::Stroke::new(2.0_f32, motif::accent()),
                 );
             }
-            let text_ink = motif::readable_on(motif::text(), fill);
+            let text_ink = if dim(i) {
+                motif::text_faint()
+            } else {
+                motif::readable_on(motif::text(), fill)
+            };
             let top = egui::Rect::from_min_size(r.min, egui::vec2(r.width(), box_h));
             let mark_rect = egui::Rect::from_center_size(
                 egui::pos2(top.left() + pad + mark / 2.0, top.center().y),
@@ -43416,11 +43439,26 @@ impl App {
             let resp = ui.interact(
                 r.intersect(field),
                 ui.id().with(("cascade_node", live, i)),
-                egui::Sense::hover(),
+                if live {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                },
             );
             if resp.hovered() {
                 hovered = Some(i);
             }
+            if resp.clicked() {
+                focus_click = Some(i);
+            }
+        }
+        // Un clic suit la lignée du nœud ; un second clic la lâche.
+        if let Some(i) = focus_click {
+            session.cascade_focus = if session.cascade_focus == Some(i) {
+                None
+            } else {
+                Some(i)
+            };
         }
         if let Some(i) = hovered {
             let node = &c.nodes[i];
@@ -43460,6 +43498,11 @@ impl App {
                     }
                     if !on.is_empty() {
                         ui.label(trf("cascade_given", on.join(", ")));
+                    }
+                    if live {
+                        ui.label(
+                            egui::RichText::new(tr("cascade_focus_hint")).color(motif::text_dim()),
+                        );
                     }
                 },
             );
@@ -83359,6 +83402,9 @@ mod tests {
                         2 => {
                             session.cascade_curves = false;
                             session.cascade_playing = true;
+                            // Une lignée suivie, et une qui ne désigne
+                            // plus rien : aucune ne doit tomber.
+                            session.cascade_focus = Some(if id % 2 == 0 { 1 } else { 999 });
                         }
                         3 => {
                             let text = session.cascade_read.as_ref().unwrap().text.clone();

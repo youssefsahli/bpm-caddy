@@ -2203,6 +2203,7 @@ cascade_empty_figure = "Rien à dessiner : écrivez des flèches dans « Décrir
 cascade_sources = "Sources : {}"
 cascade_chart_hint = "Un effet par courbe ; le filet horizontal est l'état de repos. Le temps est en pas, sans unité. Cliquer ou glisser déplace le temps."
 cascade_given = "Donné : {}"
+cascade_focus_hint = "Clic : suivre ce nœud, le reste pâlit ; second clic : tout revoir."
 cascade_in_file = "{} · au dossier"
 cascade_give_file = "Molécules du dossier"
 cascade_open_card = "Clic : ouvrir la fiche (clic droit sur la case)"
