@@ -36,7 +36,16 @@ pèse 8 Mo. Les deux dossiers écrits (`app/src/main/jniLibs`,
 `app/src/main/java/uniffi`) ne sont pas suivis par git.
 
 L'intégration continue (`.github/workflows/ci.yml`, tâche `android`)
-construit l'APK de débogage à chaque poussée.
+construit l'APK de débogage à chaque poussée sur main et à chaque
+demande de fusion, et le joint à l'exécution (artefact
+`bpm-caddy-compagnon-debug`, quatorze jours). Quand les secrets de
+signature sont là, elle construit aussi l'APK de publication signé et
+vérifie sa signature — la clé se prouve avant qu'une version en dépende.
+
+Chaque version publiée (`.github/workflows/release.yml`, tâche
+`android`) porte `bpm-caddy-compagnon.apk`, signé de la clé
+d'importation. Sans les secrets, la tâche échoue plutôt que de publier un
+APK non signé, qui ne s'installerait pas.
 
 ## Signer
 
@@ -63,6 +72,21 @@ keytool -genkeypair -v -keystore bpm-caddy-play.jks -keyalg RSA \
 
 **À conserver hors de la machine** (coffre, copie chiffrée) : perdue,
 elle se réinitialise auprès de Google, mais pas sans délai.
+
+L'intégration continue lit la même clé dans quatre secrets du dépôt :
+`BPM_ANDROID_KEYSTORE_B64` (le fichier `.jks` en base64),
+`BPM_ANDROID_STORE_PASSWORD`, `BPM_ANDROID_KEY_ALIAS`,
+`BPM_ANDROID_KEY_PASSWORD`. Les poser depuis `keystore.properties`, sans
+les afficher :
+
+```
+base64 -w0 bpm-caddy-play.jks | gh secret set BPM_ANDROID_KEYSTORE_B64
+gh secret set BPM_ANDROID_STORE_PASSWORD   # puis les deux autres
+```
+
+Empreinte SHA-256 du certificat : `7e75f29a…bf681a` — celle que la
+vérification de l'intégration continue doit afficher. Un APK signé d'une
+autre clé ne s'installe pas par-dessus celui des téléphones.
 
 ## Identité
 

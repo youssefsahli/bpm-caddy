@@ -70,3 +70,53 @@ jobs:
             bpm-caddy-launcher-${{ matrix.suffix }}${{ matrix.ext }}
             bpm-audit-${{ matrix.suffix }}${{ matrix.ext }}
           generate_release_notes: true
+
+  # Le compagnon Android, **signé de la clé d'importation Play** et joint à
+  # la version sous `bpm-caddy-compagnon.apk`. La clé vit dans les secrets
+  # du dépôt (BPM_ANDROID_KEYSTORE_B64 : le fichier .jks en base64, et les
+  # trois autres sous les noms que lit `app/build.gradle.kts`) — jamais
+  # dans le dépôt. Sans elle, la tâche échoue : un APK non signé ne
+  # s'installe pas, et le publier sous ce nom tromperait l'équipe qui le
+  # télécharge. Le lanceur ne lit que les binaires des postes (APP_ASSET) :
+  # cet actif-ci ne le concerne pas.
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android, x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - run: cargo install cargo-ndk --locked
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.BPM_ANDROID_KEYSTORE_B64 }}
+        run: |
+          test -n "$KEYSTORE_B64" || { echo "secret BPM_ANDROID_KEYSTORE_B64 absent" >&2; exit 1; }
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+      # Gradle builds the Rust side itself (`buildRust`, before `preBuild`).
+      - name: APK
+        working-directory: android
+        env:
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+          BPM_ANDROID_STORE_FILE: ${{ runner.temp }}/upload.jks
+          BPM_ANDROID_STORE_PASSWORD: ${{ secrets.BPM_ANDROID_STORE_PASSWORD }}
+          BPM_ANDROID_KEY_ALIAS: ${{ secrets.BPM_ANDROID_KEY_ALIAS }}
+          BPM_ANDROID_KEY_PASSWORD: ${{ secrets.BPM_ANDROID_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --console=plain
+      - name: Verify signature
+        run: |
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$apk" || { echo "APK signé absent (non signé : $(ls android/app/build/outputs/apk/release/))" >&2; exit 1; }
+          signer=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$signer" verify --print-certs "$apk" | grep -E "Signer #1 certificate (DN|SHA-256)"
+          cp "$apk" bpm-caddy-compagnon.apk
+          rm -f "$RUNNER_TEMP/upload.jks"
+      - name: Upload to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: bpm-caddy-compagnon.apk

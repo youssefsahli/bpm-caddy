@@ -61,6 +61,40 @@ jobs:
         env:
           ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
         run: ./gradlew assembleDebug --console=plain
+      # L'APK d'essai de chaque poussée, téléchargeable depuis la page de
+      # l'exécution : ce qui se relit sur un téléphone sans rien construire.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bpm-caddy-compagnon-debug
+          path: android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
+      # **La signature se prouve avant la publication** : la tâche de
+      # `release.yml` ne tourne que sur une étiquette, et une clé mal posée
+      # dans les secrets ne se découvrirait qu'une version publiée sans son
+      # APK. Ici, dès que les secrets sont là (poussée sur main, ou demande
+      # de fusion depuis ce dépôt — jamais depuis une copie), le même APK
+      # signé se construit et se vérifie.
+      - name: Signed APK
+        env:
+          KEYSTORE_B64: ${{ secrets.BPM_ANDROID_KEYSTORE_B64 }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
+          BPM_ANDROID_STORE_PASSWORD: ${{ secrets.BPM_ANDROID_STORE_PASSWORD }}
+          BPM_ANDROID_KEY_ALIAS: ${{ secrets.BPM_ANDROID_KEY_ALIAS }}
+          BPM_ANDROID_KEY_PASSWORD: ${{ secrets.BPM_ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "pas de clé dans les secrets : APK signé non construit"
+            exit 0
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/upload.jks"
+          export BPM_ANDROID_STORE_FILE="$RUNNER_TEMP/upload.jks"
+          (cd android && ./gradlew assembleRelease --console=plain)
+          rm -f "$RUNNER_TEMP/upload.jks"
+          apk=android/app/build/outputs/apk/release/app-release.apk
+          test -f "$apk" || { echo "APK signé absent" >&2; exit 1; }
+          signer=$(ls -d "$ANDROID_HOME"/build-tools/*/ | sort -V | tail -1)apksigner
+          "$signer" verify --print-certs "$apk" | grep -E "Signer #1 certificate (DN|SHA-256)"
 
   coverage:
     runs-on: ubuntu-latest
