@@ -5247,6 +5247,8 @@ impl Session {
             // The protocols too: a base opened before they existed gets
             // them, and a tree the team rewrote is never replaced.
             let _ = db.seed_protocols();
+            // And the cascades, by title, by the same rule.
+            let _ = db.seed_cascades();
             // And the dispositifs, by the same rule: seeded once, and a
             // fiche the team emptied never comes back to argue.
             let _ = db.seed_dispositifs();

@@ -112,6 +112,15 @@ CREATE TABLE IF NOT EXISTS checklist_items (
     note         TEXT NOT NULL DEFAULT '',
     position     INTEGER NOT NULL DEFAULT 0
 );
+-- Les récepteurs et les cascades : un mécanisme d'action décrit en
+-- texte, dans le langage de `src/cascade.rs`. **Le texte seul** : le
+-- titre, les nœuds et les molécules s'en lisent, et une colonne de plus
+-- qui les recopierait finirait par dire autre chose que lui.
+CREATE TABLE IF NOT EXISTS cascades (
+    id          INTEGER PRIMARY KEY,
+    text        TEXT NOT NULL,
+    created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
+);
 CREATE TABLE IF NOT EXISTS protocol_nodes (
     id          INTEGER PRIMARY KEY,
     protocol_id INTEGER NOT NULL,
@@ -952,6 +961,13 @@ const MIGRATIONS: &[&str] = &[
         text         TEXT NOT NULL,
         note         TEXT NOT NULL DEFAULT '',
         position     INTEGER NOT NULL DEFAULT 0
+    )",
+    // Les cascades — voir le commentaire au-dessus de la table dans
+    // `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS cascades (
+        id          INTEGER PRIMARY KEY,
+        text        TEXT NOT NULL,
+        created_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime'))
     )",
     "CREATE TABLE IF NOT EXISTS seed_state (
         key    TEXT PRIMARY KEY,
@@ -2068,6 +2084,14 @@ pub struct Protocol {
 /// une liste répond à « qu'est-ce qu'on n'a pas oublié » et se lit en
 /// cochant. La feuille qui en sort n'a pas la même forme, et c'est la
 /// feuille qui décide.
+/// Une cascade telle que la base la garde : son numéro et son texte.
+/// Tout le reste se lit du texte (`crate::cascade::parse`).
+#[derive(Clone, Debug, PartialEq)]
+pub struct CascadeText {
+    pub id: i64,
+    pub text: String,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct Checklist {
     pub id: i64,
@@ -24457,6 +24481,296 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
     },
 ];
 
+/// Les cascades livrées : un mécanisme d'action par texte, dans le
+/// langage de [`crate::cascade`]. Semées une fois, par titre, comme les
+/// protocoles — une cascade que l'équipe a réécrite ne revient jamais à
+/// ce qu'elle était.
+///
+/// **Des sens de variation, pas des chiffres.** Chaque flèche est de la
+/// pharmacologie de manuel ; le modèle qui les joue est qualitatif, et
+/// la vue le dit. Une molécule nomme une fiche livrée par sa DCI — un
+/// test le tient : c'est par elle qu'une monographie ouvre sa cascade.
+pub const STARTER_CASCADES: &[&str] = &[
+    "\
+titre : Récepteurs bêta-adrénergiques
+sujet : Bêtabloquants, salbutamol — cœur et bronches
+source : Rang & Dale's Pharmacology
+source : RCP des bêtabloquants : arrêt progressif, contre-indication de l'asthme pour les non cardiosélectifs
+
+ligand Noradrénaline
+ligand Adrénaline
+récepteur Bêta-1 : myocarde, couplé à la protéine Gs
+récepteur Bêta-2 : muscle lisse bronchique, couplé à la protéine Gs
+relais Protéine Gs
+enzyme Adénylate cyclase
+messager AMPc myocardique
+enzyme Protéine kinase A
+canal Canaux calciques L : entrée de calcium dans la cellule myocardique
+messager AMPc bronchique : via la protéine Gs et l'adénylate cyclase du muscle lisse
+effet Fréquence cardiaque
+effet Contractilité
+effet Bronchodilatation
+
+Noradrénaline, Adrénaline -> Bêta-1
+Adrénaline -> Bêta-2
+Bêta-1 -> Protéine Gs -> Adénylate cyclase -> AMPc myocardique -> Protéine kinase A
+Protéine kinase A -> Canaux calciques L -> Fréquence cardiaque, Contractilité
+Bêta-2 -> AMPc bronchique -> Bronchodilatation
+
+# Cardiosélectifs : le bêta-1 seul.
+molécule bisoprolol : antagoniste Bêta-1
+molécule aténolol : antagoniste Bêta-1
+molécule métoprolol : antagoniste Bêta-1
+molécule nébivolol : antagoniste Bêta-1
+# Activité sympathomimétique intrinsèque : un agoniste partiel dont
+# l'efficacité reste sous le tonus de repos — moins de bradycardie.
+molécule acébutolol : agoniste partiel faible Bêta-1
+# Non cardiosélectifs : les bronches aussi.
+molécule propranolol : antagoniste Bêta-1, Bêta-2
+molécule carvédilol : antagoniste Bêta-1, Bêta-2
+molécule salbutamol : agoniste Bêta-2
+
+# Bloqués longtemps, les récepteurs bêta-1 se multiplient : l'arrêt
+# brutal les découvre tous, d'où le rebond.
+adaptation Bêta-1
+",
+    "\
+titre : Récepteur opioïde mu
+sujet : Morphiniques, buprénorphine, naloxone
+source : Rang & Dale's Pharmacology
+source : RCP de la buprénorphine : manque précipité si la première prise est trop précoce
+
+ligand Endorphines
+récepteur Récepteur mu central : couplé aux protéines Gi/o ; tolérance à l'analgésie et à la dépression respiratoire
+récepteur Récepteur mu intestinal : peu de tolérance, d'où une constipation qui dure
+relais Protéine Gi
+enzyme Adénylate cyclase
+messager AMPc
+canal Canaux potassiques : leur ouverture hyperpolarise le neurone
+relais Excitabilité neuronale
+relais Libération de neuromédiateurs
+effet Transmission de la douleur : baissée, c'est l'analgésie
+effet Commande respiratoire : baissée, c'est la dépression respiratoire
+effet Motricité intestinale : baissée, c'est la constipation
+
+Endorphines -> Récepteur mu central, Récepteur mu intestinal
+Récepteur mu central -> Protéine Gi
+Protéine Gi -| Adénylate cyclase
+Adénylate cyclase -> AMPc -> Libération de neuromédiateurs
+Protéine Gi -> Canaux potassiques -| Excitabilité neuronale
+Excitabilité neuronale -> Libération de neuromédiateurs
+Libération de neuromédiateurs -> Transmission de la douleur, Commande respiratoire
+Récepteur mu intestinal -| Motricité intestinale
+
+molécule morphine : agoniste Récepteur mu central, Récepteur mu intestinal
+molécule oxycodone : agoniste Récepteur mu central, Récepteur mu intestinal
+molécule fentanyl : agoniste Récepteur mu central, Récepteur mu intestinal
+# Agoniste partiel de haute affinité : il déplace un agoniste plein.
+molécule buprénorphine : agoniste partiel Récepteur mu central, Récepteur mu intestinal
+molécule naloxone : antagoniste Récepteur mu central, Récepteur mu intestinal
+
+adaptation Récepteur mu central
+",
+    "\
+titre : Récepteur GABA-A
+sujet : Benzodiazépines, hypnotiques apparentés
+source : Rang & Dale's Pharmacology
+source : HAS, arrêt des benzodiazépines : décroissance progressive, risque de convulsions au sevrage brutal
+
+ligand GABA
+récepteur GABA-A : canal chlorure ; site benzodiazépine distinct du site du GABA
+canal Entrée de chlorure
+relais Hyperpolarisation
+relais Excitabilité neuronale
+effet Vigilance : baissée, c'est la sédation
+effet Anxiété
+effet Tonus musculaire : baissé, c'est la myorelaxation
+effet Seuil convulsif : monté, c'est l'effet anticonvulsivant ; baissé au sevrage
+
+GABA -> GABA-A -> Entrée de chlorure -> Hyperpolarisation
+Hyperpolarisation -| Excitabilité neuronale
+Excitabilité neuronale -> Vigilance, Anxiété, Tonus musculaire
+Excitabilité neuronale -| Seuil convulsif
+
+# Ils augmentent l'effet du GABA, et ne font rien sans lui.
+molécule alprazolam : potentialisateur GABA-A
+molécule bromazépam : potentialisateur GABA-A
+molécule diazépam : potentialisateur GABA-A
+molécule lorazépam : potentialisateur GABA-A
+molécule oxazépam : potentialisateur GABA-A
+molécule prazépam : potentialisateur GABA-A
+molécule zolpidem : potentialisateur GABA-A
+molécule zopiclone : potentialisateur GABA-A
+
+adaptation GABA-A
+",
+    "\
+titre : Système rénine-angiotensine-aldostérone
+sujet : IEC, sartans, antialdostérones
+source : Rang & Dale's Pharmacology
+source : RCP des IEC et des sartans : toux sous IEC, hyperkaliémie, double blocage déconseillé
+
+relais Angiotensinogène
+enzyme Rénine
+relais Angiotensine I
+enzyme Enzyme de conversion : convertit l'angiotensine I et dégrade la bradykinine
+ligand Angiotensine II
+récepteur Récepteur AT1
+ligand Aldostérone
+récepteur Récepteur minéralocorticoïde
+ligand Bradykinine
+effet Vasoconstriction
+effet Réabsorption de sodium
+effet Pression artérielle
+effet Kaliémie
+effet Toux sèche
+
+Angiotensinogène, Rénine -> Angiotensine I
+Angiotensine I, Enzyme de conversion -> Angiotensine II
+Angiotensine II -> Récepteur AT1 -> Vasoconstriction, Aldostérone
+Aldostérone -> Récepteur minéralocorticoïde -> Réabsorption de sodium
+Récepteur minéralocorticoïde -| Kaliémie
+Vasoconstriction, Réabsorption de sodium -> Pression artérielle
+# La pression retient la rénine : bloquer le système la fait monter.
+Pression artérielle -| Rénine
+Enzyme de conversion -| Bradykinine -> Toux sèche
+
+molécule ramipril : inhibiteur Enzyme de conversion
+molécule périndopril : inhibiteur Enzyme de conversion
+molécule énalapril : inhibiteur Enzyme de conversion
+molécule losartan : antagoniste Récepteur AT1
+molécule valsartan : antagoniste Récepteur AT1
+molécule irbésartan : antagoniste Récepteur AT1
+molécule candésartan : antagoniste Récepteur AT1
+molécule spironolactone : antagoniste Récepteur minéralocorticoïde
+molécule éplérénone : antagoniste Récepteur minéralocorticoïde
+",
+    "\
+titre : Activation plaquettaire
+sujet : Aspirine, inhibiteurs du P2Y12
+source : Rang & Dale's Pharmacology
+source : RCP du clopidogrel, du prasugrel et du ticagrélor
+
+relais Acide arachidonique
+enzyme COX-1 plaquettaire : acétylée de façon irréversible par l'aspirine, pour la vie de la plaquette
+ligand Thromboxane A2
+récepteur Récepteur TP
+ligand ADP
+récepteur Récepteur P2Y12 : couplé à la protéine Gi
+relais Protéine Gi
+enzyme Adénylate cyclase
+messager AMPc plaquettaire
+relais Activation plaquettaire
+effet Agrégation plaquettaire
+
+Acide arachidonique -> COX-1 plaquettaire -> Thromboxane A2 -> Récepteur TP -> Activation plaquettaire
+ADP -> Récepteur P2Y12 -> Protéine Gi -| Adénylate cyclase -> AMPc plaquettaire
+AMPc plaquettaire -| Activation plaquettaire
+Activation plaquettaire -> Agrégation plaquettaire
+
+molécule acide acétylsalicylique : inhibiteur COX-1 plaquettaire
+molécule clopidogrel : antagoniste Récepteur P2Y12
+molécule prasugrel : antagoniste Récepteur P2Y12
+molécule ticagrélor : antagoniste Récepteur P2Y12
+",
+    "\
+titre : Cyclo-oxygénases
+sujet : AINS, coxibs
+source : Rang & Dale's Pharmacology
+source : RCP des AINS : ulcère, insuffisance rénale aiguë, surtout avec un IEC, un sartan ou un diurétique
+
+relais Acide arachidonique
+enzyme COX-1 : constitutive
+enzyme COX-2 : inductible par l'inflammation
+relais Prostaglandines gastriques
+relais Thromboxane A2
+relais Prostaglandines rénales
+relais Prostaglandines de l'inflammation
+effet Protection de la muqueuse gastrique
+effet Agrégation plaquettaire
+effet Débit sanguin rénal : tenu par les prostaglandines quand le rein est sous contrainte
+effet Inflammation
+effet Douleur
+effet Fièvre
+
+Acide arachidonique -> COX-1, COX-2
+COX-1 -> Prostaglandines gastriques -> Protection de la muqueuse gastrique
+COX-1 -> Thromboxane A2 -> Agrégation plaquettaire
+COX-1, COX-2 -> Prostaglandines rénales -> Débit sanguin rénal
+COX-2 -> Prostaglandines de l'inflammation -> Inflammation, Douleur, Fièvre
+
+molécule ibuprofène : inhibiteur COX-1, COX-2
+molécule kétoprofène : inhibiteur COX-1, COX-2
+molécule diclofénac : inhibiteur COX-1, COX-2
+molécule naproxène : inhibiteur COX-1, COX-2
+molécule acide acétylsalicylique : inhibiteur COX-1, COX-2
+# Sélectif : la muqueuse et les plaquettes épargnées, pas le rein.
+molécule célécoxib : inhibiteur COX-2
+",
+    "\
+titre : Coagulation
+sujet : AVK, AOD, héparines
+source : Rang & Dale's Pharmacology
+source : RCP des AVK, des AOD et des héparines
+
+enzyme VKORC1 : vitamine K époxyde réductase
+relais Vitamine K réduite
+relais Facteurs vitamine K-dépendants : II, VII, IX et X, carboxylés dans le foie
+relais Facteur tissulaire
+enzyme Facteur Xa
+enzyme Thrombine : facteur IIa
+relais Antithrombine
+relais Fibrine
+effet Formation du caillot
+
+VKORC1 -> Vitamine K réduite -> Facteurs vitamine K-dépendants
+Facteur tissulaire, Facteurs vitamine K-dépendants -> Facteur Xa
+Facteur Xa, Facteurs vitamine K-dépendants -> Thrombine
+Thrombine -> Fibrine -> Formation du caillot
+Antithrombine -| Facteur Xa, Thrombine
+
+molécule warfarine : inhibiteur VKORC1
+molécule fluindione : inhibiteur VKORC1
+molécule acénocoumarol : inhibiteur VKORC1
+molécule apixaban : inhibiteur Facteur Xa
+molécule rivaroxaban : inhibiteur Facteur Xa
+molécule edoxaban : inhibiteur Facteur Xa
+molécule dabigatran : inhibiteur Thrombine
+# Elles agissent par l'antithrombine, qu'elles accélèrent.
+molécule héparine sodique : potentialisateur Antithrombine
+molécule énoxaparine : potentialisateur Antithrombine
+",
+    "\
+titre : Sécrétion acide gastrique
+sujet : IPP, antihistaminiques H2
+source : Rang & Dale's Pharmacology
+source : RCP des inhibiteurs de la pompe à protons
+
+ligand Gastrine
+relais Cellule entérochromaffine
+ligand Histamine
+récepteur Récepteur H2 : cellule pariétale, couplé à la protéine Gs
+ligand Acétylcholine
+récepteur Récepteur M3
+messager AMPc
+messager Calcium intracellulaire
+transporteur Pompe à protons : H+/K+ ATPase, dernière étape commune
+effet Sécrétion acide
+
+Gastrine -> Cellule entérochromaffine -> Histamine -> Récepteur H2 -> AMPc -> Pompe à protons
+Acétylcholine -> Récepteur M3 -> Calcium intracellulaire -> Pompe à protons
+Pompe à protons -> Sécrétion acide
+# L'acidité freine la gastrine : l'abaisser la fait monter.
+Sécrétion acide -| Gastrine
+
+molécule oméprazole : inhibiteur Pompe à protons
+molécule ésoméprazole : inhibiteur Pompe à protons
+molécule lansoprazole : inhibiteur Pompe à protons
+molécule pantoprazole : inhibiteur Pompe à protons
+molécule famotidine : antagoniste Récepteur H2
+",
+];
+
 /// One shipped preparation of the codex, before it reaches the base.
 pub struct StarterPreparation {
     pub name: &'static str,
@@ -32600,6 +32914,7 @@ impl Db {
         self.seed_dispositifs()?;
         self.seed_conduite()?;
         self.seed_protocols()?;
+        self.seed_cascades()?;
         self.seed_trod_lines()?;
         self.seed_vaccine_catalogue()?;
         Ok(inserted)
@@ -33519,6 +33834,73 @@ impl Db {
     }
 
     /// Create a protocol with its first step.
+    /// Les cascades de l'officine, dans l'ordre où elles sont entrées.
+    pub fn cascades(&self) -> Result<Vec<CascadeText>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, text FROM cascades ORDER BY id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(CascadeText {
+                    id: r.get(0)?,
+                    text: r.get(1)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_cascade(&self, text: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO cascades (id, text) VALUES ({next}, ?1)",
+                    next = next_id("cascades")
+                ),
+                [text],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Réécrire une cascade **contre le texte que l'éditeur avait
+    /// ouvert**. Le texte est gardé tel qu'on l'a tapé — ni relu ni
+    /// remis en forme —, si bien que le témoin est exactement ce que la
+    /// base a rendu : il ne peut pas refuser à tort, seulement quand un
+    /// autre poste a vraiment écrit entre-temps.
+    pub fn update_cascade(&self, id: i64, text: &str, expected: &str) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE cascades SET text = ?2 WHERE id = ?1 AND text = ?3",
+                (id, text, expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    /// Réécrire une cascade **sans témoin** : « Garder mon texte » après
+    /// un refus. Un refus sans issue bloque l'éditeur pour toujours.
+    pub fn force_cascade(&self, id: i64, text: &str) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute("UPDATE cascades SET text = ?2 WHERE id = ?1", (id, text))
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
+    pub fn delete_cascade(&self, id: i64, expected: &str) -> Result<bool, String> {
+        let n = self
+            .conn
+            .execute(
+                "DELETE FROM cascades WHERE id = ?1 AND text = ?2",
+                (id, expected),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(n == 1)
+    }
+
     /// Les listes de contrôle de l'officine, la plus récente d'abord.
     pub fn checklists(&self) -> Result<Vec<Checklist>, String> {
         let mut stmt = self
@@ -35789,6 +36171,44 @@ impl Db {
                 added += 1;
             }
             self.mark_seeded_name("protocole", proto.title)?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Semer les cascades, une fois, **par titre** — la règle des
+    /// protocoles : une cascade que l'équipe a réécrite, renommée ou
+    /// supprimée ne revient pas.
+    pub fn seed_cascades(&self) -> Result<usize, String> {
+        let titles: Vec<String> = STARTER_CASCADES
+            .iter()
+            .map(|t| crate::cascade::parse(t).title)
+            .collect();
+        // Rien à semer — le cas de chaque lancement : pas de verrou
+        // d'écriture pris pour rien.
+        {
+            let seeded = self.seeded_names("cascade")?;
+            if titles.iter().all(|t| seeded.contains(t)) {
+                return Ok(0);
+            }
+        }
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let existing: std::collections::HashSet<String> = self
+            .cascades()?
+            .iter()
+            .map(|c| crate::cascade::parse(&c.text).title)
+            .collect();
+        let seeded = self.seeded_names("cascade")?;
+        let mut added = 0;
+        for (text, title) in STARTER_CASCADES.iter().zip(&titles) {
+            if seeded.contains(title) {
+                continue;
+            }
+            if !existing.contains(title) {
+                self.add_cascade(text)?;
+                added += 1;
+            }
+            self.mark_seeded_name("cascade", title)?;
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
@@ -42123,6 +42543,7 @@ mod tests {
         db.seed_trod_lines().unwrap();
         db.seed_vaccine_catalogue().unwrap();
         db.seed_dispositifs().unwrap();
+        db.seed_cascades().unwrap();
         let other = Db::open(&path, "secret").unwrap();
         let held = write_tx(&other.conn).unwrap();
         let started = std::time::Instant::now();
@@ -42131,6 +42552,7 @@ mod tests {
         assert_eq!(db.seed_trod_lines(), Ok(0));
         assert_eq!(db.seed_vaccine_catalogue(), Ok(0));
         assert_eq!(db.seed_dispositifs(), Ok(0));
+        assert_eq!(db.seed_cascades(), Ok(0));
         assert!(
             started.elapsed() < std::time::Duration::from_secs(1),
             "un semis a attendu le verrou"
@@ -44197,6 +44619,11 @@ mod tests {
             .expect("add_checklist_item");
         db.checklists().expect("checklists");
         db.checklist_items(list).expect("checklist_items");
+        // Les cascades, une table ajoutée après la 0.352.
+        let cascade = db.add_cascade("A -> B").expect("add_cascade");
+        db.cascades().expect("cascades");
+        db.update_cascade(cascade, "A -| B", "A -> B")
+            .expect("update_cascade");
         // Les agrégats des statistiques : quatre noms de tables et une
         // faute de frappe suffit à rendre zéro sans rien dire, parce que
         // la vue lit `unwrap_or_default`. Ce test est ce qui l'attrape —

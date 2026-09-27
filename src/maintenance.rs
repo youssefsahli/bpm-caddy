@@ -113,6 +113,10 @@ const CONTENT: &[Step] = &[
         key: "maint_step_protocols",
         run: Db::seed_protocols,
     },
+    Step {
+        key: "maint_step_cascades",
+        run: Db::seed_cascades,
+    },
 ];
 
 /// Only the details pass, for the button that offers just that.
