@@ -34,8 +34,8 @@ android {
         minSdk = 26
         targetSdk = 36
         // Suit la version de l'application de bureau : 0.350.0 → 350000.
-        versionCode = 353000
-        versionName = "0.353.0"
+        versionCode = 354000
+        versionName = "0.354.0"
     }
 
     signingConfigs {

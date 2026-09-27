@@ -5828,7 +5828,7 @@ impl Session {
             goto_open: false,
             goto_query: String::new(),
             goto_selected: 0,
-            // The five standing views are always in the strip, in a
+            // The standing views are always in the strip, in a
             // fixed order, so their position never moves under the
             // pointer; opened files are appended after them.
             tabs: vec![
@@ -5839,6 +5839,11 @@ impl Session {
                 WorkTab::Carnet,
                 WorkTab::Map,
                 WorkTab::Registres,
+                // Les récepteurs et cascades : sans onglet, la vue
+                // n'avait que des portes qu'il fallait connaître — le
+                // bouton de la base médicaments, la boîte « Aller à… »,
+                // la fiche d'une molécule — et on la cherchait.
+                WorkTab::Cascades,
             ],
             error: None,
         };
@@ -6121,6 +6126,7 @@ impl Session {
             WorkTab::Carnet,
             WorkTab::Map,
             WorkTab::Registres,
+            WorkTab::Cascades,
             WorkTab::Explorer,
             WorkTab::Classes,
             WorkTab::Stats,
@@ -13549,7 +13555,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 16] {
+fn standing_views() -> [(WorkTab, &'static str); 17] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -13558,6 +13564,7 @@ fn standing_views() -> [(WorkTab, &'static str); 16] {
         (WorkTab::Carnet, "carnet"),
         (WorkTab::Map, "carte"),
         (WorkTab::Registres, "registres"),
+        (WorkTab::Cascades, "cascades"),
         (WorkTab::Explorer, "explorateur"),
         (WorkTab::Classes, "classes"),
         (WorkTab::Stats, "statistiques"),

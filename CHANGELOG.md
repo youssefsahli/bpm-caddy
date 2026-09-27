@@ -5,9 +5,11 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.354.0] - 2026-09-27
 
 ### Added
+- Récepteurs et cascades : un onglet permanent « Cascades », à côté de
+  « Registres ». La vue n'avait que des portes qu'il fallait connaître.
 - Le compagnon Android est joint à la version :
   bpm-caddy-compagnon.apk, à installer sur le téléphone de l'équipe.
 - Postes de l'officine : « Inviter un téléphone… ». Le téléphone Android
