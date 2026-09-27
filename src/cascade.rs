@@ -352,6 +352,19 @@ fn keyword<'a>(line: &'a str, word: &str) -> Option<&'a str> {
     }
 }
 
+/// Le mot `word` ouvre-t-il cette ligne **en instruction** ? Sur une
+/// ligne qui porte une flèche, seulement s'il est suivi de son `:` —
+/// sans quoi c'est le début d'un nom : « Tonus vagal -| Fréquence
+/// cardiaque », « Source de calcium -> Contraction » sont des flèches,
+/// et les lire comme des instructions les perdait.
+fn heads<'a>(body: &'a str, word: &str) -> Option<&'a str> {
+    let rest = keyword(body, word)?;
+    if arrows(body).is_some() && !rest.starts_with(':') {
+        return None;
+    }
+    Some(rest)
+}
+
 /// Le nom d'une déclaration et sa note.
 fn name_and_note(rest: &str) -> (String, String) {
     match rest.split_once(':') {
@@ -397,26 +410,32 @@ fn arrows(line: &str) -> Option<(Vec<&str>, Vec<Sign>)> {
 /// longue d'abord : « agoniste partiel » n'est pas « agoniste » suivi
 /// d'un nœud nommé « partiel ».
 fn action_of(text: &str) -> Option<(Action, &str)> {
-    let mut words: Vec<(&str, Action)> = Action::ALL.iter().map(|a| (a.keyword(), *a)).collect();
-    // Les manières usuelles de l'écrire, lues comme leur action.
-    words.extend([
-        ("agonistes partiels", Action::AgonistePartiel),
-        ("agoniste partielle", Action::AgonistePartiel),
-        ("agonistes", Action::Agoniste),
-        ("antagonistes", Action::Antagoniste),
-        ("inhibitrice", Action::Inhibiteur),
-        ("inhibe", Action::Inhibiteur),
-        ("bloque", Action::Antagoniste),
-        ("active", Action::Activateur),
-        ("activatrice", Action::Activateur),
-        ("potentialise", Action::Potentialisateur),
-        ("modulateur positif", Action::Potentialisateur),
-    ]);
-    words.sort_by_key(|(w, _)| std::cmp::Reverse(w.chars().count()));
+    // Rangés une fois, du plus long au plus court.
+    static WORDS: std::sync::OnceLock<Vec<(&'static str, Action)>> = std::sync::OnceLock::new();
+    let words = WORDS.get_or_init(|| {
+        let mut words: Vec<(&str, Action)> =
+            Action::ALL.iter().map(|a| (a.keyword(), *a)).collect();
+        // Les manières usuelles de l'écrire, lues comme leur action.
+        words.extend([
+            ("agonistes partiels", Action::AgonistePartiel),
+            ("agoniste partielle", Action::AgonistePartiel),
+            ("agonistes", Action::Agoniste),
+            ("antagonistes", Action::Antagoniste),
+            ("inhibitrice", Action::Inhibiteur),
+            ("inhibe", Action::Inhibiteur),
+            ("bloque", Action::Antagoniste),
+            ("active", Action::Activateur),
+            ("activatrice", Action::Activateur),
+            ("potentialise", Action::Potentialisateur),
+            ("modulateur positif", Action::Potentialisateur),
+        ]);
+        words.sort_by_key(|(w, _)| std::cmp::Reverse(w.chars().count()));
+        words
+    });
     let text = text.trim_start();
     words
-        .into_iter()
-        .find_map(|(w, a)| keyword(text, w).map(|rest| (a, rest)))
+        .iter()
+        .find_map(|(w, a)| keyword(text, w).map(|rest| (*a, rest)))
 }
 
 /// Une molécule lue, dont les nœuds se résolvent à la fin : sa ligne,
@@ -477,15 +496,16 @@ pub fn parse(text: &str) -> Cascade {
         if body.is_empty() || body.starts_with('#') {
             continue;
         }
-        if let Some(rest) = keyword(body, "titre") {
+        let head = |word: &str| heads(body, word);
+        if let Some(rest) = head("titre") {
             c.title = rest.trim_start_matches(':').trim().to_owned();
             continue;
         }
-        if let Some(rest) = keyword(body, "sujet") {
+        if let Some(rest) = head("sujet") {
             c.subject = rest.trim_start_matches(':').trim().to_owned();
             continue;
         }
-        if let Some(rest) = keyword(body, "source").or_else(|| keyword(body, "sources")) {
+        if let Some(rest) = head("source").or_else(|| head("sources")) {
             let source = rest.trim_start_matches(':').trim();
             if source.is_empty() {
                 c.faults.push(Fault::MissingName { line });
@@ -494,7 +514,7 @@ pub fn parse(text: &str) -> Cascade {
             }
             continue;
         }
-        if let Some(rest) = keyword(body, "molécule").or_else(|| keyword(body, "molecules")) {
+        if let Some(rest) = head("molécule").or_else(|| head("molecules")) {
             let Some((name, acts)) = rest.split_once(':') else {
                 c.faults.push(Fault::UnknownAction {
                     line,
@@ -530,7 +550,7 @@ pub fn parse(text: &str) -> Cascade {
             pending_mols.push((line, name, list));
             continue;
         }
-        if let Some(rest) = keyword(body, "tonus") {
+        if let Some(rest) = head("tonus") {
             let rest = rest.trim_start_matches(':').trim_start();
             match keyword(rest, "faible") {
                 Some(names) => {
@@ -552,7 +572,7 @@ pub fn parse(text: &str) -> Cascade {
             }
             continue;
         }
-        if let Some(rest) = keyword(body, "adaptation") {
+        if let Some(rest) = head("adaptation") {
             let names: Vec<String> = rest
                 .trim_start_matches(':')
                 .split(',')
@@ -750,12 +770,23 @@ pub fn colour(text: &str) -> Vec<(usize, usize, Ink)> {
             "recepteurs",
             "effets",
         ]);
-        let head = if arrows(body.trim()).is_some() {
-            None
-        } else {
+        let head = {
             words
                 .iter()
-                .find(|w| keyword(body.trim_start(), w).is_some())
+                .find(|w| {
+                    let t = body.trim_start();
+                    // Les mêmes règles que `parse` : une déclaration ne
+                    // porte pas de flèche, une instruction sur une ligne
+                    // fléchée porte son `:`.
+                    let declares = Kind::ALL.iter().any(|k| k.keyword() == **w)
+                        || **w == "recepteurs"
+                        || **w == "effets";
+                    if declares {
+                        arrows(t).is_none() && keyword(t, w).is_some()
+                    } else {
+                        heads(t.trim_end(), w).is_some()
+                    }
+                })
                 .map(|w| {
                     lead + body
                         .trim_start()
@@ -770,7 +801,10 @@ pub fn colour(text: &str) -> Vec<(usize, usize, Ink)> {
             at = h;
         }
         // Après le « : » d'une molécule, l'action.
-        if head.is_some() && keyword(body.trim_start(), "molécule").is_some() {
+        if head.is_some()
+            && (heads(body.trim(), "molécule").is_some()
+                || heads(body.trim(), "molecules").is_some())
+        {
             if let Some(colon) = body[at..].find(':') {
                 let colon = at + colon + 1;
                 push(&mut out, start + at, start + colon, Ink::Plain);
@@ -960,100 +994,135 @@ pub fn back_edges(c: &Cascade) -> Vec<bool> {
     back
 }
 
-/// Ce qu'un nœud devient pour ce qu'il reçoit et les molécules qui le
-/// touchent, **avant** sa densité.
-fn drive_of(c: &Cascade, i: usize, level: &[f32], given: &[bool]) -> f32 {
-    let mut up = Vec::new();
-    let mut down = 1.0_f32;
-    for e in c.edges.iter().filter(|e| e.to == i) {
-        match e.sign {
-            Sign::Active => up.push(level[e.from]),
-            Sign::Inhibe => down *= 2.0 / (1.0 + level[e.from].max(0.0)),
+/// Ce que la propagation lit de la chaîne, rangé une fois : l'ordre, et
+/// pour chaque nœud ce qui l'active, ce qui l'inhibe et les molécules
+/// qui le touchent. Relire les flèches et les molécules à chaque nœud,
+/// à chaque passage et à chaque pas faisait d'une description collée de
+/// quelques centaines de nœuds un clic qui fige l'écran.
+struct Wiring {
+    order: Vec<usize>,
+    up: Vec<Vec<usize>>,
+    down: Vec<Vec<usize>>,
+    acts: Vec<Vec<(usize, Action)>>,
+    low: Vec<bool>,
+}
+
+impl Wiring {
+    fn of(c: &Cascade) -> Wiring {
+        let n = c.nodes.len();
+        let (order, _) = order(c);
+        let mut up = vec![Vec::new(); n];
+        let mut down = vec![Vec::new(); n];
+        for e in &c.edges {
+            match e.sign {
+                Sign::Active => up[e.to].push(e.from),
+                Sign::Inhibe => down[e.to].push(e.from),
+            }
+        }
+        let mut acts = vec![Vec::new(); n];
+        for (m, mol) in c.molecules.iter().enumerate() {
+            for (a, node) in &mol.acts {
+                if let Some(list) = acts.get_mut(*node) {
+                    list.push((m, *a));
+                }
+            }
+        }
+        Wiring {
+            order,
+            up,
+            down,
+            acts,
+            low: c.nodes.iter().map(|n| n.low_tone).collect(),
         }
     }
-    // Sans amont, un nœud est à son tonus de repos.
-    let mut x = if up.is_empty() {
-        1.0
-    } else {
-        up.iter().sum::<f32>() / up.len() as f32
-    };
-    x *= down;
-    let acts = c
-        .molecules
-        .iter()
-        .enumerate()
-        .filter(|(m, _)| given.get(*m).copied().unwrap_or(false))
-        .flat_map(|(_, m)| m.acts.iter().filter(|(_, n)| *n == i).map(|(a, _)| *a));
-    let (mut occupants, mut efficacy) = (0usize, 0.0_f32);
-    let mut factor = 1.0_f32;
-    for a in acts {
-        match a {
-            Action::Agoniste => {
-                occupants += 1;
-                efficacy += FULL;
+
+    /// Ce qu'un nœud devient pour ce qu'il reçoit et les molécules qui
+    /// le touchent, **avant** sa densité.
+    fn drive(&self, i: usize, level: &[f32], given: &[bool]) -> f32 {
+        let up = &self.up[i];
+        // Sans amont, un nœud est à son tonus de repos.
+        let mut x = if up.is_empty() {
+            1.0
+        } else {
+            up.iter().map(|&p| level[p]).sum::<f32>() / up.len() as f32
+        };
+        for &p in &self.down[i] {
+            x *= 2.0 / (1.0 + level[p].max(0.0));
+        }
+        let (mut occupants, mut efficacy) = (0usize, 0.0_f32);
+        let mut factor = 1.0_f32;
+        for &(m, a) in &self.acts[i] {
+            if !given.get(m).copied().unwrap_or(false) {
+                continue;
             }
-            Action::AgonistePartiel => {
-                occupants += 1;
-                efficacy += PARTIAL;
+            match a {
+                Action::Agoniste => {
+                    occupants += 1;
+                    efficacy += FULL;
+                }
+                Action::AgonistePartiel => {
+                    occupants += 1;
+                    efficacy += PARTIAL;
+                }
+                Action::AgonistePartielFaible => {
+                    occupants += 1;
+                    efficacy += WEAK;
+                }
+                Action::Antagoniste => occupants += 1,
+                Action::Inhibiteur => factor *= BLOCK,
+                Action::Activateur | Action::Potentialisateur => factor *= BOOST,
             }
-            Action::AgonistePartielFaible => {
-                occupants += 1;
-                efficacy += WEAK;
+        }
+        if occupants > 0 {
+            // Le site se partage : le ligand garde ce que les molécules
+            // ne prennent pas, et elles se le partagent à parts égales.
+            x = x * (1.0 - OCCUPIED) + OCCUPIED * efficacy / occupants as f32;
+        }
+        let mut x = x * factor;
+        // Au tonus faible, ce qui descend sous le repos n'en retire que
+        // le dixième : il n'y avait presque rien à retirer.
+        if self.low[i] && x < 1.0 {
+            x = 1.0 - (1.0 - x) * LOW_TONE;
+        }
+        x.clamp(0.0, CEILING)
+    }
+
+    fn settle(&self, given: &[bool], density: &[f32]) -> Frame {
+        let n = self.up.len();
+        let mut level = vec![1.0_f32; n];
+        let mut drive = vec![1.0_f32; n];
+        let k = |i: usize| density.get(i).copied().unwrap_or(1.0);
+        // Une chaîne sans boucle s'établit en un passage ; une boucle de
+        // rétrocontrôle se rapproche de son point fixe à chaque passage.
+        // Un nombre fixe : le résultat ne dépend pas d'un seuil de
+        // convergence que personne ne choisirait.
+        for _ in 0..24 {
+            for &i in &self.order {
+                let d = self.drive(i, &level, given);
+                drive[i] = d;
+                // Moyenné avec l'image d'avant : une boucle qui s'inverse
+                // à chaque passage finit sur son milieu au lieu d'osciller.
+                let next = (d * k(i)).clamp(0.0, CEILING);
+                level[i] = 0.5 * level[i] + 0.5 * next;
             }
-            Action::Antagoniste => occupants += 1,
-            Action::Inhibiteur => factor *= BLOCK,
-            Action::Activateur | Action::Potentialisateur => factor *= BOOST,
+        }
+        for &i in &self.order {
+            let d = self.drive(i, &level, given);
+            drive[i] = d;
+            level[i] = (d * k(i)).clamp(0.0, CEILING);
+        }
+        Frame {
+            level,
+            drive,
+            density: (0..n).map(k).collect(),
         }
     }
-    if occupants > 0 {
-        // Le site se partage : le ligand garde ce que les molécules ne
-        // prennent pas, et elles se le partagent à parts égales.
-        x = x * (1.0 - OCCUPIED) + OCCUPIED * efficacy / occupants as f32;
-    }
-    let mut x = x * factor;
-    // Au tonus faible, ce qui descend sous le repos n'en retire que le
-    // dixième : il n'y avait presque rien à retirer.
-    if c.nodes.get(i).is_some_and(|n| n.low_tone) && x < 1.0 {
-        x = 1.0 - (1.0 - x) * LOW_TONE;
-    }
-    x.clamp(0.0, CEILING)
 }
 
 /// L'état établi d'une chaîne pour ces molécules et ces densités — ce
 /// qu'on voit une fois le signal passé, sans que le temps ait joué.
 pub fn settle(c: &Cascade, given: &[bool], density: &[f32]) -> Frame {
-    let n = c.nodes.len();
-    let (order, _) = order(c);
-    let mut level = vec![1.0_f32; n];
-    let mut drive = vec![1.0_f32; n];
-    // Une chaîne sans boucle s'établit en un passage ; une boucle de
-    // rétrocontrôle se rapproche de son point fixe à chaque passage. Un
-    // nombre fixe : le résultat ne dépend pas d'un seuil de convergence
-    // que personne ne choisirait.
-    for _ in 0..24 {
-        for &i in &order {
-            let d = drive_of(c, i, &level, given);
-            drive[i] = d;
-            let k = density.get(i).copied().unwrap_or(1.0);
-            // Moyenné avec l'image d'avant : une boucle qui s'inverse à
-            // chaque passage finit sur son milieu au lieu d'osciller.
-            let next = (d * k).clamp(0.0, CEILING);
-            level[i] = 0.5 * level[i] + 0.5 * next;
-        }
-    }
-    for &i in &order {
-        let k = density.get(i).copied().unwrap_or(1.0);
-        let d = drive_of(c, i, &level, given);
-        drive[i] = d;
-        level[i] = (d * k).clamp(0.0, CEILING);
-    }
-    Frame {
-        level,
-        drive,
-        density: (0..n)
-            .map(|i| density.get(i).copied().unwrap_or(1.0))
-            .collect(),
-    }
+    Wiring::of(c).settle(given, density)
 }
 
 /// Une prise : une molécule donnée à partir d'un pas, jusqu'à un autre
@@ -1139,10 +1208,11 @@ pub fn given_at(c: &Cascade, doses: &[Dose], t: u32) -> Vec<bool> {
 /// tolérance, et du rebond quand on arrête.
 pub fn run(c: &Cascade, doses: &[Dose], steps: u32) -> Vec<Frame> {
     let n = c.nodes.len();
+    let wiring = Wiring::of(c);
     let mut density = vec![1.0_f32; n];
     let mut out = Vec::with_capacity(steps as usize + 1);
     for t in 0..=steps {
-        let frame = settle(c, &given_at(c, doses, t), &density);
+        let frame = wiring.settle(&given_at(c, doses, t), &density);
         for ((node, k), d) in c.nodes.iter().zip(density.iter_mut()).zip(&frame.drive) {
             if !node.adapts {
                 continue;
@@ -1817,6 +1887,54 @@ adaptation Bêta-1
             let c = parse(text);
             assert!(lint(&c, |_| true).is_empty(), "{}", c.title);
         }
+    }
+
+    #[test]
+    fn a_pasted_text_of_hundreds_of_nodes_plays_in_a_blink() {
+        // Une chaîne de trois cents nœuds, une boucle, une molécule.
+        let mut text = String::new();
+        for i in 0..300 {
+            text.push_str(&format!("N{i} -> N{}\n", i + 1));
+        }
+        text.push_str("N300 -| N150\nmolécule x : agoniste N0\nadaptation N10\n");
+        let c = parse(&text);
+        assert!(c.faults.is_empty());
+        let started = std::time::Instant::now();
+        let frames = run(
+            &c,
+            &[Dose {
+                molecule: 0,
+                from: 0,
+                until: Some(60),
+            }],
+            120,
+        );
+        assert_eq!(frames.len(), 121);
+        let _ = layout(&c);
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(3),
+            "{:?}",
+            started.elapsed()
+        );
+    }
+
+    #[test]
+    fn a_name_that_starts_like_a_keyword_is_still_a_name_on_an_arrow_line() {
+        let text = "Tonus vagal -| Fréquence cardiaque\nSource de calcium -> Contraction\n\
+                    Adaptation cellulaire -> Survie\ntitre : A -> B\nsource : X -> Y";
+        let c = parse(text);
+        assert!(c.faults.is_empty(), "{:?}", c.faults);
+        assert_eq!(c.edges.len(), 3);
+        assert!(c.find("Tonus vagal").is_some());
+        assert_eq!(c.title, "A -> B");
+        assert_eq!(c.sources, vec!["X -> Y".to_owned()]);
+        let spans = colour(text);
+        let keywords: Vec<&str> = spans
+            .iter()
+            .filter(|s| s.2 == Ink::Keyword)
+            .map(|s| &text[s.0..s.1])
+            .collect();
+        assert_eq!(keywords, vec!["titre", "source"]);
     }
 
     #[test]
