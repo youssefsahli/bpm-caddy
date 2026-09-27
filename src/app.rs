@@ -9104,6 +9104,44 @@ impl Session {
         false
     }
 
+    /// La fiche de la base qui porte chaque molécule de la cascade
+    /// ouverte, par sa DCI — la porte de retour vers la monographie.
+    fn cascade_card_of(&self, m: usize) -> Option<Drug> {
+        let read = self.cascade_read.as_ref()?;
+        let name = &read.parsed.molecules.get(m)?.name;
+        self.drugs
+            .iter()
+            .find(|d| crate::fuzzy::eq_folded(&d.dci, name))
+            .cloned()
+    }
+
+    fn cascade_cards(&self) -> Vec<bool> {
+        let Some(read) = &self.cascade_read else {
+            return Vec::new();
+        };
+        read.parsed
+            .molecules
+            .iter()
+            .map(|mol| {
+                self.drugs
+                    .iter()
+                    .any(|d| crate::fuzzy::eq_folded(&d.dci, &mol.name))
+            })
+            .collect()
+    }
+
+    fn cascade_open_card(&mut self, m: usize) {
+        if !self.cascade_may_leave() {
+            return;
+        }
+        if let Some(d) = self.cascade_card_of(m) {
+            self.cascade_edit = None;
+            self.cascade_preview = None;
+            self.view = MainView::Drugs;
+            self.open_drug_card(d);
+        }
+    }
+
     /// Quelles molécules de la cascade ouverte le dossier ouvert prend —
     /// par la DCI de ses traitements, sur le nom entier.
     fn cascade_in_file(&self) -> Vec<bool> {
@@ -41940,7 +41978,9 @@ impl App {
         let read = session.cascade_read.clone();
         let t = session.cascade_t;
         let in_file = session.cascade_in_file();
+        let with_card = session.cascade_cards();
         let mut give_file = false;
+        let mut card: Option<usize> = None;
         let (_, drawn) = Self::cascades_strip_fit(ui, session, rect.width(), rect.height());
         let widths = Self::cascades_strip_widths(ui, session, drawn);
         motif::inside(ui, rect, |ui| {
@@ -41978,16 +42018,18 @@ impl App {
                             {
                                 give_file = true;
                             }
-                            let (f, h) = Self::cascade_molecule_boxes(
+                            let (f, h, k) = Self::cascade_molecule_boxes(
                                 ui,
                                 read,
                                 &session.cascade_doses,
                                 t,
                                 false,
                                 &in_file,
+                                &with_card,
                             );
                             flip = f;
                             hover = h;
+                            card = k;
                         }
                     });
                 });
@@ -41995,6 +42037,9 @@ impl App {
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
         if give_file {
             Self::cascade_give_file(session, &in_file, now);
+        }
+        if let Some(m) = card {
+            session.cascade_open_card(m);
         }
     }
 
@@ -42007,8 +42052,9 @@ impl App {
         t: u32,
         stacked: bool,
         in_file: &[bool],
-    ) -> (Option<usize>, Option<usize>) {
-        let (mut flip, mut hover) = (None, None);
+        with_card: &[bool],
+    ) -> (Option<usize>, Option<usize>, Option<usize>) {
+        let (mut flip, mut hover, mut card) = (None, None, None);
         let given = crate::cascade::given_at(&read.parsed, doses, t);
         for (m, mol) in read.parsed.molecules.iter().enumerate() {
             let mut on = given.get(m).copied().unwrap_or(false);
@@ -42016,18 +42062,41 @@ impl App {
             if in_file.get(m).copied().unwrap_or(false) {
                 what = trf("cascade_in_file", what);
             }
+            let has_card = with_card.get(m).copied().unwrap_or(false);
             let resp = motif::checkbox(ui, &mut on, mol.name.as_str());
             if resp.changed() {
                 flip = Some(m);
             }
+            // **La fiche, d'un clic droit** sur la case — ou d'un clic sur
+            // la ligne qui dit ce qu'elle fait, dans la colonne : la
+            // cascade mène à la monographie comme la monographie mène à
+            // la cascade.
+            if has_card && resp.secondary_clicked() {
+                card = Some(m);
+            }
             let mut over = resp.hovered();
             if stacked {
-                let line = ui.label(
-                    egui::RichText::new(what)
-                        .size(motif::pt(ui, 10.5))
-                        .color(motif::text_dim()),
+                let line = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(what)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .sense(if has_card {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    }),
                 );
                 over |= line.hovered();
+                if has_card {
+                    if line.clicked() {
+                        card = Some(m);
+                    }
+                    line.on_hover_text(tr("cascade_open_card"));
+                }
+            } else if has_card {
+                resp.on_hover_text(format!("{what}\n{}", tr("cascade_open_card")));
             } else {
                 resp.on_hover_text(what);
             }
@@ -42035,7 +42104,7 @@ impl App {
                 hover = Some(m);
             }
         }
-        (flip, hover)
+        (flip, hover, card)
     }
 
     /// Donner d'un geste **ce que le dossier ouvert prend** : l'ordonnance
@@ -42113,7 +42182,9 @@ impl App {
         let read = session.cascade_read.clone();
         let t = session.cascade_t;
         let in_file = session.cascade_in_file();
+        let with_card = session.cascade_cards();
         let mut give_file = false;
+        let mut card: Option<usize> = None;
         motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
@@ -42164,22 +42235,27 @@ impl App {
                         {
                             give_file = true;
                         }
-                        let (f, h) = Self::cascade_molecule_boxes(
+                        let (f, h, k) = Self::cascade_molecule_boxes(
                             ui,
                             read,
                             &session.cascade_doses,
                             t,
                             true,
                             &in_file,
+                            &with_card,
                         );
                         flip = f;
                         hover = h;
+                        card = k;
                     });
             });
         });
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
         if give_file {
             Self::cascade_give_file(session, &in_file, now);
+        }
+        if let Some(m) = card {
+            session.cascade_open_card(m);
         }
     }
 
@@ -83117,6 +83193,36 @@ mod tests {
             .molecules
             .len();
         assert!(session.cascade_doses.iter().all(|d| d.molecule < kept));
+    }
+
+    /// Une molécule de la cascade mène à sa fiche, par sa DCI entière ;
+    /// une molécule sans fiche n'offre pas de porte.
+    #[test]
+    fn a_cascade_molecule_leads_back_to_its_card() {
+        let (mut session, _swept) = scratch_session("cascade-card");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let beta = session.cascades_naming("bisoprolol")[0].0;
+        session.open_cascade(beta, None);
+        session.drugs = vec![crate::db::Drug {
+            id: 7,
+            name: "Cardensiel".into(),
+            dci: "Bisoprolol".into(),
+            ..Default::default()
+        }];
+        let read = session.cascade_read.clone().unwrap();
+        let m = read
+            .parsed
+            .molecules
+            .iter()
+            .position(|m| m.name == "bisoprolol")
+            .unwrap();
+        let cards = session.cascade_cards();
+        assert_eq!(cards.iter().filter(|b| **b).count(), 1);
+        assert!(cards[m]);
+        assert_eq!(session.cascade_card_of(m).map(|d| d.id), Some(7));
+        assert!(session.cascade_card_of(m + 1).is_none());
+        assert!(session.cascade_card_of(999).is_none());
     }
 
     /// Un texte tapé dans « Décrire » ne se perd pas d'un clic : la

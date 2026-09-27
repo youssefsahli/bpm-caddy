@@ -2204,6 +2204,7 @@ cascade_chart_hint = "Un effet par courbe ; le filet horizontal est l'état de r
 cascade_given = "Donné : {}"
 cascade_in_file = "{} · au dossier"
 cascade_give_file = "Molécules du dossier"
+cascade_open_card = "Clic : ouvrir la fiche (clic droit sur la case)"
 cascade_give_file_tooltip = "Donner ensemble, à partir du temps affiché, les molécules de cette cascade que prend le dossier ouvert"
 cascade_density_series = "{} (adaptation)"
 cascade_up = "Augmenté"
