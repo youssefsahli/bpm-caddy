@@ -750,7 +750,8 @@ cyclo-oxygénases, coagulation, sécrétion acide. Semées une fois : une
 cascade réécrite ou supprimée par l'équipe ne revient pas.
 
 Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
-la molécule déjà donnée.
+la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une
+molécule (ou un clic droit sur sa case) ouvre sa fiche.
 
 # Carte vaccinale
 

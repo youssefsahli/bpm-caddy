@@ -21,7 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   se redessine à mesure qu'on tape. « Nouvelle cascade » part d'un
   modèle ; chaque ligne mal écrite est signalée avec son numéro.
 - Sur une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
-  la molécule déjà donnée.
+  la molécule déjà donnée ; dans la cascade, la ligne d'une molécule
+  ouvre sa fiche.
 - Un dossier ouvert : « Molécules du dossier » donne d'un coup les
   molécules de la cascade que prend le patient — un IEC et une
   spironolactone montrent ensemble la kaliémie qui monte.
