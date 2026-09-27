@@ -9223,7 +9223,19 @@ impl Session {
                 .as_ref()
                 .is_none_or(|p| p.text != *typed);
             if stale {
-                self.cascade_preview = Some(std::sync::Arc::new(CascadeRead::of(read.id, typed)));
+                let mut preview = CascadeRead::of(read.id, typed);
+                preview.hints = crate::cascade::lint(&preview.parsed, |name| {
+                    self.drugs
+                        .iter()
+                        .any(|d| crate::fuzzy::eq_folded(&d.dci, name))
+                })
+                .into_iter()
+                .map(|l| match l {
+                    crate::cascade::Lint::NoCard(name) => trf("cascade_hint_no_card", name),
+                    crate::cascade::Lint::Isolated(name) => trf("cascade_hint_isolated", name),
+                })
+                .collect();
+                self.cascade_preview = Some(std::sync::Arc::new(preview));
             }
         }
     }
@@ -10761,6 +10773,9 @@ struct CascadeRead {
     text: String,
     parsed: crate::cascade::Cascade,
     layout: crate::cascade::Layout,
+    /// Ce qui se lit mais ressemble à une erreur d'écriture — rempli pour
+    /// l'aperçu de l'éditeur seulement, et une fois par texte.
+    hints: Vec<String>,
 }
 
 impl CascadeRead {
@@ -10772,6 +10787,7 @@ impl CascadeRead {
             text: text.to_owned(),
             parsed,
             layout,
+            hints: Vec::new(),
         }
     }
 }
@@ -43484,6 +43500,7 @@ impl App {
             .iter()
             .map(Self::cascade_fault_text)
             .collect();
+        let hints = &preview.hints;
         let small = egui::FontId::proportional(motif::pt(ui, 10.0));
         let small_line = ui.fonts(|f| f.row_height(&small));
         // Mesurés sur la largeur **dans** la zone défilante, celle où ils
@@ -43494,10 +43511,11 @@ impl App {
         let syntax_rows = motif::label_rows(ui, tr("cascade_syntax"), &small, inner_w) as f32;
         let fault_rows: f32 = faults
             .iter()
+            .chain(hints.iter())
             .take(4)
             .map(|f| motif::label_rows(ui, f, &small, inner_w) as f32)
             .sum();
-        let labels = 1.0 + faults.len().min(4) as f32;
+        let labels = 1.0 + (faults.len() + hints.len()).min(4) as f32;
         let under = ((syntax_rows + fault_rows) * small_line
             + labels * ui.spacing().item_spacing.y)
             .min(text_rect.height() * 0.4);
@@ -43558,6 +43576,13 @@ impl App {
                             egui::RichText::new(f)
                                 .font(small.clone())
                                 .color(motif::alert()),
+                        );
+                    }
+                    for h in hints {
+                        ui.label(
+                            egui::RichText::new(h)
+                                .font(small.clone())
+                                .color(motif::warn()),
                         );
                     }
                     ui.label(

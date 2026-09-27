@@ -667,6 +667,36 @@ pub fn parse(text: &str) -> Cascade {
     c
 }
 
+/// Ce qui se lit sans faute mais ressemble à une erreur d'écriture.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Lint {
+    /// Une molécule dont aucune fiche ne porte le nom : la cascade se
+    /// joue, mais aucune fiche n'y mène.
+    NoCard(String),
+    /// Un nœud qu'aucune flèche ne relie — le plus souvent, un nom qui
+    /// diffère d'une lettre de celui de la flèche.
+    Isolated(String),
+}
+
+/// Relever ces deux cas. `has_card` dit si un nom de molécule est celui
+/// d'une fiche de la base.
+pub fn lint(c: &Cascade, has_card: impl Fn(&str) -> bool) -> Vec<Lint> {
+    let mut out: Vec<Lint> = c
+        .nodes
+        .iter()
+        .enumerate()
+        .filter(|(i, _)| c.edges.iter().all(|e| e.from != *i && e.to != *i))
+        .map(|(_, n)| Lint::Isolated(n.name.clone()))
+        .collect();
+    out.extend(
+        c.molecules
+            .iter()
+            .filter(|m| !has_card(&m.name))
+            .map(|m| Lint::NoCard(m.name.clone())),
+    );
+    out
+}
+
 /// L'encre d'un morceau de texte dans l'éditeur.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Ink {
@@ -1772,6 +1802,21 @@ adaptation Bêta-1
         let l = layout(&c);
         assert_eq!(l.layer[c.find("X").unwrap()], 2);
         assert_eq!(l.layer[c.find("A").unwrap()], 0);
+    }
+
+    #[test]
+    fn the_lint_names_a_molecule_without_card_and_a_node_left_alone() {
+        let c =
+            parse("A -> B\nrécepteur Bêta1\nmolécule x : antagoniste A\nmolécule y : agoniste B");
+        let found = lint(&c, |n| n == "y");
+        assert_eq!(
+            found,
+            vec![Lint::Isolated("Bêta1".into()), Lint::NoCard("x".into())]
+        );
+        for text in STARTER_CASCADES {
+            let c = parse(text);
+            assert!(lint(&c, |_| true).is_empty(), "{}", c.title);
+        }
     }
 
     #[test]
