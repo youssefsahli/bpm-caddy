@@ -58,7 +58,6 @@ jobs:
       # Gradle builds the Rust side itself (`buildRust`, before `preBuild`).
       - name: APK
         working-directory: android
-        env:
         # Le NDK du runner : `ANDROID_NDK_LATEST_HOME` est une variable de
         # son environnement, **pas** du contexte `env` des workflows — lue
         # comme une expression du workflow, elle arrivait vide, et
