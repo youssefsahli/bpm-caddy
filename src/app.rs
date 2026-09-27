@@ -42043,6 +42043,12 @@ impl App {
             Self::button_width(ui, tr("cascades_new")),
         ];
         if let Some(read) = &session.cascade_read {
+            out.extend(
+                read.parsed
+                    .scenarios
+                    .iter()
+                    .map(|sc| Self::button_width(ui, &sc.name)),
+            );
             if session.cascade_in_file().iter().any(|b| *b) {
                 out.push(Self::button_width(ui, tr("cascade_give_file")));
             }
@@ -42089,6 +42095,7 @@ impl App {
         let with_card = session.cascade_cards();
         let mut give_file = false;
         let mut card: Option<usize> = None;
+        let mut story: Option<usize> = None;
         let (_, drawn) = Self::cascades_strip_fit(ui, session, rect.width(), rect.height());
         let widths = Self::cascades_strip_widths(ui, session, drawn);
         motif::inside(ui, rect, |ui| {
@@ -42119,6 +42126,14 @@ impl App {
                             make = true;
                         }
                         if let Some(read) = read.as_ref() {
+                            for (k, sc) in read.parsed.scenarios.iter().enumerate() {
+                                if motif::button(ui, &sc.name)
+                                    .on_hover_text(tr("cascade_scenario_tooltip"))
+                                    .clicked()
+                                {
+                                    story = Some(k);
+                                }
+                            }
                             if in_file.iter().any(|b| *b)
                                 && motif::button(ui, tr("cascade_give_file"))
                                     .on_hover_text(tr("cascade_give_file_tooltip"))
@@ -42148,6 +42163,9 @@ impl App {
         }
         if let Some(m) = card {
             session.cascade_open_card(m);
+        }
+        if let Some(k) = story {
+            Self::cascade_play_scenario(session, k, now);
         }
     }
 
@@ -42213,6 +42231,32 @@ impl App {
             }
         }
         (flip, hover, card)
+    }
+
+    /// Jouer un scénario : ses prises, le temps à zéro, et la lecture
+    /// lancée — une histoire se regarde, elle ne se remonte pas pas à pas.
+    fn cascade_play_scenario(session: &mut Session, k: usize, now: f64) {
+        let Some(read) = session.cascade_read.clone() else {
+            return;
+        };
+        let Some(sc) = read.parsed.scenarios.get(k) else {
+            return;
+        };
+        session.cascade_doses = sc
+            .doses
+            .iter()
+            .filter(|d| d.molecule < read.parsed.molecules.len())
+            .map(|d| crate::cascade::Dose {
+                from: d.from.min(CASCADE_HORIZON),
+                until: d.until.map(|u| u.min(CASCADE_HORIZON)),
+                ..*d
+            })
+            .collect();
+        session.cascade_t = 0;
+        session.cascade_wave = None;
+        session.cascade_playing = true;
+        session.cascade_tick = now;
+        session.cascade_sync();
     }
 
     /// Donner d'un geste **ce que le dossier ouvert prend** : l'ordonnance
@@ -42293,6 +42337,7 @@ impl App {
         let with_card = session.cascade_cards();
         let mut give_file = false;
         let mut card: Option<usize> = None;
+        let mut story: Option<usize> = None;
         motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
@@ -42325,6 +42370,25 @@ impl App {
                         let Some(read) = read.as_ref() else {
                             return;
                         };
+                        // Les scénarios d'abord : c'est l'entrée la plus
+                        // courte dans ce que la cascade fait avec le
+                        // temps, et sous neuf molécules personne ne les
+                        // voyait.
+                        if !read.parsed.scenarios.is_empty() {
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("cascades_scenarios"));
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                for (k, sc) in read.parsed.scenarios.iter().enumerate() {
+                                    if motif::button(ui, &sc.name)
+                                        .on_hover_text(tr("cascade_scenario_tooltip"))
+                                        .clicked()
+                                    {
+                                        story = Some(k);
+                                    }
+                                }
+                            });
+                        }
                         if read.parsed.molecules.is_empty() {
                             return;
                         }
@@ -42364,6 +42428,9 @@ impl App {
         }
         if let Some(m) = card {
             session.cascade_open_card(m);
+        }
+        if let Some(k) = story {
+            Self::cascade_play_scenario(session, k, now);
         }
     }
 
@@ -42423,6 +42490,8 @@ impl App {
             Fault::SelfLoop { line, name } => trn("cascade_fault_self", &[line, name]),
             Fault::UnknownAction { line, text } => trn("cascade_fault_action", &[line, text]),
             Fault::UnknownNode { line, name } => trn("cascade_fault_node", &[line, name]),
+            Fault::BadScenario { line, text } => trn("cascade_fault_scenario", &[line, text]),
+            Fault::UnknownMolecule { line, name } => trn("cascade_fault_molecule", &[line, name]),
         }
     }
 

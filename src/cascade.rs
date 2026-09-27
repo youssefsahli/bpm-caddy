@@ -75,6 +75,10 @@
 //!   ce qu'il reçoit : bloqué longtemps il se multiplie, stimulé
 //!   longtemps il se raréfie. C'est ce qui fait la tolérance et le
 //!   rebond.
+//! * `scénario <nom> : <molécule> <début>-<fin> ; <molécule> <début>-` —
+//!   une histoire toute prête, que la vue joue d'un clic : les pas où
+//!   chaque molécule commence, et où elle s'arrête (rien : jusqu'au
+//!   bout).
 //! * `tonus faible <nœud>[, <nœud>…]` — le nœud est presque au repos à
 //!   l'état de base : le bloquer ne retire presque rien, le stimuler
 //!   ajoute tout. C'est le récepteur opioïde sans opioïde : la naloxone
@@ -259,6 +263,11 @@ pub enum Fault {
     /// Une molécule ou une adaptation qui nomme un nœud qu'aucune ligne
     /// ne déclare ni ne relie.
     UnknownNode { line: usize, name: String },
+    /// Un scénario dont une prise ne se lit pas : ni `molécule 10-70` ni
+    /// `molécule 10-`.
+    BadScenario { line: usize, text: String },
+    /// Un scénario qui nomme une molécule que la cascade ne déclare pas.
+    UnknownMolecule { line: usize, name: String },
 }
 
 impl Fault {
@@ -270,9 +279,21 @@ impl Fault {
             | Fault::SelfLoop { line, .. }
             | Fault::DanglingArrow { line }
             | Fault::UnknownAction { line, .. }
-            | Fault::UnknownNode { line, .. } => *line,
+            | Fault::UnknownNode { line, .. }
+            | Fault::BadScenario { line, .. }
+            | Fault::UnknownMolecule { line, .. } => *line,
         }
     }
+}
+
+/// Un scénario : un nom, et des prises — une molécule, d'un pas à un
+/// autre ou jusqu'au bout. « Arrêt brutal du bisoprolol : bisoprolol
+/// 10-70 » se joue d'un clic, et c'est ce que la vue existe pour
+/// montrer.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Scenario {
+    pub name: String,
+    pub doses: Vec<Dose>,
 }
 
 /// Une description lue.
@@ -286,6 +307,8 @@ pub struct Cascade {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
     pub molecules: Vec<Molecule>,
+    /// Les histoires toutes prêtes : des prises, qu'un clic joue.
+    pub scenarios: Vec<Scenario>,
     pub faults: Vec<Fault>,
 }
 
@@ -438,6 +461,10 @@ fn action_of(text: &str) -> Option<(Action, &str)> {
         .find_map(|(w, a)| keyword(text, w).map(|rest| (*a, rest)))
 }
 
+/// Une prise de scénario lue, sa molécule nommée : le nom, le premier pas
+/// et le dernier.
+type Take = (String, u32, Option<u32>);
+
 /// Une molécule lue, dont les nœuds se résolvent à la fin : sa ligne,
 /// son nom, et ce qu'elle fait à quel nom de nœud.
 type Pending = (usize, String, Vec<(Action, String)>);
@@ -453,6 +480,8 @@ pub fn parse(text: &str) -> Cascade {
     let mut pending_mols: Vec<Pending> = Vec::new();
     let mut pending_adapt: Vec<(usize, String)> = Vec::new();
     let mut pending_tone: Vec<(usize, String)> = Vec::new();
+    // Un scénario : sa ligne, son nom, et ses prises par nom de molécule.
+    let mut pending_scenarios: Vec<(usize, String, Vec<Take>)> = Vec::new();
     fn node(c: &mut Cascade, name: &str, kind: Option<Kind>, note: &str, line: usize) -> usize {
         let name = tidy(name);
         match c.find(&name) {
@@ -548,6 +577,44 @@ pub fn parse(text: &str) -> Cascade {
                 }
             }
             pending_mols.push((line, name, list));
+            continue;
+        }
+        if let Some(rest) = head("scénario").or_else(|| head("scenario")) {
+            let rest = rest.trim_start_matches(':').trim_start();
+            let Some((name, spec)) = rest.split_once(':') else {
+                c.faults.push(Fault::BadScenario {
+                    line,
+                    text: rest.trim().to_owned(),
+                });
+                continue;
+            };
+            let name = tidy(name);
+            if name.is_empty() {
+                c.faults.push(Fault::MissingName { line });
+                continue;
+            }
+            let mut takes = Vec::new();
+            let mut readable = true;
+            for part in spec.split(';').map(str::trim).filter(|p| !p.is_empty()) {
+                match dose_of(part) {
+                    Some(take) => takes.push(take),
+                    None => {
+                        readable = false;
+                        c.faults.push(Fault::BadScenario {
+                            line,
+                            text: part.to_owned(),
+                        });
+                    }
+                }
+            }
+            if readable && !takes.is_empty() {
+                pending_scenarios.push((line, name, takes));
+            } else if takes.is_empty() && readable {
+                c.faults.push(Fault::BadScenario {
+                    line,
+                    text: spec.trim().to_owned(),
+                });
+            }
             continue;
         }
         if let Some(rest) = head("tonus") {
@@ -683,8 +750,53 @@ pub fn parse(text: &str) -> Cascade {
             None => c.molecules.push(Molecule { name, acts }),
         }
     }
+    for (line, name, takes) in pending_scenarios {
+        let mut doses = Vec::new();
+        let mut whole = true;
+        for (molecule, from, until) in takes {
+            match c
+                .molecules
+                .iter()
+                .position(|m| fuzzy::eq_folded(&m.name, &molecule))
+            {
+                Some(m) => doses.push(Dose {
+                    molecule: m,
+                    from,
+                    until,
+                }),
+                None => {
+                    whole = false;
+                    c.faults.push(Fault::UnknownMolecule {
+                        line,
+                        name: molecule,
+                    });
+                }
+            }
+        }
+        if whole {
+            stitch(&mut doses);
+            c.scenarios.push(Scenario { name, doses });
+        }
+    }
     c.faults.sort_by_key(Fault::line);
     c
+}
+
+/// Une prise de scénario : « bisoprolol 10-70 », « morphine 5- ». Le
+/// dernier mot porte les pas ; tout ce qui le précède est le nom.
+fn dose_of(part: &str) -> Option<Take> {
+    let (name, range) = part.trim().rsplit_once(char::is_whitespace)?;
+    let (from, until) = range.split_once('-')?;
+    let from: u32 = from.trim().parse().ok()?;
+    let until = match until.trim() {
+        "" => None,
+        u => Some(u.parse::<u32>().ok()?),
+    };
+    if until.is_some_and(|u| u <= from) {
+        return None;
+    }
+    let name = tidy(name);
+    (!name.is_empty()).then_some((name, from, until))
 }
 
 /// Ce qui se lit sans faute mais ressemble à une erreur d'écriture.
@@ -765,6 +877,8 @@ pub fn colour(text: &str) -> Vec<(usize, usize, Ink)> {
             "sources",
             "molécule",
             "molecules",
+            "scénario",
+            "scenario",
             "adaptation",
             "tonus",
             "recepteurs",
@@ -1989,6 +2103,54 @@ adaptation Bêta-1
             Trend::Down
         );
         assert_eq!(trend(level(&c, &["tiotropium"], "Salivation")), Trend::Rest);
+    }
+
+    #[test]
+    fn a_scenario_reads_its_doses_and_reports_what_it_cannot() {
+        let c = parse(
+            "A -> B\nmolécule lévodopa + carbidopa : activateur A\nmolécule x : antagoniste B\n\
+             scénario Arrêt : x 10-70 ; lévodopa + carbidopa 5-\n\
+             scénario Faux : x 70-10\nscénario Inconnu : y 1-2\nscénario sans deux points\n\
+             Scenario Vide :",
+        );
+        assert_eq!(c.scenarios.len(), 1);
+        let s = &c.scenarios[0];
+        assert_eq!(s.name, "Arrêt");
+        assert_eq!(
+            s.doses,
+            vec![
+                Dose {
+                    molecule: 0,
+                    from: 5,
+                    until: None
+                },
+                Dose {
+                    molecule: 1,
+                    from: 10,
+                    until: Some(70)
+                },
+            ]
+        );
+        let lines: Vec<usize> = c.faults.iter().map(Fault::line).collect();
+        assert_eq!(lines, vec![5, 6, 7, 8], "{:?}", c.faults);
+        assert!(matches!(c.faults[1], Fault::UnknownMolecule { .. }));
+    }
+
+    #[test]
+    fn every_shipped_scenario_tells_something() {
+        for text in STARTER_CASCADES {
+            let c = parse(text);
+            assert!(!c.scenarios.is_empty(), "{} sans scénario", c.title);
+            for sc in &c.scenarios {
+                assert!(sc.doses.iter().all(|d| d.until.unwrap_or(120) <= 120));
+                let frames = run(&c, &sc.doses, 120);
+                let moves = c
+                    .outcomes()
+                    .iter()
+                    .any(|&o| frames.iter().any(|f| trend(f.level[o]) != Trend::Rest));
+                assert!(moves, "{} : « {} » ne montre rien", c.title, sc.name);
+            }
+        }
     }
 
     #[test]

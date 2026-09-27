@@ -17,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   D2, opioïde mu, GABA-A, rénine-angiotensine-aldostérone, activation
   plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide
   gastrique.
+- Scénarios : chaque cascade livrée propose des histoires jouées d'un
+  clic — l'arrêt brutal d'un bêtabloquant ou d'une benzodiazépine, la
+  naloxone après une longue morphine, le double blocage
+  rénine-angiotensine, le donépézil puis l'oxybutynine, le
+  métoclopramide ou la dompéridone sous lévodopa.
 - « Décrire » : une cascade s'écrit en quelques lignes (« Noradrénaline
   -> Bêta-1 », « molécule bisoprolol : antagoniste Bêta-1 ») et la figure
   se redessine à mesure qu'on tape. « Nouvelle cascade » part d'un

@@ -24538,6 +24538,10 @@ molécule salbutamol : agoniste Bêta-2
 # brutal les découvre tous, d'où le rebond. Stimulés longtemps, les
 # bêta-2 se désensibilisent.
 adaptation Bêta-1, Bêta-2
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Arrêt brutal du bisoprolol : bisoprolol 10-70
+scénario Salbutamol, puis propranolol : salbutamol 10- ; propranolol 60-
 ",
     "\
 titre : Récepteur opioïde mu
@@ -24581,6 +24585,10 @@ molécule naloxone : antagoniste Récepteur mu central, Récepteur mu intestinal
 # La tolérance et le manque : freinée longtemps, l'adénylate cyclase se
 # renforce ; à l'arrêt, ou sous naloxone, l'AMPc déborde.
 adaptation Adénylate cyclase
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Tolérance, puis naloxone : morphine 5- ; naloxone 80-
+scénario Buprénorphine sur la morphine : morphine 5- ; buprénorphine 70-
 ",
     "\
 titre : Récepteur GABA-A
@@ -24616,6 +24624,10 @@ molécule zolpidem : potentialisateur GABA-A alpha-1
 molécule zopiclone : potentialisateur GABA-A alpha-1, GABA-A alpha-2/3
 
 adaptation GABA-A alpha-1, GABA-A alpha-2/3
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Arrêt brutal du diazépam : diazépam 10-70
+scénario Zolpidem : zolpidem 10-60
 ",
     "\
 titre : Système rénine-angiotensine-aldostérone
@@ -24657,6 +24669,10 @@ molécule irbésartan : antagoniste Récepteur AT1
 molécule candésartan : antagoniste Récepteur AT1
 molécule spironolactone : antagoniste Récepteur minéralocorticoïde
 molécule éplérénone : antagoniste Récepteur minéralocorticoïde
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario IEC : ramipril 10-
+scénario Double blocage : ramipril 10- ; spironolactone 50-
 ",
     "\
 titre : Activation plaquettaire
@@ -24687,6 +24703,9 @@ molécule clopidogrel : antagoniste Récepteur P2Y12
 molécule prasugrel : antagoniste Récepteur P2Y12
 # Actif d'emblée et réversible, sur un site distinct de celui de l'ADP.
 molécule ticagrélor : antagoniste Récepteur P2Y12
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Double antiagrégation : acide acétylsalicylique 10- ; clopidogrel 40-
 ",
     "\
 titre : Cyclo-oxygénases
@@ -24726,6 +24745,9 @@ molécule acide acétylsalicylique : inhibiteur COX-1, COX-2
 # Sélectif : muqueuse et plaquettes moins touchées — ni le rein, ni le
 # risque thrombotique épargnés, la prostacycline baissant seule.
 molécule célécoxib : inhibiteur COX-2
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario AINS, puis coxib : ibuprofène 10-50 ; célécoxib 60-
 ",
     "\
 titre : Coagulation
@@ -24763,6 +24785,9 @@ molécule dabigatran : inhibiteur Thrombine
 molécule héparine sodique : potentialisateur Antithrombine sur le Xa, Antithrombine sur la thrombine
 molécule énoxaparine : potentialisateur Antithrombine sur le Xa
 molécule fondaparinux : potentialisateur Antithrombine sur le Xa
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Relais héparine puis AVK : héparine sodique 10-60 ; warfarine 30-
 ",
     "\
 titre : Sécrétion acide gastrique
@@ -24794,6 +24819,9 @@ molécule ésoméprazole : inhibiteur Pompe à protons
 molécule lansoprazole : inhibiteur Pompe à protons
 molécule pantoprazole : inhibiteur Pompe à protons
 molécule famotidine : antagoniste Récepteur H2
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario IPP : oméprazole 10-90
 ",
     "\
 titre : Récepteurs muscariniques
@@ -24843,6 +24871,10 @@ molécule ipratropium : antagoniste M3 bronchique
 # QT long de l'hydroxyzine n'est pas dessiné non plus.
 molécule amitriptyline : antagoniste M1 central, M2 cardiaque, M3 vésical, M3 salivaire
 molécule hydroxyzine : antagoniste M1 central, M3 vésical, M3 salivaire
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Cascade de prescription : donépézil 10- ; oxybutynine 50-
+scénario Donépézil et trospium : donépézil 10- ; trospium 50-
 ",
     "\
 titre : Récepteurs dopaminergiques D2
@@ -24891,6 +24923,10 @@ molécule bromocriptine : agoniste D2 nigrostrié, D2 mésolimbique, D2 hypophys
 # freine sa conversion hors du cerveau : les nausées montent moins que
 # le dessin ne le montre.
 molécule lévodopa + carbidopa : activateur Dopamine
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Métoclopramide sous lévodopa : lévodopa + carbidopa 10- ; métoclopramide 60-
+scénario Dompéridone sous lévodopa : lévodopa + carbidopa 10- ; dompéridone 60-
 ",
 ];
 

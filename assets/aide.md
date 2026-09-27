@@ -702,6 +702,11 @@ La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
 qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
 nature, sa note et son état.
 
+**Les scénarios**, sous les molécules, sont des histoires toutes prêtes
+— « Arrêt brutal du bisoprolol », « Cascade de prescription » : un clic
+donne les molécules à leurs pas, remet le temps à zéro et lance la
+lecture.
+
 **Un dossier ouvert** : « Molécules du dossier » donne d'un coup les
 molécules de la cascade que prend le patient, et chacune est marquée
 « au dossier » dans la liste.
@@ -736,6 +741,9 @@ mesure qu'on écrit. Une instruction par ligne :
   sont agoniste, agoniste partiel, agoniste partiel faible, antagoniste,
   inhibiteur, activateur et potentialisateur, séparées par `;` ;
 - `adaptation Bêta-1` : le nœud s'adapte avec le temps ;
+- `scénario Arrêt brutal : bisoprolol 10-70 ; propranolol 60-` : une
+  histoire à jouer — chaque molécule avec son premier pas et son dernier
+  (rien après le tiret : jusqu'au bout) ;
 - `tonus faible Récepteur mu central` : le nœud est presque au repos
   sans molécule — le bloquer ne retire presque rien, le stimuler ajoute
   tout (la naloxone seule ne fait rien, sur la morphine elle la renverse) ;
