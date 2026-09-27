@@ -702,12 +702,23 @@ La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
 qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
 nature, sa note et son état.
 
-**Le temps** : « Lecture » fait avancer les pas ; la courbe du bas suit
-chaque effet, le filet horizontal étant l'état de repos. Un récepteur qui
-s'adapte se multiplie quand il est longtemps bloqué et se raréfie quand
-il est longtemps stimulé — le filet sous sa case le montre. C'est ce qui
-fait la tolérance, et le rebond à l'arrêt brutal : donner un
-bêtabloquant, avancer, le décocher, avancer encore.
+**Un dossier ouvert** : « Molécules du dossier » donne d'un coup les
+molécules de la cascade que prend le patient, et chacune est marquée
+« au dossier » dans la liste.
+
+**Le temps** : « Lecture » (ou la barre d'espace) fait avancer les pas ;
+un clic dans les courbes place le temps. Chaque effet a sa courbe, le
+filet horizontal étant l'état de repos ; un clic sur une clé de la
+légende masque ou rend une courbe. Un récepteur qui s'adapte se
+multiplie quand il est longtemps bloqué et se raréfie quand il est
+longtemps stimulé — sa densité est tracée en tirets, et le filet sous
+sa case la montre sur la figure. C'est ce qui fait la tolérance, et le
+rebond à l'arrêt brutal : donner un bêtabloquant, avancer, le décocher,
+avancer encore.
+
+Sur un écran bas, « Figure » et « Courbes » se montrent l'une après
+l'autre. La figure se parcourt comme la carte pharmacologique :
+glisser, molette, + et −, 0 pour revenir.
 
 Le modèle est **qualitatif** : il montre des sens de variation, jamais
 une dose ni un délai. Le temps est en pas, sans unité.

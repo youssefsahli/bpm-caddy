@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   modèle ; chaque ligne mal écrite est signalée avec son numéro.
 - Sur une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
   la molécule déjà donnée.
+- Un dossier ouvert : « Molécules du dossier » donne d'un coup les
+  molécules de la cascade que prend le patient — un IEC et une
+  spironolactone montrent ensemble la kaliémie qui monte.
 - Options › Mentions : une mention à afficher sous les cascades.
 
 ## [0.352.0] - 2026-09-26

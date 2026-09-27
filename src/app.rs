@@ -9082,6 +9082,26 @@ impl Session {
         }
     }
 
+    /// Quelles molécules de la cascade ouverte le dossier ouvert prend —
+    /// par la DCI de ses traitements, sur le nom entier.
+    fn cascade_in_file(&self) -> Vec<bool> {
+        let Some(read) = &self.cascade_read else {
+            return Vec::new();
+        };
+        if self.viewing.is_none() {
+            return vec![false; read.parsed.molecules.len()];
+        }
+        read.parsed
+            .molecules
+            .iter()
+            .map(|m| {
+                self.patient_treats
+                    .iter()
+                    .any(|d| crate::fuzzy::eq_folded(&d.dci, &m.name))
+            })
+            .collect()
+    }
+
     /// Les cascades qui nomment cette molécule — la porte d'une fiche.
     fn cascades_naming(&self, dci: &str) -> Vec<(i64, String)> {
         if dci.trim().is_empty() {
@@ -41834,6 +41854,9 @@ impl App {
             Self::button_width(ui, tr("cascades_new")),
         ];
         if let Some(read) = &session.cascade_read {
+            if session.cascade_in_file().iter().any(|b| *b) {
+                out.push(Self::button_width(ui, tr("cascade_give_file")));
+            }
             out.extend(
                 read.parsed
                     .molecules
@@ -41864,6 +41887,8 @@ impl App {
         let mut hover: Option<usize> = None;
         let read = session.cascade_read.clone();
         let t = session.cascade_t;
+        let in_file = session.cascade_in_file();
+        let mut give_file = false;
         let widths =
             Self::cascades_strip_widths(ui, session, Self::scrolled_width(ui, rect.width()));
         motif::inside(ui, rect, |ui| {
@@ -41894,12 +41919,20 @@ impl App {
                             make = true;
                         }
                         if let Some(read) = read.as_ref() {
+                            if in_file.iter().any(|b| *b)
+                                && motif::button(ui, tr("cascade_give_file"))
+                                    .on_hover_text(tr("cascade_give_file_tooltip"))
+                                    .clicked()
+                            {
+                                give_file = true;
+                            }
                             let (f, h) = Self::cascade_molecule_boxes(
                                 ui,
                                 read,
                                 &session.cascade_doses,
                                 t,
                                 false,
+                                &in_file,
                             );
                             flip = f;
                             hover = h;
@@ -41908,6 +41941,9 @@ impl App {
                 });
         });
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
+        if give_file {
+            Self::cascade_give_file(session, &in_file, now);
+        }
     }
 
     /// Les cases des molécules, et ce que chacune fait : sous la case
@@ -41918,12 +41954,16 @@ impl App {
         doses: &[crate::cascade::Dose],
         t: u32,
         stacked: bool,
+        in_file: &[bool],
     ) -> (Option<usize>, Option<usize>) {
         let (mut flip, mut hover) = (None, None);
         let given = crate::cascade::given_at(&read.parsed, doses, t);
         for (m, mol) in read.parsed.molecules.iter().enumerate() {
             let mut on = given.get(m).copied().unwrap_or(false);
-            let what = Self::cascade_acts_line(&read.parsed, mol);
+            let mut what = Self::cascade_acts_line(&read.parsed, mol);
+            if in_file.get(m).copied().unwrap_or(false) {
+                what = trf("cascade_in_file", what);
+            }
             let resp = motif::checkbox(ui, &mut on, mol.name.as_str());
             if resp.changed() {
                 flip = Some(m);
@@ -41944,6 +41984,30 @@ impl App {
             }
         }
         (flip, hover)
+    }
+
+    /// Donner d'un geste **ce que le dossier ouvert prend** : l'ordonnance
+    /// telle qu'elle est, sur la chaîne. C'est la question du comptoir —
+    /// un IEC et une spironolactone, que fait la kaliémie — et on la
+    /// posait molécule par molécule.
+    fn cascade_give_file(session: &mut Session, in_file: &[bool], now: f64) {
+        let Some(read) = session.cascade_read.clone() else {
+            return;
+        };
+        let t = session.cascade_t;
+        let given = crate::cascade::given_at(&read.parsed, &session.cascade_doses, t);
+        let before = session.cascade_shown(now);
+        let mut moved = false;
+        for (m, on) in in_file.iter().enumerate() {
+            if *on && !given.get(m).copied().unwrap_or(false) {
+                crate::cascade::toggle(&mut session.cascade_doses, m, t);
+                moved = true;
+            }
+        }
+        if moved {
+            session.cascade_sync();
+            session.cascade_moved(now, before);
+        }
     }
 
     /// Ce que la liste — colonne ou bande — a demandé, appliqué après
@@ -41992,6 +42056,8 @@ impl App {
         let mut hover: Option<usize> = None;
         let read = session.cascade_read.clone();
         let t = session.cascade_t;
+        let in_file = session.cascade_in_file();
+        let mut give_file = false;
         motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
             let inner = ui.max_rect();
             motif::inside(ui, inner, |ui| {
@@ -42035,14 +42101,30 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                         ui.add_space(4.0);
-                        let (f, h) =
-                            Self::cascade_molecule_boxes(ui, read, &session.cascade_doses, t, true);
+                        if in_file.iter().any(|b| *b)
+                            && motif::button(ui, tr("cascade_give_file"))
+                                .on_hover_text(tr("cascade_give_file_tooltip"))
+                                .clicked()
+                        {
+                            give_file = true;
+                        }
+                        let (f, h) = Self::cascade_molecule_boxes(
+                            ui,
+                            read,
+                            &session.cascade_doses,
+                            t,
+                            true,
+                            &in_file,
+                        );
                         flip = f;
                         hover = h;
                     });
             });
         });
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
+        if give_file {
+            Self::cascade_give_file(session, &in_file, now);
+        }
     }
 
     /// « antagoniste Bêta-1, Bêta-2 ; inhibiteur X » — ce qu'une
@@ -42333,6 +42415,14 @@ impl App {
                 session.cascade_edit = None;
                 session.cascade_preview = None;
             }
+        }
+        // La barre d'espace lit et arrête, quand aucun champ n'a le
+        // curseur — c'est le geste de tout lecteur.
+        if !editing
+            && ui.memory(|m| m.focused()).is_none()
+            && ui.input(|i| i.key_pressed(egui::Key::Space))
+        {
+            play = true;
         }
         if play {
             if session.cascade_playing {
@@ -82951,6 +83041,42 @@ mod tests {
             .molecules
             .len();
         assert!(session.cascade_doses.iter().all(|d| d.molecule < kept));
+    }
+
+    /// « Molécules du dossier » donne d'un geste ce que prend le dossier
+    /// ouvert — et seulement quand un dossier est ouvert.
+    #[test]
+    fn the_open_file_gives_its_molecules_to_the_cascade() {
+        let (mut session, _swept) = scratch_session("cascade-file");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let sraa = session.cascades_naming("ramipril")[0].0;
+        session.open_cascade(sraa, None);
+        assert!(session.cascade_in_file().iter().all(|b| !b));
+        session.viewing = Some(crate::db::Patient::default());
+        session.patient_treats = ["Ramipril", "spironolactone", "paracétamol"]
+            .iter()
+            .map(|d| crate::db::Drug {
+                dci: (*d).to_owned(),
+                ..Default::default()
+            })
+            .collect();
+        let in_file = session.cascade_in_file();
+        assert_eq!(in_file.iter().filter(|b| **b).count(), 2);
+        super::App::cascade_give_file(&mut session, &in_file, 0.0);
+        let read = session.cascade_read.clone().unwrap();
+        let given = crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0);
+        assert_eq!(given, in_file);
+        let run = session.cascade_run.clone().unwrap();
+        let k = read.parsed.find("Kaliémie").unwrap();
+        assert_eq!(
+            crate::cascade::trend(run.frames[0].level[k]),
+            crate::cascade::Trend::Up
+        );
+        // Donné une seconde fois, rien ne s'arrête.
+        super::App::cascade_give_file(&mut session, &in_file, 0.0);
+        let again = crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0);
+        assert_eq!(again, in_file);
     }
 
     /// Le sens de la figure suit la forme du creux, et le haut en bas
