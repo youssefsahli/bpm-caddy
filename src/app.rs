@@ -4241,6 +4241,9 @@ struct Session {
     /// Les courbes éteintes d'un clic sur leur clé — deux effets qui
     /// suivent la même courbe se cachent l'un l'autre.
     cascade_hidden: Vec<bool>,
+    /// Quitter « Décrire » avec un texte non enregistré a été demandé une
+    /// fois : la seconde l'abandonne.
+    cascade_leave_armed: bool,
     vacc_due: Vec<vaccines::DueLine>,
     /// The pregnancy date as typed in the carnet, for the file it was
     /// typed on.
@@ -5432,6 +5435,7 @@ impl Session {
             cascade_hover: None,
             cascade_curves: false,
             cascade_hidden: Vec::new(),
+            cascade_leave_armed: false,
             vacc_due: Vec::new(),
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
@@ -9080,6 +9084,24 @@ impl Session {
                 crate::cascade::toggle(&mut self.cascade_doses, m, 0);
             }
         }
+    }
+
+    /// **Un texte tapé ne se perd pas d'un clic.** Quitter « Décrire » —
+    /// « Voir », « Fermer », une autre cascade, une nouvelle — avec un
+    /// texte non enregistré le dit d'abord, et n'abandonne qu'à la
+    /// seconde demande. Rend s'il est permis de quitter maintenant.
+    fn cascade_may_leave(&mut self) -> bool {
+        let dirty = self
+            .cascade_edit
+            .as_ref()
+            .is_some_and(|(typed, base)| typed != base);
+        if !dirty || self.cascade_leave_armed {
+            self.cascade_leave_armed = false;
+            return true;
+        }
+        self.cascade_leave_armed = true;
+        self.error = Some(tr("cascade_unsaved").to_owned());
+        false
     }
 
     /// Quelles molécules de la cascade ouverte le dossier ouvert prend —
@@ -42032,6 +42054,10 @@ impl App {
         now: f64,
     ) {
         session.cascade_hover = hover;
+        let leaving = make || open.is_some_and(|id| session.cascade_open != Some(id));
+        if leaving && !session.cascade_may_leave() {
+            return;
+        }
         if make {
             match session.db.add_cascade(tr("cascade_template")) {
                 Ok(id) => {
@@ -42421,10 +42447,17 @@ impl App {
                 session.cascade_playing = false;
                 session.cascade_edit = Some((read.text.clone(), read.text.clone()));
                 session.cascade_conflict = false;
-            } else {
+            } else if session.cascade_may_leave() {
                 session.cascade_edit = None;
                 session.cascade_preview = None;
             }
+        }
+        // Ctrl+S enregistre, comme partout ailleurs sur un poste.
+        if editing && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
+            save = session
+                .cascade_edit
+                .as_ref()
+                .is_some_and(|(typed, base)| typed != base);
         }
         // La barre d'espace lit et arrête, quand aucun champ n'a le
         // curseur — c'est le geste de tout lecteur.
@@ -42458,7 +42491,7 @@ impl App {
             session.cascade_playing = false;
             session.cascade_wave = None;
         }
-        if cancel {
+        if cancel && session.cascade_may_leave() {
             session.cascade_edit = None;
             session.cascade_preview = None;
             session.cascade_conflict = false;
@@ -42862,7 +42895,13 @@ impl App {
             .collect();
         let painter = ui.painter_at(field);
         let level = |i: usize| levels.get(i).copied().unwrap_or(1.0);
-        let lit = session.cascade_hover.and_then(|m| c.molecules.get(m));
+        // Le survol d'une molécule de la liste éclaire ses nœuds — sur la
+        // figure du texte enregistré seulement : dans l'aperçu, les
+        // numéros des molécules sont ceux d'un autre texte.
+        let lit = session
+            .cascade_hover
+            .filter(|_| live)
+            .and_then(|m| c.molecules.get(m));
         // --- Les flèches, sous les nœuds ----------------------------
         let ink = motif::text_dim();
         let faint = motif::chart::grid_color();
@@ -43395,9 +43434,10 @@ impl App {
             job.wrap.max_width = f32::INFINITY;
             ui.fonts(|f| f.layout_job(job))
         };
+        let mut typed_more = false;
         if let Some((typed, _)) = session.cascade_edit.as_mut() {
             motif::inside(ui, split[0], |ui| {
-                motif::code_area(
+                let (resp, _) = motif::code_area(
                     ui,
                     "cascade_editor",
                     split[0].size(),
@@ -43405,7 +43445,13 @@ impl App {
                         .code_editor()
                         .layouter(&mut layouter),
                 );
+                typed_more = resp.changed();
             });
+        }
+        // Ce qu'on tape après l'avertissement le rend caduc : c'est un
+        // autre texte qu'on abandonnerait.
+        if typed_more {
+            session.cascade_leave_armed = false;
         }
         motif::inside(ui, split[1], |ui| {
             egui::ScrollArea::vertical()
@@ -83051,6 +83097,22 @@ mod tests {
             .molecules
             .len();
         assert!(session.cascade_doses.iter().all(|d| d.molecule < kept));
+    }
+
+    /// Un texte tapé dans « Décrire » ne se perd pas d'un clic : la
+    /// première demande de quitter avertit, la seconde abandonne ; un
+    /// texte inchangé part tout de suite.
+    #[test]
+    fn leaving_an_unsaved_cascade_asks_twice() {
+        let (mut session, _swept) = scratch_session("cascade-leave");
+        session.cascade_edit = Some(("A -> B".into(), "A -> B".into()));
+        assert!(session.cascade_may_leave());
+        session.cascade_edit = Some(("A -> B -> C".into(), "A -> B".into()));
+        assert!(!session.cascade_may_leave());
+        assert!(session.error.is_some());
+        assert!(session.cascade_may_leave());
+        // Et la fois d'après, on redemande.
+        assert!(!session.cascade_may_leave());
     }
 
     /// « Molécules du dossier » donne d'un geste ce que prend le dossier
