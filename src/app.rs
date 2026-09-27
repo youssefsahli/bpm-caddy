@@ -42782,6 +42782,21 @@ impl App {
             session.cascade_wave = None;
         }
         if cancel && session.cascade_may_leave() {
+            // **Une nouvelle cascade fermée sans avoir été écrite
+            // disparaît** : le modèle laissé tel quel n'est la cascade de
+            // personne, et il s'accumulait dans la liste à chaque essai.
+            let untouched = read.text == tr("cascade_template")
+                && session
+                    .cascade_edit
+                    .as_ref()
+                    .is_none_or(|(typed, _)| typed == tr("cascade_template"));
+            if untouched {
+                if let Ok(true) = session.db.delete_cascade(read.id, &read.text) {
+                    session.cascade_open = None;
+                    session.cascade_read = None;
+                    session.reload_cascades();
+                }
+            }
             session.cascade_edit = None;
             session.cascade_preview = None;
             session.cascade_conflict = false;
@@ -83434,6 +83449,35 @@ mod tests {
                 session.cascade_playing = false;
             }
         }
+    }
+
+    /// Sans aucune cascade — un poste qui ne sème pas, une officine qui a
+    /// tout supprimé — la vue se dessine et le dit.
+    #[test]
+    fn the_cascades_view_draws_with_no_cascade_at_all() {
+        let (mut session, _swept) = scratch_session("cascade-empty");
+        let config = crate::config::Config::default();
+        let ctx = egui::Context::default();
+        for (w, h) in [(1400.0, 900.0), (700.0, 500.0)] {
+            for _ in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(w, h),
+                        )),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            super::App::cascades_view(ui, &mut session, &config);
+                        });
+                    },
+                );
+            }
+        }
+        assert!(session.cascade_index.is_empty());
+        assert!(session.cascade_read.is_none());
     }
 
     /// Une cascade s'ouvre depuis la fiche de sa molécule, **la molécule
