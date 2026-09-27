@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  72 of them, and counting at all but one would be a counter quietly
+  75 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -1361,7 +1361,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 57 regions now set
+  fold is the control you came to use. 59 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2227,7 +2227,7 @@ add clicking and typing; it is not the price of entry.
   vaccine_map|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
-  trame|
+  trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|
   textes|carnets_edit|
   patient_scans|patient_dose|fil|explorer|explorer_organ|classes|classes_outside|export|
@@ -2643,6 +2643,64 @@ The ordonnance's adjuvants are **not** a list in the code: they are the
 drug cards tagged `[ordonnance] adjuvant_tag` (default `probiotique`),
 with that card's own posology lines as its schemas. Adding a product is
 adding a fiche. Resist any pull to hard-code a second catalogue.
+
+## Récepteurs et cascades (`src/cascade.rs`, vue `MainView::Cascades`)
+
+**The text is the only truth.** A cascade is stored as the text the team
+typed (`cascades.text`, nothing else): title, nodes, arrows, molecules
+and adaptations are re-read from it by `cascade::parse`, which never
+refuses — what reads is kept, what does not is a `Fault` with its line,
+and the figure draws the rest. A column holding the title beside the
+text would be a second writing of it. The compare-and-set witness of
+`update_cascade` is that raw text, never a re-serialisation, so it can
+only refuse when another post really wrote (the lesson of the officine
+options, 0.352.0); a refusal offers « Garder mon texte »
+(`force_cascade`) and « Reprendre le texte enregistré ».
+
+**The model is qualitative, and says so by construction.** Every node is
+1 at rest; a node receives the mean of what activates it, times
+`2 / (1 + x)` for each inhibitor (neutral at rest, bounded both ways);
+molecules act on top — occupying drugs share `OCCUPIED` of the site with
+the endogenous ligand, inhibitors and activators multiply, a potentiator
+multiplies only what comes from upstream (a benzodiazepine does nothing
+without GABA). `adaptation` moves a node's density towards what would
+bring it back to rest, which is all tolerance and rebound are. The view
+never prints a level: a trend (`cascade::trend`), a tint and a triangle.
+
+**Where a loop is cut is decided by the text order** (`back_edges`):
+arrows going from an earlier-named node to a later one can never form a
+cycle among themselves, and an arrow going back up the text is cut only
+if it really closes a loop. Cutting by DFS instead drew the SRAA upside
+down (« rénine -> angiotensine I » cut rather than « pression -| rénine »).
+
+**A source sits just above what it feeds**: after longest-path layering,
+a node nothing points to drops to one layer above its highest child —
+put on top by principle, the antithrombin of the coagulation cascade drew
+two arrows across the whole figure to reach the Xa and the thrombin.
+
+**The figure's orientation follows the pane** (`cascade_fit`): layers go
+down in a tall pane and across in a wide low one, top-down winning ties;
+the figure then shrinks to 0.7 before overflowing into the pan/zoom of
+`graph_navigate`, shared with the drug map. Zoom moves the boxes apart
+and gives names the room the pane refused; it never enlarges the type.
+On a pane too low for both (`label_line × 16`), « Figure » and « Courbes »
+take turns rather than share seventy-five pixels.
+
+**Dynamic, and cheap.** `run` plays the whole horizon (120 steps) once per
+change of text or doses (`CascadeRun`, memoised against both); a frame
+only indexes it. A gesture starts a `cascade_wave`: the displayed levels
+travel down the layers (`CASCADE_STAGGER`) instead of switching at once.
+Pulses along the arrows run at a speed made of the source's activity, one
+dot per fixed length, so an arrow whose source is blocked visibly carries
+nothing. The view requests a repaint every 40 ms while it is on screen.
+
+Start-view keys: `cascades` (β, bisoprolol given at 10 and stopped at 70,
+time on the rebound), `cascades_decrire` (the editor and its live
+preview), `cascades_boucle` (the SRAA with an IEC — the one shipped shape
+with a loop, drawn round the side). `BPM_CADDY_CASCADE=<part of a title>` opens another
+shipped cascade under the same keys, its first molecule given — every
+figure can be captured, not only the β one. `BPM_CADDY_CASCADE_FOCUS=<part of a node
+name>` follows that node's lineage, as a click would.
 
 ## Every printable document has an editable template
 

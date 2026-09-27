@@ -131,6 +131,7 @@ pub const TABLES: &[Table] = &[
     t("protocols", Main, Fiches, false, true),
     t("checklists", Main, Fiches, false, true),
     t("checklist_items", Main, Fiches, false, true),
+    t("cascades", Main, Fiches, false, true),
     t("protocol_nodes", Main, Fiches, false, true),
     t("posologies", Main, Fiches, false, true),
     t("drug_facts", Main, Fiches, false, false),

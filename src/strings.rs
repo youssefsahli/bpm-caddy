@@ -1538,6 +1538,19 @@ livre = "Une phrase qui n'est plus livrée"
             (
                 "README.md",
                 README,
+                format!(
+                    "{} receptor and signalling cascades ship with it",
+                    crate::db::STARTER_CASCADES.len()
+                ),
+            ),
+            (
+                "assets/aide.md",
+                AIDE,
+                format!("**{} cascades livrées**", crate::db::STARTER_CASCADES.len()),
+            ),
+            (
+                "README.md",
+                README,
                 format!("A catalogue of {presentations} presentations"),
             ),
             (

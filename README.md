@@ -34,6 +34,8 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Protocoles de comptoir — liste, arbre décisionnel, déroulé pas à pas](docs/screenshot_protocols.png)
 
+![Récepteurs et cascades — bêtabloquant arrêté : les récepteurs multipliés pendant le traitement, le rebond à l'arrêt](docs/screenshot_cascades.png)
+
 ![Dispositifs médicaux — familles, pose, renouvellement, conditions LPP](docs/screenshot_dispositifs.png)
 
 ![Locations de matériel — périodes entamées, montant facturable, renouvellements dépassés](docs/screenshot_locations.png)
@@ -88,6 +90,7 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 - **Codex of preparations** — the officine's magistral and officinal formulas, eighty to start with, including paediatric oral suspensions: formula, mode opératoire, conservation, sources. Quantities scale to the batch; the fiche de fabrication prints with lot, operator and control columns. Calculators for titre, dilution and capsule batches.
 - **Medical devices** — fiches by family (dressings, fixation, compression, stomie, sondage and incontinence, injection, respiratory, rental equipment): indications, sizes, application, renewal, LPP conditions, common errors. The LPP field states the rule, never the price.
 - **Stupéfiants register** — A catalogue of 158 presentations of the French market ships with the app, each with dosage, counting unit, maximum prescription length and family rule; the officine follows only what it stocks (all 158 followed would be 158 zero balances). The balance is set by inventory. Numbers are sequential per year and never reissued. The register is insert-only (R. 5132-36): a correction is an `ANNULATION` line with a mandatory reason, the cancelled line stays struck through on screen and on paper. Patients appear as file numbers, never names. Stored in its own encrypted file.
+- **Receptors and cascades** — a mechanism of action described in a few French lines (« Noradrénaline -> Bêta-1 », « molécule bisoprolol : antagoniste Bêta-1 ») and drawn from ligand to effects, with the signal running along the arrows. Tick a molecule and watch what rises and what falls, layer by layer; play time and the curves show receptors adapting — tolerance under treatment, rebound after an abrupt stop. 10 receptor and signalling cascades ship with it (β-adrenergic, muscarinic, dopamine D2, µ opioid, GABA-A, renin–angiotensin–aldosterone, platelet activation, cyclo-oxygenases, coagulation, gastric acid), each with ready-made scenarios; the model is qualitative — directions, never doses or delays. A drug card opens the cascade that names its molecule.
 - **Checklists** — the officine's own lists (opening, cold chain, delivery, emergency kit), printed with boxes, a blank date and « Par : ».
 
 ### Team and activity

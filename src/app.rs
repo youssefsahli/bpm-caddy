@@ -1642,6 +1642,7 @@ fn help_title_for(
         MainView::Ddi => "Croisement",
         MainView::UiTexts => "Documents imprimés",
         MainView::Checklists => "Listes de contrôle",
+        MainView::Cascades => "Récepteurs et cascades",
         MainView::Transmissions
         | MainView::Explorer
         | MainView::Classes
@@ -2769,6 +2770,11 @@ enum MainView {
     /// n'a pas oublié » et se lit en cochant. Les deux s'impriment, et
     /// les confondre ferait une feuille sans cases.
     Checklists,
+    /// Les récepteurs et cascades : un mécanisme d'action décrit en
+    /// texte, dessiné en étages et joué dans le temps — ce qu'une
+    /// molécule fait à la chaîne qu'elle touche. Voir
+    /// [`crate::cascade`].
+    Cascades,
 }
 
 impl MainView {
@@ -2799,6 +2805,7 @@ impl MainView {
             MainView::Ddi => "ddi",
             MainView::UiTexts => "libelles",
             MainView::Checklists => "listes",
+            MainView::Cascades => "cascades",
             MainView::Connexions => "connexions",
             MainView::Messages => "messages",
         }
@@ -2824,6 +2831,7 @@ impl MainView {
             "ddi" => Some(MainView::Ddi),
             "libelles" => Some(MainView::UiTexts),
             "listes" => Some(MainView::Checklists),
+            "cascades" => Some(MainView::Cascades),
             "connexions" => Some(MainView::Connexions),
             "messages" => Some(MainView::Messages),
             _ => None,
@@ -2923,6 +2931,8 @@ enum WorkTab {
     UiTexts,
     /// Les listes de contrôle.
     Checklists,
+    /// Les récepteurs et cascades.
+    Cascades,
     /// The drug base's list (no card open).
     Drugs,
     Patient(i64),
@@ -2984,6 +2994,7 @@ enum Tool {
     Regles,
     Appels,
     Facturation,
+    Cascades,
 }
 
 impl Tool {
@@ -3013,6 +3024,7 @@ impl Tool {
             Tool::Regles => "regles",
             Tool::Appels => "appels",
             Tool::Facturation => "facturation",
+            Tool::Cascades => "cascades",
         }
     }
 
@@ -3020,7 +3032,7 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.key() == key)
     }
 
-    const ALL: [Tool; 21] = [
+    const ALL: [Tool; 22] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
@@ -3042,6 +3054,7 @@ impl Tool {
         Tool::Regles,
         Tool::Appels,
         Tool::Facturation,
+        Tool::Cascades,
     ];
 
     fn title(self) -> &'static str {
@@ -3067,6 +3080,7 @@ impl Tool {
             Tool::Regles => tr("tool_regles"),
             Tool::Appels => tr("tool_appels"),
             Tool::Facturation => tr("tool_facturation"),
+            Tool::Cascades => tr("tool_cascades"),
         }
     }
 
@@ -3095,6 +3109,7 @@ impl Tool {
             Tool::Regles => tr("tool_regles_purpose"),
             Tool::Appels => tr("tool_appels_purpose"),
             Tool::Facturation => tr("tool_facturation_purpose"),
+            Tool::Cascades => tr("tool_cascades_purpose"),
         }
     }
 
@@ -4190,6 +4205,60 @@ struct Session {
     checklist_note: String,
     /// La ligne qu'on corrige : son identifiant, son texte et sa note.
     checklist_edit: Option<(i64, String, String)>,
+    /// Les récepteurs et cascades : la liste, lue au rechargement.
+    cascades: Vec<db::CascadeText>,
+    cascade_index: Vec<CascadeEntry>,
+    /// La liste a été lue au moins une fois.
+    cascades_read: bool,
+    cascade_open: Option<i64>,
+    /// La cascade ouverte, lue — relue quand son texte change.
+    cascade_read: Option<std::sync::Arc<CascadeRead>>,
+    /// Ce que l'éditeur montre en direct : la description **en cours
+    /// d'écriture**, lue, et le texte dont elle vient.
+    cascade_preview: Option<std::sync::Arc<CascadeRead>>,
+    /// « Décrire » : le texte qu'on tape, et celui que la base avait
+    /// quand on a commencé — le témoin de l'enregistrement.
+    cascade_edit: Option<(String, String)>,
+    /// L'enregistrement a été refusé : un autre poste a écrit.
+    cascade_conflict: bool,
+    cascade_confirm_delete: bool,
+    /// Les prises jouées, le temps affiché, la lecture.
+    cascade_doses: Vec<crate::cascade::Dose>,
+    cascade_t: u32,
+    cascade_playing: bool,
+    cascade_tick: f64,
+    cascade_run: Option<std::sync::Arc<CascadeRun>>,
+    /// Le passage d'un état à l'autre après un geste : quand il a
+    /// commencé, et l'état affiché à ce moment-là.
+    cascade_wave: Option<(f64, Vec<f32>)>,
+    cascade_look: crate::graph::Look,
+    /// La molécule que le pointeur survole dans la liste : son nœud
+    /// s'éclaire sur la figure.
+    cascade_hover: Option<usize>,
+    /// Sur un volet trop bas pour les deux : les courbes plutôt que la
+    /// figure.
+    cascade_curves: bool,
+    /// Les courbes éteintes d'un clic sur leur clé — deux effets qui
+    /// suivent la même courbe se cachent l'un l'autre.
+    cascade_hidden: Vec<String>,
+    /// Quitter « Décrire » avec un texte non enregistré a été demandé une
+    /// fois : la seconde l'abandonne.
+    cascade_leave_armed: bool,
+    /// Où l'aperçu de l'éditeur est regardé — le sien, pas celui de la
+    /// figure de « Voir ».
+    cascade_preview_look: crate::graph::Look,
+    /// Le nœud dont on suit la lignée — un clic sur lui ; le reste pâlit.
+    cascade_focus: Option<usize>,
+    /// La cascade que ce poste vient de créer par « Nouvelle cascade » et
+    /// qui n'a encore rien reçu : quittée telle quelle, elle disparaît.
+    cascade_fresh: Option<i64>,
+    /// Quelles molécules le dossier ouvert prend, et lesquelles ont une
+    /// fiche — lus contre la cascade, la base et le dossier, et relus
+    /// quand l'un des trois change : pas huit cents fiches par image.
+    cascade_links: Option<(CascadeLinksKey, Vec<bool>, Vec<bool>)>,
+    /// Les couleurs du texte de l'éditeur, pour le texte qui les a
+    /// données.
+    cascade_colour: (String, Vec<(usize, usize, crate::cascade::Ink)>),
     vacc_due: Vec<vaccines::DueLine>,
     /// The pregnancy date as typed in the carnet, for the file it was
     /// typed on.
@@ -5247,6 +5316,8 @@ impl Session {
             // The protocols too: a base opened before they existed gets
             // them, and a tree the team rewrote is never replaced.
             let _ = db.seed_protocols();
+            // And the cascades, by title, by the same rule.
+            let _ = db.seed_cascades();
             // And the dispositifs, by the same rule: seeded once, and a
             // fiche the team emptied never comes back to argue.
             let _ = db.seed_dispositifs();
@@ -5360,6 +5431,31 @@ impl Session {
             checklist_text: String::new(),
             checklist_note: String::new(),
             checklist_edit: None,
+            cascades: Vec::new(),
+            cascade_index: Vec::new(),
+            cascades_read: false,
+            cascade_open: None,
+            cascade_read: None,
+            cascade_preview: None,
+            cascade_edit: None,
+            cascade_conflict: false,
+            cascade_confirm_delete: false,
+            cascade_doses: Vec::new(),
+            cascade_t: 0,
+            cascade_playing: false,
+            cascade_tick: 0.0,
+            cascade_run: None,
+            cascade_wave: None,
+            cascade_look: crate::graph::Look::default(),
+            cascade_hover: None,
+            cascade_curves: false,
+            cascade_hidden: Vec::new(),
+            cascade_leave_armed: false,
+            cascade_preview_look: crate::graph::Look::default(),
+            cascade_focus: None,
+            cascade_fresh: None,
+            cascade_links: None,
+            cascade_colour: (String::new(), Vec::new()),
             vacc_due: Vec::new(),
             vacc_ddr_text: None,
             vacc_catalogue: Vec::new(),
@@ -5801,6 +5897,7 @@ impl Session {
             MainView::Ddi => WorkTab::Ddi,
             MainView::UiTexts => WorkTab::UiTexts,
             MainView::Checklists => WorkTab::Checklists,
+            MainView::Cascades => WorkTab::Cascades,
             MainView::Drugs => match &self.drug_form {
                 Some(d) => WorkTab::Drug(d.id),
                 None => WorkTab::Drugs,
@@ -5864,6 +5961,10 @@ impl Session {
             WorkTab::Checklists => {
                 self.view = MainView::Checklists;
                 self.reload_checklists();
+            }
+            WorkTab::Cascades => {
+                self.view = MainView::Cascades;
+                self.reload_cascades();
             }
             WorkTab::Classes => {
                 self.view = MainView::Classes;
@@ -6685,6 +6786,7 @@ impl Session {
             }
             Tool::Libelles => self.activate_tab(&WorkTab::UiTexts),
             Tool::Listes => self.activate_tab(&WorkTab::Checklists),
+            Tool::Cascades => self.activate_tab(&WorkTab::Cascades),
             Tool::Croisement => self.activate_tab(&WorkTab::Ddi),
             // L'angine d'abord : l'éditeur change de protocole dans sa
             // propre fenêtre.
@@ -7206,6 +7308,11 @@ impl Session {
         self.reload_vacc_catalogue();
         self.reload_supply();
         self.reload_dispositifs();
+        // Les cascades : une description réécrite sur un autre poste se
+        // relit ici ; le texte qu'on tape, lui, n'est pas touché.
+        if self.cascades_read {
+            self.reload_cascades();
+        }
         if self.view == MainView::Transmissions {
             self.load_transmissions();
         }
@@ -8791,6 +8898,7 @@ impl Session {
             WorkTab::Ddi => tr("tab_ddi").to_owned(),
             WorkTab::UiTexts => tr("tab_libelles").to_owned(),
             WorkTab::Checklists => tr("tab_listes").to_owned(),
+            WorkTab::Cascades => tr("tab_cascades").to_owned(),
             WorkTab::Classes => tr("tab_classes").to_owned(),
             WorkTab::Finances => tr("tab_finances").to_owned(),
             WorkTab::Stats => tr("tab_stats").to_owned(),
@@ -8946,6 +9054,371 @@ impl Session {
     /// Relire les listes de contrôle de l'officine.
     fn reload_checklists(&mut self) {
         self.checklists = self.db.checklists().unwrap_or_default();
+    }
+
+    /// Relire les cascades, et ce que la liste et les fiches en lisent.
+    fn reload_cascades(&mut self) {
+        self.cascades = self.db.cascades().unwrap_or_default();
+        self.cascade_index = self
+            .cascades
+            .iter()
+            .map(|c| {
+                let p = crate::cascade::parse(&c.text);
+                CascadeEntry {
+                    id: c.id,
+                    title: p.title,
+                    subject: p.subject,
+                    molecules: p.molecules.into_iter().map(|m| m.name).collect(),
+                }
+            })
+            .collect();
+        if self
+            .cascade_open
+            .is_some_and(|id| !self.cascades.iter().any(|c| c.id == id))
+        {
+            let dirty = self
+                .cascade_edit
+                .as_ref()
+                .is_some_and(|(typed, base)| typed != base);
+            if dirty {
+                // **Supprimée ailleurs pendant qu'on l'écrit** : le texte
+                // reste, et « Garder mon texte » la recrée. L'effacer ici
+                // perdait la frappe sans rien dire.
+                if !self.cascade_conflict {
+                    self.cascade_conflict = true;
+                    self.stale("cascades_gone");
+                }
+            } else {
+                self.cascade_open = None;
+                self.cascade_edit = None;
+            }
+        }
+    }
+
+    /// Ouvrir une cascade, et y donner une molécule quand on vient de sa
+    /// fiche : la porte d'une monographie montre ce que *cette*
+    /// molécule fait, pas la chaîne au repos.
+    fn open_cascade(&mut self, id: i64, give: Option<&str>) {
+        if !self.cascades_read {
+            self.cascades_read = true;
+            self.reload_cascades();
+        }
+        if self.cascade_fresh.is_some_and(|f| f != id) {
+            self.cascade_drop_fresh();
+        }
+        self.view = MainView::Cascades;
+        self.cascade_open = Some(id);
+        self.cascade_edit = None;
+        self.cascade_conflict = false;
+        self.cascade_confirm_delete = false;
+        self.cascade_doses.clear();
+        self.cascade_t = 0;
+        self.cascade_playing = false;
+        self.cascade_wave = None;
+        self.cascade_look = crate::graph::Look::default();
+        self.cascade_focus = None;
+        self.cascade_hidden.clear();
+        self.cascade_sync();
+        if let (Some(name), Some(read)) = (give, self.cascade_read.clone()) {
+            if let Some(m) = read
+                .parsed
+                .molecules
+                .iter()
+                .position(|m| crate::fuzzy::eq_folded(&m.name, name))
+            {
+                crate::cascade::toggle(&mut self.cascade_doses, m, 0);
+            }
+        }
+    }
+
+    /// **Un texte tapé ne se perd pas d'un clic.** Quitter « Décrire » —
+    /// « Voir », « Fermer », une autre cascade, une nouvelle — avec un
+    /// texte non enregistré le dit d'abord, et n'abandonne qu'à la
+    /// seconde demande. Rend s'il est permis de quitter maintenant.
+    fn cascade_may_leave(&mut self) -> bool {
+        let dirty = self
+            .cascade_edit
+            .as_ref()
+            .is_some_and(|(typed, base)| typed != base);
+        if !dirty || self.cascade_leave_armed {
+            self.cascade_leave_armed = false;
+            return true;
+        }
+        self.cascade_leave_armed = true;
+        self.error = Some(tr("cascade_unsaved").to_owned());
+        false
+    }
+
+    /// La fiche de la base qui porte chaque molécule de la cascade
+    /// ouverte, par sa DCI — la porte de retour vers la monographie.
+    fn cascade_card_of(&self, m: usize) -> Option<Drug> {
+        let read = self.cascade_read.as_ref()?;
+        let name = &read.parsed.molecules.get(m)?.name;
+        self.drugs
+            .iter()
+            .find(|d| crate::fuzzy::eq_folded(&d.dci, name))
+            .cloned()
+    }
+
+    /// Lu dans ce que `cascade_sync` a relevé — jamais recalculé ici.
+    fn cascade_cards(&self) -> Vec<bool> {
+        self.cascade_links
+            .as_ref()
+            .map(|(_, _, cards)| cards.clone())
+            .unwrap_or_default()
+    }
+
+    fn cascade_open_card(&mut self, m: usize) {
+        if !self.cascade_may_leave() {
+            return;
+        }
+        if let Some(d) = self.cascade_card_of(m) {
+            self.cascade_edit = None;
+            self.cascade_preview = None;
+            self.view = MainView::Drugs;
+            self.open_drug_card(d);
+        }
+    }
+
+    /// Quelles molécules de la cascade ouverte le dossier ouvert prend —
+    /// par la DCI de ses traitements, sur le nom entier.
+    /// Lu dans ce que `cascade_sync` a relevé — jamais recalculé ici.
+    fn cascade_in_file(&self) -> Vec<bool> {
+        self.cascade_links
+            .as_ref()
+            .map(|(_, in_file, _)| in_file.clone())
+            .unwrap_or_default()
+    }
+
+    /// **Une nouvelle cascade quittée sans avoir été écrite disparaît** :
+    /// le modèle laissé tel quel n'est la cascade de personne, et il
+    /// s'accumulait dans la liste à chaque essai. Seulement celle que ce
+    /// poste vient de créer — un modèle ouvert depuis un autre poste est
+    /// peut-être celui qu'on y est en train d'écrire.
+    fn cascade_drop_fresh(&mut self) {
+        let Some(id) = self.cascade_fresh.take() else {
+            return;
+        };
+        let template = tr("cascade_template");
+        let untouched = self
+            .cascades
+            .iter()
+            .any(|c| c.id == id && c.text == template)
+            && (self.cascade_open != Some(id)
+                || self
+                    .cascade_edit
+                    .as_ref()
+                    .is_none_or(|(typed, _)| typed == template));
+        if untouched {
+            if let Ok(true) = self.db.delete_cascade(id, template) {
+                if self.cascade_open == Some(id) {
+                    self.cascade_open = None;
+                    self.cascade_read = None;
+                    self.cascade_edit = None;
+                    self.cascade_preview = None;
+                }
+                self.reload_cascades();
+            }
+        }
+    }
+
+    /// Les cascades qui nomment cette molécule — la porte d'une fiche.
+    fn cascades_naming(&self, dci: &str) -> Vec<(i64, String)> {
+        if dci.trim().is_empty() {
+            return Vec::new();
+        }
+        self.cascade_index
+            .iter()
+            .filter(|c| c.molecules.iter().any(|m| crate::fuzzy::eq_folded(m, dci)))
+            .map(|c| (c.id, c.title.clone()))
+            .collect()
+    }
+
+    /// Tenir la lecture de la cascade ouverte, et la partie jouée, à
+    /// jour de leur texte. Une comparaison de chaînes par image, et une
+    /// relecture seulement quand elle diffère.
+    fn cascade_sync(&mut self) {
+        let text = self
+            .cascade_open
+            .and_then(|id| self.cascades.iter().find(|c| c.id == id));
+        match text {
+            Some(c) => {
+                let stale = self
+                    .cascade_read
+                    .as_ref()
+                    .is_none_or(|r| r.id != c.id || r.text != c.text);
+                if stale {
+                    let read = CascadeRead::of(c.id, &c.text);
+                    // **Une prise suit sa molécule par son nom**, pas par
+                    // son rang : une ligne ajoutée au-dessus décale les
+                    // rangs, et les cases cochées passaient à la voisine.
+                    // Une molécule retirée du texte emporte ses prises.
+                    let before: Option<Vec<String>> = self
+                        .cascade_read
+                        .as_ref()
+                        .filter(|r| r.id == c.id)
+                        .map(|r| r.parsed.molecules.iter().map(|m| m.name.clone()).collect());
+                    let kept = read.parsed.molecules.len();
+                    match before {
+                        Some(names) => {
+                            let doses = std::mem::take(&mut self.cascade_doses);
+                            self.cascade_doses = doses
+                                .into_iter()
+                                .filter_map(|d| {
+                                    let name = names.get(d.molecule)?;
+                                    let m = read
+                                        .parsed
+                                        .molecules
+                                        .iter()
+                                        .position(|x| crate::fuzzy::eq_folded(&x.name, name))?;
+                                    Some(crate::cascade::Dose { molecule: m, ..d })
+                                })
+                                .collect();
+                        }
+                        None => self.cascade_doses.retain(|d| d.molecule < kept),
+                    }
+                    // Les courbes éteintes et le passage en cours
+                    // désignaient les courbes et les nœuds d'un autre
+                    // texte.
+                    self.cascade_hidden.clear();
+                    self.cascade_wave = None;
+                    self.cascade_focus = None;
+                    self.cascade_read = Some(std::sync::Arc::new(read));
+                }
+            }
+            None => {
+                // Supprimée ailleurs pendant qu'on l'écrit : la lecture
+                // reste, pour que l'éditeur garde de quoi dessiner.
+                let dirty = self
+                    .cascade_edit
+                    .as_ref()
+                    .is_some_and(|(typed, base)| typed != base);
+                if !dirty {
+                    self.cascade_read = None;
+                    self.cascade_run = None;
+                    return;
+                }
+            }
+        }
+        let Some(read) = self.cascade_read.clone() else {
+            return;
+        };
+        let fresh = self
+            .cascade_run
+            .as_ref()
+            .is_some_and(|r| r.text == read.text && r.doses == self.cascade_doses);
+        if !fresh {
+            let frames = crate::cascade::run(&read.parsed, &self.cascade_doses, CASCADE_HORIZON);
+            self.cascade_run = Some(std::sync::Arc::new(CascadeRun {
+                text: read.text.clone(),
+                doses: self.cascade_doses.clone(),
+                frames,
+            }));
+        }
+        // Les liens de la cascade : le dossier, et les fiches.
+        // Contre la lecture elle-même (une nouvelle à chaque texte), la
+        // révision de la base, et l'empreinte des traitements du dossier :
+        // des longueurs laissaient passer une faute corrigée d'une lettre
+        // ou un traitement remplacé par un autre.
+        let treats = {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for d in &self.patient_treats {
+                (d.id, &d.dci).hash(&mut h);
+            }
+            h.finish()
+        };
+        let key: CascadeLinksKey = (
+            std::sync::Arc::as_ptr(&read) as usize,
+            self.drugs_rev,
+            self.viewing.as_ref().map(|p| p.id),
+            treats,
+        );
+        if self
+            .cascade_links
+            .as_ref()
+            .is_none_or(|(k, _, _)| *k != key)
+        {
+            let in_file = if self.viewing.is_none() {
+                vec![false; read.parsed.molecules.len()]
+            } else {
+                read.parsed
+                    .molecules
+                    .iter()
+                    .map(|m| {
+                        self.patient_treats
+                            .iter()
+                            .any(|d| crate::fuzzy::eq_folded(&d.dci, &m.name))
+                    })
+                    .collect()
+            };
+            let cards = read
+                .parsed
+                .molecules
+                .iter()
+                .map(|mol| {
+                    self.drugs
+                        .iter()
+                        .any(|d| crate::fuzzy::eq_folded(&d.dci, &mol.name))
+                })
+                .collect();
+            self.cascade_links = Some((key, in_file, cards));
+        }
+        if let Some((typed, _)) = &self.cascade_edit {
+            let stale = self
+                .cascade_preview
+                .as_ref()
+                .is_none_or(|p| p.text != *typed || p.drugs_rev != self.drugs_rev);
+            if stale {
+                let mut preview = CascadeRead::of(read.id, typed);
+                preview.drugs_rev = self.drugs_rev;
+                preview.hints = crate::cascade::lint(&preview.parsed, |name| {
+                    self.drugs
+                        .iter()
+                        .any(|d| crate::fuzzy::eq_folded(&d.dci, name))
+                })
+                .into_iter()
+                .map(|l| match l {
+                    crate::cascade::Lint::NoCard(name) => trf("cascade_hint_no_card", name),
+                    crate::cascade::Lint::Isolated(name) => trf("cascade_hint_isolated", name),
+                })
+                .collect();
+                self.cascade_preview = Some(std::sync::Arc::new(preview));
+            }
+        }
+    }
+
+    /// Ce que chaque nœud affiche **maintenant** : l'état du pas courant,
+    /// ou, pendant le passage qui suit un geste, un état qui descend la
+    /// chaîne étage par étage.
+    fn cascade_shown(&self, now: f64) -> Vec<f32> {
+        let (Some(read), Some(run)) = (&self.cascade_read, &self.cascade_run) else {
+            return Vec::new();
+        };
+        let t = (self.cascade_t as usize).min(run.frames.len().saturating_sub(1));
+        let Some(target) = run.frames.get(t).map(|f| f.level.clone()) else {
+            return Vec::new();
+        };
+        match &self.cascade_wave {
+            Some((start, from)) if from.len() == target.len() => target
+                .iter()
+                .enumerate()
+                .map(|(i, to)| {
+                    let layer = read.layout.layer.get(i).copied().unwrap_or(0) as f64;
+                    let s =
+                        ((now - start - layer * CASCADE_STAGGER) / CASCADE_FADE).clamp(0.0, 1.0);
+                    let s = (s * s * (3.0 - 2.0 * s)) as f32;
+                    from[i] + (to - from[i]) * s
+                })
+                .collect(),
+            _ => target,
+        }
+    }
+
+    /// Un geste qui change l'état : ce qu'on voyait devient le départ du
+    /// passage.
+    fn cascade_moved(&mut self, now: f64, before: Vec<f32>) {
+        self.cascade_wave = Some((now, before));
     }
 
     /// Relire les lignes de la liste ouverte.
@@ -10427,6 +10900,117 @@ struct GraphNav {
     look: crate::graph::Look,
     /// Retour arrière ou bouton « précédent » : le centre d'avant.
     back: bool,
+}
+
+/// Une cascade de la liste, lue une fois au rechargement : ce que la
+/// liste affiche et ce que la porte d'une fiche cherche. Relire chaque
+/// texte à chaque image pour y trouver un titre serait lire la même
+/// chose soixante fois par seconde.
+#[derive(Clone)]
+struct CascadeEntry {
+    id: i64,
+    title: String,
+    subject: String,
+    molecules: Vec<String>,
+}
+
+/// La cascade ouverte, lue et rangée : le texte qu'elle vient de, pour
+/// savoir quand la relire.
+struct CascadeRead {
+    id: i64,
+    text: String,
+    parsed: crate::cascade::Cascade,
+    layout: crate::cascade::Layout,
+    /// Ce qui se lit mais ressemble à une erreur d'écriture — rempli pour
+    /// l'aperçu de l'éditeur seulement, et une fois par texte.
+    hints: Vec<String>,
+    /// La révision de la base contre laquelle `hints` a été lu.
+    drugs_rev: u64,
+}
+
+impl CascadeRead {
+    fn of(id: i64, text: &str) -> CascadeRead {
+        let parsed = crate::cascade::parse(text);
+        let layout = crate::cascade::layout(&parsed);
+        CascadeRead {
+            id,
+            text: text.to_owned(),
+            parsed,
+            layout,
+            hints: Vec::new(),
+            drugs_rev: 0,
+        }
+    }
+}
+
+/// Ce qu'une partie jouée donne, pour la cascade et les prises qui l'ont
+/// produite : on ne rejoue que si l'une des deux a changé.
+struct CascadeRun {
+    text: String,
+    doses: Vec<crate::cascade::Dose>,
+    frames: Vec<crate::cascade::Frame>,
+}
+
+/// Ce que « Voir » montre : les deux, ou l'un des deux quand le volet
+/// est trop bas.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CascadeShow {
+    Both,
+    Figure,
+    Curves,
+}
+
+/// Ce contre quoi les liens d'une cascade sont lus : la cascade (son
+/// numéro et son texte), la base (combien de fiches) et le dossier
+/// ouvert (lequel, combien de traitements).
+type CascadeLinksKey = (usize, u64, Option<i64>, u64);
+
+/// Jusqu'où le temps court, en pas. Assez pour qu'une adaptation
+/// s'installe, puis qu'un arrêt montre son rebond et son retour.
+const CASCADE_HORIZON: u32 = crate::cascade::HORIZON;
+/// Combien de pas par seconde pendant la lecture.
+const CASCADE_PACE: f64 = 8.0;
+/// Le délai d'un étage à l'autre quand une molécule change, en secondes,
+/// et le temps qu'un nœud met à passer d'un état à l'autre : le signal
+/// **descend** la chaîne au lieu d'apparaître partout d'un coup.
+const CASCADE_STAGGER: f64 = 0.22;
+const CASCADE_FADE: f64 = 0.35;
+
+/// Les mesures d'une case de cascade, à une échelle donnée.
+struct CascadeSizes {
+    font: egui::FontId,
+    small: egui::FontId,
+    pad: f32,
+    mark: f32,
+    natural_w: f32,
+    gap_x: f32,
+    box_h: f32,
+    box_h2: f32,
+}
+
+/// **Dans quel sens poser une cascade, et combien elle tient.** Les
+/// étages descendent quand le creux est haut ; ils vont de gauche à
+/// droite quand il est large et bas — une chaîne de huit étages dans une
+/// bande de deux cents pixels ne se lit que couchée. Le sens retenu est
+/// celui où la figure tient le mieux, et le haut en bas à peu près à
+/// égalité, parce que c'est ainsi qu'une cascade se dessine au tableau.
+///
+/// `cell` est la largeur d'une case avec sa gouttière, `row` sa hauteur ;
+/// rend `(couchée, part qui tient)`, 1 et plus quand tout tient.
+fn cascade_fit(w: f32, h: f32, span: f32, layers: usize, cell: f32, row: f32) -> (bool, f32) {
+    let layers = layers.max(1) as f32;
+    let span = span.max(1.0);
+    let tall = (w / (span * cell)).min(h / ((layers - 1.0) * row * 1.35 + row));
+    let wide = (w / (layers * cell)).min(h / (span * row * 1.35));
+    let (tall, wide) = (
+        if tall.is_finite() { tall } else { 0.0 },
+        if wide.is_finite() { wide } else { 0.0 },
+    );
+    if wide > tall * 1.15 {
+        (true, wide)
+    } else {
+        (false, tall)
+    }
 }
 
 fn graph_why_line(w: &crate::graph::Why) -> String {
@@ -14804,6 +15388,95 @@ impl App {
                         // déjà écrite** : vide, l'écran ne montre ni
                         // ligne, ni case, ni bouton d'impression — rien
                         // de ce qu'il existe pour dessiner.
+                        // Les cascades, **jouées** : la bêta, un
+                        // bêtabloquant donné puis arrêté, le temps posé
+                        // après l'arrêt — le rebond est ce que la vue
+                        // existe pour montrer, et une chaîne au repos
+                        // ne montre rien de ce qu'elle sait faire.
+                        // `cascades_boucle` : le système rénine-angiotensine,
+                        // un IEC donné — la seule forme livrée dont une
+                        // flèche remonte (la pression retient la rénine),
+                        // et la boucle se dessine par le côté.
+                        Ok(v @ ("cascades" | "cascades_decrire" | "cascades_boucle")) => {
+                            if session.db.seeds_here() {
+                                let _ = session.db.seed_cascades();
+                            }
+                            session.reload_cascades();
+                            session.cascades_read = true;
+                            let (marker, given) = if v == "cascades_boucle" {
+                                ("ramipril", 0)
+                            } else {
+                                ("bisoprolol", 10)
+                            };
+                            // BPM_CADDY_CASCADE nomme la cascade à ouvrir
+                            // (un morceau de son titre), et la première
+                            // molécule y est donnée : chaque figure
+                            // livrée se capture, pas seulement la bêta.
+                            let wanted = std::env::var("BPM_CADDY_CASCADE").ok();
+                            let named = wanted.as_deref().and_then(|w| {
+                                session
+                                    .cascade_index
+                                    .iter()
+                                    .find(|c| crate::fuzzy::contains_loose(&c.title, w))
+                                    .map(|c| (c.id, c.molecules.first().cloned()))
+                            });
+                            let marker = named
+                                .as_ref()
+                                .and_then(|(_, m)| m.as_deref())
+                                .unwrap_or(marker)
+                                .to_owned();
+                            let marker = marker.as_str();
+                            let beta = named.map(|(id, _)| id).or_else(|| {
+                                session
+                                    .cascade_index
+                                    .iter()
+                                    .find(|c| c.molecules.iter().any(|m| m == marker))
+                                    .map(|c| c.id)
+                            });
+                            if let Some(id) = beta {
+                                session.open_cascade(id, None);
+                                if let Some(read) = session.cascade_read.clone() {
+                                    let m =
+                                        read.parsed.molecules.iter().position(|m| m.name == marker);
+                                    if let Some(m) = m {
+                                        crate::cascade::toggle(
+                                            &mut session.cascade_doses,
+                                            m,
+                                            given,
+                                        );
+                                        if v != "cascades_boucle" {
+                                            crate::cascade::toggle(
+                                                &mut session.cascade_doses,
+                                                m,
+                                                70,
+                                            );
+                                        }
+                                    }
+                                }
+                                session.cascade_t = if v == "cascades_boucle" { 30 } else { 72 };
+                                // BPM_CADDY_CASCADE_FOCUS : la lignée d'un
+                                // nœud suivie, comme après un clic — une
+                                // capture ne clique pas.
+                                if let (Ok(w), Some(read)) = (
+                                    std::env::var("BPM_CADDY_CASCADE_FOCUS"),
+                                    session.cascade_read.clone(),
+                                ) {
+                                    session.cascade_focus =
+                                        read.parsed.nodes.iter().position(|n| {
+                                            crate::fuzzy::contains_loose(&n.name, &w)
+                                        });
+                                }
+                                if v == "cascades_decrire" {
+                                    session.cascade_t = 0;
+                                    session.cascade_doses.clear();
+                                    session.cascade_edit = session
+                                        .cascade_read
+                                        .as_ref()
+                                        .map(|r| (r.text.clone(), r.text.clone()));
+                                }
+                            }
+                            session.view = MainView::Cascades;
+                        }
                         Ok("listes") => {
                             session.view = MainView::Checklists;
                             let id = session
@@ -16417,7 +17090,10 @@ impl App {
                             | MainView::Stats
                             | MainView::Ruptures
                             | MainView::Script
-                            | MainView::Ddi => Self::nav_drugs(ui, session, focus),
+                            | MainView::Ddi
+                            // Une cascade nomme des molécules : le dock
+                            // des médicaments est celui qui les ouvre.
+                            | MainView::Cascades => Self::nav_drugs(ui, session, focus),
                             MainView::Dashboard
                             | MainView::Search
                             // Les connexions ne trient rien : le dock
@@ -18090,6 +18766,10 @@ impl App {
             }
             if session.view == MainView::Checklists {
                 Self::checklists_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Cascades {
+                Self::cascades_view(ui, session, &config);
                 return;
             }
             if session.view == MainView::Classes {
@@ -41415,6 +42095,1952 @@ impl App {
         }
     }
 
+    /// Récepteurs et cascades : la liste et les molécules à gauche, la
+    /// chaîne et son temps à droite — ou, en « Décrire », le texte et
+    /// ce qu'il dessine, côte à côte.
+    ///
+    /// Tout ce qui se calcule vient de `crate::cascade`, pur et testé ;
+    /// la vue met à l'échelle, peint, et anime le passage d'un état à
+    /// l'autre.
+    fn cascades_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
+        let body = motif::visible_rect(ui);
+        if !session.cascades_read {
+            session.cascades_read = true;
+            session.reload_cascades();
+        }
+        // Rien d'ouvert : la première, plutôt qu'un volet vide qui dit
+        // de choisir ce qu'on a sous les yeux.
+        if session.cascade_open.is_none() {
+            if let Some(first) = session.cascade_index.first().map(|c| c.id) {
+                session.open_cascade(first, None);
+            }
+        }
+        session.cascade_sync();
+        let now = ui.input(|i| i.time);
+        // La lecture : un pas tous les huitièmes de seconde, jusqu'au
+        // bout, où elle s'arrête d'elle-même.
+        if session.cascade_playing {
+            if now - session.cascade_tick >= 1.0 / CASCADE_PACE {
+                session.cascade_tick = now;
+                session.cascade_t = (session.cascade_t + 1).min(CASCADE_HORIZON);
+                if session.cascade_t >= CASCADE_HORIZON {
+                    session.cascade_playing = false;
+                }
+            }
+            ui.ctx()
+                .request_repaint_after(std::time::Duration::from_millis(30));
+        }
+        let wide = body.width() >= chars_wide(ui, 100.0);
+        let gap = 8.0;
+        if wide {
+            let w = chars_wide(ui, 30.0).min(body.width() * 0.34);
+            let side =
+                egui::Rect::from_min_max(body.min, egui::pos2(body.left() + w, body.bottom()));
+            let main =
+                egui::Rect::from_min_max(egui::pos2(body.left() + w + gap, body.top()), body.max);
+            Self::cascades_side(ui, session, side, now);
+            Self::cascade_main(ui, session, main, config, now);
+        } else {
+            // **Étroit, la liste devient une bande** : un choix et les
+            // cases des molécules, en une ou deux rangées. Une colonne
+            // posée au-dessus prenait le tiers de la hauteur pour montrer
+            // trois titres, et les cases — ce qu'on vient manipuler —
+            // tombaient sous sa barre de défilement.
+            let (strip_h, _) =
+                Self::cascades_strip_fit(ui, session, body.width(), body.height() * 0.3);
+            let split = motif::split_rows(body, &[strip_h, 0.0], 6.0);
+            Self::cascades_strip(ui, session, split[0], now);
+            Self::cascade_main(ui, session, split[1], config, now);
+        }
+    }
+
+    /// La largeur d'une case de molécule, par la formule que
+    /// `motif::checkbox` pose.
+    fn cascade_box_width(ui: &egui::Ui, label: &str) -> f32 {
+        let font = egui::TextStyle::Button.resolve(ui.style());
+        let (w, h) = ui.fonts(|f| {
+            let g = f.layout_no_wrap(label.to_owned(), font, motif::text());
+            (g.size().x, g.size().y)
+        });
+        let side = (h + 2.0).min(ui.spacing().interact_size.y);
+        side + ui.spacing().item_spacing.x * 0.6 + w
+    }
+
+    /// Ce que la bande porte, dans l'ordre : le choix, le bouton, puis
+    /// une case par molécule — mesuré ici et dessiné par
+    /// `cascades_strip` dans le même ordre.
+    fn cascades_strip_widths(ui: &egui::Ui, session: &Session, width: f32) -> Vec<f32> {
+        let titles = session.cascade_index.iter().map(|c| c.title.as_str());
+        let mut out = vec![
+            motif::select_width(ui, titles).min(width * 0.7),
+            Self::button_width(ui, tr("cascades_new")),
+        ];
+        if let Some(read) = &session.cascade_read {
+            if session.cascade_edit.is_none() {
+                out.extend(
+                    read.parsed
+                        .scenarios
+                        .iter()
+                        .map(|sc| Self::button_width(ui, &sc.name)),
+                );
+            }
+            if session.cascade_in_file().iter().any(|b| *b) {
+                out.push(Self::button_width(ui, tr("cascade_give_file")));
+            }
+            out.extend(
+                read.parsed
+                    .molecules
+                    .iter()
+                    .map(|m| Self::cascade_box_width(ui, &m.name)),
+            );
+        }
+        out
+    }
+
+    /// La hauteur de la bande sous le plafond `cap`, et la largeur où
+    /// elle se dessine.
+    ///
+    /// **La barre ne prend sa place que si elle paraît** : une bande
+    /// qui tient sous son plafond se dessine sur toute la largeur, et la
+    /// mesurer à la largeur d'une barre absente annonçait une rangée de
+    /// plus — une bande vide sous les cases, docks larges.
+    fn cascades_strip_fit(ui: &egui::Ui, session: &Session, width: f32, cap: f32) -> (f32, f32) {
+        let row_h = Self::row_height(ui);
+        let gap = ui.spacing().item_spacing.y;
+        let full = Self::cascades_strip_widths(ui, session, width);
+        let rows = Self::wrapped_rows_of(ui, width, full.into_iter());
+        if rows * row_h + (rows - 1.0).max(0.0) * gap <= cap.max(row_h) + 0.5 {
+            return (whole_rows(cap, row_h, gap, rows), width);
+        }
+        let inner = Self::scrolled_width(ui, width);
+        let widths = Self::cascades_strip_widths(ui, session, inner);
+        let rows = Self::wrapped_rows_of(ui, inner, widths.into_iter());
+        (whole_rows(cap, row_h, gap, rows), inner)
+    }
+
+    /// La bande de l'écran étroit : la cascade, et ses molécules.
+    fn cascades_strip(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
+        let mut open: Option<i64> = None;
+        let mut make = false;
+        let mut flip: Option<usize> = None;
+        let mut hover: Option<usize> = None;
+        let read = session.cascade_read.clone();
+        let t = session.cascade_t;
+        let in_file = session.cascade_in_file();
+        let with_card = session.cascade_cards();
+        let mut give_file = false;
+        let mut card: Option<usize> = None;
+        let mut story: Option<usize> = None;
+        let (_, drawn) = Self::cascades_strip_fit(ui, session, rect.width(), rect.height());
+        let widths = Self::cascades_strip_widths(ui, session, drawn);
+        motif::inside(ui, rect, |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("cascades_strip")
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let options: Vec<(i64, String)> = session
+                            .cascade_index
+                            .iter()
+                            .map(|c| {
+                                let title = if c.title.is_empty() {
+                                    tr("cascade_untitled").to_owned()
+                                } else {
+                                    c.title.clone()
+                                };
+                                (c.id, title)
+                            })
+                            .collect();
+                        let mut current = session.cascade_open.unwrap_or(-1);
+                        if motif::select(ui, "cascades_pick", widths[0], &mut current, &options)
+                            .changed()
+                        {
+                            open = Some(current);
+                        }
+                        if motif::button(ui, tr("cascades_new")).clicked() {
+                            make = true;
+                        }
+                        if let Some(read) = read.as_ref() {
+                            let stories = if session.cascade_edit.is_none() {
+                                read.parsed.scenarios.as_slice()
+                            } else {
+                                &[]
+                            };
+                            for (k, sc) in stories.iter().enumerate() {
+                                if motif::button(ui, &sc.name)
+                                    .on_hover_text(tr("cascade_scenario_tooltip"))
+                                    .clicked()
+                                {
+                                    story = Some(k);
+                                }
+                            }
+                            if in_file.iter().any(|b| *b)
+                                && motif::button(ui, tr("cascade_give_file"))
+                                    .on_hover_text(tr("cascade_give_file_tooltip"))
+                                    .clicked()
+                            {
+                                give_file = true;
+                            }
+                            let (f, h, k) = Self::cascade_molecule_boxes(
+                                ui,
+                                read,
+                                &session.cascade_doses,
+                                t,
+                                false,
+                                &in_file,
+                                &with_card,
+                            );
+                            flip = f;
+                            hover = h;
+                            card = k;
+                        }
+                    });
+                });
+        });
+        Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
+        if give_file {
+            Self::cascade_give_file(session, &in_file, now);
+        }
+        if let Some(m) = card {
+            session.cascade_open_card(m);
+        }
+        if let Some(k) = story {
+            Self::cascade_play_scenario(session, k, now);
+        }
+    }
+
+    /// Les cases des molécules, et ce que chacune fait : sous la case
+    /// dans la colonne, en infobulle dans la bande.
+    fn cascade_molecule_boxes(
+        ui: &mut egui::Ui,
+        read: &CascadeRead,
+        doses: &[crate::cascade::Dose],
+        t: u32,
+        stacked: bool,
+        in_file: &[bool],
+        with_card: &[bool],
+    ) -> (Option<usize>, Option<usize>, Option<usize>) {
+        let (mut flip, mut hover, mut card) = (None, None, None);
+        let given = crate::cascade::given_at(&read.parsed, doses, t);
+        for (m, mol) in read.parsed.molecules.iter().enumerate() {
+            let mut on = given.get(m).copied().unwrap_or(false);
+            let mut what = Self::cascade_acts_line(&read.parsed, mol);
+            if in_file.get(m).copied().unwrap_or(false) {
+                what = trf("cascade_in_file", what);
+            }
+            let has_card = with_card.get(m).copied().unwrap_or(false);
+            let resp = motif::checkbox(ui, &mut on, mol.name.as_str());
+            if resp.changed() {
+                flip = Some(m);
+            }
+            // **La fiche, d'un clic droit** sur la case — ou d'un clic sur
+            // la ligne qui dit ce qu'elle fait, dans la colonne : la
+            // cascade mène à la monographie comme la monographie mène à
+            // la cascade.
+            if has_card && resp.secondary_clicked() {
+                card = Some(m);
+            }
+            let mut over = resp.hovered();
+            if stacked {
+                let line = ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(what)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    )
+                    .sense(if has_card {
+                        egui::Sense::click()
+                    } else {
+                        egui::Sense::hover()
+                    }),
+                );
+                over |= line.hovered();
+                if has_card {
+                    if line.clicked() {
+                        card = Some(m);
+                    }
+                    line.on_hover_text(tr("cascade_open_card"));
+                }
+            } else if has_card {
+                resp.on_hover_text(format!("{what}\n{}", tr("cascade_open_card")));
+            } else {
+                resp.on_hover_text(what);
+            }
+            if over {
+                hover = Some(m);
+            }
+        }
+        (flip, hover, card)
+    }
+
+    /// Jouer un scénario : ses prises, le temps à zéro, et la lecture
+    /// lancée — une histoire se regarde, elle ne se remonte pas pas à pas.
+    fn cascade_play_scenario(session: &mut Session, k: usize, now: f64) {
+        let Some(read) = session.cascade_read.clone() else {
+            return;
+        };
+        let Some(sc) = read.parsed.scenarios.get(k) else {
+            return;
+        };
+        session.cascade_doses = sc
+            .doses
+            .iter()
+            .filter(|d| d.molecule < read.parsed.molecules.len())
+            .map(|d| crate::cascade::Dose {
+                from: d.from.min(CASCADE_HORIZON),
+                until: d.until.map(|u| u.min(CASCADE_HORIZON)),
+                ..*d
+            })
+            .collect();
+        session.cascade_t = 0;
+        session.cascade_wave = None;
+        session.cascade_playing = true;
+        session.cascade_tick = now;
+        session.cascade_sync();
+    }
+
+    /// Donner d'un geste **ce que le dossier ouvert prend** : l'ordonnance
+    /// telle qu'elle est, sur la chaîne. C'est la question du comptoir —
+    /// un IEC et une spironolactone, que fait la kaliémie — et on la
+    /// posait molécule par molécule.
+    fn cascade_give_file(session: &mut Session, in_file: &[bool], now: f64) {
+        let Some(read) = session.cascade_read.clone() else {
+            return;
+        };
+        let t = session.cascade_t;
+        let given = crate::cascade::given_at(&read.parsed, &session.cascade_doses, t);
+        let before = session.cascade_shown(now);
+        let mut moved = false;
+        for (m, on) in in_file.iter().enumerate() {
+            if *on && !given.get(m).copied().unwrap_or(false) {
+                crate::cascade::toggle(&mut session.cascade_doses, m, t);
+                moved = true;
+            }
+        }
+        if moved {
+            session.cascade_sync();
+            session.cascade_moved(now, before);
+        }
+    }
+
+    /// Ce que la liste — colonne ou bande — a demandé, appliqué après
+    /// son dessin.
+    fn cascades_list_gestures(
+        session: &mut Session,
+        open: Option<i64>,
+        make: bool,
+        flip: Option<usize>,
+        hover: Option<usize>,
+        t: u32,
+        now: f64,
+    ) {
+        session.cascade_hover = hover;
+        let leaving = make || open.is_some_and(|id| session.cascade_open != Some(id));
+        if leaving && !session.cascade_may_leave() {
+            return;
+        }
+        if make {
+            match session.db.add_cascade(tr("cascade_template")) {
+                Ok(id) => {
+                    session.reload_cascades();
+                    session.open_cascade(id, None);
+                    session.cascade_fresh = Some(id);
+                    session.cascade_edit = Some((
+                        tr("cascade_template").to_owned(),
+                        tr("cascade_template").to_owned(),
+                    ));
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(id) = open {
+            if session.cascade_open != Some(id) {
+                session.open_cascade(id, None);
+            }
+        }
+        if let Some(m) = flip {
+            let before = session.cascade_shown(now);
+            crate::cascade::toggle(&mut session.cascade_doses, m, t);
+            session.cascade_sync();
+            session.cascade_moved(now, before);
+        }
+    }
+
+    /// La liste des cascades, et les molécules de celle qui est ouverte.
+    fn cascades_side(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
+        let mut open: Option<i64> = None;
+        let mut make = false;
+        let mut flip: Option<usize> = None;
+        let mut hover: Option<usize> = None;
+        let read = session.cascade_read.clone();
+        let t = session.cascade_t;
+        let in_file = session.cascade_in_file();
+        let with_card = session.cascade_cards();
+        let mut give_file = false;
+        let mut card: Option<usize> = None;
+        let mut story: Option<usize> = None;
+        motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
+            let inner = ui.max_rect();
+            motif::inside(ui, inner, |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("cascades_list")
+                    .show(ui, |ui| {
+                        if motif::button(ui, tr("cascades_new")).clicked() {
+                            make = true;
+                        }
+                        ui.add_space(6.0);
+                        if session.cascade_index.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("cascades_empty"))
+                                    .size(motif::pt(ui, 11.5))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                        for c in &session.cascade_index {
+                            let title = if c.title.is_empty() {
+                                tr("cascade_untitled")
+                            } else {
+                                c.title.as_str()
+                            };
+                            let on = session.cascade_open == Some(c.id);
+                            if motif::list_row_pair(ui, title, &c.subject, on, 0.0).clicked() {
+                                open = Some(c.id);
+                            }
+                        }
+                        let Some(read) = read.as_ref() else {
+                            return;
+                        };
+                        // Les scénarios d'abord : c'est l'entrée la plus
+                        // courte dans ce que la cascade fait avec le
+                        // temps, et sous neuf molécules personne ne les
+                        // voyait.
+                        // Pas en « Décrire » : la lecture courrait hors de
+                        // l'écran, sur le texte enregistré.
+                        if !read.parsed.scenarios.is_empty() && session.cascade_edit.is_none() {
+                            ui.add_space(8.0);
+                            motif::section(ui, tr("cascades_scenarios"));
+                            ui.add_space(4.0);
+                            ui.horizontal_wrapped(|ui| {
+                                for (k, sc) in read.parsed.scenarios.iter().enumerate() {
+                                    if motif::button(ui, &sc.name)
+                                        .on_hover_text(tr("cascade_scenario_tooltip"))
+                                        .clicked()
+                                    {
+                                        story = Some(k);
+                                    }
+                                }
+                            });
+                        }
+                        if read.parsed.molecules.is_empty() {
+                            return;
+                        }
+                        ui.add_space(8.0);
+                        motif::section(ui, tr("cascades_molecules"));
+                        ui.label(
+                            egui::RichText::new(tr("cascades_molecules_hint"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add_space(4.0);
+                        if in_file.iter().any(|b| *b)
+                            && motif::button(ui, tr("cascade_give_file"))
+                                .on_hover_text(tr("cascade_give_file_tooltip"))
+                                .clicked()
+                        {
+                            give_file = true;
+                        }
+                        let (f, h, k) = Self::cascade_molecule_boxes(
+                            ui,
+                            read,
+                            &session.cascade_doses,
+                            t,
+                            true,
+                            &in_file,
+                            &with_card,
+                        );
+                        flip = f;
+                        hover = h;
+                        card = k;
+                    });
+            });
+        });
+        Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
+        if give_file {
+            Self::cascade_give_file(session, &in_file, now);
+        }
+        if let Some(m) = card {
+            session.cascade_open_card(m);
+        }
+        if let Some(k) = story {
+            Self::cascade_play_scenario(session, k, now);
+        }
+    }
+
+    /// « antagoniste Bêta-1, Bêta-2 ; inhibiteur X » — ce qu'une
+    /// molécule fait, sous sa case.
+    fn cascade_acts_line(c: &crate::cascade::Cascade, mol: &crate::cascade::Molecule) -> String {
+        let mut parts: Vec<(crate::cascade::Action, Vec<&str>)> = Vec::new();
+        for (a, n) in &mol.acts {
+            let name = c.nodes.get(*n).map_or("", |n| n.name.as_str());
+            match parts.iter_mut().find(|(b, _)| b == a) {
+                Some((_, names)) => names.push(name),
+                None => parts.push((*a, vec![name])),
+            }
+        }
+        parts
+            .iter()
+            .map(|(a, names)| format!("{} {}", Self::cascade_action_label(*a), names.join(", ")))
+            .collect::<Vec<_>>()
+            .join(" ; ")
+    }
+
+    fn cascade_action_label(a: crate::cascade::Action) -> &'static str {
+        use crate::cascade::Action;
+        match a {
+            Action::Agoniste => tr("cascade_act_agoniste"),
+            Action::AgonistePartiel => tr("cascade_act_partiel"),
+            Action::AgonistePartielFaible => tr("cascade_act_faible"),
+            Action::Antagoniste => tr("cascade_act_antagoniste"),
+            Action::Inhibiteur => tr("cascade_act_inhibiteur"),
+            Action::Activateur => tr("cascade_act_activateur"),
+            Action::Potentialisateur => tr("cascade_act_potentialisateur"),
+        }
+    }
+
+    fn cascade_kind_label(k: crate::cascade::Kind) -> &'static str {
+        use crate::cascade::Kind;
+        match k {
+            Kind::Ligand => tr("cascade_kind_ligand"),
+            Kind::Recepteur => tr("cascade_kind_recepteur"),
+            Kind::Relais => tr("cascade_kind_relais"),
+            Kind::Enzyme => tr("cascade_kind_enzyme"),
+            Kind::Messager => tr("cascade_kind_messager"),
+            Kind::Canal => tr("cascade_kind_canal"),
+            Kind::Transporteur => tr("cascade_kind_transporteur"),
+            Kind::Effet => tr("cascade_kind_effet"),
+        }
+    }
+
+    /// Ce qu'une ligne du texte n'a pas pu dire, en français.
+    fn cascade_fault_text(f: &crate::cascade::Fault) -> String {
+        use crate::cascade::Fault;
+        match f {
+            Fault::Unreadable { line } => trf("cascade_fault_unreadable", line),
+            Fault::MissingName { line } => trf("cascade_fault_missing", line),
+            Fault::DanglingArrow { line } => trf("cascade_fault_dangling", line),
+            Fault::Redeclared { line, name } => trn("cascade_fault_redeclared", &[line, name]),
+            Fault::SelfLoop { line, name } => trn("cascade_fault_self", &[line, name]),
+            Fault::UnknownAction { line, text } => trn("cascade_fault_action", &[line, text]),
+            Fault::UnknownNode { line, name } => trn("cascade_fault_node", &[line, name]),
+            Fault::BadScenario { line, text } => trn("cascade_fault_scenario", &[line, text]),
+            Fault::UnknownMolecule { line, name } => trn("cascade_fault_molecule", &[line, name]),
+        }
+    }
+
+    /// Le volet de la cascade ouverte : sa barre, puis la figure et son
+    /// temps, ou le texte et ce qu'il dessine.
+    fn cascade_main(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        rect: egui::Rect,
+        config: &Config,
+        now: f64,
+    ) {
+        let Some(read) = session.cascade_read.clone() else {
+            motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
+                ui.add_space(8.0);
+                ui.label(
+                    egui::RichText::new(tr("cascades_pick"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                );
+            });
+            return;
+        };
+        let title = if read.parsed.title.is_empty() {
+            tr("cascade_untitled").to_owned()
+        } else {
+            read.parsed.title.clone()
+        };
+        let editing = session.cascade_edit.is_some();
+        let mut to_edit: Option<bool> = None;
+        let mut play = false;
+        let mut reset = false;
+        let mut scrub: Option<u32> = None;
+        let mut save = false;
+        let mut cancel = false;
+        let mut delete = false;
+        let mut force = false;
+        let mut retake = false;
+        let mut copy = false;
+        let mut curves: Option<bool> = None;
+        motif::panel(ui, rect, Some(&title), |ui| {
+            let inner = ui.max_rect();
+            // **Trop bas pour la figure et ses courbes à la fois** : l'une
+            // ou l'autre, en entier, et deux boutons pour passer de l'une
+            // à l'autre. Serrées ensemble à 1024x700 et à l'échelle 1,6,
+            // la figure tenait en soixante-quinze pixels et ne montrait
+            // plus un nom.
+            let short = !editing && inner.height() < Self::label_line(ui) * 16.0;
+            // La barre : mesurée avant d'être posée, pour que la figure
+            // prenne exactement ce qui reste.
+            let bar_labels: Vec<&str> = if editing {
+                let mut v = vec![
+                    tr("cascade_see"),
+                    tr("cascade_describe"),
+                    tr("cascade_save"),
+                    tr("cascade_cancel"),
+                    tr("cascade_copy"),
+                    if session.cascade_confirm_delete {
+                        tr("cascade_delete_confirm")
+                    } else {
+                        tr("cascade_delete")
+                    },
+                ];
+                if session.cascade_conflict {
+                    v.push(tr("cascade_keep_mine"));
+                    v.push(tr("cascade_take_theirs"));
+                }
+                v
+            } else {
+                let mut v = vec![
+                    tr("cascade_see"),
+                    tr("cascade_describe"),
+                    if session.cascade_playing {
+                        tr("cascade_pause")
+                    } else {
+                        tr("cascade_play")
+                    },
+                    tr("cascade_reset"),
+                ];
+                if short {
+                    v.push(tr("cascade_figure"));
+                    v.push(tr("cascade_curves"));
+                }
+                v
+            };
+            let time_label = trn("cascade_time", &[&session.cascade_t, &CASCADE_HORIZON]);
+            let time_font = egui::FontId::proportional(motif::pt(ui, 11.0));
+            // Mesuré à sa forme la plus large — le temps compte, et une
+            // bande qui changerait de hauteur au passage de 99 à 100
+            // ferait sauter la figure en pleine lecture.
+            let time_w = ui.fonts(|f| {
+                f.layout_no_wrap(
+                    trn("cascade_time", &[&CASCADE_HORIZON, &CASCADE_HORIZON]),
+                    time_font.clone(),
+                    motif::text(),
+                )
+                .size()
+                .x
+            });
+            // **La glissière cède avant le temps** : quand tout tient sur
+            // une rangée pour peu qu'elle raccourcisse — jusqu'à huit
+            // caractères —, elle raccourcit ; sinon « Temps 72 / 120 »
+            // partait seul sur une seconde rangée, et la barre prenait une
+            // hauteur de plus pour un mot.
+            let gap_x = ui.spacing().item_spacing.x;
+            let buttons: f32 = bar_labels
+                .iter()
+                .map(|l| Self::button_width(ui, l) + gap_x)
+                .sum();
+            // Une gouttière de marge : au pixel près, l'arrondi des
+            // galées renvoyait le temps à la ligne.
+            let room = inner.width() - buttons - time_w - 2.0 * gap_x;
+            let scale_w = if room >= chars_wide(ui, 8.0) {
+                room.min(chars_wide(ui, 14.0))
+            } else {
+                chars_wide(ui, 14.0)
+            };
+            let widths: Vec<f32> = bar_labels
+                .iter()
+                .map(|l| Self::button_width(ui, l))
+                .chain((!editing).then_some(scale_w))
+                .chain((!editing).then_some(time_w))
+                .collect();
+            let rows = Self::wrapped_rows_of(ui, inner.width(), widths.into_iter());
+            let bar_h = whole_rows(
+                inner.height() * 0.3,
+                Self::row_height(ui),
+                ui.spacing().item_spacing.y,
+                rows,
+            );
+            let split = motif::split_rows(inner, &[bar_h, 0.0], 6.0);
+            motif::inside(ui, split[0], |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("cascade_bar")
+                    .show(ui, |ui| {
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::toggle(ui, tr("cascade_see"), !editing).clicked() && editing {
+                                to_edit = Some(false);
+                            }
+                            if motif::toggle(ui, tr("cascade_describe"), editing).clicked()
+                                && !editing
+                            {
+                                to_edit = Some(true);
+                            }
+                            if editing {
+                                let changed = session
+                                    .cascade_edit
+                                    .as_ref()
+                                    .is_some_and(|(typed, base)| typed != base);
+                                if motif::button_enabled(ui, tr("cascade_save"), changed).clicked()
+                                {
+                                    save = true;
+                                }
+                                if motif::button(ui, tr("cascade_cancel")).clicked() {
+                                    cancel = true;
+                                }
+                                if motif::button(ui, tr("cascade_copy"))
+                                    .on_hover_text(tr("cascade_copy_tooltip"))
+                                    .clicked()
+                                {
+                                    copy = true;
+                                }
+                                let del = if session.cascade_confirm_delete {
+                                    tr("cascade_delete_confirm")
+                                } else {
+                                    tr("cascade_delete")
+                                };
+                                if motif::button(ui, del).clicked() {
+                                    delete = true;
+                                }
+                                if session.cascade_conflict {
+                                    if motif::button(ui, tr("cascade_keep_mine")).clicked() {
+                                        force = true;
+                                    }
+                                    if motif::button(ui, tr("cascade_take_theirs")).clicked() {
+                                        retake = true;
+                                    }
+                                }
+                            } else {
+                                let label = if session.cascade_playing {
+                                    tr("cascade_pause")
+                                } else {
+                                    tr("cascade_play")
+                                };
+                                if motif::button(ui, label).clicked() {
+                                    play = true;
+                                }
+                                if motif::button(ui, tr("cascade_reset"))
+                                    .on_hover_text(tr("cascade_reset_tooltip"))
+                                    .clicked()
+                                {
+                                    reset = true;
+                                }
+                                if short {
+                                    let on = session.cascade_curves;
+                                    if motif::toggle(ui, tr("cascade_figure"), !on).clicked() {
+                                        curves = Some(false);
+                                    }
+                                    if motif::toggle(ui, tr("cascade_curves"), on).clicked() {
+                                        curves = Some(true);
+                                    }
+                                }
+                                let (resp, v) = motif::scale_range(
+                                    ui,
+                                    scale_w,
+                                    f64::from(session.cascade_t),
+                                    0.0,
+                                    f64::from(CASCADE_HORIZON),
+                                    1.0,
+                                );
+                                if resp.changed() || resp.dragged() || resp.clicked() {
+                                    scrub = Some(
+                                        v.round().clamp(0.0, f64::from(CASCADE_HORIZON)) as u32
+                                    );
+                                }
+                                // **D'un bloc** : dans une rangée qui
+                                // s'enroule, egui replie le texte d'une
+                                // étiquette au lieu de la passer à la ligne,
+                                // et « Temps » restait seul au bout de la
+                                // première rangée, « 30 / 120 » sous lui.
+                                ui.add(
+                                    egui::Label::new(
+                                        egui::RichText::new(&time_label)
+                                            .font(time_font.clone())
+                                            .color(motif::text_dim()),
+                                    )
+                                    .wrap_mode(egui::TextWrapMode::Extend),
+                                );
+                            }
+                        });
+                    });
+            });
+            let rest = split[1];
+            if editing {
+                Self::cascade_editor(ui, session, rest, now);
+            } else {
+                let show = match (short, session.cascade_curves) {
+                    (false, _) => CascadeShow::Both,
+                    (true, false) => CascadeShow::Figure,
+                    (true, true) => CascadeShow::Curves,
+                };
+                Self::cascade_seen(ui, session, &read, rest, config, now, show);
+            }
+        });
+        if let Some(c) = curves {
+            session.cascade_curves = c;
+        }
+        if let Some(e) = to_edit {
+            session.cascade_confirm_delete = false;
+            if e {
+                session.cascade_playing = false;
+                session.cascade_edit = Some((read.text.clone(), read.text.clone()));
+                session.cascade_conflict = false;
+            } else if session.cascade_may_leave() {
+                session.cascade_edit = None;
+                session.cascade_preview = None;
+            }
+        }
+        // Ctrl+S enregistre, comme partout ailleurs sur un poste.
+        if editing && ui.input(|i| i.modifiers.command && i.key_pressed(egui::Key::S)) {
+            save = session
+                .cascade_edit
+                .as_ref()
+                .is_some_and(|(typed, base)| typed != base);
+        }
+        // La barre d'espace lit et arrête, quand aucun champ n'a le
+        // curseur — c'est le geste de tout lecteur.
+        if !editing
+            && ui.memory(|m| m.focused()).is_none()
+            && ui.input(|i| i.key_pressed(egui::Key::Space))
+        {
+            play = true;
+        }
+        if play {
+            if session.cascade_playing {
+                session.cascade_playing = false;
+            } else {
+                if session.cascade_t >= CASCADE_HORIZON {
+                    session.cascade_t = 0;
+                }
+                session.cascade_playing = true;
+                session.cascade_tick = now;
+            }
+        }
+        if reset {
+            let before = session.cascade_shown(now);
+            session.cascade_doses.clear();
+            session.cascade_t = 0;
+            session.cascade_playing = false;
+            session.cascade_sync();
+            session.cascade_moved(now, before);
+        }
+        if let Some(t) = scrub {
+            session.cascade_t = t;
+            session.cascade_playing = false;
+            session.cascade_wave = None;
+        }
+        // Dupliquer : la copie du texte **tel qu'il est tapé**, ouverte
+        // dans l'éditeur ; l'originale reste comme la base l'a. Rien ne
+        // se perd — le texte tapé part dans la copie —, donc rien à
+        // confirmer.
+        if copy {
+            session.cascade_leave_armed = false;
+            let typed = session
+                .cascade_edit
+                .as_ref()
+                .map_or_else(|| read.text.clone(), |(t, _)| t.clone());
+            let text = crate::cascade::copy_text(&typed, tr("cascade_copy_suffix"));
+            match session.db.add_cascade(&text) {
+                Ok(id) => {
+                    session.reload_cascades();
+                    session.open_cascade(id, None);
+                    session.cascade_edit = Some((text.clone(), text));
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if cancel && session.cascade_may_leave() {
+            if session.cascade_fresh == Some(read.id) {
+                session.cascade_drop_fresh();
+            }
+            session.cascade_edit = None;
+            session.cascade_preview = None;
+            session.cascade_conflict = false;
+            session.cascade_confirm_delete = false;
+        }
+        if save {
+            if let Some((typed, base)) = session.cascade_edit.clone() {
+                match session.db.update_cascade(read.id, &typed, &base) {
+                    Ok(true) => {
+                        session.cascade_edit = Some((typed.clone(), typed));
+                        session.cascade_conflict = false;
+                        session.reload_cascades();
+                    }
+                    Ok(false) => {
+                        session.cascade_conflict = true;
+                        session.stale("cascades_stale");
+                        session.reload_cascades();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if force {
+            if let Some((typed, _)) = session.cascade_edit.clone() {
+                match session.db.force_cascade(read.id, &typed) {
+                    Ok(true) => {
+                        session.cascade_edit = Some((typed.clone(), typed));
+                        session.cascade_conflict = false;
+                        session.reload_cascades();
+                    }
+                    // Plus de ligne à réécrire : supprimée ailleurs. Le
+                    // texte gardé en fait une nouvelle.
+                    Ok(false) => match session.db.add_cascade(&typed) {
+                        Ok(id) => {
+                            session.cascade_open = Some(id);
+                            session.cascade_edit = Some((typed.clone(), typed));
+                            session.cascade_conflict = false;
+                            session.reload_cascades();
+                        }
+                        Err(e) => session.error = Some(e),
+                    },
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if retake {
+            // Le texte enregistré — ou, s'il n'y en a plus, plus d'éditeur.
+            session.cascade_edit = None;
+            session.cascade_preview = None;
+            session.cascade_conflict = false;
+            session.reload_cascades();
+            let saved = session
+                .cascade_open
+                .and_then(|id| session.cascades.iter().find(|c| c.id == id))
+                .map(|c| c.text.clone());
+            match saved {
+                Some(text) => session.cascade_edit = Some((text.clone(), text)),
+                None => {
+                    session.cascade_open = None;
+                    session.cascade_read = None;
+                }
+            }
+            session.cascade_sync();
+        }
+        if delete {
+            if session.cascade_confirm_delete {
+                // Contre le texte enregistré tel qu'il est affiché — relu
+                // à chaque rechargement : après un refus, la seconde
+                // demande porte sur la version qu'on vient de voir.
+                match session.db.delete_cascade(read.id, &read.text) {
+                    Ok(true) => {
+                        session.cascade_open = None;
+                        session.cascade_edit = None;
+                        session.cascade_preview = None;
+                        session.cascade_read = None;
+                        session.reload_cascades();
+                    }
+                    Ok(false) => {
+                        session.stale("cascades_stale");
+                        session.reload_cascades();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+                session.cascade_confirm_delete = false;
+            } else {
+                session.cascade_confirm_delete = true;
+            }
+        }
+    }
+
+    /// « Voir » : la figure, le temps sous elle, et ce qui la source.
+    fn cascade_seen(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        read: &CascadeRead,
+        rect: egui::Rect,
+        config: &Config,
+        now: f64,
+        show: CascadeShow,
+    ) {
+        // Le pied : les sources, puis la mention de l'officine si elle en
+        // a écrit une. Mesurés sur la largeur où ils seront posés.
+        let mut foot: Vec<String> = Vec::new();
+        if !read.parsed.sources.is_empty() {
+            foot.push(trf("cascade_sources", read.parsed.sources.join(" ; ")));
+        }
+        if !config.disclaimers.cascades.trim().is_empty() {
+            foot.push(config.disclaimers.cascades.trim().to_owned());
+        }
+        // Une ligne chacun, raccourcie s'il le faut et entière au
+        // survol : la figure est ce qu'on regarde, et deux lignes de
+        // références repliées lui prenaient ce qu'un écran de comptoir a
+        // de hauteur.
+        let foot_font = egui::FontId::proportional(motif::pt(ui, 10.0));
+        let foot_h = foot.len() as f32 * Self::label_line(ui);
+        // Les courbes : l'activité de chaque effet, puis **la densité de
+        // chaque nœud qui s'adapte**, en tirets. C'est elle qui explique
+        // le reste : les récepteurs qui se multiplient sous un
+        // bêtabloquant sont ceux que l'arrêt découvre tous à la fois.
+        // L'adaptation d'un nœud seulement quand elle bouge dans la partie
+        // jouée : couchée sur le filet du repos, une courbe en tirets de
+        // plus ne dit rien et brouille celle qui parle.
+        let run = session.cascade_run.clone();
+        let moves = |i: usize| {
+            run.as_ref().is_some_and(|r| {
+                r.frames
+                    .iter()
+                    .any(|f| (f.density.get(i).copied().unwrap_or(1.0) - 1.0).abs() > 0.02)
+            })
+        };
+        let outcomes: Vec<(usize, bool)> = read
+            .parsed
+            .outcomes()
+            .into_iter()
+            .map(|i| (i, false))
+            .chain(
+                (0..read.parsed.nodes.len())
+                    .filter(|&i| read.parsed.nodes[i].adapts && moves(i))
+                    .map(|i| (i, true)),
+            )
+            .collect();
+        let labels: Vec<String> = outcomes
+            .iter()
+            .map(|&(i, density)| {
+                let name = read.parsed.nodes[i].name.as_str();
+                if density {
+                    trf("cascade_density_series", name)
+                } else {
+                    name.to_owned()
+                }
+            })
+            .collect();
+        // Le temps prend une part du volet, jamais moins que sa légende
+        // et trois lignes de tracé.
+        let items: Vec<(&str, egui::Color32)> = labels
+            .iter()
+            .enumerate()
+            .map(|(k, l)| (l.as_str(), Self::cascade_series(k)))
+            .collect();
+        let legend_h = motif::chart::legend_height(ui, &items, rect.width());
+        let chart_floor = legend_h + Self::label_line(ui) * 3.0;
+        let chart_h = match show {
+            _ if outcomes.is_empty() => 0.0,
+            CascadeShow::Both => (rect.height() * 0.3)
+                .max(chart_floor)
+                .min(rect.height() * 0.45),
+            CascadeShow::Figure => 0.0,
+            CascadeShow::Curves => (rect.height() - foot_h - 6.0).max(1.0),
+        };
+        // Le reste à la figure ; le temps et le pied seulement quand ils
+        // ont quelque chose à porter — une hauteur nulle, dans
+        // `split_rows`, voudrait dire « le reste » une seconde fois.
+        let figure = show != CascadeShow::Curves || outcomes.is_empty();
+        let mut heights = Vec::new();
+        if figure {
+            heights.push(0.0);
+        }
+        if chart_h > 0.0 {
+            heights.push(chart_h);
+        }
+        if foot_h > 0.0 {
+            heights.push(foot_h);
+        }
+        let split = motif::split_rows(rect, &heights, 6.0);
+        if figure {
+            let shown = session.cascade_shown(now);
+            Self::cascade_figure(ui, session, read, split[0], &shown, now, true);
+        }
+        if chart_h > 0.0 {
+            let at = usize::from(figure);
+            let (t, flip) = Self::cascade_timeline(ui, session, read, split[at], &outcomes, &items);
+            if let Some(t) = t {
+                session.cascade_t = t;
+                session.cascade_playing = false;
+                session.cascade_wave = None;
+            }
+            // Une courbe s'éteint **par son nom** : l'ensemble des courbes
+            // change avec ce qui est donné, et un rang désignerait une
+            // autre courbe à la partie suivante.
+            if let Some(label) = flip.and_then(|k| labels.get(k)) {
+                match session.cascade_hidden.iter().position(|h| h == label) {
+                    Some(at) => {
+                        session.cascade_hidden.remove(at);
+                    }
+                    None => session.cascade_hidden.push(label.clone()),
+                }
+            }
+        }
+        if foot_h > 0.0 {
+            motif::inside(ui, split[split.len() - 1], |ui| {
+                for l in &foot {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(l)
+                                .font(foot_font.clone())
+                                .color(motif::text_dim()),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(l);
+                }
+            });
+        }
+    }
+
+    /// La couleur de la k-ième courbe du temps. L'accent est laissé à
+    /// la marque du temps courant.
+    fn cascade_series(k: usize) -> egui::Color32 {
+        // Ni les deux teintes des sens de variation (4 et 6), ni le
+        // vert et le rouge d'abord : une courbe n'est pas un verdict.
+        const ORDER: [usize; 5] = [5, 7, 1, 2, 3];
+        motif::chart::series_color(ORDER[k % ORDER.len()])
+    }
+
+    /// Les deux teintes d'un sens de variation. **Pas le vert et le
+    /// rouge** : une fréquence cardiaque qui baisse n'est ni bonne ni
+    /// mauvaise, c'est ce qu'on a demandé au bêtabloquant. Deux teintes
+    /// sans verdict, et une forme — le triangle — qui dit le sens pour
+    /// qui ne distingue pas les couleurs.
+    fn cascade_tone(trend: crate::cascade::Trend) -> Option<egui::Color32> {
+        use crate::cascade::Trend;
+        match trend {
+            Trend::Up => Some(motif::chart::series_color(6)),
+            Trend::Down => Some(motif::chart::series_color(4)),
+            Trend::Rest => None,
+        }
+    }
+
+    /// La figure : les nœuds en étages, les flèches, et le signal qui y
+    /// passe. `levels` est ce que chaque nœud affiche maintenant.
+    #[allow(clippy::too_many_arguments)]
+    fn cascade_figure(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        read: &CascadeRead,
+        rect: egui::Rect,
+        levels: &[f32],
+        now: f64,
+        live: bool,
+    ) {
+        use crate::cascade::{Kind, Sign, Trend};
+        let field = motif::well(ui, rect);
+        let c = &read.parsed;
+        let lay = &read.layout;
+        if c.nodes.is_empty() || field.width() < 24.0 || field.height() < 24.0 {
+            ui.painter().text(
+                field.center(),
+                egui::Align2::CENTER_CENTER,
+                tr("cascade_empty_figure"),
+                egui::FontId::proportional(motif::pt(ui, 11.0)),
+                motif::text_dim(),
+            );
+            return;
+        }
+        let span = lay.span.max(1.0);
+        let layers = lay.layers.max(1);
+        // Les mesures d'une case, pour une échelle `k` de la figure : la
+        // marque de sa nature, son nom, le triangle de son sens, et la
+        // ligne des molécules données.
+        let sizes = |k: f32| {
+            let font = egui::FontId::proportional(motif::pt(ui, 11.0 * k));
+            let small = egui::FontId::proportional(motif::pt(ui, 9.5 * k));
+            let line_h = ui.fonts(|f| f.row_height(&font));
+            let small_h = ui.fonts(|f| f.row_height(&small));
+            let pad = motif::pt(ui, 4.0 * k);
+            let mark = line_h * 0.8;
+            let widest = c
+                .nodes
+                .iter()
+                .map(|n| {
+                    ui.fonts(|f| {
+                        f.layout_no_wrap(n.name.clone(), font.clone(), motif::text())
+                            .size()
+                            .x
+                    })
+                })
+                .fold(0.0_f32, f32::max);
+            let box_h = line_h + 2.0 * pad;
+            CascadeSizes {
+                font,
+                small,
+                pad,
+                mark,
+                natural_w: widest + 2.0 * mark + 4.0 * pad,
+                gap_x: chars_wide(ui, 2.0) * k,
+                box_h,
+                box_h2: box_h + small_h,
+            }
+        };
+        let (fw, fh) = (field.width(), field.height());
+        // **Le sens de la figure suit la forme du creux**, et **sa
+        // taille aussi** : une figure qui ne tient pas se resserre
+        // jusqu'aux sept dixièmes de sa taille, puis déborde — la molette
+        // et le glissement vont chercher le reste.
+        let first = sizes(1.0);
+        let (_, fit) = cascade_fit(
+            fw,
+            fh,
+            span,
+            layers,
+            first.natural_w + first.gap_x,
+            first.box_h2,
+        );
+        let k = fit.clamp(0.7, 1.0);
+        let z = if k < 1.0 { sizes(k) } else { first };
+        let (font, small, pad, mark, natural_w, gap_x, box_h, box_h2) = (
+            z.font,
+            z.small,
+            z.pad,
+            z.mark,
+            z.natural_w,
+            z.gap_x,
+            z.box_h,
+            z.box_h2,
+        );
+        let (across_rows, _) = cascade_fit(fw, fh, span, layers, natural_w + gap_x, box_h2);
+        // L'aperçu de l'éditeur est au repos : les prises jouées sont
+        // celles du texte enregistré, et leurs numéros ne désignent pas
+        // les mêmes molécules dans le texte qu'on tape.
+        let given = if live {
+            crate::cascade::given_at(c, &session.cascade_doses, session.cascade_t)
+        } else {
+            Vec::new()
+        };
+        let density_of = |i: usize| -> f32 {
+            if !live {
+                return 1.0;
+            }
+            session
+                .cascade_run
+                .as_ref()
+                .and_then(|run| run.frames.get(session.cascade_t as usize))
+                .and_then(|f| f.density.get(i).copied())
+                .unwrap_or(1.0)
+        };
+        let drugged = |i: usize| -> Vec<&str> {
+            c.molecules
+                .iter()
+                .enumerate()
+                .filter(|(m, mol)| {
+                    given.get(*m).copied().unwrap_or(false) && mol.acts.iter().any(|(_, n)| *n == i)
+                })
+                .map(|(_, mol)| mol.name.as_str())
+                .collect()
+        };
+        // Le pas le long des étages, et le pas d'un rang à l'autre.
+        let (layer_pitch, rank_pitch) = if across_rows {
+            let lp = if layers > 1 {
+                ((fw - natural_w) / (layers - 1) as f32)
+                    .clamp(mark * 4.0, (natural_w + gap_x) * 1.6)
+            } else {
+                natural_w + gap_x
+            };
+            (lp, (fh / span).clamp(box_h2 * 1.25, box_h2 * 2.2))
+        } else {
+            let lp = if layers > 1 {
+                ((fh - box_h2) / (layers - 1) as f32).clamp(box_h2 * 1.35, box_h2 * 2.6)
+            } else {
+                box_h2
+            };
+            (lp, (natural_w + gap_x).min(fw / span))
+        };
+        let (plain_w, plain_h) = if across_rows {
+            (
+                (layers - 1) as f32 * layer_pitch + natural_w,
+                span * rank_pitch,
+            )
+        } else {
+            (
+                span * rank_pitch,
+                (layers - 1) as f32 * layer_pitch + box_h2,
+            )
+        };
+        let nav = Self::graph_navigate(
+            ui,
+            field,
+            (plain_w / 2.0, plain_h / 2.0),
+            if live {
+                session.cascade_look
+            } else {
+                session.cascade_preview_look
+            },
+            if live {
+                "cascade_canvas"
+            } else {
+                "cascade_preview_canvas"
+            },
+        );
+        let look = nav.look;
+        if live {
+            session.cascade_look = look;
+        } else {
+            session.cascade_preview_look = look;
+        }
+        let zoom = look.zoom;
+        let centre = field.center() + egui::vec2(look.pan.0, look.pan.1);
+        let at = |i: usize| -> egui::Pos2 {
+            let along = lay.layer[i] as f32 * layer_pitch;
+            let across = (lay.x[i] + 0.5) * rank_pitch;
+            let (x, y) = if across_rows {
+                (
+                    along + natural_w / 2.0 - plain_w / 2.0,
+                    across - plain_h / 2.0,
+                )
+            } else {
+                (across - plain_w / 2.0, along + box_h2 / 2.0 - plain_h / 2.0)
+            };
+            centre + egui::vec2(x, y) * zoom
+        };
+        // La case prend ce que le pas lui laisse, sans dépasser son nom :
+        // grossir donne de la place aux noms que le volet coupait.
+        let room = if across_rows { layer_pitch } else { rank_pitch };
+        let box_w = (room * zoom - gap_x).clamp(mark * 3.0, natural_w);
+        let rects: Vec<egui::Rect> = (0..c.nodes.len())
+            .map(|i| {
+                let h = if drugged(i).is_empty() { box_h } else { box_h2 };
+                egui::Rect::from_center_size(at(i), egui::vec2(box_w, h))
+            })
+            .collect();
+        let painter = ui.painter_at(field);
+        let level = |i: usize| levels.get(i).copied().unwrap_or(1.0);
+        // Le survol d'une molécule de la liste éclaire ses nœuds — sur la
+        // figure du texte enregistré seulement : dans l'aperçu, les
+        // numéros des molécules sont ceux d'un autre texte.
+        let lit = session
+            .cascade_hover
+            .filter(|_| live)
+            .and_then(|m| c.molecules.get(m));
+        // La lignée suivie : ce qui n'en est pas pâlit.
+        let related: Option<Vec<bool>> = session
+            .cascade_focus
+            .filter(|&f| live && f < c.nodes.len())
+            .map(|f| crate::cascade::lineage(c, f));
+        let dim = |i: usize| related.as_ref().is_some_and(|r| !r[i]);
+        // --- Les flèches, sous les nœuds ----------------------------
+        let ink = motif::text_dim();
+        let faint = motif::chart::grid_color();
+        let mut beziers: Vec<(egui::epaint::CubicBezierShape, f32, Sign, f32)> = Vec::new();
+        for (k, e) in c.edges.iter().enumerate() {
+            let (a, b) = (rects[e.from], rects[e.to]);
+            let src = level(e.from);
+            let color = if src < 0.25 || dim(e.from) || dim(e.to) {
+                faint
+            } else {
+                ink
+            };
+            let width = (0.8 + 0.9 * src).min(3.2);
+            let stroke = egui::Stroke::new(width, color);
+            let back = lay.back.get(k).copied().unwrap_or(false);
+            let points = match (back, across_rows) {
+                // Une boucle revient **par le côté**, et le dit : elle ne
+                // traverse pas les étages qu'elle saute.
+                (true, false) => {
+                    let out = rank_pitch * zoom * 0.45;
+                    let p0 = egui::pos2(a.right(), a.center().y);
+                    let p3 = egui::pos2(b.right(), b.center().y);
+                    [p0, p0 + egui::vec2(out, 0.0), p3 + egui::vec2(out, 0.0), p3]
+                }
+                (true, true) => {
+                    let out = rank_pitch * zoom * 0.45;
+                    let p0 = egui::pos2(a.center().x, a.bottom());
+                    let p3 = egui::pos2(b.center().x, b.bottom());
+                    [p0, p0 + egui::vec2(0.0, out), p3 + egui::vec2(0.0, out), p3]
+                }
+                (false, false) => {
+                    let p0 = egui::pos2(a.center().x, a.bottom());
+                    let p3 = egui::pos2(b.center().x, b.top());
+                    let dy = (p3.y - p0.y) * 0.5;
+                    [p0, p0 + egui::vec2(0.0, dy), p3 - egui::vec2(0.0, dy), p3]
+                }
+                (false, true) => {
+                    let p0 = egui::pos2(a.right(), a.center().y);
+                    let p3 = egui::pos2(b.left(), b.center().y);
+                    let dx = (p3.x - p0.x) * 0.5;
+                    [p0, p0 + egui::vec2(dx, 0.0), p3 - egui::vec2(dx, 0.0), p3]
+                }
+            };
+            let shape = egui::epaint::CubicBezierShape::from_points_stroke(
+                points,
+                false,
+                egui::Color32::TRANSPARENT,
+                stroke,
+            );
+            painter.add(shape.clone());
+            // La pointe : un triangle qui active, une barre qui inhibe.
+            let tip = points[3];
+            let dir = (points[3] - points[2]).normalized();
+            let dir = if dir.x.is_finite() && dir.length() > 0.5 {
+                dir
+            } else {
+                egui::vec2(0.0, 1.0)
+            };
+            let side = egui::vec2(-dir.y, dir.x);
+            let s = motif::pt(ui, 5.0);
+            match e.sign {
+                Sign::Active => {
+                    painter.add(egui::Shape::convex_polygon(
+                        vec![
+                            tip,
+                            tip - dir * s * 1.4 + side * s * 0.7,
+                            tip - dir * s * 1.4 - side * s * 0.7,
+                        ],
+                        color,
+                        egui::Stroke::NONE,
+                    ));
+                }
+                Sign::Inhibe => {
+                    painter.line_segment(
+                        [tip - dir * 1.5 + side * s, tip - dir * 1.5 - side * s],
+                        egui::Stroke::new(width + 1.0, color),
+                    );
+                }
+            }
+            let length = points
+                .windows(2)
+                .map(|w| (w[1] - w[0]).length())
+                .sum::<f32>();
+            // Hors de la lignée suivie, le signal ne se montre pas courir.
+            let src = if dim(e.from) || dim(e.to) { 0.0 } else { src };
+            beziers.push((shape, src, e.sign, length));
+        }
+        // --- Le signal qui passe ------------------------------------
+        // Des points qui courent le long des flèches, d'autant plus vite
+        // et plus nombreux que la source est active : une flèche dont la
+        // source est éteinte ne porte plus rien, et cela se voit.
+        let pulse = motif::chart::series_color(0);
+        // Un point tous les trente points de longueur, qui court à une
+        // vitesse faite de l'activité de la source : l'écart entre deux
+        // points est le même sur toutes les flèches, et c'est la vitesse
+        // seule qui dit l'intensité.
+        let small_line_h = ui.fonts(|f| f.row_height(&small));
+        let spacing = small_line_h * 3.5;
+        for (shape, src, sign, length) in &beziers {
+            if *src < 0.05 || *length < 1.0 {
+                continue;
+            }
+            let n = (length / spacing).round().clamp(1.0, 12.0) as usize;
+            let speed = f64::from(spacing * (0.3 + 0.7 * src.min(2.0)) / length);
+            for j in 0..n {
+                let phase = ((now * speed) + j as f64 / n as f64).fract() as f32;
+                let p = shape.sample(phase);
+                // Un point à l'échelle du texte : un cinquième de ligne.
+                let r = small_line_h * 0.2;
+                match sign {
+                    Sign::Active => painter.circle_filled(p, r, pulse),
+                    Sign::Inhibe => painter.circle_stroke(p, r, egui::Stroke::new(1.2_f32, pulse)),
+                };
+            }
+        }
+        // --- Les nœuds -----------------------------------------------
+        let mut hovered: Option<usize> = None;
+        let mut focus_click: Option<usize> = None;
+        for (i, node) in c.nodes.iter().enumerate() {
+            let r = rects[i];
+            if !field.intersects(r) {
+                continue;
+            }
+            let l = level(i);
+            let trend = crate::cascade::trend(l);
+            let strength = (l.max(0.01).ln().abs() / 3.0_f32.ln()).min(1.0);
+            let fill = match Self::cascade_tone(trend) {
+                _ if dim(i) => motif::bg(),
+                Some(tone) => motif::bg_light().lerp_to_gamma(tone, 0.25 + 0.6 * strength),
+                None => motif::bg_light(),
+            };
+            painter.rect_filled(r, 0.0, fill);
+            motif::bevel(&painter, r, node.kind != Kind::Effet);
+            if lit.is_some_and(|m| m.acts.iter().any(|(_, n)| *n == i)) {
+                painter.rect_stroke(
+                    r.expand(2.0),
+                    0.0,
+                    egui::Stroke::new(2.0_f32, motif::accent()),
+                );
+            }
+            let text_ink = if dim(i) {
+                motif::text_faint()
+            } else {
+                motif::readable_on(motif::text(), fill)
+            };
+            let top = egui::Rect::from_min_size(r.min, egui::vec2(r.width(), box_h));
+            let mark_rect = egui::Rect::from_center_size(
+                egui::pos2(top.left() + pad + mark / 2.0, top.center().y),
+                egui::vec2(mark, mark),
+            );
+            Self::cascade_kind_mark(&painter, mark_rect, node.kind, text_ink);
+            // Le sens : un triangle, pointe en haut ou en bas.
+            let tri = egui::Rect::from_center_size(
+                egui::pos2(top.right() - pad - mark / 2.0, top.center().y),
+                egui::vec2(mark * 0.8, mark * 0.7),
+            );
+            let points = match trend {
+                Trend::Up => Some(vec![
+                    tri.center_top(),
+                    tri.right_bottom(),
+                    tri.left_bottom(),
+                ]),
+                Trend::Down => Some(vec![tri.left_top(), tri.right_top(), tri.center_bottom()]),
+                Trend::Rest => None,
+            };
+            if let Some(points) = points {
+                painter.add(egui::Shape::convex_polygon(
+                    points,
+                    text_ink,
+                    egui::Stroke::NONE,
+                ));
+            }
+            let name_w = (r.width() - 2.0 * mark - 4.0 * pad).max(0.0);
+            let mut job =
+                egui::text::LayoutJob::simple_singleline(node.name.clone(), font.clone(), text_ink);
+            job.wrap = egui::text::TextWrapping {
+                max_width: name_w,
+                max_rows: 1,
+                break_anywhere: true,
+                overflow_character: Some('…'),
+            };
+            let galley = ui.fonts(|f| f.layout_job(job));
+            painter.galley(
+                egui::pos2(
+                    top.center().x - galley.size().x / 2.0,
+                    top.center().y - galley.size().y / 2.0,
+                ),
+                galley,
+                text_ink,
+            );
+            // La densité d'un nœud qui s'adapte : un filet sous la case,
+            // plus long quand les récepteurs se multiplient.
+            if node.adapts {
+                let d = density_of(i);
+                let frac = (d / crate::cascade::DENSITY_MAX).clamp(0.0, 1.0);
+                let y = r.bottom() - 2.5;
+                painter.line_segment(
+                    [
+                        egui::pos2(r.left() + 3.0, y),
+                        egui::pos2(r.left() + 3.0 + (r.width() - 6.0) * frac, y),
+                    ],
+                    egui::Stroke::new(2.0_f32, text_ink),
+                );
+            }
+            // Ce qui est donné sur ce nœud, en petit, sous son nom.
+            let on = drugged(i);
+            if !on.is_empty() {
+                let mut job = egui::text::LayoutJob::simple_singleline(
+                    on.join(", "),
+                    small.clone(),
+                    text_ink,
+                );
+                job.wrap = egui::text::TextWrapping {
+                    max_width: (r.width() - 2.0 * pad).max(0.0),
+                    max_rows: 1,
+                    break_anywhere: true,
+                    overflow_character: Some('…'),
+                };
+                let galley = ui.fonts(|f| f.layout_job(job));
+                painter.galley(
+                    egui::pos2(
+                        r.center().x - galley.size().x / 2.0,
+                        top.bottom() - pad / 2.0,
+                    ),
+                    galley,
+                    text_ink,
+                );
+            }
+            let resp = ui.interact(
+                r.intersect(field),
+                ui.id().with(("cascade_node", live, i)),
+                if live {
+                    egui::Sense::click()
+                } else {
+                    egui::Sense::hover()
+                },
+            );
+            if resp.hovered() {
+                hovered = Some(i);
+            }
+            if resp.clicked() {
+                focus_click = Some(i);
+            }
+        }
+        // Un clic suit la lignée du nœud ; un second clic la lâche.
+        if let Some(i) = focus_click {
+            session.cascade_focus = if session.cascade_focus == Some(i) {
+                None
+            } else {
+                Some(i)
+            };
+        }
+        if let Some(i) = hovered {
+            let node = &c.nodes[i];
+            let l = level(i);
+            let state = match crate::cascade::trend(l) {
+                Trend::Up => tr("cascade_up"),
+                Trend::Down => tr("cascade_down"),
+                Trend::Rest => tr("cascade_rest"),
+            };
+            let density = density_of(i);
+            let on = drugged(i);
+            egui::show_tooltip_at_pointer(
+                ui.ctx(),
+                ui.layer_id(),
+                ui.id().with(("cascade_tip", live)),
+                |ui| {
+                    ui.label(
+                        egui::RichText::new(format!(
+                            "{} — {}",
+                            node.name,
+                            Self::cascade_kind_label(node.kind)
+                        ))
+                        .strong(),
+                    );
+                    if !node.note.is_empty() {
+                        ui.label(node.note.as_str());
+                    }
+                    ui.label(state);
+                    if node.adapts {
+                        ui.label(if density > 1.05 {
+                            tr("cascade_density_up")
+                        } else if density < 0.95 {
+                            tr("cascade_density_down")
+                        } else {
+                            tr("cascade_adapts")
+                        });
+                    }
+                    if !on.is_empty() {
+                        ui.label(trf("cascade_given", on.join(", ")));
+                    }
+                    if live {
+                        ui.label(
+                            egui::RichText::new(tr("cascade_focus_hint")).color(motif::text_dim()),
+                        );
+                    }
+                },
+            );
+        }
+        // Le signal bouge : la figure se redessine tant qu'elle est à
+        // l'écran. Peu de chose — des traits et des points, tout le
+        // calcul est mémoïsé.
+        ui.ctx()
+            .request_repaint_after(std::time::Duration::from_millis(40));
+    }
+
+    /// La marque de la nature d'un nœud, dans un carré.
+    fn cascade_kind_mark(
+        painter: &egui::Painter,
+        r: egui::Rect,
+        kind: crate::cascade::Kind,
+        color: egui::Color32,
+    ) {
+        use crate::cascade::Kind;
+        let c = r.center();
+        let s = r.width() / 2.0;
+        let stroke = egui::Stroke::new(1.4_f32, color);
+        match kind {
+            Kind::Ligand => {
+                painter.circle_filled(c, s * 0.55, color);
+            }
+            Kind::Recepteur => {
+                // Un Y : le récepteur tel qu'on le dessine au tableau.
+                painter.line_segment([c + egui::vec2(0.0, s), c], stroke);
+                painter.line_segment([c, c + egui::vec2(-s * 0.8, -s)], stroke);
+                painter.line_segment([c, c + egui::vec2(s * 0.8, -s)], stroke);
+            }
+            Kind::Relais => {
+                painter.circle_stroke(c, s * 0.55, stroke);
+            }
+            Kind::Enzyme => {
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        c + egui::vec2(0.0, -s * 0.8),
+                        c + egui::vec2(s * 0.8, 0.0),
+                        c + egui::vec2(0.0, s * 0.8),
+                        c + egui::vec2(-s * 0.8, 0.0),
+                    ],
+                    color,
+                    egui::Stroke::NONE,
+                ));
+            }
+            Kind::Messager => {
+                painter.circle_filled(c + egui::vec2(-s * 0.4, s * 0.3), s * 0.3, color);
+                painter.circle_filled(c + egui::vec2(s * 0.4, -s * 0.3), s * 0.3, color);
+            }
+            Kind::Canal => {
+                for dx in [-s * 0.45, s * 0.45] {
+                    painter.line_segment(
+                        [c + egui::vec2(dx, -s * 0.9), c + egui::vec2(dx, s * 0.9)],
+                        egui::Stroke::new(2.0_f32, color),
+                    );
+                }
+            }
+            Kind::Transporteur => {
+                painter.rect_stroke(r.shrink(s * 0.3), 0.0, stroke);
+                painter.line_segment(
+                    [c + egui::vec2(-s * 0.9, 0.0), c + egui::vec2(s * 0.9, 0.0)],
+                    stroke,
+                );
+            }
+            Kind::Effet => {
+                painter.rect_filled(r.shrink(s * 0.35), 0.0, color);
+            }
+        }
+    }
+
+    /// Les effets au fil du temps : une courbe par effet, le repos en
+    /// filet, les prises en bandes, et le temps courant. Un clic ou un
+    /// glissement y déplace le temps — rendu à l'appelant.
+    fn cascade_timeline(
+        ui: &mut egui::Ui,
+        session: &Session,
+        read: &CascadeRead,
+        rect: egui::Rect,
+        outcomes: &[(usize, bool)],
+        items: &[(&str, egui::Color32)],
+    ) -> (Option<u32>, Option<usize>) {
+        let Some(run) = session.cascade_run.as_ref() else {
+            return (None, None);
+        };
+        let legend_h = motif::chart::legend_height(ui, items, rect.width());
+        let split = motif::split_rows(rect, &[legend_h, 0.0], 4.0);
+        let hidden: Vec<bool> = items
+            .iter()
+            .map(|(label, _)| session.cascade_hidden.iter().any(|h| h == label))
+            .collect();
+        let flipped = motif::inside(ui, split[0], |ui| {
+            motif::chart::legend_toggle(ui, items, &hidden, &[])
+        });
+        let plot = motif::chart::frame(ui, split[1]);
+        if plot.width() < 8.0 || plot.height() < 8.0 {
+            return (None, flipped);
+        }
+        let max = f64::from(crate::cascade::CEILING);
+        let n = run.frames.len().max(2);
+        let step = plot.width() / (n - 1) as f32;
+        let x_of = |t: u32| plot.left() + t as f32 * step;
+        let painter = ui.painter_at(plot);
+        // Les prises : une bande par molécule donnée, son nom au début.
+        let small = egui::FontId::proportional(motif::pt(ui, 9.5));
+        let band_h = ui.fonts(|f| f.row_height(&small));
+        let mut row = 0.0_f32;
+        for d in &session.cascade_doses {
+            let (a, b) = (x_of(d.from), x_of(d.until.unwrap_or(CASCADE_HORIZON)));
+            let band = egui::Rect::from_min_max(
+                egui::pos2(a, plot.top() + row * band_h),
+                egui::pos2(b.max(a + 2.0), plot.top() + (row + 1.0) * band_h),
+            );
+            painter.rect_filled(band, 0.0, motif::bg_hover());
+            if let Some(m) = read.parsed.molecules.get(d.molecule) {
+                painter.text(
+                    band.left_center() + egui::vec2(2.0, 0.0),
+                    egui::Align2::LEFT_CENTER,
+                    &m.name,
+                    small.clone(),
+                    motif::text_dim(),
+                );
+            }
+            row += 1.0;
+            if (row + 1.0) * band_h > plot.height() * 0.5 {
+                row = 0.0;
+            }
+        }
+        // Le repos : là où chaque courbe revient.
+        let rest_y = plot.bottom() - (1.0 / max) as f32 * plot.height();
+        painter.line_segment(
+            [
+                egui::pos2(plot.left(), rest_y),
+                egui::pos2(plot.right(), rest_y),
+            ],
+            egui::Stroke::new(1.0_f32, motif::chart::grid_color()),
+        );
+        let series: Vec<Vec<f64>> = outcomes
+            .iter()
+            .map(|&(i, density)| {
+                run.frames
+                    .iter()
+                    .map(|f| {
+                        let of = if density { &f.density } else { &f.level };
+                        f64::from(of.get(i).copied().unwrap_or(1.0))
+                    })
+                    .collect()
+            })
+            .collect();
+        let lines: Vec<(&[f64], egui::Color32, bool)> = series
+            .iter()
+            .enumerate()
+            .filter(|(k, _)| !hidden[*k])
+            .map(|(k, v)| (v.as_slice(), Self::cascade_series(k), outcomes[k].1))
+            .collect();
+        // Aucune courbe n'est remplie : sous une courbe d'activité, la
+        // surface ne voudrait rien dire.
+        for (values, color, dashed) in &lines {
+            if values.len() < 2 {
+                continue;
+            }
+            let pts: Vec<egui::Pos2> = values
+                .iter()
+                .enumerate()
+                .map(|(t, v)| {
+                    egui::pos2(
+                        plot.left() + t as f32 * step,
+                        plot.bottom() - (v.clamp(0.0, max) / max) as f32 * plot.height(),
+                    )
+                })
+                .collect();
+            let stroke = egui::Stroke::new(1.8_f32, *color);
+            if *dashed {
+                let dash = ui.fonts(|f| f.row_height(&small)) * 0.5;
+                painter.extend(egui::Shape::dashed_line(&pts, stroke, dash, dash * 0.7));
+            } else {
+                painter.add(egui::Shape::line(pts, stroke));
+            }
+        }
+        let x = x_of(session.cascade_t);
+        painter.line_segment(
+            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+            egui::Stroke::new(1.5_f32, motif::accent()),
+        );
+        let resp = ui
+            .interact(
+                plot,
+                ui.id().with("cascade_timeline"),
+                egui::Sense::click_and_drag(),
+            )
+            .on_hover_text(tr("cascade_chart_hint"));
+        if resp.clicked() || resp.dragged() {
+            if let Some(p) = resp.interact_pointer_pos() {
+                let t = ((p.x - plot.left()) / step)
+                    .round()
+                    .clamp(0.0, CASCADE_HORIZON as f32);
+                return (Some(t as u32), flipped);
+            }
+        }
+        (None, flipped)
+    }
+
+    /// « Décrire » : le texte, ce qu'il ne dit pas, et ce qu'il dessine.
+    fn cascade_editor(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
+        session.cascade_sync();
+        let Some(preview) = session.cascade_preview.clone() else {
+            return;
+        };
+        let wide = rect.width() >= chars_wide(ui, 90.0);
+        let (text_rect, figure_rect) = if wide {
+            let split = motif::split_columns(rect, 2, 8.0);
+            (split[0], split[1])
+        } else {
+            let split = motif::split_rows(rect, &[rect.height() * 0.55, 0.0], 6.0);
+            (split[0], split[1])
+        };
+        // Sous le texte : ses fautes, puis le rappel de la syntaxe.
+        let faults: Vec<String> = preview
+            .parsed
+            .faults
+            .iter()
+            .map(Self::cascade_fault_text)
+            .collect();
+        let hints = &preview.hints;
+        let small = egui::FontId::proportional(motif::pt(ui, 10.0));
+        let small_line = ui.fonts(|f| f.row_height(&small));
+        // Mesurés sur la largeur **dans** la zone défilante, celle où ils
+        // seront posés : mesurés sur le volet, ils annonçaient une ligne de
+        // moins que ce que la barre leur laisse, et la dernière sortait
+        // tranchée.
+        let inner_w = Self::scrolled_width(ui, text_rect.width());
+        // Le rappel de la syntaxe tient en une ligne, entier au survol :
+        // replié sous l'éditeur, il prenait trois lignes au texte qu'on
+        // écrit — l'aide le détaille.
+        let syntax_rows = 1.0;
+        let fault_rows: f32 = faults
+            .iter()
+            .chain(hints.iter())
+            .take(4)
+            .map(|f| motif::label_rows(ui, f, &small, inner_w) as f32)
+            .sum();
+        let labels = 1.0 + (faults.len() + hints.len()).min(4) as f32;
+        let under = ((syntax_rows + fault_rows) * small_line
+            + labels * ui.spacing().item_spacing.y)
+            .min(text_rect.height() * 0.4);
+        let split = motif::split_rows(text_rect, &[0.0, under], 6.0);
+        let inks = motif::code_ink();
+        let plain = motif::text();
+        let font = egui::TextStyle::Monospace.resolve(ui.style());
+        // Les couleurs ne se recalculent que quand le texte change : le
+        // découpeur est appelé à chaque image.
+        let mut painted = std::mem::take(&mut session.cascade_colour);
+        let mut layouter = |ui: &egui::Ui, text: &str, _wrap: f32| {
+            if painted.0 != text {
+                painted = (text.to_owned(), crate::cascade::colour(text));
+            }
+            let mut job = egui::text::LayoutJob::default();
+            for &(from, to, ink) in &painted.1 {
+                use crate::cascade::Ink;
+                let colour = match ink {
+                    Ink::Comment => inks[0],
+                    Ink::Keyword => inks[3],
+                    Ink::Arrow => inks[4],
+                    Ink::Action => inks[2],
+                    Ink::Plain => plain,
+                };
+                job.append(
+                    &text[from..to],
+                    0.0,
+                    egui::TextFormat {
+                        font_id: font.clone(),
+                        color: colour,
+                        italics: ink == Ink::Comment,
+                        ..Default::default()
+                    },
+                );
+            }
+            job.wrap.max_width = f32::INFINITY;
+            ui.fonts(|f| f.layout_job(job))
+        };
+        let mut typed_more = false;
+        if let Some((typed, _)) = session.cascade_edit.as_mut() {
+            motif::inside(ui, split[0], |ui| {
+                let (resp, _) = motif::code_area(
+                    ui,
+                    "cascade_editor",
+                    split[0].size(),
+                    egui::TextEdit::multiline(typed)
+                        .code_editor()
+                        .layouter(&mut layouter),
+                );
+                typed_more = resp.changed();
+            });
+        }
+        // Ce qu'on tape après l'avertissement le rend caduc : c'est un
+        // autre texte qu'on abandonnerait.
+        session.cascade_colour = painted;
+        if typed_more {
+            session.cascade_leave_armed = false;
+        }
+        motif::inside(ui, split[1], |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("cascade_faults")
+                .show(ui, |ui| {
+                    for f in &faults {
+                        ui.label(
+                            egui::RichText::new(f)
+                                .font(small.clone())
+                                .color(motif::alert()),
+                        );
+                    }
+                    for h in hints {
+                        ui.label(
+                            egui::RichText::new(h)
+                                .font(small.clone())
+                                .color(motif::warn()),
+                        );
+                    }
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("cascade_syntax_short"))
+                                .font(small.clone())
+                                .color(motif::text_dim()),
+                        )
+                        .truncate(),
+                    )
+                    .on_hover_text(tr("cascade_syntax"));
+                });
+        });
+        // La figure du texte tel qu'il est tapé, au repos : ce qu'on
+        // écrit se voit sans avoir à l'enregistrer.
+        let rest = vec![1.0_f32; preview.parsed.nodes.len()];
+        Self::cascade_figure(ui, session, &preview, figure_rect, &rest, now, false);
+    }
+
     fn explorer_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         use crate::facets::Organ;
         let body = motif::visible_rect(ui);
@@ -52077,6 +54703,7 @@ impl App {
                     tr("proto_button"),
                     tr("codex_button"),
                     tr("dispo_button"),
+                    tr("cascades_button"),
                 ]
                 .into_iter()
                 .map(|l| Self::button_width(ui, l) + gap)
@@ -52147,6 +54774,13 @@ impl App {
                         session.show_dispositifs = true;
                         session.reload_dispositifs();
                     }
+                    if motif::button(ui, tr("cascades_button"))
+                        .on_hover_text(tr("cascades_button_tooltip"))
+                        .clicked()
+                    {
+                        session.view = MainView::Cascades;
+                        session.reload_cascades();
+                    }
                     // Les carnets de suivi : c'est de la référence à
                     // imprimer, comme les tables de conversion et les
                     // fiches de dispositifs, et c'est pour cela que la
@@ -52203,6 +54837,19 @@ impl App {
             .as_ref()
             .map(|f| (f.id, f.name.clone(), session.is_favorite(&Goto::Drug(f.id))));
         let mut toggle_fav = false;
+        // **Les cascades qui nomment cette molécule** : la porte de la
+        // fiche vers son mécanisme joué. Lues une fois — la liste se
+        // relit au rechargement, pas à chaque fiche.
+        if session.drug_form.is_some() && !session.cascades_read {
+            session.cascades_read = true;
+            session.reload_cascades();
+        }
+        let cascade_doors: Vec<(i64, String)> = session
+            .drug_form
+            .as_ref()
+            .map(|f| session.cascades_naming(&f.dci))
+            .unwrap_or_default();
+        let mut open_cascade: Option<i64> = None;
         if let Some(form) = &mut session.drug_form {
             // ---- Card: monograph to read, or the editable form ----
             let reading = session.drug_reading;
@@ -52354,6 +55001,16 @@ impl App {
                                     .clicked()
                                 {
                                     open_calc = true;
+                                }
+                                // Le mécanisme, joué : une porte par
+                                // cascade qui nomme la molécule.
+                                for (id, title) in &cascade_doors {
+                                    if motif::button(ui, &trf("cascade_from_card", title))
+                                        .on_hover_text(tr("cascade_from_card_tooltip"))
+                                        .clicked()
+                                    {
+                                        open_cascade = Some(*id);
+                                    }
                                 }
                                 if motif::button(ui, tr("drug_print"))
                                     .on_hover_text(tr("drug_print_tooltip"))
@@ -52989,6 +55646,18 @@ impl App {
                     if let Err(e) = open::that(source.url(card)) {
                         session.error = Some(trf("drug_lookup_error", e));
                     }
+                }
+            }
+            if let Some(id) = open_cascade {
+                let dci = session
+                    .drug_form
+                    .as_ref()
+                    .map(|d| d.dci.clone())
+                    .unwrap_or_default();
+                // Le texte en cours dans « Décrire » ne se perd pas par
+                // cette porte non plus.
+                if session.cascade_may_leave() {
+                    session.open_cascade(id, Some(&dci));
                 }
             }
             if open_calc {
@@ -68868,7 +71537,8 @@ impl eframe::App for App {
                     | MainView::CaisseHistory
                     | MainView::Ddi
                     | MainView::UiTexts
-                    | MainView::Checklists => {
+                    | MainView::Checklists
+                    | MainView::Cascades => {
                         session.flush_date_edits();
                         session.refresh_dashboard();
                         MainView::Dashboard
@@ -70338,6 +73008,10 @@ impl eframe::App for App {
                                     (
                                         tr("opts_mention_concil"),
                                         &mut editor.cfg.disclaimers.conciliation,
+                                    ),
+                                    (
+                                        tr("opts_mention_cascades"),
+                                        &mut editor.cfg.disclaimers.cascades,
                                     ),
                                 ] {
                                     fields.push((label, value));
@@ -80870,6 +83544,7 @@ mod tests {
             V::Ddi,
             V::UiTexts,
             V::Checklists,
+            V::Cascades,
         ];
         let titles: Vec<&str> = super::help_sections()
             .iter()
@@ -80968,6 +83643,330 @@ mod tests {
         missing.sort();
         missing.dedup();
         assert!(missing.is_empty(), "familles sans intitulé : {missing:?}");
+    }
+
+    /// **Les cascades se dessinent à toutes les tailles, dans tous leurs
+    /// états, sans tomber.** Chaque cascade livrée, quatre formes de
+    /// fenêtre dont une minuscule, deux échelles, « Voir » puis
+    /// « Courbes » puis « Décrire », une molécule donnée et le temps posé
+    /// après son arrêt — le rebond. La géométrie de cette vue dépend de
+    /// la cascade (ses étages, ses rangs) et de la forme du creux (le
+    /// sens de la figure) : ce que `smoke.sh` ouvre sur une seule d'entre
+    /// elles ne dit rien des sept autres.
+    #[test]
+    fn every_shipped_cascade_draws_at_every_shape_in_every_state() {
+        let (mut session, _swept) = scratch_session("cascades");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        session.cascades_read = true;
+        let ids: Vec<i64> = session.cascade_index.iter().map(|c| c.id).collect();
+        assert_eq!(ids.len(), crate::db::STARTER_CASCADES.len());
+        let config = crate::config::Config::default();
+        for (w, h, scale) in [
+            (1400.0, 900.0, 1.0),
+            (1024.0, 700.0, 1.6),
+            (640.0, 420.0, 1.25),
+            (180.0, 120.0, 1.0),
+        ] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let input = || egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                )),
+                ..Default::default()
+            };
+            for &id in &ids {
+                session.open_cascade(id, None);
+                if let Some(read) = session.cascade_read.clone() {
+                    if !read.parsed.molecules.is_empty() {
+                        crate::cascade::toggle(&mut session.cascade_doses, 0, 5);
+                        crate::cascade::toggle(&mut session.cascade_doses, 0, 60);
+                    }
+                }
+                session.cascade_t = 64;
+                for step in 0..4 {
+                    match step {
+                        1 => session.cascade_curves = true,
+                        2 => {
+                            session.cascade_curves = false;
+                            session.cascade_playing = true;
+                            // Une lignée suivie, et une qui ne désigne
+                            // plus rien : aucune ne doit tomber.
+                            session.cascade_focus = Some(if id % 2 == 0 { 1 } else { 999 });
+                        }
+                        3 => {
+                            let text = session.cascade_read.as_ref().unwrap().text.clone();
+                            session.cascade_edit = Some((text.clone(), text));
+                        }
+                        _ => {}
+                    }
+                    let _ = ctx.run(input(), |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            super::App::cascades_view(ui, &mut session, &config);
+                        });
+                    });
+                }
+                session.cascade_edit = None;
+                session.cascade_playing = false;
+            }
+        }
+    }
+
+    /// Sans aucune cascade — un poste qui ne sème pas, une officine qui a
+    /// tout supprimé — la vue se dessine et le dit.
+    #[test]
+    fn the_cascades_view_draws_with_no_cascade_at_all() {
+        let (mut session, _swept) = scratch_session("cascade-empty");
+        for c in session.db.cascades().unwrap() {
+            assert!(session.db.delete_cascade(c.id, &c.text).unwrap());
+        }
+        session.reload_cascades();
+        session.cascades_read = true;
+        let config = crate::config::Config::default();
+        let ctx = egui::Context::default();
+        for (w, h) in [(1400.0, 900.0), (700.0, 500.0)] {
+            for _ in 0..2 {
+                let _ = ctx.run(
+                    egui::RawInput {
+                        screen_rect: Some(egui::Rect::from_min_size(
+                            egui::Pos2::ZERO,
+                            egui::vec2(w, h),
+                        )),
+                        ..Default::default()
+                    },
+                    |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            super::App::cascades_view(ui, &mut session, &config);
+                        });
+                    },
+                );
+            }
+        }
+        assert!(session.cascade_index.is_empty());
+        assert!(session.cascade_read.is_none());
+    }
+
+    /// Une cascade s'ouvre depuis la fiche de sa molécule, **la molécule
+    /// déjà donnée** ; et la porte ne s'ouvre que sur un nom entier.
+    #[test]
+    fn a_card_opens_its_cascade_with_its_molecule_given() {
+        let (mut session, _swept) = scratch_session("cascade-door");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let doors = session.cascades_naming("Bisoprolol");
+        assert_eq!(doors.len(), 1, "{doors:?}");
+        // L'aspirine est dans deux cascades : deux portes.
+        assert_eq!(session.cascades_naming("acide acétylsalicylique").len(), 2);
+        assert!(session.cascades_naming("bisoprol").is_empty());
+        assert!(session.cascades_naming("").is_empty());
+        session.open_cascade(doors[0].0, Some("BISOPROLOL"));
+        assert!(session.view == super::MainView::Cascades);
+        let read = session.cascade_read.clone().unwrap();
+        let m = read
+            .parsed
+            .molecules
+            .iter()
+            .position(|m| m.name == "bisoprolol")
+            .unwrap();
+        assert!(crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0)[m]);
+        // Un texte réécrit qui retire la molécule emporte sa prise.
+        let fewer = read
+            .text
+            .replace("molécule bisoprolol : antagoniste Bêta-1\n", "");
+        assert!(session
+            .db
+            .update_cascade(read.id, &fewer, &read.text)
+            .unwrap());
+        session.reload_cascades();
+        session.cascade_sync();
+        let kept = session
+            .cascade_read
+            .as_ref()
+            .unwrap()
+            .parsed
+            .molecules
+            .len();
+        assert!(session.cascade_doses.iter().all(|d| d.molecule < kept));
+    }
+
+    /// Une molécule de la cascade mène à sa fiche, par sa DCI entière ;
+    /// une molécule sans fiche n'offre pas de porte.
+    #[test]
+    fn a_cascade_molecule_leads_back_to_its_card() {
+        let (mut session, _swept) = scratch_session("cascade-card");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let beta = session.cascades_naming("bisoprolol")[0].0;
+        session.open_cascade(beta, None);
+        session.set_drugs(vec![crate::db::Drug {
+            id: 7,
+            name: "Cardensiel".into(),
+            dci: "Bisoprolol".into(),
+            ..Default::default()
+        }]);
+        let read = session.cascade_read.clone().unwrap();
+        let m = read
+            .parsed
+            .molecules
+            .iter()
+            .position(|m| m.name == "bisoprolol")
+            .unwrap();
+        session.cascade_sync();
+        let cards = session.cascade_cards();
+        assert_eq!(cards.iter().filter(|b| **b).count(), 1);
+        assert!(cards[m]);
+        assert_eq!(session.cascade_card_of(m).map(|d| d.id), Some(7));
+        assert!(session.cascade_card_of(m + 1).is_none());
+        assert!(session.cascade_card_of(999).is_none());
+    }
+
+    /// **Une prise suit sa molécule par son nom.** Une ligne ajoutée
+    /// au-dessus décale les rangs : la case cochée ne passe pas à la
+    /// voisine. Et une cascade supprimée sur un autre poste pendant qu'on
+    /// l'écrit garde le texte, que « Garder mon texte » recrée.
+    #[test]
+    fn a_rewritten_or_vanished_cascade_keeps_what_was_given_and_what_was_typed() {
+        let (mut session, _swept) = scratch_session("cascade-remap");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let beta = session.cascades_naming("bisoprolol")[0].0;
+        session.open_cascade(beta, Some("bisoprolol"));
+        session.cascade_hidden = vec!["Fréquence cardiaque".into()];
+        let read = session.cascade_read.clone().unwrap();
+        let moved = read.text.replace(
+            "molécule bisoprolol :",
+            "molécule nouvelle : inhibiteur Protéine Gs\nmolécule bisoprolol :",
+        );
+        assert!(session.db.update_cascade(beta, &moved, &read.text).unwrap());
+        session.reload_cascades();
+        session.cascade_sync();
+        let now = session.cascade_read.clone().unwrap();
+        let given = crate::cascade::given_at(&now.parsed, &session.cascade_doses, 0);
+        let on: Vec<&str> = now
+            .parsed
+            .molecules
+            .iter()
+            .zip(&given)
+            .filter(|(_, g)| **g)
+            .map(|(m, _)| m.name.as_str())
+            .collect();
+        assert_eq!(on, vec!["bisoprolol"]);
+        assert!(session.cascade_hidden.is_empty());
+        // Supprimée ailleurs pendant qu'on écrit.
+        let typed = format!("{moved}\n# ma note");
+        session.cascade_edit = Some((typed.clone(), moved.clone()));
+        assert!(session.db.delete_cascade(beta, &moved).unwrap());
+        session.reload_cascades();
+        session.cascade_sync();
+        assert_eq!(
+            session.cascade_edit.as_ref().map(|e| e.0.clone()),
+            Some(typed.clone())
+        );
+        assert!(session.cascade_conflict);
+        assert!(session.cascade_read.is_some());
+        // « Garder mon texte » : la ligne n'existe plus, une nouvelle naît.
+        assert_eq!(session.db.force_cascade(beta, &typed), Ok(false));
+    }
+
+    /// Une nouvelle cascade quittée sans avoir été écrite disparaît —
+    /// celle de ce poste seulement ; écrite, elle reste.
+    #[test]
+    fn a_fresh_untouched_cascade_vanishes_when_left_and_a_written_one_stays() {
+        let (mut session, _swept) = scratch_session("cascade-fresh");
+        session.reload_cascades();
+        session.cascades_read = true;
+        let before = session.cascades.len();
+        let template = tr("cascade_template").to_owned();
+        let id = session.db.add_cascade(&template).unwrap();
+        session.reload_cascades();
+        session.open_cascade(id, None);
+        session.cascade_fresh = Some(id);
+        session.cascade_edit = Some((template.clone(), template.clone()));
+        let other = session.cascade_index[0].id;
+        session.open_cascade(other, None);
+        assert_eq!(session.cascades.len(), before);
+        assert!(session.cascade_fresh.is_none());
+        // Un modèle venu d'ailleurs, lui, reste.
+        let foreign = session.db.add_cascade(&template).unwrap();
+        session.reload_cascades();
+        session.open_cascade(foreign, None);
+        session.open_cascade(other, None);
+        assert_eq!(session.cascades.len(), before + 1);
+    }
+
+    /// Un texte tapé dans « Décrire » ne se perd pas d'un clic : la
+    /// première demande de quitter avertit, la seconde abandonne ; un
+    /// texte inchangé part tout de suite.
+    #[test]
+    fn leaving_an_unsaved_cascade_asks_twice() {
+        let (mut session, _swept) = scratch_session("cascade-leave");
+        session.cascade_edit = Some(("A -> B".into(), "A -> B".into()));
+        assert!(session.cascade_may_leave());
+        session.cascade_edit = Some(("A -> B -> C".into(), "A -> B".into()));
+        assert!(!session.cascade_may_leave());
+        assert!(session.error.is_some());
+        assert!(session.cascade_may_leave());
+        // Et la fois d'après, on redemande.
+        assert!(!session.cascade_may_leave());
+    }
+
+    /// « Molécules du dossier » donne d'un geste ce que prend le dossier
+    /// ouvert — et seulement quand un dossier est ouvert.
+    #[test]
+    fn the_open_file_gives_its_molecules_to_the_cascade() {
+        let (mut session, _swept) = scratch_session("cascade-file");
+        session.db.seed_cascades().unwrap();
+        session.reload_cascades();
+        let sraa = session.cascades_naming("ramipril")[0].0;
+        session.open_cascade(sraa, None);
+        assert!(session.cascade_in_file().iter().all(|b| !b));
+        session.viewing = Some(crate::db::Patient::default());
+        session.patient_treats = ["Ramipril", "spironolactone", "paracétamol"]
+            .iter()
+            .map(|d| crate::db::Drug {
+                dci: (*d).to_owned(),
+                ..Default::default()
+            })
+            .collect();
+        // Relu contre le dossier à la synchronisation, pas à chaque appel.
+        session.cascade_sync();
+        let in_file = session.cascade_in_file();
+        assert_eq!(in_file.iter().filter(|b| **b).count(), 2);
+        super::App::cascade_give_file(&mut session, &in_file, 0.0);
+        let read = session.cascade_read.clone().unwrap();
+        let given = crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0);
+        assert_eq!(given, in_file);
+        let run = session.cascade_run.clone().unwrap();
+        let k = read.parsed.find("Kaliémie").unwrap();
+        assert_eq!(
+            crate::cascade::trend(run.frames[0].level[k]),
+            crate::cascade::Trend::Up
+        );
+        // Donné une seconde fois, rien ne s'arrête.
+        super::App::cascade_give_file(&mut session, &in_file, 0.0);
+        let again = crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0);
+        assert_eq!(again, in_file);
+    }
+
+    /// Le sens de la figure suit la forme du creux, et le haut en bas
+    /// l'emporte quand les deux se valent.
+    #[test]
+    fn a_cascade_lies_down_only_in_a_pane_that_is_wide_and_low() {
+        // Huit étages d'un rang : couchée dans une bande, debout dans une
+        // colonne.
+        let (lies, _) = super::cascade_fit(900.0, 200.0, 1.0, 8, 110.0, 30.0);
+        assert!(lies);
+        let (lies, fit) = super::cascade_fit(500.0, 900.0, 1.0, 8, 110.0, 30.0);
+        assert!(!lies);
+        assert!(fit > 1.0);
+        // Un carré, et une figure carrée : debout.
+        let (lies, _) = super::cascade_fit(600.0, 600.0, 4.0, 4, 120.0, 30.0);
+        assert!(!lies);
+        // Rien à poser, ou un creux nul : pas de NaN.
+        let (_, fit) = super::cascade_fit(0.0, 0.0, 0.0, 0, 0.0, 0.0);
+        assert!(fit.is_finite());
     }
 
     fn scratch_session(tag: &str) -> (super::Session, crate::db::Swept) {

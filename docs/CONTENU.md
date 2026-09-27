@@ -549,6 +549,57 @@ conseils à tenir à jour deux fois.
   terminent par un point d'interrogation, et aucune conduite trop courte
   pour être suivie. Le nombre de protocoles livrés ne baisse jamais.
 
+## Les récepteurs et cascades
+
+- **Où** : `src/db.rs`, `STARTER_CASCADES` — un texte par cascade, dans
+  le langage de `src/cascade.rs` (décrit en tête du module et dans
+  l'aide). La base garde **le texte seul** (table `cascades`) : titre,
+  nœuds, flèches et molécules s'en relisent.
+- **Semé par** : `Db::seed_cascades`, une fois, par titre, comme les
+  protocoles. Une cascade réécrite n'est jamais remplacée ; supprimée,
+  elle ne revient pas.
+- **Ce qu'une cascade affirme** : des flèches de manuel (qui active qui,
+  qui inhibe qui) et l'action de chaque molécule sur un nœud. Rien
+  d'autre : le modèle qui la joue est qualitatif — chaque nœud vaut 1 au
+  repos, les constantes de `cascade.rs` (occupation, efficacités,
+  vitesse d'adaptation) ne sont pas des données cliniques et la vue ne
+  montre jamais un chiffre, seulement un sens de variation et une
+  ampleur relative. Le temps est en pas, sans unité : **aucun délai
+  clinique n'est écrit nulle part**.
+- **`adaptation`** ne se met que là où la tolérance et le rebond sont
+  établis : bêta-1 et bêta-2, les deux GABA-A, et pour l'opioïde
+  l'**adénylate cyclase**, dont la surexpression fait le manque — le
+  récepteur mu intestinal reste sans adaptation, parce que la
+  constipation sous opioïde ne s'épuise pas.
+- **`tonus faible`** dit qu'un nœud est presque au repos sans molécule :
+  les récepteurs mu, sur lesquels la naloxone seule ne fait rien. Sans
+  lui, le modèle — où tout vaut 1 au repos — montrait une hyperalgésie
+  sous naloxone seule. Une relecture pharmacologique de la première
+  version l'a trouvé, avec le zolpidem lu comme une benzodiazépine
+  (d'où les deux GABA-A, alpha-1 et alpha-2/3), la cellule ECL nommée
+  entérochromaffine, et une source qui laissait croire les
+  cardiosélectifs permis dans l'asthme sévère.
+- **Une molécule nomme une fiche** par sa DCI exacte, repliée : c'est
+  par elle que la fiche ouvre sa cascade (`Session::cascades_naming`),
+  et un nom entier, jamais une sous-chaîne.
+- **Tests** (`src/cascade.rs`) : chaque cascade livrée se lit sans
+  faute, porte titre, sujet et source, ne laisse aucun nœud isolé ;
+  chaque molécule nomme une fiche livrée et **change au moins un
+  effet** — une case qui ne bouge rien sur la figure est du contenu
+  mort. Des tests tiennent aussi les affirmations qu'on vient y lire :
+  le bisoprolol épargne les bronches et le propranolol non, l'IEC fait
+  tousser et le sartan non, le coxib épargne l'estomac et les
+  plaquettes mais ni le rein ni la balance thrombotique, le zolpidem
+  endort sans anxiolyse, la naloxone seule ne fait rien et précipite le
+  manque après une longue morphine, l'énoxaparine et le fondaparinux
+  agissent sur le Xa, la dompéridone monte la prolactine sans syndrome
+  extrapyramidal quand le métoclopramide défait la lévodopa,
+  l'oxybutynine défait le donépézil dans le cerveau quand le trospium
+  ne passe pas, l'arrêt brutal d'une benzodiazépine
+  abaisse le seuil convulsif, la buprénorphine donnée sur la morphine
+  en baisse l'effet, la constipation survit à la tolérance. Le nombre
+  de cascades livrées ne baisse jamais (`the_shipped_cascades_only_ever_grow`).
+
 ## La biologie
 
 - **Où** : `src/biology.rs` — `CATALOGUE` (les analytes, leurs

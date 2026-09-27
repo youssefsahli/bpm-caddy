@@ -168,6 +168,8 @@ const CONFIG_TEMPLATE: &str = r#"# BPM-Caddy — configuration (fichier créé a
 # plan = "Ce plan reprend ce que nous avons vu ensemble : il ne remplace pas votre ordonnance."
 # Pied de la fiche de conciliation adressée au prescripteur.
 # conciliation = "Rapprochement établi à l'officine à partir de l'ordonnance de sortie remise par le patient : il ne vaut pas avis médical."
+# Sous la figure des récepteurs et cascades.
+# cascades = "Modèle qualitatif : il montre des sens de variation, pas des doses ni des délais."
 
 [ordonnance]
 # Les fiches du référentiel médicaments portant cette étiquette sont
@@ -969,6 +971,8 @@ pub struct DisclaimersConfig {
     pub plan: String,
     /// At the foot of the conciliation sheet sent to the prescriber.
     pub conciliation: String,
+    /// Under the receptors-and-cascades figure.
+    pub cascades: String,
 }
 
 /// Convention rules: how many acts of each kind per "année
@@ -2608,6 +2612,7 @@ mod tests {
         assert_eq!(cfg.disclaimers.ordonnance_screen, "");
         assert_eq!(cfg.disclaimers.carnet, "");
         assert_eq!(cfg.disclaimers.calculator, "");
+        assert_eq!(cfg.disclaimers.cascades, "");
         let written: Config = toml::from_str(
             r#"
             [disclaimers]

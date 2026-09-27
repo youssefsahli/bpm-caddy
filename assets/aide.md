@@ -688,6 +688,96 @@ décision ; une liste est une vérification d'exhaustivité.
 **Aucune liste livrée** : une base neuve n'en comporte aucune. Chaque
 officine rédige les siennes.
 
+# Récepteurs et cascades
+
+« Cascades » dessine un mécanisme d'action : le ligand en haut, son
+récepteur, les relais, les messagers, et les effets en bas. Les flèches
+pleines activent, les flèches barrées inhibent ; les points qui courent
+le long d'une flèche disent que le signal passe, et une flèche dont la
+source est éteinte ne porte plus rien.
+
+**Les molécules** se cochent dans la liste de gauche. Cochée, une
+molécule est donnée à partir du temps affiché ; décochée, elle s'arrête.
+La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
+qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
+nature, sa note et son état ; un clic suit sa lignée — ce qui le nourrit
+et ce qu'il nourrit restent en clair, le reste pâlit — et un second clic
+rend toute la figure.
+
+**Les scénarios**, sous les molécules, sont des histoires toutes prêtes
+— « Arrêt brutal du bisoprolol », « Cascade de prescription » : un clic
+donne les molécules à leurs pas, remet le temps à zéro et lance la
+lecture.
+
+**Un dossier ouvert** : « Molécules du dossier » donne d'un coup les
+molécules de la cascade que prend le patient, et chacune est marquée
+« au dossier » dans la liste.
+
+**Le temps** : « Lecture » (ou la barre d'espace) fait avancer les pas ;
+un clic dans les courbes place le temps. Chaque effet a sa courbe, le
+filet horizontal étant l'état de repos ; un clic sur une clé de la
+légende masque ou rend une courbe. Un récepteur qui s'adapte se
+multiplie quand il est longtemps bloqué et se raréfie quand il est
+longtemps stimulé — son adaptation est tracée en tirets, et le filet
+sous sa case la montre sur la figure. C'est ce qui fait la tolérance, et le
+rebond à l'arrêt brutal : donner un bêtabloquant, avancer, le décocher,
+avancer encore.
+
+Sur un écran bas, « Figure » et « Courbes » se montrent l'une après
+l'autre. La figure se parcourt comme la carte pharmacologique :
+glisser, molette, + et −, 0 pour revenir.
+
+Le modèle est **qualitatif** : il montre des sens de variation, jamais
+une dose ni un délai. Le temps est en pas, sans unité.
+
+**Décrire** ouvre le texte de la cascade, et la figure se redessine à
+mesure qu'on écrit. Une instruction par ligne :
+
+- `titre :`, `sujet :` et `source :` en tête ;
+- une déclaration : `ligand`, `récepteur`, `relais`, `enzyme`,
+  `messager`, `canal`, `transporteur` ou `effet`, puis le nom, puis
+  `: une note` au besoin ;
+- une flèche : `A -> B` active, `A -| B` inhibe, une virgule pour en
+  relier plusieurs, et elles s'enchaînent sur une ligne ;
+- une molécule : `molécule bisoprolol : antagoniste Bêta-1` — les actions
+  sont agoniste, agoniste partiel, agoniste partiel faible, antagoniste,
+  inhibiteur, activateur et potentialisateur, séparées par `;` ;
+- `adaptation Bêta-1` : le nœud s'adapte avec le temps ;
+- `scénario Arrêt brutal : bisoprolol 10-70 ; propranolol 60-` : une
+  histoire à jouer — chaque molécule avec son premier pas et son dernier
+  (rien après le tiret : jusqu'au bout) ;
+- `tonus faible Récepteur mu central` : le nœud est presque au repos
+  sans molécule — le bloquer ne retire presque rien, le stimuler ajoute
+  tout (la naloxone seule ne fait rien, sur la morphine elle la renverse) ;
+- `#` commente la fin de la ligne.
+
+« Dupliquer » en fait une copie à retravailler : une cascade livrée
+réécrite ou supprimée ne revient pas, et sa copie laisse l'originale
+intacte.
+
+Ce qui ne se lit pas est signalé sous le texte avec son numéro de ligne,
+et le reste est dessiné quand même. En orange, ce qui se lit mais
+ressemble à une erreur : une molécule dont aucune fiche ne porte le nom
+(aucune fiche ne mènera à la cascade), un nœud qu'aucune flèche ne
+relie. Le rappel de la syntaxe s'affiche au survol de sa ligne ; Ctrl+S
+enregistre.
+
+**Les marques des nœuds** disent leur nature avant le nom : un disque
+plein pour un ligand, un Y pour un récepteur, un cercle pour un relais,
+un losange pour un enzyme, deux points pour un messager, deux barres
+pour un canal, un carré traversé pour un transporteur, un carré plein
+pour un effet — posé en creux.
+
+**10 cascades livrées** : bêta-adrénergiques, muscariniques,
+dopaminergiques D2, opioïde mu, GABA-A, système
+rénine-angiotensine-aldostérone, activation plaquettaire,
+cyclo-oxygénases, coagulation, sécrétion acide. Semées une fois : une
+cascade réécrite ou supprimée par l'équipe ne revient pas.
+
+Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
+la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une
+molécule (ou un clic droit sur sa case) ouvre sa fiche.
+
 # Carte vaccinale
 
 Deux tables **indicatives**, chacune avec sa source à l'écran : le

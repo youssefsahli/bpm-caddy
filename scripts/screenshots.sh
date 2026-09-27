@@ -84,6 +84,7 @@ shot tables docs/screenshot_tables.png
 # calculators: added when they were, so the README stops showing an
 # application older than the one it ships.
 shot protocol_open docs/screenshot_protocols.png
+shot cascades docs/screenshot_cascades.png
 shot dispositif_open docs/screenshot_dispositifs.png
 shot locations docs/screenshot_locations.png
 shot conciliation docs/screenshot_conciliation.png

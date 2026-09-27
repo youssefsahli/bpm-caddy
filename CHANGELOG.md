@@ -35,6 +35,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Postes de l'officine : une écriture reçue n'est rangée que si elle
   vient d'un poste qui détient la clé de ce qu'elle modifie.
 
+## [0.353.0] - 2026-09-27
+
+### Added
+- Récepteurs et cascades (onglet « Cascades », ou « Cascades… » dans la
+  base médicaments) : un mécanisme d'action dessiné du ligand jusqu'aux
+  effets. Cocher une molécule montre ce qui monte et ce qui baisse, étage
+  par étage ; « Lecture » fait avancer le temps, et les courbes montrent
+  la tolérance qui s'installe et le rebond à l'arrêt brutal. Dix
+  cascades livrées : bêta-adrénergiques, muscariniques, dopaminergiques
+  D2, opioïde mu, GABA-A, rénine-angiotensine-aldostérone, activation
+  plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide
+  gastrique.
+- Scénarios : chaque cascade livrée propose des histoires jouées d'un
+  clic — l'arrêt brutal d'un bêtabloquant ou d'une benzodiazépine, la
+  naloxone après une longue morphine, le double blocage
+  rénine-angiotensine, le donépézil puis l'oxybutynine, le
+  métoclopramide ou la dompéridone sous lévodopa.
+- « Décrire » : une cascade s'écrit en quelques lignes (« Noradrénaline
+  -> Bêta-1 », « molécule bisoprolol : antagoniste Bêta-1 ») et la figure
+  se redessine à mesure qu'on tape. « Nouvelle cascade » part d'un
+  modèle ; chaque ligne mal écrite est signalée avec son numéro.
+- Sur une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
+  la molécule déjà donnée ; dans la cascade, la ligne d'une molécule
+  ouvre sa fiche.
+- Un dossier ouvert : « Molécules du dossier » donne d'un coup les
+  molécules de la cascade que prend le patient — un IEC et une
+  spironolactone montrent ensemble la kaliémie qui monte.
+- Options › Mentions : une mention à afficher sous les cascades.
+
 ## [0.352.0] - 2026-09-26
 
 ### Fixed
