@@ -102,12 +102,14 @@ jobs:
       - name: APK
         working-directory: android
         env:
-          ANDROID_NDK_HOME: ${{ env.ANDROID_NDK_LATEST_HOME }}
           BPM_ANDROID_STORE_FILE: ${{ runner.temp }}/upload.jks
           BPM_ANDROID_STORE_PASSWORD: ${{ secrets.BPM_ANDROID_STORE_PASSWORD }}
           BPM_ANDROID_KEY_ALIAS: ${{ secrets.BPM_ANDROID_KEY_ALIAS }}
           BPM_ANDROID_KEY_PASSWORD: ${{ secrets.BPM_ANDROID_KEY_PASSWORD }}
-        run: ./gradlew assembleRelease --console=plain
+        # Le NDK du runner, lu dans son environnement (voir ci.yml).
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_NDK_LATEST_HOME"
+          ./gradlew assembleRelease --console=plain
       - name: Verify signature
         run: |
           apk=android/app/build/outputs/apk/release/app-release.apk

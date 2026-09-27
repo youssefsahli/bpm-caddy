@@ -324,8 +324,12 @@ impl Trousseau {
         if body.len() != count * 33 {
             return None;
         }
+        // Des morceaux de taille fixe, vus comme des tableaux : la longueur
+        // a été vérifiée plus haut, le reste (`.1`) est donc vide.
         let mut keys: Vec<(u8, [u8; 32])> = body
-            .chunks_exact(33)
+            .as_chunks::<33>()
+            .0
+            .iter()
             .map(|c| {
                 let mut k = [0u8; 32];
                 k.copy_from_slice(&c[1..]);
