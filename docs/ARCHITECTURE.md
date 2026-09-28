@@ -2699,6 +2699,14 @@ Pulses along the arrows run at a speed made of the source's activity, one
 dot per fixed length, so an arrow whose source is blocked visibly carries
 nothing. The view requests a repaint every 40 ms while it is on screen.
 
+**A card writes its routes** (`route_segments`, a `routes` entry in the
+card's `MonoLinks`, drawn under « Interactions » by the same linked
+paragraph as the prose). One entry per molecule of the CYP table — the
+first card of the base that carries it — met on each route of the card
+in the sense that counts (a substrate names its inhibitors and inducers;
+an actor names its substrates), strongest first, `ROUTE_NAMES` names and
+a count. Computed once when the card opens, like the prose links.
+
 **Two lines on one cascade** (`cascade::meetings`, the crossing's
 chapter `DdiSection::Cascades`). For each shipped cascade, every pair of
 lines whose DCI — whole, or one component of a « A + B » association,

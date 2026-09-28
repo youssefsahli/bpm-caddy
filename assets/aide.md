@@ -243,6 +243,14 @@ rénale** à la clairance saisie ; l'**adaptation hépatique** au stade
 choisi ; le **sujet âgé** ; la **grossesse et l'allaitement** ; et
 l'**écrasement des formes orales**.
 
+**Un sommaire en tête** : une ligne de liens, un par chapitre, avec le
+compte de ce que portent les cinq lectures qui croisent — interactions
+citées, voies, demi-vies touchées, points de revue, paires sur une
+cascade. Un clic pose l'écran sur le chapitre. Les tables du terrain
+(rein, foie, âge, grossesse, écrasement) n'ont pas de compte : leurs
+lignes disent aussi « aucune adaptation », et un compte les lirait
+comme des alertes.
+
 **Le foie n'a pas de DFG.** La fonction rénale s'exprime par un chiffre
 de laboratoire ; la fonction hépatique par un stade — Child-Pugh A, B ou
 C — attribué par le clinicien sur cinq critères, dont deux cliniques.
@@ -791,22 +799,26 @@ un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
 pour un effet — posé en creux.
 
-**39 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
+**51 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
 muscariniques, dopaminergiques D2, histaminiques H1, opioïde mu,
-GABA-A, synapse sérotoninergique, centre du vomissement. Neurologie :
-lévodopa et dégradation de la dopamine, cibles des antiépileptiques,
-migraine. Cœur, rein et métabolisme : système
-rénine-angiotensine-aldostérone, monoxyde d'azote et GMPc, néphron et
-potassium, vasopressine et eau libre, canal hERG et QT long, digoxine et
-pompe Na/K-ATPase, glycémie et incrétines, LDL-cholestérol, activation
-plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide. Hormones
-et os : axes thyréotrope, corticotrope et gonadotrope, récepteur des
-androgènes, récepteurs des œstrogènes et aromatase, remodelage osseux.
-Sang et bronches : purines et goutte, érythropoïèse, thrombopoïèse,
-bronchodilatation et inflammation bronchique. Cytokines : TNF-alpha,
-interleukine 6, voie JAK-STAT, axe IL-23 et IL-17, inflammation de
-type 2. Semées une fois : une cascade réécrite ou supprimée par
-l'équipe ne revient pas.
+GABA-A, synapse sérotoninergique, centre du vomissement. Neurologie et
+dépendances : lévodopa et dégradation de la dopamine, cibles des
+antiépileptiques, migraine, glutamate et récepteur NMDA, veille et
+sommeil, alcool, nicotine et arrêt du tabac. Cœur, rein et métabolisme :
+système rénine-angiotensine-aldostérone, monoxyde d'azote et GMPc,
+canaux calciques L, néphron et potassium, hyperkaliémie et chélateurs,
+vasopressine et eau libre, canal hERG et QT long, digoxine et pompe
+Na/K-ATPase, glycémie et incrétines, LDL-cholestérol, activation
+plaquettaire, cyclo-oxygénases, coagulation, cycle de la vitamine K,
+sécrétion acide. Hormones et os : axes thyréotrope, corticotrope et
+gonadotrope, contraception hormonale, récepteur des androgènes,
+récepteurs des œstrogènes et aromatase, calcium, parathormone et
+vitamine D, remodelage osseux. Sang et bronches : purines et goutte,
+érythropoïèse, thrombopoïèse, bronchodilatation et inflammation
+bronchique. Immunité et cytokines : lymphocytes T et B, mastocyte,
+TNF-alpha, interleukine 6, voie JAK-STAT, axe IL-23 et IL-17,
+inflammation de type 2. Semées une fois : une cascade réécrite ou
+supprimée par l'équipe ne revient pas.
 
 Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
 la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une
@@ -907,6 +919,16 @@ base : « valproate » ouvre la fiche du valproate de sodium,
 désigne deux molécules, reste en texte simple, comme un nom de forme
 locale : le « fluorouracil » d'une fiche de cancérologie est la
 perfusion, pas la crème.
+
+Sous les interactions, **« Cytochromes et transporteurs »** écrit ce que
+la table des cytochromes sait de la fiche, voie par voie — « CYP3A4 —
+substrat, voie principale » — avec les fiches de la base qu'elle y
+rencontre, cliquables : ce qui la freine et ce qui l'accélère pour un
+substrat, ce qu'elle fait monter ou baisser pour un inhibiteur ou un
+inducteur. Une prodrogue dit ce qui diminue ou augmente son effet. Les
+plus puissants d'abord, douze noms au plus et le compte des autres ;
+une molécule vendue sous plusieurs noms n'est citée qu'une fois. Une
+fiche absente de la table, ou une forme locale, n'a pas cette section.
 
 # Pharmacocinétique et pharmacodynamie
 

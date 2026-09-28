@@ -7,26 +7,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.359.0] - 2026-09-29
+## [0.360.0] - 2026-09-29
 
 ### Added
-- Treize cascades de plus (39) : axe gonadotrope, récepteur des
+- Monographies : une section « Cytochromes et transporteurs » écrit ce
+  que la table sait de la fiche, voie par voie, avec les fiches de la
+  base qu'elle y rencontre — cliquables. Zeclar nomme ce qu'il fait
+  monter sur le CYP3A4 et sur la P-gp ; Zocor, ce qui le freine et ce
+  qui l'accélère ; Plavix, ce qui diminue son effet.
+- « Croisement » : un sommaire en tête de l'analyse — un lien par
+  chapitre, avec son compte pour les lectures qui croisent — pose l'écran
+  sur le chapitre choisi.
+- Vingt-cinq cascades de plus (51) : axes gonadotrope, récepteur des
   androgènes (l'abiratérone et la prednisone), récepteurs des œstrogènes
-  et aromatase, vasopressine et eau libre, lévodopa et dégradation de la
-  dopamine, cibles des antiépileptiques, migraine, canal hERG et QT long,
-  digoxine et pompe Na/K-ATPase, purines et goutte (l'allopurinol sous
+  et aromatase, contraception hormonale, vasopressine et eau libre ;
+  lévodopa et dégradation de la dopamine, cibles des antiépileptiques,
+  migraine, glutamate et récepteur NMDA, veille et sommeil, alcool
+  (disulfirame, naltrexone, acamprosate), nicotine et arrêt du tabac ;
+  canal hERG et QT long, digoxine et pompe Na/K-ATPase, canaux
+  calciques L (le vérapamil et le bêtabloquant), hyperkaliémie et
+  chélateurs du potassium, calcium, parathormone et vitamine D, cycle
+  de la vitamine K ; purines et goutte (l'allopurinol sous
   azathioprine), érythropoïèse, thrombopoïèse (le fer pris avec
-  l'eltrombopag), bronchodilatation et inflammation bronchique. Les
-  associations inhalées (Symbicort, Seretide, Trimbow…) ouvrent la leur.
+  l'eltrombopag), bronchodilatation et inflammation bronchique ;
+  lymphocytes T (inhibiteurs de la calcineurine, mycophénolate),
+  lymphocytes B (vacciner avant le rituximab), mastocyte et
+  dégranulation. Les associations inhalées (Symbicort, Seretide,
+  Trimbow…) ouvrent la leur.
 - Barre de comptoir : une pastille « Cascade » quand le produit cherché
   rejoint une ligne du dossier sur une même cascade — l'aspirine et le
   clopidogrel, le nitré et le sildénafil —, les effets qui s'additionnent
   ou s'opposent au survol ; un clic ouvre le croisement sur ce chapitre.
+  Elle compte les lignes rencontrées : deux cascades pour la même paire
+  font une paire.
 - « CYP et P-gp » : le tocilizumab et le sarilumab baissent l'exposition
   de ce qui passe par le CYP3A4 — bloquer l'interleukine 6 rend aux
   cytochromes leur activité.
 
 ### Fixed
+- « Croisement » : ouvrir une cascade depuis « Sur une même cascade »
+  demande d'abord confirmation quand une description de cascade est en
+  cours d'écriture, comme depuis une fiche.
+- Cascades relues par un pharmacologue : la cyprotérone freine la LH et
+  baisse la testostérone (elle la montrait monter) ; le métronidazole
+  avec le disulfirame est une association déconseillée et non
+  contre-indiquée ; l'oxybate de sodium est contre-indiqué avec les
+  opioïdes, l'alcool est à éviter. Les mises en garde que le comptoir
+  attend sont écrites sous les figures : agranulocytose des
+  antithyroïdiens, ostéonécrose de la mâchoire, correction trop rapide
+  de la natrémie sous tolvaptan, acide folique seul dans une carence en
+  B12, induction enzymatique de l'enzalutamide, tamoxifène et inhibiteurs
+  du CYP2D6, et d'autres.
 - « Cascades » : une figure trop haute pour le volet s'ouvre sur son
   début — les ligands — au lieu d'être coupée aux deux bouts ; la fin se
   va chercher d'un glissement.

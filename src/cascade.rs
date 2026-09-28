@@ -2433,7 +2433,7 @@ adaptation Bêta-1
 
     /// Le plancher : une cascade retirée est une question à laquelle le
     /// comptoir ne sait plus répondre. Il ne peut que monter.
-    const SHIPPED: usize = 39;
+    const SHIPPED: usize = 51;
 
     /// Les molécules qu'un mécanisme ne peut pas taire et que la base
     /// n'a pas en fiche. Tenues ici par leur nom : ailleurs, une faute de
@@ -3171,6 +3171,335 @@ adaptation Bêta-1
             level(&c, &["budésonide"], "Inflammation bronchique")
                 < level(&c, &["montélukast"], "Inflammation bronchique")
         );
+    }
+
+    #[test]
+    fn the_cascade_canaux_calciques_l_vaisseaux_et_coeur_reads_as_drawn() {
+        let c = shipped("Canaux calciques L, vaisseaux et cœur");
+        assert_eq!(reads(&c, &["amlodipine"], "Fréquence cardiaque"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["amlodipine"], "Œdèmes des chevilles"),
+            Trend::Up
+        );
+        assert!(
+            level(&c, &["amlodipine", "bisoprolol"], "Fréquence cardiaque")
+                < level(&c, &["amlodipine"], "Fréquence cardiaque")
+        );
+        assert!(
+            level(&c, &["amlodipine", "bisoprolol"], "Fréquence cardiaque")
+                > level(&c, &["vérapamil", "bisoprolol"], "Fréquence cardiaque")
+        );
+        assert_eq!(
+            reads(&c, &["vérapamil"], "Conduction auriculo-ventriculaire"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["vérapamil", "bisoprolol"], "Fréquence cardiaque")
+                < level(&c, &["vérapamil"], "Fréquence cardiaque")
+        );
+        assert!(
+            level(
+                &c,
+                &["diltiazem", "bisoprolol"],
+                "Conduction auriculo-ventriculaire"
+            ) < level(&c, &["bisoprolol"], "Conduction auriculo-ventriculaire")
+        );
+        assert!(
+            level(
+                &c,
+                &["amlodipine", "bisoprolol"],
+                "Conduction auriculo-ventriculaire"
+            ) > level(
+                &c,
+                &["vérapamil", "bisoprolol"],
+                "Conduction auriculo-ventriculaire"
+            )
+        );
+    }
+
+    #[test]
+    fn the_cascade_calcium_parathormone_et_vitamine_d_reads_as_drawn() {
+        let c = shipped("Calcium, parathormone et vitamine D");
+        assert_eq!(reads(&c, &["calcitriol"], "Calcémie"), Trend::Up);
+        assert_eq!(reads(&c, &["calcitriol"], "Parathormone"), Trend::Down);
+        assert_eq!(reads(&c, &["cinacalcet"], "Parathormone"), Trend::Down);
+        assert_eq!(reads(&c, &["cinacalcet"], "Calcémie"), Trend::Down);
+        assert!(
+            level(&c, &["calcitriol", "sévélamer"], "Phosphatémie")
+                < level(&c, &["calcitriol"], "Phosphatémie")
+        );
+        assert!(
+            level(&c, &["cinacalcet", "calcitriol"], "Parathormone")
+                < level(&c, &["cinacalcet"], "Parathormone")
+        );
+        assert!(
+            level(&c, &["cinacalcet", "calcitriol"], "Calcémie")
+                > level(&c, &["cinacalcet"], "Calcémie")
+        );
+    }
+
+    #[test]
+    fn the_cascade_hyperkaliemie_et_chelateurs_du_potassium_reads_as_drawn() {
+        let c = shipped("Hyperkaliémie et chélateurs du potassium");
+        assert_eq!(reads(&c, &["ramipril"], "Kaliémie"), Trend::Up);
+        assert!(
+            level(&c, &["ramipril", "spironolactone"], "Kaliémie")
+                > level(&c, &["ramipril"], "Kaliémie")
+        );
+        assert!(
+            level(&c, &["losartan", "triméthoprime"], "Kaliémie")
+                > level(&c, &["losartan"], "Kaliémie")
+        );
+        assert_eq!(reads(&c, &["patiromère"], "Kaliémie"), Trend::Down);
+        assert!(
+            level(
+                &c,
+                &["ramipril", "spironolactone", "patiromère"],
+                "Kaliémie"
+            ) < level(&c, &["ramipril", "spironolactone"], "Kaliémie")
+        );
+        assert_eq!(reads(&c, &["héparine sodique"], "Kaliémie"), Trend::Up);
+    }
+
+    #[test]
+    fn the_cascade_cycle_de_la_vitamine_k_reads_as_drawn() {
+        let c = shipped("Cycle de la vitamine K");
+        assert_eq!(reads(&c, &["warfarine"], "INR"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["warfarine"], "Formation du caillot"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["warfarine", "phytoménadione"], "Formation du caillot")
+                > level(&c, &["warfarine"], "Formation du caillot")
+        );
+        assert_eq!(
+            reads(&c, &["phytoménadione"], "Formation du caillot"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["apixaban", "phytoménadione"], "Formation du caillot"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["dabigatran", "phytoménadione"],
+                "Formation du caillot"
+            ),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn the_cascade_alcool_acetaldehyde_et_recompense_reads_as_drawn() {
+        let c = shipped("Alcool, acétaldéhyde et récompense");
+        assert_eq!(reads(&c, &["disulfirame"], "Réaction antabuse"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["métronidazole"], "Réaction antabuse"),
+            Trend::Up
+        );
+        assert_eq!(reads(&c, &["disulfirame"], "Envie de boire"), Trend::Rest);
+        assert_eq!(reads(&c, &["naltrexone"], "Plaisir de boire"), Trend::Down);
+        assert_eq!(reads(&c, &["acamprosate"], "Envie de boire"), Trend::Down);
+        assert_eq!(reads(&c, &["baclofène"], "Envie de boire"), Trend::Down);
+        assert!(
+            level(&c, &["naltrexone", "acamprosate"], "Envie de boire")
+                < level(&c, &["naltrexone"], "Envie de boire")
+        );
+    }
+
+    #[test]
+    fn the_cascade_nicotine_et_arret_du_tabac_reads_as_drawn() {
+        let c = shipped("Nicotine et arrêt du tabac");
+        assert_eq!(
+            reads(&c, &["nicotine"], "Manque et envie de fumer"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["varénicline"], "Manque et envie de fumer"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["bupropion"], "Manque et envie de fumer"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["nicotine", "varénicline"], "Récompense")
+                < level(&c, &["nicotine"], "Récompense")
+        );
+        assert!(
+            level(&c, &["nicotine", "bupropion"], "Manque et envie de fumer")
+                < level(&c, &["nicotine"], "Manque et envie de fumer")
+        );
+    }
+
+    #[test]
+    fn the_cascade_veille_et_sommeil_reads_as_drawn() {
+        let c = shipped("Veille et sommeil");
+        assert_eq!(reads(&c, &["daridorexant"], "Vigilance"), Trend::Down);
+        assert_eq!(reads(&c, &["daridorexant"], "Endormissement"), Trend::Up);
+        assert_eq!(reads(&c, &["mélatonine"], "Endormissement"), Trend::Up);
+        assert_eq!(reads(&c, &["mélatonine"], "Vigilance"), Trend::Rest);
+        assert_eq!(reads(&c, &["pitolisant"], "Vigilance"), Trend::Up);
+        assert_eq!(reads(&c, &["modafinil"], "Vigilance"), Trend::Up);
+        assert!(
+            level(&c, &["oxybate de sodium", "daridorexant"], "Vigilance")
+                < level(&c, &["oxybate de sodium"], "Vigilance")
+        );
+    }
+
+    #[test]
+    fn the_cascade_glutamate_et_recepteur_nmda_reads_as_drawn() {
+        let c = shipped("Glutamate et récepteur NMDA");
+        assert_eq!(reads(&c, &["mémantine"], "Excitotoxicité"), Trend::Down);
+        assert_eq!(reads(&c, &["mémantine"], "Dissociation"), Trend::Rest);
+        assert_eq!(reads(&c, &["mémantine"], "Humeur"), Trend::Rest);
+        assert_eq!(reads(&c, &["eskétamine"], "Dissociation"), Trend::Up);
+        assert_eq!(reads(&c, &["eskétamine"], "Humeur"), Trend::Up);
+        assert_eq!(reads(&c, &["eskétamine"], "Pression artérielle"), Trend::Up);
+        assert_eq!(reads(&c, &["riluzole"], "Excitotoxicité"), Trend::Down);
+    }
+
+    #[test]
+    fn the_cascade_activation_du_lymphocyte_t_reads_as_drawn() {
+        let c = shipped("Activation du lymphocyte T");
+        assert_eq!(reads(&c, &["tacrolimus"], "Rejet du greffon"), Trend::Down);
+        assert!(
+            level(
+                &c,
+                &["tacrolimus", "mycophénolate mofétil"],
+                "Rejet du greffon"
+            ) < level(&c, &["tacrolimus"], "Rejet du greffon")
+        );
+        assert!(
+            level(&c, &["ciclosporine", "sirolimus"], "Rejet du greffon")
+                < level(&c, &["ciclosporine"], "Rejet du greffon")
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["mycophénolate mofétil"],
+                "Défense contre les infections"
+            ),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["abatacept"], "Rejet du greffon"), Trend::Down);
+        assert!(
+            level(
+                &c,
+                &["tacrolimus", "mycophénolate mofétil", "prednisone"],
+                "Défense contre les infections"
+            ) < level(
+                &c,
+                &["tacrolimus", "mycophénolate mofétil"],
+                "Défense contre les infections"
+            )
+        );
+    }
+
+    #[test]
+    fn the_cascade_lymphocyte_b_et_anticorps_reads_as_drawn() {
+        let c = shipped("Lymphocyte B et anticorps");
+        assert_eq!(
+            reads(
+                &c,
+                &["rituximab"],
+                "Réponse à un vaccin fait sous traitement"
+            ),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["rituximab"], "Protection des vaccins faits avant"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["ocrélizumab"], "Activité de la maladie"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["bélimumab"], "Activité de la maladie"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["bélimumab"],
+                "Réponse à un vaccin fait sous traitement"
+            ),
+            Trend::Rest
+        );
+        assert_eq!(reads(&c, &["rituximab"], "IgG sériques"), Trend::Down);
+    }
+
+    #[test]
+    fn the_cascade_contraception_hormonale_reads_as_drawn() {
+        let c = shipped("Contraception hormonale");
+        assert_eq!(
+            reads(&c, &["lévonorgestrel + éthinylestradiol"], "Ovulation"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["lévonorgestrel + éthinylestradiol"],
+                "Risque thromboembolique veineux"
+            ),
+            Trend::Up
+        );
+        assert_eq!(reads(&c, &["désogestrel"], "Ovulation"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["désogestrel"], "Risque thromboembolique veineux"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["désogestrel"], "Glaire cervicale perméable"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn the_cascade_mastocyte_et_degranulation_reads_as_drawn() {
+        let c = shipped("Mastocyte et dégranulation");
+        assert_eq!(
+            reads(&c, &["cétirizine"], "Urticaire et prurit"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["cétirizine"], "Pression artérielle"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["cétirizine"], "Calibre bronchique"),
+            Trend::Rest
+        );
+        assert_eq!(reads(&c, &["adrénaline"], "Pression artérielle"), Trend::Up);
+        assert_eq!(reads(&c, &["adrénaline"], "Calibre bronchique"), Trend::Up);
+        assert!(
+            level(&c, &["kétotifène"], "Conjonctivite allergique")
+                < level(&c, &["lévocabastine"], "Conjonctivite allergique")
+        );
+        assert_eq!(
+            reads(&c, &["cromoglicate de sodium"], "Conjonctivite allergique"),
+            Trend::Down
+        );
+    }
+
+    /// **La cyprotérone baisse la testostérone** : progestatif, elle
+    /// freine la LH en plus de bloquer le récepteur. Écrite en simple
+    /// antagoniste, elle levait le rétrocontrôle et la montrait monter,
+    /// comme le bicalutamide — l'inverse de ce qu'elle fait.
+    #[test]
+    fn cyproterone_lowers_the_testosterone_that_bicalutamide_raises() {
+        let c = shipped("Récepteur des androgènes");
+        let t = c
+            .nodes
+            .iter()
+            .find(|n| fuzzy::sort_key(&n.name).contains("testosterone"))
+            .map(|n| n.name.clone())
+            .expect("pas de nœud testostérone");
+        assert!(level(&c, &["cyprotérone acétate"], &t) < level(&c, &["bicalutamide"], &t));
+        assert_ne!(reads(&c, &["cyprotérone acétate"], &t), Trend::Up);
     }
 
     fn meet(given: &[(&str, &str)]) -> Vec<Meeting> {

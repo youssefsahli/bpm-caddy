@@ -30939,8 +30939,8 @@ titre : TNF-alpha
 sujet : Anti-TNF — polyarthrite, spondyloarthrite, psoriasis, MICI
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
-source : RCP des anti-TNF : rechercher une tuberculose active ou latente avant traitement ; infections graves ; insuffisance cardiaque modérée à sévère contre-indiquée
-source : RCP de l'étanercept et du certolizumab pégol : pas d'indication dans les MICI
+source : RCP des anti-TNF : rechercher une tuberculose active ou latente avant traitement ; infections graves ; insuffisance cardiaque modérée à sévère contre-indiquée, mise en garde seulement pour l'étanercept
+source : RCP de l'étanercept et du certolizumab pégol : indications, où les MICI ne figurent pas
 
 ligand TNF-alpha : produit surtout par les macrophages et les lymphocytes T activés
 récepteur Récepteurs du TNF : TNFR1 et TNFR2
@@ -30979,7 +30979,8 @@ molécule étanercept : inhibiteur TNF-alpha
 molécule certolizumab pégol : inhibiteur TNF-alpha
 # L'IL-1, autre relais de la fièvre, n'est pas dessinée. Le risque
 # d'insuffisance cardiaque aggravée et de maladie démyélinisante n'est
-# pas dessiné non plus.
+# pas dessiné non plus, ni la réactivation d'une hépatite B (dépistage
+# avant traitement), ni la contre-indication des vaccins vivants.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Adalimumab : adalimumab 10-
@@ -31001,7 +31002,7 @@ ligand Hepcidine : hormone du fer, synthétisée par le foie sous l'IL-6
 relais Fer disponible : retenu dans les macrophages et l'intestin par l'hepcidine
 effet Hémoglobine : basse dans l'anémie inflammatoire
 effet CRP : protéine C réactive ; basse sous anti-IL-6, elle ne signale plus une infection
-effet Fièvre : absente sous anti-IL-6, même pendant une infection
+effet Fièvre : atténuée ou absente sous anti-IL-6, même pendant une infection
 effet Inflammation articulaire
 effet Activité des cytochromes hépatiques : CYP3A4, 1A2, 2C9 et 2C19, freinés par l'IL-6 au cours de l'inflammation
 effet Exposition aux substrats des cytochromes : simvastatine, ciclosporine, warfarine, théophylline ; baissée à l'instauration d'un anti-IL-6, remontée à l'arrêt
@@ -31027,7 +31028,7 @@ scénario Instauration puis arrêt du tocilizumab : tocilizumab 10-70
 titre : Voie JAK-STAT
 sujet : Inhibiteurs de JAK et de TYK2
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
-source : RCP des inhibiteurs de JAK des maladies inflammatoires : zona, lymphopénie, anémie ; après 65 ans, chez le fumeur et à risque cardiovasculaire, thrombotique ou de cancer, seulement faute d'alternative
+source : RCP des inhibiteurs de JAK des maladies inflammatoires : zona, lymphopénie, anémie ; après 65 ans, chez le fumeur et à risque cardiovasculaire ou de cancer, seulement faute d'alternative ; prudence à risque thromboembolique veineux
 source : RCP du ruxolitinib : anémie et thrombopénie, doses adaptées à la numération
 source : RCP du deucravacitinib : inhibiteur allostérique de TYK2
 
@@ -31188,6 +31189,10 @@ molécule benralizumab : antagoniste Récepteur de l'IL-5 ; inhibiteur Éosinoph
 # traitement, faite de complexes, n'est pas dessinée.
 molécule omalizumab : inhibiteur IgE
 molécule tézépélumab : inhibiteur TSLP
+# Sous dupilumab, le sevrage des corticoïdes oraux peut démasquer une
+# vascularite à éosinophiles ; sous tout biologique, pas d'arrêt
+# brutal des corticoïdes, et une helminthiase se traite avant. Non
+# dessinés.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Dupilumab : dupilumab 10-
@@ -31324,7 +31329,7 @@ ligand GLP-1 : incrétine libérée par l'intestin au repas
 enzyme DPP-4 : dégrade le GLP-1 et le GIP
 récepteur Récepteur GLP-1 pancréatique : cellules bêta et alpha
 récepteur Récepteur GLP-1 central et digestif : hypothalamus, estomac
-ligand Insuline sécrétée : montée alors que la glycémie baisse, c'est une sécrétion forcée — le risque d'hypoglycémie
+ligand Insuline sécrétée : montée sous sulfamide alors que la glycémie baisse, c'est une sécrétion forcée — le risque d'hypoglycémie ; sous incrétine, elle suit le glucose
 récepteur Récepteur de l'insuline
 relais Captation du glucose : muscle et tissu adipeux
 ligand Glucagon : sécrété par la cellule alpha, fait produire du glucose par le foie
@@ -31352,6 +31357,8 @@ molécule glibenclamide : inhibiteur Canal KATP
 molécule répaglinide : inhibiteur Canal KATP
 # Son effet principal : moins de glucose produit par le foie. Il ne force
 # pas la sécrétion d'insuline. Son mécanisme moléculaire est discuté.
+# L'acidose lactique (insuffisance rénale, produits de contraste
+# iodés) n'est pas dessinée.
 molécule metformine : inhibiteur Production hépatique de glucose
 # Ils prolongent le GLP-1 du repas, qui ne monte qu'à son niveau
 # physiologique : neutres sur le poids, le dessin ne les relie qu'au
@@ -31412,6 +31419,8 @@ Récepteur LDL -| LDL-cholestérol
 # synthèse. C'est pourquoi une statine et l'ézétimibe s'additionnent.
 SREBP-2 -> HMG-CoA réductase
 
+# Myalgies et rhabdomyolyse sous statine, majorées par les inhibiteurs
+# du CYP3A4 pour la simvastatine et l'atorvastatine : non dessinées.
 molécule atorvastatine : inhibiteur HMG-CoA réductase
 molécule rosuvastatine : inhibiteur HMG-CoA réductase
 molécule simvastatine : inhibiteur HMG-CoA réductase
@@ -31517,6 +31526,9 @@ molécule escitalopram : inhibiteur SERT neuronal, SERT plaquettaire
 molécule citalopram : inhibiteur SERT neuronal, SERT plaquettaire
 molécule fluoxétine : inhibiteur SERT neuronal, SERT plaquettaire
 molécule paroxétine : inhibiteur SERT neuronal, SERT plaquettaire
+# L'hyponatrémie, surtout chez le sujet âgé, et l'allongement du QT,
+# dose-dépendant, du citalopram et de l'escitalopram ne sont pas
+# dessinés : voir « Canal hERG et QT long ».
 # IRSNa : la recapture de la noradrénaline aussi — d'où la pression
 # artérielle, surtout aux doses fortes pour la venlafaxine.
 molécule venlafaxine : inhibiteur SERT neuronal, SERT plaquettaire, NET
@@ -31607,6 +31619,9 @@ molécule nétupitant + palonosétron : antagoniste NK1, 5-HT3
 molécule métoclopramide : antagoniste D2 de l'area postrema
 molécule dompéridone : antagoniste D2 de l'area postrema
 molécule métopimazine : antagoniste D2 de l'area postrema
+# L'allongement du QT de la dompéridone et de l'ondansétron (voir
+# « Canal hERG et QT long ») et la durée du métoclopramide, limitée à
+# cinq jours, ne sont pas dessinés.
 # Mal des transports : la scopolamine et les antihistaminiques H1
 # atropiniques. Leur sédation n'est pas dessinée (voir « Récepteurs
 # histaminiques H1 »).
@@ -31657,7 +31672,8 @@ molécule lévothyroxine : activateur T4 libre
 molécule liothyronine : activateur T3 libre
 # Ils bloquent la synthèse, pas l'hormone déjà stockée. Le
 # benzylthiouracile freine aussi un peu la désiodase, ce qui n'est pas
-# dessiné.
+# dessiné. Agranulocytose : fièvre ou angine sous antithyroïdien, NFS
+# en urgence ; non dessinée.
 molécule carbimazole : inhibiteur Thyroperoxydase
 molécule thiamazole : inhibiteur Thyroperoxydase
 molécule benzylthiouracile : inhibiteur Thyroperoxydase
@@ -31779,6 +31795,11 @@ molécule romosozumab : inhibiteur Sclérostine
 # Agoniste œstrogénique sur l'os, antagoniste sur le sein et l'utérus,
 # qui ne sont pas dessinés.
 molécule raloxifène : agoniste Récepteur des œstrogènes osseux
+# Non dessinés : le romosozumab contre-indiqué après un infarctus ou un
+# AVC ; l'ostéonécrose de la mâchoire et les fractures atypiques du
+# fémur sous bisphosphonate et dénosumab, d'où le bilan dentaire
+# avant ; le calcium et la vitamine D à corriger avant le dénosumab ou
+# l'acide zolédronique.
 
 # Freinés longtemps par le dénosumab, les précurseurs
 # des ostéoclastes s'accumulent ; à l'arrêt, ils se différencient d'un
@@ -31815,7 +31836,8 @@ Acétylcholine -> Récepteurs muscariniques -> Salivation
 
 # Première génération : ils passent la barrière et bloquent aussi les
 # récepteurs muscariniques. Le risque de QT long de l'hydroxyzine n'est
-# pas dessiné.
+# pas dessiné, ni celui de la mizolastine ; glaucome par fermeture de
+# l'angle et rétention urinaire contre-indiquent les atropiniques.
 molécule hydroxyzine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
 molécule dexchlorphéniramine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
 molécule prométhazine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
@@ -31910,7 +31932,7 @@ titre : Récepteur des androgènes
 sujet : Abiratérone, anti-androgènes, inhibiteurs de la 5-alpha-réductase
 source : Rang & Dale's Pharmacology
 source : RCP de l'abiratérone : inhibition du CYP17 ; excès de minéralocorticoïdes par montée de l'ACTH, hypokaliémie, hypertension, rétention hydrique ; associée à la prednisone, qui freine l'ACTH
-source : RCP de l'enzalutamide : antagoniste du récepteur des androgènes
+source : RCP de l'enzalutamide : antagoniste du récepteur des androgènes ; inducteur puissant du CYP3A4
 source : RCP du bicalutamide : anti-androgène ; en monothérapie, testostérone augmentée et gynécomastie
 source : RCP du dutastéride et du finastéride : baisse de la DHT ; réduction du volume prostatique ; PSA abaissé d'environ moitié, à doubler pour le comparer aux valeurs usuelles
 
@@ -31961,13 +31983,18 @@ molécule prednisone : agoniste Récepteur des glucocorticoïdes ; agoniste part
 # dessin montre ; la gynécomastie, par l'aromatisation de cette
 # testostérone, ne l'est pas. L'enzalutamide et l'apalutamide, qui
 # passent dans le cerveau, abaissent le seuil convulsif, ce que le
-# dessin ne montre pas.
+# dessin ne montre pas. Ce sont aussi des inducteurs puissants du
+# CYP3A4 : anticoagulants oraux et bien d'autres substrats baissent ;
+# non dessiné.
 molécule enzalutamide : antagoniste Récepteur des androgènes
 molécule apalutamide : antagoniste Récepteur des androgènes
 molécule darolutamide : antagoniste Récepteur des androgènes
 molécule bicalutamide : antagoniste Récepteur des androgènes
-# Son effet antigonadotrope, progestatif, n'est pas dessiné.
-molécule cyprotérone acétate : antagoniste Récepteur des androgènes
+# Progestatif, elle freine aussi la LH : la testostérone baisse au lieu
+# de monter comme sous les antiandrogènes purs. Méningiome (ANSM) :
+# dose la plus faible, durée la plus courte, IRM cérébrale selon les
+# recommandations ; non dessiné.
+molécule cyprotérone acétate : antagoniste Récepteur des androgènes ; inhibiteur LH
 # La DHT baisse, la testostérone reste : la prostate diminue, et le PSA
 # avec elle — d'où la valeur lue qui se double.
 molécule finastéride : inhibiteur 5-alpha-réductase
@@ -32021,6 +32048,8 @@ Récepteur des œstrogènes hépatique -> Risque thromboembolique veineux
 # femme non ménopausée, il fait perdre de l'os, ce que la figure ne
 # montre pas.
 molécule tamoxifène : antagoniste Récepteur des œstrogènes mammaire, Récepteur des œstrogènes hypothalamique ; agoniste partiel Récepteur des œstrogènes osseux, Récepteur des œstrogènes utérin, Récepteur des œstrogènes hépatique
+# Activé en endoxifène par le CYP2D6 : éviter les inhibiteurs puissants
+# (paroxétine, fluoxétine, bupropion) ; non dessiné.
 # Agoniste sur l'os, antagoniste sur le sein et l'utérus : il protège
 # l'os sans épaissir l'endomètre, mais garde le risque veineux.
 molécule raloxifène : agoniste Récepteur des œstrogènes osseux ; antagoniste Récepteur des œstrogènes mammaire, Récepteur des œstrogènes utérin, Récepteur des œstrogènes hypothalamique ; agoniste partiel Récepteur des œstrogènes hépatique
@@ -32052,7 +32081,7 @@ sujet : Desmopressine, tolvaptan, thiazidiques, lithium, carbamazépine
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le thiazidique bloque le segment de dilution et gêne l'excrétion de l'eau libre ; le lithium diminue la réponse du tube collecteur à la vasopressine
 source : RCP de la desmopressine : hyponatrémie, restriction hydrique ; natrémie surveillée
-source : RCP du tolvaptan : aquarèse, soif, polyurie ; natrémie surveillée
+source : RCP du tolvaptan : aquarèse, soif, polyurie ; instauration à l'hôpital, natrémie surveillée, une correction trop rapide expose à la myélinolyse osmotique
 source : RCP de l'hydrochlorothiazide : hyponatrémie
 source : RCP du lithium : diabète insipide néphrogénique, polyurie et soif
 source : RCP de la carbamazépine : hyponatrémie par sécrétion inappropriée d'hormone antidiurétique
@@ -32083,7 +32112,9 @@ Soif -> Apports hydriques
 # ne s'écrit pas comme une molécule et n'est pas dessinée. Le volume
 # extracellulaire et la natriurèse non plus.
 molécule desmopressine : agoniste Récepteur V2
-# La toxicité hépatique n'est pas dessinée.
+# Une correction trop rapide de la natrémie expose à la myélinolyse
+# osmotique : instauration à l'hôpital, natrémie contrôlée dans les
+# premières heures. La toxicité hépatique n'est pas dessinée.
 molécule tolvaptan : antagoniste Récepteur V2
 # Seule la dilution est dessinée : la natriurèse et la perte de
 # potassium sont dans la cascade du néphron.
@@ -32167,6 +32198,11 @@ molécule pramipexole : agoniste Récepteurs dopaminergiques striataux, Récepte
 molécule ropinirole : agoniste Récepteurs dopaminergiques striataux, Récepteurs dopaminergiques mésolimbiques, Récepteurs dopaminergiques périphériques
 molécule rotigotine : agoniste Récepteurs dopaminergiques striataux, Récepteurs dopaminergiques mésolimbiques, Récepteurs dopaminergiques périphériques
 molécule apomorphine : agoniste Récepteurs dopaminergiques striataux, Récepteurs dopaminergiques mésolimbiques, Récepteurs dopaminergiques périphériques
+# Non dessinés : les accès de sommeil soudains sous agoniste (conduite
+# automobile) ; le syndrome malin à l'arrêt brutal de la lévodopa ; les
+# neuroleptiques antidopaminergiques, qui s'y opposent ; le risque
+# sérotoninergique des IMAO-B avec la péthidine, le tramadol et les
+# antidépresseurs.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Passage à l'association avec entacapone : lévodopa + carbidopa 10-50 ; lévodopa + carbidopa + entacapone 50-
@@ -32225,6 +32261,10 @@ molécule valproate de sodium : inhibiteur GABA-transaminase, Canaux sodiques vo
 molécule éthosuximide : inhibiteur Canaux calciques T du thalamus
 # L'aggravation des absences par la carbamazépine ou la phénytoïne ne
 # passe pas par ce qui est dessiné.
+# Non dessinés : la tératogénicité du valproate ; l'induction
+# enzymatique de la carbamazépine et de la phénytoïne, qui fait
+# échouer la contraception hormonale ; l'allongement du PR du
+# lacosamide.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Carbamazépine, puis lacosamide : carbamazépine 10- ; lacosamide 50-
@@ -32267,6 +32307,9 @@ molécule élétriptan : agoniste 5-HT1B, 5-HT1D
 molécule naratriptan : agoniste 5-HT1B, 5-HT1D
 molécule almotriptan : agoniste 5-HT1B, 5-HT1D
 molécule frovatriptan : agoniste 5-HT1B, 5-HT1D
+# Non dessinés : l'association d'un triptan aux dérivés de l'ergot,
+# contre-indiquée ; aux IMAO, contre-indiquée pour plusieurs triptans ;
+# le syndrome sérotoninergique avec les ISRS et les IRSNa.
 # Les anticorps et le gépant ne touchent pas le 5-HT1B : pas de
 # vasoconstriction.
 molécule galcanézumab : inhibiteur CGRP
@@ -32330,6 +32373,8 @@ molécule indapamide : inhibiteur NCC
 # digoxine) favorisent les torsades d'un médicament qui allonge le QT,
 # sans risque propre : le dessin ne sait pas dire un facteur qui
 # n'agit qu'en présence d'un autre, il ne les porte pas.
+# L'hypomagnésémie, que donnent aussi les diurétiques, favorise les
+# torsades : elle n'est pas dessinée.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Citalopram, puis clarithromycine : citalopram 10- ; clarithromycine 50-
@@ -32357,7 +32402,7 @@ effet Kaliémie
 effet Contractilité : montée, c'est l'effet inotrope positif
 effet Troubles du rythme : extrasystoles, tachycardies ventriculaires ; la toxicité digitalique, que l'hypokaliémie aggrave
 effet Conduction auriculo-ventriculaire : baissée, c'est le ralentissement voulu en fibrillation atriale ; trop baissée, le bloc
-effet Fréquence cardiaque
+effet Fréquence cardiaque : la fréquence ventriculaire en fibrillation atriale, que règle le nœud auriculo-ventriculaire
 
 Pompe Na/K-ATPase -| Sodium intracellulaire -| Échangeur Na/Ca -| Calcium intracellulaire
 Calcium intracellulaire -> Contractilité, Troubles du rythme
@@ -32380,6 +32425,9 @@ molécule métoprolol : antagoniste Bêta-1
 # digitalique, n'est pas dessinée non plus.
 molécule vérapamil : inhibiteur Canal calcique L nodal
 molécule diltiazem : inhibiteur Canal calcique L nodal
+# L'insuffisance rénale et l'âge, qui accumulent la digoxine, et les
+# inhibiteurs de la glycoprotéine P (clarithromycine) ne sont pas
+# dessinés.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Digoxine, puis furosémide : digoxine 10- ; furosémide 50-
@@ -32445,8 +32493,8 @@ molécule mercaptopurine : activateur Mercaptopurine
 # volémie, qui en fait reprendre plus, n'est pas dessinée.
 molécule hydrochlorothiazide : inhibiteur Sécrétion tubulaire d'urate
 molécule furosémide : inhibiteur Sécrétion tubulaire d'urate
-# Seul des sartans à freiner URAT1 : un effet uricosurique modeste, bien
-# moindre que ce que le dessin montre.
+# Seul sartan à l'effet uricosurique établi, par URAT1 : un effet
+# modeste, bien moindre que ce que le dessin montre.
 molécule losartan : inhibiteur URAT1
 molécule losartan + hydrochlorothiazide : inhibiteur URAT1, Sécrétion tubulaire d'urate
 
@@ -32502,7 +32550,7 @@ molécule époétine zêta : agoniste Récepteur de l'EPO
 molécule darbépoétine alfa : agoniste Récepteur de l'EPO
 molécule méthoxy polyéthylène glycol-époétine bêta : agoniste Récepteur de l'EPO
 # Le fer oral passe par l'entérocyte, donc par la ferroportine que
-# l'hepcidine ferme : l'inflammation le rend inefficace.
+# l'hepcidine ferme : l'inflammation le rend peu efficace.
 molécule sulfate ferreux : activateur Fer intestinal
 molécule fumarate ferreux : activateur Fer intestinal
 molécule succinate ferreux : activateur Fer intestinal
@@ -32519,6 +32567,9 @@ molécule fer saccharose : activateur Fer disponible pour l'érythropoïèse
 molécule acide folique : activateur Acide folique alimentaire
 molécule acide folinique : activateur Folates réduits apportés
 molécule méthotrexate : inhibiteur Dihydrofolate réductase
+# La vitamine B12 n'est pas dessinée : l'acide folique seul dans une
+# carence en B12 corrige l'anémie et laisse avancer l'atteinte
+# neurologique.
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Fer, puis époétine : sulfate ferreux 10- ; époétine alfa 50-
@@ -32589,7 +32640,7 @@ enzyme Phosphodiestérases : dégradent l'AMPc
 messager AMPc du muscle lisse bronchique
 ligand Acétylcholine vagale : le tonus bronchoconstricteur, surtout dans la BPCO
 récepteur M3 bronchique
-récepteur Récepteur des glucocorticoïdes : dans le noyau des cellules de la muqueuse bronchique
+récepteur Récepteur des glucocorticoïdes : cytoplasmique, gagne le noyau une fois lié ; cellules de la muqueuse bronchique
 relais Cellules de l'inflammation bronchique : éosinophiles, mastocytes, lymphocytes
 ligand Leucotriènes cystéinylés : libérés par les mastocytes et les éosinophiles
 récepteur CysLT1 : muscle lisse et muqueuse bronchiques
@@ -32664,6 +32715,741 @@ molécule budésonide + glycopyrronium + formotérol : agoniste Récepteur des g
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Salmétérol seul, puis budésonide : salmétérol 10- ; budésonide 60-
 scénario Salbutamol seul, puis budésonide + formotérol : salbutamol 10-60 ; budésonide + formotérol 60-
+",
+    "\
+titre : Canaux calciques L, vaisseaux et cœur
+sujet : Dihydropyridines, vérapamil, diltiazem — et le bêtabloquant qu'on leur ajoute
+source : Rang & Dale's Pharmacology
+source : RCP de l'amlodipine et de la nifédipine : œdèmes des membres inférieurs, tachycardie réflexe et palpitations
+source : RCP du vérapamil et du diltiazem : bradycardie, bloc auriculo-ventriculaire ; association à un bêtabloquant déconseillée ou sous surveillance étroite, insuffisance cardiaque
+
+ligand Noradrénaline : le tonus sympathique, relancé par le baroréflexe quand la pression baisse
+récepteur Bêta-1 : nœud sinusal, nœud auriculo-ventriculaire et myocarde
+canal Canaux calciques L cardiaques : nœud sinusal, nœud auriculo-ventriculaire et myocarde ; ouverts davantage sous l'effet du bêta-1
+canal Canaux calciques L vasculaires : muscle lisse des artérioles
+relais Tonus artériolaire
+relais Débit cardiaque
+effet Fréquence cardiaque : baissée, c'est la bradycardie ; montée sous dihydropyridine, c'est la tachycardie réflexe
+effet Conduction auriculo-ventriculaire : baissée, c'est l'allongement du PR, puis le bloc
+effet Contractilité : baissée, c'est ce qui décompense une insuffisance cardiaque
+effet Pression artérielle
+effet Œdèmes des chevilles : montés, c'est l'œdème des dihydropyridines, qui ne cède pas au diurétique
+
+Noradrénaline -> Bêta-1 -> Canaux calciques L cardiaques
+Canaux calciques L cardiaques -> Fréquence cardiaque, Conduction auriculo-ventriculaire, Contractilité
+Fréquence cardiaque, Contractilité -> Débit cardiaque
+Canaux calciques L vasculaires -> Tonus artériolaire
+Débit cardiaque, Tonus artériolaire -> Pression artérielle
+# L'artériole se dilate, la veine non : la pression monte dans le
+# capillaire, et le liquide passe dans les tissus.
+Tonus artériolaire -| Œdèmes des chevilles
+# Le baroréflexe : une pression qui baisse relance le sympathique.
+Pression artérielle -| Noradrénaline
+
+# Dihydropyridines : les artérioles surtout, presque pas le cœur. La
+# nifédipine à libération immédiate donne le réflexe le plus vif ; les
+# formes à libération prolongée et les molécules longues l'atténuent,
+# ce que le dessin ne distingue pas.
+molécule amlodipine : inhibiteur Canaux calciques L vasculaires
+molécule lercanidipine : inhibiteur Canaux calciques L vasculaires
+molécule nifédipine : inhibiteur Canaux calciques L vasculaires
+molécule félodipine : inhibiteur Canaux calciques L vasculaires
+# Le cœur surtout, nœuds compris. Ils dilatent aussi les artérioles,
+# moins que les dihydropyridines : le dessin ne montre que le cœur.
+# Ils freinent aussi le CYP3A4 (simvastatine), ce qui n'est pas
+# dessiné.
+molécule vérapamil : inhibiteur Canaux calciques L cardiaques
+molécule diltiazem : inhibiteur Canaux calciques L cardiaques
+# Au même étage que le vérapamil et le diltiazem, en amont : les deux
+# freins s'additionnent sur le nœud. Sur une dihydropyridine, le
+# bêtabloquant retire seulement la tachycardie réflexe.
+molécule bisoprolol : antagoniste Bêta-1
+molécule aténolol : antagoniste Bêta-1
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Amlodipine, puis bisoprolol : amlodipine 10- ; bisoprolol 50-
+scénario Vérapamil ajouté au bisoprolol : bisoprolol 10- ; vérapamil 50-
+",
+    "\
+titre : Calcium, parathormone et vitamine D
+sujet : Vitamine D native et hydroxylée, calcium, calcimimétique, chélateurs du phosphore
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
+source : RCP de l'alfacalcidol et du calcitriol : hypercalcémie, hyperphosphatémie ; ils n'ont pas besoin de l'hydroxylation rénale
+source : RCP du cinacalcet : baisse de la parathormone, hypocalcémie
+source : RCP du sévélamer et du carbonate de lanthane : chélation du phosphate alimentaire, pris au repas
+
+ligand Vitamine D native : synthèse cutanée et apport alimentaire
+enzyme 25-hydroxylase hépatique
+messager 25-OH-vitamine D : la forme qui se dose, et la réserve
+enzyme 1-alpha-hydroxylase rénale : stimulée par la parathormone ; perdue dans l'insuffisance rénale chronique, d'où le manque de calcitriol
+messager Calcitriol : 1,25-dihydroxyvitamine D, la forme active
+récepteur Récepteur de la vitamine D : intestin et parathyroïde
+ligand Calcium alimentaire
+relais Absorption intestinale du calcium
+relais Absorption intestinale du phosphate
+relais Résorption osseuse : les ostéoclastes libèrent calcium et phosphate, sous la parathormone et le calcitriol
+récepteur Récepteur sensible au calcium : CaSR de la cellule parathyroïdienne ; plus il perçoit de calcium, moins elle sécrète
+effet Calcémie : montée, c'est l'hypercalcémie des dérivés actifs ; baissée, celle du calcimimétique
+effet Parathormone : baissée, c'est le but dans l'hyperparathyroïdie secondaire du dialysé
+effet Phosphatémie : montée, c'est l'hyperphosphatémie du dialysé
+
+Vitamine D native -> 25-hydroxylase hépatique -> 25-OH-vitamine D
+25-OH-vitamine D -> 1-alpha-hydroxylase rénale -> Calcitriol -> Récepteur de la vitamine D
+Récepteur de la vitamine D, Calcium alimentaire -> Absorption intestinale du calcium
+Récepteur de la vitamine D -> Absorption intestinale du phosphate
+Absorption intestinale du calcium, Résorption osseuse -> Calcémie
+Absorption intestinale du phosphate, Résorption osseuse -> Phosphatémie
+Calcémie -> Récepteur sensible au calcium -| Parathormone
+Récepteur de la vitamine D -| Parathormone
+Parathormone, Récepteur de la vitamine D -> Résorption osseuse
+Parathormone -> 1-alpha-hydroxylase rénale
+# Le calcitriol freine sa propre synthèse.
+Calcitriol -| 1-alpha-hydroxylase rénale
+
+# La parathormone fait aussi reprendre du calcium et perdre du phosphate
+# par le rein, ce qui n'est pas dessiné — le rein du dialysé ne le fait
+# plus. L'hyperphosphatémie stimule aussi la parathormone, directement
+# et en abaissant le calcitriol par le FGF23 : ni l'un ni l'autre n'est
+# dessiné, d'où la place des chélateurs dans l'hyperparathyroïdie
+# secondaire. Voir « Remodelage osseux » pour l'os lui-même.
+molécule cholécalciférol : agoniste Vitamine D native
+# Déjà hydroxylé par le foie.
+molécule calcifédiol : agoniste 25-OH-vitamine D
+# Hydroxylé en 1-alpha d'avance : le foie le finit en calcitriol, sans
+# le rein. Le dessin le pose sur le calcitriol.
+molécule alfacalcidol : agoniste Calcitriol
+molécule calcitriol : agoniste Calcitriol
+# Modulateur allostérique : le récepteur croit voir plus de calcium.
+molécule cinacalcet : potentialisateur Récepteur sensible au calcium
+# Apport de calcium ; pris au repas, il fixe aussi le phosphate.
+molécule carbonate de calcium : agoniste Calcium alimentaire ; inhibiteur Absorption intestinale du phosphate
+molécule sévélamer : inhibiteur Absorption intestinale du phosphate
+molécule carbonate de lanthane : inhibiteur Absorption intestinale du phosphate
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Calcitriol, puis sévélamer : calcitriol 10- ; sévélamer 50-
+scénario Cinacalcet, puis calcitriol : cinacalcet 10- ; calcitriol 50-
+",
+    "\
+titre : Hyperkaliémie et chélateurs du potassium
+sujet : IEC, sartans, antialdostérones, triméthoprime, héparine, AINS — et les chélateurs qui retirent le potassium par l'intestin
+source : Rang & Dale's Pharmacology
+source : RCP des IEC, des sartans, de la spironolactone et de la finérénone : hyperkaliémie, surtout en insuffisance rénale, avec un sel de potassium ou un autre médicament hyperkaliémiant
+source : RCP du triméthoprime : hyperkaliémie, par un effet de type amiloride sur le tube collecteur
+source : RCP de l'héparine : hyperkaliémie par hypoaldostéronisme
+source : RCP du patiromère, du cyclosilicate de sodium et de zirconium et des polystyrènes sulfonates : fixation du potassium dans l'intestin, éliminé dans les selles
+
+relais Prostaglandines rénales : entretiennent la sécrétion de rénine
+enzyme Rénine
+enzyme Enzyme de conversion
+relais Angiotensine II
+récepteur Récepteur AT1 : zone glomérulée de la surrénale
+enzyme Synthèse de l'aldostérone : zone glomérulée
+ligand Aldostérone
+récepteur Récepteur minéralocorticoïde
+canal ENaC : canal sodium du tube collecteur ; le sodium qu'il reprend fait sortir le potassium
+relais Sécrétion rénale de potassium
+ligand Apport de potassium : alimentation et sels de potassium
+relais Fixation intestinale du potassium : échangé contre un autre cation dans la lumière de l'intestin, éliminé dans les selles
+effet Kaliémie : montée, c'est l'hyperkaliémie, et le trouble du rythme
+
+Prostaglandines rénales -> Rénine
+Rénine, Enzyme de conversion -> Angiotensine II
+Angiotensine II -> Récepteur AT1 -> Synthèse de l'aldostérone -> Aldostérone
+Aldostérone -> Récepteur minéralocorticoïde -> ENaC -> Sécrétion rénale de potassium
+Sécrétion rénale de potassium -| Kaliémie
+Apport de potassium -> Kaliémie
+Fixation intestinale du potassium -| Kaliémie
+
+# La kaliémie stimule elle-même l'aldostérone, un frein qui n'est pas
+# dessiné. Le rein qui filtre moins — insuffisance rénale, déshydratation
+# — ne l'est pas non plus : c'est lui qui fait l'hyperkaliémie grave,
+# quand ces molécules s'y ajoutent. Voir « Néphron et potassium » et
+# « Système rénine-angiotensine-aldostérone ».
+molécule ramipril : inhibiteur Enzyme de conversion
+molécule périndopril : inhibiteur Enzyme de conversion
+molécule losartan : antagoniste Récepteur AT1
+molécule valsartan : antagoniste Récepteur AT1
+molécule spironolactone : antagoniste Récepteur minéralocorticoïde
+molécule éplérénone : antagoniste Récepteur minéralocorticoïde
+molécule finérénone : antagoniste Récepteur minéralocorticoïde
+# Un antibiotique qui bloque l'ENaC comme l'amiloride et le
+# triamtérène, non dessinés ici. La ciclosporine et le tacrolimus,
+# hyperkaliémiants eux aussi, ne le sont pas non plus.
+molécule triméthoprime : inhibiteur ENaC
+# Elle freine la synthèse de l'aldostérone, HBPM comprises, ce que le
+# dessin ne montre que pour l'héparine non fractionnée.
+molécule héparine sodique : inhibiteur Synthèse de l'aldostérone
+# Moins de prostaglandines, moins de rénine : et moins de filtration,
+# qui n'est pas dessinée.
+molécule ibuprofène : inhibiteur Prostaglandines rénales
+molécule chlorure de potassium : agoniste Apport de potassium
+# Les chélateurs : le potassium sort par l'intestin, quel que soit le
+# rein. Ils échangent du sodium ou du calcium, et le patiromère fixe
+# aussi le magnésium, ce que le dessin ne montre pas.
+molécule patiromère : activateur Fixation intestinale du potassium
+molécule cyclosilicate de sodium et de zirconium : activateur Fixation intestinale du potassium
+molécule polystyrène sulfonate de sodium : activateur Fixation intestinale du potassium
+molécule polystyrène sulfonate de calcium : activateur Fixation intestinale du potassium
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Ramipril, puis spironolactone, puis patiromère : ramipril 10- ; spironolactone 40- ; patiromère 70-
+scénario Triméthoprime sur un sartan : losartan 10- ; triméthoprime 50-80
+",
+    "\
+titre : Cycle de la vitamine K
+sujet : Vitamine K contre AVK — et ce qu'elle ne rattrape pas
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
+source : Rang & Dale's Pharmacology
+source : RCP de la phytoménadione : antidote des AVK ; sans effet sur l'héparine
+source : RCP de l'héparine, de l'apixaban et du dabigatran : leurs antidotes, protamine, andexanet alfa, idarucizumab, en établissement
+
+enzyme VKORC1 : vitamine K époxyde réductase, la cible des AVK ; recycle la vitamine K dans le foie
+ligand Vitamine K apportée : alimentation ou phytoménadione
+enzyme Quinone réductase : réduit la vitamine K apportée, et les AVK ne la freinent pas
+relais Manque de vitamine K réduite : nul au repos, le foie en a assez ; un surplus n'ajoute rien
+relais Facteurs vitamine K-dépendants : II, VII, IX et X, carboxylés dans le foie
+relais Facteur tissulaire
+enzyme Facteur Xa
+enzyme Thrombine : facteur IIa
+effet INR : suit les facteurs vitamine K-dépendants ; il ne mesure pas l'effet d'un AOD
+effet Formation du caillot : baissée, c'est l'anticoagulation, et au-delà le saignement
+
+Vitamine K apportée -> Quinone réductase
+VKORC1, Quinone réductase -| Manque de vitamine K réduite
+Manque de vitamine K réduite -| Facteurs vitamine K-dépendants
+Facteurs vitamine K-dépendants -| INR
+Facteur tissulaire, Facteurs vitamine K-dépendants -> Facteur Xa
+Facteur Xa, Facteurs vitamine K-dépendants -> Thrombine
+Thrombine -> Formation du caillot
+tonus faible Manque de vitamine K réduite
+
+# Les protéines C et S, anticoagulantes, dépendent aussi de la vitamine
+# K et baissent les premières sous AVK : le déséquilibre des premiers
+# jours n'est pas dessiné. La correction prend des heures — le temps de
+# refaire les facteurs —, ce que le dessin ne montre pas ; le complexe
+# prothrombinique, qui les apporte tout faits, n'y est pas. Voir
+# « Coagulation » pour les héparines et la chaîne entière.
+molécule warfarine : inhibiteur VKORC1
+molécule fluindione : inhibiteur VKORC1
+molécule acénocoumarol : inhibiteur VKORC1
+# Réduite par une autre enzyme que la VKORC1 : c'est pourquoi elle passe
+# outre l'AVK.
+molécule phytoménadione : agoniste Vitamine K apportée
+# En aval des facteurs : la vitamine K ne les rattrape pas.
+molécule apixaban : inhibiteur Facteur Xa
+molécule rivaroxaban : inhibiteur Facteur Xa
+molécule dabigatran : inhibiteur Thrombine
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Surdosage en warfarine, vitamine K : warfarine 10- ; phytoménadione 60-
+scénario Vitamine K sous apixaban : apixaban 10- ; phytoménadione 60-
+",
+    "\
+titre : Alcool, acétaldéhyde et récompense
+sujet : Disulfirame, effet antabuse, naltrexone, nalméfène, acamprosate, baclofène
+source : Rang & Dale's Pharmacology
+source : RCP du disulfirame : inhibition irréversible de l'aldéhyde déshydrogénase, accumulation d'acétaldéhyde et réaction antabuse à la moindre prise d'alcool
+source : RCP du métronidazole : effet antabuse avec l'alcool ; association au disulfirame déconseillée, bouffées délirantes et état confusionnel
+source : RCP de la naltrexone et du nalméfène : blocage du renforcement lié aux opioïdes endogènes libérés par l'alcool
+source : RCP de l'acamprosate : correction de l'hyperexcitabilité glutamatergique qui persiste après le sevrage
+source : RCP du baclofène dans l'alcoolodépendance : agoniste GABA-B, moins de dopamine libérée par l'alcool
+
+ligand Éthanol : l'alcool bu ; dessiné comme en consommation
+enzyme Alcool déshydrogénase : le foie, première étape
+messager Acétaldéhyde : toxique ; s'il s'accumule, c'est la réaction antabuse
+enzyme Aldéhyde déshydrogénase : dégrade l'acétaldéhyde en acétate
+effet Réaction antabuse : montée, bouffées vasomotrices, céphalées, nausées, tachycardie, hypotension
+ligand Opioïdes endogènes : endorphines libérées par l'alcool
+récepteur Récepteurs opioïdes de la récompense : mu et delta
+ligand GABA
+récepteur GABA-B : présynaptique, freine la libération de dopamine
+relais Dopamine mésolimbique : le circuit de la récompense
+ligand Glutamate
+récepteur Récepteurs NMDA : renforcés par l'alcoolisation chronique, l'hyperexcitabilité persiste après le sevrage
+effet Plaisir de boire : baissé, moins de renforcement et moins de jours de forte consommation
+effet Envie de boire : le craving ; baissée, moins de reprises
+
+Éthanol -> Alcool déshydrogénase -> Acétaldéhyde
+Aldéhyde déshydrogénase -| Acétaldéhyde
+Acétaldéhyde -> Réaction antabuse
+Éthanol -> Opioïdes endogènes -> Récepteurs opioïdes de la récompense -> Dopamine mésolimbique
+# L'alcool libère aussi la dopamine par d'autres voies (GABA-A,
+# récepteurs nicotiniques) : dessinées en une flèche directe.
+Éthanol -> Dopamine mésolimbique
+GABA -> GABA-B -| Dopamine mésolimbique
+Dopamine mésolimbique -> Plaisir de boire, Envie de boire
+Glutamate -> Récepteurs NMDA -> Envie de boire
+
+# L'alcool n'est pas une molécule du dessin : il est à son tonus, comme
+# chez qui boit, et les médicaments agissent sur ce qu'il déclenche.
+
+# Dissuasif, pas anticraving : le disulfirame ne change ni le plaisir ni
+# l'envie, il rend la prise d'alcool pénible. Inhibition irréversible :
+# elle persiste après l'arrêt, ce que le dessin ne montre pas.
+molécule disulfirame : inhibiteur Aldéhyde déshydrogénase
+# L'effet antabuse est dans sa monographie ; son mécanisme reste
+# discuté, le dessin le range avec le disulfirame. Les deux associés
+# sont déconseillés, pour un autre risque : bouffées délirantes et état
+# confusionnel, qui ne se dessinent pas.
+molécule métronidazole : inhibiteur Aldéhyde déshydrogénase
+# Sous naltrexone ou nalméfène, tout opioïde est bloqué, antalgique
+# compris, et une prise d'opioïde chez un patient qui en dépend
+# précipite le manque : voir « Récepteur opioïde mu ».
+molécule naltrexone : antagoniste Récepteurs opioïdes de la récompense
+# Il est aussi agoniste partiel kappa, non dessiné.
+molécule nalméfène : antagoniste Récepteurs opioïdes de la récompense
+molécule acamprosate : inhibiteur Récepteurs NMDA
+# Sa sédation et sa myorelaxation ne sont pas dessinées ; l'arrêt
+# brutal expose à un syndrome de sevrage avec convulsions.
+molécule baclofène : agoniste GABA-B
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Disulfirame : disulfirame 10-
+scénario Naltrexone, puis acamprosate : naltrexone 10- ; acamprosate 50-
+",
+    "\
+titre : Nicotine et arrêt du tabac
+sujet : Substituts nicotiniques, varénicline, bupropion
+source : Rang & Dale's Pharmacology
+source : RCP de la varénicline : agoniste partiel alpha-4-bêta-2, moins de manque, et une cigarette fumée pendant le traitement procure moins de satisfaction
+source : RCP des substituts nicotiniques : agoniste des récepteurs nicotiniques, suppression des symptômes de manque
+source : RCP du bupropion : inhibition de la recapture de la dopamine et de la noradrénaline, manque atténué sans apport de nicotine
+source : RCP des substituts nicotiniques : l'arrêt du tabac lève l'induction du CYP1A2 (clozapine, olanzapine, théophylline)
+
+ligand Acétylcholine
+récepteur Nicotinique alpha-4-bêta-2 : aire tegmentale ventrale ; sa réponse s'émousse sous nicotine au long cours
+relais Neurone dopaminergique : du circuit de la récompense
+transporteur Recapture de la dopamine et de la noradrénaline
+messager Dopamine et noradrénaline synaptiques
+effet Récompense : la satisfaction de la prise ; c'est ce qui entretient la dépendance
+effet Manque et envie de fumer : montés, c'est le sevrage ; irritabilité, envie impérieuse
+
+Acétylcholine -> Nicotinique alpha-4-bêta-2 -> Neurone dopaminergique -> Dopamine et noradrénaline synaptiques
+Recapture de la dopamine et de la noradrénaline -| Dopamine et noradrénaline synaptiques
+Dopamine et noradrénaline synaptiques -> Récompense
+Dopamine et noradrénaline synaptiques -| Manque et envie de fumer
+
+# La nicotine est la même, fumée ou substituée. Le substitut la donne
+# lentement, sans le pic de la cigarette, d'où bien moins de
+# renforcement : le dessin ne distingue pas les deux cinétiques.
+molécule nicotine : agoniste Nicotinique alpha-4-bêta-2
+# Agoniste partiel : un peu de dopamine, assez pour le manque, et il
+# prend la place de la nicotine fumée.
+molécule varénicline : agoniste partiel Nicotinique alpha-4-bêta-2
+# Il est aussi antagoniste non compétitif des récepteurs nicotiniques,
+# non dessiné. L'abaissement du seuil convulsif et l'insomnie ne sont
+# pas dessinés.
+molécule bupropion : inhibiteur Recapture de la dopamine et de la noradrénaline
+
+# La tolérance : sous nicotine au long cours, les récepteurs se
+# désensibilisent (leur nombre augmente pourtant, en réponse) ; à
+# l'arrêt, la dopamine manque.
+adaptation Nicotinique alpha-4-bêta-2
+
+# Ce qui n'est pas dessiné : la fumée du tabac, et non la nicotine,
+# induit le CYP1A2. À l'arrêt du tabac, substitut ou non, les
+# concentrations de clozapine, d'olanzapine et de théophylline montent.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Arrêt sans aide : nicotine 5-60
+scénario Relais par la varénicline : nicotine 5-60 ; varénicline 55-
+scénario Cigarette sous varénicline : varénicline 10- ; nicotine 50-70
+",
+    "\
+titre : Veille et sommeil
+sujet : Antagonistes de l'orexine, mélatonine, éveillants, oxybate de sodium
+source : Rang & Dale's Pharmacology
+source : RCP du daridorexant : antagoniste des récepteurs OX1R et OX2R, baisse de la pression d'éveil, sans action sur le récepteur GABA-A
+source : RCP de la mélatonine : récepteurs MT1 et MT2 des noyaux suprachiasmatiques, endormissement favorisé, pas une sédation directe
+source : RCP du pitolisant : antagoniste et agoniste inverse H3, activité des neurones histaminergiques renforcée ; efficacité diminuée par les antihistaminiques H1 qui passent dans le cerveau
+source : RCP du modafinil : inhibition de la recapture de la dopamine, mécanisme incomplètement élucidé
+source : RCP de l'oxybate de sodium : agoniste GABA-B, endormissement rapide, dépression centrale majorée par les hypnotiques, les opioïdes et l'alcool
+
+ligand Orexines : neurones de l'hypothalamus latéral, entretiennent l'éveil
+récepteur OX1R et OX2R
+ligand Histamine cérébrale : neurones du noyau tubéromamillaire
+récepteur H3 : autorécepteur, freine la libération d'histamine
+récepteur H1 central
+transporteur Recapture de la dopamine : DAT
+messager Dopamine
+ligand GABA
+récepteur GABA-B
+ligand Mélatonine endogène : sécrétée la nuit par la glande pinéale
+récepteur MT1 et MT2 : noyaux suprachiasmatiques, l'horloge biologique
+relais Signal de nuit : l'horloge dit l'obscurité
+effet Vigilance : montée, c'est l'éveil ; baissée, la somnolence
+effet Endormissement : monté, il est facilité
+
+Orexines -> OX1R et OX2R -> Vigilance
+H3 -| Histamine cérébrale -> H1 central -> Vigilance
+Recapture de la dopamine -| Dopamine -> Vigilance
+GABA -> GABA-B -| Vigilance
+Mélatonine endogène -> MT1 et MT2 -> Signal de nuit -> Endormissement
+Vigilance -| Endormissement
+
+# Le récepteur GABA-A, les benzodiazépines et le zolpidem ont leur
+# cascade : voir « Récepteur GABA-A ». Les antihistaminiques H1 sédatifs,
+# la doxylamine en tête, bloquent le H1 central : voir « Récepteurs
+# histaminiques H1 » ; ils diminuent l'efficacité du pitolisant.
+
+# Il baisse la pression d'éveil plutôt que de déprimer le cerveau.
+molécule daridorexant : antagoniste OX1R et OX2R
+# Elle signale la nuit : l'endormissement, pas une sédation.
+molécule mélatonine : agoniste MT1 et MT2
+# Son blocage 5-HT2C, qui fait l'antidépresseur, n'est pas dessiné.
+molécule agomélatine : agoniste MT1 et MT2
+# En levant le frein de l'autorécepteur, il libère l'histamine.
+molécule pitolisant : antagoniste H3
+molécule modafinil : inhibiteur Recapture de la dopamine
+# Le modafinil et le pitolisant diminuent l'efficacité des
+# contraceptifs hormonaux : non dessiné.
+# La dépression respiratoire, qui fait sa marge étroite, n'est pas
+# dessinée ; contre-indiqué avec les opioïdes et les barbituriques,
+# l'alcool à éviter.
+molécule oxybate de sodium : agoniste GABA-B
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Daridorexant : daridorexant 10-60
+scénario Oxybate, puis daridorexant : oxybate de sodium 10- ; daridorexant 50-
+",
+    "\
+titre : Glutamate et récepteur NMDA
+sujet : Mémantine, eskétamine, riluzole
+source : Rang & Dale's Pharmacology
+source : RCP de la mémantine : antagoniste NMDA d'affinité modérée, bloque l'activation tonique excessive et laisse passer le signal physiologique ; association à l'amantadine, à la kétamine et au dextrométhorphane à éviter
+source : RCP de l'eskétamine : blocage NMDA, libération de glutamate et activation des récepteurs AMPA ; dissociation et élévation de la pression artérielle après chaque séance
+source : RCP du riluzole : inhibition de la libération présynaptique de glutamate, excitotoxicité réduite
+
+récepteur NMDA des interneurones : sur les interneurones GABAergiques du cortex
+relais Interneurones GABAergiques : freinent les neurones glutamatergiques
+relais Libération de glutamate
+récepteur NMDA tonique : activation de fond, excessive dans la maladie d'Alzheimer
+récepteur Récepteurs AMPA : peu sollicités hors d'une bouffée de glutamate
+relais Plasticité synaptique
+relais Tonus sympathique : l'eskétamine le monte par une action centrale
+effet Excitotoxicité : la souffrance neuronale par excès de glutamate ; baissée, c'est la protection visée
+effet Humeur : montée, c'est l'effet antidépresseur rapide de l'eskétamine
+effet Dissociation : perception altérée, déréalisation, après chaque séance d'eskétamine
+effet Pression artérielle : montée après chaque séance d'eskétamine, d'où la mesure avant et après
+
+NMDA des interneurones -> Interneurones GABAergiques -| Libération de glutamate
+Libération de glutamate -> NMDA tonique -> Excitotoxicité
+Libération de glutamate -> Récepteurs AMPA -> Plasticité synaptique -> Humeur
+# La dissociation suit la levée du frein cortical : dessinée depuis
+# les interneurones.
+Interneurones GABAergiques -| Dissociation
+Tonus sympathique -> Pression artérielle
+
+# Hors bouffée, les récepteurs AMPA ne font presque rien : freiner la
+# libération de glutamate n'y retire rien de visible. Sans eskétamine,
+# pas de dissociation à retirer.
+tonus faible Récepteurs AMPA, Dissociation
+
+# Elle bloque le bruit de fond, pas le signal : ni dissociation ni
+# effet sur l'humeur aux doses usuelles.
+molécule mémantine : antagoniste NMDA tonique
+# Antagoniste NMDA puissant : il lève le frein des interneurones, d'où
+# la bouffée de glutamate. La sédation et l'association aux
+# benzodiazépines, aux opioïdes ou à l'alcool ne sont pas dessinées.
+molécule eskétamine : antagoniste NMDA des interneurones, NMDA tonique ; activateur Tonus sympathique
+molécule riluzole : inhibiteur Libération de glutamate
+# La lamotrigine freine aussi la libération de glutamate, par les canaux
+# sodiques : voir « Cibles des antiépileptiques ». L'amantadine et le
+# dextrométhorphane sont des antagonistes NMDA faibles ; les effets
+# dissociatifs du dextrométhorphane sont ceux du surdosage, et ne sont
+# pas dessinés. Leur association à la mémantine est à éviter : risque
+# de psychose pharmacotoxique, non dessiné.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Séance d'eskétamine : eskétamine 20-40
+scénario Mémantine : mémantine 10-
+",
+    "\
+titre : Activation du lymphocyte T
+sujet : Anticalcineurines, inhibiteurs de mTOR, mycophénolate, azathioprine, abatacept, corticoïdes — greffe et auto-immunité
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les trois signaux de l'activation du lymphocyte T et les étapes que bloque chaque immunosuppresseur
+source : RCP de la ciclosporine et du tacrolimus : inhibition de la calcineurine et de la production d'IL-2 ; néphrotoxicité, tremblement, hypertension artérielle ; infections et lymphomes
+source : RCP du sirolimus et de l'évérolimus : inhibition de mTOR, arrêt du lymphocyte T activé en phase G1 ; retard de cicatrisation, dyslipidémie
+source : RCP du mycophénolate mofétil et du mycophénolate sodique : inhibition de l'IMPDH et de la synthèse de novo des nucléotides guaniques, dont les lymphocytes dépendent
+source : RCP de l'abatacept : se lie à CD80 et CD86 et empêche la costimulation par CD28
+
+ligand Antigène : peptide présenté par la cellule présentatrice ; dans la greffe, celui du donneur
+récepteur Récepteur du lymphocyte T : TCR et CD3, le premier signal
+ligand CD80 et CD86 : sur la cellule présentatrice
+récepteur CD28 : sur le lymphocyte T, la costimulation, le deuxième signal
+enzyme Calcineurine : phosphatase activée par le calcium
+relais NFAT : facteur de transcription, déphosphorylé par la calcineurine
+relais Transcription du gène de l'IL-2 : sous NFAT, AP-1 et NF-kappa-B
+ligand IL-2
+récepteur Récepteur de l'IL-2 : CD25
+enzyme mTOR : du récepteur de l'IL-2 vers le cycle cellulaire, le troisième signal
+enzyme IMPDH : synthèse de novo des nucléotides guaniques
+relais Synthèse des purines : le lymphocyte dépend de la voie de novo
+relais Prolifération des lymphocytes T
+effet Rejet du greffon : baissé, c'est l'effet recherché après greffe
+effet Défense contre les infections : baissée, ce sont les infections, y compris opportunistes
+
+Antigène -> Récepteur du lymphocyte T -> Calcineurine -> NFAT -> Transcription du gène de l'IL-2
+CD80 et CD86 -> CD28 -> Transcription du gène de l'IL-2
+Transcription du gène de l'IL-2 -> IL-2 -> Récepteur de l'IL-2 -> mTOR -> Prolifération des lymphocytes T
+IMPDH -> Synthèse des purines -> Prolifération des lymphocytes T
+Prolifération des lymphocytes T -> Rejet du greffon, Défense contre les infections
+
+# Les anticalcineurines : la ciclosporine liée à la cyclophiline, le
+# tacrolimus à la FKBP12. La néphrotoxicité, le tremblement,
+# l'hypertension et le diabète du tacrolimus ne sont pas dessinés :
+# leur lien avec la calcineurine des tissus n'est pas une chaîne
+# simple. Le collyre de ciclosporine et la pommade de tacrolimus
+# agissent sur place, sans l'immunosuppression générale que dessine la
+# figure. Leurs interactions par le CYP3A4 et la glycoprotéine P ne
+# sont pas dessinées.
+molécule ciclosporine : inhibiteur Calcineurine
+molécule tacrolimus : inhibiteur Calcineurine
+# Liés eux aussi à la FKBP12, mais ce complexe freine mTOR et non la
+# calcineurine : l'IL-2 est produite, le lymphocyte n'y répond plus.
+# D'où leur association possible à une anticalcineurine à dose
+# réduite. Le retard de cicatrisation, la dyslipidémie et la
+# protéinurie ne sont pas dessinés. L'évérolimus a aussi des
+# indications en cancérologie.
+molécule sirolimus : inhibiteur mTOR
+molécule évérolimus : inhibiteur mTOR
+molécule mycophénolate mofétil : inhibiteur IMPDH
+molécule mycophénolate sodique : inhibiteur IMPDH
+# Ses nucléotides thioguaniques freinent la synthèse des purines. Sa
+# toxicité médullaire avec l'allopurinol se lit sur la cascade des
+# purines.
+molécule azathioprine : inhibiteur Synthèse des purines
+# Il occupe CD80 et CD86 et prive CD28 de son ligand : c'est son effet
+# dans la polyarthrite rhumatoïde, et il n'a pas l'indication de la
+# greffe.
+molécule abatacept : inhibiteur CD80 et CD86
+# Parmi leurs effets, les corticoïdes freinent la transcription de
+# l'IL-2 et des autres cytokines ; le reste de leur action n'est pas
+# dessiné.
+molécule prednisone : inhibiteur Transcription du gène de l'IL-2
+molécule prednisolone : inhibiteur Transcription du gène de l'IL-2
+molécule méthylprednisolone : inhibiteur Transcription du gène de l'IL-2
+# Non dessinés : la tératogénicité du mycophénolate, qui impose une
+# contraception, et la contre-indication des vaccins vivants.
+# Le lymphocyte B et les anticorps, autre bras du rejet, sont sur leur
+# propre cascade.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Trithérapie de greffe : tacrolimus 10- ; mycophénolate mofétil 10- ; prednisone 10-
+scénario Tacrolimus arrêté : tacrolimus 10-60 ; mycophénolate mofétil 10-
+",
+    "\
+titre : Lymphocyte B et anticorps
+sujet : Anti-CD20, bélimumab — vacciner avant de commencer
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les plasmocytes à longue vie ne portent pas CD20 et échappent aux anti-CD20
+source : RCP du rituximab : déplétion des lymphocytes B CD20 ; hypogammaglobulinémie ; réponse diminuée aux vaccins à antigène nouveau ; vaccins vivants contre-indiqués ; dépistage de l'hépatite B avant traitement
+source : RCP de l'ocrélizumab et de l'ofatumumab : terminer les vaccinations avant le début du traitement ; baisse des immunoglobulines
+source : RCP du bélimumab : inhibe la survie des lymphocytes B, dont les lymphocytes B autoréactifs, et leur différenciation en plasmocytes ; baisse des auto-anticorps anti-ADN double brin
+
+ligand BAFF : BLyS, facteur de survie des lymphocytes B
+récepteur Récepteurs de BAFF : BAFF-R, TACI, BCMA
+relais Lymphocytes B : porteurs de CD20, du stade pré-B au lymphocyte B mémoire
+relais Lymphocytes B autoréactifs : leur survie dépend plus que les autres du BAFF
+ligand Vaccin : un antigène nouveau
+relais Plasmablastes : issus des lymphocytes B, ils font la réponse à un antigène nouveau
+relais Plasmocytes à longue vie : moelle osseuse, sans CD20 ; ils gardent les anticorps d'avant
+ligand Auto-anticorps : anti-ADN double brin du lupus, par exemple
+effet Activité de la maladie : lupus, polyarthrite rhumatoïde, sclérose en plaques ; par les auto-anticorps et par la présentation d'antigène aux lymphocytes T
+effet Réponse à un vaccin fait sous traitement : baissée sous anti-CD20, d'où vacciner avant
+effet Protection des vaccins faits avant : gardée, portée par les plasmocytes à longue vie
+effet IgG sériques : baisse lente, surtout après des cures répétées ; basses, ce sont les infections
+
+BAFF -> Récepteurs de BAFF -> Lymphocytes B autoréactifs
+Lymphocytes B -> Lymphocytes B autoréactifs
+Lymphocytes B, Vaccin -> Plasmablastes
+Plasmablastes -> Réponse à un vaccin fait sous traitement
+Lymphocytes B autoréactifs -> Auto-anticorps -> Activité de la maladie
+Lymphocytes B -> Activité de la maladie
+Plasmablastes, Plasmocytes à longue vie -> IgG sériques
+Plasmocytes à longue vie -> Protection des vaccins faits avant
+
+# Les anti-CD20 détruisent les lymphocytes B qui portent CD20. Les
+# plasmocytes à longue vie ne le portent pas : les anticorps des
+# vaccins faits avant restent, la réponse à un vaccin fait sous
+# traitement est faible. Le dessin ne fait pas naître de plasmocytes à
+# longue vie des plasmablastes : il montre l'état sous traitement, pas
+# des années. La baisse des IgG, lente et partielle, est plus forte
+# sur le dessin qu'après une cure. La réactivation de l'hépatite B et
+# la leucoencéphalopathie multifocale progressive ne sont pas
+# dessinées.
+molécule rituximab : inhibiteur Lymphocytes B
+molécule ocrélizumab : inhibiteur Lymphocytes B
+molécule ofatumumab : inhibiteur Lymphocytes B
+# Il capte le BAFF soluble : les lymphocytes B autoréactifs, les plus
+# dépendants de ce facteur, survivent moins. La réponse aux vaccins,
+# peu touchée dans les études, n'est pas dessinée comme baissée.
+molécule bélimumab : inhibiteur BAFF
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Rituximab : rituximab 10-
+scénario Bélimumab : bélimumab 10-
+",
+    "\
+titre : Contraception hormonale
+sujet : Estroprogestatifs, microprogestatifs, contraception d'urgence
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'estrogène freine la FSH, le progestatif freine la GnRH et empêche le pic de LH ; le progestatif épaissit la glaire et amincit l'endomètre
+source : RCP des contraceptifs estroprogestatifs : inhibition de l'ovulation, modification de la glaire cervicale et de l'endomètre ; risque thromboembolique veineux, plus bas avec le lévonorgestrel, la noréthistérone et le norgestimate
+source : RCP du désogestrel : inhibition de l'ovulation, augmentation de la viscosité de la glaire cervicale
+source : RCP du lévonorgestrel en contraception d'urgence : empêche l'ovulation s'il est pris avant le pic de LH
+source : RCP des contraceptifs hormonaux : les inducteurs enzymatiques diminuent leur efficacité
+
+ligand GnRH : hypothalamus, libérée par pulses
+relais FSH
+relais LH
+relais Croissance folliculaire
+relais Œstradiol ovarien : du follicule dominant ; au-delà d'un seuil, il déclenche le pic de LH
+relais Pic de LH
+récepteur Récepteur de la progestérone central : hypothalamus et hypophyse ; stimulé, il freine la GnRH et empêche le pic de LH
+récepteur Récepteur des œstrogènes central : le rétrocontrôle sur la FSH
+récepteur Récepteur de la progestérone folliculaire : induit par le pic de LH, la rupture du follicule en dépend
+récepteur Récepteur de la progestérone utérin : col et endomètre
+récepteur Récepteur des œstrogènes hépatique : synthèse des facteurs de la coagulation
+effet Ovulation : baissée, c'est l'effet contraceptif principal
+effet Glaire cervicale perméable : baissée, glaire épaisse que les spermatozoïdes ne traversent plus
+effet Épaisseur de l'endomètre : baissée, endomètre mince ; saignements irréguliers possibles
+effet Risque thromboembolique veineux
+
+GnRH -> FSH, LH
+FSH -> Croissance folliculaire -> Œstradiol ovarien
+Œstradiol ovarien, LH -> Pic de LH -> Récepteur de la progestérone folliculaire -> Ovulation
+Récepteur de la progestérone central -| GnRH, Pic de LH
+Récepteur des œstrogènes central -| FSH
+Œstradiol ovarien -> Glaire cervicale perméable, Épaisseur de l'endomètre
+Récepteur de la progestérone utérin -| Glaire cervicale perméable, Épaisseur de l'endomètre
+Récepteur des œstrogènes hépatique -> Risque thromboembolique veineux
+
+# La figure part d'un cycle, avant l'ovulation. Le rétrocontrôle
+# positif de l'œstradiol sur la GnRH est écrit comme son effet sur le
+# pic de LH.
+#
+# Estroprogestatifs : le progestatif empêche le pic de LH, l'estrogène
+# freine la FSH et le recrutement du follicule. L'estrogène fait
+# produire par le foie des facteurs de la coagulation : c'est le risque
+# veineux. Ce risque dépend aussi du progestatif associé, plus bas avec
+# le lévonorgestrel ; le dessin ne distingue pas les progestatifs. Les
+# associations à l'estradiol ou à l'estétrol sont dessinées comme les
+# autres : leur risque, comparé au lévonorgestrel, n'est pas établi.
+# L'anneau et le patch sont dessinés comme la pilule.
+molécule lévonorgestrel + éthinylestradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule désogestrel + éthinylestradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule drospirénone + éthinylestradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule étonogestrel + éthinylestradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule norelgestromine + éthinylestradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule nomégestrol acétate + estradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule diénogest + valérate d'estradiol : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+molécule estétrol + drospirénone : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin, Récepteur des œstrogènes central, Récepteur des œstrogènes hépatique
+# Progestatifs seuls : pilule, implant. Sans estrogène, pas de hausse
+# du risque veineux sur le dessin. L'effet antiminéralocorticoïde de
+# la drospirénone n'est pas dessiné.
+molécule désogestrel : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin
+molécule drospirénone : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin
+molécule étonogestrel : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin
+# En contraception d'urgence, pris avant le pic de LH, il l'empêche ;
+# pris après, il ne fait plus rien, ce que le dessin, sans temps, ne
+# montre pas. Le DIU au lévonorgestrel agit surtout sur place, sur la
+# glaire et l'endomètre, et n'empêche pas toujours l'ovulation : le
+# dessin montre le comprimé. Le microprogestatif au lévonorgestrel
+# agit lui aussi surtout sur la glaire et n'empêche pas toujours
+# l'ovulation, contrairement au désogestrel.
+molécule lévonorgestrel : agoniste Récepteur de la progestérone central, Récepteur de la progestérone utérin
+# L'ulipristal n'est pas dessiné : il retarde la rupture du follicule
+# en modulant le récepteur de la progestérone, et un progestatif pris
+# dans les jours qui suivent peut diminuer son effet (RCP). Le dessin,
+# qui les lirait sur deux récepteurs différents, les montrerait
+# additionnés — l'inverse de ce que dit le RCP.
+# Les inducteurs enzymatiques (rifampicine, carbamazépine,
+# millepertuis...) font baisser les hormones par le foie : c'est une
+# affaire de concentration, pas de cascade, et elle n'est pas dessinée.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Pilule estroprogestative : lévonorgestrel + éthinylestradiol 10-80
+scénario Microprogestatif : désogestrel 10-80
+",
+    "\
+titre : Mastocyte et dégranulation
+sujet : Cromoglicate, antihistaminiques, anti-IgE ; adrénaline de l'anaphylaxie
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'adrénaline, par les récepteurs alpha-1, relève la pression artérielle, par les bêta-2, dilate les bronches et freine la libération des médiateurs du mastocyte ; les antihistaminiques ne traitent pas le choc anaphylactique
+source : RCP de l'adrénaline en auto-injecteur : traitement d'urgence de l'anaphylaxie
+source : RCP du cromoglicate de sodium collyre : stabilisant de la membrane des mastocytes, usage préventif et régulier
+source : RCP du kétotifène collyre et de l'olopatadine collyre : antagoniste H1 et inhibiteur de la libération des médiateurs par les mastocytes
+source : RCP de l'omalizumab : asthme allergique sévère, polypose naso-sinusienne, urticaire chronique spontanée
+
+ligand Allergène
+ligand IgE : fixées sur le mastocyte, elles reconnaissent l'allergène
+récepteur FcepsilonRI : récepteur de haute affinité des IgE, sur le mastocyte et le basophile
+relais Mastocytes conjonctivaux : leur dégranulation dans la conjonctive
+récepteur H1 conjonctival
+effet Conjonctivite allergique : prurit, larmoiement, rougeur
+relais Dégranulation mastocytaire : peau, bronches, vaisseaux
+ligand Histamine
+récepteur H1 : vaisseaux, peau
+relais Leucotriènes et prostaglandines : médiateurs néoformés
+effet Urticaire et prurit
+relais Vasodilatation et fuite capillaire : presque rien hors d'une réaction allergique
+effet Pression artérielle : effondrée, c'est le choc anaphylactique
+effet Calibre bronchique : baissé, c'est le bronchospasme
+récepteur Alpha-1 vasculaire
+récepteur Bêta-2 : bronche et mastocyte
+
+Allergène, IgE -> FcepsilonRI
+FcepsilonRI -> Mastocytes conjonctivaux, Dégranulation mastocytaire
+Mastocytes conjonctivaux -> H1 conjonctival -> Conjonctivite allergique
+Dégranulation mastocytaire -> Histamine, Leucotriènes et prostaglandines
+Histamine -> H1 -> Urticaire et prurit, Vasodilatation et fuite capillaire
+Vasodilatation et fuite capillaire -| Pression artérielle
+Leucotriènes et prostaglandines -| Calibre bronchique
+Alpha-1 vasculaire -> Pression artérielle
+Bêta-2 -> Calibre bronchique
+Bêta-2 -| Dégranulation mastocytaire
+
+# Les collyres qui stabilisent le mastocyte agissent sur place, dans
+# la conjonctive : ils préviennent, et demandent un usage régulier
+# pendant toute l'exposition. L'effet de l'acide spaglumique sur le
+# mastocyte est montré chez l'animal.
+molécule cromoglicate de sodium : inhibiteur Mastocytes conjonctivaux
+molécule acide spaglumique : inhibiteur Mastocytes conjonctivaux
+# Collyres qui bloquent aussi le récepteur H1 : l'histamine déjà
+# libérée, comme la suivante.
+molécule kétotifène : antagoniste H1 conjonctival ; inhibiteur Mastocytes conjonctivaux
+molécule olopatadine : antagoniste H1 conjonctival ; inhibiteur Mastocytes conjonctivaux
+molécule lévocabastine : antagoniste H1 conjonctival
+# Les antihistaminiques oraux soulagent le prurit, l'urticaire, la
+# rhinite et les yeux. Ils ne relèvent pas la pression artérielle et
+# n'ouvrent pas les bronches : dans l'anaphylaxie, ils ne remplacent
+# pas l'adrénaline. La part de l'histamine dans le bronchospasme,
+# faible chez l'homme, et la rhinite ne sont pas dessinées ; la
+# sédation se lit sur la cascade des récepteurs H1.
+molécule cétirizine : antagoniste H1, H1 conjonctival
+molécule lévocétirizine : antagoniste H1, H1 conjonctival
+molécule desloratadine : antagoniste H1, H1 conjonctival
+molécule bilastine : antagoniste H1, H1 conjonctival
+molécule fexofénadine : antagoniste H1, H1 conjonctival
+# Il capte les IgE libres, et le mastocyte perd ses récepteurs
+# chargés ; le reste de l'inflammation de type 2 est sur sa propre
+# cascade.
+molécule omalizumab : inhibiteur IgE
+# Vasoconstriction par alpha-1, bronchodilatation et mastocyte freiné
+# par bêta-2. Son effet bêta-1 sur le cœur n'est pas dessiné. Sous
+# bêtabloquant, l'anaphylaxie répond moins bien à l'adrénaline : non
+# dessiné.
+molécule adrénaline : agoniste Alpha-1 vasculaire, Bêta-2
+
+tonus faible Vasodilatation et fuite capillaire
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Antihistaminique, puis adrénaline : cétirizine 10- ; adrénaline 50-80
+scénario Cromoglicate : cromoglicate de sodium 10-
 ",
 ];
 

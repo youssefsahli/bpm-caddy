@@ -393,10 +393,13 @@ pub fn of(name: &str, dci: &str, class: &str, tags: &str) -> Option<&'static Pro
     // l'ordre, l'Inexium serait annoncé comme du Mopral. C'est la leçon
     // de `crush.rs`, où « actiskenan » contient « skenan », et elle
     // porte son test.
+    // Sans replier une copie de chaque mot cherché : la monographie
+    // appelle ceci pour chaque fiche de la base à son ouverture, et une
+    // allocation par mot et par fiche en faisait trois cent mille.
     TABLE.iter().find(|p| {
         p.needs
             .iter()
-            .any(|n| hay.contains(&crate::fuzzy::sort_key(n)))
+            .any(|n| crate::fuzzy::contains_folded(&hay, n))
     })
 }
 
