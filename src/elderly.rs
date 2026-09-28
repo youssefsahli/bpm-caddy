@@ -697,6 +697,16 @@ pub const TABLE: &[Inappropriate] = &[
         instead: "Les mesures de position et d'aération d'abord ; si un traitement reste nécessaire, il se choisit avec le médecin plutôt qu'en automédication.",
         source: "Critères de Beers 2023 — antihistaminiques de première génération, dont le dimenhydrinate ; RCP Mercalm — prudence chez le sujet âgé",
     },
+    Inappropriate {
+        needs: &["maprotiline", "ludiomil"],
+        never: &[],
+        label: "Maprotiline",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Imipraminique : effets atropiniques — confusion, rétention urinaire, constipation jusqu'à l'iléus, glaucome aigu — hypotension orthostatique et troubles de la conduction, avec chutes. La clairance baisse et la demi-vie s'allonge avec l'âge.",
+        instead: "Un inhibiteur de la recapture de la sérotonine, instauré bas et augmenté lentement, avec un contrôle de la natrémie dans le mois qui suit. Le changement se prépare avec le prescripteur et se fait par décroissance progressive.",
+        source: "Laroche 2007 — antidépresseurs imipraminiques ; RCP Ludiomil — sujet âgé",
+    },
 ];
 
 #[cfg(test)]
@@ -1310,7 +1320,7 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 29;
+        const FLOOR: usize = 30;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",

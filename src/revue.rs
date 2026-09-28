@@ -969,6 +969,7 @@ const RULES: &[Rule] = &[
                 "kétoconazole",
                 "ciclosporine",
                 "ritonavir",
+                "cobicistat",
             ],
         ]),
         severity: Severity::Warn,
@@ -1109,7 +1110,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["méthylergométrine", "méthergin"],
-            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "itraconazole", "kétoconazole", "voriconazole", "posaconazole", "ritonavir"],
+            &["clarithromycine", "érythromycine", "josamycine", "télithromycine", "itraconazole", "kétoconazole", "voriconazole", "posaconazole", "ritonavir", "cobicistat"],
         ]),
         severity: Severity::Alert,
         title: "Méthylergométrine + inhibiteur CYP3A4",
@@ -1210,7 +1211,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["élétriptan", "relpax"],
-            &["itraconazole", "kétoconazole", "clarithromycine", "ritonavir", "néfazodone"],
+            &["itraconazole", "kétoconazole", "clarithromycine", "ritonavir", "cobicistat", "néfazodone"],
         ]),
         severity: Severity::Alert,
         title: "Élétriptan + inhibiteur CYP3A4",

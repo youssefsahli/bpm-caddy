@@ -82,7 +82,7 @@ Deux règles valent partout :
   (la clairance, le poids, l'INR, la kaliémie), l'association qui tue,
   la voie ou le geste à ne pas se tromper, ce qui arrive à l'arrêt, et
   ce que le patient ne dira jamais de lui-même. Le compte est un
-  cliquet (`TOXIC_FLOOR`) : 535 fiches sur 963.
+  cliquet (`TOXIC_FLOOR`) : 570 fiches sur 1016.
 - **Remplir la colonne « antidote » oblige à écrire la section.** Nommer
   un antidote, c'est affirmer qu'il existe une dose à partir de laquelle
   il faut le donner ; la fiche doit alors dire laquelle et à quoi on la
@@ -110,8 +110,8 @@ Deux règles valent partout :
 - **Où** : `src/facets.rs` — `HALF_LIVES` et `NO_HALF_LIFE` (la demi-vie
   plasmatique en heures, ou la raison pour laquelle il n'y en a pas),
   `BEYOND` (ce qui dure au-delà du plasma) et `IMPACTS` (organe, sens,
-  degré, et la clause qui le justifie) — 2 339 lignes sur douze axes,
-  couvrant 831 des 963 fiches.
+  degré, et la clause qui le justifie) — 2 483 lignes sur douze axes,
+  couvrant 883 des 1016 fiches.
 - **La question à laquelle ça répond** : toutes les autres vues partent
   du nom — on cherche « Cordarone » et on lit sa fiche. Celle-ci part de
   la propriété : quelle est la plus longue demi-vie, qu'est-ce qui pèse
@@ -126,8 +126,8 @@ Deux règles valent partout :
   ne chiffre pas la demi-vie — « courte », « de l'ordre de quelques
   heures », ou seulement une demi-vie osseuse —, la facette dit
   `NonChiffree` et n'invente pas un nombre que personne ne pourrait
-  relire. 222 fiches sur 963 sont dans ce cas — 167 parce que la notion
-  n'a pas de sens (produit non absorbé, ion, vaccin), 55 parce que la
+  relire. 235 fiches sur 1016 sont dans ce cas — 172 parce que la notion
+  n'a pas de sens (produit non absorbé, ion, vaccin), 63 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.
 - **Erreurs de l'extraction automatique** : lue au premier
@@ -239,11 +239,11 @@ Deux règles valent partout :
 
 ## Les classes thérapeutiques
 
-- **Où** : `src/classes.rs` (pur, testé). Seize familles, 414 classes
+- **Où** : `src/classes.rs` (pur, testé). Seize familles, 423 classes
   canoniques, et pour chacune les libellés qu'on rencontre réellement
   dans le champ `class` des fiches.
 - **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
-  fiche est du texte libre et il a dérivé — 526 libellés pour 963
+  fiche est du texte libre et il a dérivé — 536 libellés pour 1016
   fiches, dont 330 sur une seule. Réécrire les 862 fiches écraserait ce
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où

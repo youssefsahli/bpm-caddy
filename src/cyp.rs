@@ -515,6 +515,20 @@ pub const TABLE: &[Profile] = &[
         source: "Josacine : « Comme les autres macrolides à quatorze et seize chaînons, elle inhibe le CYP3A4, source d'interactions majeures » — la fiche ne qualifie pas la force.",
     },
     Profile {
+        needs: &["norvir"],
+        label: "Norvir",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Inhibitor, None),
+            Action::new(Cyp1a2, Inducer, None),
+            Action::new(Cyp2c8, Inducer, None),
+            Action::new(Cyp2c9, Inducer, None),
+            Action::new(Cyp2c19, Inducer, None),
+        ],
+        source: "Norvir : « c'est un inhibiteur puissant du CYP3A4 et, dans une moindre mesure, du CYP2D6 » ; « il accélère la glucuronidation et l'oxydation par le CYP1A2, le CYP2C8, le CYP2C9 et le CYP2C19 » ; « Métabolisme hépatique extensif, principalement par le CYP3A4 ».",
+    },
+    Profile {
         needs: &["ritonavir", "nirmatrelvir"],
         label: "Ritonavir",
         actions: &[Action::new(Cyp3a4, Inhibitor, Some(Strong))],
@@ -1638,6 +1652,98 @@ pub const TABLE: &[Profile] = &[
         actions: &[Action::new(Cyp3a4, Substrate, None)],
         source: "Trixeo Aerosphere : « Budésonide métabolisé principalement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A (itraconazole, kétoconazole, inhibiteurs de protéase du VIH, produits contenant du cobicistat) : exposition au budésonide augmentée ».",
     },
+    Profile {
+        needs: &["ritlecitinib", "litfulo"],
+        label: "Ritlécitinib",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
+            Action::new(Cyp1a2, Inhibitor, Some(Moderate)),
+        ],
+        source: "Litfulo : « Le ritlécitinib est un inhibiteur modéré du CYP3A4 et du CYP1A2 » .",
+    },
+    Profile {
+        needs: &["alitretinoine", "toctino"],
+        label: "Alitrétinoïne",
+        actions: &[
+            Action::new(Cyp2c9, Substrate, None),
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2c8, Inhibitor, None),
+        ],
+        source: "Toctino : « L'alitrétinoïne est métabolisée par les CYP2C9, CYP2C8 et CYP3A4 » ; « Elle augmente l'exposition aux substrats du CYP2C8 » .",
+    },
+    Profile {
+        needs: &["rufinamide", "inovelon"],
+        label: "Rufinamide",
+        actions: &[Action::new(Cyp3a4, Inducer, Some(Weak))],
+        source: "Inovelon : « Le rufinamide est un inducteur léger à modéré du CYP3A4 » .",
+    },
+    Profile {
+        needs: &["maprotiline", "ludiomil"],
+        label: "Maprotiline",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, Some(Strong)),
+            Action::new(Cyp1a2, Substrate, Some(Weak)),
+        ],
+        source: "Ludiomil : « Métabolisme hépatique de plus de 95 % de la dose, principalement par le CYP2D6 et accessoirement par le CYP1A2 » ; « exposition augmentée d'environ 270 % chez le métaboliseur lent du CYP2D6 » .",
+    },
+    Profile {
+        needs: &["tetrabenazine", "xenazine"],
+        label: "Tétrabénazine",
+        actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
+        source: "Xenazine : « Inhibiteurs puissants du CYP2D6 (fluoxétine, paroxétine, quinidine) : exposition aux métabolites actifs multipliée par 3 à 9 avec la paroxétine » .",
+    },
+    Profile {
+        needs: &["dolutégravir", "dovato"],
+        label: "Dolutégravir",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Weak))],
+        source: "Dovato : « Dolutégravir métabolisé principalement par glucuronoconjugaison via l'UGT1A1, accessoirement par l'UGT1A3, l'UGT1A9 et le CYP3A4 » ; les inducteurs imposent un comprimé de dolutégravir supplémentaire.",
+    },
+    Profile {
+        needs: &["pipéraquine", "eurartesim"],
+        label: "Pipéraquine",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Cyp3a4, Inhibitor, Some(Weak)),
+        ],
+        source: "Eurartesim : « La pipéraquine est métabolisée essentiellement par le CYP3A4 » ; « elle est inhibitrice faible du CYP3A4 » ; les inhibiteurs puissants « augmentent jusqu'à deux fois son exposition ».",
+    },
+    Profile {
+        needs: &["elvitégravir", "cobicistat", "genvoya"],
+        label: "Elvitégravir + cobicistat",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Inhibitor, Some(Weak)),
+            Action::new(Cyp2c9, Inducer, None),
+        ],
+        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 ».",
+    },
+    Profile {
+        needs: &["doravirine", "pifeltro"],
+        label: "Doravirine",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Inducer, Some(Weak)),
+        ],
+        source: "Pifeltro : « Métabolisme oxydatif principalement par le CYP3A4 » ; « La doravirine pourrait être un faible inducteur du CYP3A4 (midazolam diminué de 18 %) ».",
+    },
+    Profile {
+        needs: &["letermovir", "prevymis"],
+        label: "Letermovir",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
+            Action::new(Cyp2c19, Inducer, Some(Moderate)),
+            Action::new(Cyp2c9, Inducer, None),
+        ],
+        source: "Prevymis : « Inhibiteur modéré du CYP3A4 (midazolam multiplié par 2 à 3) » ; « Inducteur du CYP2C19 et probablement du CYP2C9 : voriconazole diminué ».",
+    },
+    Profile {
+        needs: &["cabotégravir", "vocabria"],
+        label: "Cabotégravir",
+        actions: &[],
+        source: "Vocabria : « Métabolisé principalement par glucuronoconjugaison via l'UGT1A1, accessoirement l'UGT1A9, sans participation des cytochromes » ; « n'a pas modifié le midazolam ».",
+    },
 ];
 
 #[cfg(test)]
@@ -1682,7 +1788,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 148;
+        const FLOOR: usize = 160;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",

@@ -688,6 +688,16 @@ pub const TABLE: &[Adaptation] = &[
         source: "Ezetrol : « Pas d'adaptation en cas d'insuffisance hépatique légère » ; contre-indication en « insuffisance hépatique modérée à sévère lorsque l'ézétimibe est associé à une statine ».",
     },
     Adaptation {
+        needs: &["synjardy"],
+        label: "Empagliflozine + metformine",
+        steps: &[step(
+            Mild,
+            Contraindicated,
+            "Contre-indiqué à tout stade d'insuffisance hépatique : la metformine y expose à l'acidose lactique.",
+        )],
+        source: "Synjardy : « Insuffisance hépatique, intoxication alcoolique aiguë, alcoolisme ».",
+    },
+    Adaptation {
         needs: &["metformine"],
         label: "Metformine",
         steps: &[step(
@@ -1680,7 +1690,7 @@ pub const TABLE: &[Adaptation] = &[
         source: "Edurant : « Pas d'adaptation chez le sujet âgé ni en insuffisance hépatique légère ou modérée ; non recommandé en insuffisance hépatique sévère » ; « Prudence en insuffisance hépatique modérée ».",
     },
     Adaptation {
-        needs: &["famciclovir", "oravir"],
+        needs: &["famciclovir"],
         label: "Famciclovir",
         steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudiée ; la transformation en penciclovir peut être réduite, et l'efficacité avec elle.")],
         source: "Oravir : « Insuffisance hépatique légère à modérée : pas d'adaptation ; sévère : non étudiée » ; « la transformation en penciclovir peut être réduite ».",
@@ -1745,6 +1755,146 @@ pub const TABLE: &[Adaptation] = &[
         label: "Dimenhydrinate",
         steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : prudence, risque d'accumulation.")],
         source: "Mercalm : « Prudence dans les insuffisances hépatiques et rénales sévères, en raison du risque d'accumulation ».",
+    },
+    Adaptation {
+        needs: &["sarilumab", "kevzara"],
+        label: "Sarilumab",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique ou maladie hépatique active : non recommandé, quel qu'en soit le stade.")],
+        source: "Kevzara : « Non recommandé en cas de maladie hépatique active ou d'insuffisance hépatique » .",
+    },
+    Adaptation {
+        needs: &["ritlecitinib", "litfulo"],
+        label: "Ritlécitinib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Litfulo : « Insuffisance hépatique sévère » .",
+    },
+    Adaptation {
+        needs: &["deucravacitinib", "sotyktu"],
+        label: "Deucravacitinib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Sotyktu : « Non recommandé en insuffisance hépatique sévère » .",
+    },
+    Adaptation {
+        needs: &["alitretinoine", "toctino"],
+        label: "Alitrétinoïne",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique : contre-indiqué, quel qu'en soit le stade.")],
+        source: "Toctino : « Insuffisance hépatique. Insuffisance rénale sévère ou terminale » .",
+    },
+    Adaptation {
+        needs: &["saxenda"],
+        label: "Liraglutide (contrôle du poids)",
+        steps: &[
+            step(Mild, Watch, "Pas d'ajustement de dose, mais prudence : non étudié dans le contrôle du poids à ce stade."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Saxenda : « non recommandé en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["xultophy"],
+        label: "Insuline dégludec + liraglutide",
+        steps: &[
+            step(Mild, Watch, "Utilisable : surveillance glycémique intensifiée et dose ajustée individuellement."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé, en raison du liraglutide."),
+        ],
+        source: "Xultophy : « non recommandé en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["haldol decanoas"],
+        label: "Halopéridol retard",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique : dose initiale réduite de moitié, paliers plus petits et plus espacés."),
+            step(Moderate, Reduce, "Insuffisance hépatique : dose initiale réduite de moitié, paliers plus petits et plus espacés."),
+            step(Severe, Reduce, "Insuffisance hépatique : dose initiale réduite de moitié, paliers plus petits et plus espacés ; forme retard qui ne se retire pas."),
+        ],
+        source: "Haldol Decanoas : « réduire la dose initiale de moitié et ajuster la dose par paliers plus petits et plus espacés » .",
+    },
+    Adaptation {
+        needs: &["rufinamide", "inovelon"],
+        label: "Rufinamide",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatique légère : non étudié, augmentation de dose prudente."),
+            step(Moderate, Watch, "Insuffisance hépatique modérée : non étudié, augmentation de dose prudente."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Inovelon : « Non recommandé en insuffisance hépatique sévère » .",
+    },
+    Adaptation {
+        needs: &["maprotiline", "ludiomil"],
+        label: "Maprotiline",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère : posologie diminuée, avec précaution."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : posologie diminuée, avec précaution."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Ludiomil : contre-indication en « insuffisance hépatique ou rénale sévère » .",
+    },
+    Adaptation {
+        needs: &["slenyto"],
+        label: "Mélatonine pédiatrique",
+        steps: &[
+            step(Mild, Contraindicated, "Insuffisance hépatique : non recommandée, faute de données."),
+            step(Moderate, Contraindicated, "Insuffisance hépatique : non recommandée, faute de données."),
+            step(Severe, Contraindicated, "Insuffisance hépatique : non recommandée, faute de données."),
+        ],
+        source: "Slenyto : « Non recommandée en insuffisance hépatique » .",
+    },
+    Adaptation {
+        needs: &["tetrabenazine", "xenazine"],
+        label: "Tétrabénazine",
+        steps: &[
+            step(Mild, Contraindicated, "Insuffisance hépatique, quel qu'en soit le degré : contre-indiqué."),
+            step(Moderate, Contraindicated, "Insuffisance hépatique, quel qu'en soit le degré : contre-indiqué."),
+            step(Severe, Contraindicated, "Insuffisance hépatique, quel qu'en soit le degré : contre-indiqué."),
+        ],
+        source: "Xenazine : contre-indication en « insuffisance hépatique » .",
+    },
+    Adaptation {
+        needs: &["dovato"],
+        label: "Dolutégravir + lamivudine",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : pas de données, prudence.")],
+        source: "Dovato : « Pas d'adaptation chez le sujet âgé ni en insuffisance hépatique légère ou modérée ; insuffisance hépatique sévère : pas de données, prudence ».",
+    },
+    Adaptation {
+        needs: &["pipéraquine", "eurartesim"],
+        label: "Pipéraquine",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : non évalué, prudence, avec ECG et kaliémie."),
+            step(Severe, Watch, "Insuffisance hépatique sévère ou ictère : non évalué, prudence, avec ECG et kaliémie."),
+        ],
+        source: "Eurartesim : « Insuffisance hépatique ou rénale modérée ou sévère, ictère : non évalué, prudence avec ECG et kaliémie ».",
+    },
+    Adaptation {
+        needs: &["genvoya"],
+        label: "Elvitégravir + cobicistat",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé, faute d'étude.")],
+        source: "Genvoya : « Pas d'adaptation chez le sujet âgé ni en insuffisance hépatique légère ou modérée ; non recommandé en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["norvir"],
+        label: "Ritonavir (Norvir)",
+        steps: &[step(Severe, Contraindicated, "Maladie hépatique décompensée : contre-indiqué ; insuffisance sévère stable non décompensée : prudence, faute d'étude.")],
+        source: "Norvir : « Contre-indiqué en cas de maladie hépatique décompensée ».",
+    },
+    Adaptation {
+        needs: &["doravirine", "pifeltro"],
+        label: "Doravirine",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudiée, prudence.")],
+        source: "Pifeltro : « ni en insuffisance hépatique légère ou modérée ; insuffisance hépatique sévère : non étudiée, prudence ».",
+    },
+    Adaptation {
+        needs: &["letermovir", "prevymis"],
+        label: "Letermovir",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : pas d'adaptation, mais non recommandé si une insuffisance rénale modérée ou sévère s'y ajoute."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Prevymis : « non recommandé en insuffisance hépatique sévère, ou modérée associée à une insuffisance rénale modérée ou sévère ».",
+    },
+    Adaptation {
+        needs: &["cabotégravir", "vocabria"],
+        label: "Cabotégravir",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudié, prudence ; arrêt si une hépatotoxicité est suspectée.")],
+        source: "Vocabria : « ni en insuffisance hépatique légère ou modérée ; insuffisance hépatique sévère : non étudié, prudence ».",
     },
 ];
 
@@ -2166,7 +2316,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 164;
+        const FLOOR: usize = 183;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

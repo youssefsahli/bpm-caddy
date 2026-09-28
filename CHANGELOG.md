@@ -5,6 +5,34 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Cinquante-trois monographies de plus (1016 fiches), avec posologies,
+  conduite en cas d'oubli, signes d'alerte et, selon le cas, leurs lignes
+  rein, foie, sujet âgé, cytochromes, écrasement et grossesse :
+  - psychiatrie et neurologie : Abilify Maintena, Trevicta,
+    Risperdalconsta, Haldol Decanoas, Mysoline, Inovelon, Xenazine,
+    Mytelase, Slenyto, Ludiomil, Nootropyl ;
+  - rhumatologie, dermatologie, immunologie : Kevzara, Ilumetri,
+    Kyntheum, Ebglyss, Bimzelx, Sotyktu, Litfulo, Benlysta, Toctino,
+    Nemluvio ;
+  - VIH, paludisme, antibiotiques, antiviraux : Dovato, Juluca, Odefsey,
+    Pifeltro, Norvir, Genvoya, Vocabria, Eurartesim, Alfatil, Fasigyne,
+    Prevymis ;
+  - œil et oreille : Cartéol L.P., Xalacom, Simbrinza, Skiacol, Atropine
+    Alcon, Yellox, Fucithalmic, Chibro-Cadron, Tobradex, Polydexa ;
+  - diabète, hormones, os : Xultophy, Saxenda, Humalog Mix, Lyumjev,
+    Baqsimi, Somatuline LP, Sandostatine LP, Fosavance, Sterogyl, Cacit
+    Vitamine D3, Synjardy.
+
+### Changed
+- Collyres : « en cas d'oubli » et « signes d'alerte » sont ceux d'un
+  collyre, et non ceux du comprimé de la même classe (corticoïde, AINS,
+  bêtabloquant), sur une base neuve.
+- Revue d'ordonnance : le cobicistat compte parmi les inhibiteurs
+  puissants du CYP3A4, comme le ritonavir.
+
 ## [0.355.0] - 2026-09-28
 
 ### Added

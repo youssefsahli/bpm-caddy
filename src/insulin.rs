@@ -226,6 +226,11 @@ const ALIASES: &[(&str, &str)] = &[
     ("insuline humaine isophane", "Insulatard"),
     ("insuline asparte biphasique", "NovoMix 30"),
     ("Semglee", "Lantus"),
+    // Humalog Mix 25 and 50: a biphasic analogue drawn with the other
+    // premix; Xultophy's basal half is degludec, and the box is keyed on
+    // its name because its DCI names two molecules.
+    ("insuline lispro biphasique", "NovoMix 30"),
+    ("Xultophy", "Tresiba"),
 ];
 
 /// Relative activity at `minutes` after the injection, from 0 to 1,

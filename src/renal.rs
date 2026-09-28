@@ -1366,6 +1366,17 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP Orbénine et génériques de cloxacilline",
     },
     Adaptation {
+        needs: &["odefsey"],
+        never: &[],
+        label: "Emtricitabine + rilpivirine + ténofovir alafénamide",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : à éviter, et à arrêter si la clairance y descend en cours de traitement ; seule exception, l'hémodialyse chronique au-dessous de 15, avec prise après la séance.",
+        }],
+        source: "RCP Odefsey",
+    },
+    Adaptation {
         needs: &["rilpivirine", "edurant"],
         never: &[],
         label: "Rilpivirine",
@@ -1377,7 +1388,7 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP Edurant",
     },
     Adaptation {
-        needs: &["famciclovir", "oravir"],
+        needs: &["famciclovir"],
         never: &[],
         label: "Famciclovir",
         steps: &[
@@ -1497,6 +1508,207 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "RCP Mercalm ; RCP Nausicalm",
     },
+    Adaptation {
+        needs: &["ritlecitinib", "litfulo"],
+        never: &[],
+        label: "Ritlécitinib",
+        steps: &[Step {
+            below: 15,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 15, insuffisance rénale terminale : non recommandé, non étudié ; de même chez le transplanté rénal.",
+        }],
+        source: "RCP Litfulo",
+    },
+    Adaptation {
+        needs: &["alitretinoine", "toctino"],
+        never: &[],
+        label: "Alitrétinoïne",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Contraindicated,
+                conduct: "Entre 30 et 59 : non recommandé, faute de données.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 et au stade terminal : contre-indiqué.",
+            },
+        ],
+        source: "RCP Toctino",
+    },
+    Adaptation {
+        needs: &["saxenda"],
+        never: &[],
+        label: "Liraglutide (contrôle du poids)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30, y compris au stade terminal : non recommandé.",
+        }],
+        source: "RCP Saxenda",
+    },
+    Adaptation {
+        needs: &["xultophy"],
+        never: &[],
+        label: "Insuline dégludec + liraglutide",
+        steps: &[Step {
+            below: 15,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 15, stade terminal : non recommandé. Au-dessus, surveillance glycémique intensifiée et dose ajustée individuellement.",
+        }],
+        source: "RCP Xultophy",
+    },
+    Adaptation {
+        needs: &["maprotiline", "ludiomil"],
+        never: &[],
+        label: "Maprotiline",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Insuffisance rénale légère à modérée : posologie diminuée, administrée avec précaution, risque de surdosage.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indiqué.",
+            },
+        ],
+        source: "RCP Ludiomil",
+    },
+    Adaptation {
+        needs: &["piracetam", "nootropyl"],
+        never: &[],
+        label: "Piracétam",
+        steps: &[
+            Step {
+                below: 80,
+                level: Level::Reduce,
+                conduct: "Entre 50 et 80 : deux tiers de la dose quotidienne habituelle, en 2 ou 3 prises.",
+            },
+            Step {
+                below: 50,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 50 : un tiers de la dose quotidienne habituelle, en 2 prises.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 et en insuffisance rénale terminale : contre-indiqué.",
+            },
+        ],
+        source: "RCP Nootropyl",
+    },
+    Adaptation {
+        needs: &["trevicta"],
+        never: &[],
+        label: "Palipéridone trimestrielle",
+        steps: &[
+            Step {
+                below: 80,
+                level: Level::Reduce,
+                conduct: "Entre 50 et 80 : la dose de la forme mensuelle est d'abord adaptée, et le patient stabilisé avant le relais trimestriel.",
+            },
+            Step {
+                below: 50,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 50 : non recommandé — la palipéridone s'accumule et la forme retard ne se retire pas.",
+            },
+        ],
+        source: "RCP Trevicta",
+    },
+    Adaptation {
+        needs: &["céfaclor", "alfatil"],
+        never: &[],
+        label: "Céfaclor",
+        steps: &[
+            Step {
+                below: 40,
+                level: Level::Reduce,
+                conduct: "De 20 à 40 : prises espacées toutes les 12 heures (suspension).",
+            },
+            Step {
+                below: 20,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 20 : posologie réduite au tiers ou à la moitié de la posologie normale.",
+            },
+        ],
+        source: "RCP Alfatil 125 mg/5 mL et 250 mg/5 mL",
+    },
+    Adaptation {
+        needs: &["dovato"],
+        never: &[],
+        label: "Dolutégravir + lamivudine",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Watch,
+                conduct: "Au-dessous de 50 : exposition à la lamivudine nettement augmentée ; surveiller la numération, et devant une neutropénie ou une anémie, passer aux composants séparés.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : non recommandé ; la lamivudine doit être réduite, ce que l'association fixe ne permet pas.",
+            },
+        ],
+        source: "RCP Dovato",
+    },
+    Adaptation {
+        needs: &["pipéraquine", "eurartesim"],
+        never: &[],
+        label: "Pipéraquine",
+        steps: &[Step {
+            below: 60,
+            level: Level::Watch,
+            conduct: "Au-dessous de 60 : non évalué ; concentrations de pipéraquine possiblement plus élevées, prudence avec ECG et kaliémie.",
+        }],
+        source: "RCP Eurartesim",
+    },
+    Adaptation {
+        needs: &["genvoya"],
+        never: &[],
+        label: "Elvitégravir + cobicistat + emtricitabine + ténofovir alafénamide",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : à éviter, et à arrêter si la clairance y descend en cours de traitement ; seule exception, l'hémodialyse chronique au-dessous de 15, avec prise après la séance.",
+        }],
+        source: "RCP Genvoya",
+    },
+    Adaptation {
+        needs: &["doravirine", "pifeltro"],
+        never: &[],
+        label: "Doravirine",
+        steps: &[Step {
+            below: 15,
+            level: Level::Watch,
+            conduct: "Au-dessous de 15 et chez le dialysé : non étudiée ; aucune adaptation n'est prévue au-dessus.",
+        }],
+        source: "RCP Pifeltro",
+    },
+    Adaptation {
+        needs: &["letermovir", "prevymis"],
+        never: &[],
+        label: "Letermovir",
+        steps: &[Step {
+            below: 15,
+            level: Level::Watch,
+            conduct: "Au-dessous de 15, dialysé ou non : aucune recommandation posologique, efficacité et sécurité non démontrées.",
+        }],
+        source: "RCP Prevymis",
+    },
+    Adaptation {
+        needs: &["cabotégravir", "vocabria"],
+        never: &[],
+        label: "Cabotégravir",
+        steps: &[Step {
+            below: 15,
+            level: Level::Watch,
+            conduct: "Au-dessous de 15 sous hémodialyse : non étudié, prudence ; aucune adaptation au-dessus.",
+        }],
+        source: "RCP Vocabria",
+    },
 ];
 
 #[cfg(test)]
@@ -1547,7 +1759,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 76;
+        const FLOOR: usize = 91;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",

@@ -26,7 +26,7 @@
 //! reste lisible plutôt que d'être écrasée — c'est la même règle que
 //! partout ici : on ne réécrit pas ce que l'officine a écrit.
 //!
-//! **Et une famille au-dessus.** 414 classes ne se parcourent pas à
+//! **Et une famille au-dessus.** 423 classes ne se parcourent pas à
 //! plat ; seize familles d'une vingtaine de classes, si. C'est ce qui
 //! permet à la vue « Classes… » d'exister : on descend de l'appareil à
 //! la classe, puis de la classe aux fiches.
@@ -126,7 +126,7 @@ pub struct Class {
     pub aliases: &'static [&'static str],
 }
 
-/// Les 414 classes, par famille puis par nom.
+/// Les 423 classes, par famille puis par nom.
 pub const CLASSES: &[Class] = &[
     // --- Cardiologie et vaisseaux ---
     Class {
@@ -607,6 +607,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "inhibiteur du VMAT2",
+        family: "neuro",
+        aliases: &[],
+    },
+    Class {
         name: "modulateur S1P — SEP",
         family: "neuro",
         aliases: &[],
@@ -623,6 +628,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "narcolepsie — cataplexie",
+        family: "neuro",
+        aliases: &[],
+    },
+    Class {
+        name: "nootropique",
         family: "neuro",
         aliases: &[],
     },
@@ -1390,6 +1400,11 @@ pub const CLASSES: &[Class] = &[
     },
     // --- Endocrinologie et métabolisme ---
     Class {
+        name: "analogue de la somatostatine",
+        family: "endocrino",
+        aliases: &[],
+    },
+    Class {
         name: "analogue de la vasopressine",
         family: "endocrino",
         aliases: &[],
@@ -1470,6 +1485,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "inhibiteur des lipases digestives (obésité)",
+        family: "endocrino",
+        aliases: &[],
+    },
+    Class {
+        name: "insuline basale + analogue GLP-1",
         family: "endocrino",
         aliases: &[],
     },
@@ -1808,6 +1828,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "rétinoïde oral — eczéma chronique",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
         name: "rétinoïde oral — psoriasis",
         family: "derm",
         aliases: &[],
@@ -1924,6 +1949,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "collyre — corticoïde + antibiotique",
+        family: "ophtalmo",
+        aliases: &[],
+    },
+    Class {
         name: "collyre — immunomodulateur (sécheresse oculaire sévère)",
         family: "ophtalmo",
         aliases: &[],
@@ -1970,6 +2000,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "anti-BLyS",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
         name: "anti-CD20",
         family: "immuno",
         aliases: &[],
@@ -2003,6 +2038,11 @@ pub const CLASSES: &[Class] = &[
         name: "anti-IL-23",
         family: "immuno",
         aliases: &["anti-IL-12/23"],
+    },
+    Class {
+        name: "anti-IL-31",
+        family: "immuno",
+        aliases: &[],
     },
     Class {
         name: "anti-IL-4/IL-13",
@@ -2122,6 +2162,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "inhibiteur CDK4/6",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
+        name: "inhibiteur de TYK2",
         family: "immuno",
         aliases: &[],
     },
@@ -2707,7 +2752,7 @@ mod tests {
         // Le cliquet : le référentiel ne perd ni classes ni familles.
         assert_eq!(FAMILIES.len(), 16);
         assert!(
-            CLASSES.len() >= 414,
+            CLASSES.len() >= 423,
             "le référentiel a maigri : {}",
             CLASSES.len()
         );
@@ -2869,7 +2914,10 @@ mod tests {
         assert_eq!(local_site("pommade ophtalmique antibiotique"), Some("oeil"));
         assert_eq!(local_site("estrogène local vaginal"), Some("vagin"));
         assert_eq!(local_site("antibiotique topique"), Some("peau"));
-        assert_eq!(local_site("antimitotique topique — condylomes"), Some("peau"));
+        assert_eq!(
+            local_site("antimitotique topique — condylomes"),
+            Some("peau")
+        );
         assert_eq!(
             local_site("gouttes auriculaires antibiotiques"),
             Some("oreille")

@@ -410,6 +410,14 @@ pub const TABLE: &[Rule] = &[
         source: "RCP lévothyroxine",
     },
     Rule {
+        needs: &["synjardy"],
+        label: "Synjardy",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé entier avec de l'eau, et l'écrasement de l'association n'est pas documenté.",
+        instead: "Les deux composants prescrits séparément, dont la metformine à libération immédiate qui s'écrase : décision du prescripteur.",
+        source: "RCP Synjardy",
+    },
+    Rule {
         needs: &["metformine lp", "glucophage lp"],
         label: "Metformine LP",
         verdict: Verdict::No,
@@ -655,6 +663,22 @@ pub const TABLE: &[Rule] = &[
         source: "Dificlir : « Les comprimés pelliculés doivent être administrés entiers avec de l'eau » ; « DIFICLIR 40 mg/ml granulés pour suspension buvable peut être utilisé chez les patients adultes ayant des difficultés à avaler les comprimés ».",
     },
     Rule {
+        needs: &["juluca"],
+        label: "Juluca",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé pelliculé en entier avec de l'eau, sans le mâcher ni l'écraser ; l'absorption de la rilpivirine dépend déjà du repas et du pH gastrique.",
+        instead: "Avis du prescripteur, qui peut revenir aux deux composants séparés.",
+        source: "RCP Juluca",
+    },
+    Rule {
+        needs: &["odefsey"],
+        label: "Odefsey",
+        verdict: Verdict::No,
+        why: "Le RCP recommande de ne pas croquer, écraser ni couper le comprimé pelliculé, en raison de son goût amer ; la rilpivirine doit en outre être prise avec de la nourriture.",
+        instead: "Avis du prescripteur pour un autre schéma.",
+        source: "RCP Odefsey",
+    },
+    Rule {
         needs: &["edurant", "rilpivirine"],
         label: "Edurant 25 mg",
         verdict: Verdict::No,
@@ -694,6 +718,70 @@ pub const TABLE: &[Rule] = &[
         instead: "Aucune forme buvable : c'est au prescripteur de décider si la déglutition ne passe plus.",
         source: "RCP Nubeqa",
     },
+    Rule {
+        needs: &["ritlecitinib", "litfulo"],
+        label: "Litfulo",
+        verdict: Verdict::No,
+        why: "La fiche demande d'avaler la gélule entière : ouverte, écrasée ou mâchée, elle n'a pas été étudiée.",
+        instead: "Aucune forme buvable : c'est au prescripteur de choisir une autre option si la déglutition ne passe plus.",
+        source: "Litfulo : « gélule avalée entière sans être ouverte, écrasée ni mâchée » .",
+    },
+    Rule {
+        needs: &["deucravacitinib", "sotyktu"],
+        label: "Sotyktu",
+        verdict: Verdict::No,
+        why: "La fiche demande d'avaler le comprimé entier, sans l'écraser, le couper ni le mâcher.",
+        instead: "Aucune forme buvable : c'est au prescripteur de choisir une autre option si la déglutition ne passe plus.",
+        source: "Sotyktu : « Comprimé avalé entier, sans être écrasé, coupé ni mâché » .",
+    },
+    Rule {
+        needs: &["nootropyl", "piracetam"],
+        label: "Nootropyl",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé pelliculé en entier, avec une boisson.",
+        instead: "Nootropyl 20 %, solution buvable, à dose équivalente décidée avec le prescripteur.",
+        source: "RCP Nootropyl",
+    },
+    Rule {
+        needs: &["slenyto"],
+        label: "Slenyto",
+        verdict: Verdict::No,
+        why: "Mini-comprimé à libération prolongée : cassé, écrasé ou mâché, il perd sa libération prolongée.",
+        instead: "Les mini-comprimés entiers dans une cuillère de yaourt, de jus d'orange ou de glace, pris aussitôt.",
+        source: "RCP Slenyto",
+    },
+    Rule {
+        needs: &["genvoya"],
+        label: "Genvoya",
+        verdict: Verdict::No,
+        why: "Le RCP recommande de ne pas croquer ni écraser le comprimé, en raison de son goût amer ; il autorise en revanche à le couper en deux.",
+        instead: "Couper le comprimé en deux et prendre les deux moitiés l'une après l'autre, pour avaler la dose entière.",
+        source: "RCP Genvoya",
+    },
+    Rule {
+        needs: &["norvir"],
+        label: "Norvir 100 mg comprimé",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé pelliculé en entier, sans le mâcher, le couper ni le broyer.",
+        instead: "Norvir 100 mg poudre pour suspension buvable en sachet, mélangée à un aliment semi-liquide ou à un liquide.",
+        source: "RCP Norvir",
+    },
+    Rule {
+        needs: &["doravirine", "pifeltro"],
+        label: "Pifeltro 100 mg",
+        verdict: Verdict::No,
+        why: "Le RCP demande que le comprimé soit avalé en entier ; aucune donnée ne couvre le comprimé écrasé.",
+        instead: "Avis du prescripteur : aucune autre forme de doravirine n'est commercialisée.",
+        source: "RCP Pifeltro",
+    },
+    Rule {
+        needs: &["letermovir", "prevymis"],
+        label: "Prevymis comprimé",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé entier : ni divisé, ni écrasé, ni croqué, ces modes d'administration n'ayant pas été étudiés.",
+        instead: "Prevymis granulés en sachet (20 mg et 120 mg), prévus pour qui ne peut avaler le comprimé.",
+        source: "RCP Prevymis",
+    },
     // --- Ce que la fiche autorise explicitement ------------------------
     Rule {
         needs: &["riociguat", "adempas"],
@@ -718,6 +806,30 @@ pub const TABLE: &[Rule] = &[
         why: "Comprimé pelliculé sécable à libération immédiate : le RCP prévoit lui-même, chez l'enfant, d'écraser le comprimé ou le demi-comprimé dans un verre d'eau sucrée.",
         instead: "",
         source: "RCP Mercalm",
+    },
+    Rule {
+        needs: &["inovelon", "rufinamide"],
+        label: "Inovelon",
+        verdict: Verdict::Yes,
+        why: "Le RCP prévoit d'écraser le comprimé et de le donner dans un demi-verre d'eau en cas de difficulté à avaler ; il est aussi sécable en deux moitiés égales.",
+        instead: "",
+        source: "RCP Inovelon",
+    },
+    Rule {
+        needs: &["mysoline"],
+        label: "Mysoline",
+        verdict: Verdict::Yes,
+        why: "Comprimé sécable à libération immédiate ; le RCP prévoit lui-même de l'écraser chez l'enfant de moins de 6 ans.",
+        instead: "",
+        source: "RCP Mysoline",
+    },
+    Rule {
+        needs: &["eurartesim"],
+        label: "Eurartesim",
+        verdict: Verdict::Yes,
+        why: "Le RCP prévoit que les comprimés soient écrasés et mélangés à de l'eau pour qui ne peut les avaler, le mélange étant pris aussitôt, toujours à jeun.",
+        instead: "",
+        source: "RCP Eurartesim",
     },
     Rule {
         needs: &["brilique", "ticagrelor"],
@@ -913,7 +1025,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 62;
+        const FLOOR: usize = 76;
         assert!(
             TABLE.len() >= FLOOR,
             "{} présentations, il y en avait {FLOOR}",
