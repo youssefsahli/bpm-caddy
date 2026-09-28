@@ -268,6 +268,13 @@ pub struct Finding {
 pub fn read(treatments: &[crate::revue::Treatment], stage: Option<Stage>) -> Vec<Finding> {
     let mut out: Vec<Finding> = Vec::new();
     for t in treatments {
+        // **Une forme locale n'a pas de stade** : le gel de métronidazole
+        // lisait « réduire la posologie » de la ligne écrite pour le
+        // comprimé, et l'emplâtre de diclofénac la contre-indication du
+        // comprimé. C'est le filtre de `cyp.rs`, miconazole buccal compris.
+        if crate::classes::stays_local(t.dci, t.class) {
+            continue;
+        }
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
         for a in TABLE {
             // `contains_folded` plutôt que `contains(&sort_key(n))` :
@@ -736,6 +743,34 @@ pub const TABLE: &[Adaptation] = &[
         source: "Cozaar : « Débuter à 25 mg chez le sujet de plus de 75 ans, en cas de déplétion volémique, de traitement diurétique à forte dose ou d'insuffisance hépatique » ; contre-indication en « insuffisance hépatique sévère ».",
     },
     Adaptation {
+        needs: &["axeler"],
+        label: "Olmésartan + amlodipine (Axeler)",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatique légère : prudence, amlodipine débutée à la dose la plus faible."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : ne pas dépasser 20 mg d'olmésartan par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère et obstruction biliaire : contre-indiqué."),
+        ],
+        source: "Axeler : « Insuffisance hépatique modérée : olmésartan plafonné à 20 mg par jour, amlodipine débutée à la dose la plus faible » ; contre-indication : « insuffisance hépatique sévère et obstruction des voies biliaires ».",
+    },
+    Adaptation {
+        needs: &["natrixam"],
+        label: "Indapamide + amlodipine (Natrixam)",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée : l'amlodipine se débute à la dose la plus faible, ce que l'association ne permet pas."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère et encéphalopathie hépatique : contre-indiqué."),
+        ],
+        source: "Natrixam : « l'amlodipine se débute à la dose la plus faible, ce qui ne se fait pas avec l'association ; contre-indiqué en insuffisance hépatique sévère et en encéphalopathie hépatique ».",
+    },
+    Adaptation {
+        needs: &["twynsta"],
+        label: "Telmisartan + amlodipine (Twynsta)",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée : prudence, ne pas dépasser 40 mg de telmisartan par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère et obstruction biliaire : contre-indiqué."),
+        ],
+        source: "Twynsta : « Insuffisance hépatique légère à modérée : prudence, la dose de telmisartan ne doit pas dépasser 40 mg par jour ; contre-indiqué en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
         needs: &["amlodipine"],
         label: "Amlodipine",
         steps: &[step(Mild, Reduce, "Débuter à la dose la plus faible et titrer lentement ; contrôler les transaminases.")],
@@ -775,6 +810,34 @@ pub const TABLE: &[Adaptation] = &[
             "Encéphalopathie hépatique et insuffisance hépatique sévère : contre-indiqué.",
         )],
         source: "Lasilix : contre-indication en « encéphalopathie hépatique et insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["alteisduo"],
+        label: "Olmésartan + hydrochlorothiazide (Alteisduo)",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatique légère : prudence."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : ne pas dépasser 20 mg d'olmésartan par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère, cholestase et obstruction biliaire : contre-indiqué."),
+        ],
+        source: "Alteisduo : « Insuffisance hépatique modérée : olmésartan plafonné à 20 mg par jour ; contre-indiqué en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["cotareg"],
+        label: "Valsartan + hydrochlorothiazide (Cotareg)",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée sans cholestase : ne pas dépasser 80 mg de valsartan."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère, cirrhose biliaire et cholestase : contre-indiqué."),
+        ],
+        source: "Cotareg : « Insuffisance hépatique légère à modérée sans cholestase : la dose de valsartan ne doit pas dépasser 80 mg ; contre-indiqué en insuffisance hépatique sévère, cirrhose biliaire et cholestase ».",
+    },
+    Adaptation {
+        needs: &["micardisplus"],
+        label: "Telmisartan + hydrochlorothiazide (Micardisplus)",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée : prudence, ne pas dépasser 40 mg de telmisartan par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère, cholestase et obstruction biliaire : contre-indiqué."),
+        ],
+        source: "Micardisplus : « Insuffisance hépatique légère à modérée : prudence, la dose de telmisartan ne doit pas dépasser 40 mg par jour ; contre-indiqué en insuffisance hépatique sévère ».",
     },
     Adaptation {
         needs: &["hydrochlorothiazide"],
@@ -1051,6 +1114,12 @@ pub const TABLE: &[Adaptation] = &[
         source: "Inspra : contre-indication en « insuffisance hépatique sévère ».",
     },
     Adaptation {
+        needs: &["pylera"],
+        label: "Pylera",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique : contre-indiqué, quel qu'en soit le stade.")],
+        source: "Pylera : « Contre-indiqué en insuffisance rénale ou hépatique ».",
+    },
+    Adaptation {
         needs: &["metronidazole"],
         label: "Métronidazole",
         steps: &[step(
@@ -1190,6 +1259,12 @@ pub const TABLE: &[Adaptation] = &[
         label: "Triazolam",
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
         source: "Halcion : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["cariban"],
+        label: "Doxylamine + pyridoxine",
+        steps: &[step(Mild, Reduce, "Insuffisance hépatique : posologie adaptée au degré d'atteinte, la doxylamine étant métabolisée par le foie.")],
+        source: "Cariban : « Insuffisance hépatique : posologie adaptée au degré d'atteinte, la doxylamine étant métabolisée par le foie ».",
     },
     Adaptation {
         needs: &["doxylamine"],
@@ -1334,6 +1409,342 @@ pub const TABLE: &[Adaptation] = &[
         label: "Dronédarone",
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
         source: "Multaq : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["tapentadol", "palexia"],
+        label: "Tapentadol",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : débuter à dose réduite, en une seule prise par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Palexia : « Insuffisance hépatique modérée : débuter à 50 mg une fois par jour ».",
+    },
+    Adaptation {
+        needs: &["alectinib", "alecensa"],
+        label: "Alectinib",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : ne pas dépasser 450 mg deux fois par jour, bilan hépatique rapproché.")],
+        source: "Alecensa : « Insuffisance hépatique sévère : 450 mg deux fois par jour ».",
+    },
+    Adaptation {
+        needs: &["cabozantinib", "cabometyx"],
+        label: "Cabozantinib",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : données limitées, surveillance rapprochée de la tolérance."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Cabometyx : « Insuffisance hépatique sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["acalabrutinib", "calquence"],
+        label: "Acalabrutinib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Calquence : « Insuffisance hépatique légère ou modérée : pas d'adaptation ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["ibrutinib", "imbruvica"],
+        label: "Ibrutinib",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère : ne pas dépasser 280 mg par jour."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : ne pas dépasser 140 mg par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Imbruvica : « Insuffisance hépatique légère : 280 mg par jour ; modérée : 140 mg par jour ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["ruxolitinib", "jakavi"],
+        label: "Ruxolitinib",
+        steps: &[step(Mild, Reduce, "Toute insuffisance hépatique : dose initiale réduite d'environ moitié, numération rapprochée.")],
+        source: "Jakavi : « Insuffisance hépatique, quel qu'en soit le degré, et insuffisance rénale sévère : dose initiale réduite d'environ moitié ».",
+    },
+    Adaptation {
+        needs: &["lenvatinib", "lenvima"],
+        label: "Lenvatinib",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : dose de départ réduite dans le cancer thyroïdien et de l'endomètre ; au stade Child-Pugh C du carcinome hépatocellulaire, pas de données.")],
+        source: "Lenvima : « Insuffisance hépatique sévère : dose de départ réduite dans le cancer thyroïdien et le cancer de l'endomètre ; au stade Child-Pugh C du carcinome hépatocellulaire, pas de données ».",
+    },
+    Adaptation {
+        needs: &["trifluridine", "lonsurf"],
+        label: "Trifluridine et tipiracil",
+        steps: &[step(Moderate, Contraindicated, "Insuffisance hépatique modérée ou sévère : non recommandé, hyperbilirubinémie plus fréquente.")],
+        source: "Lonsurf : « Insuffisance hépatique modérée ou sévère : non recommandé, en raison d'une hyperbilirubinémie plus fréquente ».",
+    },
+    Adaptation {
+        needs: &["eltrombopag", "revolade"],
+        label: "Eltrombopag",
+        steps: &[step(Mild, Reduce, "Toute insuffisance hépatique : seulement si le bénéfice l'emporte sur le risque de thrombose de la veine porte, dose de départ réduite de moitié, bilan hépatique rapproché.")],
+        source: "Revolade : « Insuffisance hépatique : à n'utiliser que si le bénéfice l'emporte sur le risque de thrombose de la veine porte, et dose de départ réduite de moitié ».",
+    },
+    Adaptation {
+        needs: &["regorafenib", "stivarga"],
+        label: "Régorafénib",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : données limitées, bilan hépatique et tolérance surveillés de près."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Stivarga : « Insuffisance hépatique sévère : non recommandé ; modérée : données limitées, surveillance rapprochée ».",
+    },
+    Adaptation {
+        needs: &["venetoclax", "venclyxto"],
+        label: "Vénétoclax",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : surveillance rapprochée de la tolérance, surtout pendant la titration."),
+            step(Severe, Reduce, "Insuffisance hépatique sévère : dose réduite d'au moins moitié pendant tout le traitement."),
+        ],
+        source: "Venclyxto : « Insuffisance hépatique sévère : dose réduite d'au moins moitié pendant tout le traitement ».",
+    },
+    Adaptation {
+        needs: &["anagrelide", "xagrid"],
+        label: "Anagrélide",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatique légère : bénéfice et risque à évaluer, surveillance cardiovasculaire et hépatique."),
+            step(Moderate, Contraindicated, "Insuffisance hépatique modérée ou sévère : contre-indiqué."),
+        ],
+        source: "Xagrid : « Insuffisance hépatique légère : à évaluer, avec surveillance cardiovasculaire et hépatique ; modérée ou sévère : contre-indiqué ».",
+    },
+    Adaptation {
+        needs: &["riociguat", "adempas"],
+        label: "Riociguat",
+        steps: &[
+            step(Moderate, Watch, "Exposition augmentée : titration particulièrement prudente."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère, classe C de Child-Pugh : contre-indiqué."),
+        ],
+        source: "Adempas : « Insuffisance hépatique sévère, classe C de Child-Pugh » en contre-indication ; « Titration particulièrement prudente chez le sujet âgé de 65 ans et plus, en insuffisance rénale avec clairance de 30 à 50 mL/min et en insuffisance hépatique modérée ».",
+    },
+    Adaptation {
+        needs: &["trandolapril", "odrik"],
+        label: "Trandolapril",
+        steps: &[step(Severe, Reduce, "Débuter à la plus faible dose, sous surveillance étroite : la transformation en métabolite actif et son élimination sont ralenties.")],
+        source: "Odrik : « Insuffisance hépatique sévère : débuter à 0,5 mg sous surveillance étroite ».",
+    },
+    Adaptation {
+        needs: &["olmesartan", "olmetec"],
+        label: "Olmésartan",
+        steps: &[
+            step(Moderate, Reduce, "Débuter à la plus faible dose et ne pas dépasser 20 mg par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Olmetec : « Insuffisance hépatique modérée : 10 mg par jour pour débuter, sans dépasser 20 mg par jour » ; « Non recommandé en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["macitentan", "opsumit"],
+        label: "Macitentan",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué, comme des transaminases au-dessus de trois fois la normale avant l'instauration.")],
+        source: "Opsumit : contre-indication en « insuffisance hépatique sévère avec ou sans cirrhose » et « transaminases supérieures à trois fois la limite supérieure de la normale avant l'instauration ».",
+    },
+    Adaptation {
+        needs: &["ranolazine"],
+        label: "Ranolazine",
+        steps: &[
+            step(Mild, Watch, "Titration particulièrement prudente."),
+            step(Moderate, Contraindicated, "Insuffisance hépatique modérée ou sévère : contre-indiqué."),
+        ],
+        source: "Ranexa : contre-indication en « insuffisance hépatique modérée ou sévère » ; « Titration particulièrement prudente chez le sujet âgé, le patient de 60 kg ou moins, en insuffisance rénale avec clairance de 30 à 80 mL/min, en insuffisance hépatique légère ».",
+    },
+    Adaptation {
+        needs: &["pentoxifylline", "torental"],
+        label: "Pentoxifylline",
+        steps: &[step(Severe, Reduce, "Réduire la dose selon la tolérance.")],
+        source: "Torental : « Insuffisance hépatique sévère : réduction de dose selon la tolérance ».",
+    },
+    Adaptation {
+        needs: &["doxazosine", "zoxan"],
+        label: "Doxazosine",
+        steps: &[
+            step(Mild, Watch, "Prudence : métabolisme hépatique important."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Zoxan : « Insuffisance hépatique : prudence ; non recommandé au stade sévère ».",
+    },
+    Adaptation {
+        needs: &["aceclofenac", "cartrex"],
+        label: "Acéclofénac",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée : dose réduite de moitié pour débuter."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Cartrex : « Insuffisance hépatique légère à modérée : dose réduite, 100 mg par jour pour débuter. Insuffisance hépatique ou rénale sévère : contre-indiqué ».",
+    },
+    Adaptation {
+        needs: &["guanfacine", "intuniv"],
+        label: "Guanfacine",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : réduction de posologie éventuelle ; non évalué chez l'enfant.")],
+        source: "Intuniv : « Insuffisance hépatique ou rénale sévère : réduction de posologie éventuelle ».",
+    },
+    Adaptation {
+        needs: &["siponimod", "mayzent"],
+        label: "Siponimod",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Mayzent : « Insuffisance hépatique sévère : contre-indiqué ».",
+    },
+    Adaptation {
+        needs: &["meloxicam", "mobic"],
+        label: "Méloxicam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Mobic : contre-indication en « Insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["naloxegol", "moventig"],
+        label: "Naloxégol",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Moventig : « insuffisance hépatique sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["daridorexant", "quviviq"],
+        label: "Daridorexant",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : dose réduite de moitié."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Quviviq : « Insuffisance hépatique modérée et association à un inhibiteur modéré du CYP3A4 : 25 mg une fois par nuit. Insuffisance hépatique sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["esketamine", "spravato"],
+        label: "Eskétamine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Spravato : « Insuffisance hépatique sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["eslicarbazepine", "zebinix"],
+        label: "Eslicarbazépine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non étudiée, non recommandé.")],
+        source: "Zebinix : « Insuffisance hépatique sévère : non étudiée, non recommandée ».",
+    },
+    Adaptation {
+        needs: &["ozanimod", "zeposia"],
+        label: "Ozanimod",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère ou modérée : titration complète, puis prises d'entretien espacées selon le RCP."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Zeposia : « Insuffisance hépatique sévère : contre-indiqué ; insuffisance hépatique légère ou modérée : schéma d'entretien espacé selon le RCP ».",
+    },
+    Adaptation {
+        needs: &["cyproterone", "androcur"],
+        label: "Cyprotérone",
+        steps: &[
+            step(Mild, Watch, "Affection hépatique chronique : bilan hépatique avant traitement puis toutes les 4 à 6 semaines."),
+            step(Severe, Contraindicated, "Affection hépatique sévère : contre-indiqué."),
+        ],
+        source: "Androcur : « bilan hépatique avant traitement puis toutes les 4 à 6 semaines en cas d'affection hépatique chronique » ; contre-indication en « Affections hépatiques sévères ».",
+    },
+    Adaptation {
+        needs: &["androtardyl", "testosterone enanthate"],
+        label: "Testostérone énanthate",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Androtardyl : contre-indication en « insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["tolterodine", "detrusitol"],
+        label: "Toltérodine",
+        steps: &[step(Mild, Reduce, "Insuffisance hépatique, quel qu'en soit le stade : dose réduite de moitié.")],
+        source: "Détrusitol : « Insuffisance hépatique ou insuffisance rénale avec filtration glomérulaire ≤ 30 mL/min : 1 mg deux fois par jour ».",
+    },
+    Adaptation {
+        needs: &["vardenafil", "levitra"],
+        label: "Vardénafil",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère : débuter à la plus faible dose."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : débuter à la plus faible dose, ne pas dépasser 10 mg par prise."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Lévitra : « Insuffisance hépatique légère ou modérée : 5 mg pour débuter, sans dépasser 10 mg en insuffisance hépatique modérée » ; contre-indication en « Insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["dapoxetine", "priligy"],
+        label: "Dapoxétine",
+        steps: &[step(Moderate, Contraindicated, "Insuffisance hépatique modérée et sévère : contre-indiqué.")],
+        source: "Priligy : contre-indication en « Insuffisance hépatique modérée et sévère ».",
+    },
+    Adaptation {
+        needs: &["zofenopril", "zofenil"],
+        label: "Zofénopril",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère à modérée : dose initiale réduite de moitié ; pas d'utilisation dans l'infarctus aigu."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Zofenil : « Insuffisance hépatique légère à modérée : la dose initiale est la moitié de la dose habituelle ; contre-indiqué en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["cloxacilline", "orbenine"],
+        label: "Cloxacilline",
+        steps: &[step(Mild, Watch, "Seule, l'insuffisance hépatique ne change rien ; associée à une insuffisance rénale, quel qu'en soit le degré, la posologie journalière se réduit de moitié.")],
+        source: "Cloxacilline : « Si une insuffisance hépatique s'associe à une insuffisance rénale, quel qu'en soit le degré, la posologie journalière est réduite de moitié ».",
+    },
+    Adaptation {
+        needs: &["rilpivirine", "edurant"],
+        label: "Rilpivirine",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : pas d'adaptation, mais prudence."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé, faute d'étude."),
+        ],
+        source: "Edurant : « Pas d'adaptation chez le sujet âgé ni en insuffisance hépatique légère ou modérée ; non recommandé en insuffisance hépatique sévère » ; « Prudence en insuffisance hépatique modérée ».",
+    },
+    Adaptation {
+        needs: &["famciclovir", "oravir"],
+        label: "Famciclovir",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudiée ; la transformation en penciclovir peut être réduite, et l'efficacité avec elle.")],
+        source: "Oravir : « Insuffisance hépatique légère à modérée : pas d'adaptation ; sévère : non étudiée » ; « la transformation en penciclovir peut être réduite ».",
+    },
+    Adaptation {
+        needs: &["abrocitinib", "cibinqo"],
+        label: "Abrocitinib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Cibinqo : « Insuffisance hépatique sévère (Child-Pugh C) ».",
+    },
+    Adaptation {
+        needs: &["roflumilast", "daxas"],
+        label: "Roflumilast",
+        steps: &[
+            step(Mild, Watch, "Child-Pugh A : données insuffisantes, utiliser avec précaution."),
+            step(Moderate, Contraindicated, "Child-Pugh B : contre-indiqué."),
+            step(Severe, Contraindicated, "Child-Pugh C : contre-indiqué."),
+        ],
+        source: "Daxas : « Insuffisance hépatique modérée ou sévère (Child-Pugh B ou C) » ; « Insuffisance hépatique légère (Child-Pugh A) : données insuffisantes, utiliser avec précaution ».",
+    },
+    Adaptation {
+        needs: &["apalutamide", "erleada"],
+        label: "Apalutamide",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : dose réduite.")],
+        source: "Erleada : « Insuffisance hépatique sévère (Child-Pugh C) : 120 mg une fois par jour ».",
+    },
+    Adaptation {
+        needs: &["filgotinib", "jyseleca"],
+        label: "Filgotinib",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Jyseleca : « Insuffisance hépatique légère ou modérée : pas d'adaptation ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["anakinra", "kineret"],
+        label: "Anakinra",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : prudence.")],
+        source: "Kineret : « Pas d'adaptation en insuffisance hépatique modérée ; prudence en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["darolutamide", "nubeqa"],
+        label: "Darolutamide",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : dose initiale réduite."),
+            step(Severe, Reduce, "Insuffisance hépatique sévère : dose initiale réduite, non étudié."),
+        ],
+        source: "Nubeqa : « Insuffisance rénale sévère non dialysée et insuffisance hépatique modérée ou sévère : 300 mg deux fois par jour au départ ».",
+    },
+    Adaptation {
+        needs: &["prucalopride", "resolor"],
+        label: "Prucalopride",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : débuter à dose réduite, augmenter selon la tolérance.")],
+        source: "Resolor : « Insuffisance hépatique sévère (Child-Pugh C) : débuter à 1 mg, et passer à 2 mg si la tolérance est bonne et l'efficacité insuffisante ».",
+    },
+    Adaptation {
+        needs: &["trixeo"],
+        label: "Trixeo Aerosphere",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : seulement si le bénéfice l'emporte, effets indésirables surveillés.")],
+        source: "Trixeo Aerosphere : « Insuffisance rénale sévère et insuffisance hépatique sévère : seulement si le bénéfice l'emporte sur le risque ».",
+    },
+    Adaptation {
+        needs: &["mercalm"],
+        label: "Dimenhydrinate",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : prudence, risque d'accumulation.")],
+        source: "Mercalm : « Prudence dans les insuffisances hépatiques et rénales sévères, en raison du risque d'accumulation ».",
     },
 ];
 
@@ -1755,7 +2166,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 110;
+        const FLOOR: usize = 164;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

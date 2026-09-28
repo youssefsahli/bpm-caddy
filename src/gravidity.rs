@@ -461,7 +461,7 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT",
     },
     Advice {
-        needs: &["ramipril", "perindopril", "coversyl", "enalapril", "lisinopril", "captopril", "valsartan", "losartan", "candesartan", "irbesartan", "sartan"],
+        needs: &["ramipril", "perindopril", "coversyl", "enalapril", "lisinopril", "captopril", "trandolapril", "odrik", "zofenopril", "zofenil", "benazepril", "fosinopril", "quinapril", "valsartan", "losartan", "candesartan", "irbesartan", "sartan"],
         never: &[],
         label: "IEC et sartans",
         pregnancy: Level::Interdit,
@@ -500,6 +500,17 @@ pub const TABLE: &[Advice] = &[
         breastfeeding: Level::Prudence,
         breastfeeding_note: "Possible ; à éviter chez le nourrisson de moins d'un mois ou déficitaire en G6PD.",
         source: "CRAT",
+    },
+    Advice {
+        needs: &["pylera"],
+        never: &[],
+        label: "Pylera",
+        pregnancy: Level::Interdit,
+        term: "Sur toute la grossesse.",
+        pregnancy_note: "Contre-indiqué à tout terme : la tétracycline atteint les dents et le squelette du fœtus. L'éradication se reporte après la grossesse.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué : tétracycline et métronidazole passent dans le lait, anomalies dentaires décrites chez le nourrisson.",
+        source: "RCP Pylera ; CRAT (tétracyclines, métronidazole)",
     },
     Advice {
         needs: &["doxycycline", "tetracycline", "minocycline", "tolexine"],
@@ -697,6 +708,17 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT ; Lamaline : « À éviter pendant la grossesse […] Contre-indiqué pendant l'allaitement en raison du passage des opiacés dans le lait. »",
     },
     Advice {
+        needs: &["fervex", "pheniramine"],
+        never: &["dexchlorpheniramine"],
+        label: "Paracétamol et phéniramine (rhume)",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "C'est l'association qui n'est pas recommandée, faute de données, et non le paracétamol : le paracétamol seul reste l'antalgique et l'antipyrétique de la grossesse, et le lavage de nez traite l'écoulement.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Le RCP dit qu'il ne doit pas être utilisé pendant l'allaitement. Paracétamol seul et lavage de nez.",
+        source: "CRAT ; Fervex : « Non recommandé pendant la grossesse par mesure de précaution, faute de données sur l'association […] Ne doit pas être utilisé pendant l'allaitement. »",
+    },
+    Advice {
         needs: &["paracetamol", "doliprane", "dafalgan", "efferalgan"],
         never: &[],
         label: "Paracétamol",
@@ -855,6 +877,127 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "La sertraline et la paroxétine passent très peu dans le lait : ce sont les molécules de l'allaitement.",
         source: "CRAT",
     },
+    Advice {
+        needs: &["riociguat", "adempas"],
+        never: &[],
+        label: "Riociguat",
+        pregnancy: Level::Interdit,
+        term: "Pendant toute la grossesse ; contraception efficace et test mensuel chez la femme en âge de procréer.",
+        pregnancy_note: "Toxicité sur la reproduction chez l'animal : contre-indication. Une grossesse sous traitement se signale au centre de compétence sans délai, l'hypertension pulmonaire étant elle-même une situation à très haut risque obstétrical.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Ne pas utiliser pendant l'allaitement, un risque pour l'enfant allaité ne pouvant être exclu.",
+        source: "CRAT ; RCP Adempas",
+    },
+    Advice {
+        needs: &["macitentan", "opsumit"],
+        never: &[],
+        label: "Macitentan",
+        pregnancy: Level::Interdit,
+        term: "Pendant toute la grossesse, et contraception fiable jusqu'à un mois après l'arrêt.",
+        pregnancy_note: "Antagoniste de l'endothéline tératogène chez l'animal : contre-indication formelle, test de grossesse mensuel. Une grossesse découverte sous traitement se signale au centre de compétence sans délai.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué pendant l'allaitement, faute de données et compte tenu de la toxicité de la classe.",
+        source: "CRAT ; RCP Opsumit — programme de prévention des grossesses",
+    },
+    Advice {
+        needs: &["aceclofenac", "cartrex"],
+        never: &[],
+        label: "Acéclofénac",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, les AINS ferment le canal artériel du fœtus et atteignent son rein — l'accident est décrit après une seule prise. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Données insuffisantes : l'ibuprofène est l'AINS de l'allaitement.",
+        source: "CRAT ; ANSM, alerte AINS et grossesse ; RCP Cartrex",
+    },
+    Advice {
+        needs: &["meloxicam", "mobic"],
+        never: &[],
+        label: "Méloxicam",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, les AINS ferment le canal artériel du fœtus et atteignent son rein ; la demi-vie longue du méloxicam prolonge l'exposition. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Données insuffisantes et demi-vie longue : l'ibuprofène est l'AINS de l'allaitement.",
+        source: "CRAT ; ANSM, alerte AINS et grossesse ; RCP Mobic",
+    },
+    Advice {
+        needs: &["cyproterone", "androcur"],
+        never: &[],
+        label: "Cyprotérone",
+        pregnancy: Level::Interdit,
+        term: "Le risque de féminisation d'un fœtus masculin porte sur la période de différenciation sexuelle, de 8 à 17 semaines d'aménorrhée environ.",
+        pregnancy_note: "Anti-androgène : risque de féminisation d'un fœtus de sexe masculin. Contraception indispensable et grossesse exclue avant l'instauration. Une exposition accidentelle ne justifie pas à elle seule une interruption de grossesse, mais une surveillance échographique des organes génitaux d'un fœtus masculin.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Peu de données sur le passage dans le lait : à éviter.",
+        source: "CRAT ; Androcur : « Ne doit pas être pris pendant la grossesse : effet féminisant sur le fœtus masculin possible après le début de la différenciation sexuelle, de 8 à 17 semaines d'aménorrhée environ ».",
+    },
+    Advice {
+        needs: &["secnidazole", "secnol"],
+        never: &[],
+        label: "Secnidazole",
+        pregnancy: Level::Eviter,
+        term: "Au premier trimestre : pas de donnée publiée, métronidazole préféré. Aux deuxième et troisième trimestres : utilisation envisageable.",
+        pregnancy_note: "Le métronidazole, mieux évalué, est préféré quel que soit le terme ; une exposition découverte après coup se rassure.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Préférer le métronidazole, par voie vaginale ou orale, sans dépasser 14 jours ; à défaut, suspendre l'allaitement 24 heures après la prise unique.",
+        source: "CRAT (secnidazole, grossesse et allaitement) ; RCP Secnol",
+    },
+    Advice {
+        needs: &["abrysvo"],
+        never: &[],
+        label: "Vaccin VRS de la femme enceinte",
+        pregnancy: Level::Prudence,
+        term: "En France entre 32 et 36 SA, de septembre à janvier ; le RCP autorise 24 à 36 SA.",
+        pregnancy_note: "Recommandé pour protéger le nourrisson, dans cette seule fenêtre ; hors d'elle, c'est le nirsévimab du nouveau-né. Plus de 4 000 grossesses exposées sans malformation. Naissance moins de 14 jours après l'injection : nirsévimab pour le nouveau-né.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Vaccin non vivant ; aucun effet observé chez les nouveau-nés allaités de mères vaccinées.",
+        source: "CRAT ; RCP Abrysvo ; HAS 2024, vaccination contre le VRS chez la femme enceinte",
+    },
+    Advice {
+        needs: &["arexvy"],
+        never: &[],
+        label: "Vaccin VRS adjuvanté",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Non recommandé : excès de naissances prématurées dans un essai du même antigène sans adjuvant. Pour protéger le nourrisson, c'est le vaccin VRS non adjuvanté entre 32 et 36 SA, ou le nirsévimab à la naissance.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Non recommandé chez la femme qui allaite, faute de données.",
+        source: "CRAT ; RCP Arexvy",
+    },
+    Advice {
+        needs: &["qdenga", "vaccin dengue"],
+        never: &[],
+        label: "Vaccin de la dengue",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "Vaccin vivant atténué : contre-indiqué, et grossesse à éviter au moins un mois après chaque dose. Protection contre les moustiques à la place.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué : passage dans le lait inconnu, risque pour le nourrisson non exclu.",
+        source: "CRAT ; RCP Qdenga",
+    },
+    Advice {
+        needs: &["stamaril", "vaccin fievre jaune"],
+        never: &[],
+        label: "Vaccin de la fièvre jaune",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Vaccin vivant : à ne faire pendant la grossesse que si le séjour en zone d'endémie ne peut être différé. Une vaccination faite par méconnaissance d'une grossesse ne justifie pas d'interruption ; une seconde dose est recommandée plus tard.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Transmission du virus vaccinal au nourrisson allaité rapportée. Si la vaccination est indispensable, interrompre l'allaitement au moins deux semaines (RCP).",
+        source: "CRAT ; RCP Stamaril ; HCSP, recommandations sanitaires aux voyageurs",
+    },
+    Advice {
+        needs: &["varivax", "vaccin varicelle"],
+        never: &[],
+        label: "Vaccin de la varicelle",
+        pregnancy: Level::Interdit,
+        term: "",
+        pregnancy_note: "Vaccin vivant : contre-indiqué, et grossesse à éviter dans le mois suivant chaque dose. Vacciner après l'accouchement. Une vaccination faite par méconnaissance d'une grossesse n'a pas montré d'effet délétère fœtal.",
+        breastfeeding: Level::Prudence,
+        breastfeeding_note: "Le RCP ne le recommande généralement pas, par précaution théorique ; la vaccination d'une femme exposée non immune s'évalue au cas par cas.",
+        source: "CRAT ; RCP Varivax",
+    },
 ];
 
 #[cfg(test)]
@@ -905,7 +1048,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 36;
+        const FLOOR: usize = 49;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules de la table grossesse, il y en avait {FLOOR}",
@@ -1259,8 +1402,11 @@ mod tests {
         const ABOUT_LOCAL_FORMS: &[&str] = &["Vasoconstricteurs du rhume"];
         // Et une boîte dont la fiche est elle-même prudente : le
         // Sterdex est « déconseillé à partir du deuxième trimestre […]
-        // même si l'exposition par voie locale est très faible ».
-        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &["Sterdex"];
+        // même si l'exposition par voie locale est très faible ». Et
+        // l'emplâtre de diclofénac et le gel de kétoprofène : leur RCP
+        // garde la contre-indication des AINS au troisième trimestre,
+        // voie locale comprise.
+        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &["Sterdex", "Flector Tissugel", "Ketum"];
 
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {

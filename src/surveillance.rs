@@ -394,14 +394,14 @@ pub const WATCHES: &[Watch] = &[
     },
     // --- Rein, tension, cœur ---
     Watch {
-        needs: &["pril", "IEC", "sartan"],
+        needs: &["pril ", "IEC", "sartan"],
         code: "K",
         every_months: 12,
         why: "Un bloqueur du système rénine-angiotensine monte le potassium : kaliémie et créatinine une à deux semaines après l'instauration ou toute majoration, puis au moins une fois par an.",
         never: &[],
     },
     Watch {
-        needs: &["pril", "IEC", "sartan"],
+        needs: &["pril ", "IEC", "sartan"],
         code: "DFG",
         every_months: 12,
         why: "La fonction rénale se contrôle après l'instauration puis annuellement : une hausse de la créatinine de plus de 30 % fait rediscuter le traitement.",
@@ -717,7 +717,7 @@ pub const WATCHES: &[Watch] = &[
     Watch {
         // Le diabète se nomme par ses classes, comme pour l'HbA1c :
         // « diabète » ne nommait aucune fiche.
-        needs: &["néphroprotection", "diabète", "metformine", "pril", "IEC", "sartan", "insuline", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "gliflozine", "iSGLT2"],
+        needs: &["néphroprotection", "diabète", "metformine", "pril ", "IEC", "sartan", "insuline", "sulfamide hypoglycémiant", "glinide", "gliptine", "GLP-1", "gliflozine", "iSGLT2"],
         code: "RAC",
         every_months: 12,
         why: "L'albuminurie bouge des années avant le DFG chez le diabétique et l'hypertendu : c'est le marqueur qui permet d'agir tant qu'il reste quelque chose à protéger.",

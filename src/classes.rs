@@ -26,7 +26,7 @@
 //! reste lisible plutôt que d'être écrasée — c'est la même règle que
 //! partout ici : on ne réécrit pas ce que l'officine a écrit.
 //!
-//! **Et une famille au-dessus.** 383 classes ne se parcourent pas à
+//! **Et une famille au-dessus.** 414 classes ne se parcourent pas à
 //! plat ; seize familles d'une vingtaine de classes, si. C'est ce qui
 //! permet à la vue « Classes… » d'exister : on descend de l'appareil à
 //! la classe, puis de la classe aux fiches.
@@ -126,7 +126,7 @@ pub struct Class {
     pub aliases: &'static [&'static str],
 }
 
-/// Les 383 classes, par famille puis par nom.
+/// Les 414 classes, par famille puis par nom.
 pub const CLASSES: &[Class] = &[
     // --- Cardiologie et vaisseaux ---
     Class {
@@ -161,6 +161,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "antialdostérone",
+        family: "cardio",
+        aliases: &[],
+    },
+    Class {
+        name: "antiangineux",
         family: "cardio",
         aliases: &[],
     },
@@ -212,6 +217,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &["bêta-bloquant"],
     },
     Class {
+        name: "bêtabloquant + diurétique",
+        family: "cardio",
+        aliases: &[],
+    },
+    Class {
         name: "bêtabloquant alpha et bêta",
         family: "cardio",
         aliases: &["bêtabloquant (alpha et bêta)"],
@@ -223,6 +233,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "digitalique",
+        family: "cardio",
+        aliases: &[],
+    },
+    Class {
+        name: "diurétique + inhibiteur calcique",
         family: "cardio",
         aliases: &[],
     },
@@ -346,6 +361,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "agoniste du récepteur de la thrombopoïétine",
+        family: "hemato",
+        aliases: &[],
+    },
+    Class {
         name: "anti-IIa direct injectable",
         family: "hemato",
         aliases: &["anti-IIa direct IV (TIH)"],
@@ -431,6 +451,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     // --- Neurologie ---
+    Class {
+        name: "réducteur plaquettaire",
+        family: "hemato",
+        aliases: &[],
+    },
     Class {
         name: "agoniste dopaminergique",
         family: "neuro",
@@ -618,6 +643,11 @@ pub const CLASSES: &[Class] = &[
     },
     // --- Psychiatrie ---
     Class {
+        name: "antagoniste des récepteurs de l'orexine",
+        family: "psy",
+        aliases: &[],
+    },
+    Class {
         name: "antidépresseur",
         family: "psy",
         aliases: &[],
@@ -775,12 +805,27 @@ pub const CLASSES: &[Class] = &[
         aliases: &["AINS local — bouche et gorge"],
     },
     Class {
+        name: "AINS local — emplâtre",
+        family: "douleur",
+        aliases: &[],
+    },
+    Class {
+        name: "AINS local — gel",
+        family: "douleur",
+        aliases: &[],
+    },
+    Class {
         name: "AINS — pastille pour la gorge",
         family: "douleur",
         aliases: &[],
     },
     Class {
         name: "antagoniste opioïde périphérique",
+        family: "douleur",
+        aliases: &[],
+    },
+    Class {
+        name: "antalgique + antihistaminique H1",
         family: "douleur",
         aliases: &[],
     },
@@ -1058,6 +1103,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "anti-TSLP (asthme sévère)",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
         name: "anticholinergique inhalé",
         family: "respi",
         aliases: &["anticholinergique"],
@@ -1109,6 +1159,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "auto-injecteur — choc anaphylactique",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
+        name: "balsamique local — dérivés terpéniques",
         family: "respi",
         aliases: &[],
     },
@@ -1168,6 +1223,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "inhibiteur PDE4 — BPCO",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
         name: "modulateur CFTR (mucoviscidose)",
         family: "respi",
         aliases: &["mucolytique inhalé (mucoviscidose)"],
@@ -1195,6 +1255,16 @@ pub const CLASSES: &[Class] = &[
     // --- Appareil digestif ---
     Class {
         name: "acide biliaire",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
+        name: "agoniste 5-HT4 — constipation chronique",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
+        name: "agoniste de la guanylate cyclase C — SII-C",
         family: "digestif",
         aliases: &[],
     },
@@ -1230,6 +1300,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "antiflatulent",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
+        name: "antihémorroïdaire local",
         family: "digestif",
         aliases: &[],
     },
@@ -1304,6 +1379,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "quadrithérapie bismuthée (Helicobacter pylori)",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
         name: "sétron",
         family: "digestif",
         aliases: &["sétron antiémétique"],
@@ -1322,6 +1402,11 @@ pub const CLASSES: &[Class] = &[
             "analogue GLP-1 — obésité",
             "agoniste GIP/GLP-1",
         ],
+    },
+    Class {
+        name: "androgène",
+        family: "endocrino",
+        aliases: &[],
     },
     Class {
         name: "anti-goutteux",
@@ -1380,6 +1465,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "inhibiteur des alpha-glucosidases",
+        family: "endocrino",
+        aliases: &[],
+    },
+    Class {
+        name: "inhibiteur des lipases digestives (obésité)",
         family: "endocrino",
         aliases: &[],
     },
@@ -1482,6 +1572,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "inhibiteur PDE5",
+        family: "uro",
+        aliases: &[],
+    },
+    Class {
+        name: "ISRS — éjaculation précoce",
         family: "uro",
         aliases: &[],
     },
@@ -1592,6 +1687,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "THM — tibolone",
+        family: "gyneco",
+        aliases: &[],
+    },
+    Class {
         name: "tocolytique",
         family: "gyneco",
         aliases: &[],
@@ -1688,7 +1788,22 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "héparinoïde local — ecchymoses",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
         name: "immunomodulateur topique",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
+        name: "kératolytique local — verrues",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
+        name: "protecteur cutané local",
         family: "derm",
         aliases: &[],
     },
@@ -1870,6 +1985,16 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "anti-IL-1",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
+        name: "anti-IL-13",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
         name: "anti-IL-17",
         family: "immuno",
         aliases: &[],
@@ -1913,12 +2038,32 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "anticancéreux oral — inhibiteur BCL-2",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
+        name: "anticancéreux oral — inhibiteur BTK",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
         name: "anticancéreux oral — inhibiteur CDK4/6",
         family: "immuno",
         aliases: &[],
     },
     Class {
+        name: "anticancéreux oral — inhibiteur de JAK1 et JAK2",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
         name: "anticancéreux oral — inhibiteur PARP",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
+        name: "anticancéreux oral — ITK ALK",
         family: "immuno",
         aliases: &[],
     },
@@ -2036,6 +2181,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &["anti-RANKL (semestriel)"],
     },
     Class {
+        name: "anti-sclérostine — ostéoporose",
+        family: "os",
+        aliases: &[],
+    },
+    Class {
         name: "antiarthrosique d'action lente",
         family: "os",
         aliases: &[],
@@ -2079,6 +2229,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     // --- Nutrition, vitamines et conseil ---
+    Class {
+        name: "antalgique local — muqueuse buccale",
+        family: "divers",
+        aliases: &[],
+    },
     Class {
         name: "magnésium",
         family: "divers",
@@ -2278,7 +2433,10 @@ pub fn local_site(class: &str) -> Option<&'static str> {
     // skin, and « gel buccal » a mouth.
     const SITES: &[(&str, &[&str])] = &[
         ("oeil", &["collyre", "ophtalm", "oculaire"]),
-        ("oreille", &["auriculaire", "otique"]),
+        // « otique » with its leading space: bare, it sits inside
+        // « antibiotique » and « antimitotique », and sent Mupiderm,
+        // Erythrogel and Condyline to the ear.
+        ("oreille", &["auriculaire", " otique"]),
         ("nez", &["nasal"]),
         (
             "bouche",
@@ -2549,7 +2707,7 @@ mod tests {
         // Le cliquet : le référentiel ne perd ni classes ni familles.
         assert_eq!(FAMILIES.len(), 16);
         assert!(
-            CLASSES.len() >= 383,
+            CLASSES.len() >= 414,
             "le référentiel a maigri : {}",
             CLASSES.len()
         );
@@ -2710,6 +2868,12 @@ mod tests {
         assert_eq!(local_site("collyre — AINS"), Some("oeil"));
         assert_eq!(local_site("pommade ophtalmique antibiotique"), Some("oeil"));
         assert_eq!(local_site("estrogène local vaginal"), Some("vagin"));
+        assert_eq!(local_site("antibiotique topique"), Some("peau"));
+        assert_eq!(local_site("antimitotique topique — condylomes"), Some("peau"));
+        assert_eq!(
+            local_site("gouttes auriculaires antibiotiques"),
+            Some("oreille")
+        );
         assert_eq!(local_site("AVK"), None);
         // Swallowed budesonide acts locally and passes through the liver:
         // it is not a local form, and its crossings are not silenced.

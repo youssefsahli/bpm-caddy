@@ -155,6 +155,12 @@ pub fn read(treatments: &[crate::revue::Treatment], dfg: Option<f64>) -> Vec<Fin
         if crate::classes::is_antidote(t.class) {
             continue;
         }
+        // **Ni une forme locale** : l'emplâtre et le gel d'AINS ne se
+        // contre-indiquent pas sous 30 comme le comprimé — leur RCP dit
+        // « précaution ». Le filtre de `cyp.rs`, miconazole buccal compris.
+        if crate::classes::stays_local(t.dci, t.class) {
+            continue;
+        }
         let hay = crate::fuzzy::sort_key(&format!("{} {} {} {}", t.name, t.dci, t.class, t.tags));
         for a in TABLE {
             if !claims(a, &hay) {
@@ -954,6 +960,543 @@ pub const TABLE: &[Adaptation] = &[
         ],
         source: "Oflocet : « Clairance 20 à 50 mL/min : moitié de la dose quotidienne habituelle. Inférieure à 20 mL/min : 100 mg toutes les 24 heures ».",
     },
+    Adaptation {
+        needs: &["tapentadol", "palexia"],
+        never: &[],
+        label: "Tapentadol",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : non recommandé, faute de données — les conjugués s'accumulent.",
+        }],
+        source: "RCP Palexia LP",
+    },
+    Adaptation {
+        needs: &["cabozantinib", "cabometyx"],
+        never: &[],
+        label: "Cabozantinib",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Entre 30 et 60 : prudence, sans adaptation systématique ; protéinurie et créatininémie suivies.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : non recommandé, faute de données.",
+            },
+        ],
+        source: "RCP Cabometyx",
+    },
+    Adaptation {
+        needs: &["acalabrutinib", "calquence"],
+        never: &[],
+        label: "Acalabrutinib",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 ou en dialyse : pas de données ; décision du spécialiste et surveillance rapprochée.",
+        }],
+        source: "RCP Calquence",
+    },
+    Adaptation {
+        needs: &["ibrutinib", "imbruvica"],
+        never: &[],
+        label: "Ibrutinib",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 ou en dialyse : pas de données ; à n'utiliser que si le bénéfice l'emporte, créatininémie surveillée et hydratation maintenue.",
+        }],
+        source: "RCP Imbruvica",
+    },
+    Adaptation {
+        needs: &["ruxolitinib", "jakavi"],
+        never: &[],
+        label: "Ruxolitinib",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : dose initiale réduite d'environ moitié, fixée sur les plaquettes ; en dialyse, prise après chaque séance selon le schéma du spécialiste.",
+        }],
+        source: "RCP Jakavi",
+    },
+    Adaptation {
+        needs: &["lenvatinib", "lenvima"],
+        never: &[],
+        label: "Lenvatinib",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : dose de départ réduite dans le cancer thyroïdien et de l'endomètre, fixée par l'oncologue ; pas de données dans le carcinome hépatocellulaire ni en dialyse.",
+        }],
+        source: "RCP Lenvima",
+    },
+    Adaptation {
+        needs: &["trifluridine", "lonsurf"],
+        never: &[],
+        label: "Trifluridine et tipiracil",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Watch,
+                conduct: "Entre 30 et 49 : pas d'adaptation de la dose initiale, surveillance rapprochée de la toxicité hématologique.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Entre 15 et 29 : dose initiale réduite, fixée par l'oncologue selon le RCP.",
+            },
+            Step {
+                below: 15,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 15 ou en dialyse : non recommandé.",
+            },
+        ],
+        source: "RCP Lonsurf",
+    },
+    Adaptation {
+        needs: &["venetoclax", "venclyxto"],
+        never: &[],
+        label: "Vénétoclax",
+        steps: &[
+            Step {
+                below: 80,
+                level: Level::Watch,
+                conduct: "Au-dessous de 80 : risque de lyse tumorale accru, prophylaxie et surveillance renforcées à l'instauration et pendant la titration.",
+            },
+            Step {
+                below: 15,
+                level: Level::Watch,
+                conduct: "Au-dessous de 15 ou en dialyse : pas de données ; décision du spécialiste.",
+            },
+        ],
+        source: "RCP Venclyxto",
+    },
+    Adaptation {
+        needs: &["anagrelide", "xagrid"],
+        never: &[],
+        label: "Anagrélide",
+        steps: &[Step {
+            below: 50,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 50 : contre-indiqué.",
+        }],
+        source: "RCP Xagrid",
+    },
+    Adaptation {
+        needs: &["riociguat", "adempas"],
+        never: &[],
+        label: "Riociguat",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Watch,
+                conduct: "Entre 30 et 50 : exposition augmentée, titration particulièrement prudente, risque d'hypotension.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 et chez le dialysé : non recommandé, faute de données suffisantes.",
+            },
+        ],
+        source: "RCP Adempas",
+    },
+    Adaptation {
+        needs: &["exenatide", "bydureon"],
+        never: &[],
+        label: "Exénatide",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : non recommandé, l'exénatide étant éliminé par le rein.",
+        }],
+        source: "RCP Bydureon",
+    },
+    Adaptation {
+        needs: &["rilmenidine", "hyperium"],
+        never: &[],
+        label: "Rilménidine",
+        steps: &[Step {
+            below: 15,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 15 : contre-indiqué, l'élimination étant rénale.",
+        }],
+        source: "RCP Hyperium",
+    },
+    Adaptation {
+        needs: &["trandolapril", "odrik"],
+        never: &[],
+        label: "Trandolapril",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : débuter à la plus faible dose, sous un plafond réduit, avec une surveillance rapprochée de la kaliémie.",
+        }],
+        source: "RCP Odrik",
+    },
+    Adaptation {
+        needs: &["olmesartan", "olmetec"],
+        never: &[],
+        label: "Olmésartan",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 20 et 60 : s'en tenir à la dose intermédiaire, sans passer à la plus forte, faute d'expérience.",
+            },
+            Step {
+                below: 20,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 20 : non recommandé.",
+            },
+        ],
+        source: "RCP Olmetec",
+    },
+    Adaptation {
+        needs: &["ranolazine"],
+        never: &[],
+        label: "Ranolazine",
+        steps: &[
+            Step {
+                below: 80,
+                level: Level::Watch,
+                conduct: "Entre 30 et 80 : titration prudente, l'exposition augmente ; fonction rénale surveillée.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indiqué.",
+            },
+        ],
+        source: "RCP Ranexa",
+    },
+    Adaptation {
+        needs: &["pentoxifylline", "torental"],
+        never: &[],
+        label: "Pentoxifylline",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : posologie réduite de 30 à 50 % selon la tolérance, les métabolites s'accumulant.",
+        }],
+        source: "RCP Torental LP",
+    },
+    Adaptation {
+        needs: &["aceclofenac", "cartrex"],
+        never: &[],
+        label: "Acéclofénac",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : dose la plus faible, fonction rénale surveillée, et jamais avec un IEC ou un sartan et un diurétique sans avis.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indication.",
+            },
+        ],
+        source: "RCP Cartrex",
+    },
+    Adaptation {
+        needs: &["guanfacine", "intuniv"],
+        never: &[],
+        label: "Guanfacine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30, dialyse comprise : une réduction de la posologie peut être nécessaire. Chez l'enfant, non évalué.",
+        }],
+        source: "RCP Intuniv",
+    },
+    Adaptation {
+        needs: &["meloxicam", "mobic"],
+        never: &[],
+        label: "Méloxicam",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : pas de réduction de dose tant que la clairance dépasse 25, mais fonction rénale surveillée, surtout avec un IEC ou un sartan et un diurétique.",
+            },
+            Step {
+                below: 25,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 25, sans dialyse : contre-indiqué. Chez l'hémodialysé, la moitié de la dose maximale au plus.",
+            },
+        ],
+        source: "RCP Mobic",
+    },
+    Adaptation {
+        needs: &["naloxegol", "moventig"],
+        never: &[],
+        label: "Naloxégol",
+        steps: &[Step {
+            below: 60,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 60 : débuter à la demi-dose, portée à la dose pleine si la tolérance est bonne.",
+        }],
+        source: "RCP Moventig",
+    },
+    Adaptation {
+        needs: &["eslicarbazepine", "zebinix"],
+        never: &[],
+        label: "Eslicarbazépine",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 60 : dose initiale réduite pendant deux semaines, puis augmentation selon la réponse, en suivant le schéma du RCP.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : non recommandé, faute de données.",
+            },
+        ],
+        source: "RCP Zebinix",
+    },
+    Adaptation {
+        needs: &["androtardyl", "testosterone enanthate"],
+        never: &[],
+        label: "Testostérone énanthate",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : contre-indiqué, insuffisance rénale sévère. Au-dessus, prudence pour la rétention hydrosodée.",
+        }],
+        source: "RCP Androtardyl",
+    },
+    Adaptation {
+        needs: &["tolterodine", "detrusitol"],
+        never: &[],
+        label: "Toltérodine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "À 30 et au-dessous : dose réduite de moitié, la fraction active doublant.",
+        }],
+        source: "RCP Détrusitol",
+    },
+    Adaptation {
+        needs: &["romosozumab", "evenity"],
+        never: &[],
+        label: "Romosozumab",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 et chez le dialysé : pas d'ajustement, mais risque d'hypocalcémie accru, calcémie surveillée.",
+        }],
+        source: "RCP Evenity",
+    },
+    Adaptation {
+        needs: &["vardenafil", "levitra"],
+        never: &[],
+        label: "Vardénafil",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : débuter à la plus faible dose. Contre-indiqué chez le patient dialysé.",
+        }],
+        source: "RCP Levitra",
+    },
+    Adaptation {
+        needs: &["dapoxetine", "priligy"],
+        never: &[],
+        label: "Dapoxétine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : non recommandé, l'exposition double. Prudence dans l'insuffisance rénale légère ou modérée.",
+        }],
+        source: "RCP Priligy",
+    },
+    Adaptation {
+        needs: &["axeler"],
+        never: &[],
+        label: "Olmésartan + amlodipine (Axeler)",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 20 et 60 : la part d'olmésartan est plafonnée à la moitié de la dose maximale, kaliémie et créatinine surveillées.",
+            },
+            Step {
+                below: 20,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 20 : déconseillé, faute d'expérience.",
+            },
+        ],
+        source: "RCP Axeler",
+    },
+    Adaptation {
+        needs: &["benazepril"],
+        never: &[],
+        label: "Bénazépril",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : la moitié de la dose efficace usuelle, kaliémie et créatinine contrôlées ; un diurétique associé est un diurétique de l'anse.",
+        }],
+        source: "RCP Bénazépril Arrow",
+    },
+    Adaptation {
+        needs: &["zofenopril", "zofenil"],
+        never: &[],
+        label: "Zofénopril",
+        steps: &[Step {
+            below: 45,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 45 : la moitié de la dose, une prise par jour ; en dialyse, le quart. Pas d'utilisation dans l'infarctus aigu chez l'insuffisant rénal.",
+        }],
+        source: "RCP Zofenil",
+    },
+    Adaptation {
+        needs: &["cloxacilline", "orbenine"],
+        never: &[],
+        label: "Cloxacilline",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : posologie journalière réduite de moitié. L'accumulation donne une encéphalopathie avec confusion et convulsions.",
+        }],
+        source: "RCP Orbénine et génériques de cloxacilline",
+    },
+    Adaptation {
+        needs: &["rilpivirine", "edurant"],
+        never: &[],
+        label: "Rilpivirine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 : prudence ; un inhibiteur puissant du CYP3A, comme une antiprotéase boostée, ne s'associe que si le bénéfice l'emporte.",
+        }],
+        source: "RCP Edurant",
+    },
+    Adaptation {
+        needs: &["famciclovir", "oravir"],
+        never: &[],
+        label: "Famciclovir",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "De 40 à 59 : zona, deux prises par jour au lieu de trois ; les schémas de l'herpès génital restent inchangés jusqu'à 40.",
+            },
+            Step {
+                below: 40,
+                level: Level::Reduce,
+                conduct: "De 20 à 39 : zona, une prise par jour ; herpès génital, prises espacées ou dose unitaire réduite selon le tableau du RCP.",
+            },
+            Step {
+                below: 20,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 20 : une seule prise par jour dans toutes les indications, à dose unitaire réduite pour la plupart ; en hémodialyse, après chaque séance.",
+            },
+        ],
+        source: "RCP Oravir, tableau 1",
+    },
+    Adaptation {
+        needs: &["abrocitinib", "cibinqo"],
+        never: &[],
+        label: "Abrocitinib",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 60 : dose réduite de moitié.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : la plus faible dose au départ, sous un plafond réduit ; non étudié sous épuration extrarénale.",
+            },
+        ],
+        source: "RCP Cibinqo",
+    },
+    Adaptation {
+        needs: &["filgotinib", "jyseleca"],
+        never: &[],
+        label: "Filgotinib",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 15 et 60 : la dose réduite, une fois par jour.",
+            },
+            Step {
+                below: 15,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 15 : non étudié, non recommandé.",
+            },
+        ],
+        source: "RCP Jyseleca",
+    },
+    Adaptation {
+        needs: &["anakinra", "kineret"],
+        never: &[],
+        label: "Anakinra",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Entre 30 et 59 : utiliser avec précaution.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30, dialyse comprise : envisager la dose prescrite un jour sur deux.",
+            },
+        ],
+        source: "RCP Kineret",
+    },
+    Adaptation {
+        needs: &["darolutamide", "nubeqa"],
+        never: &[],
+        label: "Darolutamide",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Entre 15 et 29, hors hémodialyse : la dose de départ réduite de moitié, effets indésirables surveillés.",
+        }],
+        source: "RCP Nubeqa",
+    },
+    Adaptation {
+        needs: &["prucalopride", "resolor"],
+        never: &[],
+        label: "Prucalopride",
+        steps: &[Step {
+            below: 30,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 30 : dose réduite de moitié ; en dialyse, contre-indiqué.",
+        }],
+        source: "RCP Resolor",
+    },
+    Adaptation {
+        needs: &["trixeo"],
+        never: &[],
+        label: "Trixeo Aerosphere",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 et en dialyse : seulement si le bénéfice l'emporte — l'exposition au glycopyrronium, éliminé par le rein, augmente.",
+        }],
+        source: "RCP Trixeo Aerosphere",
+    },
+    Adaptation {
+        needs: &["dimenhydrinate", "mercalm"],
+        never: &[],
+        label: "Dimenhydrinate",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 : prudence, risque d'accumulation de l'antihistaminique ; sédation et effets atropiniques à surveiller.",
+        }],
+        source: "RCP Mercalm ; RCP Nausicalm",
+    },
 ];
 
 #[cfg(test)]
@@ -1004,7 +1547,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 37;
+        const FLOOR: usize = 76;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",
@@ -1275,6 +1818,11 @@ mod tests {
             .collect();
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
+            // Une forme locale n'est lue par aucune ligne : `read` la
+            // laisse de côté, et rien ne lui est donc prêté.
+            if crate::classes::stays_local(dci, class) {
+                continue;
+            }
             let hay = crate::fuzzy::sort_key(&format!("{name} {dci} {class}"));
             // La ligne qui **revendique** cette fiche est la première
             // qui l'attrape, celle que `read` retiendra.

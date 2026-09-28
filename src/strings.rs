@@ -1355,6 +1355,42 @@ livre = "Une phrase qui n'est plus livrée"
     /// reformulation la fait donc échouer, et c'est voulu : un filet
     /// qui ne trouve plus sa phrase et se tait est un filet mort, comme
     /// un test sans son attribut.
+    /// A count below a hundred in English words, as the documentation
+    /// spells the ones it states in prose.
+    fn english(n: usize) -> String {
+        const UNITS: [&str; 20] = [
+            "zero",
+            "one",
+            "two",
+            "three",
+            "four",
+            "five",
+            "six",
+            "seven",
+            "eight",
+            "nine",
+            "ten",
+            "eleven",
+            "twelve",
+            "thirteen",
+            "fourteen",
+            "fifteen",
+            "sixteen",
+            "seventeen",
+            "eighteen",
+            "nineteen",
+        ];
+        const TENS: [&str; 10] = [
+            "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety",
+        ];
+        match n {
+            0..=19 => UNITS[n].to_owned(),
+            20..=99 if n.is_multiple_of(10) => TENS[n / 10].to_owned(),
+            20..=99 => format!("{}-{}", TENS[n / 10], UNITS[n % 10]),
+            _ => panic!("{n} : au-delà de ce que la documentation écrit en lettres"),
+        }
+    }
+
     #[test]
     fn the_documentation_counts_what_the_code_holds() {
         const ARCH: &str = include_str!("../docs/ARCHITECTURE.md");
@@ -1466,13 +1502,9 @@ livre = "Une phrase qui n'est plus livrée"
                 ARCH,
                 format!(
                     "pregnancy and breastfeeding as a level: {}",
-                    match crate::gravidity::TABLE.len() {
-                        36 => "thirty-six",
-                        n => panic!(
-                            "la table de grossesse porte {n} molécules : écrire le \
-                             nombre en toutes lettres dans docs/ARCHITECTURE.md et ici"
-                        ),
-                    }
+                    // En toutes lettres, comme la phrase l'écrit : le
+                    // nombre suit la table sans qu'on ait à le recopier.
+                    english(crate::gravidity::TABLE.len())
                 ),
             ),
             // **Le compte des barres pleines avait déjà glissé.** La

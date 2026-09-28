@@ -667,6 +667,36 @@ pub const TABLE: &[Inappropriate] = &[
         instead: "Un laxatif osmotique en traitement de fond — macrogol, lactulose — avec les fibres, l'eau et la marche. Le stimulant garde sa place en dépannage et pour quelques jours.",
         source: "Laroche 2007 ; HAS — constipation chez la personne âgée",
     },
+    Inappropriate {
+        needs: &["pentoxifylline", "torental"],
+        never: &[],
+        label: "Pentoxifylline",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Efficacité modeste et discutée sur la claudication, pour une hypotension, des vertiges et des chutes, des troubles du rythme chez le coronarien, et des saignements en association aux antithrombotiques, fréquents à cet âge.",
+        instead: "Ce qui améliore le périmètre de marche et le pronostic : marche supervisée, arrêt du tabac, antiagrégant plaquettaire, statine et contrôle tensionnel. Si le traitement est maintenu, une réévaluation écrite à trois mois.",
+        source: "Laroche 2007 — vasodilatateurs ; HAS — artériopathie oblitérante des membres inférieurs",
+    },
+    Inappropriate {
+        needs: &["fervex", "pheniramine"],
+        never: &["dexchlorpheniramine"],
+        label: "Phéniramine (associations du rhume)",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Antihistaminique H1 de première génération : somnolence, confusion, hallucinations, hypotension orthostatique et effets atropiniques — bouche sèche, constipation, rétention urinaire, glaucome aigu. Pour un rhume qui guérit seul, le risque de chute et de confusion est hors de proportion.",
+        instead: "Le paracétamol seul pour la fièvre et la douleur, le lavage de nez au sérum physiologique pour l'écoulement.",
+        source: "Critères de Beers 2023 — antihistaminiques de première génération ; Laroche 2007 — antihistaminiques H1 à propriétés anticholinergiques",
+    },
+    Inappropriate {
+        needs: &["dimenhydrinate", "mercalm"],
+        never: &[],
+        label: "Dimenhydrinate",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Antihistaminique H1 de première génération, sédatif et anticholinergique : somnolence, vertiges, hypotension orthostatique, confusion et hallucinations, baisse de la mémoire, constipation jusqu'à l'iléus, rétention urinaire sur prostate. Autant de causes de chute et de confusion pour un trajet en voiture.",
+        instead: "Les mesures de position et d'aération d'abord ; si un traitement reste nécessaire, il se choisit avec le médecin plutôt qu'en automédication.",
+        source: "Critères de Beers 2023 — antihistaminiques de première génération, dont le dimenhydrinate ; RCP Mercalm — prudence chez le sujet âgé",
+    },
 ];
 
 #[cfg(test)]
@@ -1280,7 +1310,7 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 26;
+        const FLOOR: usize = 29;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",

@@ -5,6 +5,56 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Cent une monographies de plus (963 fiches au lieu de 862), chacune
+  avec ses posologies, sa conduite en cas d'oubli, ses signes d'alerte,
+  sa demi-vie et ses atteintes d'organes, et selon le cas ses lignes
+  « rein », « foie », « sujet âgé », « cytochromes », « écrasement » et
+  « grossesse » :
+  - cœur et métabolisme : Olmetec, Axeler, Alteisduo, Twynsta,
+    Micardisplus, Cotareg, Lodoz, Natrixam, Odrik, Zofenil, Bénazépril,
+    Hyperium, Zoxan, Ranexa, Rythmodan, Torental, Opsumit, Adempas,
+    Veltassa, Xenical, Bydureon ;
+  - douleur, neurologie, psychiatrie : Palexia, Zebinix, Intuniv,
+    Moventig, Quviviq, Mayzent, Zeposia, Spravato, Orap, Mobic,
+    Cartrex ;
+  - urologie, gynécologie, hormones : Détrusitol, Lévitra, Priligy,
+    Androcur, Lutényl, Androtardyl, Visanne, Livial, Evenity, Cariban,
+    Ryeqo ;
+  - infectiologie et dermatologie : Cloxacilline, Secnol, Oravir,
+    Dificlir, Edurant, Pylera, Rozex, Soolantra, Protopic, Zindacline,
+    Effederm ;
+  - respiratoire, immunologie, digestif : Daxas, Trixeo Aerosphere,
+    Onbrez Breezhaler, Tezspire, Kineret, Jyseleca, Adtralza, Cibinqo,
+    Resolor, Constella ;
+  - anticancéreux oraux et hématologie : Imbruvica, Calquence,
+    Venclyxto, Jakavi, Lonsurf, Cabometyx, Lenvima, Stivarga, Alecensa,
+    Erleada, Nubeqa, Xagrid, Revolade ;
+  - vaccins : Prevenar 20, Capvaxive, Stamaril, Typhim Vi, Varivax,
+    Abrysvo, Arexvy, Vaccin Rabique Pasteur, Ixiaro, Ticovac, Qdenga,
+    Rotarix ;
+  - conseil au comptoir : Fervex, Hextril, Titanoréine, Flector
+    Tissugel, Ketum, Duofilm, Hélicidine, Vicks VapoRub, Oxyplastine,
+    Pansoral, Hémoclar, Mercalm.
+- Ces fiches arrivent sur une base neuve ; une base existante reçoit les
+  fiches qui lui manquent, sans toucher à celles que l'équipe a écrites.
+
+### Fixed
+- Adaptation au rein et au foie : une crème, un gel, un collyre ou un
+  emplâtre ne reçoit plus la conduite écrite pour le comprimé (le gel de
+  métronidazole lisait « réduire la posologie », l'emplâtre de
+  diclofénac une contre-indication sous 30 mL/min).
+- Priligy n'est plus lu comme un IEC par la surveillance biologique
+  (kaliémie, créatinine).
+- Une crème antibiotique ou antimitotique n'est plus rangée parmi les
+  gouttes pour l'oreille quand deux formes locales se rencontrent.
+- Grossesse : trandolapril, zofénopril, bénazépril, fosinopril et
+  quinapril rejoignent la ligne « IEC et sartans ».
+- Actifed Rhume : la fiche d'une base neuve dit que la pseudoéphédrine
+  est sur ordonnance depuis décembre 2024.
+
 ## [0.354.0] - 2026-09-27
 
 ### Added

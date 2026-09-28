@@ -1368,6 +1368,276 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Zyprexa : « Métabolisme hépatique par glucuroconjugaison directe et oxydation par le CYP1A2, accessoirement par le CYP2D6 ».",
     },
+    Profile {
+        needs: &["cabozantinib", "cabometyx"],
+        label: "Cabozantinib",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Cabometyx : « Substrat du CYP3A4 : les inhibiteurs puissants (kétoconazole, itraconazole, voriconazole, clarithromycine, ritonavir) et le pamplemousse augmentent l'exposition ».",
+    },
+    Profile {
+        needs: &["acalabrutinib", "calquence"],
+        label: "Acalabrutinib",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Calquence : « Substrat du CYP3A4 : les inhibiteurs puissants (itraconazole, voriconazole, posaconazole, clarithromycine, ritonavir) sont à éviter ».",
+    },
+    Profile {
+        needs: &["ibrutinib", "imbruvica"],
+        label: "Ibrutinib",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Imbruvica : « Substrat majeur du CYP3A4 : les inhibiteurs puissants (kétoconazole, itraconazole, posaconazole, voriconazole, clarithromycine, ritonavir et cobicistat) multiplient l'exposition ».",
+    },
+    Profile {
+        needs: &["ruxolitinib", "jakavi"],
+        label: "Ruxolitinib",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2c9, Substrate, None),
+        ],
+        source: "Jakavi : « Substrat majeur du CYP3A4, accessoirement du CYP2C9 ».",
+    },
+    Profile {
+        needs: &["eltrombopag", "revolade"],
+        label: "Eltrombopag",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp2c8, Substrate, None),
+        ],
+        source: "Revolade : « Métabolisé par le CYP1A2, le CYP2C8 et la glucuroconjugaison, avec peu de conséquences décrites ».",
+    },
+    Profile {
+        needs: &["regorafenib", "stivarga"],
+        label: "Régorafénib",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Stivarga : « Substrat du CYP3A4 et de l'UGT1A9 : les inhibiteurs puissants du CYP3A4 (kétoconazole, itraconazole, voriconazole, clarithromycine, ritonavir) et le pamplemousse modifient l'exposition ».",
+    },
+    Profile {
+        needs: &["venetoclax", "venclyxto"],
+        label: "Vénétoclax",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Venclyxto : « Substrat majeur du CYP3A4 et de la P-gp » ; « association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration ».",
+    },
+    Profile {
+        needs: &["anagrelide", "xagrid"],
+        label: "Anagrélide",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp1a2, Inhibitor, Some(Weak)),
+        ],
+        source: "Xagrid : « Métabolisé principalement par le CYP1A2 » ; « L'anagrélide exerce une faible inhibition du CYP1A2, avec un effet possible sur la théophylline ».",
+    },
+    Profile {
+        needs: &["riociguat", "adempas"],
+        label: "Riociguat",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Adempas : « Métabolisme par plusieurs cytochromes, dont les CYP1A1, CYP3A4, CYP3A5 et CYP2J2 ».",
+    },
+    Profile {
+        needs: &["macitentan", "opsumit"],
+        label: "Macitentan",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2c8, Substrate, Some(Weak)),
+            Action::new(Cyp2c9, Substrate, Some(Weak)),
+            Action::new(Cyp2c19, Substrate, Some(Weak)),
+        ],
+        source: "Opsumit : « Métabolisme hépatique principalement par le CYP3A4, en un métabolite actif déméthylé, et accessoirement par les CYP2C8, CYP2C9 et CYP2C19 ».",
+    },
+    Profile {
+        needs: &["ranolazine"],
+        label: "Ranolazine",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Substrate, Some(Weak)),
+            Action::new(Cyp3a4, Inhibitor, Some(Weak)),
+            Action::new(Cyp2d6, Inhibitor, None),
+        ],
+        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et inhibe la P-gp et le CYP2D6 ».",
+    },
+    Profile {
+        needs: &["disopyramide", "rythmodan"],
+        label: "Disopyramide",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Moderate))],
+        source: "Rythmodan : « métabolisme hépatique partiel par le CYP3A4 en un métabolite N-désalkylé ».",
+    },
+    Profile {
+        needs: &["doxazosine", "zoxan"],
+        label: "Doxazosine",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Substrate, Some(Weak)),
+            Action::new(Cyp2c9, Substrate, Some(Weak)),
+        ],
+        source: "Zoxan : « Métabolisme hépatique important, principalement par le CYP3A4, et dans une moindre mesure par le CYP2D6 et le CYP2C9 ».",
+    },
+    Profile {
+        needs: &["aceclofenac", "cartrex"],
+        label: "Acéclofénac",
+        actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
+        source: "Cartrex : « Métabolisme hépatique principalement par le CYP2C9 en 4'-hydroxyacéclofénac ».",
+    },
+    Profile {
+        needs: &["guanfacine", "intuniv"],
+        label: "Guanfacine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Intuniv : « Métabolisme hépatique principalement par le CYP3A4, d'où l'effet majeur de ses inhibiteurs et de ses inducteurs ».",
+    },
+    Profile {
+        needs: &["siponimod", "mayzent"],
+        label: "Siponimod",
+        actions: &[
+            Action::new(Cyp2c9, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+        ],
+        source: "Mayzent : « Métabolisme hépatique principalement par le CYP2C9, pour environ quatre cinquièmes, et par le CYP3A4 pour le reste ».",
+    },
+    Profile {
+        needs: &["meloxicam", "mobic"],
+        label: "Méloxicam",
+        actions: &[
+            Action::new(Cyp2c9, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Weak)),
+        ],
+        source: "Mobic : « Métabolisme hépatique quasi complet, principalement par le CYP2C9 et accessoirement par le CYP3A4 ».",
+    },
+    Profile {
+        needs: &["naloxegol", "moventig"],
+        label: "Naloxégol",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Moventig : « Métabolisme hépatique principalement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A4 : exposition au naloxégol multipliée, association contre-indiquée ».",
+    },
+    Profile {
+        needs: &["pimozide"],
+        label: "Pimozide",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Substrate, Some(Moderate)),
+            Action::new(Cyp1a2, Substrate, Some(Weak)),
+        ],
+        source: "Orap : « Métabolisme hépatique important par N-désalkylation, principalement par le CYP3A4 et dans une moindre mesure par le CYP2D6 et le CYP1A2 ».",
+    },
+    Profile {
+        needs: &["daridorexant", "quviviq"],
+        label: "Daridorexant",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Quviviq : « Métabolisme hépatique très majoritairement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A4, clarithromycine, itraconazole, kétoconazole, ritonavir : exposition fortement augmentée, association contre-indiquée ».",
+    },
+    Profile {
+        needs: &["esketamine", "spravato"],
+        label: "Eskétamine",
+        actions: &[
+            Action::new(Cyp2b6, Substrate, Some(Moderate)),
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+        ],
+        source: "Spravato : « Métabolisme hépatique principalement par les CYP2B6 et CYP3A4 en noreskétamine, accessoirement par les CYP2C9 et CYP2C19 ».",
+    },
+    Profile {
+        needs: &["eslicarbazepine", "zebinix"],
+        label: "Eslicarbazépine",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, None),
+            Action::new(Cyp2c19, Inhibitor, Some(Weak)),
+        ],
+        source: "Zebinix : « Induction du CYP3A4 et inhibition faible du CYP2C19, à l'origine de ses interactions ».",
+    },
+    Profile {
+        needs: &["ozanimod", "zeposia"],
+        label: "Ozanimod",
+        actions: &[Action::new(Cyp2c8, Substrate, None)],
+        source: "Zeposia : « la monoamine oxydase B, qui forme les métabolites actifs, et le CYP2C8, qui les élimine » ; « Inhibiteurs puissants du CYP2C8 comme le gemfibrozil : exposition aux métabolites actifs augmentée ».",
+    },
+    Profile {
+        needs: &["tolterodine", "detrusitol"],
+        label: "Toltérodine",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Détrusitol : « Inhibiteurs puissants du CYP3A4 par voie générale […] association déconseillée, l'exposition augmentant chez les métaboliseurs lents du CYP2D6 » ; « La fluoxétine, inhibiteur puissant du CYP2D6, ne donne pas d'interaction cliniquement significative ».",
+    },
+    Profile {
+        needs: &["vardenafil", "levitra"],
+        label: "Vardénafil",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Lévitra : « Métabolisme hépatique principalement par le CYP3A4 » ; « le ritonavir multiplie l'exposition par 49 et l'indinavir par 16 ».",
+    },
+    Profile {
+        needs: &["tibolone", "livial"],
+        label: "Tibolone",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Livial : « Inducteurs du CYP3A4, barbituriques, carbamazépine, hydantoïnes, rifampicine, et millepertuis : métabolisme accéléré, effet diminué et saignements modifiés ».",
+    },
+    Profile {
+        needs: &["dapoxetine", "priligy"],
+        label: "Dapoxétine",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp2d6, Substrate, None),
+            Action::new(Cyp2d6, Inhibitor, Some(Weak)),
+        ],
+        source: "Priligy : « Métabolisme hépatique et rénal par le CYP2D6, le CYP3A4 et la flavine mono-oxygénase FMO1 » ; « Effet inhibiteur faible sur le CYP2D6, l'exposition à la désipramine n'augmentant que de 19 % ».",
+    },
+    Profile {
+        needs: &["relugolix", "ryeqo"],
+        label: "Rélugolix + estradiol + noréthistérone",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Ryeqo : « Inducteurs puissants du CYP3A4 ou de la glycoprotéine P […] non recommandés, efficacité diminuée et protection osseuse réduite » ; « Les inhibiteurs du CYP3A4 peuvent augmenter l'estradiol et la noréthistérone ».",
+    },
+    Profile {
+        needs: &["dienogest", "visanne"],
+        label: "Diénogest",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Visanne : « Le diénogest est métabolisé principalement par le CYP3A4 » ; « le kétoconazole multiplie l'exposition par 2,9 et l'érythromycine par 1,6 ».",
+    },
+    Profile {
+        needs: &["rilpivirine", "edurant"],
+        label: "Rilpivirine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Edurant : « Métabolisée principalement par le CYP3A4 » ; les inducteurs du CYP3A sont contre-indiqués par perte d'efficacité.",
+    },
+    Profile {
+        needs: &["abrocitinib", "cibinqo"],
+        label: "Abrocitinib",
+        actions: &[
+            Action::new(Cyp2c19, Substrate, None),
+            Action::new(Cyp2c9, Substrate, None),
+            Action::new(Cyp2c19, Inhibitor, Some(Moderate)),
+            Action::new(Cyp1a2, Inhibitor, Some(Weak)),
+        ],
+        source: "Cibinqo : « Substrat principal des CYP2C19 et CYP2C9 » ; « L'abrocitinib est lui-même un inhibiteur modéré du CYP2C19 » ; « Inhibiteur faible du CYP1A2 ».",
+    },
+    Profile {
+        needs: &["roflumilast", "daxas"],
+        label: "Roflumilast",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Daxas : « Métabolisme hépatique étendu, par les CYP1A2 et CYP3A4, en roflumilast-N-oxyde actif » — la fiche ne qualifie pas la force.",
+    },
+    Profile {
+        needs: &["apalutamide", "erleada"],
+        label: "Apalutamide",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, Some(Strong)),
+            Action::new(Cyp2c19, Inducer, Some(Strong)),
+            Action::new(Cyp2c9, Inducer, Some(Weak)),
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Erleada : « Inducteur puissant des CYP3A4 et CYP2C19 et inducteur faible du CYP2C9 » ; « Substrat des CYP2C8 et CYP3A4 ».",
+    },
+    Profile {
+        needs: &["darolutamide", "nubeqa"],
+        label: "Darolutamide",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp3a4, Inducer, Some(Weak)),
+        ],
+        source: "Nubeqa : « Substrat du CYP3A4, de la glycoprotéine P et de la BCRP » ; « Inducteur faible du CYP3A4, sans conséquence clinique attendue ».",
+    },
+    Profile {
+        needs: &["trixeo"],
+        label: "Budésonide inhalé (Trixeo)",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Trixeo Aerosphere : « Budésonide métabolisé principalement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A (itraconazole, kétoconazole, inhibiteurs de protéase du VIH, produits contenant du cobicistat) : exposition au budésonide augmentée ».",
+    },
 ];
 
 #[cfg(test)]
@@ -1412,7 +1682,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 113;
+        const FLOOR: usize = 148;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",
