@@ -1804,6 +1804,152 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "RCP Zymafluor 0,50 mg",
     },
+    Adaptation {
+        needs: &["canagliflozine", "invokana"],
+        never: &[],
+        label: "Canagliflozine",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 60 : plus faible dosage seulement, effet glycémique moindre et déplétion volémique plus fréquente.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : ne pas instaurer ; un traitement en cours se poursuit au plus faible dosage jusqu'à la dialyse ou la transplantation, un autre antidiabétique s'ajoutant au besoin.",
+            },
+        ],
+        source: "RCP Invokana (EMA), tableau 1",
+    },
+    Adaptation {
+        needs: &["manidipine", "iperten"],
+        never: &[],
+        label: "Manidipine",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : prudence au moment de passer à la dose supérieure.",
+            },
+            Step {
+                below: 10,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 10 : contre-indiqué.",
+            },
+        ],
+        source: "RCP Iperten",
+    },
+    Adaptation {
+        needs: &["nabumetone", "nabucom"],
+        never: &[],
+        label: "Nabumétone",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : pas d'ajustement tant que la clairance dépasse 30, mais la plus faible dose pour débuter, fonction rénale surveillée, et jamais avec un IEC ou un sartan et un diurétique sans avis.",
+            },
+            Step {
+                below: 31,
+                level: Level::Contraindicated,
+                conduct: "Clairance à 30 mL/min ou au-dessous : contre-indiqué.",
+            },
+        ],
+        source: "RCP Nabucom",
+    },
+    Adaptation {
+        needs: &["trimethoprime", "delprim"],
+        never: &["cotrimoxazole", "sulfamethoxazole", "bactrim"],
+        label: "Triméthoprime",
+        steps: &[Step {
+            below: 15,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 15 : contre-indiqué. Au-dessus, schéma non établi : kaliémie et hémogramme surveillés, et une créatininémie qui monte sous traitement ne signe pas forcément une aggravation.",
+        }],
+        source: "RCP Delprim",
+    },
+    Adaptation {
+        needs: &["levocarnitine", "levocarnil"],
+        never: &[],
+        label: "Lévocarnitine",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 : pas de fortes doses orales prolongées — la triméthylamine et la triméthylamine-N-oxyde s'accumulent. Dose ajustée avec le centre qui suit la maladie.",
+        }],
+        source: "RCP Levocarnil",
+    },
+    Adaptation {
+        needs: &["etodolac", "lodine"],
+        never: &[],
+        label: "Étodolac",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë. Diurèse et fonction rénale surveillées en début de traitement.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indiqué (insuffisance rénale sévère).",
+            },
+        ],
+        source: "RCP Lodine ; ANSM, triade néfaste",
+    },
+    Adaptation {
+        needs: &["tenoxicam", "tilcotil"],
+        never: &[],
+        label: "Ténoxicam",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Watch,
+                conduct: "Au-dessous de 60 : à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë. Fonction rénale et diurèse surveillées en début de traitement.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indiqué (insuffisance rénale sévère).",
+            },
+        ],
+        source: "RCP Tilcotil ; ANSM, triade néfaste",
+    },
+    Adaptation {
+        needs: &["cimetidine"],
+        never: &[],
+        label: "Cimétidine",
+        steps: &[
+            Step {
+                below: 50,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 50 : une prise toutes les six heures au plus.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Entre 15 et 30 : une prise toutes les huit heures au plus.",
+            },
+            Step {
+                below: 15,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 15 : une prise toutes les douze heures au plus ; en hémodialyse, la prise suit la séance.",
+            },
+        ],
+        source: "RCP Cimétidine Arrow",
+    },
+    Adaptation {
+        needs: &["bambuterol", "oxeol"],
+        never: &[],
+        label: "Bambutérol",
+        steps: &[Step {
+            below: 50,
+            level: Level::Reduce,
+            conduct: "Au-dessous de 50 : dose diminuée de moitié, la terbutaline active s'éliminant par le rein.",
+        }],
+        source: "RCP Oxeol",
+    },
 ];
 
 #[cfg(test)]
@@ -1854,7 +2000,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 99;
+        const FLOOR: usize = 108;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",

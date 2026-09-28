@@ -1098,6 +1098,12 @@ pub const TABLE: &[Profile] = &[
     },
     // **Prodrogue** : sans CYP2D6, pas de morphine, donc pas d'effet.
     Profile {
+        needs: &["dihydrocodeine", "dicodin"],
+        label: "Dihydrocodéine",
+        actions: &[Action::new(Cyp2d6, Substrate, None)],
+        source: "Dicodin LP : « substrat de l'enzyme polymorphe CYP2D6, qui la convertit en dihydromorphine » ; la portée clinique du polymorphisme n'est pas établie pour la dihydrocodéine.",
+    },
+    Profile {
         needs: &["codeine"],
         label: "Codéine",
         // **Seulement le CYP2D6.** La 3A4 déméthyle aussi la codéine,
@@ -1772,6 +1778,35 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Velsipity : « Métabolisme hépatique extensif par le CYP2C8 pour 38 %, le CYP2C9 pour 37 % et le CYP3A4 pour 22 % » ; « comme le fluconazole qui augmente l'exposition de 84 % ».",
     },
+    Profile {
+        needs: &["manidipine", "iperten"],
+        label: "Manidipine",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Iperten : « Métabolisme hépatique intense, vraisemblablement par le CYP3A4 ».",
+    },
+    Profile {
+        needs: &["mizolastine", "mizollen"],
+        label: "Mizolastine",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Mizollen : « une voie accessoire par le CYP3A4 forme des métabolites hydroxylés » ; « Kétoconazole et érythromycine par voie systémique : concentrations de mizolastine modérément augmentées ».",
+    },
+    Profile {
+        needs: &["naldemedine", "rizmoic"],
+        label: "Naldémédine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Moderate))],
+        source: "Rizmoic : « Métabolisme principalement par le CYP3A, en pratique le CYP3A4, en nor-naldémédine » ; « exposition augmentée, près de trois fois avec l'itraconazole ».",
+    },
+    Profile {
+        needs: &["pitolisant", "wakix"],
+        label: "Pitolisant",
+        actions: &[
+            Action::new(Cyp2d6, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Cyp3a4, Inducer, None),
+            Action::new(Cyp2b6, Inducer, None),
+        ],
+        source: "Wakix : « Métabolisme hépatique par les CYP3A4 et CYP2D6 » ; « induit les CYP3A4, CYP1A2 et CYP2B6 ; des interactions cliniquement pertinentes sont possibles avec les substrats des CYP3A4 et CYP2B6 ».",
+    },
 ];
 
 #[cfg(test)]
@@ -1816,7 +1851,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 164;
+        const FLOOR: usize = 169;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",

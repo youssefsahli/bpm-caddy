@@ -419,6 +419,16 @@ pub const TABLE: &[Inappropriate] = &[
         source: "Laroche 2007 ; critères de Beers 2023 — charge anticholinergique",
     },
     Inappropriate {
+        needs: &["estazolam", "nuctalon"],
+        never: &[],
+        label: "Estazolam",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Hypnotique que la liste française range parmi les benzodiazépines à demi-vie longue : accumulation, somnolence au réveil, confusion, troubles de mémoire, chute et fracture du col.",
+        instead: "D'abord les mesures d'hygiène du sommeil ; si un hypnotique reste nécessaire, une molécule de demi-vie courte ou intermédiaire à la moitié de la dose adulte, pour la durée la plus courte. Le relais se prépare avec le prescripteur, par décroissance progressive.",
+        source: "Laroche 2007, liste française des médicaments potentiellement inappropriés — critère 10, benzodiazépines à longue demi-vie, qui nomme l'estazolam",
+    },
+    Inappropriate {
         needs: &["benzodiazepine", "hypnotique", "zolpidem", "zopiclone"],
         never: &["antiepileptique", "crise convulsive"],
         label: "Benzodiazépines et apparentés",
@@ -706,6 +716,26 @@ pub const TABLE: &[Inappropriate] = &[
         risk: "Imipraminique : effets atropiniques — confusion, rétention urinaire, constipation jusqu'à l'iléus, glaucome aigu — hypotension orthostatique et troubles de la conduction, avec chutes. La clairance baisse et la demi-vie s'allonge avec l'âge.",
         instead: "Un inhibiteur de la recapture de la sérotonine, instauré bas et augmenté lentement, avec un contrôle de la natrémie dans le mois qui suit. Le changement se prépare avec le prescripteur et se fait par décroissance progressive.",
         source: "Laroche 2007 — antidépresseurs imipraminiques ; RCP Ludiomil — sujet âgé",
+    },
+    Inappropriate {
+        needs: &["meclozine", "agyrax"],
+        never: &[],
+        label: "Méclozine",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Antihistaminique H1 de première génération, sédatif et anticholinergique : somnolence, confusion, hallucinations, hypotension, constipation, rétention urinaire sur prostate, aggravation d'un glaucome par fermeture de l'angle. Autant de causes de chute et de confusion, et le RCP rappelle que le sujet âgé y est plus sensible.",
+        instead: "Pour le mal des transports, les mesures de position, de regard et d'aération d'abord ; pour une crise vertigineuse, l'examen qui en cherche la cause et un traitement choisi avec le médecin plutôt qu'en automédication.",
+        source: "Critères de Beers 2023 — antihistaminiques de première génération, dont la méclozine ; RCP Agyrax — précaution chez le sujet âgé",
+    },
+    Inappropriate {
+        needs: &["cimetidine"],
+        never: &[],
+        label: "Cimétidine",
+        from: 75,
+        level: Level::Avoid,
+        risk: "Confusion, surtout en insuffisance rénale, et davantage d'interactions que les autres anti-H2 : AVK, théophylline, phénytoïne, benzodiazépines.",
+        instead: "Un inhibiteur de la pompe à protons sur la durée la plus courte, réévaluée, ou un autre anti-H2 comme la famotidine, qui interagit beaucoup moins.",
+        source: "Laroche 2007, liste française des médicaments potentiellement inappropriés",
     },
 ];
 
@@ -1320,7 +1350,7 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 30;
+        const FLOOR: usize = 33;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",

@@ -5,6 +5,25 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Trente-quatre monographies de plus (1117 fiches), choisies parmi les
+  molécules les plus délivrées en ville que la base ne portait pas :
+  Toco, Nabucom, Acarizax, Fazol, Importal, Inofer, Iperten, Mizollen,
+  Acular, Invokana, Visken, Isopto Pilocarpine, Metvixia, Tilcotil,
+  Agyrax, Lodine, Rizmoic, Levocarnil, Synacthène, Norditropine, Icaz,
+  Delprim, Cimétidine, Nuctalon, Granocyte, Colprone, Sulfarlem,
+  Akineton LP, Vyndaqel, Prothiaden, Dicodin LP, Oxeol, Dipiperon,
+  Wakix.
+
+### Fixed
+- Grossesse : le triméthoprime seul (Delprim) n'est plus lu comme le
+  cotrimoxazole.
+- « En cas d'oubli » : Oralair et Acarizax reçoivent la conduite d'une
+  désensibilisation, Rizmoic celle d'un antagoniste périphérique, Colprone
+  celle d'un progestatif hors contraception.
+
 ## [0.357.0] - 2026-09-28
 
 ### Added

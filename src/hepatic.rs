@@ -1984,6 +1984,140 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
         source: "Velsipity : « Pas d'adaptation en insuffisance rénale ni en insuffisance hépatique légère ou modérée ; contre-indiqué en insuffisance hépatique sévère ».",
     },
+    Adaptation {
+        needs: &["canagliflozine", "invokana"],
+        label: "Canagliflozine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        source: "Invokana : « Insuffisance hépatique légère ou modérée : pas d'adaptation ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["manidipine", "iperten"],
+        label: "Manidipine",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère : ne pas dépasser 10 mg une fois par jour."),
+            step(Moderate, Contraindicated, "Insuffisance hépatique modérée à sévère : contre-indiqué."),
+        ],
+        source: "Iperten : « Insuffisance hépatique légère : ne pas dépasser 10 mg une fois par jour ».",
+    },
+    Adaptation {
+        needs: &["mizolastine", "mizollen"],
+        label: "Mizolastine",
+        steps: &[step(Moderate, Contraindicated, "Altération significative de la fonction hépatique : contre-indiqué.")],
+        source: "Mizollen : contre-indication en « Altération significative de la fonction hépatique ».",
+    },
+    Adaptation {
+        needs: &["nabumetone", "nabucom"],
+        label: "Nabumétone",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatocellulaire sévère : contre-indiqué.")],
+        source: "Nabucom : contre-indication en « Insuffisance hépatocellulaire sévère ».",
+    },
+    Adaptation {
+        needs: &["meclozine", "agyrax"],
+        label: "Méclozine",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique, quel qu'en soit le degré : contre-indiqué.")],
+        source: "Agyrax : « Insuffisance hépatique. » parmi les contre-indications ; « Une contribution hépatique à l'élimination est probable, d'où la contre-indication en cas d'insuffisance hépatique ».",
+    },
+    Adaptation {
+        needs: &["trimethoprime", "delprim"],
+        label: "Triméthoprime",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Delprim : « Insuffisance hépatique sévère. Association au méthotrexate. Premier trimestre de la grossesse. » parmi les contre-indications.",
+    },
+    Adaptation {
+        needs: &["isradipine", "icaz"],
+        label: "Isradipine",
+        steps: &[step(Mild, Reduce, "Insuffisance hépatique : débuter au plus petit dosage et augmenter prudemment selon la tension.")],
+        source: "Icaz : « Sujet âgé, insuffisant rénal ou hépatique : débuter par une gélule à 2,5 mg par jour » ; « biodisponibilité de 16 à 18 %, augmentée de 27 % au plus chez le sujet âgé et l'insuffisant hépatique ».",
+    },
+    Adaptation {
+        needs: &["etodolac", "lodine"],
+        label: "Étodolac",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatocellulaire sévère : contre-indiqué.")],
+        source: "Lodine : « Insuffisance hépatocellulaire sévère, insuffisance rénale sévère, insuffisance cardiaque sévère » parmi les contre-indications.",
+    },
+    Adaptation {
+        needs: &["naldemedine", "rizmoic"],
+        label: "Naldémédine",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé, faute d'étude.")],
+        source: "Rizmoic : « Insuffisance hépatique sévère : non recommandé. »",
+    },
+    Adaptation {
+        needs: &["tenoxicam", "tilcotil"],
+        label: "Ténoxicam",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Tilcotil : « Insuffisance cardiaque sévère, insuffisance hépatique sévère, insuffisance rénale sévère » parmi les contre-indications.",
+    },
+    Adaptation {
+        needs: &["cimetidine"],
+        label: "Cimétidine",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : dose réduite, ne pas dépasser 600 mg par jour.")],
+        source: "Cimétidine : « En cas d'insuffisance hépatique sévère, réduire la dose, sans dépasser 600 mg par jour » .",
+    },
+    Adaptation {
+        needs: &["dihydrocodeine", "dicodin"],
+        label: "Dihydrocodéine",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique : débuter à posologie réduite, puis adapter à la clinique."),
+            step(Moderate, Reduce, "Insuffisance hépatique : débuter à posologie réduite, puis adapter à la clinique."),
+            step(Severe, Contraindicated, "Insuffisance hépatocellulaire grave : contre-indiqué."),
+        ],
+        source: "Dicodin LP : « Insuffisance hépatocellulaire et/ou rénale grave » .",
+    },
+    Adaptation {
+        needs: &["pipamperone", "dipiperon"],
+        label: "Pipampérone",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatique : prudence, risque d'accumulation."),
+            step(Moderate, Watch, "Insuffisance hépatique : prudence, risque d'accumulation."),
+            step(Severe, Watch, "Insuffisance hépatique sévère : prudence, risque d'accumulation ; sédation et QT surveillés."),
+        ],
+        source: "Dipiperon : « Prudence en insuffisance hépatique ou rénale, risque d'accumulation » .",
+    },
+    Adaptation {
+        needs: &["estazolam", "nuctalon"],
+        label: "Estazolam",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique : posologie réduite, de moitié par exemple, le produit s'accumulant."),
+            step(Moderate, Reduce, "Insuffisance hépatique : posologie réduite, de moitié par exemple, le produit s'accumulant."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué, risque d'encéphalopathie."),
+        ],
+        source: "Nuctalon : « Insuffisance hépatique sévère, aiguë ou chronique (risque de survenue d'une encéphalopathie) » .",
+    },
+    Adaptation {
+        needs: &["bambuterol", "oxeol"],
+        label: "Bambutérol",
+        steps: &[
+            step(Mild, Watch, "Insuffisance hépatocellulaire : préférer la terbutaline directement, le métabolisme du bambutérol étant très variable."),
+            step(Moderate, Watch, "Insuffisance hépatocellulaire : préférer la terbutaline directement, le métabolisme du bambutérol étant très variable."),
+            step(Severe, Watch, "Insuffisance hépatocellulaire ou cirrhose : préférer la terbutaline directement, le métabolisme du bambutérol étant très variable."),
+        ],
+        source: "Oxeol : « En cas d'insuffisance hépatocellulaire ou de cirrhose du foie, il est préférable d'utiliser directement la terbutaline » .",
+    },
+    Adaptation {
+        needs: &["dosulepine", "prothiaden"],
+        label: "Dosulépine",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique : posologie diminuée, risque de surdosage."),
+            step(Moderate, Reduce, "Insuffisance hépatique : posologie diminuée, risque de surdosage."),
+            step(Severe, Reduce, "Insuffisance hépatique sévère : posologie diminuée, risque de surdosage ; surveillance de la sédation et de la confusion."),
+        ],
+        source: "Prothiaden : « Insuffisance hépatique et insuffisance rénale : diminuer la posologie » .",
+    },
+    Adaptation {
+        needs: &["tafamidis", "vyndaqel"],
+        label: "Tafamidis",
+        steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudié, prudence.")],
+        source: "Vyndaqel : « tafamidis n'a pas été étudié chez les patients atteints d'insuffisance hépatique sévère, et la prudence y est recommandée » .",
+    },
+    Adaptation {
+        needs: &["pitolisant", "wakix"],
+        label: "Pitolisant",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : augmentation après deux semaines seulement, ne pas dépasser 18 mg par jour."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
+        ],
+        source: "Wakix : « Insuffisance hépatique modérée : augmentation possible deux semaines après l'instauration, sans dépasser 18 mg par jour ; contre-indiqué en insuffisance hépatique sévère » .",
+    },
 ];
 
 #[cfg(test)]
@@ -2407,7 +2541,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 196;
+        const FLOOR: usize = 214;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

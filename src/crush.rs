@@ -798,6 +798,22 @@ pub const TABLE: &[Rule] = &[
         instead: "Pas d'autre forme ; en cas de trouble de la déglutition, en référer au prescripteur.",
         source: "RCP Velsipity",
     },
+    Rule {
+        needs: &["icaz", "isradipine"],
+        label: "Icaz LP",
+        verdict: Verdict::No,
+        why: "Gélule à libération prolongée à avaler intacte : ouverte ou mâchée, elle libère d'un coup la dose de 24 heures, avec une chute tensionnelle brutale.",
+        instead: "Un autre inhibiteur calcique en forme écrasable, sur avis du prescripteur.",
+        source: "RCP Icaz LP",
+    },
+    Rule {
+        needs: &["lodine", "etodolac"],
+        label: "Lodine",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé pelliculé entier, sans le croquer, et ne prévoit aucune autre façon de le prendre.",
+        instead: "Un autre AINS existant en forme buvable ou dispersible, ou un antalgique d'une autre classe, sur avis du prescripteur.",
+        source: "RCP Lodine",
+    },
     // --- Ce que la fiche autorise explicitement ------------------------
     Rule {
         needs: &["riociguat", "adempas"],
@@ -1073,7 +1089,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 82;
+        const FLOOR: usize = 84;
         assert!(
             TABLE.len() >= FLOOR,
             "{} présentations, il y en avait {FLOOR}",

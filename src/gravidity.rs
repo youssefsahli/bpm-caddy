@@ -637,7 +637,7 @@ pub const TABLE: &[Advice] = &[
         source: "CRAT ; Lasilix : « les diurétiques ne doivent pas être utilisés pour traiter les œdèmes physiologiques ni l'hypertension gravidique » ; Esidrex : « Ils ne doivent jamais être utilisés pour traiter les œdèmes physiologiques de la grossesse ».",
     },
     Advice {
-        needs: &["cotrimoxazole", "bactrim", "triméthoprime", "sulfaméthoxazole"],
+        needs: &["cotrimoxazole", "bactrim", "sulfaméthoxazole"],
         never: &[],
         label: "Cotrimoxazole",
         term: "Au premier trimestre : à éviter, l'effet antifolique portant sur la fermeture du tube neural. En fin de grossesse : contre-indiqué, du fait de l'ictère nucléaire chez le nouveau-né.",
@@ -1176,6 +1176,138 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Pas d'absorption décelable ; utilisation envisageable selon le RCP, voir aussi la page laxatifs et allaitement du CRAT.",
         source: "CRAT — picosulfate de sodium, grossesse et allaitement (mise à jour 2025) ; RCP Citrafleet",
     },
+    Advice {
+        needs: &["manidipine", "iperten"],
+        never: &[],
+        label: "Manidipine",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Pas d'effet malformatif retenu, mais peu de données ; le RCP écarte l'usage pendant la grossesse. Préférer la nifédipine, puis la nicardipine ; une grossesse découverte sous traitement se rassure.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Pas de donnée et demi-vie pouvant être longue : préférer la nifédipine ou la nicardipine, compatibles avec l'allaitement.",
+        source: "CRAT — Manidipine, grossesse (30.04.2025) et allaitement (14.11.2025) ; RCP Iperten",
+    },
+    Advice {
+        needs: &["mizolastine", "mizollen"],
+        never: &[],
+        label: "Mizolastine",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Pas d'effet malformatif rapporté, mais pas de donnée publiée : préférer un antihistaminique H1 mieux connu pendant la grossesse. Une exposition découverte en cours de grossesse se rassure.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Excrétée dans le lait, sans donnée publiée : préférer un antihistaminique H1 mieux connu chez la femme qui allaite.",
+        source: "CRAT — Mizolastine, grossesse et allaitement (26.07.2024) ; RCP Mizollen",
+    },
+    Advice {
+        needs: &["nabumetone", "nabucom"],
+        never: &[],
+        label: "Nabumétone",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, les AINS ferment le canal artériel du fœtus et atteignent son rein — l'accident est décrit après une seule prise. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué par le RCP, faute de données : l'ibuprofène est l'AINS de l'allaitement.",
+        source: "CRAT ; ANSM, alerte AINS et grossesse ; RCP Nabucom",
+    },
+    Advice {
+        needs: &["pindolol", "visken"],
+        never: &[],
+        label: "Pindolol",
+        pregnancy: Level::Prudence,
+        term: "Jusqu'à l'accouchement : fréquence cardiaque et glycémie du nouveau-né surveillées les premiers jours.",
+        pregnancy_note: "Pas d'effet malformatif retenu avec les bêtabloquants, mais peu de données propres au pindolol : préférer le labétalol dans l'hypertension, ou un bêtabloquant mieux évalué. À défaut, le pindolol est envisageable à tout terme.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Faible liaison protéique et passage dans le lait, sans donnée chez l'enfant allaité : préférer le labétalol ou le propranolol.",
+        source: "CRAT — Pindolol, grossesse et allaitement (13.12.2024) ; RCP Visken",
+    },
+    Advice {
+        needs: &["meclozine", "agyrax"],
+        never: &[],
+        label: "Méclozine",
+        pregnancy: Level::Compatible,
+        term: "",
+        pregnancy_note: "Données publiées très nombreuses, sans effet malformatif, fœtal ou néonatal retenu : utilisable quel que soit le terme, pour le vertige comme pour le mal des transports. En fin de grossesse, prévenir la maternité pour la surveillance du nouveau-né (effets atropiniques et sédatifs).",
+        breastfeeding: Level::Prudence,
+        breastfeeding_note: "Une prise unique ne fait pas suspendre l'allaitement. En prises répétées, mieux vaut le suspendre pendant le traitement et le reprendre environ 12 heures après la dernière prise. Le RCP le déconseille.",
+        source: "CRAT (méclozine, grossesse et allaitement ; mal des transports) ; RCP Agyrax",
+    },
+    Advice {
+        needs: &["delprim"],
+        never: &[],
+        label: "Triméthoprime seul",
+        pregnancy: Level::Eviter,
+        term: "Premier trimestre, et en pratique avant 10 semaines d'aménorrhée : contre-indiqué, un autre antibiotique est choisi selon l'antibiogramme. Au-delà : possible, après avoir écarté les autres options, dans la cystite et la colonisation urinaire gravidiques.",
+        pregnancy_note: "Antifolique : risque évoqué de malformations du tube neural, de fentes et de cardiopathies en début de grossesse. Exposition découverte avant 10 SA : informer, échographie ciblée et supplémentation en acide folique proposée ; après 10 SA, rassurer. Sans le sulfamide, le risque d'ictère nucléaire du cotrimoxazole en fin de grossesse ne s'applique pas.",
+        breastfeeding: Level::Prudence,
+        breastfeeding_note: "Passage faible, environ 6 % de la dose maternelle : utilisation possible pour le CRAT, que le RCP déconseille. À éviter en cas de déficit en G6PD de la mère ou de l'enfant.",
+        source: "CRAT (triméthoprime, grossesse et allaitement) ; Delprim : « Contre-indiqué au premier trimestre : effet antifolique ».",
+    },
+    Advice {
+        needs: &["isradipine", "icaz"],
+        never: &[],
+        label: "Isradipine",
+        pregnancy: Level::Prudence,
+        term: "",
+        pregnancy_note: "Aucun effet malformatif ni fœtal retenu, mais peu de données. La nifédipine en première intention, puis la nicardipine, mieux connues et compatibles avec l'allaitement, sont préférées ; l'isradipine reste envisageable à tout terme si elle présente un réel avantage. Une grossesse découverte sous traitement se rassure, et le choix se revoit avec le prescripteur.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Passage dans le lait, sans donnée chez l'enfant allaité : préférer la nifédipine ou la nicardipine.",
+        source: "CRAT (isradipine, grossesse et allaitement) ; Icaz : « Le RCP le déconseille pendant la grossesse, faute de données suffisantes ».",
+    },
+    Advice {
+        needs: &["pilocarpine"],
+        never: &[],
+        label: "Pilocarpine collyre",
+        pregnancy: Level::Prudence,
+        term: "",
+        pregnancy_note: "Aucun effet malformatif rapporté. Un autre antiglaucomateux est préféré en première intention ; si la pilocarpine est nécessaire, elle est envisageable quel que soit le terme, avec compression de l'angle interne de l'œil après la goutte. Poursuivie jusqu'à l'accouchement, elle se signale à la maternité : signes parasympathiques possibles chez le nouveau-né.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Pas de donnée sur le passage dans le lait : le CRAT préfère un autre antiglaucomateux chez la femme qui allaite.",
+        source: "CRAT (pilocarpine, grossesse et allaitement) ; Isopto Pilocarpine : « Le RCP le déconseille pendant la grossesse faute de données ».",
+    },
+    Advice {
+        needs: &["etodolac", "lodine"],
+        never: &[],
+        label: "Étodolac",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, les AINS ferment le canal artériel du fœtus et atteignent son rein ; l'accident est décrit après une seule prise. Au premier trimestre, les données sur l'étodolac sont nombreuses et rassurantes sur le plan malformatif. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Aucune donnée sur l'étodolac et l'allaitement : le CRAT préfère un autre AINS, l'ibuprofène étant l'AINS de l'allaitement.",
+        source: "CRAT (étodolac, grossesse et allaitement) ; ANSM, alerte AINS et grossesse ; RCP Lodine",
+    },
+    Advice {
+        needs: &["tenoxicam", "tilcotil"],
+        never: &[],
+        label: "Ténoxicam",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, les AINS ferment le canal artériel du fœtus et atteignent son rein ; la demi-vie de 70 heures prolonge l'exposition après chaque prise. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Aucune donnée sur le ténoxicam et l'allaitement : le CRAT préfère un autre AINS, l'ibuprofène étant l'AINS de l'allaitement.",
+        source: "CRAT (ténoxicam, grossesse et allaitement) ; ANSM, alerte AINS et grossesse ; RCP Tilcotil",
+    },
+    Advice {
+        needs: &["cimetidine"],
+        never: &[],
+        label: "Cimétidine",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Aucun risque malformatif retenu, mais la famotidine, mieux connue chez la femme enceinte, lui est préférée. Une exposition en début de grossesse rassure.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Préférable de ne pas l'utiliser : la quantité reçue par l'enfant via le lait est importante. Une autre option du reflux est préférée.",
+        source: "CRAT — cimétidine, grossesse et allaitement",
+    },
+    Advice {
+        needs: &["dosulepine", "prothiaden"],
+        never: &[],
+        label: "Dosulépine",
+        pregnancy: Level::Eviter,
+        term: "En fin de grossesse : signes d'imprégnation ou de sevrage du nouveau-né, transitoires ; prévenir l'équipe de naissance.",
+        pregnancy_note: "Pas d'effet malformatif retenu, mais l'amitriptyline ou la clomipramine, mieux connues, sont préférées. Une grossesse découverte sous traitement ne fait jamais arrêter brutalement : la décision revient au prescripteur.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Pas de donnée sur le passage dans le lait : un autre antidépresseur est préféré.",
+        source: "CRAT — dosulépine, grossesse et allaitement",
+    },
 ];
 
 #[cfg(test)]
@@ -1226,7 +1358,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 65;
+        const FLOOR: usize = 77;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules de la table grossesse, il y en avait {FLOOR}",
@@ -1583,9 +1715,15 @@ mod tests {
         // même si l'exposition par voie locale est très faible ». Et
         // l'emplâtre et le gel de diclofénac, le gel de kétoprofène : leur RCP
         // garde la contre-indication des AINS au troisième trimestre,
-        // voie locale comprise.
-        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] =
-            &["Sterdex", "Flector Tissugel", "Ketum", "Voltarenactigo"];
+        // voie locale comprise. Et le collyre de pilocarpine, que son RCP
+        // dit « non recommandé » pendant la grossesse.
+        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &[
+            "Sterdex",
+            "Flector Tissugel",
+            "Ketum",
+            "Voltarenactigo",
+            "Isopto Pilocarpine",
+        ];
 
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {

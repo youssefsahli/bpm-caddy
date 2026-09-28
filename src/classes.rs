@@ -26,7 +26,7 @@
 //! reste lisible plutôt que d'être écrasée — c'est la même règle que
 //! partout ici : on ne réécrit pas ce que l'officine a écrit.
 //!
-//! **Et une famille au-dessus.** 437 classes ne se parcourent pas à
+//! **Et une famille au-dessus.** 444 classes ne se parcourent pas à
 //! plat ; seize familles d'une vingtaine de classes, si. C'est ce qui
 //! permet à la vue « Classes… » d'exister : on descend de l'appareil à
 //! la classe, puis de la classe aux fiches.
@@ -126,7 +126,7 @@ pub struct Class {
     pub aliases: &'static [&'static str],
 }
 
-/// Les 437 classes, par famille puis par nom.
+/// Les 444 classes, par famille puis par nom.
 pub const CLASSES: &[Class] = &[
     // --- Cardiologie et vaisseaux ---
     Class {
@@ -316,6 +316,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "petit ARN interférent anti-PCSK9",
+        family: "cardio",
+        aliases: &[],
+    },
+    Class {
+        name: "stabilisateur de la transthyrétine — amylose",
         family: "cardio",
         aliases: &[],
     },
@@ -1445,6 +1450,11 @@ pub const CLASSES: &[Class] = &[
     },
     // --- Endocrinologie et métabolisme ---
     Class {
+        name: "sialagogue — hyposialie",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
         name: "analogue de la somatostatine",
         family: "endocrino",
         aliases: &[],
@@ -1489,6 +1499,16 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "carnitine — maladies métaboliques",
+        family: "endocrino",
+        aliases: &[],
+    },
+    Class {
+        name: "corticostimuline — test surrénalien",
+        family: "endocrino",
+        aliases: &[],
+    },
+    Class {
         name: "glinide",
         family: "endocrino",
         aliases: &[],
@@ -1502,6 +1522,11 @@ pub const CLASSES: &[Class] = &[
         name: "gliptine + biguanide",
         family: "endocrino",
         aliases: &["inhibiteur SGLT2 + biguanide"],
+    },
+    Class {
+        name: "hormone de croissance",
+        family: "endocrino",
+        aliases: &[],
     },
     Class {
         name: "hormone hyperglycémiante (hypoglycémie sévère)",
@@ -1884,6 +1909,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "kératolytique local — verrues",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
+        name: "photosensibilisant topique — photothérapie dynamique",
         family: "derm",
         aliases: &[],
     },
@@ -2379,6 +2409,11 @@ pub const CLASSES: &[Class] = &[
         family: "divers",
         aliases: &[],
     },
+    Class {
+        name: "vitamine E",
+        family: "divers",
+        aliases: &[],
+    },
 ];
 
 /// Ce qu'un libellé nomme **en le niant**, retiré d'une botte de foin
@@ -2822,7 +2857,7 @@ mod tests {
         // Le cliquet : le référentiel ne perd ni classes ni familles.
         assert_eq!(FAMILIES.len(), 16);
         assert!(
-            CLASSES.len() >= 437,
+            CLASSES.len() >= 444,
             "le référentiel a maigri : {}",
             CLASSES.len()
         );
