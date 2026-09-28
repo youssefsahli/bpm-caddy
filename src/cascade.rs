@@ -1435,6 +1435,167 @@ pub fn trend(level: f32) -> Trend {
     }
 }
 
+// --- Deux lignes d'une ordonnance sur une même cascade -----------------
+
+/// Ce que deux molécules font **ensemble** à un effet.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Together {
+    /// L'effet va plus loin à deux qu'avec chacune : le nitré sur un
+    /// inhibiteur de la PDE5, deux sérotoninergiques.
+    Adds,
+    /// L'une défait ce que fait l'autre : le propranolol sur le
+    /// salbutamol, l'oxybutynine sur le donépézil, la spironolactone sur
+    /// la kaliémie d'un diurétique de l'anse.
+    Opposes,
+}
+
+/// L'écart minimal, en niveau, pour qu'une différence entre « seule » et
+/// « à deux » soit dite. Même ordre que le seuil de [`trend`] : en deçà,
+/// le dessin ne montre rien, et la lecture ne doit pas en dire plus que
+/// le dessin.
+const APART: f32 = 0.05;
+
+/// Vers le bas, la part de ce qui reste qu'une seconde molécule doit
+/// retirer pour qu'on dise qu'elles s'additionnent.
+const SHARE: f32 = 0.2;
+
+/// Pour une paire de molécules de la cascade, les effets qui bougent
+/// autrement à deux que séparément : `(effet, ensemble)`.
+///
+/// **C'est une lecture du modèle, pas une table d'interactions** : elle
+/// ne dit que ce que la figure montre quand on coche les deux cases, et
+/// la figure est qualitative. Aucun effet n'est dit s'il ne bouge pas —
+/// deux molécules qui se rencontrent sur un nœud sans changer ce qu'on
+/// lit en bout de chaîne ne font pas une rencontre.
+pub fn together(c: &Cascade, a: usize, b: usize) -> Vec<(usize, Together)> {
+    let n = c.molecules.len();
+    if a == b || a >= n || b >= n {
+        return Vec::new();
+    }
+    let alone = |m: usize| {
+        let mut g = vec![false; n];
+        g[m] = true;
+        settle(c, &g, &[])
+    };
+    let (la, lb) = (alone(a), alone(b));
+    let mut both = vec![false; n];
+    both[a] = true;
+    both[b] = true;
+    let lab = settle(c, &both, &[]);
+    let mut out = Vec::new();
+    for o in c.outcomes() {
+        let (x, y, z) = (la.level[o] - 1.0, lb.level[o] - 1.0, lab.level[o] - 1.0);
+        let (tx, ty, tz) = (trend(la.level[o]), trend(lb.level[o]), trend(lab.level[o]));
+        let opposite = |p: Trend, q: Trend| {
+            matches!((p, q), (Trend::Up, Trend::Down) | (Trend::Down, Trend::Up))
+        };
+        // S'opposer : deux sens contraires, ou l'une qui ramène vers le
+        // repos ce que l'autre déplaçait seule — la naloxone ne fait
+        // rien seule et défait la morphine.
+        let undoes = |own: f32, t_own: Trend| {
+            t_own != Trend::Rest && z.abs() < own.abs() - APART && !opposite(tz, t_own)
+                || t_own != Trend::Rest && opposite(tz, t_own)
+        };
+        if opposite(tx, ty) || undoes(x, tx) || undoes(y, ty) {
+            out.push((o, Together::Opposes));
+            continue;
+        }
+        // S'additionner : plus loin à deux qu'avec la plus forte des
+        // deux, dans le sens où elles vont. **Vers le bas, en
+        // proportion** : un niveau ne descend pas sous zéro, et l'aspirine
+        // seule éteint déjà presque l'agrégation — le clopidogrel en
+        // retire encore un tiers de ce qui reste, ce qu'un écart absolu
+        // ne verrait pas.
+        let further = match tz {
+            Trend::Down => lab.level[o] < la.level[o].min(lb.level[o]) * (1.0 - SHARE),
+            Trend::Up => z > x.max(y) + APART,
+            Trend::Rest => false,
+        };
+        if further && !opposite(tz, tx) && !opposite(tz, ty) {
+            out.push((o, Together::Adds));
+        }
+    }
+    out
+}
+
+/// Une ligne de l'ordonnance, telle que cette lecture la reçoit.
+pub struct Line<'a> {
+    pub name: &'a str,
+    pub dci: &'a str,
+}
+
+/// Deux lignes de l'ordonnance qui agissent sur une même cascade, et ce
+/// que la cascade montre d'elles ensemble.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Meeting {
+    /// Le rang de la cascade dans la liste reçue.
+    pub cascade: usize,
+    /// Les deux lignes, telles qu'écrites, dans l'ordre de la liste.
+    pub lines: (String, String),
+    /// Les deux molécules de la cascade qu'elles portent.
+    pub molecules: (String, String),
+    /// Les effets, par leur nom, et ce que la paire en fait.
+    pub effects: Vec<(String, Together)>,
+}
+
+/// La molécule de la cascade qu'une ligne porte : sa DCI entière, ou
+/// l'un des composants d'une association (« vérapamil + trandolapril »
+/// porte le vérapamil). **Jamais une sous-chaîne** — la règle des
+/// portes de fiche, et pour la même raison.
+fn carried(c: &Cascade, dci: &str) -> Vec<usize> {
+    let parts: Vec<&str> = std::iter::once(dci)
+        .chain(dci.split(" + ").filter(|p| p.len() < dci.len()))
+        .collect();
+    c.molecules
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| parts.iter().any(|p| fuzzy::eq_folded(p, &m.name)))
+        .map(|(i, _)| i)
+        .collect()
+}
+
+/// Ce que les cascades disent des paires d'une ordonnance.
+///
+/// Une paire n'est retenue que si la cascade montre **au moins un
+/// effet** qui bouge autrement à deux — voir [`together`]. Deux lignes
+/// qui portent la même molécule n'en font pas une : le doublon est
+/// l'affaire de la revue d'ordonnance, et une molécule donnée deux fois
+/// sur la figure est une molécule donnée une fois.
+pub fn meetings(cascades: &[Cascade], lines: &[Line]) -> Vec<Meeting> {
+    let mut out = Vec::new();
+    for (ci, c) in cascades.iter().enumerate() {
+        let carried: Vec<Vec<usize>> = lines.iter().map(|l| carried(c, l.dci)).collect();
+        for i in 0..lines.len() {
+            for j in i + 1..lines.len() {
+                for &a in &carried[i] {
+                    for &b in &carried[j] {
+                        if a == b {
+                            continue;
+                        }
+                        let effects: Vec<(String, Together)> = together(c, a, b)
+                            .into_iter()
+                            .map(|(o, t)| (c.nodes[o].name.clone(), t))
+                            .collect();
+                        if effects.is_empty() {
+                            continue;
+                        }
+                        out.push(Meeting {
+                            cascade: ci,
+                            lines: (lines[i].name.to_owned(), lines[j].name.to_owned()),
+                            molecules: (c.molecules[a].name.clone(), c.molecules[b].name.clone()),
+                            effects,
+                        });
+                    }
+                }
+            }
+        }
+    }
+    // Ce qui s'oppose d'abord : c'est ce qu'on n'attend pas d'une
+    // ordonnance, là où une addition est souvent voulue.
+    out.sort_by_key(|m| !m.effects.iter().any(|(_, t)| *t == Together::Opposes));
+    out
+}
+
 // --- La disposition ---------------------------------------------------
 
 /// Où chaque nœud se pose : un étage (0 en haut, les ligands) et une
@@ -2272,7 +2433,7 @@ adaptation Bêta-1
 
     /// Le plancher : une cascade retirée est une question à laquelle le
     /// comptoir ne sait plus répondre. Il ne peut que monter.
-    const SHIPPED: usize = 10;
+    const SHIPPED: usize = 26;
 
     /// Les molécules qu'un mécanisme ne peut pas taire et que la base
     /// n'a pas en fiche. Tenues ici par leur nom : ailleurs, une faute de
@@ -2289,6 +2450,498 @@ adaptation Bêta-1
 
     fn level(c: &Cascade, given: &[&str], node: &str) -> f32 {
         settle(c, &with(c, given), &[]).level[idx(c, node)]
+    }
+
+    /// Le sens d'un effet sous une liste de molécules : ce que les tests
+    /// des cascades de 0.358 viennent y lire.
+    fn reads(c: &Cascade, given: &[&str], node: &str) -> Trend {
+        trend(level(c, given, node))
+    }
+
+    /// Une histoire toute prête, jouée : l'état à chaque pas.
+    fn played(c: &Cascade, name: &str) -> (Vec<Frame>, u32) {
+        let sc = c
+            .scenarios
+            .iter()
+            .find(|s| s.name == name)
+            .unwrap_or_else(|| panic!("{} : pas de scénario « {name} »", c.title));
+        let stop = sc.doses.iter().filter_map(|d| d.until).max().unwrap_or(0);
+        (run(c, &sc.doses, 120), stop)
+    }
+
+    #[test]
+    fn an_anti_tnf_opens_tuberculosis_and_etanercept_spares_the_gut() {
+        let c = shipped("TNF-alpha");
+        for m in [
+            "adalimumab",
+            "étanercept",
+            "infliximab",
+            "certolizumab pégol",
+        ] {
+            assert_eq!(
+                reads(&c, &[m], "Défense contre la tuberculose"),
+                Trend::Down,
+                "{m}"
+            );
+            assert_eq!(
+                reads(&c, &[m], "Inflammation articulaire"),
+                Trend::Down,
+                "{m}"
+            );
+        }
+        assert_eq!(
+            reads(&c, &["infliximab"], "Inflammation intestinale"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["étanercept"], "Inflammation intestinale"),
+            Trend::Rest
+        );
+        assert_eq!(reads(&c, &["adalimumab"], "CRP"), Trend::Down);
+    }
+
+    #[test]
+    fn an_anti_il6_hides_the_crp_and_gives_the_cytochromes_back() {
+        let c = shipped("Interleukine 6");
+        for m in ["tocilizumab", "sarilumab"] {
+            assert_eq!(reads(&c, &[m], "CRP"), Trend::Down, "{m}");
+            assert_eq!(reads(&c, &[m], "Fièvre"), Trend::Down, "{m}");
+            assert_eq!(
+                reads(&c, &[m], "Activité des cytochromes hépatiques"),
+                Trend::Up,
+                "{m}"
+            );
+            assert_eq!(
+                reads(&c, &[m], "Exposition aux substrats des cytochromes"),
+                Trend::Down,
+                "{m}"
+            );
+        }
+        assert_eq!(reads(&c, &["tocilizumab"], "Hémoglobine"), Trend::Up);
+    }
+
+    #[test]
+    fn a_jak_inhibitor_lowers_the_antiviral_defence_and_jak2_the_haemoglobin() {
+        let c = shipped("Voie JAK-STAT");
+        assert_eq!(
+            reads(&c, &["upadacitinib"], "Défense antivirale"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["tofacitinib"], "Lymphocytes"), Trend::Down);
+        assert_eq!(reads(&c, &["ruxolitinib"], "Hémoglobine"), Trend::Down);
+        assert!(
+            level(&c, &["ruxolitinib"], "Hémoglobine")
+                < level(&c, &["upadacitinib"], "Hémoglobine")
+        );
+        assert_eq!(
+            reads(&c, &["deucravacitinib"], "Inflammation cutanée"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["baricitinib"], "Inflammation articulaire"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn an_anti_il17_can_worsen_the_gut_and_an_anti_il23_treats_it() {
+        let c = shipped("Axe IL-23 et IL-17");
+        for m in ["sécukinumab", "guselkumab", "brodalumab"] {
+            assert_eq!(reads(&c, &[m], "Plaques de psoriasis"), Trend::Down, "{m}");
+        }
+        assert_eq!(
+            reads(&c, &["sécukinumab"], "Inflammation intestinale"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &["guselkumab"], "Inflammation intestinale"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["sécukinumab"], "Défense contre Candida"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["guselkumab"], "Défense contre Candida")
+                > level(&c, &["sécukinumab"], "Défense contre Candida")
+        );
+    }
+
+    #[test]
+    fn dupilumab_raises_the_blood_eosinophils_and_anti_il5_lowers_them() {
+        let c = shipped("Inflammation de type 2");
+        assert_eq!(
+            reads(&c, &["dupilumab"], "Éosinophiles sanguins"),
+            Trend::Up
+        );
+        for m in ["mépolizumab", "benralizumab", "tézépélumab"] {
+            assert_eq!(reads(&c, &[m], "Éosinophiles sanguins"), Trend::Down, "{m}");
+        }
+        assert!(
+            level(&c, &["benralizumab"], "Éosinophiles sanguins")
+                < level(&c, &["mépolizumab"], "Éosinophiles sanguins")
+        );
+        assert_eq!(reads(&c, &["dupilumab"], "Eczéma atopique"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["omalizumab"], "Exacerbations d'asthme"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn a_nitrate_on_a_pde5_inhibitor_falls_further_than_either() {
+        let c = shipped("Monoxyde d'azote et GMPc");
+        let pa = |g: &[&str]| level(&c, g, "Pression artérielle");
+        assert!(pa(&["sildénafil", "trinitrine"]) < pa(&["trinitrine"]));
+        assert!(pa(&["sildénafil", "trinitrine"]) < pa(&["sildénafil"]));
+        assert!(pa(&["riociguat", "sildénafil"]) < pa(&["riociguat"]));
+        assert_eq!(
+            reads(&c, &["trinitrine"], "Besoin en oxygène du myocarde"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["trinitrine"], "Érection"), Trend::Rest);
+        // La tolérance loge dans la bioactivation : l'effet s'érode.
+        let (f, _) = played(&c, "Trinitrine en continu, puis arrêt");
+        let o2 = idx(&c, "Besoin en oxygène du myocarde");
+        assert!(f[70].level[o2] > f[11].level[o2]);
+    }
+
+    #[test]
+    fn the_loop_and_the_thiazide_lose_potassium_and_the_mr_blockers_keep_it() {
+        let c = shipped("Néphron et potassium");
+        for m in [
+            "furosémide",
+            "bumétanide",
+            "hydrochlorothiazide",
+            "indapamide",
+        ] {
+            assert_eq!(reads(&c, &[m], "Kaliémie"), Trend::Down, "{m}");
+        }
+        for m in ["spironolactone", "éplérénone", "amiloride"] {
+            assert_eq!(reads(&c, &[m], "Kaliémie"), Trend::Up, "{m}");
+        }
+        assert_eq!(reads(&c, &["furosémide"], "Calciurie"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["hydrochlorothiazide"], "Calciurie"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["furosémide", "spironolactone"], "Kaliémie")
+                > level(&c, &["furosémide"], "Kaliémie")
+        );
+        assert!(
+            level(&c, &["furosémide", "hydrochlorothiazide"], "Natriurèse")
+                > level(&c, &["furosémide"], "Natriurèse")
+        );
+        assert_eq!(reads(&c, &["furosémide"], "Aldostérone"), Trend::Up);
+    }
+
+    #[test]
+    fn a_sulfonylurea_forces_insulin_and_metformin_does_not() {
+        let c = shipped("Glycémie, insuline et incrétines");
+        for m in [
+            "gliclazide",
+            "metformine",
+            "dapagliflozine",
+            "sémaglutide",
+            "insuline glargine",
+        ] {
+            assert_eq!(reads(&c, &[m], "Glycémie"), Trend::Down, "{m}");
+        }
+        assert_eq!(reads(&c, &["gliclazide"], "Insuline sécrétée"), Trend::Up);
+        assert_eq!(reads(&c, &["metformine"], "Insuline sécrétée"), Trend::Rest);
+        assert_eq!(
+            reads(&c, &["dapagliflozine"], "Insuline sécrétée"),
+            Trend::Rest
+        );
+        assert!(
+            level(&c, &["sémaglutide"], "Insuline sécrétée")
+                < level(&c, &["gliclazide"], "Insuline sécrétée")
+        );
+        assert!(
+            level(&c, &["gliclazide", "sémaglutide"], "Glycémie")
+                < level(&c, &["gliclazide"], "Glycémie")
+        );
+        assert_eq!(reads(&c, &["sémaglutide"], "Appétit"), Trend::Down);
+        assert_eq!(reads(&c, &["sitagliptine"], "Appétit"), Trend::Rest);
+    }
+
+    #[test]
+    fn a_statin_raises_pcsk9_and_ezetimibe_adds_to_it() {
+        let c = shipped("LDL-cholestérol et récepteur LDL");
+        assert_eq!(
+            reads(&c, &["atorvastatine"], "LDL-cholestérol"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["atorvastatine"], "PCSK9"), Trend::Up);
+        assert_eq!(reads(&c, &["ézétimibe"], "HMG-CoA réductase"), Trend::Up);
+        let ldl = |g: &[&str]| level(&c, g, "LDL-cholestérol");
+        assert!(ldl(&["atorvastatine", "ézétimibe"]) < ldl(&["atorvastatine"]));
+        assert!(ldl(&["atorvastatine", "évolocumab"]) < ldl(&["atorvastatine"]));
+        assert_eq!(
+            reads(&c, &["acide bempédoïque"], "LDL-cholestérol"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn a_uroselective_alpha_blocker_still_lowers_the_pressure_less() {
+        let c = shipped("Récepteurs alpha-1 adrénergiques");
+        assert_eq!(reads(&c, &["tamsulosine"], "Débit urinaire"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["doxazosine"], "Pression artérielle"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["tamsulosine"], "Pression artérielle")
+                > level(&c, &["doxazosine"], "Pression artérielle")
+        );
+        assert_eq!(reads(&c, &["doxazosine"], "Fréquence cardiaque"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["tamsulosine"], "Dilatation de l'iris"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn an_ssri_waits_for_its_autoreceptor_and_tramadol_adds_to_it() {
+        let c = shipped("Synapse sérotoninergique");
+        assert_eq!(
+            reads(&c, &["sertraline"], "Transmission sérotoninergique"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &["sertraline"], "Agrégation plaquettaire"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["sertraline"], "Pression artérielle"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["venlafaxine"], "Pression artérielle"),
+            Trend::Up
+        );
+        let t = |g: &[&str]| level(&c, g, "Transmission sérotoninergique");
+        assert!(t(&["sertraline", "tramadol"]) > t(&["sertraline"]));
+        assert!(t(&["sertraline", "moclobémide"]) > t(&["sertraline"]));
+        for m in ["tramadol", "moclobémide"] {
+            assert_eq!(
+                reads(&c, &[m], "Agrégation plaquettaire"),
+                Trend::Rest,
+                "{m}"
+            );
+        }
+        // Le délai d'action : l'autorécepteur se désensibilise.
+        let (f, _) = played(&c, "ISRS au long cours");
+        let tr = idx(&c, "Transmission sérotoninergique");
+        assert!(f[120].level[tr] > f[10].level[tr]);
+    }
+
+    #[test]
+    fn a_setron_takes_the_acute_phase_and_the_nk1_antagonist_the_delayed_one() {
+        let c = shipped("Centre du vomissement");
+        let chemo = "cyclophosphamide";
+        assert_eq!(reads(&c, &[chemo], "Vomissements aigus"), Trend::Up);
+        assert_eq!(reads(&c, &[chemo], "Vomissements retardés"), Trend::Up);
+        assert_eq!(
+            reads(&c, &[chemo, "ondansétron"], "Vomissements aigus"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &[chemo, "ondansétron"], "Vomissements retardés"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &[chemo, "aprépitant"], "Vomissements retardés"),
+            Trend::Rest
+        );
+        assert_eq!(reads(&c, &["apomorphine"], "Vomissements aigus"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["apomorphine", "dompéridone"], "Vomissements aigus"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["scopolamine"], "Mal des transports"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["ondansétron"], "Mal des transports"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &[chemo, "scopolamine"], "Vomissements aigus"),
+            Trend::Up
+        );
+    }
+
+    #[test]
+    fn levothyroxine_lowers_the_tsh_and_an_antithyroid_raises_it() {
+        let c = shipped("Axe thyréotrope");
+        assert_eq!(reads(&c, &["lévothyroxine"], "TSH"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["lévothyroxine"], "Fréquence cardiaque"),
+            Trend::Up
+        );
+        for m in ["carbimazole", "thiamazole", "lithium"] {
+            assert_eq!(reads(&c, &[m], "TSH"), Trend::Up, "{m}");
+        }
+        assert_eq!(reads(&c, &["carbimazole"], "T4 libre"), Trend::Down);
+        assert_eq!(reads(&c, &["amiodarone"], "T4 libre"), Trend::Up);
+        assert_eq!(reads(&c, &["amiodarone"], "T3 libre"), Trend::Down);
+        assert_eq!(reads(&c, &["liothyronine"], "T4 libre"), Trend::Down);
+    }
+
+    #[test]
+    fn a_corticoid_silences_the_adrenal_and_fludrocortisone_only_the_kidney() {
+        let c = shipped("Axe corticotrope");
+        assert_eq!(reads(&c, &["prednisone"], "Cortisol endogène"), Trend::Down);
+        assert_eq!(reads(&c, &["prednisone"], "Glycémie"), Trend::Up);
+        assert_eq!(reads(&c, &["prednisone"], "Inflammation"), Trend::Down);
+        assert_eq!(reads(&c, &["bétaméthasone"], "Kaliémie"), Trend::Rest);
+        assert_eq!(reads(&c, &["fludrocortisone"], "Kaliémie"), Trend::Down);
+        assert_eq!(reads(&c, &["fludrocortisone"], "Glycémie"), Trend::Rest);
+        assert_eq!(
+            reads(&c, &["fludrocortisone"], "Cortisol endogène"),
+            Trend::Rest
+        );
+        // Aucune adaptation : le modèle dirait l'inverse de l'atrophie.
+        assert!(c.nodes.iter().all(|n| !n.adapts));
+    }
+
+    #[test]
+    fn stopping_denosumab_rebounds_and_a_bisphosphonate_relay_does_not() {
+        let c = shipped("Remodelage osseux");
+        assert_eq!(reads(&c, &["dénosumab"], "Résorption osseuse"), Trend::Down);
+        assert_eq!(reads(&c, &["dénosumab"], "Calcémie"), Trend::Down);
+        assert_eq!(reads(&c, &["tériparatide"], "Formation osseuse"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["alendronate"], "Formation osseuse"),
+            Trend::Rest
+        );
+        let res = idx(&c, "Résorption osseuse");
+        let (f, stop) = played(&c, "Arrêt du dénosumab sans relais");
+        assert!(f[stop as usize..]
+            .iter()
+            .any(|f| trend(f.level[res]) == Trend::Up));
+        let (f, stop) = played(&c, "Arrêt du dénosumab, relais par l'acide zolédronique");
+        assert!(f[stop as usize..]
+            .iter()
+            .all(|f| trend(f.level[res]) != Trend::Up));
+    }
+
+    #[test]
+    fn a_first_generation_antihistamine_sedates_and_bilastine_does_not() {
+        let c = shipped("Récepteurs histaminiques H1");
+        assert_eq!(reads(&c, &["hydroxyzine"], "Vigilance"), Trend::Down);
+        assert_eq!(reads(&c, &["hydroxyzine"], "Salivation"), Trend::Down);
+        for m in ["bilastine", "desloratadine", "cétirizine"] {
+            assert_eq!(reads(&c, &[m], "Vigilance"), Trend::Rest, "{m}");
+            assert_eq!(reads(&c, &[m], "Prurit et urticaire"), Trend::Down, "{m}");
+        }
+    }
+
+    fn meet(given: &[(&str, &str)]) -> Vec<Meeting> {
+        let cascades: Vec<Cascade> = STARTER_CASCADES.iter().map(|t| parse(t)).collect();
+        let lines: Vec<Line> = given
+            .iter()
+            .map(|(n, d)| Line { name: n, dci: d })
+            .collect();
+        meetings(&cascades, &lines)
+    }
+
+    fn effect(m: &[Meeting], title: &str, effect: &str) -> Option<Together> {
+        let cascades: Vec<Cascade> = STARTER_CASCADES.iter().map(|t| parse(t)).collect();
+        m.iter()
+            .filter(|m| cascades[m.cascade].title == title)
+            .flat_map(|m| m.effects.iter())
+            .find(|(e, _)| e == effect)
+            .map(|(_, t)| *t)
+    }
+
+    /// **Ce qu'une ordonnance croise sur les cascades**, tel que la
+    /// figure le montrerait si l'on cochait les deux cases : le nitré
+    /// sur l'inhibiteur de la PDE5, le propranolol sur le salbutamol,
+    /// l'oxybutynine sur le donépézil, la naloxone sur la morphine.
+    #[test]
+    fn two_lines_on_one_cascade_add_up_or_undo_each_other() {
+        let m = meet(&[("Viagra", "sildénafil"), ("Natispray", "trinitrine")]);
+        assert_eq!(
+            effect(&m, "Monoxyde d'azote et GMPc", "Pression artérielle"),
+            Some(Together::Adds)
+        );
+        let m = meet(&[("Ventoline", "salbutamol"), ("Avlocardyl", "propranolol")]);
+        assert_eq!(
+            effect(&m, "Récepteurs bêta-adrénergiques", "Bronchodilatation"),
+            Some(Together::Opposes)
+        );
+        let m = meet(&[("Aricept", "donépézil"), ("Ditropan", "oxybutynine")]);
+        assert_eq!(
+            effect(&m, "Récepteurs muscariniques", "Mémoire et vigilance"),
+            Some(Together::Opposes)
+        );
+        let m = meet(&[("Skenan", "morphine"), ("Narcan", "naloxone")]);
+        assert_eq!(
+            effect(&m, "Récepteur opioïde mu", "Transmission de la douleur"),
+            Some(Together::Opposes)
+        );
+        let m = meet(&[
+            ("Kardégic", "acide acétylsalicylique"),
+            ("Plavix", "clopidogrel"),
+        ]);
+        assert_eq!(
+            effect(&m, "Activation plaquettaire", "Agrégation plaquettaire"),
+            Some(Together::Adds)
+        );
+        let m = meet(&[("Lasilix", "furosémide"), ("Aldactone", "spironolactone")]);
+        assert_eq!(
+            effect(&m, "Néphron et potassium", "Kaliémie"),
+            Some(Together::Opposes)
+        );
+        // Ce qui s'oppose passe devant ce qui s'additionne.
+        let m = meet(&[
+            ("Viagra", "sildénafil"),
+            ("Natispray", "trinitrine"),
+            ("Ventoline", "salbutamol"),
+            ("Avlocardyl", "propranolol"),
+        ]);
+        assert!(m[0].effects.iter().any(|(_, t)| *t == Together::Opposes));
+    }
+
+    /// Une association porte chacun de ses composants ; une sous-chaîne
+    /// ne porte rien ; deux lignes de la même molécule ne se croisent
+    /// pas ; deux molécules sans cascade commune non plus.
+    #[test]
+    fn a_meeting_needs_two_molecules_named_whole() {
+        let m = meet(&[
+            ("Tarka", "vérapamil + trandolapril"),
+            ("Natispray", "trinitrine"),
+        ]);
+        assert!(
+            m.is_empty(),
+            "le vérapamil n'est dans aucune cascade : {m:?}"
+        );
+        let m = meet(&[("Aricept", "donépézil"), ("Ditropan", "oxybutyn")]);
+        assert!(m.is_empty());
+        let m = meet(&[("Zoloft", "sertraline"), ("Zoloft 50", "sertraline")]);
+        assert!(m.is_empty());
+        let m = meet(&[("Doliprane", "paracétamol"), ("Zoloft", "sertraline")]);
+        assert!(m.is_empty());
+        let c = parse("A -> B\nmolécule x : agoniste A\nmolécule y : agoniste A");
+        let lines = [
+            Line {
+                name: "X+Y",
+                dci: "x + y",
+            },
+            Line {
+                name: "Autre",
+                dci: "z",
+            },
+        ];
+        assert!(
+            meetings(&[c], &lines).is_empty(),
+            "une ligne ne se croise pas elle-même"
+        );
     }
 
     #[test]

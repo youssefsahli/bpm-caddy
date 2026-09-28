@@ -1404,7 +1404,7 @@ add clicking and typing; it is not the price of entry.
   of buttons under the bottom of the window. Capped, what passes over
   the cap is a gesture, and a gesture behind a floating bar is a gesture
   that does not exist. The thirty-fifth is the crossing's own readings,
-  which is not a tail at all but the whole screen: nine chapters one
+  which is not a tail at all but the whole screen: ten chapters one
   under the next, and a floating bar let it read as though it stopped at
   the cytochromes. It is also where a companion chip lands — see
   `DdiSection` — and a chip that opens a screen whose answer is four
@@ -2417,7 +2417,7 @@ add clicking and typing; it is not the price of entry.
   file's list *plus* this card, which is the question of the telephone
   passed whole rather than an empty screen to recompose. **And it opens
   on the chapter the chip named** (`DdiSection`, carried by the chip
-  because the field is not optional): the crossing writes nine chapters,
+  because the field is not optional): the crossing writes ten chapters,
   and landing at the top after clicking « Écraser » is answering a
   different question. That cost the crossing three readings it did not
   have — `crush`, `gravidity`, and the monographs' own sentences, which
@@ -2693,6 +2693,23 @@ travel down the layers (`CASCADE_STAGGER`) instead of switching at once.
 Pulses along the arrows run at a speed made of the source's activity, one
 dot per fixed length, so an arrow whose source is blocked visibly carries
 nothing. The view requests a repaint every 40 ms while it is on screen.
+
+**Two lines on one cascade** (`cascade::meetings`, the crossing's
+chapter `DdiSection::Cascades`). For each shipped cascade, every pair of
+lines whose DCI — whole, or one component of a « A + B » association,
+never a substring — names two different molecules is settled three
+times: each alone, then both. `together` keeps an effect only when the
+pair moves it otherwise than either alone: **opposes** (two contrary
+senses, or one that brings back toward rest what the other moved —
+naloxone does nothing alone and undoes morphine) or **adds** (further
+than the stronger of the two; downward in proportion, `SHARE`, because
+a level cannot go below zero and aspirin alone already nearly silences
+aggregation). A pair that moves no effect is not a meeting. Local forms
+stay out (`classes::stays_local`), as in every clinical table; the
+reading is memoised in `DdiReading` against `cascades_rev`, bumped by
+`reload_cascades`, which keeps each cascade parsed in its
+`CascadeEntry`. The cascade's title is the door: it opens the figure
+with both molecules given (`open_cascade_giving`).
 
 Start-view keys: `cascades` (β, bisoprolol given at 10 and stopped at 70,
 time on the rebound), `cascades_decrire` (the editor and its live

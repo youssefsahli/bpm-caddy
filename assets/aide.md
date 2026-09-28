@@ -124,12 +124,18 @@ voie. La ciclosporine en collyre ne génère aucune interaction ; le
 lithium en gel ne demande pas de lithiémie. Les précautions de la voie
 locale figurent sur la fiche du produit.
 
-La dernière lecture recherche les interactions par voie enzymatique.
-Elle **ne connaît que sept cytochromes** : ni la glycoprotéine P, ni les
-transporteurs hépatiques, ni les effets additifs — deux sédatifs
-n'interagissent sur aucune enzyme et leurs effets s'additionnent. Une
-absence d'interaction enzymatique n'est pas une absence d'interaction ;
-les lignes absentes de la table sont **listées**.
+La dernière lecture recherche les interactions par voie enzymatique
+et par transporteur. Elle **ne connaît que sept cytochromes et trois
+transporteurs** — la glycoprotéine P, l'OATP1B1 et la BCRP, qui portent
+les interactions qu'aucun cytochrome n'explique : le dabigatran sous
+amiodarone, la digoxine sous vérapamil, la rosuvastatine sous
+ciclosporine. Ni les autres transporteurs, ni les glucuronoconjugaisons,
+ni les effets additifs — deux sédatifs n'interagissent sur aucune enzyme
+et leurs effets s'additionnent. Une absence d'interaction enzymatique
+n'est pas une absence d'interaction ; les lignes absentes de la table
+sont **listées**. Deux lignes qui se rencontrent sur plusieurs voies —
+la colchicine sous clarithromycine, par le CYP3A4 et la P-gp — tiennent
+en une seule entrée qui les nomme toutes.
 
 Une prodrogue s'y lit à l'envers, et la ligne le précise : inhiber
 l'enzyme qui produit le métabolite actif du clopidogrel, de la codéine,
@@ -137,7 +143,7 @@ du tramadol, du losartan ou du tamoxifène ne les fait pas s'accumuler :
 leur effet est supprimé.
 
 Trois réponses possibles : interaction, **sans voie connue** (molécule
-présente dans la table, métabolisée par aucune des enzymes suivies —
+présente dans la table, qui ne passe par aucune des voies suivies —
 critère utile pour choisir un traitement de remplacement), ou **absente
 de la table**, ce qui ne permet aucune conclusion.
 
@@ -224,11 +230,12 @@ mentionne.
 L'écran « Croisement » applique les mêmes analyses à une liste libre,
 sans dossier : reprise du dossier ouvert ou saisie des noms.
 
-Neuf chapitres sur la même liste : les **interactions citées** par les
+Dix chapitres sur la même liste : les **interactions citées** par les
 monographies, sans déduction ; les interactions sur les
-**cytochromes** ; la **demi-vie plasmatique**, soit le délai de retour à
-l'état antérieur après une modification d'exposition ; la **revue
-d'ordonnance** — doublons, associations, cascades ; l'**adaptation
+**cytochromes et les transporteurs** ; la **demi-vie plasmatique**, soit
+le délai de retour à l'état antérieur après une modification
+d'exposition ; la **revue d'ordonnance** — doublons, associations,
+cascades de prescription ; **sur une même cascade** ; l'**adaptation
 rénale** à la clairance saisie ; l'**adaptation hépatique** au stade
 choisi ; le **sujet âgé** ; la **grossesse et l'allaitement** ; et
 l'**écrasement des formes orales**.
@@ -247,6 +254,16 @@ passer sous silence le confondrait avec un produit non documenté.
 Une hépatopathie évolutive n'est pas un stade : les statines y sont
 contre-indiquées quel que soit le score de Child-Pugh. Cette
 contre-indication figure sur leur fiche, et non sous un palier.
+
+**Sur une même cascade** nomme deux lignes qui agissent sur une même
+cascade livrée — l'aspirine et le clopidogrel sur l'activation
+plaquettaire, le nitré et le sildénafil sur le GMPc, l'oxybutynine et
+le donépézil sur l'acétylcholine — et dit ce que la figure montre des
+deux ensemble : elles **s'additionnent** sur un effet, ou elles
+**s'opposent**. C'est l'autre moitié des cytochromes : deux molécules
+qui ne se croisent sur aucune enzyme se rencontrent sur un récepteur.
+Le modèle est qualitatif : un sens de variation, jamais une gravité. Le
+titre de la cascade l'ouvre, les deux molécules déjà données.
 
 La carte trace un arc par interaction, du produit en cause vers le
 produit affecté. La couleur indique l'ordre de lecture, non une gravité
@@ -768,11 +785,16 @@ un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
 pour un effet — posé en creux.
 
-**10 cascades livrées** : bêta-adrénergiques, muscariniques,
-dopaminergiques D2, opioïde mu, GABA-A, système
-rénine-angiotensine-aldostérone, activation plaquettaire,
-cyclo-oxygénases, coagulation, sécrétion acide. Semées une fois : une
-cascade réécrite ou supprimée par l'équipe ne revient pas.
+**26 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
+muscariniques, dopaminergiques D2, histaminiques H1, opioïde mu,
+GABA-A, synapse sérotoninergique, centre du vomissement. Cœur, rein et
+métabolisme : système rénine-angiotensine-aldostérone, monoxyde d'azote
+et GMPc, néphron et potassium, glycémie et incrétines, LDL-cholestérol,
+activation plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide.
+Hormones et os : axes thyréotrope et corticotrope, remodelage osseux.
+Cytokines : TNF-alpha, interleukine 6, voie JAK-STAT, axe IL-23 et
+IL-17, inflammation de type 2. Semées une fois : une cascade réécrite
+ou supprimée par l'équipe ne revient pas.
 
 Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
 la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une
@@ -862,6 +884,17 @@ chaque délivrance légitime serait signalée.
 
 En deçà de trois délivrances antérieures, aucun signalement : pas de
 rythme de référence.
+
+# Liens d'une monographie
+
+Dans le texte d'une fiche, le nom d'une autre fiche de la base — nom de
+spécialité ou DCI — est un lien : un clic l'ouvre. La molécule écrite
+sans son sel l'est aussi, quand elle ne désigne qu'une molécule de la
+base : « valproate » ouvre la fiche du valproate de sodium,
+« olmésartan » celle de l'olmésartan médoxomil. « Ténofovir », qui
+désigne deux molécules, reste en texte simple, comme un nom de forme
+locale : le « fluorouracil » d'une fiche de cancérologie est la
+perfusion, pas la crème.
 
 # Pharmacocinétique et pharmacodynamie
 

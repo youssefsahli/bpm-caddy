@@ -7,7 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.358.0] - 2026-09-29
+
 ### Added
+- Interactions : la lecture des cytochromes connaît maintenant trois
+  transporteurs — glycoprotéine P, OATP1B1 et BCRP. Le dabigatran sous
+  amiodarone ou sous vérapamil, la digoxine sous vérapamil, la
+  rosuvastatine sous ciclosporine, le répaglinide sous gemfibrozil sont
+  signalés, chacun avec la phrase de la fiche qui le fonde. Vingt
+  molécules de plus dans la table (dabigatran, digoxine, édoxaban,
+  lopéramide, bilastine…). Deux lignes qui se rencontrent sur plusieurs
+  voies tiennent en une seule entrée qui les nomme toutes
+  (« Colchicine — sous Zeclar, via CYP3A4, P-gp »). L'onglet s'appelle
+  « CYP et P-gp ».
+- Seize cascades de plus (26) : TNF-alpha, interleukine 6, voie
+  JAK-STAT, axe IL-23 et IL-17, inflammation de type 2 ; monoxyde
+  d'azote et GMPc, néphron et potassium, glycémie et incrétines,
+  LDL-cholestérol, récepteurs alpha-1 ; synapse sérotoninergique,
+  centre du vomissement, axes thyréotrope et corticotrope, remodelage
+  osseux, récepteurs H1. Chacune avec ses histoires toutes prêtes :
+  arrêt du dénosumab sans relais, sildénafil puis trinitrine, sétron puis
+  anti-NK1…
+- « Croisement » : un chapitre « Sur une même cascade » nomme deux
+  lignes qui agissent sur une même cascade — l'aspirine et le
+  clopidogrel, le nitré et le sildénafil, l'oxybutynine et le
+  donépézil — et dit si elles s'additionnent ou s'opposent sur un
+  effet. Le titre de la cascade l'ouvre avec les deux molécules
+  données.
+- Monographies : la molécule écrite sans son sel devient un lien vers sa
+  fiche — « valproate », « olmésartan », « amphotéricine »,
+  « testostérone »… —, quand elle ne désigne qu'une molécule de la base.
+  Les interactions citées par les fiches en profitent.
 - Trente-quatre monographies de plus (1117 fiches), choisies parmi les
   molécules les plus délivrées en ville que la base ne portait pas :
   Toco, Nabucom, Acarizax, Fazol, Importal, Inofer, Iperten, Mizollen,
@@ -18,6 +48,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Wakix.
 
 ### Fixed
+- Une forme locale n'ouvre plus de cascade depuis sa fiche : le
+  Cortisédermyl, hydrocortisone en crème, ne propose pas l'axe
+  corticotrope.
+- Fiches Néoral, Elisor, Lixiana, Xarelto, Tégrétol et Novonorm : le
+  transporteur en cause est nommé (glycoprotéine P, OATP1B1, BCRP).
 - Grossesse : le triméthoprime seul (Delprim) n'est plus lu comme le
   cotrimoxazole.
 - « En cas d'oubli » : Oralair et Acarizax reçoivent la conduite d'une

@@ -1603,11 +1603,26 @@ livre = "Une phrase qui n'est plus livrée"
                 "assets/aide.md",
                 AIDE,
                 format!(
-                    "ne connaît que {} cytochromes",
-                    match crate::cyp::Enzyme::ALL.len() {
+                    "ne connaît que {} cytochromes et {}\ntransporteurs",
+                    match crate::cyp::Enzyme::ALL
+                        .iter()
+                        .filter(|e| !e.is_transporter())
+                        .count()
+                    {
                         7 => "sept",
                         n => panic!(
                             "la table porte {n} cytochromes : l'écrire en toutes \
+                             lettres dans le manuel et ici"
+                        ),
+                    },
+                    match crate::cyp::Enzyme::ALL
+                        .iter()
+                        .filter(|e| e.is_transporter())
+                        .count()
+                    {
+                        3 => "trois",
+                        n => panic!(
+                            "la table porte {n} transporteurs : l'écrire en toutes \
                              lettres dans le manuel et ici"
                         ),
                     }
@@ -1647,7 +1662,7 @@ livre = "Une phrase qui n'est plus livrée"
                 format!(
                     "{} chapitres sur la même liste",
                     match crate::app::DdiSection::ALL.len() {
-                        9 => "Neuf",
+                        10 => "Dix",
                         n => panic!(
                             "le croisement porte {n} chapitres : l'écrire en toutes \
                              lettres dans le manuel et ici"

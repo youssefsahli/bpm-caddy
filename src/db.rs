@@ -3220,7 +3220,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         monitoring: "Pas de surveillance biologique de routine : le temps de Quick s'allonge mais n'est pas calibré pour cette molécule et ne dit rien d'utile. Clairance de la créatinine avant l'instauration puis au moins une fois par an, plus souvent au-delà de 75 ans ou en dessous de 60 mL/min. Hémoglobine devant toute fatigue inexpliquée. À chaque renouvellement, revérifier que le comprimé de 15 ou 20 mg est bien pris au cours d'un repas : c'est la première cause de sous-anticoagulation réelle sous rivaroxaban.",
         iup: "Ce médicament empêche votre sang de faire des caillots ; il ne se sent pas et ne soulage rien, mais il vous protège d'un accident vasculaire cérébral ou d'une embolie. La règle la plus importante tient au repas : les comprimés de 15 et 20 mg se prennent au cours d'un repas, et un comprimé avalé à jeun n'est absorbé qu'à moitié — c'est la première cause de traitement inefficace. Une prise par jour, à heure fixe, au moment d'un vrai repas et pas d'une collation. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel, jamais deux comprimés à la fois. N'interrompez jamais le traitement de vous-même, même quelques jours : la protection disparaît en un à deux jours, et seule une décision médicale peut le suspendre avant une intervention. Prévenez tout médecin, dentiste, infirmier ou chirurgien que vous êtes sous anticoagulant, et gardez la carte correspondante sur vous. Ne prenez ni aspirine ni anti-inflammatoire sans demander conseil, et pas de millepertuis. Signalez tout saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, des maux de tête inhabituels, ou une fatigue et un essoufflement qui s'installent — ils peuvent révéler une anémie. Après une chute avec choc à la tête, consultez même si tout va bien sur le moment.",
         half_life: "5 à 9 heures chez l'adulte jeune, 11 à 13 heures chez le sujet âgé",
-        elimination: "Environ un tiers éliminé par voie rénale sous forme inchangée, le reste métabolisé (CYP3A4, CYP2J2) puis éliminé par voies rénale et fécale.",
+        elimination: "Environ un tiers éliminé par voie rénale sous forme inchangée, le reste métabolisé (CYP3A4, CYP2J2) puis éliminé par voies rénale et fécale ; substrat de la P-gp et de la BCRP.",
         renal: "Clairance 15 à 49 mL/min : 15 mg par jour en fibrillation atriale. Inférieure à 15 mL/min : non recommandé.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Xarelto — base de données publique des médicaments (ANSM)\nESC 2020 — fibrillation atriale\nHAS — bon usage des anticoagulants oraux directs",
@@ -3262,7 +3262,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         monitoring: "Clairance de la créatinine et poids à l'instauration puis au moins une fois par an : les deux commandent la dose. Efficacité moindre décrite lorsque la clairance dépasse 95 mL/min en fibrillation atriale.",
         iup: "Ce médicament empêche votre sang de faire des caillots et vous protège d'un accident vasculaire cérébral ou d'une embolie ; il ne procure aucune sensation, ce qui le rend facile à oublier et facile à arrêter à tort. Une prise par jour, à heure fixe, avec ou sans aliments. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel : jamais deux comprimés le même jour. Signalez toute variation importante de poids : la dose dépend du poids, et perdre ou prendre plusieurs kilogrammes peut la faire changer. N'arrêtez jamais le traitement de votre propre initiative, même quelques jours et même pour un soin dentaire : la protection disparaît en un à deux jours et seule une décision médicale peut le suspendre. Prévenez tout médecin, dentiste, infirmier ou chirurgien que vous prenez un anticoagulant, et gardez la carte correspondante sur vous. Ne prenez ni aspirine ni anti-inflammatoire sans demander conseil, et pas de millepertuis, qui rend le traitement inefficace. Signalez un saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, une fatigue ou un essoufflement nouveaux. Après une chute avec choc à la tête, consultez même si vous vous sentez bien.",
         half_life: "10 à 14 heures",
-        elimination: "Environ 50 % éliminé par voie rénale sous forme inchangée, le reste par voie biliaire et intestinale.",
+        elimination: "Environ 50 % éliminé par voie rénale sous forme inchangée, le reste par voie biliaire et intestinale ; substrat de la P-gp, métabolisme par le CYP3A4 minime.",
         renal: "Clairance 15 à 50 mL/min : 30 mg par jour. Inférieure à 15 mL/min : non recommandé.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement.",
         sources: "RCP Lixiana — base de données publique des médicaments (ANSM)\nESC 2020 — fibrillation atriale",
@@ -5483,7 +5483,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Carbamazépine, dérivé iminostilbène bloquant les canaux sodiques voltage-dépendants sous leur forme inactivée, ce qui limite les décharges neuronales répétitives à haute fréquence sans gêner la transmission normale. Cette stabilisation membranaire explique aussi bien l'effet antiépileptique que l'effet remarquable sur la douleur paroxystique du trijumeau. C'est par ailleurs un inducteur enzymatique puissant, y compris de son propre métabolisme, ce qui domine son profil d'interactions.",
         dosage: "Épilepsie : débuter à 100 à 200 mg une à deux fois par jour, avec augmentation lente par paliers de 200 mg tous les cinq à sept jours ; posologie d'entretien usuelle de 800 à 1 200 mg par jour en deux à trois prises, ou en deux prises avec les formes à libération prolongée. Névralgie du trijumeau : débuter à 200 à 400 mg par jour et augmenter progressivement jusqu'à disparition de la douleur, en général entre 600 et 800 mg par jour, puis rechercher la dose minimale efficace. Chez le sujet âgé, débuter à 100 mg par jour et augmenter très lentement, du fait du risque d'hyponatrémie, de sédation et d'ataxie. Les doses doivent être réévaluées deux à quatre semaines après l'instauration, l'auto-induction enzymatique faisant baisser les concentrations.",
         contraindications: "Hypersensibilité à la carbamazépine et allergie croisée possible avec les antidépresseurs tricycliques, bloc auriculoventriculaire, antécédent d'hypoplasie médullaire ou de porphyrie hépatique aiguë, association aux IMAO non sélectifs et dans les deux semaines suivant leur arrêt, association au voriconazole et aux inhibiteurs de protéase. Chez les patients d'origine han, thaïlandaise ou d'Asie du Sud-Est, la présence de l'allèle HLA-B*1502 contre-indique le traitement en l'absence d'alternative.",
-        ddi: "Inducteur enzymatique puissant des CYP3A4, CYP2C9, CYP2B6 et de la glucuroconjugaison : il diminue fortement l'efficacité des contraceptifs œstroprogestatifs, des progestatifs seuls et de l'implant, imposant une contraception non hormonale ou un dispositif intra-utérin au cuivre, avec information explicite de la patiente. Il abaisse également les concentrations des anticoagulants oraux directs et des AVK, de la lamotrigine, du valproate, des corticoïdes, de la ciclosporine, des inhibiteurs de protéase, du praziquantel, de la lévothyroxine, des statines métabolisées par le CYP3A4 et de la méthadone, avec risque de sevrage. Les inhibiteurs du CYP3A4 (macrolides sauf spiramycine, azolés, vérapamil, diltiazem, jus de pamplemousse) augmentent la carbamazépinémie avec risque de surdosage. Le valproate augmente la fraction active du métabolite époxyde. Association déconseillée aux médicaments hyponatrémiants (diurétiques thiazidiques, ISRS) et risque sérotoninergique avec les IMAO, contre-indiqués.",
+        ddi: "Inducteur enzymatique puissant des CYP3A4, CYP2C9, CYP2B6 et de la glucuroconjugaison : il diminue fortement l'efficacité des contraceptifs œstroprogestatifs, des progestatifs seuls et de l'implant, imposant une contraception non hormonale ou un dispositif intra-utérin au cuivre, avec information explicite de la patiente. Il abaisse également les concentrations des anticoagulants oraux directs et des AVK, de la lamotrigine, du valproate, des corticoïdes, de la ciclosporine, des inhibiteurs de protéase, du praziquantel, de la lévothyroxine, des statines métabolisées par le CYP3A4 et de la méthadone, avec risque de sevrage. Les inhibiteurs du CYP3A4 (macrolides sauf spiramycine, azolés, vérapamil, diltiazem, jus de pamplemousse) augmentent la carbamazépinémie avec risque de surdosage. Il induit aussi la glycoprotéine P : le dabigatran et l'édoxaban sont diminués. Le valproate augmente la fraction active du métabolite époxyde. Association déconseillée aux médicaments hyponatrémiants (diurétiques thiazidiques, ISRS) et risque sérotoninergique avec les IMAO, contre-indiqués.",
         adverse: "Fréquents en début de traitement et souvent dose-dépendants : somnolence, sensations vertigineuses, ataxie, diplopie, vision floue, nausées, céphalées, éruption cutanée bénigne. Hyponatrémie par SIADH fréquente, surtout chez le sujet âgé et en association à un diurétique. Leucopénie modérée souvent transitoire, élévation isolée des gamma-GT liée à l'induction. Plus rarement mais graves : syndrome de Stevens-Johnson et syndrome de Lyell, dont le risque est fortement lié à l'allèle HLA-B*1502 dans les populations asiatiques ; syndrome DRESS avec fièvre, éruption, adénopathies, hyperéosinophilie et atteinte hépatique ; agranulocytose et aplasie médullaire ; hépatite ; troubles de la conduction cardiaque ; idées suicidaires.",
         monitoring: "NFS avec plaquettes, bilan hépatique, ionogramme et natrémie avant l'instauration, puis à quelques semaines et régulièrement ensuite, plus souvent chez le sujet âgé. Génotypage HLA-B*1502 avant instauration chez les patients originaires d'Asie du Sud-Est ou d'ascendance han. Carbamazépinémie utile en cas d'inefficacité, de signes de surdosage (diplopie, ataxie, somnolence), d'association modifiant le métabolisme et deux à quatre semaines après l'instauration en raison de l'auto-induction. Surveillance cutanée étroite les deux premiers mois, tout exanthème fébrile imposant un arrêt et un avis immédiat. Vérification à chaque délivrance de la contraception chez la femme en âge de procréer.",
         iup: "Prenez les comprimés au cours des repas, avec un grand verre d'eau, et respectez la montée progressive des doses : les vertiges et la vision double du début s'atténuent quand l'organisme s'habitue, c'est précisément pourquoi on augmente lentement. Si vous êtes une femme et que vous prenez une pilule, un implant ou un patch contraceptif, sachez que ce médicament les rend inefficaces : il faut mettre en place une autre contraception, un stérilet au cuivre ou un préservatif, et en parler à votre médecin sans attendre. N'arrêtez jamais brutalement, un arrêt sec peut déclencher des crises même si vous n'en aviez plus, et la diminution doit toujours être décidée et étalée avec le médecin. Surveillez votre peau pendant les deux premiers mois et consultez le jour même devant toute éruption, surtout si elle s'accompagne de fièvre, de gonflement du visage, de lésions dans la bouche ou d'un mauvais état général. Signalez également fièvre inexpliquée, mal de gorge, aphtes ou bleus faciles, qui peuvent traduire une atteinte des globules blancs, ainsi qu'une fatigue avec confusion ou des chutes, qui peuvent traduire une baisse du sodium sanguin. Évitez l'alcool et le jus de pamplemousse, et signalez ce traitement pour toute nouvelle prescription, car il diminue l'effet de très nombreux médicaments.",
@@ -6496,7 +6496,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         monitoring: "Bilan lipidique avant l'instauration, quatre à huit semaines après chaque adaptation, puis espacé une fois l'objectif atteint. Transaminases avant le traitement puis selon les facteurs de risque hépatique ou devant tout symptôme. CPK avant l'instauration chez le sujet à risque, âgé, insuffisant rénal, hypothyroïdien ou ayant un antécédent musculaire, puis uniquement en cas de plainte musculaire. Glycémie périodique chez le patient à risque de diabète. Surveillance particulière chez le transplanté sous ciclosporine.",
         iup: "La prise se fait le soir, au coucher, la synthèse du cholestérol étant nocturne. Le patient doit connaître le signal musculaire : des douleurs ou des crampes symétriques, une faiblesse des cuisses ou des épaules, une difficulté à monter un escalier ou à se relever d'une chaise, doivent être signalées, et davantage encore lorsqu'elles s'accompagnent de fièvre, d'une fatigue intense ou d'urines foncées, qui imposent un dosage des CPK sans délai. Il faut cependant rappeler que ces douleurs sont souvent d'une autre origine et qu'un arrêt définitif décidé seul fait perdre un bénéfice cardiovasculaire important : la pravastatine est justement souvent la molécule vers laquelle on se tourne après une intolérance à une autre statine, et de nombreuses solutions existent avant l'abandon. Le traitement est silencieux et se poursuit au long cours même lorsque le bilan est normalisé, en complément et non en remplacement de l'alimentation, de l'activité physique et de l'arrêt du tabac. Un avantage pratique de cette statine mérite d'être dit au comptoir : elle est beaucoup moins sensible aux interactions, le pamplemousse et la plupart des antibiotiques ne posant pas le problème rencontré avec la simvastatine, ce qui simplifie les prescriptions ponctuelles. Restent quelques précautions d'automédication : la levure de riz rouge, vendue librement, contient une statine naturelle et ne doit jamais s'ajouter au traitement ; les compléments à visée hypolipémiante, les fortes doses de vitamine B3 et le millepertuis doivent être signalés au pharmacien ; si un traitement par résine hypocholestérolémiante est associé, il faut respecter un intervalle de plusieurs heures entre les deux prises. L'alcool doit rester modéré.",
         half_life: "≈ 1,5 à 2 heures, la durée de l'effet hypolipémiant excédant largement la demi-vie plasmatique",
-        elimination: "Peu métabolisée par les cytochromes ; élimination mixte, rénale pour environ vingt pour cent et biliaire et fécale pour le reste, avec une captation hépatique dépendante des transporteurs OATP.",
+        elimination: "Peu métabolisée par les cytochromes ; élimination mixte, rénale pour environ vingt pour cent et biliaire et fécale pour le reste, avec une captation hépatique dépendante des transporteurs OATP, dont l'OATP1B1 : c'est par lui que passe l'interaction avec la ciclosporine.",
         renal: "Insuffisance rénale légère à modérée : posologie usuelle avec surveillance clinique. Insuffisance rénale sévère : instauration à la dose la plus faible et augmentation prudente sous contrôle médical, le risque musculaire étant majoré. Une dégradation brutale de la fonction rénale sous statine doit faire rechercher une rhabdomyolyse.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement. Une contraception efficace est nécessaire chez la femme en âge de procréer et le traitement est interrompu dès qu'une grossesse est envisagée ou découverte.",
         sources: "RCP Elisor — base de données publique des médicaments (ANSM)\nESC — recommandations sur la prise en charge des dyslipidémies\nHAS — bon usage des statines et prévention cardiovasculaire",
@@ -10423,7 +10423,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         monitoring: "Autosurveillance glycémique, notamment postprandiale, à l'instauration et lors des adaptations de dose. Hémoglobine glyquée tous les trois à six mois. Bilan hépatique avant l'instauration et en cas de signe d'appel, l'élimination étant hépatique. Surveillance du poids et recherche systématique d'épisodes hypoglycémiques à l'interrogatoire.",
         iup: "La règle de ce médicament est simple et doit être répétée : une prise juste avant chaque repas, dans le quart d'heure qui précède, et pas de repas, pas de comprimé. Un repas sauté sans avoir sauté la prise, ou un repas très retardé après la prise, provoque une hypoglycémie : sueurs, tremblements, faim brutale, palpitations, vision trouble, difficulté à se concentrer ou changement d'humeur ; il faut alors avaler immédiatement trois morceaux de sucre ou un verre de jus de fruits, puis un aliment glucidique lent. Avoir toujours de quoi se resucrer sur soi, dans le sac, la voiture et à la table de nuit, et informer l'entourage de la conduite à tenir. Si un repas supplémentaire est pris, une prise supplémentaire peut être ajoutée selon les consignes du médecin, ce qui rend ce traitement souple pour les horaires irréguliers. Ne jamais associer ce médicament au gemfibrozil, un traitement des triglycérides avec lequel il est formellement interdit, et signaler toute nouvelle ordonnance, en particulier un antibiotique ou un antifongique.",
         half_life: "Environ 1 heure, avec une élimination rapide qui limite la durée des hypoglycémies par rapport aux sulfamides et autorise une prise à chaque repas.",
-        elimination: "Métabolisme hépatique complet par les CYP2C8 et CYP3A4 en métabolites inactifs, éliminés essentiellement par voie biliaire ; moins de 8 % de la dose est retrouvée dans les urines, principalement sous forme de métabolites.",
+        elimination: "Captation hépatique par le transporteur OATP1B1, puis métabolisme hépatique complet par les CYP2C8 et CYP3A4 en métabolites inactifs, éliminés essentiellement par voie biliaire ; moins de 8 % de la dose est retrouvée dans les urines, principalement sous forme de métabolites.",
         renal: "Aucune adaptation systématique en cas d'insuffisance rénale légère à modérée, l'élimination étant biliaire ; ce profil en fait une option lorsque les sulfamides sont contre-indiqués. En cas d'insuffisance rénale sévère, l'instauration se fait avec prudence et sous surveillance glycémique rapprochée.",
         pregnancy: "Contre-indiqué pendant la grossesse et l'allaitement, faute de données suffisantes ; le relais par l'insuline s'impose dès le projet de grossesse.",
         sources: "RCP Novonorm — base de données publique des médicaments (ANSM)\nHAS — stratégie médicamenteuse du contrôle glycémique du diabète de type 2\nANSM — contre-indication de l'association répaglinide et gemfibrozil",
@@ -19784,7 +19784,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Inhibiteur de la calcineurine de nature polypeptidique cyclique. Après liaison à la cyclophiline, le complexe inhibe la calcineurine, empêche la déphosphorylation de NFAT et bloque la transcription de l'interleukine 2, ce qui inhibe sélectivement l'activation des lymphocytes T auxiliaires sans effet myélotoxique. La vasoconstriction de l'artériole afférente rénale et la fibrose interstitielle expliquent la néphrotoxicité dose-dépendante.",
         dosage: "Posologie individuelle exprimée en milligrammes par kilogramme et par jour, répartie en deux prises quotidiennes à douze heures d'intervalle, aux mêmes heures et toujours dans les mêmes conditions par rapport aux repas. Les doses sont nettement plus élevées en transplantation qu'en dermatologie ou en rhumatologie, où elles sont fixées par le spécialiste et limitées dans le temps. L'adaptation se fait sur les concentrations sanguines résiduelles, la fonction rénale et la pression artérielle. Les différentes spécialités de ciclosporine ne sont pas interchangeables.",
         contraindications: "Insuffisance rénale, hypertension artérielle non contrôlée, infection non contrôlée et antécédent de cancer, en dehors de la transplantation. Association au millepertuis, aux vaccins vivants et, en dermatologie et rhumatologie, à la photothérapie par ultraviolets. Hypersensibilité au produit ou à l'huile de ricin polyoxyéthylénée pour la forme injectable. Allaitement.",
-        ddi: "Inhibiteurs puissants du CYP3A4 comme le kétoconazole, l'itraconazole, la clarithromycine, l'érythromycine, le ritonavir, le diltiazem et le vérapamil, et jus de pamplemousse formellement interdit : élévation majeure des concentrations et néphrotoxicité. Inducteurs comme la rifampicine, la carbamazépine, la phénytoïne et le millepertuis : effondrement des concentrations et rejet. Statines, en particulier simvastatine et atorvastatine : risque de rhabdomyolyse, doses limitées. AINS, aminosides, amphotéricine B et produits de contraste : néphrotoxicité additive. Diurétiques épargneurs de potassium et bloqueurs du système rénine-angiotensine : hyperkaliémie. Colchicine : toxicité majorée.",
+        ddi: "Inhibiteurs puissants du CYP3A4 comme le kétoconazole, l'itraconazole, la clarithromycine, l'érythromycine, le ritonavir, le diltiazem et le vérapamil, et jus de pamplemousse formellement interdit : élévation majeure des concentrations et néphrotoxicité. Inducteurs comme la rifampicine, la carbamazépine, la phénytoïne et le millepertuis : effondrement des concentrations et rejet. Statines, en particulier simvastatine et atorvastatine : risque de rhabdomyolyse, doses limitées. AINS, aminosides, amphotéricine B et produits de contraste : néphrotoxicité additive. Diurétiques épargneurs de potassium et bloqueurs du système rénine-angiotensine : hyperkaliémie. Colchicine : toxicité majorée. La ciclosporine inhibe elle-même la glycoprotéine P et le transporteur OATP1B1 : elle augmente l'exposition à la rosuvastatine et au dabigatran, contre-indiqués, à la digoxine et au répaglinide.",
         adverse: "Néphrotoxicité fonctionnelle puis chronique, hypertension artérielle très fréquente, hyperkaliémie, hypomagnésémie, hyperuricémie avec accès de goutte. Hypertrophie gingivale, hypertrichose et hirsutisme, souvent mal vécus. Tremblement, paresthésies, céphalées, convulsions. Hyperlipidémie. Infections opportunistes, réactivations virales. Lymphomes et cancers cutanés, avec un risque très majoré en cas d'association à la photothérapie. Nausées, diarrhée, hépatotoxicité.",
         monitoring: "Concentration sanguine résiduelle avant la prise du matin, très régulièrement en transplantation et après toute modification de dose ou de traitement associé. Créatininémie et débit de filtration glomérulaire au moins deux fois avant l'instauration puis très régulièrement, toute élévation durable imposant une réduction de dose. Pression artérielle à chaque consultation. Ionogramme avec kaliémie et magnésémie, uricémie, bilan lipidique et bilan hépatique réguliers. Examen dentaire et gingival, examen cutané annuel avec photoprotection stricte.",
         iup: "Le médicament se prend deux fois par jour, à douze heures d'intervalle, aux mêmes heures et toujours de la même façon par rapport aux repas, la solution buvable devant être diluée dans un jus autre que le pamplemousse, dans un verre en verre et non en plastique, et bue immédiatement. Le pamplemousse, son jus et le millepertuis sont interdits, et aucun médicament, complément ou plante, même sans ordonnance, ne doit être ajouté sans vérification, car beaucoup font monter ou chuter le taux sanguin avec un risque de rejet ou d'atteinte du rein. Il ne faut jamais accepter en pharmacie une autre marque de ciclosporine que celle habituelle, car les spécialités ne sont pas équivalentes entre elles. Le jour du contrôle sanguin, la prise du matin se fait après la prise de sang. Deux effets sont fréquents et méritent d'être anticipés : le gonflement des gencives, qui impose un brossage soigneux, du fil dentaire et un détartrage régulier chez le dentiste, et l'augmentation de la pilosité, réversible à l'arrêt. Enfin, la tension et le rein sont surveillés régulièrement, la protection solaire doit être quotidienne, aucun vaccin vivant n'est possible et toute fièvre ou infection impose d'appeler le médecin sans attendre.",
@@ -30933,6 +30933,912 @@ molécule lévodopa + carbidopa : activateur Dopamine
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Métoclopramide sous lévodopa : lévodopa + carbidopa 10- ; métoclopramide 60-
 scénario Dompéridone sous lévodopa : lévodopa + carbidopa 10- ; dompéridone 60-
+",
+    "\
+titre : TNF-alpha
+sujet : Anti-TNF — polyarthrite, spondyloarthrite, psoriasis, MICI
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
+source : RCP des anti-TNF : rechercher une tuberculose active ou latente avant traitement ; infections graves ; insuffisance cardiaque modérée à sévère contre-indiquée
+source : RCP de l'étanercept et du certolizumab pégol : pas d'indication dans les MICI
+
+ligand TNF-alpha : produit surtout par les macrophages et les lymphocytes T activés
+récepteur Récepteurs du TNF : TNFR1 et TNFR2
+relais NF-kappa-B : facteur de transcription des gènes de l'inflammation
+relais Activation endothéliale : molécules d'adhésion, recrutement des leucocytes
+relais Ostéoclastes : résorption osseuse au contact de la synoviale
+ligand IL-6 : induite en aval du TNF, elle fait produire la CRP par le foie
+relais Granulome : macrophages et lymphocytes qui tiennent le bacille tuberculeux enfermé
+relais Cellules à TNF membranaire : macrophages et lymphocytes T de la muqueuse intestinale, lysés ou poussés à l'apoptose par un anticorps entier
+effet Inflammation articulaire : synovite, enthésite
+effet Destruction articulaire : érosions osseuses
+effet Inflammation intestinale : maladie de Crohn, rectocolite hémorragique
+effet CRP : protéine C réactive
+effet Fièvre
+effet Défense contre la tuberculose : baissée, c'est la réactivation d'une tuberculose latente, d'où le dépistage avant traitement
+
+TNF-alpha -> Récepteurs du TNF -> NF-kappa-B
+NF-kappa-B -> IL-6, Activation endothéliale
+Activation endothéliale -> Inflammation articulaire
+Récepteurs du TNF -> Ostéoclastes -> Destruction articulaire
+IL-6 -> CRP, Fièvre
+Récepteurs du TNF -> Granulome -> Défense contre la tuberculose
+Cellules à TNF membranaire -> Inflammation intestinale
+
+# Les anticorps entiers (IgG1) neutralisent le TNF soluble et se lient
+# aussi au TNF membranaire des cellules de la muqueuse : c'est
+# l'explication retenue, discutée, de leur effet dans les MICI.
+molécule infliximab : inhibiteur TNF-alpha, Cellules à TNF membranaire
+molécule adalimumab : inhibiteur TNF-alpha, Cellules à TNF membranaire
+molécule golimumab : inhibiteur TNF-alpha, Cellules à TNF membranaire
+# Le récepteur soluble et le fragment Fab' pégylé, sans fragment Fc,
+# neutralisent le TNF sans lyser ces cellules : l'étanercept a échoué
+# dans la maladie de Crohn, et ni l'un ni l'autre n'a l'indication MICI
+# en Europe.
+molécule étanercept : inhibiteur TNF-alpha
+molécule certolizumab pégol : inhibiteur TNF-alpha
+# L'IL-1, autre relais de la fièvre, n'est pas dessinée. Le risque
+# d'insuffisance cardiaque aggravée et de maladie démyélinisante n'est
+# pas dessiné non plus.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Adalimumab : adalimumab 10-
+scénario Étanercept, puis infliximab : étanercept 10-50 ; infliximab 60-
+",
+    "\
+titre : Interleukine 6
+sujet : Tocilizumab, sarilumab — CRP masquée, cytochromes rendus
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'hepcidine, induite par l'IL-6, fait l'anémie inflammatoire
+source : RCP du tocilizumab : CRP et fièvre peuvent rester basses pendant une infection grave ; l'IL-6 freine les CYP450, qui se normalisent à l'instauration comme à l'arrêt ; surveiller les substrats à dose ajustée (ciclosporine, warfarine, théophylline) ; exposition à la simvastatine baissée
+source : RCP du sarilumab : même mise en garde sur les substrats du CYP3A4, simvastatine et contraceptifs oraux compris
+
+ligand IL-6 : produite par les macrophages, les fibroblastes synoviaux et l'endothélium
+récepteur Récepteur de l'IL-6 : IL-6R membranaire ou soluble, associé à la gp130
+enzyme JAK : JAK1 surtout
+relais STAT3 : facteur de transcription
+ligand Hepcidine : hormone du fer, synthétisée par le foie sous l'IL-6
+relais Fer disponible : retenu dans les macrophages et l'intestin par l'hepcidine
+effet Hémoglobine : basse dans l'anémie inflammatoire
+effet CRP : protéine C réactive ; basse sous anti-IL-6, elle ne signale plus une infection
+effet Fièvre : absente sous anti-IL-6, même pendant une infection
+effet Inflammation articulaire
+effet Activité des cytochromes hépatiques : CYP3A4, 1A2, 2C9 et 2C19, freinés par l'IL-6 au cours de l'inflammation
+effet Exposition aux substrats des cytochromes : simvastatine, ciclosporine, warfarine, théophylline ; baissée à l'instauration d'un anti-IL-6, remontée à l'arrêt
+
+IL-6 -> Récepteur de l'IL-6 -> JAK -> STAT3
+STAT3 -> CRP, Hepcidine, Inflammation articulaire
+Hepcidine -| Fer disponible -> Hémoglobine
+Récepteur de l'IL-6 -> Fièvre
+# La répression des cytochromes passe par la transcription dans
+# l'hépatocyte ; ses relais ne sont pas dessinés.
+Récepteur de l'IL-6 -| Activité des cytochromes hépatiques
+Activité des cytochromes hépatiques -| Exposition aux substrats des cytochromes
+
+# Ils bloquent le récepteur, membranaire et soluble. La hausse du LDL,
+# la neutropénie et les perforations digestives ne sont pas dessinées.
+molécule tocilizumab : antagoniste Récepteur de l'IL-6
+molécule sarilumab : antagoniste Récepteur de l'IL-6
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Instauration puis arrêt du tocilizumab : tocilizumab 10-70
+",
+    "\
+titre : Voie JAK-STAT
+sujet : Inhibiteurs de JAK et de TYK2
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
+source : RCP des inhibiteurs de JAK des maladies inflammatoires : zona, lymphopénie, anémie ; après 65 ans, chez le fumeur et à risque cardiovasculaire, thrombotique ou de cancer, seulement faute d'alternative
+source : RCP du ruxolitinib : anémie et thrombopénie, doses adaptées à la numération
+source : RCP du deucravacitinib : inhibiteur allostérique de TYK2
+
+récepteur Récepteurs à chaîne gamma commune : IL-2, IL-4, IL-7, IL-15, IL-21 ; signalent par JAK1 et JAK3
+récepteur Récepteurs des interférons de type I : signalent par JAK1 et TYK2
+récepteur Récepteur de l'IL-6 : gp130, signale par JAK1, JAK2 et TYK2
+récepteur Récepteurs de l'érythropoïétine : signalent par JAK2 seul
+récepteur Récepteur de l'IL-23 : signale par JAK2 et TYK2
+enzyme JAK1
+enzyme JAK2
+enzyme JAK3
+enzyme TYK2
+effet Lymphocytes : nombre et activation ; baissés, c'est la lymphopénie
+effet Défense antivirale : baissée, c'est le zona
+effet Inflammation articulaire
+effet Inflammation cutanée : psoriasis, dermatite atopique
+effet Hémoglobine
+
+# Chaque récepteur passe par sa paire de JAK, puis par les STAT, qui ne
+# sont pas dessinés : bloquer une JAK coupe tous les récepteurs qui
+# l'emploient, et ceux-là seulement.
+Récepteurs à chaîne gamma commune, JAK1, JAK3 -> Lymphocytes
+Récepteurs des interférons de type I, JAK1, TYK2 -> Défense antivirale
+Lymphocytes -> Défense antivirale, Inflammation cutanée
+Récepteur de l'IL-6, JAK1, JAK2, TYK2 -> Inflammation articulaire
+Récepteur de l'IL-23, JAK2, TYK2 -> Inflammation cutanée
+Récepteurs de l'érythropoïétine, JAK2 -> Hémoglobine
+
+# Préférences établies ; aucune n'est absolue et elles s'estompent aux
+# fortes doses.
+molécule tofacitinib : inhibiteur JAK1, JAK3
+molécule baricitinib : inhibiteur JAK1, JAK2
+molécule ruxolitinib : inhibiteur JAK1, JAK2
+molécule upadacitinib : inhibiteur JAK1
+molécule filgotinib : inhibiteur JAK1
+molécule abrocitinib : inhibiteur JAK1
+# Il freine aussi les kinases de la famille TEC, qui ne sont pas
+# dessinées.
+molécule ritlécitinib : inhibiteur JAK3
+# Il se lie au domaine régulateur de TYK2, et non au site de l'ATP
+# commun aux JAK : JAK1, JAK2 et JAK3 sont épargnées.
+molécule deucravacitinib : inhibiteur TYK2
+# La thrombopénie sous ruxolitinib passe aussi par le JAK2, celui du
+# récepteur de la thrombopoïétine ; elle n'est pas dessinée, le
+# baricitinib donnant au contraire des thrombocytoses. Neutropénie,
+# lipides, thromboses et événements cardiovasculaires ne sont pas
+# dessinés non plus.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Upadacitinib : upadacitinib 10-
+scénario Ruxolitinib : ruxolitinib 10-
+",
+    "\
+titre : Axe IL-23 et IL-17
+sujet : Anti-IL-23, anti-IL-17 — psoriasis, candidoses, MICI
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
+source : RCP des anti-IL-17 : candidoses buccales ; cas d'apparition ou d'aggravation de maladie de Crohn et de rectocolite, prudence dans les MICI
+source : RCP du brodalumab : maladie de Crohn active contre-indiquée
+source : RCP de l'ustékinumab, du risankizumab et du guselkumab : indiqués dans la maladie de Crohn
+
+ligand IL-23 : sous-unités p19 et p40
+récepteur Récepteur de l'IL-23
+relais Lymphocytes Th17 : maintenus par l'IL-23 ; dans l'intestin, ils agissent aussi sans l'IL-17
+relais Cellules innées des muqueuses : lymphocytes T gamma-delta et ILC3, qui font l'IL-17 des muqueuses en partie sans IL-23
+ligand IL-17A de la peau
+ligand IL-17F de la peau
+ligand IL-17A des muqueuses
+ligand IL-17F des muqueuses
+récepteur Récepteur de l'IL-17 cutané : IL-17RA, sur les kératinocytes
+récepteur Récepteur de l'IL-17 muqueux : IL-17RA, sur les épithéliums buccal et intestinal
+relais Barrière intestinale : jonctions serrées de l'épithélium, tenues en partie par l'IL-17
+effet Plaques de psoriasis : prolifération des kératinocytes, afflux de neutrophiles
+effet Défense contre Candida : baissée, c'est la candidose buccale
+effet Inflammation intestinale : maladie de Crohn, rectocolite hémorragique
+
+IL-23 -> Récepteur de l'IL-23 -> Lymphocytes Th17
+Lymphocytes Th17 -> IL-17A de la peau, IL-17F de la peau
+IL-17A de la peau, IL-17F de la peau -> Récepteur de l'IL-17 cutané -> Plaques de psoriasis
+Cellules innées des muqueuses -> IL-17A des muqueuses, IL-17F des muqueuses
+IL-17A des muqueuses, IL-17F des muqueuses -> Récepteur de l'IL-17 muqueux
+Récepteur de l'IL-17 muqueux -> Défense contre Candida, Barrière intestinale
+Lymphocytes Th17 -> Inflammation intestinale
+Barrière intestinale -| Inflammation intestinale
+
+# Une même cytokine, deux sources : dessinée deux fois pour que la
+# source se lise. Le dessin fait l'IL-17 des muqueuses toute
+# indépendante de l'IL-23 ; elle ne l'est qu'en partie, et quelques
+# candidoses se voient sous anti-IL-23.
+
+# Par la sous-unité p40, l'ustékinumab bloque aussi l'IL-12, qui n'est
+# pas dessinée ; les autres visent la p19, propre à l'IL-23. Le
+# tildrakizumab n'a que le psoriasis en indication.
+molécule ustékinumab : inhibiteur IL-23
+molécule guselkumab : inhibiteur IL-23
+molécule risankizumab : inhibiteur IL-23
+molécule tildrakizumab : inhibiteur IL-23
+molécule sécukinumab : inhibiteur IL-17A de la peau, IL-17A des muqueuses
+molécule ixékizumab : inhibiteur IL-17A de la peau, IL-17A des muqueuses
+molécule bimékizumab : inhibiteur IL-17A de la peau, IL-17F de la peau, IL-17A des muqueuses, IL-17F des muqueuses
+# Il bloque le récepteur commun à l'IL-17A, à l'IL-17F et à d'autres
+# membres de la famille. Les idées suicidaires signalées ne sont pas
+# dessinées.
+molécule brodalumab : antagoniste Récepteur de l'IL-17 cutané, Récepteur de l'IL-17 muqueux
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Anti-IL-17, puis anti-IL-23 : sécukinumab 10-50 ; guselkumab 60-
+",
+    "\
+titre : Inflammation de type 2
+sujet : Dupilumab, anti-IL-5, anti-IgE, anti-TSLP, anti-IL-13 — asthme sévère, dermatite atopique
+source : Rang & Dale's Pharmacology
+source : RCP du dupilumab : hyperéosinophilie sanguine transitoire ; conjonctivites
+source : RCP du mépolizumab et du benralizumab : baisse des éosinophiles sanguins, quasi complète sous benralizumab
+source : RCP de l'omalizumab : se lie aux IgE libres
+source : RCP du tézépélumab : baisse des éosinophiles sanguins et des IgE
+
+ligand TSLP : alarmine libérée par l'épithélium, en tête de la cascade
+relais Lymphocytes Th2 et ILC2
+ligand IL-4
+ligand IL-13
+ligand IL-5
+récepteur IL-4R alpha : chaîne commune aux récepteurs de l'IL-4 et de l'IL-13
+récepteur Récepteur de l'IL-5 : IL-5R alpha, sur l'éosinophile et le basophile
+relais Éosinophiles : produits et maintenus par l'IL-5
+relais Migration des éosinophiles vers les tissus : molécules d'adhésion et chimiokines, sous l'IL-4 et l'IL-13
+relais Éosinophiles tissulaires
+ligand IgE : produites par les lymphocytes B commutés sous l'IL-4 et l'IL-13
+relais Mastocytes et basophiles : FcepsilonRI chargés d'IgE
+relais Mucus et hyperréactivité bronchique : surtout sous l'IL-13
+effet Éosinophiles sanguins : montés sous dupilumab, qui les retient dans le sang ; baissés sous anti-IL-5 et anti-TSLP
+effet Exacerbations d'asthme
+effet Eczéma atopique
+
+TSLP -> Lymphocytes Th2 et ILC2 -> IL-4, IL-13, IL-5
+IL-4, IL-13 -> IL-4R alpha
+IL-4R alpha -> IgE, Migration des éosinophiles vers les tissus, Mucus et hyperréactivité bronchique, Eczéma atopique
+IL-5 -> Récepteur de l'IL-5 -> Éosinophiles
+Éosinophiles -> Éosinophiles sanguins, Éosinophiles tissulaires
+# Ce qui quitte le sang pour les tissus n'est plus compté dans la
+# numération.
+Migration des éosinophiles vers les tissus -| Éosinophiles sanguins
+Migration des éosinophiles vers les tissus -> Éosinophiles tissulaires
+IgE -> Mastocytes et basophiles
+Éosinophiles tissulaires, Mastocytes et basophiles, Mucus et hyperréactivité bronchique -> Exacerbations d'asthme
+
+# Il bloque la chaîne commune : l'IL-4 et l'IL-13 à la fois. Les
+# éosinophiles, produits comme avant, ne gagnent plus les tissus et
+# s'accumulent dans le sang. La conjonctivite, fréquente, n'est pas
+# dessinée : son mécanisme n'est pas établi.
+molécule dupilumab : antagoniste IL-4R alpha
+molécule tralokinumab : inhibiteur IL-13
+molécule lébrikizumab : inhibiteur IL-13
+molécule mépolizumab : inhibiteur IL-5
+# Il bloque le récepteur et fait détruire, par les cellules NK, les
+# éosinophiles qui le portent : une déplétion, plus qu'un blocage.
+molécule benralizumab : antagoniste Récepteur de l'IL-5 ; inhibiteur Éosinophiles
+# Il capte les IgE libres ; la hausse des IgE totales dosées sous
+# traitement, faite de complexes, n'est pas dessinée.
+molécule omalizumab : inhibiteur IgE
+molécule tézépélumab : inhibiteur TSLP
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Dupilumab : dupilumab 10-
+scénario Anti-IL-5, puis dupilumab : mépolizumab 10-50 ; dupilumab 60-
+",
+    "\
+titre : Monoxyde d'azote et GMPc
+sujet : Dérivés nitrés, inhibiteurs de la PDE5, riociguat
+source : Rang & Dale's Pharmacology
+source : RCP du sildénafil, du tadalafil et du vardénafil : association aux dérivés nitrés et aux donneurs de NO contre-indiquée, hypotension sévère
+source : RCP du riociguat : contre-indiqué avec les dérivés nitrés, les donneurs de NO et les inhibiteurs de la PDE5
+source : RCP de la trinitrine en dispositif transdermique : tolérance, d'où une période sans dispositif chaque jour
+
+enzyme NO synthase endothéliale
+enzyme Bioactivation des dérivés nitrés : libère le NO de la molécule dans la paroi vasculaire
+ligand Monoxyde d'azote
+enzyme Guanylate cyclase soluble : le récepteur du NO dans la cellule musculaire lisse
+messager GMPc vasculaire
+enzyme PDE5 vasculaire : dégrade le GMPc
+enzyme Protéine kinase G
+relais Relâchement du muscle lisse vasculaire : veines surtout aux doses usuelles de dérivés nitrés, artérioles aussi
+relais Précharge : le retour veineux au cœur
+effet Besoin en oxygène du myocarde : baissé, c'est l'effet antiangineux
+effet Pression artérielle : très baissée, c'est l'hypotension sévère de l'association
+ligand NO nitrergique : libéré par les nerfs des corps caverneux sous la stimulation sexuelle
+messager GMPc des corps caverneux
+enzyme PDE5 des corps caverneux
+effet Érection
+
+NO synthase endothéliale, Bioactivation des dérivés nitrés -> Monoxyde d'azote
+Monoxyde d'azote -> Guanylate cyclase soluble -> GMPc vasculaire
+PDE5 vasculaire -| GMPc vasculaire
+GMPc vasculaire -> Protéine kinase G -> Relâchement du muscle lisse vasculaire
+Relâchement du muscle lisse vasculaire -| Précharge, Pression artérielle
+Précharge -> Besoin en oxygène du myocarde
+NO nitrergique -> GMPc des corps caverneux -> Érection
+PDE5 des corps caverneux -| GMPc des corps caverneux
+
+# Les dérivés nitrés apportent du NO ; la molsidomine aussi, sans passer
+# par la bioactivation des nitrés.
+molécule trinitrine : activateur Bioactivation des dérivés nitrés
+molécule isosorbide dinitrate : activateur Bioactivation des dérivés nitrés
+molécule isosorbide mononitrate : activateur Bioactivation des dérivés nitrés
+molécule molsidomine : activateur Monoxyde d'azote
+# Ils freinent la dégradation du GMPc : l'érection ne vient que sous
+# stimulation sexuelle, ce que le dessin ne sait pas montrer. Seuls, ils
+# baissent peu la pression ; sur un dérivé nitré, qui fait monter le même
+# GMPc, la baisse devient sévère.
+molécule sildénafil : inhibiteur PDE5 vasculaire, PDE5 des corps caverneux
+molécule tadalafil : inhibiteur PDE5 vasculaire, PDE5 des corps caverneux
+molécule vardénafil : inhibiteur PDE5 vasculaire, PDE5 des corps caverneux
+# Stimulateur de la guanylate cyclase soluble, avec ou sans NO. Donné dans
+# l'hypertension pulmonaire : la circulation pulmonaire n'est pas
+# dessinée, ni son action sur la guanylate cyclase des corps caverneux.
+molécule riociguat : activateur Guanylate cyclase soluble
+
+# La tolérance aux dérivés nitrés est établie, son mécanisme discuté
+# (bioactivation épuisée, stress oxydant, contre-régulation) : le dessin
+# la loge dans la bioactivation. À l'arrêt, un rebond est possible. La
+# molsidomine, qui ne passe pas par là, n'y est pas soumise sur le dessin ;
+# sa tolérance est moins documentée, elle n'est pas exclue.
+adaptation Bioactivation des dérivés nitrés
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Sildénafil, puis trinitrine en crise : sildénafil 10- ; trinitrine 50-70
+scénario Trinitrine en continu, puis arrêt : trinitrine 10-80
+",
+    "\
+titre : Néphron et potassium
+sujet : Diurétiques de l'anse, thiazidiques, épargneurs de potassium
+source : Rang & Dale's Pharmacology
+source : RCP du furosémide et de l'hydrochlorothiazide : hypokaliémie, déshydratation ; hypercalciurie sous diurétique de l'anse, calciurie baissée sous thiazidique
+source : RCP de la spironolactone, de l'éplérénone et de l'amiloride : hyperkaliémie, surtout avec un IEC, un sartan ou une insuffisance rénale
+
+transporteur NKCC2 : cotransport Na-K-2Cl de la branche large ascendante de l'anse de Henle
+transporteur NCC : cotransport Na-Cl du tube contourné distal
+relais Sodium arrivant au tube collecteur : ce que l'anse et le tube distal n'ont pas repris
+ligand Aldostérone
+récepteur Récepteur minéralocorticoïde
+canal ENaC : canal sodium de la cellule principale du tube collecteur
+relais Sécrétion de potassium : échangée contre le sodium repris par l'ENaC, d'autant plus forte qu'il arrive de sodium
+effet Natriurèse
+effet Volémie : baissée, c'est la déshydratation et l'hypotension orthostatique
+effet Kaliémie
+effet Calciurie
+
+NKCC2, NCC -| Sodium arrivant au tube collecteur
+Aldostérone -> Récepteur minéralocorticoïde -> ENaC
+Sodium arrivant au tube collecteur, ENaC -> Sécrétion de potassium
+Sécrétion de potassium -| Kaliémie
+Sodium arrivant au tube collecteur -> Natriurèse
+ENaC -| Natriurèse
+Natriurèse -| Volémie
+# Le calcium : l'anse en reprend avec le sodium, le tube distal en reprend
+# d'autant plus qu'il en reprend moins.
+NKCC2 -| Calciurie
+NCC -> Calciurie
+# La volémie retient l'aldostérone, par la rénine : un diurétique la fait
+# monter, et l'hypokaliémie s'en aggrave. Voir « Système
+# rénine-angiotensine-aldostérone ».
+Volémie -| Aldostérone
+
+# L'anse reprend bien plus de sodium que le tube distal, et le tube
+# distal que le tube collecteur : le dessin ne montre pas cette ampleur.
+molécule furosémide : inhibiteur NKCC2
+molécule bumétanide : inhibiteur NKCC2
+molécule hydrochlorothiazide : inhibiteur NCC
+molécule indapamide : inhibiteur NCC
+molécule spironolactone : antagoniste Récepteur minéralocorticoïde
+molécule éplérénone : antagoniste Récepteur minéralocorticoïde
+molécule amiloride : inhibiteur ENaC
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Furosémide, puis spironolactone : furosémide 10- ; spironolactone 50-
+scénario Blocage séquentiel du néphron : furosémide 10- ; hydrochlorothiazide 50-
+",
+    "\
+titre : Glycémie, insuline et incrétines
+sujet : Sulfamides hypoglycémiants, metformine, gliptines, analogues du GLP-1, gliflozines, insulines
+source : Rang & Dale's Pharmacology
+source : RCP des sulfamides hypoglycémiants et du répaglinide : hypoglycémie, surtout chez le sujet âgé, l'insuffisant rénal ou en cas de repas sauté
+source : RCP de la metformine : pas d'hypoglycémie en monothérapie
+source : RCP du sémaglutide, du liraglutide et du dulaglutide : risque d'hypoglycémie accru avec un sulfamide ou une insuline, dont la dose peut être réduite ; ralentissement de la vidange gastrique, nausées
+source : RCP de la dapagliflozine et de l'empagliflozine : glycosurie ; hypoglycémie rare sans sulfamide ni insuline
+
+enzyme Production hépatique de glucose : néoglucogenèse et glycogénolyse
+effet Vidange gastrique : ralentie, c'est la satiété précoce, et les nausées
+transporteur SGLT2 : tube proximal, réabsorbe le glucose filtré
+effet Glycémie : baissée, c'est l'effet recherché ; le dessin ne dit pas où commence l'hypoglycémie
+relais Métabolisme de la cellule bêta : l'ATP que fait le glucose entré dans la cellule
+canal Canal KATP : fermé par l'ATP ; sa fermeture dépolarise la cellule bêta
+relais Dépolarisation et entrée de calcium
+ligand GLP-1 : incrétine libérée par l'intestin au repas
+enzyme DPP-4 : dégrade le GLP-1 et le GIP
+récepteur Récepteur GLP-1 pancréatique : cellules bêta et alpha
+récepteur Récepteur GLP-1 central et digestif : hypothalamus, estomac
+ligand Insuline sécrétée : montée alors que la glycémie baisse, c'est une sécrétion forcée — le risque d'hypoglycémie
+récepteur Récepteur de l'insuline
+relais Captation du glucose : muscle et tissu adipeux
+ligand Glucagon : sécrété par la cellule alpha, fait produire du glucose par le foie
+effet Appétit
+
+Production hépatique de glucose, Vidange gastrique, SGLT2 -> Glycémie
+Glycémie -> Métabolisme de la cellule bêta -| Canal KATP -| Dépolarisation et entrée de calcium -> Insuline sécrétée
+DPP-4 -| GLP-1 -> Récepteur GLP-1 pancréatique
+Récepteur GLP-1 pancréatique -| Canal KATP, Glucagon
+Récepteur GLP-1 central et digestif -| Vidange gastrique, Appétit
+Insuline sécrétée -> Récepteur de l'insuline -> Captation du glucose
+Glycémie -| Glucagon
+# Les boucles : l'insuline fait baisser la glycémie, et freine le foie ;
+# le glucagon, que la glycémie basse fait monter, le relance.
+Captation du glucose -| Glycémie
+Récepteur de l'insuline -| Production hépatique de glucose
+Glucagon -> Production hépatique de glucose
+
+# Ils ferment le canal KATP quelle que soit la glycémie : l'insuline est
+# sécrétée même quand le glucose baisse, d'où l'hypoglycémie. Le
+# répaglinide agit plus brièvement : la durée n'est pas dessinée.
+molécule gliclazide : inhibiteur Canal KATP
+molécule glimépiride : inhibiteur Canal KATP
+molécule glibenclamide : inhibiteur Canal KATP
+molécule répaglinide : inhibiteur Canal KATP
+# Son effet principal : moins de glucose produit par le foie. Il ne force
+# pas la sécrétion d'insuline. Son mécanisme moléculaire est discuté.
+molécule metformine : inhibiteur Production hépatique de glucose
+# Ils prolongent le GLP-1 du repas, qui ne monte qu'à son niveau
+# physiologique : neutres sur le poids, le dessin ne les relie qu'au
+# pancréas. Le GIP n'est pas dessiné.
+molécule sitagliptine : inhibiteur DPP-4
+molécule vildagliptine : inhibiteur DPP-4
+molécule saxagliptine : inhibiteur DPP-4
+# Le GLP-1 renforce la sécrétion déclenchée par le glucose : quand la
+# glycémie baisse, la sécrétion qu'il ajoute baisse avec elle, d'où peu
+# d'hypoglycémie seuls. Le modèle n'a pas de seuil et ne le montre qu'en
+# partie. Le tirzépatide agit aussi sur le récepteur du GIP, non dessiné.
+molécule sémaglutide : agoniste Récepteur GLP-1 pancréatique, Récepteur GLP-1 central et digestif
+molécule liraglutide : agoniste Récepteur GLP-1 pancréatique, Récepteur GLP-1 central et digestif
+molécule dulaglutide : agoniste Récepteur GLP-1 pancréatique, Récepteur GLP-1 central et digestif
+molécule tirzépatide : agoniste Récepteur GLP-1 pancréatique, Récepteur GLP-1 central et digestif
+# Le glucose part dans les urines, sans insuline en plus. La glycosurie,
+# les infections génitales et l'acidocétose ne sont pas dessinées.
+molécule dapagliflozine : inhibiteur SGLT2
+molécule empagliflozine : inhibiteur SGLT2
+molécule canagliflozine : inhibiteur SGLT2
+# L'insuline injectée agit quelle que soit la glycémie ; la sécrétion
+# propre baisse avec le glucose. Rapide ou lente : la durée n'est pas
+# dessinée.
+molécule insuline glargine : agoniste Récepteur de l'insuline
+molécule insuline dégludec : agoniste Récepteur de l'insuline
+molécule insuline asparte : agoniste Récepteur de l'insuline
+molécule insuline lispro : agoniste Récepteur de l'insuline
+molécule insuline humaine : agoniste Récepteur de l'insuline
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Analogue du GLP-1 sur un sulfamide : gliclazide 10- ; sémaglutide 50-
+",
+    "\
+titre : LDL-cholestérol et récepteur LDL
+sujet : Statines, ézétimibe, anti-PCSK9, acide bempédoïque
+source : Rang & Dale's Pharmacology
+source : RCP de l'ézétimibe : association à une statine
+source : RCP de l'évolocumab, de l'alirocumab et de l'inclisiran : en association à une statine, ou seuls en cas d'intolérance
+source : RCP de l'acide bempédoïque : prodrogue activée dans le foie, pas dans le muscle
+
+enzyme ATP-citrate lyase : fournit l'acétyl-CoA, en amont de l'HMG-CoA réductase
+enzyme HMG-CoA réductase : étape limitante de la synthèse du cholestérol
+transporteur NPC1L1 : absorption intestinale du cholestérol
+relais Cholestérol hépatique
+relais VLDL : sécrétées par le foie, elles deviennent le LDL circulant
+relais SREBP-2 : facteur de transcription, activé quand le cholestérol du foie baisse
+ligand PCSK9 : dirige le récepteur LDL vers la dégradation
+récepteur Récepteur LDL : capte le LDL circulant dans le foie
+effet LDL-cholestérol
+
+ATP-citrate lyase -> HMG-CoA réductase -> Cholestérol hépatique
+NPC1L1 -> Cholestérol hépatique
+Cholestérol hépatique -> VLDL -> LDL-cholestérol
+Cholestérol hépatique -| SREBP-2 -> Récepteur LDL
+SREBP-2 -> PCSK9 -| Récepteur LDL
+Récepteur LDL -| LDL-cholestérol
+# Le foie compense ce qu'on lui retire : moins de cholestérol, plus de
+# synthèse. C'est pourquoi une statine et l'ézétimibe s'additionnent.
+SREBP-2 -> HMG-CoA réductase
+
+molécule atorvastatine : inhibiteur HMG-CoA réductase
+molécule rosuvastatine : inhibiteur HMG-CoA réductase
+molécule simvastatine : inhibiteur HMG-CoA réductase
+molécule pravastatine : inhibiteur HMG-CoA réductase
+molécule fluvastatine : inhibiteur HMG-CoA réductase
+# L'ampleur n'est pas dessinée : l'ézétimibe seul baisse le LDL moins
+# qu'une statine.
+molécule ézétimibe : inhibiteur NPC1L1
+# Anticorps qui neutralisent la PCSK9 circulante ; l'inclisiran, un petit
+# ARN interférent, en freine la synthèse dans le foie.
+molécule évolocumab : inhibiteur PCSK9
+molécule alirocumab : inhibiteur PCSK9
+molécule inclisiran : inhibiteur PCSK9
+# Activé dans le foie seulement : le muscle n'est pas dessiné.
+molécule acide bempédoïque : inhibiteur ATP-citrate lyase
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Statine, puis ézétimibe : atorvastatine 10- ; ézétimibe 50-
+scénario Statine, puis anti-PCSK9 : atorvastatine 10- ; évolocumab 50-
+",
+    "\
+titre : Récepteurs alpha-1 adrénergiques
+sujet : Alpha-bloquants — prostate, pression artérielle, iris
+source : Rang & Dale's Pharmacology
+source : RCP de la tamsulosine, de l'alfuzosine et de la silodosine : hypotension orthostatique ; syndrome de l'iris flasque peropératoire, prévenir le chirurgien avant une chirurgie de la cataracte
+source : RCP de la doxazosine et de la prazosine : hypotension de première dose
+
+ligand Noradrénaline
+récepteur Alpha-1A prostatique : muscle lisse de la prostate et du col vésical
+récepteur Alpha-1A vasculaire : une part de la vasoconstriction artériolaire
+récepteur Alpha-1B vasculaire : l'autre part, sous-type surtout vasculaire
+récepteur Alpha-1A de l'iris : muscle dilatateur de la pupille
+récepteur Bêta-1 : myocarde et nœud sinusal
+relais Vasoconstriction
+effet Débit urinaire : monté, c'est la gêne mictionnelle de l'adénome soulagée
+effet Pression artérielle : baissée, c'est l'hypotension orthostatique
+effet Dilatation de l'iris : baissée, c'est le syndrome de l'iris flasque peropératoire
+effet Fréquence cardiaque
+
+Noradrénaline -> Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris, Bêta-1
+Alpha-1A prostatique -| Débit urinaire
+Alpha-1A vasculaire, Alpha-1B vasculaire -> Vasoconstriction -> Pression artérielle
+Alpha-1A de l'iris -> Dilatation de l'iris
+Bêta-1 -> Fréquence cardiaque
+# Le baroréflexe : la pression qui baisse lève le tonus sympathique, d'où
+# la tachycardie réflexe.
+Pression artérielle -| Noradrénaline
+
+# Préférentiels du sous-type alpha-1A : moins de baisse tensionnelle, sans
+# l'exclure — l'hypotension orthostatique reste décrite. Le syndrome de
+# l'iris flasque est surtout décrit sous tamsulosine, et peut survenir
+# après l'arrêt : cela n'est pas dessiné.
+molécule tamsulosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1A de l'iris
+molécule silodosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1A de l'iris
+# Sans sélectivité de sous-type : tous les alpha-1.
+molécule alfuzosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
+molécule doxazosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
+molécule prazosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
+# Antihypertenseur : son action centrale, qui freine la tachycardie
+# réflexe, n'est pas dessinée.
+molécule urapidil : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
+
+# L'hypotension de première dose, qui s'atténue ensuite, tient à des
+# compensations que le dessin ne montre pas : aucune adaptation n'y est
+# écrite.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Tamsulosine : tamsulosine 10-
+scénario Doxazosine : doxazosine 10-
+",
+    "\
+titre : Synapse sérotoninergique
+sujet : ISRS, IRSNa, IMAO, tramadol
+source : Rang & Dale's Pharmacology
+source : RCP des ISRS et des IRSNa : syndrome sérotoninergique avec les IMAO, le linézolide et le tramadol ; risque hémorragique majoré avec les AINS, les antiagrégants et les anticoagulants ; syndrome d'arrêt
+source : RCP de la venlafaxine, de la duloxétine et du milnacipran : élévation de la pression artérielle
+source : RCP du linézolide : inhibiteur réversible non sélectif de la monoamine oxydase
+
+relais Décharge sérotoninergique : activité des neurones du raphé
+ligand Sérotonine synaptique
+transporteur SERT neuronal : recapture la sérotonine dans la synapse
+enzyme MAO-A : dégrade la sérotonine dans le neurone, avant sa libération
+récepteur 5-HT1A somatodendritique : autorécepteur du raphé, il freine la décharge
+récepteur Récepteurs 5-HT postsynaptiques : cortex et système limbique
+transporteur SERT plaquettaire : le même transporteur, sur la plaquette
+ligand Sérotonine plaquettaire : les plaquettes ne la fabriquent pas, elles la captent par le SERT
+transporteur NET : transporteur de recapture de la noradrénaline
+ligand Noradrénaline synaptique
+effet Transmission sérotoninergique : montée, l'effet antidépresseur recherché ; très montée par une association, le risque de syndrome sérotoninergique
+effet Agrégation plaquettaire : baissée, le risque de saignement, surtout avec un AINS, un antiagrégant ou un anticoagulant
+effet Pression artérielle : montée sous IRSNa
+
+Décharge sérotoninergique -> Sérotonine synaptique
+SERT neuronal, MAO-A -| Sérotonine synaptique
+# L'autorécepteur : la sérotonine en plus freine le neurone qui la libère.
+Sérotonine synaptique -> 5-HT1A somatodendritique -| Décharge sérotoninergique
+Sérotonine synaptique -> Récepteurs 5-HT postsynaptiques -> Transmission sérotoninergique
+SERT plaquettaire -> Sérotonine plaquettaire -> Agrégation plaquettaire
+NET -| Noradrénaline synaptique -> Pression artérielle
+
+molécule sertraline : inhibiteur SERT neuronal, SERT plaquettaire
+molécule escitalopram : inhibiteur SERT neuronal, SERT plaquettaire
+molécule citalopram : inhibiteur SERT neuronal, SERT plaquettaire
+molécule fluoxétine : inhibiteur SERT neuronal, SERT plaquettaire
+molécule paroxétine : inhibiteur SERT neuronal, SERT plaquettaire
+# IRSNa : la recapture de la noradrénaline aussi — d'où la pression
+# artérielle, surtout aux doses fortes pour la venlafaxine.
+molécule venlafaxine : inhibiteur SERT neuronal, SERT plaquettaire, NET
+molécule duloxétine : inhibiteur SERT neuronal, SERT plaquettaire, NET
+molécule milnacipran : inhibiteur SERT neuronal, SERT plaquettaire, NET
+# Leur part sur la recapture de la sérotonine suffit au risque
+# sérotoninergique ; un effet sur les plaquettes n'est pas décrit. Ni
+# l'action opioïde du tramadol (voir « Récepteur opioïde mu ») ni sa part
+# sur la noradrénaline ne sont dessinées.
+molécule tramadol : inhibiteur SERT neuronal
+molécule dextrométhorphane : inhibiteur SERT neuronal
+# IMAO : moins de sérotonine dégradée, plus de sérotonine libérée. Le
+# linézolide est un antibiotique, et un IMAO non sélectif. La poussée
+# hypertensive avec les sympathomimétiques et la tyramine n'est pas
+# dessinée.
+molécule moclobémide : inhibiteur MAO-A
+molécule linézolide : inhibiteur MAO-A
+
+# Au début, la sérotonine en plus freine le neurone par son autorécepteur
+# 5-HT1A : la transmission monte peu. Stimulés longtemps, ces
+# autorécepteurs se désensibilisent, le frein lâche et la transmission
+# monte encore — la lecture classique du délai d'action des
+# antidépresseurs. À l'arrêt, les autorécepteurs raréfiés mettent un
+# temps à revenir, et la transmission ne redescend que peu à peu ; le
+# syndrome d'arrêt que décrivent les RCP (vertiges,
+# paresthésies, irritabilité) n'a pas de mécanisme établi et ne se lit
+# pas ici. Les nausées du début passent par les 5-HT3 (voir « Centre du
+# vomissement ») ; les triptans, que le RCP met aussi en garde avec les
+# ISRS, agissent sur les 5-HT1B/1D : ni les uns ni les autres ne sont
+# dessinés.
+adaptation 5-HT1A somatodendritique
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario ISRS au long cours : sertraline 10-
+scénario ISRS, puis tramadol : sertraline 10- ; tramadol 70-
+",
+    "\
+titre : Centre du vomissement
+sujet : Sétrons, anti-NK1, antidopaminergiques, mal des transports
+source : Rang & Dale's Pharmacology
+source : RCP de l'aprépitant et du nétupitant + palonosétron : la voie de la substance P, phase retardée des vomissements chimio-induits
+source : RCP de l'apomorphine : ondansétron contre-indiqué, dompéridone associée sous surveillance de l'ECG
+source : RCP de la scopolamine transdermique : prévention du mal des transports
+
+ligand Sérotonine intestinale : libérée par les cellules entérochromaffines sous chimiothérapie
+récepteur 5-HT3 : terminaisons vagales et area postrema
+ligand Substance P
+récepteur NK1 : noyau du tractus solitaire et area postrema
+ligand Dopamine
+récepteur D2 de l'area postrema : zone chémoréceptrice, hors barrière hémato-encéphalique
+effet Vomissements aigus : les premières heures d'une chimiothérapie, ou sous agoniste dopaminergique
+effet Vomissements retardés : les jours qui suivent une chimiothérapie, surtout par la substance P
+relais Voie vestibulaire : le mouvement ; dessinée comme en voyage
+récepteur Muscarinique vestibulaire : noyaux vestibulaires
+récepteur H1 vestibulaire : relais vers le centre du vomissement
+effet Mal des transports : baissé, c'est la prévention
+
+Sérotonine intestinale -> 5-HT3
+Substance P -> NK1
+Dopamine -> D2 de l'area postrema
+5-HT3, D2 de l'area postrema -> Vomissements aigus
+# L'anti-NK1 aide aussi la phase aiguë, les sétrons un peu la phase
+# retardée : le dessin ne garde que la voie qui domine chaque phase.
+NK1 -> Vomissements retardés
+# Les deux relais se suivent : bloquer l'un suffit à freiner la voie.
+Voie vestibulaire -> Muscarinique vestibulaire -> H1 vestibulaire -> Mal des transports
+
+# Sans stimulus, la voie chimique ne fait presque rien : un
+# antiémétique seul n'y retire rien de visible, il empêche la montée.
+# Le mouvement, lui, n'est pas une molécule : la voie vestibulaire est
+# dessinée à son tonus, comme en voyage.
+tonus faible 5-HT3, NK1, D2 de l'area postrema
+
+# Les stimulus : la chimiothérapie libère la sérotonine intestinale (la
+# phase aiguë) et la substance P (la phase retardée) ; l'agoniste
+# dopaminergique stimule l'area postrema.
+molécule cyclophosphamide : activateur Sérotonine intestinale, Substance P
+molécule témozolomide : activateur Sérotonine intestinale, Substance P
+molécule apomorphine : agoniste D2 de l'area postrema
+# Sétrons : surtout la phase aiguë. L'ondansétron est contre-indiqué avec
+# l'apomorphine (hypotension sévère), ce que le dessin ne montre pas.
+molécule ondansétron : antagoniste 5-HT3
+molécule granisétron : antagoniste 5-HT3
+molécule aprépitant : antagoniste NK1
+molécule nétupitant + palonosétron : antagoniste NK1, 5-HT3
+# Antidopaminergiques : l'area postrema. Le syndrome extrapyramidal du
+# métoclopramide est dans « Récepteurs dopaminergiques D2 ».
+molécule métoclopramide : antagoniste D2 de l'area postrema
+molécule dompéridone : antagoniste D2 de l'area postrema
+molécule métopimazine : antagoniste D2 de l'area postrema
+# Mal des transports : la scopolamine et les antihistaminiques H1
+# atropiniques. Leur sédation n'est pas dessinée (voir « Récepteurs
+# histaminiques H1 »).
+molécule scopolamine : antagoniste Muscarinique vestibulaire
+molécule diphénhydramine : antagoniste Muscarinique vestibulaire, H1 vestibulaire
+molécule méclozine : antagoniste Muscarinique vestibulaire, H1 vestibulaire
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Chimiothérapie, sétron, puis anti-NK1 : cyclophosphamide 10- ; ondansétron 40- ; aprépitant 70-
+scénario Apomorphine, puis dompéridone : apomorphine 10- ; dompéridone 50-
+scénario Scopolamine : scopolamine 10-80
+",
+    "\
+titre : Axe thyréotrope
+sujet : Lévothyroxine, antithyroïdiens de synthèse, amiodarone, lithium
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'amiodarone freine la conversion de la T4 en T3
+source : RCP de la lévothyroxine : dose adaptée sur la TSH ; surdosage, palpitations
+source : RCP de l'amiodarone : dysthyroïdies, hypo comme hyperthyroïdie ; TSH surveillée
+source : RCP du lithium : hypothyroïdie et goitre ; TSH surveillée
+
+ligand TRH : hypothalamus
+effet TSH : hypophyse ; montée, la thyroïde ne suffit plus ; effondrée, l'excès d'hormone
+récepteur Récepteur de la TSH : thyrocyte
+enzyme Thyroperoxydase : organification de l'iode et couplage, la synthèse des hormones
+relais Libération hormonale : sortie de la T4 et de la T3 stockées dans la colloïde
+effet T4 libre
+enzyme Désiodase : convertit la T4 en T3 dans les tissus et dans l'hypophyse
+effet T3 libre : la forme active
+récepteur Récepteur nucléaire des hormones thyroïdiennes
+effet Métabolisme de base
+effet Fréquence cardiaque
+
+TRH -> TSH -> Récepteur de la TSH -> Thyroperoxydase -> Libération hormonale -> T4 libre
+T4 libre, Désiodase -> T3 libre -> Récepteur nucléaire des hormones thyroïdiennes
+Récepteur nucléaire des hormones thyroïdiennes -> Métabolisme de base, Fréquence cardiaque
+# Le rétrocontrôle : les hormones thyroïdiennes freinent la TRH et la
+# TSH. C'est pourquoi la TSH se lit comme le témoin de la dose.
+T3 libre -| TRH, TSH
+
+# La figure part d'une thyroïde normale : sous hormone, elle montre
+# l'excès (TSH basse, fréquence montée), et sous antithyroïdien, le
+# défaut (TSH montée). La maladie de Basedow, où des anticorps stimulent
+# le récepteur de la TSH, n'est pas dessinée.
+# L'apport de l'hormone elle-même s'écrit comme un activateur du nœud
+# qu'elle remplit.
+molécule lévothyroxine : activateur T4 libre
+molécule liothyronine : activateur T3 libre
+# Ils bloquent la synthèse, pas l'hormone déjà stockée. Le
+# benzylthiouracile freine aussi un peu la désiodase, ce qui n'est pas
+# dessiné.
+molécule carbimazole : inhibiteur Thyroperoxydase
+molécule thiamazole : inhibiteur Thyroperoxydase
+molécule benzylthiouracile : inhibiteur Thyroperoxydase
+# Seul le frein de la désiodase est dessiné. La charge en iode, qui
+# peut donner une hypothyroïdie comme une hyperthyroïdie, ne l'est pas,
+# ni la bradycardie propre de l'amiodarone.
+molécule amiodarone : inhibiteur Désiodase
+molécule lithium : inhibiteur Libération hormonale
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Lévothyroxine : lévothyroxine 10-
+scénario Carbimazole : carbimazole 10-
+scénario Amiodarone : amiodarone 10-
+",
+    "\
+titre : Axe corticotrope
+sujet : Corticoïdes, hydrocortisone, fludrocortisone
+source : Rang & Dale's Pharmacology
+source : RCP de la prednisone : arrêt progressif après un traitement prolongé, insuffisance surrénale aiguë à l'arrêt brutal ; hyperglycémie, hypokaliémie, rétention hydrosodée
+source : RCP de la fludrocortisone : réabsorption de sodium, excrétion de potassium
+
+ligand CRH : hypothalamus
+ligand ACTH : hypophyse
+récepteur Récepteur de l'ACTH : corticosurrénale
+effet Cortisol endogène : sécrété par la surrénale ; bas sous corticoïde, c'est l'axe freiné
+récepteur Récepteur des glucocorticoïdes : dans le noyau, dans tous les tissus
+ligand Aldostérone
+récepteur Récepteur minéralocorticoïde : tubule rénal
+relais Réabsorption de sodium
+effet Inflammation
+effet Glycémie
+effet Pression artérielle
+effet Kaliémie
+
+CRH -> ACTH -> Récepteur de l'ACTH -> Cortisol endogène -> Récepteur des glucocorticoïdes
+Récepteur des glucocorticoïdes -| Inflammation
+Récepteur des glucocorticoïdes -> Glycémie
+Aldostérone -> Récepteur minéralocorticoïde -> Réabsorption de sodium -> Pression artérielle
+Récepteur minéralocorticoïde -| Kaliémie
+# Le rétrocontrôle : le récepteur des glucocorticoïdes freine la CRH et
+# l'ACTH. Un corticoïde de synthèse le tient : la surrénale se tait.
+Récepteur des glucocorticoïdes -| CRH, ACTH
+
+# Ce que le dessin ne montre pas : privée longtemps d'ACTH, la surrénale
+# s'atrophie, et à l'arrêt brutal le cortisol ne remonte pas — c'est
+# l'insuffisance surrénale aiguë, d'où l'arrêt progressif. Le modèle, où
+# un nœud s'adapte contre ce qu'il reçoit, dirait l'inverse : aucune
+# adaptation n'est mise. Il montre le cortisol endogène effondré tant
+# que le corticoïde est donné, et c'est tout.
+molécule prednisone : agoniste Récepteur des glucocorticoïdes ; agoniste partiel Récepteur minéralocorticoïde
+molécule prednisolone : agoniste Récepteur des glucocorticoïdes ; agoniste partiel Récepteur minéralocorticoïde
+# Activité minéralocorticoïde très faible ou négligeable : moins de
+# rétention hydrosodée et de fuite potassique.
+molécule méthylprednisolone : agoniste Récepteur des glucocorticoïdes
+molécule bétaméthasone : agoniste Récepteur des glucocorticoïdes
+# Le cortisol lui-même : à dose substitutive, il remplace ce que la
+# surrénale ne fait plus. Le dessin, qui part d'une surrénale saine, le
+# montre comme un corticoïde. Sa forme en crème n'est pas ce qui est
+# dessiné.
+molécule hydrocortisone : agoniste Récepteur des glucocorticoïdes ; agoniste partiel Récepteur minéralocorticoïde
+# Minéralocorticoïde ; son activité glucocorticoïde accessoire n'est pas
+# dessinée.
+molécule fludrocortisone : agoniste Récepteur minéralocorticoïde
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Corticothérapie : prednisone 10-
+scénario Fludrocortisone : fludrocortisone 10-
+",
+    "\
+titre : Remodelage osseux
+sujet : Bisphosphonates, dénosumab, tériparatide, romosozumab, raloxifène
+source : Rang & Dale's Pharmacology
+source : RCP du dénosumab : rebond de résorption et fractures vertébrales multiples à l'arrêt sans relais ; hypocalcémie
+source : RCP du romosozumab : résorption remontée au-dessus de son niveau initial après l'arrêt, relais par un antirésorbeur
+source : RCP du tériparatide : élévation transitoire de la calcémie
+source : RCP de l'acide zolédronique : hypocalcémie
+
+ligand Sclérostine : produite par les ostéocytes, freine la voie Wnt
+relais Voie Wnt : dans l'ostéoblaste
+récepteur Récepteur de la PTH : PTH1R ; stimulé de façon brève et quotidienne, il fait former l'os
+relais Ostéoblastes
+ligand OPG : ostéoprotégérine, leurre naturel du RANKL ; le dénosumab fait comme elle
+ligand RANKL : produit par les ostéoblastes et les ostéocytes
+récepteur RANK : précurseurs des ostéoclastes
+relais Ostéoclastes : leur différenciation et leur survie ; privés longtemps de RANKL, leurs précurseurs s'accumulent
+enzyme Farnésyl-pyrophosphate synthase : voie du mévalonate de l'ostéoclaste
+récepteur Récepteur des œstrogènes osseux
+effet Formation osseuse
+effet Résorption osseuse
+effet Densité minérale osseuse
+effet Calcémie
+
+Sclérostine -| Voie Wnt
+Voie Wnt, Récepteur de la PTH -> Ostéoblastes -> Formation osseuse
+OPG -| RANKL
+RANKL -> RANK -> Ostéoclastes -> Farnésyl-pyrophosphate synthase -> Résorption osseuse
+Récepteur des œstrogènes osseux -| Résorption osseuse
+Formation osseuse -> Densité minérale osseuse
+Résorption osseuse -| Densité minérale osseuse
+Résorption osseuse, Récepteur de la PTH -> Calcémie
+
+# Le couplage — la formation qui suit la résorption, et la résorption
+# qu'un tériparatide finit aussi par activer — n'est pas dessiné.
+# L'exposition continue à la PTH, celle de l'hyperparathyroïdie, qui
+# résorbe, ne l'est pas non plus.
+molécule dénosumab : inhibiteur RANKL
+# Dans l'ostéoclaste lui-même : il ne laisse pas de stock de précurseurs.
+# Fixé à l'os des années, il agit encore après l'arrêt, ce que le dessin
+# ne montre pas : son effet y cesse avec la prise.
+molécule alendronate : inhibiteur Farnésyl-pyrophosphate synthase
+molécule risédronate : inhibiteur Farnésyl-pyrophosphate synthase
+molécule ibandronate : inhibiteur Farnésyl-pyrophosphate synthase
+molécule acide zolédronique : inhibiteur Farnésyl-pyrophosphate synthase
+molécule tériparatide : agoniste Récepteur de la PTH
+# Il freine aussi la résorption, par des médiateurs des ostéoclastes que
+# le dessin ne montre pas ; après l'arrêt, la résorption remonte
+# au-dessus de son niveau initial, d'où le relais par un antirésorbeur.
+molécule romosozumab : inhibiteur Sclérostine
+# Agoniste œstrogénique sur l'os, antagoniste sur le sein et l'utérus,
+# qui ne sont pas dessinés.
+molécule raloxifène : agoniste Récepteur des œstrogènes osseux
+
+# Freinés longtemps par le dénosumab, les précurseurs
+# des ostéoclastes s'accumulent ; à l'arrêt, ils se différencient d'un
+# coup : le rebond de résorption, et les fractures vertébrales. D'où le
+# relais par un antirésorbeur.
+adaptation Ostéoclastes
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Arrêt du dénosumab sans relais : dénosumab 10-60
+scénario Arrêt du dénosumab, relais par l'acide zolédronique : dénosumab 10-60 ; acide zolédronique 60-
+scénario Romosozumab, puis alendronate : romosozumab 10-60 ; alendronate 60-
+",
+    "\
+titre : Récepteurs histaminiques H1
+sujet : Antihistaminiques sédatifs et non sédatifs
+source : Rang & Dale's Pharmacology
+source : RCP de la bilastine : substrat de la glycoprotéine P, passage cérébral très limité, pas de sédation aux doses recommandées
+source : RCP de l'hydroxyzine et de la dexchlorphéniramine : somnolence, effets atropiniques
+
+ligand Histamine mastocytaire : libérée par les mastocytes dans la réaction allergique
+ligand Histamine cérébrale : neurones du noyau tubéromamillaire, l'éveil
+récepteur H1 périphérique : vaisseaux, muqueuses, terminaisons nerveuses de la peau
+récepteur H1 central : derrière la barrière hémato-encéphalique
+ligand Acétylcholine
+récepteur Récepteurs muscariniques : cible latérale des antihistaminiques de première génération
+effet Rhinorrhée et éternuements
+effet Prurit et urticaire
+effet Vigilance : baissée, c'est la somnolence
+effet Salivation : baissée, c'est la bouche sèche
+
+Histamine mastocytaire -> H1 périphérique -> Rhinorrhée et éternuements, Prurit et urticaire
+Histamine cérébrale -> H1 central -> Vigilance
+Acétylcholine -> Récepteurs muscariniques -> Salivation
+
+# Première génération : ils passent la barrière et bloquent aussi les
+# récepteurs muscariniques. Le risque de QT long de l'hydroxyzine n'est
+# pas dessiné.
+molécule hydroxyzine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+molécule dexchlorphéniramine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+molécule prométhazine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+molécule alimémazine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+molécule diphénhydramine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+molécule doxylamine : antagoniste H1 périphérique, H1 central, Récepteurs muscariniques
+# Seconde génération : peu ou pas de passage cérébral, pas d'effet
+# atropinique. La bilastine est en outre substrat de la glycoprotéine P,
+# qui la refoule hors du cerveau. La cétirizine et la lévocétirizine
+# passent un peu plus : une somnolence reste possible, plus fréquente
+# qu'avec la desloratadine ou la bilastine, et elle n'est pas dessinée.
+molécule cétirizine : antagoniste H1 périphérique
+molécule lévocétirizine : antagoniste H1 périphérique
+molécule loratadine : antagoniste H1 périphérique
+molécule desloratadine : antagoniste H1 périphérique
+molécule bilastine : antagoniste H1 périphérique
+molécule fexofénadine : antagoniste H1 périphérique
+molécule rupatadine : antagoniste H1 périphérique
+molécule mizolastine : antagoniste H1 périphérique
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Hydroxyzine : hydroxyzine 10-80
+scénario Bilastine : bilastine 10-80
 ",
 ];
 

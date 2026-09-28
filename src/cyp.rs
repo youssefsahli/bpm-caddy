@@ -20,11 +20,14 @@
 //! d'interactions qu'on croit complète est plus dangereuse que pas de
 //! table du tout.
 //!
-//! * **Elle ne connaît que les cytochromes.** La glycoprotéine P,
-//!   l'OATP1B1 et la BCRP expliquent des interactions majeures — la
-//!   rosuvastatine et la ciclosporine, la dabigatran et l'amiodarone —
-//!   et ne sont pas ici. Une ordonnance sans croisement sur cette table
-//!   n'est pas une ordonnance sans interaction.
+//! * **Elle ne connaît que sept cytochromes et trois transporteurs.**
+//!   La glycoprotéine P, l'OATP1B1 et la BCRP y sont entrés en 0.358 :
+//!   la rosuvastatine et la ciclosporine, la dabigatran et l'amiodarone
+//!   sont des interactions majeures qu'aucun cytochrome ne porte, et la
+//!   table les taisait. Restent dehors les OAT, OCT et MATE du rein —
+//!   le méthotrexate sous AINS —, les glucuronoconjugaisons, la liaison
+//!   aux protéines. Une ordonnance sans croisement sur cette table n'est
+//!   pas une ordonnance sans interaction.
 //! * **Elle ne connaît pas la pharmacodynamie.** Deux sédatifs, deux
 //!   allongeurs du QT, deux néphrotoxiques ne se rencontrent sur aucune
 //!   enzyme et se additionnent quand même. C'est `revue.rs` qui regarde
@@ -77,11 +80,21 @@
 //! Statique, pur, testé. Il ne connaît ni la base ni egui : on lui passe
 //! des traitements.
 
-/// Un isoenzyme du cytochrome P450, parmi ceux qui décident quelque
-/// chose au comptoir.
+/// Une voie par laquelle deux lignes se rencontrent : un isoenzyme du
+/// cytochrome P450, parmi ceux qui décident quelque chose au comptoir,
+/// ou l'un des trois transporteurs qui font les interactions que les
+/// cytochromes n'expliquent pas.
 ///
 /// Le CYP2E1 n'y est pas : il explique des toxicités — le paracétamol
 /// sous alcool — et presque aucune conduite à tenir sur une ordonnance.
+///
+/// **Les transporteurs se lisent comme les enzymes**, et c'est pourquoi
+/// ils sont dans le même type : un inhibiteur de la glycoprotéine P
+/// accumule ce qu'elle rejette, un inducteur le fait fondre, exactement
+/// comme sur le CYP3A4. Ce sont eux qui répondent à « dabigatran et
+/// amiodarone » et à « rosuvastatine et ciclosporine », deux
+/// interactions majeures qu'aucun cytochrome ne porte — la table les
+/// taisait jusqu'en 0.358.
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub enum Enzyme {
     Cyp1a2,
@@ -91,6 +104,13 @@ pub enum Enzyme {
     Cyp2c19,
     Cyp2d6,
     Cyp3a4,
+    /// La glycoprotéine P (ABCB1) : l'efflux intestinal, rénal et à la
+    /// barrière hémato-encéphalique.
+    Pgp,
+    /// La captation hépatique des statines, du répaglinide.
+    Oatp1b1,
+    /// La BCRP (ABCG2), l'autre pompe d'efflux.
+    Bcrp,
 }
 
 impl Enzyme {
@@ -102,7 +122,29 @@ impl Enzyme {
         Enzyme::Cyp2c19,
         Enzyme::Cyp2d6,
         Enzyme::Cyp3a4,
+        Enzyme::Pgp,
+        Enzyme::Oatp1b1,
+        Enzyme::Bcrp,
     ];
+
+    /// Un transporteur, et non un cytochrome : c'est ce que la portée
+    /// annonce en tête de la lecture, les deux comptés à part.
+    pub fn is_transporter(self) -> bool {
+        matches!(self, Enzyme::Pgp | Enzyme::Oatp1b1 | Enzyme::Bcrp)
+    }
+
+    /// Les façons dont une fiche nomme cette voie, repliées. La
+    /// glycoprotéine P s'écrit de trois manières dans les fiches, et
+    /// « OATP1B1/1B3 » nomme bien l'OATP1B1 : c'est ce que le test
+    /// d'adossement cherche.
+    pub fn spellings(self) -> &'static [&'static str] {
+        match self {
+            Enzyme::Pgp => &["p-gp", "glycoproteine p", "p-glycoproteine"],
+            Enzyme::Oatp1b1 => &["oatp1b1"],
+            Enzyme::Bcrp => &["bcrp"],
+            _ => &[],
+        }
+    }
 
     pub fn label(self) -> &'static str {
         match self {
@@ -113,6 +155,9 @@ impl Enzyme {
             Enzyme::Cyp2c19 => "CYP2C19",
             Enzyme::Cyp2d6 => "CYP2D6",
             Enzyme::Cyp3a4 => "CYP3A4",
+            Enzyme::Pgp => "P-gp",
+            Enzyme::Oatp1b1 => "OATP1B1",
+            Enzyme::Bcrp => "BCRP",
         }
     }
 }
@@ -439,7 +484,31 @@ pub fn cross(treatments: &[crate::revue::Treatment]) -> Reading {
     }
 }
 
-use Enzyme::{Cyp1a2, Cyp2b6, Cyp2c19, Cyp2c8, Cyp2c9, Cyp2d6, Cyp3a4};
+/// Les croisements d'une même paire, **réunis**.
+///
+/// Un inhibiteur puissant du CYP3A4 est presque toujours aussi un
+/// inhibiteur de la glycoprotéine P, et une colchicine passe par les
+/// deux : la même rencontre s'écrirait deux fois, l'une sous l'autre, et
+/// la liste doublerait de longueur pour ne rien dire de plus. On réunit
+/// donc ce qui a le même acteur, le même touché et le même sens ; chaque
+/// groupe garde toutes ses voies, la plus lourde en tête — la lecture
+/// est déjà triée par poids, et le groupe prend la place de sa première
+/// ligne.
+pub fn grouped(crossings: &[Crossing]) -> Vec<Vec<&Crossing>> {
+    let mut groups: Vec<Vec<&Crossing>> = Vec::new();
+    for c in crossings {
+        match groups
+            .iter_mut()
+            .find(|g| g[0].actor == c.actor && g[0].affected == c.affected && g[0].shift == c.shift)
+        {
+            Some(g) => g.push(c),
+            None => groups.push(vec![c]),
+        }
+    }
+    groups
+}
+
+use Enzyme::{Bcrp, Cyp1a2, Cyp2b6, Cyp2c19, Cyp2c8, Cyp2c9, Cyp2d6, Cyp3a4, Oatp1b1, Pgp};
 use Force::{Moderate, Strong, Weak};
 use Role::{Inducer, Inhibitor, Substrate};
 
@@ -460,8 +529,9 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Strong)),
         ],
-        source: "Sporanox : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine, et substrat du CYP3A4 ».",
+        source: "Sporanox : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine, et substrat du CYP3A4 » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
     },
     Profile {
         needs: &["voriconazole"],
@@ -477,8 +547,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["posaconazole"],
         label: "Posaconazole",
-        actions: &[Action::new(Cyp3a4, Inhibitor, Some(Strong))],
-        source: "Noxafil : « Inhibiteur très puissant du CYP3A4 et de la P-glycoprotéine, sans effet notable sur les autres cytochromes ».",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Strong)),
+        ],
+        source: "Noxafil : « Inhibiteur très puissant du CYP3A4 et de la P-glycoprotéine, sans effet notable sur les autres cytochromes » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
     },
     Profile {
         needs: &["fluconazole"],
@@ -505,8 +578,9 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Strong)),
         ],
-        source: "Zeclar : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine, ce qui en fait l'un des antibiotiques les plus pourvoyeurs d'interactions ».",
+        source: "Zeclar : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine, ce qui en fait l'un des antibiotiques les plus pourvoyeurs d'interactions » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
     },
     Profile {
         needs: &["josamycine"],
@@ -525,8 +599,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c8, Inducer, None),
             Action::new(Cyp2c9, Inducer, None),
             Action::new(Cyp2c19, Inducer, None),
+            Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Norvir : « c'est un inhibiteur puissant du CYP3A4 et, dans une moindre mesure, du CYP2D6 » ; « il accélère la glucuronidation et l'oxydation par le CYP1A2, le CYP2C8, le CYP2C9 et le CYP2C19 » ; « Métabolisme hépatique extensif, principalement par le CYP3A4 ».",
+        source: "Norvir : « c'est un inhibiteur puissant du CYP3A4 et, dans une moindre mesure, du CYP2D6 » ; « il accélère la glucuronidation et l'oxydation par le CYP1A2, le CYP2C8, le CYP2C9 et le CYP2C19 » ; « Métabolisme hépatique extensif, principalement par le CYP3A4 » ; « et un inhibiteur de la P-glycoprotéine » — sans force.",
     },
     Profile {
         needs: &["ritonavir", "nirmatrelvir"],
@@ -540,8 +615,9 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Strong)),
         ],
-        source: "Isoptine : « Le vérapamil est un inhibiteur puissant du CYP3A4 et de la P-gp » ; « Métabolisme hépatique intense de premier passage par le CYP3A4 ».",
+        source: "Isoptine : « Le vérapamil est un inhibiteur puissant du CYP3A4 et de la P-gp » ; « Métabolisme hépatique intense de premier passage par le CYP3A4 » ; Tarka : « Le vérapamil inhibe le CYP3A4 et la P-gp ».",
     },
     Profile {
         needs: &["diltiazem"],
@@ -549,8 +625,9 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Strong)),
         ],
-        source: "Tildiem : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine » ; « Métabolisme hépatique important par le CYP3A4 ».",
+        source: "Tildiem : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine » ; « Métabolisme hépatique important par le CYP3A4 » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
     },
     Profile {
         needs: &["fluvoxamine"],
@@ -638,8 +715,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c9, Inducer, Some(Strong)),
             Action::new(Cyp2c19, Inducer, Some(Strong)),
             Action::new(Cyp1a2, Inducer, Some(Strong)),
+            Action::new(Pgp, Inducer, Some(Strong)),
         ],
-        source: "Rifadine : « Inducteur enzymatique parmi les plus puissants connus, portant sur les CYP3A4, 2C9, 2C19, 1A2 et sur la P-glycoprotéine ».",
+        source: "Rifadine : « Inducteur enzymatique parmi les plus puissants connus, portant sur les CYP3A4, 2C9, 2C19, 1A2 et sur la P-glycoprotéine » ; Rifinah : « inducteur enzymatique très puissant des CYP3A4, 2C9, 2C19, 1A2 et de la P-glycoprotéine ».",
     },
     Profile {
         needs: &["phenytoine"],
@@ -660,8 +738,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Inducer, Some(Strong)),
             Action::new(Cyp2c9, Inducer, None),
             Action::new(Cyp1a2, Inducer, None),
+            Action::new(Pgp, Inducer, Some(Strong)),
         ],
-        source: "Millepertuis : « Inducteur enzymatique puissant du CYP3A4 et de la P-gp » ; « l'induction concerne le CYP3A4, le CYP2C9, le CYP1A2 » — la fiche ne qualifie que le premier.",
+        source: "Millepertuis : « Inducteur enzymatique puissant du CYP3A4 et de la P-gp » ; « l'induction concerne le CYP3A4, le CYP2C9, le CYP1A2 » — la fiche ne qualifie que le premier ; « Inducteur enzymatique puissant du CYP3A4 et de la P-gp ».",
     },
     // ---- Substrats ----
     Profile {
@@ -682,20 +761,31 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["rosuvastatine"],
         label: "Rosuvastatine",
-        actions: &[Action::new(Cyp2c9, Substrate, Some(Weak))],
-        source: "Crestor : « Contrairement à la simvastatine et à l'atorvastatine, la rosuvastatine n'est pas métabolisée par le CYP3A4 » ; « Métabolisme marginal par le CYP2C9 ».",
+        actions: &[
+            Action::new(Cyp2c9, Substrate, Some(Weak)),
+            Action::new(Oatp1b1, Substrate, Some(Strong)),
+            Action::new(Bcrp, Substrate, None),
+        ],
+        source: "Crestor : « Contrairement à la simvastatine et à l'atorvastatine, la rosuvastatine n'est pas métabolisée par le CYP3A4 » ; « Métabolisme marginal par le CYP2C9 » ; Crestor : « majoritairement captée par le foie via le transporteur OATP1B1 » ; « substrat des transporteurs OATP1B1 et BCRP ».",
     },
     Profile {
         needs: &["apixaban"],
         label: "Apixaban",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Moderate))],
-        source: "Eliquis : « Métabolisme partiel par le CYP3A4, substrat de la P-gp ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Eliquis : « Métabolisme partiel par le CYP3A4, substrat de la P-gp » ; « substrat de la P-gp ».",
     },
     Profile {
         needs: &["rivaroxaban"],
         label: "Rivaroxaban",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Moderate))],
-        source: "Xarelto : « Environ un tiers éliminé par voie rénale sous forme inchangée, le reste métabolisé (CYP3A4, CYP2J2) ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Substrate, None),
+        ],
+        source: "Xarelto : « Environ un tiers éliminé par voie rénale sous forme inchangée, le reste métabolisé (CYP3A4, CYP2J2) » ; « substrat de la P-gp et de la BCRP ».",
     },
     Profile {
         needs: &["ticagrelor"],
@@ -703,8 +793,10 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp3a4, Inhibitor, None),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Brilique : « Le ticagrélor est substrat et inhibiteur du CYP3A4 et de la P-gp » ; « Métabolisme hépatique par le CYP3A4 ».",
+        source: "Brilique : « Le ticagrélor est substrat et inhibiteur du CYP3A4 et de la P-gp » ; « Métabolisme hépatique par le CYP3A4 » ; la P-gp est dans la même phrase, sans force.",
     },
     // **Prodrogue** : inhiber le CYP2C19 ne l'accumule pas, cela le
     // désarme.
@@ -820,20 +912,29 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["everolimus"],
         label: "Évérolimus",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Certican : « Métabolisme hépatique et intestinal étendu par le CYP3A4 » ; « élévation majeure des concentrations et toxicité ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Certican : « Métabolisme hépatique et intestinal étendu par le CYP3A4 » ; « élévation majeure des concentrations et toxicité » ; Certican : « avec transport par la glycoprotéine P ».",
     },
     Profile {
         needs: &["sirolimus"],
         label: "Sirolimus",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Rapamune : « Substrat du CYP3A4 et de la glycoprotéine P, largement métabolisé dans l'intestin et le foie ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Rapamune : « Substrat du CYP3A4 et de la glycoprotéine P, largement métabolisé dans l'intestin et le foie » ; la glycoprotéine P, sans force.",
     },
     Profile {
         needs: &["colchicine"],
         label: "Colchicine",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Colchicine : « Substrat du CYP3A4 et de la P-gp » ; « concentrations fortement augmentées, réduction de dose impérative ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Colchicine : « Substrat du CYP3A4 et de la P-gp » ; « concentrations fortement augmentées, réduction de dose impérative » ; Colchimax : « substrat de la glycoprotéine P ».",
     },
     Profile {
         needs: &["domperidone"],
@@ -885,8 +986,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c9, Inducer, Some(Strong)),
             Action::new(Cyp2b6, Inducer, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inducer, None),
         ],
-        source: "Tégrétol : « Inducteur enzymatique puissant des CYP3A4, CYP2C9, CYP2B6 » ; « Les inhibiteurs du CYP3A4 augmentent la carbamazépinémie avec risque de surdosage ».",
+        source: "Tégrétol : « Inducteur enzymatique puissant des CYP3A4, CYP2C9, CYP2B6 » ; « Les inhibiteurs du CYP3A4 augmentent la carbamazépinémie avec risque de surdosage » ; Tégrétol : « Il induit aussi la glycoprotéine P » — sans force.",
     },
     Profile {
         needs: &["oxcarbazepine"],
@@ -909,8 +1011,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["gemfibrozil"],
         label: "Gemfibrozil",
-        actions: &[Action::new(Cyp2c8, Inhibitor, Some(Strong))],
-        source: "Lipur : « Le gemfibrozil est un inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée ».",
+        actions: &[
+            Action::new(Cyp2c8, Inhibitor, Some(Strong)),
+            Action::new(Oatp1b1, Inhibitor, Some(Strong)),
+        ],
+        source: "Lipur : « Le gemfibrozil est un inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée » ; Lipur : « inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 ».",
     },
     Profile {
         needs: &["aprepitant"],
@@ -1025,8 +1130,13 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["ciclosporine"],
         label: "Ciclosporine",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Néoral : « Métabolisme hépatique et intestinal extensif par le CYP3A4 avec efflux par la glycoprotéine P » ; jus de pamplemousse « formellement interdit ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+        ],
+        source: "Néoral : « Métabolisme hépatique et intestinal extensif par le CYP3A4 avec efflux par la glycoprotéine P » ; jus de pamplemousse « formellement interdit » ; « La ciclosporine inhibe elle-même la glycoprotéine P et le transporteur OATP1B1 » — sans force.",
     },
     Profile {
         needs: &["quetiapine"],
@@ -1167,14 +1277,20 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["dronedarone"],
         label: "Dronédarone",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Multaq : « Métabolisme hépatique important par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 sont contre-indiqués ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Multaq : « Métabolisme hépatique important par le CYP3A4 » ; « Les inhibiteurs puissants du CYP3A4 sont contre-indiqués » ; Multaq : « la dronédarone inhibant la P-gp » — sans force.",
     },
     Profile {
         needs: &["amiodarone"],
         label: "Amiodarone",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Cordarone : « Métabolisme hépatique important, notamment par le CYP3A4, en déséthylamiodarone active ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Cordarone : « Métabolisme hépatique important, notamment par le CYP3A4, en déséthylamiodarone active » ; Cordarone : « L'amiodarone inhibe la P-glycoprotéine » — sans force.",
     },
     Profile {
         needs: &["ivabradine"],
@@ -1194,8 +1310,9 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp2c8, Substrate, Some(Strong)),
             Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Oatp1b1, Substrate, None),
         ],
-        source: "Novonorm : « Métabolisme hépatique complet par les CYP2C8 et CYP3A4 » ; « Gemfibrozil : contre-indication absolue, l'inhibition du CYP2C8 multipliant l'exposition avec des hypoglycémies sévères ».",
+        source: "Novonorm : « Métabolisme hépatique complet par les CYP2C8 et CYP3A4 » ; « Gemfibrozil : contre-indication absolue, l'inhibition du CYP2C8 multipliant l'exposition avec des hypoglycémies sévères » ; Novonorm : « Captation hépatique par le transporteur OATP1B1 ».",
     },
     Profile {
         needs: &["gliclazide"],
@@ -1370,14 +1487,17 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Méthadone : « Métabolisme hépatique important, principalement par les CYP3A4, CYP2B6 et CYP2D6 ».",
     },
-    // **Connue, et sans voie qui compte.** Ce n'est pas une ignorance :
-    // c'est la réponse qu'on cherche en se demandant par quoi remplacer
-    // une simvastatine sous clarithromycine, et la fiche l'écrit.
+    // **Aucun cytochrome, et c'est la réponse** qu'on cherche en se
+    // demandant par quoi remplacer une simvastatine sous clarithromycine
+    // — la fiche l'écrit. Elle fut la ligne « sans voie » de la table
+    // jusqu'à ce que les transporteurs y entrent : sa captation par
+    // l'OATP1B1 est ce qui la fait croiser la ciclosporine, et la taire
+    // la rendait aussi sûre sous ciclosporine que sous clarithromycine.
     Profile {
         needs: &["pravastatine"],
         label: "Pravastatine",
-        actions: &[],
-        source: "Vasten : « elle n'est pas métabolisée par le CYP3A4 » ; Elisor : « la pravastatine n'étant pas métabolisée de façon notable par le CYP3A4 : ni le pamplemousse ni les macrolides ni les azolés ne posent le problème observé avec la simvastatine ».",
+        actions: &[Action::new(Oatp1b1, Substrate, None)],
+        source: "Vasten : « elle n'est pas métabolisée par le CYP3A4 » ; « Substrat des transporteurs hépatiques OATP1B1 » ; Elisor : « la pravastatine n'étant pas métabolisée de façon notable par le CYP3A4 : ni le pamplemousse ni les macrolides ni les azolés ne posent le problème observé avec la simvastatine ».",
     },
     Profile {
         needs: &["olanzapine"],
@@ -1403,8 +1523,12 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["ibrutinib", "imbruvica"],
         label: "Ibrutinib",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Imbruvica : « Substrat majeur du CYP3A4 : les inhibiteurs puissants (kétoconazole, itraconazole, posaconazole, voriconazole, clarithromycine, ritonavir et cobicistat) multiplient l'exposition ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Imbruvica : « Substrat majeur du CYP3A4 : les inhibiteurs puissants (kétoconazole, itraconazole, posaconazole, voriconazole, clarithromycine, ritonavir et cobicistat) multiplient l'exposition » ; « Inhibiteur de la P-gp et de la BCRP » — sans force.",
     },
     Profile {
         needs: &["ruxolitinib", "jakavi"],
@@ -1421,20 +1545,29 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp1a2, Substrate, None),
             Action::new(Cyp2c8, Substrate, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
         ],
-        source: "Revolade : « Métabolisé par le CYP1A2, le CYP2C8 et la glucuroconjugaison, avec peu de conséquences décrites ».",
+        source: "Revolade : « Métabolisé par le CYP1A2, le CYP2C8 et la glucuroconjugaison, avec peu de conséquences décrites » ; « Inhibiteur de l'OATP1B1 et de la BCRP » — sans force.",
     },
     Profile {
         needs: &["regorafenib", "stivarga"],
         label: "Régorafénib",
-        actions: &[Action::new(Cyp3a4, Substrate, None)],
-        source: "Stivarga : « Substrat du CYP3A4 et de l'UGT1A9 : les inhibiteurs puissants du CYP3A4 (kétoconazole, itraconazole, voriconazole, clarithromycine, ritonavir) et le pamplemousse modifient l'exposition ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Stivarga : « Substrat du CYP3A4 et de l'UGT1A9 : les inhibiteurs puissants du CYP3A4 (kétoconazole, itraconazole, voriconazole, clarithromycine, ritonavir) et le pamplemousse modifient l'exposition » ; le régorafénib inhibe « la BCRP, ce qui augmente celle de la rosuvastatine ».",
     },
     Profile {
         needs: &["venetoclax", "venclyxto"],
         label: "Vénétoclax",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Venclyxto : « Substrat majeur du CYP3A4 et de la P-gp » ; « association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, Some(Strong)),
+            Action::new(Bcrp, Substrate, None),
+        ],
+        source: "Venclyxto : « Substrat majeur du CYP3A4 et de la P-gp » ; « association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration » ; « Substrat majeur du CYP3A4 et de la P-gp » ; « substrat de la P-gp et de la BCRP ».",
     },
     Profile {
         needs: &["anagrelide", "xagrid"],
@@ -1448,8 +1581,12 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["riociguat", "adempas"],
         label: "Riociguat",
-        actions: &[Action::new(Cyp3a4, Substrate, None)],
-        source: "Adempas : « Métabolisme par plusieurs cytochromes, dont les CYP1A1, CYP3A4, CYP3A5 et CYP2J2 ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Substrate, None),
+        ],
+        source: "Adempas : « Métabolisme par plusieurs cytochromes, dont les CYP1A1, CYP3A4, CYP3A5 et CYP2J2 » ; « Inhibiteurs puissants à plusieurs voies, du CYP3A4, de la P-gp et de la BCRP […] : exposition fortement augmentée ».",
     },
     Profile {
         needs: &["macitentan", "opsumit"],
@@ -1470,8 +1607,10 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2d6, Substrate, Some(Weak)),
             Action::new(Cyp3a4, Inhibitor, Some(Weak)),
             Action::new(Cyp2d6, Inhibitor, None),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et inhibe la P-gp et le CYP2D6 ».",
+        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et inhibe la P-gp et le CYP2D6 » ; « substrat […] de la P-gp » ; « inhibe la P-gp » — sans force.",
     },
     Profile {
         needs: &["disopyramide", "rythmodan"],
@@ -1522,8 +1661,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["naloxegol", "moventig"],
         label: "Naloxégol",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Moventig : « Métabolisme hépatique principalement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A4 : exposition au naloxégol multipliée, association contre-indiquée ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Moventig : « Métabolisme hépatique principalement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A4 : exposition au naloxégol multipliée, association contre-indiquée » ; « substrat de la glycoprotéine P ».",
     },
     Profile {
         needs: &["pimozide"],
@@ -1596,8 +1738,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["relugolix", "ryeqo"],
         label: "Rélugolix + estradiol + noréthistérone",
-        actions: &[Action::new(Cyp3a4, Substrate, None)],
-        source: "Ryeqo : « Inducteurs puissants du CYP3A4 ou de la glycoprotéine P […] non recommandés, efficacité diminuée et protection osseuse réduite » ; « Les inhibiteurs du CYP3A4 peuvent augmenter l'estradiol et la noréthistérone ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Ryeqo : « Inducteurs puissants du CYP3A4 ou de la glycoprotéine P […] non recommandés, efficacité diminuée et protection osseuse réduite » ; « Les inhibiteurs du CYP3A4 peuvent augmenter l'estradiol et la noréthistérone » ; « substrat de la glycoprotéine P ».",
     },
     Profile {
         needs: &["dienogest", "visanne"],
@@ -1608,8 +1753,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["rilpivirine", "edurant"],
         label: "Rilpivirine",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Edurant : « Métabolisée principalement par le CYP3A4 » ; les inducteurs du CYP3A sont contre-indiqués par perte d'efficacité.",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Edurant : « Métabolisée principalement par le CYP3A4 » ; les inducteurs du CYP3A sont contre-indiqués par perte d'efficacité ; Edurant : « Dabigatran : prudence, par inhibition de la P-gp intestinale ».",
     },
     Profile {
         needs: &["abrocitinib", "cibinqo"],
@@ -1619,8 +1767,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c9, Substrate, None),
             Action::new(Cyp2c19, Inhibitor, Some(Moderate)),
             Action::new(Cyp1a2, Inhibitor, Some(Weak)),
+            Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Cibinqo : « Substrat principal des CYP2C19 et CYP2C9 » ; « L'abrocitinib est lui-même un inhibiteur modéré du CYP2C19 » ; « Inhibiteur faible du CYP1A2 ».",
+        source: "Cibinqo : « Substrat principal des CYP2C19 et CYP2C9 » ; « L'abrocitinib est lui-même un inhibiteur modéré du CYP2C19 » ; « Inhibiteur faible du CYP1A2 » ; « Inhibiteur de la glycoprotéine P : prudence avec le dabigatran et la digoxine ».",
     },
     Profile {
         needs: &["roflumilast", "daxas"],
@@ -1640,8 +1789,11 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c9, Inducer, Some(Weak)),
             Action::new(Cyp2c8, Substrate, None),
             Action::new(Cyp3a4, Substrate, None),
+            Action::new(Pgp, Inducer, Some(Weak)),
+            Action::new(Bcrp, Inducer, Some(Weak)),
+            Action::new(Oatp1b1, Inducer, Some(Weak)),
         ],
-        source: "Erleada : « Inducteur puissant des CYP3A4 et CYP2C19 et inducteur faible du CYP2C9 » ; « Substrat des CYP2C8 et CYP3A4 ».",
+        source: "Erleada : « Inducteur puissant des CYP3A4 et CYP2C19 et inducteur faible du CYP2C9 » ; « Substrat des CYP2C8 et CYP3A4 » ; « inducteur faible de la glycoprotéine P, de la BCRP et de l'OATP1B1 ».",
     },
     Profile {
         needs: &["darolutamide", "nubeqa"],
@@ -1649,8 +1801,12 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Substrate, None),
             Action::new(Cyp3a4, Inducer, Some(Weak)),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Substrate, None),
+            Action::new(Bcrp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
         ],
-        source: "Nubeqa : « Substrat du CYP3A4, de la glycoprotéine P et de la BCRP » ; « Inducteur faible du CYP3A4, sans conséquence clinique attendue ».",
+        source: "Nubeqa : « Substrat du CYP3A4, de la glycoprotéine P et de la BCRP » ; « Inducteur faible du CYP3A4, sans conséquence clinique attendue » ; « Substrat du CYP3A4, de la glycoprotéine P et de la BCRP » ; « Inhibiteur de la BCRP et des OATP1B1 et OATP1B3 : exposition à la rosuvastatine multipliée par 5 environ ».",
     },
     Profile {
         needs: &["trixeo"],
@@ -1722,8 +1878,11 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2d6, Inhibitor, Some(Weak)),
             Action::new(Cyp2c9, Inducer, None),
+            Action::new(Pgp, Inhibitor, Some(Weak)),
+            Action::new(Bcrp, Inhibitor, Some(Weak)),
+            Action::new(Oatp1b1, Inhibitor, Some(Weak)),
         ],
-        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 ».",
+        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6, ainsi que la P-gp, la BCRP et les OATP1B1/1B3 ».",
     },
     Profile {
         needs: &["doravirine", "pifeltro"],
@@ -1741,8 +1900,13 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
             Action::new(Cyp2c19, Inducer, Some(Moderate)),
             Action::new(Cyp2c9, Inducer, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+            Action::new(Pgp, Inducer, None),
+            Action::new(Oatp1b1, Substrate, None),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Substrate, None),
         ],
-        source: "Prevymis : « Inhibiteur modéré du CYP3A4 (midazolam multiplié par 2 à 3) » ; « Inducteur du CYP2C19 et probablement du CYP2C9 : voriconazole diminué ».",
+        source: "Prevymis : « Inhibiteur modéré du CYP3A4 (midazolam multiplié par 2 à 3) » ; « Inducteur du CYP2C19 et probablement du CYP2C9 : voriconazole diminué » ; « Inhibiteur des OATP1B1/3 » ; « Inducteur de la P-gp intestinale : dabigatran diminué » ; « Captation hépatique par les transporteurs OATP1B1/3 » ; « Substrat de la P-gp et de la BCRP ».",
     },
     Profile {
         needs: &["cabotégravir", "vocabria"],
@@ -1793,8 +1957,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["naldemedine", "rizmoic"],
         label: "Naldémédine",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Moderate))],
-        source: "Rizmoic : « Métabolisme principalement par le CYP3A, en pratique le CYP3A4, en nor-naldémédine » ; « exposition augmentée, près de trois fois avec l'itraconazole ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Rizmoic : « Métabolisme principalement par le CYP3A, en pratique le CYP3A4, en nor-naldémédine » ; « exposition augmentée, près de trois fois avec l'itraconazole » ; « substrat de la glycoprotéine P ».",
     },
     Profile {
         needs: &["pitolisant", "wakix"],
@@ -1806,6 +1973,179 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2b6, Inducer, None),
         ],
         source: "Wakix : « Métabolisme hépatique par les CYP3A4 et CYP2D6 » ; « induit les CYP3A4, CYP1A2 et CYP2B6 ; des interactions cliniquement pertinentes sont possibles avec les substrats des CYP3A4 et CYP2B6 ».",
+    },
+    // ---- Transporteurs, ajoutés en 0.358.0 ----
+    // Des molécules que la table taisait parce qu'aucun cytochrome ne
+    // les porte : c'est la glycoprotéine P ou l'OATP1B1 qui fait leur
+    // interaction, et elle est majeure.
+    Profile {
+        needs: &["dabigatran"],
+        label: "Dabigatran",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Pradaxa : « Substrat de la P-gp sans métabolisme par les cytochromes : dronédarone, kétoconazole, itraconazole et ciclosporine sont contre-indiqués ».",
+    },
+    Profile {
+        needs: &["digoxine"],
+        label: "Digoxine",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Digoxine : « substrat de la P-glycoprotéine, métabolisme hépatique très faible ».",
+    },
+    Profile {
+        needs: &["edoxaban"],
+        label: "Édoxaban",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Lixiana : « substrat de la P-gp, métabolisme par le CYP3A4 minime » ; « Inhibiteurs de la P-gp : réduction de dose à 30 mg ».",
+    },
+    Profile {
+        needs: &["loperamide"],
+        label: "Lopéramide",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Imodium : « l'expulsion active par la P-glycoprotéine à la barrière hématoencéphalique » ; « Inhibiteurs de la P-glycoprotéine […] : passage cérébral et exposition systémique augmentés ».",
+    },
+    Profile {
+        needs: &["bilastine"],
+        label: "Bilastine",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Inorial : « Substrat de la glycoprotéine P ».",
+    },
+    Profile {
+        needs: &["stromectol"],
+        label: "Ivermectine (Stromectol)",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Stromectol : « inhibiteurs puissants de la glycoprotéine P […] qui peuvent augmenter le passage cérébral ».",
+    },
+    Profile {
+        needs: &["pomalidomide"],
+        label: "Pomalidomide",
+        actions: &[
+            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Imnovid : « Substrat du CYP1A2 et du CYP3A4 et de la P-gp ».",
+    },
+    Profile {
+        needs: &["lenalidomide"],
+        label: "Lénalidomide",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Revlimid : « il est substrat de la P-gp ».",
+    },
+    Profile {
+        needs: &["nintedanib"],
+        label: "Nintédanib",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+            Action::new(Cyp3a4, Substrate, Some(Weak)),
+        ],
+        source: "Ofev : « Substrat de la P-glycoprotéine et, accessoirement, du CYP3A4 ».",
+    },
+    Profile {
+        needs: &["fidaxomicine"],
+        label: "Fidaxomicine",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Dificlir : « La fidaxomicine est un substrat de la glycoprotéine P » — l'inhibition intestinale qu'elle exerce n'est pas chiffrée par la fiche et n'est pas reprise.",
+    },
+    Profile {
+        needs: &["alafenamide"],
+        label: "Ténofovir alafénamide",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Vemlidy : « Inducteurs puissants de la glycoprotéine P : association contre-indiquée ou déconseillée du fait de la perte d'efficacité » ; « Inhibiteurs de la glycoprotéine P […] : exposition augmentée ».",
+    },
+    Profile {
+        needs: &["tolvaptan"],
+        label: "Tolvaptan",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Jinarc : « Métabolisme hépatique quasi exclusif par le CYP3A4 » ; « Le tolvaptan inhibe la glycoprotéine P, majorant l'exposition à la digoxine ».",
+    },
+    Profile {
+        needs: &["osimertinib"],
+        label: "Osimertinib",
+        actions: &[
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Tagrisso : « L'osimertinib est un inhibiteur de la BCRP et de la P-glycoprotéine ».",
+    },
+    Profile {
+        needs: &["olaparib"],
+        label: "Olaparib",
+        actions: &[
+            Action::new(Pgp, Inhibitor, Some(Weak)),
+            Action::new(Bcrp, Inhibitor, Some(Weak)),
+        ],
+        source: "Lynparza : « L'olaparib inhibe faiblement plusieurs cytochromes et transporteurs, dont la P-glycoprotéine et la BCRP ».",
+    },
+    Profile {
+        needs: &["canagliflozine"],
+        label: "Canagliflozine",
+        actions: &[
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Invokana : « Digoxine : concentrations augmentées par inhibition de la P-gp » — la BCRP, « possiblement », n'est pas reprise.",
+    },
+    Profile {
+        needs: &["tafamidis"],
+        label: "Tafamidis",
+        actions: &[
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Vyndaqel : « Inhibition de la protéine de transport BCRP : l'exposition à la rosuvastatine est environ doublée ».",
+    },
+    Profile {
+        needs: &["glecaprevir"],
+        label: "Glécaprévir + pibrentasvir",
+        actions: &[
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Maviret : « Dabigatran et digoxine : concentrations augmentées par inhibition de la glycoprotéine P ».",
+    },
+    Profile {
+        needs: &["teriflunomide"],
+        label: "Tériflunomide",
+        actions: &[
+            Action::new(Cyp2c8, Inhibitor, None),
+            Action::new(Cyp1a2, Inducer, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Aubagio : « Le tériflunomide inhibe le CYP2C8 […], induit le CYP1A2 […] et inhibe les transporteurs OAT3 et BCRP ».",
+    },
+    Profile {
+        needs: &["leflunomide"],
+        label: "Léflunomide",
+        actions: &[
+            Action::new(Cyp2c8, Inhibitor, None),
+            Action::new(Cyp1a2, Inducer, None),
+        ],
+        source: "Arava : « Le tériflunomide inhibe le CYP2C8 et induit le CYP1A2 » — les transporteurs y sont nommés par leurs substrats, sans rôle écrit, et ne sont pas repris.",
+    },
+    Profile {
+        needs: &["bempedoique"],
+        label: "Acide bempédoïque",
+        actions: &[
+            Action::new(Oatp1b1, Inhibitor, None),
+        ],
+        source: "Nilemdo : « L'acide bempédoïque inhibe l'OATP1B1 et augmente l'exposition à ces statines ».",
     },
 ];
 
@@ -1851,7 +2191,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 169;
+        const FLOOR: usize = 189;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",
@@ -1971,8 +2311,13 @@ mod tests {
     /// C'est la question qu'on pose vraiment sous clarithromycine : par
     /// quoi remplacer la simvastatine ? La pravastatine y répond, et sa
     /// fiche l'écrit — « elle n'est pas métabolisée par le CYP3A4 ».
-    /// La ranger avec les inconnues la rendrait aussi muette qu'un
-    /// produit dont personne n'a rien écrit.
+    /// Elle est **connue** de la table, donc jamais rangée avec les
+    /// inconnues ; et depuis les transporteurs elle n'est plus inerte :
+    /// sa captation par l'OATP1B1 la fait croiser la ciclosporine, qui
+    /// est exactement ce que sa fiche plafonne.
+    ///
+    /// L'inerte reste une réponse : le cabotégravir, dont la fiche écrit
+    /// qu'il ne passe par aucune voie qui compte.
     #[test]
     fn a_molecule_with_no_route_is_not_a_molecule_nobody_knows() {
         let r = cross(&[
@@ -1981,8 +2326,85 @@ mod tests {
             t("Doliprane", "paracétamol"),
         ]);
         assert!(r.crossings.is_empty(), "{:?}", r.crossings);
-        assert_eq!(r.inert, vec!["Vasten".to_owned()]);
+        assert!(r.inert.is_empty() && !r.unknown.contains(&"Vasten".to_owned()));
         assert_eq!(r.unknown, vec!["Doliprane".to_owned()]);
+        // Sous ciclosporine, c'est l'OATP1B1 qui parle.
+        let r = cross(&[t("Néoral", "ciclosporine"), t("Vasten", "pravastatine")]);
+        assert!(
+            r.crossings
+                .iter()
+                .any(|c| c.affected == "Vasten" && c.enzyme == Oatp1b1),
+            "{:?}",
+            r.crossings
+        );
+        let r = cross(&[
+            t("Vocabria", "cabotégravir"),
+            t("Zeclar", "clarithromycine"),
+        ]);
+        assert_eq!(r.inert, vec!["Vocabria".to_owned()]);
+    }
+
+    /// La colchicine sous clarithromycine se croise sur le CYP3A4 *et*
+    /// sur la glycoprotéine P : une rencontre, deux voies, une seule
+    /// ligne à lire — la plus lourde en tête.
+    #[test]
+    fn one_pair_met_on_two_routes_is_read_once() {
+        let r = cross(&[
+            t("Zeclar", "clarithromycine"),
+            t("Colchicine", "colchicine"),
+        ]);
+        let g = grouped(&r.crossings);
+        let mine: Vec<_> = g.iter().filter(|g| g[0].affected == "Colchicine").collect();
+        assert_eq!(mine.len(), 1, "{:?}", r.crossings);
+        let routes: Vec<Enzyme> = mine[0].iter().map(|c| c.enzyme).collect();
+        assert!(
+            routes.contains(&Cyp3a4) && routes.contains(&Pgp),
+            "{routes:?}"
+        );
+        assert!(mine[0].windows(2).all(|w| w[0].weight <= w[1].weight));
+        // Deux sens opposés ne se réunissent pas.
+        assert_eq!(
+            grouped(&r.crossings).iter().map(|g| g.len()).sum::<usize>(),
+            r.crossings.len()
+        );
+    }
+
+    /// **Les interactions que les cytochromes n'expliquent pas.** Le
+    /// dabigatran ne passe par aucun cytochrome : c'est la glycoprotéine
+    /// P qui l'amène sous amiodarone et le fait fondre sous rifampicine.
+    /// La rosuvastatine non plus : c'est l'OATP1B1 que la ciclosporine
+    /// bloque. Avant les transporteurs, la table taisait les deux — pire,
+    /// elle offrait la rosuvastatine comme l'alternative sûre.
+    #[test]
+    fn the_transporters_carry_what_no_cytochrome_does() {
+        let on = |a: (&str, &str), b: (&str, &str)| {
+            cross(&[t(a.0, a.1), t(b.0, b.1)])
+                .crossings
+                .into_iter()
+                .filter(|c| c.affected == b.0)
+                .map(|c| (c.enzyme, c.shift))
+                .collect::<Vec<_>>()
+        };
+        assert!(on(("Cordarone", "amiodarone"), ("Pradaxa", "dabigatran"))
+            .contains(&(Pgp, Shift::ExposureUp)));
+        assert!(on(("Rifadine", "rifampicine"), ("Pradaxa", "dabigatran"))
+            .contains(&(Pgp, Shift::ExposureDown)));
+        assert!(on(("Isoptine", "vérapamil"), ("Digoxine", "digoxine"))
+            .contains(&(Pgp, Shift::ExposureUp)));
+        assert!(on(("Néoral", "ciclosporine"), ("Crestor", "rosuvastatine"))
+            .contains(&(Oatp1b1, Shift::ExposureUp)));
+        assert!(on(("Lipur", "gemfibrozil"), ("Novonorm", "répaglinide"))
+            .contains(&(Oatp1b1, Shift::ExposureUp)));
+        // Et la clarithromycine ne touche toujours pas la rosuvastatine :
+        // sa fiche ne lui prête aucun rôle sur l'OATP1B1.
+        assert!(on(("Zeclar", "clarithromycine"), ("Crestor", "rosuvastatine")).is_empty());
+        // La weight lit les deux forces sur un transporteur comme sur une
+        // enzyme : vérapamil puissant, dabigatran non chiffré.
+        let r = cross(&[t("Isoptine", "vérapamil"), t("Pradaxa", "dabigatran")]);
+        assert!(r
+            .crossings
+            .iter()
+            .any(|c| c.enzyme == Pgp && c.weight == Weight::Major));
     }
 
     /// **Le choix de l'IPP sous clopidogrel, tel que les fiches
@@ -2225,7 +2647,15 @@ mod tests {
         // 3A4 — s'appliquait ainsi au Surmontil, dont la fiche écrit
         // « principalement par le CYP2D6 ». Rien ne le disait, et rien
         // ne pouvait le dire.
-        for (card, hay) in &drugs {
+        for ((card, hay), (_, dci, class, _)) in drugs.iter().zip(crate::db::STARTER_DRUGS) {
+            // **Une forme locale n'est jamais lue par `cross`** : elle
+            // part en inconnue avant la table. L'Ikervis est de la
+            // ciclosporine en collyre ; exiger que sa fiche nomme la
+            // glycoprotéine P serait exiger qu'elle parle d'une voie
+            // qu'il n'emprunte pas.
+            if crate::classes::stays_local(dci, class) {
+                continue;
+            }
             let Some(p) = TABLE.iter().find(|p| {
                 p.needs
                     .iter()
@@ -2245,7 +2675,11 @@ mod tests {
                 // raison de se plaindre, et tort sur la cause.
                 let long = crate::fuzzy::sort_key(a.enzyme.label());
                 let short = long.trim_start_matches("cyp").to_owned();
-                let named = body.contains(&long) || (body.contains("cyp") && body.contains(&short));
+                let named = if a.enzyme.is_transporter() {
+                    a.enzyme.spellings().iter().any(|w| body.contains(w))
+                } else {
+                    body.contains(&long) || (body.contains("cyp") && body.contains(&short))
+                };
                 if !named {
                     unbacked.push(format!("{} / {} → {card}", p.label, a.enzyme.label()));
                 }

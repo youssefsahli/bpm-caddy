@@ -4208,6 +4208,8 @@ struct Session {
     /// Les récepteurs et cascades : la liste, lue au rechargement.
     cascades: Vec<db::CascadeText>,
     cascade_index: Vec<CascadeEntry>,
+    /// Compté à chaque relecture des cascades : une clé du croisement.
+    cascades_rev: u64,
     /// La liste a été lue au moins une fois.
     cascades_read: bool,
     cascade_open: Option<i64>,
@@ -5433,6 +5435,7 @@ impl Session {
             checklist_edit: None,
             cascades: Vec::new(),
             cascade_index: Vec::new(),
+            cascades_rev: 0,
             cascades_read: false,
             cascade_open: None,
             cascade_read: None,
@@ -9072,12 +9075,16 @@ impl Session {
                 let p = crate::cascade::parse(&c.text);
                 CascadeEntry {
                     id: c.id,
-                    title: p.title,
-                    subject: p.subject,
-                    molecules: p.molecules.into_iter().map(|m| m.name).collect(),
+                    title: p.title.clone(),
+                    subject: p.subject.clone(),
+                    molecules: p.molecules.iter().map(|m| m.name.clone()).collect(),
+                    parsed: std::sync::Arc::new(p),
                 }
             })
             .collect();
+        // Ce qui a été lu des cascades a changé : le croisement, qui les
+        // joue, se refait à la prochaine question.
+        self.cascades_rev = self.cascades_rev.wrapping_add(1);
         if self
             .cascade_open
             .is_some_and(|id| !self.cascades.iter().any(|c| c.id == id))
@@ -9105,6 +9112,13 @@ impl Session {
     /// fiche : la porte d'une monographie montre ce que *cette*
     /// molécule fait, pas la chaîne au repos.
     fn open_cascade(&mut self, id: i64, give: Option<&str>) {
+        self.open_cascade_giving(id, give.as_slice());
+    }
+
+    /// Ouvrir une cascade avec plusieurs molécules déjà données : la
+    /// porte du croisement montre la paire qu'il vient de nommer, pas
+    /// l'une des deux.
+    fn open_cascade_giving(&mut self, id: i64, give: &[&str]) {
         if !self.cascades_read {
             self.cascades_read = true;
             self.reload_cascades();
@@ -9125,14 +9139,16 @@ impl Session {
         self.cascade_focus = None;
         self.cascade_hidden.clear();
         self.cascade_sync();
-        if let (Some(name), Some(read)) = (give, self.cascade_read.clone()) {
-            if let Some(m) = read
-                .parsed
-                .molecules
-                .iter()
-                .position(|m| crate::fuzzy::eq_folded(&m.name, name))
-            {
-                crate::cascade::toggle(&mut self.cascade_doses, m, 0);
+        if let Some(read) = self.cascade_read.clone() {
+            for name in give {
+                if let Some(m) = read
+                    .parsed
+                    .molecules
+                    .iter()
+                    .position(|m| crate::fuzzy::eq_folded(&m.name, name))
+                {
+                    crate::cascade::toggle(&mut self.cascade_doses, m, 0);
+                }
             }
         }
     }
@@ -10548,7 +10564,84 @@ fn drug_link_index(drugs: &[Drug]) -> std::collections::HashMap<String, i64> {
             index.entry(key).or_insert(d.id);
         }
     }
+    // **The molecule without its salt.** The prose writes « valproate »
+    // fifty-six times and the card's DCI is « valproate de sodium »;
+    // « olmésartan » thirty-one times for « olmésartan médoxomil ». The
+    // exact index left all of them plain, so the reader of a Lamictal
+    // card saw the valproate that doubles its exposure and could not
+    // follow it. The first word of a DCI becomes a link of its own when
+    // it names **one** molecule only — « ténofovir » is alafénamide or
+    // disoproxil, and stays plain — and when it is not a chemist's
+    // noun that heads a hundred names (« acide », « chlorure »…).
+    for (key, id) in dci_heads(drugs) {
+        index.entry(key).or_insert(id);
+    }
     index
+}
+
+/// The words that head a salt, an ester or a qualifier rather than
+/// name a molecule: « acide acétylsalicylique » is not « acide ».
+const DCI_HEAD_NOUNS: &[&str] = &[
+    "acide",
+    "acetate",
+    "allergenes",
+    "benzoate",
+    "bicarbonate",
+    "bromure",
+    "carbonate",
+    "chlorhydrate",
+    "chlorure",
+    "citrate",
+    "cyclosilicate",
+    "extrait",
+    "fluorure",
+    "fumarate",
+    "gluconate",
+    "huile",
+    "immunoglobuline",
+    "insaponifiables",
+    "insuline",
+    "oxyde",
+    "peroxyde",
+    "polysulfate",
+    "polystyrene",
+    "sennosides",
+    "succinate",
+    "sulfate",
+    "toxine",
+    "vaccin",
+];
+
+/// The first word of each multi-word DCI that names a single molecule
+/// in the base, folded, with the card it points at.
+fn dci_heads(drugs: &[Drug]) -> Vec<(String, i64)> {
+    let mut heads: std::collections::HashMap<String, (std::collections::HashSet<String>, i64)> =
+        std::collections::HashMap::new();
+    for d in drugs {
+        let dci = fuzzy::sort_key(d.dci.trim());
+        // An association names two molecules, each with its own card.
+        // And a local form is not what the bare molecule means: the
+        // « fluorouracil » of an oncology card is the infusion, not the
+        // cream whose DCI is « fluorouracil topique ».
+        if dci.contains('+') || crate::classes::stays_local(&d.dci, &d.class) {
+            continue;
+        }
+        let Some((head, rest)) = dci.split_once(' ') else {
+            continue;
+        };
+        if rest.trim().is_empty() || head.chars().count() < 6 || DCI_HEAD_NOUNS.contains(&head) {
+            continue;
+        }
+        let entry = heads
+            .entry(head.to_owned())
+            .or_insert_with(|| (std::collections::HashSet::new(), d.id));
+        entry.0.insert(dci.clone());
+    }
+    heads
+        .into_iter()
+        .filter(|(_, (forms, _))| forms.len() == 1)
+        .map(|(head, (_, id))| (head, id))
+        .collect()
 }
 
 /// Cut `text` into prose and links, matching the longest run of words
@@ -10619,7 +10712,14 @@ fn link_segments(
 /// The treatments as the ordonnance rules read them: the words each
 /// card carries, and nothing else.
 /// Ce qui fait qu'une lecture du croisement est encore valable.
-type DdiKey = (Vec<i64>, String, String, Option<crate::hepatic::Stage>, u64);
+type DdiKey = (
+    Vec<i64>,
+    String,
+    String,
+    Option<crate::hepatic::Stage>,
+    u64,
+    u64,
+);
 
 /// Un chapitre du croisement, **nommé pour qu'on puisse s'y poser**.
 ///
@@ -10640,6 +10740,9 @@ pub(crate) enum DdiSection {
     Cyp,
     HalfLife,
     Revue,
+    /// Deux lignes qui agissent sur une même cascade : ce que le modèle
+    /// montre d'elles ensemble.
+    Cascades,
     Renal,
     Hepatic,
     Elderly,
@@ -10648,7 +10751,7 @@ pub(crate) enum DdiSection {
 }
 
 impl DdiSection {
-    /// Les neuf chapitres, dans l'ordre où la vue les écrit.
+    /// Les dix chapitres, dans l'ordre où la vue les écrit.
     ///
     /// **Lu par le test et par lui seul**, et `#[cfg(test)]` dit
     /// exactement cela : le dessin appelle une fonction par chapitre,
@@ -10657,11 +10760,12 @@ impl DdiSection {
     /// dessin — le compiler en production ferait du code que rien
     /// n'appelle.
     #[cfg(test)]
-    pub(crate) const ALL: [DdiSection; 9] = [
+    pub(crate) const ALL: [DdiSection; 10] = [
         DdiSection::Interactions,
         DdiSection::Cyp,
         DdiSection::HalfLife,
         DdiSection::Revue,
+        DdiSection::Cascades,
         DdiSection::Renal,
         DdiSection::Hepatic,
         DdiSection::Elderly,
@@ -10704,6 +10808,36 @@ struct DdiReading {
     /// puce « Ordonnance · N croisement(s) » du compagnon les rapporte
     /// et ouvrait donc un écran qui ne les portait pas.
     interactions: Vec<(String, String)>,
+    /// Les paires de la liste qui se rencontrent sur une cascade, avec
+    /// l'identifiant et le titre de celle-ci.
+    cascades: Vec<(i64, String, crate::cascade::Meeting)>,
+}
+
+/// Ce que les cascades de la base disent des paires de cette liste.
+///
+/// **Une forme locale n'y entre pas** : l'hydrocortisone en crème n'est
+/// pas un corticoïde qui freine l'axe, et c'est la règle des tables
+/// cliniques.
+fn cascade_meetings(
+    index: &[CascadeEntry],
+    drugs: &[Drug],
+) -> Vec<(i64, String, crate::cascade::Meeting)> {
+    let lines: Vec<crate::cascade::Line> = drugs
+        .iter()
+        .filter(|d| !crate::classes::stays_local(&d.dci, &d.class))
+        .map(|d| crate::cascade::Line {
+            name: d.name.as_str(),
+            dci: d.dci.as_str(),
+        })
+        .collect();
+    let parsed: Vec<crate::cascade::Cascade> = index.iter().map(|e| (*e.parsed).clone()).collect();
+    crate::cascade::meetings(&parsed, &lines)
+        .into_iter()
+        .filter_map(|m| {
+            let e = index.get(m.cascade)?;
+            Some((e.id, e.title.clone(), m))
+        })
+        .collect()
 }
 
 fn ordonnance_terms(drugs: &[Drug]) -> Vec<crate::revue::Treatment<'_>> {
@@ -10918,6 +11052,11 @@ struct CascadeEntry {
     title: String,
     subject: String,
     molecules: Vec<String>,
+    /// La description lue, gardée pour le croisement : « Sur une même
+    /// cascade » joue les paires d'une liste sur chaque cascade, et
+    /// relire vingt-six textes à chaque question ne coûterait rien de
+    /// moins que de les garder.
+    parsed: std::sync::Arc<crate::cascade::Cascade>,
 }
 
 /// La cascade ouverte, lue et rangée : le texte qu'elle vient de, pour
@@ -15560,6 +15699,11 @@ impl App {
                                 // si bien qu'il donne aussi un vrai
                                 // croisement à la carte.
                                 "Valium",
+                                // Et l'aspirine, pour que « Sur une même
+                                // cascade » montre une paire : elle
+                                // rejoint le clopidogrel sur
+                                // l'activation plaquettaire.
+                                "Kardégic",
                             ]
                             .iter()
                             .filter_map(|n| {
@@ -21211,11 +21355,12 @@ impl App {
             // lequel ouvrir. Et une ligne que la table ne connaît pas
             // n'est pas un croisement — elle est comptée à part, dans le
             // panneau, parce qu'elle ne se corrige pas de la même façon.
-            let major = session
-                .cyp
-                .crossings
+            // Compté **par paire**, comme le panneau les écrit : une
+            // colchicine sous clarithromycine est une rencontre sur deux
+            // voies, et l'onglet qui annonçait deux ouvrait sur une.
+            let major = crate::cyp::grouped(&session.cyp.crossings)
                 .iter()
-                .filter(|c| c.weight == crate::cyp::Weight::Major)
+                .filter(|g| g[0].weight == crate::cyp::Weight::Major)
                 .count();
             let cyp = if major == 0 {
                 tr("cyp_tab").to_owned()
@@ -21298,7 +21443,6 @@ impl App {
     /// tout. Et les lignes que la table ne connaît pas sont **nommées**,
     /// parce qu'une liste vide se lit « rien à signaler ».
     fn bio_cyp_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
-        use crate::cyp::{Role, Shift, Weight};
         motif::inside(ui, rect, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("bio_cyp")
@@ -21335,75 +21479,10 @@ impl App {
                                 .color(motif::text_dim()),
                         );
                     }
-                    for c in &reading.crossings {
-                        let ink = match c.weight {
-                            Weight::Major => motif::alert(),
-                            Weight::Notable => motif::text(),
-                            Weight::Minor => motif::text_dim(),
-                        };
-                        // **La ligne qui bouge en premier**, puisque
-                        // c'est d'elle qu'on parle : « Zocor, sous
-                        // Zeclar ». L'inverse — l'acteur en tête — fait
-                        // chercher des yeux à qui il arrive quelque
-                        // chose.
-                        // **Les deux citations sont au survol**, pas
-                        // dans la colonne. Ce sont des phrases entières
-                        // de fiche, deux par croisement : posées en
-                        // clair, elles repoussent le croisement suivant
-                        // sous le pli, et c'est la liste qui est le
-                        // sujet. À un geste près, elles restent là où on
-                        // va les chercher — quand on doute.
-                        ui.label(
-                            egui::RichText::new(trn(
-                                "cyp_head",
-                                &[&c.affected, &c.actor, &c.enzyme.label()],
-                            ))
-                            .size(motif::pt(ui, 12.0))
-                            .color(ink),
-                        )
-                        .on_hover_text(format!("{}\n\n{}", c.sources.0, c.sources.1));
-                        // Le sens, et de quoi : une prodrogue perd son
-                        // effet là où un substrat ordinaire s'accumule,
-                        // et les deux phrases ne se ressemblent pas.
-                        let role = match c.role {
-                            Role::Inducer => tr("cyp_role_inducer"),
-                            _ => tr("cyp_role_inhibitor"),
-                        };
-                        ui.label(
-                            egui::RichText::new(format!("{role} — {}", c.shift.label()))
-                                .size(motif::pt(ui, 11.5))
-                                .color(
-                                    if matches!(c.shift, Shift::ActivityDown | Shift::ActivityUp) {
-                                        // L'inversion de la prodrogue est ce
-                                        // qu'on lit de travers : elle porte
-                                        // l'encre qui arrête l'œil.
-                                        motif::alert()
-                                    } else {
-                                        motif::text()
-                                    },
-                                ),
-                        );
-                        // **Le poids avec les deux forces dont il
-                        // sort**, et non sur une ligne à lui : il est
-                        // leur conséquence, et les séparer faisait lire
-                        // trois choses là où il y en a une. Chaque force
-                        // dans son vocabulaire — « puissant » d'un
-                        // inhibiteur et « voie principale » d'un
-                        // substrat ne mesurent pas la même chose.
-                        ui.label(
-                            egui::RichText::new(trn(
-                                "cyp_forces",
-                                &[
-                                    &c.weight.label(),
-                                    &c.actor_label,
-                                    &Self::cyp_force(c.actor_force, c.role),
-                                    &c.affected_label,
-                                    &Self::cyp_force(c.substrate_force, Role::Substrate),
-                                ],
-                            ))
-                            .size(motif::pt(ui, 11.0))
-                            .color(motif::text_dim()),
-                        );
+                    // **Une paire, une entrée**, avec toutes les voies où
+                    // elle se rencontre : voir `cyp::grouped`.
+                    for group in crate::cyp::grouped(&reading.crossings) {
+                        Self::cyp_group(ui, &group);
                         ui.add_space(8.0);
                     }
                     // **Connues, et sans voie qui compte.** À ne pas
@@ -21451,6 +21530,100 @@ impl App {
                     ui.add_space(6.0);
                 });
         });
+    }
+
+    /// Une rencontre entre deux lignes, sur une ou plusieurs voies.
+    ///
+    /// **La ligne qui bouge en premier**, puisque c'est d'elle qu'on
+    /// parle : « Zocor, sous Zeclar ». L'inverse — l'acteur en tête —
+    /// fait chercher des yeux à qui il arrive quelque chose. Les voies
+    /// suivent, la plus lourde d'abord ; les citations des deux fiches
+    /// sont au survol, pas dans la colonne : posées en clair, elles
+    /// repoussent la rencontre suivante sous le pli.
+    ///
+    /// Le groupe n'est jamais vide — `cyp::grouped` ne fabrique que des
+    /// groupes d'au moins une ligne ; un groupe vide ne dessine rien.
+    fn cyp_group(ui: &mut egui::Ui, group: &[&crate::cyp::Crossing]) {
+        use crate::cyp::{Role, Shift, Weight};
+        let Some(first) = group.first() else {
+            return;
+        };
+        let ink = match first.weight {
+            Weight::Major => motif::alert(),
+            Weight::Notable => motif::text(),
+            Weight::Minor => motif::text_dim(),
+        };
+        let routes = group
+            .iter()
+            .map(|c| c.enzyme.label())
+            .collect::<Vec<_>>()
+            .join(", ");
+        let hover = group
+            .iter()
+            .map(|c| {
+                format!(
+                    "{} — {}\n{}\n{}",
+                    c.enzyme.label(),
+                    c.weight.label(),
+                    c.sources.0,
+                    c.sources.1
+                )
+            })
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        ui.label(
+            egui::RichText::new(trn("cyp_head", &[&first.affected, &first.actor, &routes]))
+                .size(motif::pt(ui, 12.0))
+                .color(ink),
+        )
+        .on_hover_text(hover);
+        // Le sens, et de quoi : une prodrogue perd son effet là où un
+        // substrat ordinaire s'accumule, et les deux phrases ne se
+        // ressemblent pas.
+        let role = match first.role {
+            Role::Inducer => tr("cyp_role_inducer"),
+            _ => tr("cyp_role_inhibitor"),
+        };
+        ui.label(
+            egui::RichText::new(format!("{role} — {}", first.shift.label()))
+                .size(motif::pt(ui, 11.5))
+                .color(
+                    if matches!(first.shift, Shift::ActivityDown | Shift::ActivityUp) {
+                        // L'inversion de la prodrogue est ce qu'on lit de
+                        // travers : elle porte l'encre qui arrête l'œil.
+                        motif::alert()
+                    } else {
+                        motif::text()
+                    },
+                ),
+        );
+        // **Le poids avec les deux forces dont il sort**, une ligne par
+        // voie, chaque force dans son vocabulaire — « puissant » d'un
+        // inhibiteur et « voie principale » d'un substrat ne mesurent pas
+        // la même chose. La voie n'est nommée en tête que s'il y en a
+        // plusieurs : seule, elle est déjà dans le titre.
+        for c in group {
+            let forces = trn(
+                "cyp_forces",
+                &[
+                    &c.weight.label(),
+                    &c.actor_label,
+                    &Self::cyp_force(c.actor_force, c.role),
+                    &c.affected_label,
+                    &Self::cyp_force(c.substrate_force, Role::Substrate),
+                ],
+            );
+            let line = if group.len() > 1 {
+                trn("cyp_forces_via", &[&c.enzyme.label(), &forces])
+            } else {
+                forces
+            };
+            ui.label(
+                egui::RichText::new(line)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::text_dim()),
+            );
+        }
     }
 
     /// Comment une force se dit, **ou qu'elle n'est pas chiffrée**.
@@ -40421,6 +40594,11 @@ impl App {
             });
             return;
         }
+        // Les cascades se lisent à la demande : ce chapitre les joue.
+        if !session.cascades_read {
+            session.cascades_read = true;
+            session.reload_cascades();
+        }
         let terms = ordonnance_terms(picked);
         // **La question, puis la réponse.** Tant que la liste, la
         // clairance, le stade et la révision des fiches ne bougent pas,
@@ -40447,11 +40625,15 @@ impl App {
             session.ddi_age.clone(),
             session.ddi_stage,
             session.drugs_rev,
+            session.cascades_rev,
         );
         // **Lu une fois et effacé.** Un atterrissage qui resterait posé
         // ramènerait l'écran à ce chapitre à chaque image, et il n'y
         // aurait plus moyen d'en lire un autre.
         let focus = session.ddi_focus.take();
+        // La porte d'une paire vers sa cascade : ouverte après le dessin,
+        // quand la lecture est rendue au champ.
+        let mut open_pair: Option<(i64, String, String)> = None;
         let mut read = session.ddi_read.take().filter(|(k, _)| *k == key);
         let read = read.take().unwrap_or_else(|| {
             (
@@ -40474,6 +40656,7 @@ impl App {
                     ),
                     crush: crate::crush::resolve(crate::crush::read(&terms), &session.content),
                     interactions: interactions_between(picked),
+                    cascades: cascade_meetings(&session.cascade_index, picked),
                 },
             )
         });
@@ -40535,6 +40718,8 @@ impl App {
                         Self::ddi_half_life_section(ui, picked, reading);
                         Self::ddi_land(ui, focus, DdiSection::Revue);
                         Self::ddi_revue_section(ui, &read.1.revue);
+                        Self::ddi_land(ui, focus, DdiSection::Cascades);
+                        Self::ddi_cascades_section(ui, &read.1.cascades, &mut open_pair);
                         Self::ddi_land(ui, focus, DdiSection::Renal);
                         Self::ddi_renal_section(ui, session, &read.1.renal);
                         Self::ddi_land(ui, focus, DdiSection::Hepatic);
@@ -40573,6 +40758,9 @@ impl App {
         // Rendue au champ : sans cela la mémo serait reprise à chaque
         // image, ce qui est exactement ce qu'elle évite.
         session.ddi_read = Some(read);
+        if let Some((id, a, b)) = open_pair {
+            session.open_cascade_giving(id, &[&a, &b]);
+        }
     }
 
     /// La carte : une ligne par point du cercle, une corde par
@@ -40683,7 +40871,6 @@ impl App {
     /// panneaux n'ont pas la même largeur ni le même voisinage ; ce qui
     /// n'est écrit qu'une fois, et c'est ce qui compte, c'est le calcul.
     fn ddi_cyp_section(ui: &mut egui::Ui, reading: &crate::cyp::Reading) {
-        use crate::cyp::{Role, Shift, Weight};
         motif::section(ui, tr("cyp_tab"));
         ui.add_space(4.0);
         // **La portée, en tête, ici comme dans `bio_cyp_pane`.** Elle y
@@ -40710,47 +40897,8 @@ impl App {
                     .color(motif::text_dim()),
             );
         }
-        for c in &reading.crossings {
-            let ink = match c.weight {
-                Weight::Major => motif::alert(),
-                Weight::Notable => motif::text(),
-                Weight::Minor => motif::text_dim(),
-            };
-            ui.label(
-                egui::RichText::new(trn("cyp_head", &[&c.affected, &c.actor, &c.enzyme.label()]))
-                    .size(motif::pt(ui, 12.0))
-                    .color(ink),
-            )
-            .on_hover_text(format!("{}\n\n{}", c.sources.0, c.sources.1));
-            let role = match c.role {
-                Role::Inducer => tr("cyp_role_inducer"),
-                _ => tr("cyp_role_inhibitor"),
-            };
-            ui.label(
-                egui::RichText::new(format!("{role} — {}", c.shift.label()))
-                    .size(motif::pt(ui, 11.5))
-                    .color(
-                        if matches!(c.shift, Shift::ActivityDown | Shift::ActivityUp) {
-                            motif::alert()
-                        } else {
-                            motif::text()
-                        },
-                    ),
-            );
-            ui.label(
-                egui::RichText::new(trn(
-                    "cyp_forces",
-                    &[
-                        &c.weight.label(),
-                        &c.actor_label,
-                        &Self::cyp_force(c.actor_force, c.role),
-                        &c.affected_label,
-                        &Self::cyp_force(c.substrate_force, Role::Substrate),
-                    ],
-                ))
-                .size(motif::pt(ui, 11.0))
-                .color(motif::text_dim()),
-            );
+        for group in crate::cyp::grouped(&reading.crossings) {
+            Self::cyp_group(ui, &group);
             ui.add_space(6.0);
         }
         if !reading.inert.is_empty() {
@@ -40859,6 +41007,107 @@ impl App {
     /// Elle ne passe par aucune enzyme — deux sédatifs ne se rencontrent
     /// nulle part et s'additionnent quand même —, et c'est précisément
     /// ce que le panneau des cytochromes dit ne pas savoir.
+    /// Deux lignes qui agissent sur une même cascade, et ce que la figure
+    /// montre d'elles ensemble.
+    ///
+    /// **C'est l'autre moitié des cytochromes** : deux molécules qui ne
+    /// se rencontrent sur aucune enzyme peuvent se rencontrer sur un
+    /// récepteur — le nitré et l'inhibiteur de la PDE5 sur le GMPc,
+    /// l'oxybutynine et le donépézil sur l'acétylcholine. La revue
+    /// d'ordonnance en nomme certaines par règle ; les cascades les
+    /// **montrent**, et une paire se lit d'un clic avec les deux cases
+    /// cochées. Le modèle est qualitatif et la ligne le dit : un sens,
+    /// jamais une gravité.
+    fn ddi_cascades_section(
+        ui: &mut egui::Ui,
+        meetings: &[(i64, String, crate::cascade::Meeting)],
+        open: &mut Option<(i64, String, String)>,
+    ) {
+        use crate::cascade::Together;
+        motif::section(ui, tr("ddi_cascade_section"));
+        ui.add_space(4.0);
+        ui.label(
+            egui::RichText::new(tr("ddi_cascade_scope"))
+                .size(motif::pt(ui, 10.5))
+                .color(motif::text_dim()),
+        );
+        ui.add_space(4.0);
+        if meetings.is_empty() {
+            ui.label(
+                egui::RichText::new(tr("ddi_cascade_none"))
+                    .size(motif::pt(ui, 11.5))
+                    .color(motif::text_dim()),
+            );
+        }
+        for (i, (id, title, m)) in meetings.iter().enumerate() {
+            let named = |t: Together| {
+                m.effects
+                    .iter()
+                    .filter(|(_, x)| *x == t)
+                    .map(|(e, _)| e.as_str())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            };
+            let (opposes, adds) = (named(Together::Opposes), named(Together::Adds));
+            // **Le titre de la cascade est la porte**, écrit comme un
+            // lien de monographie : un bouton à côté de la paire
+            // débordait de la colonne dès que le titre était long, et un
+            // lien se replie avec la ligne.
+            ui.scope(|ui| {
+                ui.set_max_width(ui.available_width());
+                ui.horizontal_wrapped(|ui| {
+                    ui.spacing_mut().item_spacing.x = 0.0;
+                    ui.label(
+                        egui::RichText::new(trn("ddi_cascade_head", &[&m.lines.0, &m.lines.1]))
+                            .size(motif::pt(ui, 12.0))
+                            .color(if opposes.is_empty() {
+                                motif::text()
+                            } else {
+                                motif::emphasize(motif::text())
+                            }),
+                    );
+                    let door = ui
+                        .push_id(("ddi_cascade", i), |ui| {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(title.as_str())
+                                        .size(motif::pt(ui, 12.0))
+                                        .color(motif::accent())
+                                        .underline(),
+                                )
+                                .sense(egui::Sense::click()),
+                            )
+                        })
+                        .inner
+                        .on_hover_cursor(egui::CursorIcon::PointingHand)
+                        .on_hover_text(trn(
+                            "ddi_cascade_open_tip",
+                            &[&m.molecules.0, &m.molecules.1],
+                        ));
+                    if door.clicked() {
+                        *open = Some((*id, m.molecules.0.clone(), m.molecules.1.clone()));
+                    }
+                });
+            });
+            if !opposes.is_empty() {
+                ui.label(
+                    egui::RichText::new(trf("ddi_cascade_opposes", opposes))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text()),
+                );
+            }
+            if !adds.is_empty() {
+                ui.label(
+                    egui::RichText::new(trf("ddi_cascade_adds", adds))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text()),
+                );
+            }
+            ui.add_space(6.0);
+        }
+        ui.add_space(10.0);
+    }
+
     fn ddi_revue_section(ui: &mut egui::Ui, points: &[crate::revue::Resolved]) {
         motif::section(ui, tr("ddi_revue"));
         ui.add_space(4.0);
@@ -54851,9 +55100,14 @@ impl App {
             session.cascades_read = true;
             session.reload_cascades();
         }
+        // **Une forme locale n'ouvre pas le mécanisme de la voie
+        // générale** : le Cortisédermyl est de l'hydrocortisone en crème,
+        // et l'axe corticotrope freiné n'est pas ce que fait une crème
+        // faible. Même règle que les tables cliniques.
         let cascade_doors: Vec<(i64, String)> = session
             .drug_form
             .as_ref()
+            .filter(|f| !crate::classes::stays_local(&f.dci, &f.class))
             .map(|f| session.cascades_naming(&f.dci))
             .unwrap_or_default();
         let mut open_cascade: Option<i64> = None;
@@ -70435,19 +70689,23 @@ fn companion_signals(
         // écrit, la table des enzymes croise ce que personne n'a écrit
         // nulle part.
         let crossings = crate::cyp::cross(&terms);
-        let mine: Vec<&crate::cyp::Crossing> = crossings
-            .crossings
-            .iter()
-            .filter(|c| c.actor == me || c.affected == me)
+        // Par paire, comme partout où la table se lit : voir
+        // `cyp::grouped`.
+        let mine: Vec<Vec<&crate::cyp::Crossing>> = crate::cyp::grouped(&crossings.crossings)
+            .into_iter()
+            .filter(|g| g[0].actor == me || g[0].affected == me)
             .collect();
         if crossed && !mine.is_empty() {
             let mut hover = tr("cyp_scope").to_owned();
-            for c in &mine {
+            for g in &mine {
+                let routes = g
+                    .iter()
+                    .map(|c| c.enzyme.label())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 hover.push_str(&format!(
-                    "\n\n{} — {} sur {}",
-                    c.actor,
-                    c.affected,
-                    c.enzyme.label()
+                    "\n\n{} — {} sur {routes}",
+                    g[0].actor, g[0].affected
                 ));
             }
             out.push(CompanionSignal {
@@ -78963,7 +79221,7 @@ mod tests {
         assert!(
             !signals.iter().any(|s| {
                 s.chip.starts_with("Ordonnance")
-                    || s.chip.starts_with("Cytochromes")
+                    || s.chip.starts_with("CYP et P-gp")
                     || s.chip.starts_with("Revue")
             }),
             "sans dossier, rien à croiser"
@@ -82476,6 +82734,49 @@ mod tests {
             ..Default::default()
         }];
         assert!(super::drug_link_index(&short).is_empty());
+    }
+
+    /// **The molecule without its salt links too**, when it names one
+    /// molecule only: « valproate » opens the card whose DCI is
+    /// « valproate de sodium ». « ténofovir » is two molecules and stays
+    /// plain; « acide » heads a hundred names and is never a link.
+    #[test]
+    fn a_dci_head_links_when_it_names_one_molecule() {
+        use crate::db::Drug;
+        let card = |id: i64, name: &str, dci: &str| Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            ..Default::default()
+        };
+        let drugs = vec![
+            card(1, "Dépakine", "valproate de sodium"),
+            card(2, "Vemlidy", "ténofovir alafénamide"),
+            card(3, "Viread", "ténofovir disoproxil"),
+            card(4, "Kardégic", "acide acétylsalicylique"),
+            card(5, "Olmetec", "olmésartan médoxomil"),
+            card(6, "Lamictal", "lamotrigine"),
+        ];
+        let index = super::drug_link_index(&drugs);
+        let links = |text: &str| -> Vec<(String, i64)> {
+            super::link_segments(text, &index, 6)
+                .into_iter()
+                .filter_map(|s| match s {
+                    super::MonoSeg::Link(t, id) => Some((t, id)),
+                    super::MonoSeg::Text(_) => None,
+                })
+                .collect()
+        };
+        assert_eq!(
+            links("Le valproate double l'exposition ; l'olmésartan aussi."),
+            vec![("valproate".to_owned(), 1), ("olmésartan".to_owned(), 5)]
+        );
+        assert!(links("Le ténofovir et l'acide urique.").is_empty());
+        // The whole DCI still wins over its head.
+        assert_eq!(
+            links("valproate de sodium"),
+            vec![("valproate de sodium".to_owned(), 1)]
+        );
     }
 
     /// The panel that says who to call for a rendez-vous: it must skip

@@ -599,8 +599,31 @@ conseils à tenir à jour deux fois.
   l'oxybutynine défait le donépézil dans le cerveau quand le trospium
   ne passe pas, l'arrêt brutal d'une benzodiazépine
   abaisse le seuil convulsif, la buprénorphine donnée sur la morphine
-  en baisse l'effet, la constipation survit à la tolérance. Le nombre
-  de cascades livrées ne baisse jamais (`the_shipped_cascades_only_ever_grow`).
+  en baisse l'effet, la constipation survit à la tolérance. Depuis
+  0.358, seize cascades de plus, chacune avec son test : l'anti-TNF
+  ouvre la tuberculose et l'étanercept épargne l'intestin, l'anti-IL-6
+  masque la CRP et rend les cytochromes, l'anti-IL-17 peut aggraver une
+  MICI que l'anti-IL-23 traite, le dupilumab monte les éosinophiles
+  sanguins, le nitré sur un inhibiteur de la PDE5 baisse la pression
+  plus que chacun, l'anse et le thiazidique perdent le potassium que
+  les antiminéralocorticoïdes gardent, le sulfamide force l'insuline et
+  la metformine non, la statine monte la PCSK9, l'ISRS attend son
+  autorécepteur, le sétron tient la phase aiguë et l'anti-NK1 la
+  retardée, l'arrêt du dénosumab rebondit et le relais par un
+  bisphosphonate non.
+- **Ce que le modèle ne sait pas dire, et que la cascade écrit en
+  commentaire** : un seuil (le GLP-1 qui ne sécrète que sur une
+  glycémie haute), une atrophie (la surrénale privée d'ACTH, que
+  `adaptation` dessinerait à l'envers — l'axe corticotrope n'en porte
+  donc aucune), une ampleur (la spironolactone n'est pas un diurétique
+  de l'anse). Un dessin juste en sens et faux en ampleur se lit juste ;
+  un dessin qui montrerait l'inverse d'une conduite se lirait faux, et
+  c'est lui qu'on refuse.
+- **Une forme locale n'ouvre pas de cascade** : le Cortisédermyl est
+  de l'hydrocortisone en crème, et la porte de la fiche passe par
+  `classes::stays_local` comme les tables cliniques.
+- Le nombre de cascades livrées ne baisse jamais
+  (`the_shipped_cascades_only_ever_grow`).
 
 ## La biologie
 
