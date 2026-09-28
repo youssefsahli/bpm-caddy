@@ -782,6 +782,22 @@ pub const TABLE: &[Rule] = &[
         instead: "Prevymis granulés en sachet (20 mg et 120 mg), prévus pour qui ne peut avaler le comprimé.",
         source: "RCP Prevymis",
     },
+    Rule {
+        needs: &["tardyferon b9"],
+        label: "Tardyferon B9",
+        verdict: Verdict::No,
+        why: "Le RCP impose d'avaler le comprimé entier : sucé, mâché ou gardé en bouche, le sulfate ferreux ulcère la muqueuse buccale et colore les dents.",
+        instead: "Une forme buvable de fer et un apport séparé d'acide folique, choisis par le prescripteur.",
+        source: "RCP Tardyferon B9",
+    },
+    Rule {
+        needs: &["velsipity", "etrasimod"],
+        label: "Velsipity",
+        verdict: Verdict::No,
+        why: "Le RCP demande d'avaler le comprimé entier : coupé, écrasé ou mâché, il n'a pas été étudié.",
+        instead: "Pas d'autre forme ; en cas de trouble de la déglutition, en référer au prescripteur.",
+        source: "RCP Velsipity",
+    },
     // --- Ce que la fiche autorise explicitement ------------------------
     Rule {
         needs: &["riociguat", "adempas"],
@@ -830,6 +846,38 @@ pub const TABLE: &[Rule] = &[
         why: "Le RCP prévoit que les comprimés soient écrasés et mélangés à de l'eau pour qui ne peut les avaler, le mélange étant pris aussitôt, toujours à jeun.",
         instead: "",
         source: "RCP Eurartesim",
+    },
+    Rule {
+        needs: &["betaine"],
+        label: "Citrate de bétaïne",
+        verdict: Verdict::Yes,
+        why: "Comprimé effervescent : il se dissout dans un demi-verre d'eau avant d'être bu, la question de l'écrasement ne se pose pas.",
+        instead: "",
+        source: "RCP Citrate de bétaïne UPSA",
+    },
+    Rule {
+        needs: &["velphoro"],
+        label: "Velphoro",
+        verdict: Verdict::Yes,
+        why: "Comprimé à croquer : le RCP demande qu'il soit croqué ou écrasé au repas, jamais avalé entier.",
+        instead: "",
+        source: "RCP Velphoro",
+    },
+    Rule {
+        needs: &["betnesol"],
+        label: "Betnesol",
+        verdict: Verdict::Yes,
+        why: "Comprimé effervescent, que le RCP recommande de dissoudre dans un peu d'eau : rien à écraser, c'est la forme de l'enfant et du patient qui avale mal.",
+        instead: "",
+        source: "RCP Betnesol 0,50 mg",
+    },
+    Rule {
+        needs: &["zymafluor"],
+        label: "Zymafluor",
+        verdict: Verdict::Yes,
+        why: "Le RCP prévoit de dissoudre le comprimé dans un peu d'eau chez le nourrisson et le jeune enfant ; plus grand, il se suce ou se croque.",
+        instead: "",
+        source: "RCP Zymafluor 0,50 mg",
     },
     Rule {
         needs: &["brilique", "ticagrelor"],
@@ -1025,7 +1073,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 76;
+        const FLOOR: usize = 82;
         assert!(
             TABLE.len() >= FLOOR,
             "{} présentations, il y en avait {FLOOR}",

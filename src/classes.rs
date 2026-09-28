@@ -26,7 +26,7 @@
 //! reste lisible plutôt que d'être écrasée — c'est la même règle que
 //! partout ici : on ne réécrit pas ce que l'officine a écrit.
 //!
-//! **Et une famille au-dessus.** 423 classes ne se parcourent pas à
+//! **Et une famille au-dessus.** 437 classes ne se parcourent pas à
 //! plat ; seize familles d'une vingtaine de classes, si. C'est ce qui
 //! permet à la vue « Classes… » d'exister : on descend de l'appareil à
 //! la classe, puis de la classe aux fiches.
@@ -126,7 +126,7 @@ pub struct Class {
     pub aliases: &'static [&'static str],
 }
 
-/// Les 423 classes, par famille puis par nom.
+/// Les 437 classes, par famille puis par nom.
 pub const CLASSES: &[Class] = &[
     // --- Cardiologie et vaisseaux ---
     Class {
@@ -325,6 +325,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &["statine (générique)"],
     },
     Class {
+        name: "statine + inhibiteur calcique",
+        family: "cardio",
+        aliases: &["statine + IEC + inhibiteur calcique"],
+    },
+    Class {
         name: "statine + inhibiteur de l'absorption",
         family: "cardio",
         aliases: &[],
@@ -417,6 +422,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "fer",
+        family: "hemato",
+        aliases: &[],
+    },
+    Class {
+        name: "fer + vitamine B9",
         family: "hemato",
         aliases: &[],
     },
@@ -750,6 +760,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "mélatonine",
+        family: "psy",
+        aliases: &[],
+    },
+    Class {
+        name: "phytothérapie — stress et sommeil",
         family: "psy",
         aliases: &[],
     },
@@ -1178,6 +1193,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "bêta-2 mimétique + anticholinergique inhalé",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
         name: "bronchodilatateur xanthique",
         family: "respi",
         aliases: &[],
@@ -1218,6 +1238,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "expectorant à base de plante",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
         name: "gouttes auriculaires antalgiques",
         family: "respi",
         aliases: &[],
@@ -1244,6 +1269,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "mucolytique",
+        family: "respi",
+        aliases: &[],
+    },
+    Class {
+        name: "phytothérapie — affections bronchiques",
         family: "respi",
         aliases: &[],
     },
@@ -1309,6 +1339,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &["antisécrétoire intestinal"],
     },
     Class {
+        name: "antifissuraire — pommade rectale",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
         name: "antiflatulent",
         family: "digestif",
         aliases: &[],
@@ -1349,6 +1384,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "eupeptique — troubles dyspeptiques",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
         name: "IPP",
         family: "digestif",
         aliases: &[],
@@ -1375,6 +1415,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "laxatif stimulant",
+        family: "digestif",
+        aliases: &[],
+    },
+    Class {
+        name: "modulateur des récepteurs S1P — MICI",
         family: "digestif",
         aliases: &[],
     },
@@ -1607,6 +1652,16 @@ pub const CLASSES: &[Class] = &[
     },
     // --- Gynécologie et obstétrique ---
     Class {
+        name: "prostaglandine — dysfonction érectile",
+        family: "uro",
+        aliases: &[],
+    },
+    Class {
+        name: "protecteur de la muqueuse vésicale",
+        family: "uro",
+        aliases: &[],
+    },
+    Class {
         name: "analogue de la GnRH",
         family: "gyneco",
         aliases: &[],
@@ -1758,6 +1813,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "antiprurigineux local — piqûres d'insectes",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
         name: "antipsoriasique oral",
         family: "derm",
         aliases: &[],
@@ -1774,6 +1834,11 @@ pub const CLASSES: &[Class] = &[
     },
     Class {
         name: "antiseptique asséchant",
+        family: "derm",
+        aliases: &[],
+    },
+    Class {
+        name: "antiviral local — herpès labial",
         family: "derm",
         aliases: &[],
     },
@@ -2280,6 +2345,11 @@ pub const CLASSES: &[Class] = &[
         aliases: &[],
     },
     Class {
+        name: "fluor — prévention de la carie",
+        family: "divers",
+        aliases: &[],
+    },
+    Class {
         name: "magnésium",
         family: "divers",
         aliases: &[],
@@ -2752,7 +2822,7 @@ mod tests {
         // Le cliquet : le référentiel ne perd ni classes ni familles.
         assert_eq!(FAMILIES.len(), 16);
         assert!(
-            CLASSES.len() >= 423,
+            CLASSES.len() >= 437,
             "le référentiel a maigri : {}",
             CLASSES.len()
         );

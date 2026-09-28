@@ -82,7 +82,7 @@ Deux règles valent partout :
   (la clairance, le poids, l'INR, la kaliémie), l'association qui tue,
   la voie ou le geste à ne pas se tromper, ce qui arrive à l'arrêt, et
   ce que le patient ne dira jamais de lui-même. Le compte est un
-  cliquet (`TOXIC_FLOOR`) : 570 fiches sur 1016.
+  cliquet (`TOXIC_FLOOR`) : 604 fiches sur 1083.
 - **Remplir la colonne « antidote » oblige à écrire la section.** Nommer
   un antidote, c'est affirmer qu'il existe une dose à partir de laquelle
   il faut le donner ; la fiche doit alors dire laquelle et à quoi on la
@@ -110,8 +110,8 @@ Deux règles valent partout :
 - **Où** : `src/facets.rs` — `HALF_LIVES` et `NO_HALF_LIFE` (la demi-vie
   plasmatique en heures, ou la raison pour laquelle il n'y en a pas),
   `BEYOND` (ce qui dure au-delà du plasma) et `IMPACTS` (organe, sens,
-  degré, et la clause qui le justifie) — 2 483 lignes sur douze axes,
-  couvrant 883 des 1016 fiches.
+  degré, et la clause qui le justifie) — 2 623 lignes sur douze axes,
+  couvrant 940 des 1083 fiches.
 - **La question à laquelle ça répond** : toutes les autres vues partent
   du nom — on cherche « Cordarone » et on lit sa fiche. Celle-ci part de
   la propriété : quelle est la plus longue demi-vie, qu'est-ce qui pèse
@@ -126,8 +126,8 @@ Deux règles valent partout :
   ne chiffre pas la demi-vie — « courte », « de l'ordre de quelques
   heures », ou seulement une demi-vie osseuse —, la facette dit
   `NonChiffree` et n'invente pas un nombre que personne ne pourrait
-  relire. 235 fiches sur 1016 sont dans ce cas — 172 parce que la notion
-  n'a pas de sens (produit non absorbé, ion, vaccin), 63 parce que la
+  relire. 266 fiches sur 1083 sont dans ce cas — 195 parce que la notion
+  n'a pas de sens (produit non absorbé, ion, vaccin), 71 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.
 - **Erreurs de l'extraction automatique** : lue au premier
@@ -239,11 +239,11 @@ Deux règles valent partout :
 
 ## Les classes thérapeutiques
 
-- **Où** : `src/classes.rs` (pur, testé). Seize familles, 423 classes
+- **Où** : `src/classes.rs` (pur, testé). Seize familles, 437 classes
   canoniques, et pour chacune les libellés qu'on rencontre réellement
   dans le champ `class` des fiches.
 - **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
-  fiche est du texte libre et il a dérivé — 536 libellés pour 1016
+  fiche est du texte libre et il a dérivé — 551 libellés pour 1083
   fiches, dont 330 sur une seule. Réécrire les 862 fiches écraserait ce
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où
@@ -297,7 +297,9 @@ Deux règles valent partout :
 - **Où** : `src/db.rs`, `STARTER_CONDUITE` : `(mot-clé, conduite en cas
   d'oubli, signes qui font consulter)`.
 - **Comment ça matche** : le mot-clé est cherché dans la classe, les
-  étiquettes, la DCI et le nom de la fiche. La première règle qui
+  étiquettes, la DCI et le nom de la fiche, et il doit **commencer un
+  mot** : cherché n'importe où, « SEP » prenait onze antiseptiques et
+  « fer » l'interféron. La première règle qui
   correspond remplit la fiche ; les règles les plus spécifiques se
   placent donc avant les plus générales.
 - **Semé par** : `Db::seed_conduite`, seulement sur un champ vide et non

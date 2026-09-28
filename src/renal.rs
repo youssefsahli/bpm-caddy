@@ -1126,6 +1126,17 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP Hyperium",
     },
     Adaptation {
+        needs: &["tarka"],
+        never: &[],
+        label: "Vérapamil + trandolapril (Tarka)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30, et chez le dialysé : contre-indiqué (la fiche écrit « inférieure ou égale à 30 »).",
+        }],
+        source: "RCP Tarka LP",
+    },
+    Adaptation {
         needs: &["trandolapril", "odrik"],
         never: &[],
         label: "Trandolapril",
@@ -1709,6 +1720,90 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "RCP Vocabria",
     },
+    Adaptation {
+        needs: &["estetrol", "drovelis"],
+        never: &[],
+        label: "Estétrol + drospirénone",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Contraindicated,
+                conduct: "Entre 30 et 59 : non recommandé, une autre contraception est à discuter.",
+            },
+            Step {
+                below: 30,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 30 : contre-indiqué, comme l'insuffisance rénale aiguë — la drospirénone retient le potassium.",
+            },
+        ],
+        source: "RCP Drovelis",
+    },
+    Adaptation {
+        needs: &["duoplavin"],
+        never: &[],
+        label: "Clopidogrel + aspirine (DuoPlavin)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : contre-indiqué. Au-dessus, l'expérience est limitée : prudence, l'aspirine pouvant altérer la fonction rénale.",
+        }],
+        source: "RCP DuoPlavin",
+    },
+    Adaptation {
+        needs: &["triveram"],
+        never: &[],
+        label: "Atorvastatine + périndopril + amlodipine (Triveram)",
+        steps: &[Step {
+            below: 60,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 60 : non recommandé ; la posologie s'adapte avec les composants séparés.",
+        }],
+        source: "RCP Triveram",
+    },
+    Adaptation {
+        needs: &["zanextra"],
+        never: &[],
+        label: "Lercanidipine + énalapril (Zanextra)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30, et en hémodialyse : contre-indiqué. Au-dessus, instauration prudente et kaliémie surveillée.",
+        }],
+        source: "RCP Zanextra",
+    },
+    Adaptation {
+        needs: &["izinova"],
+        never: &[],
+        label: "Izinova (sulfates)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 30 : contre-indiqué ; choisir une autre préparation colique.",
+        }],
+        source: "RCP Izinova",
+    },
+    Adaptation {
+        needs: &["myfortic", "mycophenolate sodique"],
+        never: &[],
+        label: "Mycophénolate sodique",
+        steps: &[Step {
+            below: 25,
+            level: Level::Watch,
+            conduct: "Au-dessous de 25 : surveillance attentive, la dose journalière ne dépasse pas la dose standard.",
+        }],
+        source: "RCP Myfortic",
+    },
+    Adaptation {
+        needs: &["zymafluor"],
+        never: &[],
+        label: "Fluorure de sodium (Zymafluor)",
+        steps: &[Step {
+            below: 30,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 25 à 30 mL/min/1,73 m² : contre-indiqué, le fluor s'accumule et expose à la fluorose. Au-dessus, seulement après avis du médecin traitant.",
+        }],
+        source: "RCP Zymafluor 0,50 mg",
+    },
 ];
 
 #[cfg(test)]
@@ -1759,7 +1854,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 91;
+        const FLOOR: usize = 99;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules rénales, il y en avait {FLOOR}",

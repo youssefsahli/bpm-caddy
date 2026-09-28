@@ -660,7 +660,7 @@ pub const WATCHES: &[Watch] = &[
         never: &[],
     },
     Watch {
-        needs: &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+        needs: &["ferreux", " ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         code: "FERR",
         every_months: 3,
         why: "Un traitement martial se juge sur la ferritine et l'hémoglobine à trois mois : reconstituer la réserve demande trois à six mois après la normalisation de l'hémoglobine.",

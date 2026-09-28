@@ -1477,7 +1477,7 @@ const RULES: &[Rule] = &[
         code: "CST",
         side: Side::Below,
         threshold: 20.0,
-        needs: &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux"],
+        needs: &["ferreux", " ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux"],
         severity: Severity::Warn,
         text: "Saturation de la transferrine encore basse sous fer oral : soit le traitement n'est pas pris, soit il est mal absorbé. Vérifier la prise à jeun, à distance du thé, du café, du calcium et des IPP — un IPP à côté d'un fer oral annule une bonne partie du traitement.",
     },

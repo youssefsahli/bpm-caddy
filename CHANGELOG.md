@@ -5,6 +5,44 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- Soixante-sept monographies de plus (1083 fiches), dont onze choisies
+  parmi les molécules les plus délivrées en ville que la base ne portait
+  pas :
+  - conseil au comptoir : Strepsils, Lierre grimpant, Suppositoire à la
+    glycérine, Ipraalox, Pursennide, Citrate de bétaïne, Voltarenactigo,
+    Apaisylgel, Monazol, Dacryosérum, Euphytose, Activir ;
+  - santé de la femme : Slinda, Zoely, Qlaira, Drovelis, Kyleena,
+    Dermestril, Colpotrophine, Gyno-Pevaryl, Tardyferon B9, Menopur,
+    Orgalutran ;
+  - cœur : Caduet, Triveram, Twicor, Liptruzet, DuoPlavin, Zanextra,
+    Tarka, Tenoretic, Temeritduo, Cokenzen, Nitriderm TTS ;
+  - rein, digestif, urologie : Advagraf, Myfortic, Mircera, Velphoro,
+    Phosphosorb, Citrafleet, Izinova, Velsipity, Elmiron, Edex,
+    Rectogesic ;
+  - œil, oreille, poumon : Levofree, Naabak, Artelac, Iopidine, Monosept,
+    Néosynéphrine Faure, Flucon, Antibio Synalar, Lomexin, Gydrelle,
+    Bronchodual ;
+  - pédiatrie : Betnesol, Hemangiol, Ferrostrane, Zymaduo, Zymafluor,
+    Adrigyl, Bepanthen, Dolodent, Gaviscon Nourrissons, Anapen,
+    Coquelusédal.
+
+### Fixed
+- « En cas d'oubli » et « signes d'alerte » d'une base neuve : un mot
+  cherché doit commencer un mot de la fiche. Onze antiseptiques
+  recevaient la conduite de la sclérose en plaques (« SEP » dans
+  « antiseptique »), et Betaferon, Differine ou Retacrit celle du fer.
+- Les préparations coliques reçoivent leur propre conduite, et non
+  celle du magnésium ; Cetrotide et Orgalutran celle d'un antagoniste de
+  la GnRH, et non celle des agonistes.
+- Le Velphoro, chélateur du phosphore à base de fer, n'est plus lu comme
+  une supplémentation en fer par la surveillance biologique.
+- Grossesse : un collyre de phényléphrine n'est plus lu comme un
+  vasoconstricteur du rhume ; la revue « ulipristal + progestatif »
+  reconnaît le nomégestrol et le diénogest.
+
 ## [0.356.0] - 2026-09-28
 
 ### Added

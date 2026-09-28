@@ -424,7 +424,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "rabéprazole"],
-            &["ferreux", "ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+            &["ferreux", " ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         ]),
         severity: Severity::Warn,
         title: "IPP + fer oral",
@@ -1173,7 +1173,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["ulipristal", "ellaone"],
-            &["désogestrel", "lévonorgestrel", "étonogestrel", "drospirénone", "chlormadinone", "progestatif"],
+            &["désogestrel", "lévonorgestrel", "étonogestrel", "drospirénone", "chlormadinone", "nomégestrol", "diénogest", "progestatif"],
         ]),
         severity: Severity::Warn,
         title: "Ulipristal + progestatif",

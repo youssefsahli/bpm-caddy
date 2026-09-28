@@ -1744,6 +1744,34 @@ pub const TABLE: &[Profile] = &[
         actions: &[],
         source: "Vocabria : « Métabolisé principalement par glucuronoconjugaison via l'UGT1A1, accessoirement l'UGT1A9, sans participation des cytochromes » ; « n'a pas modifié le midazolam ».",
     },
+    Profile {
+        needs: &["drospirenone"],
+        label: "Drospirénone",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Slinda : « avec une part d'oxydation par le CYP3A4 » ; « exposition à la drospirénone augmentée, multipliée par 2,3 à 2,7 sous kétoconazole ».",
+    },
+    Profile {
+        needs: &["zoely"],
+        label: "Nomégestrol (Zoely)",
+        actions: &[Action::new(Cyp3a4, Substrate, None)],
+        source: "Zoely : « Nomégestrol acétate métabolisé par les cytochromes hépatiques, principalement CYP3A4 et CYP3A5 » ; « Inhibiteurs puissants du CYP3A4 : concentrations de nomégestrol acétate possiblement augmentées ».",
+    },
+    Profile {
+        needs: &["lercanidipine"],
+        label: "Lercanidipine",
+        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
+        source: "Zanextra : « Lercanidipine métabolisée par le CYP3A4 en métabolites inactifs » ; « contre-indiqués, exposition à la lercanidipine fortement accrue ».",
+    },
+    Profile {
+        needs: &["etrasimod", "velsipity"],
+        label: "Étrasimod",
+        actions: &[
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Cyp2c9, Substrate, None),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Velsipity : « Métabolisme hépatique extensif par le CYP2C8 pour 38 %, le CYP2C9 pour 37 % et le CYP3A4 pour 22 % » ; « comme le fluconazole qui augmente l'exposition de 84 % ».",
+    },
 ];
 
 #[cfg(test)]
@@ -1788,7 +1816,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 160;
+        const FLOOR: usize = 164;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",

@@ -781,10 +781,25 @@ pub const TABLE: &[Adaptation] = &[
         source: "Twynsta : « Insuffisance hépatique légère à modérée : prudence, la dose de telmisartan ne doit pas dépasser 40 mg par jour ; contre-indiqué en insuffisance hépatique sévère ».",
     },
     Adaptation {
+        needs: &["triveram"],
+        label: "Atorvastatine + périndopril + amlodipine (Triveram)",
+        steps: &[step(Mild, Watch, "Insuffisance hépatique : à utiliser avec précaution ; l'association fixe ne permet pas de débuter l'amlodipine à la dose la plus faible.")],
+        source: "Triveram : « Insuffisance hépatique : à utiliser avec précaution ; contre-indiqué en cas d'affection hépatique évolutive ».",
+    },
+    Adaptation {
         needs: &["amlodipine"],
         label: "Amlodipine",
         steps: &[step(Mild, Reduce, "Débuter à la dose la plus faible et titrer lentement ; contrôler les transaminases.")],
         source: "Amlor : « En cas d'insuffisance hépatique, débuter à 2,5 mg et titrer lentement » ; « Chez l'insuffisant hépatique, contrôler les transaminases ».",
+    },
+    Adaptation {
+        needs: &["tarka"],
+        label: "Vérapamil + trandolapril (Tarka)",
+        steps: &[
+            step(Mild, Reduce, "Le vérapamil demande une forte réduction de dose, ce que l'association fixe ne permet pas : composants séparés, sur décision du prescripteur."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé ; cirrhose avec ascite : contre-indiqué."),
+        ],
+        source: "Tarka : « En insuffisance hépatique, la dose de vérapamil devrait être fortement réduite, ce que l'association fixe ne permet pas : non recommandé en insuffisance hépatique sévère, contre-indiqué en cas de cirrhose avec ascite ».",
     },
     Adaptation {
         needs: &["verapamil"],
@@ -795,6 +810,12 @@ pub const TABLE: &[Adaptation] = &[
             "Débuter au tiers ou à la moitié de la dose usuelle : l'exposition peut être doublée ou triplée.",
         )],
         source: "Isoptine : « Réduire la posologie chez le sujet âgé et en cas d'insuffisance hépatique, où l'exposition peut être doublée ou triplée : débuter à environ un tiers ou la moitié de la dose usuelle ».",
+    },
+    Adaptation {
+        needs: &["hemangiol"],
+        label: "Propranolol du nourrisson (Hemangiol)",
+        steps: &[step(Mild, Contraindicated, "Nourrisson insuffisant hépatique : non recommandé, faute de données.")],
+        source: "Hemangiol : « En l'absence de données, l'administration n'est pas recommandée chez le nourrisson insuffisant hépatique ou rénal ».",
     },
     Adaptation {
         needs: &["propranolol"],
@@ -848,6 +869,12 @@ pub const TABLE: &[Adaptation] = &[
             step(Severe, Contraindicated, "Insuffisance hépatique sévère, cholestase et obstruction biliaire : contre-indiqué."),
         ],
         source: "Micardisplus : « Insuffisance hépatique légère à modérée : prudence, la dose de telmisartan ne doit pas dépasser 40 mg par jour ; contre-indiqué en insuffisance hépatique sévère ».",
+    },
+    Adaptation {
+        needs: &["temeritduo"],
+        label: "Nébivolol + hydrochlorothiazide (Temeritduo)",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique ou altération de la fonction hépatique, quel qu'en soit le stade : contre-indiqué, faute d'expérience.")],
+        source: "Temeritduo : « Contre-indiqué en cas d'insuffisance hépatique ou d'altération de la fonction hépatique, et en insuffisance rénale sévère ».",
     },
     Adaptation {
         needs: &["hydrochlorothiazide"],
@@ -1896,6 +1923,67 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[step(Severe, Watch, "Insuffisance hépatique sévère : non étudié, prudence ; arrêt si une hépatotoxicité est suspectée.")],
         source: "Vocabria : « ni en insuffisance hépatique légère ou modérée ; insuffisance hépatique sévère : non étudié, prudence ».",
     },
+    Adaptation {
+        needs: &["estetrol", "drovelis"],
+        label: "Estétrol + drospirénone",
+        steps: &[step(Severe, Contraindicated, "Affection hépatique sévère : contre-indiqué tant que la fonction hépatique n'est pas normalisée.")],
+        source: "Drovelis : « affection hépatique sévère tant que les valeurs de la fonction hépatique ne sont pas revenues à la normale ».",
+    },
+    Adaptation {
+        needs: &["ganirelix", "orgalutran"],
+        label: "Ganirélix",
+        steps: &[
+            step(Moderate, Contraindicated, "Atteinte hépatique modérée : contre-indiqué."),
+            step(Severe, Contraindicated, "Atteinte hépatique sévère : contre-indiqué."),
+        ],
+        source: "Orgalutran : « pathologie modérée ou sévère des fonctions rénale ou hépatique ».",
+    },
+    Adaptation {
+        needs: &["qlaira"],
+        label: "Diénogest + estradiol (Qlaira)",
+        steps: &[step(Severe, Contraindicated, "Affection hépatique sévère : contre-indiqué tant que les tests hépatiques ne sont pas normalisés.")],
+        source: "Qlaira : « affection hépatique sévère en l'absence de normalisation des tests fonctionnels hépatiques ».",
+    },
+    Adaptation {
+        needs: &["slinda"],
+        label: "Drospirénone seule (Slinda)",
+        steps: &[step(Severe, Contraindicated, "Affection hépatique sévère : contre-indiqué tant que le bilan hépatique n'est pas normalisé.")],
+        source: "Slinda : « affection hépatique sévère tant que les paramètres de la fonction hépatique ne sont pas revenus à la normale ».",
+    },
+    Adaptation {
+        needs: &["zoely"],
+        label: "Nomégestrol + estradiol (Zoely)",
+        steps: &[step(Severe, Contraindicated, "Affection hépatique sévère : contre-indiqué tant que le bilan hépatique n'est pas normalisé.")],
+        source: "Zoely : « affection hépatique sévère tant que les paramètres hépatiques ne sont pas normalisés ».",
+    },
+    Adaptation {
+        needs: &["euphytose", "valeriane"],
+        label: "Euphytose (valériane)",
+        steps: &[step(
+            Mild,
+            Watch,
+            "Avis médical avant la prise ; arrêt immédiat devant une jaunisse, des urines foncées ou des selles décolorées.",
+        )],
+        source: "Euphytose : « Insuffisance hépatique, antécédent d'atteinte hépatique ou traitement hépatotoxique : avis médical avant la prise. »",
+    },
+    Adaptation {
+        needs: &["chlortalidone", "tenoretic"],
+        label: "Aténolol + chlortalidone (Tenoretic)",
+        steps: &[step(Severe, Contraindicated, "Encéphalopathie hépatique : contre-indiqué, le diurétique pouvant la déclencher.")],
+        source: "Tenoretic : « Pas d'adaptation en insuffisance hépatique, mais contre-indiqué en cas d'encéphalopathie hépatique ».",
+    },
+    Adaptation {
+        needs: &["advagraf"],
+        label: "Tacrolimus LP (Advagraf)",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : réduction de dose possible, guidée par la concentration résiduelle.")],
+        source: "Advagraf : « greffe hépatique : 0,10 à 0,20 mg/kg/jour, puis réduction progressive » ; « Insuffisance hépatique sévère : réduction de dose possible, guidée par les dosages ».",
+    },
+    Adaptation {
+        needs: &["etrasimod", "velsipity"],
+        label: "Étrasimod",
+        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué.")],
+        source: "Velsipity : « Pas d'adaptation en insuffisance rénale ni en insuffisance hépatique légère ou modérée ; contre-indiqué en insuffisance hépatique sévère ».",
+    },
 ];
 
 #[cfg(test)]
@@ -2149,6 +2237,9 @@ mod tests {
             .collect();
         let drugs: Vec<(String, String)> = crate::db::STARTER_DRUGS
             .iter()
+            // A local form is read by no row (`read` sets it aside), so no
+            // row lends it anything to back.
+            .filter(|(_, dci, class, _)| !crate::classes::stays_local(dci, class))
             .map(|(name, dci, class, _antidote)| {
                 (
                     crate::fuzzy::sort_key(name),
@@ -2316,7 +2407,7 @@ mod tests {
     /// faire passer un test.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 183;
+        const FLOOR: usize = 196;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules hépatiques, il y en avait {FLOOR}",

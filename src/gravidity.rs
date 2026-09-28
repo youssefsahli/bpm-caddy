@@ -405,7 +405,9 @@ pub const TABLE: &[Advice] = &[
             "deturgylone",
             "aturgyl",
         ],
-        never: &[],
+        // Un collyre de phényléphrine dilate la pupille ; il ne débouche
+        // pas un nez, et cette ligne ne parle pas de lui.
+        never: &["collyre"],
         label: "Vasoconstricteurs du rhume",
         pregnancy: Level::Interdit,
         term: "",
@@ -448,6 +450,17 @@ pub const TABLE: &[Advice] = &[
         breastfeeding: Level::Compatible,
         breastfeeding_note: "L'ibuprofène passe très peu dans le lait : c'est l'AINS de l'allaitement.",
         source: "CRAT ; ANSM, alerte AINS et grossesse",
+    },
+    Advice {
+        needs: &["duoplavin"],
+        never: &[],
+        label: "Clopidogrel + aspirine (DuoPlavin)",
+        pregnancy: Level::Eviter,
+        term: "Troisième trimestre : contre-indiqué, du fait de l'aspirine associée.",
+        pregnancy_note: "Pas de données cliniques pour l'association, et le clopidogrel est préférablement évité. Aux deux premiers trimestres, seulement si l'état clinique impose les deux antiagrégants : la décision est cardiologique.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Allaitement à interrompre pendant le traitement : le clopidogrel passe dans le lait chez l'animal, l'aspirine en quantité limitée.",
+        source: "RCP DuoPlavin ; CRAT — aspirine (le clopidogrel n'a pas de page au CRAT)",
     },
     Advice {
         needs: &["aspirine", "acide acetylsalicylique", "kardegic", "aspegic"],
@@ -1086,6 +1099,83 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Passage dans le lait important, faible liaison protéique et demi-vie longue : préférer le métronidazole, par voie vaginale ou orale, sans dépasser 14 jours.",
         source: "CRAT (tinidazole, grossesse et allaitement) ; RCP Fasigyne",
     },
+    Advice {
+        needs: &["tardyferon b9"],
+        never: &[],
+        label: "Tardyferon B9",
+        pregnancy: Level::Compatible,
+        term: "",
+        pregnancy_note: "Indiqué chez la femme enceinte à partir du quatrième mois. Il ne remplace pas l'acide folique seul de la période périconceptionnelle.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Utilisable : le fer passe peu dans le lait et l'acide folique n'a pas montré d'effet chez le nourrisson.",
+        source: "CRAT ; Tardyferon B9 : « Indiqué pendant la grossesse, aux deuxième et troisième trimestres » ; « Utilisable pendant l'allaitement ».",
+    },
+    Advice {
+        needs: &["activir"],
+        never: &[],
+        label: "Aciclovir en crème (Activir)",
+        pregnancy: Level::Compatible,
+        term: "",
+        pregnancy_note: "Utilisable quel que soit le terme en traitement curatif ; l'aciclovir est très documenté au premier trimestre, sans effet malformatif retenu, et le passage sanguin de la crème est très faible.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Utilisation possible ; éviter le contact du bouton avec l'enfant et ne pas appliquer sur le sein.",
+        source: "CRAT — Aciclovir – Grossesse ; Aciclovir – Allaitement. Activir : « le CRAT juge l'aciclovir utilisable quel que soit le terme en traitement curatif »",
+    },
+    Advice {
+        needs: &["sertaconazole", "monazol"],
+        never: &[],
+        label: "Sertaconazole (Monazol)",
+        pregnancy: Level::Compatible,
+        term: "",
+        pregnancy_note: "Avec le clotrimazole, l'antifongique vulvo-vaginal le mieux connu, utilisable quel que soit le terme. Un premier épisode pendant la grossesse se fait confirmer par le médecin ou la sage-femme.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Utilisation possible ; le passage systémique est faible.",
+        source: "CRAT — Antifongiques vulvo-vaginaux – Grossesse ; Sertaconazole – Allaitement. Monazol : « Le CRAT, sur des données très nombreuses, place le sertaconazole parmi les antifongiques vulvo-vaginaux les mieux connus, utilisables quel que soit le terme de la grossesse, et son utilisation est possible pendant l'allaitement. »",
+    },
+    Advice {
+        needs: &["pursennide", "sennoside"],
+        never: &[],
+        label: "Sennosides (Pursennide)",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Son RCP le contre-indique, du fait d'un risque génotoxique expérimental de plusieurs anthracéniques. Le CRAT préfère un laxatif de lest ou osmotique à tout terme, et n'admet le séné que ponctuellement, pour une constipation opiniâtre.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Contre-indiqué par son RCP ; le CRAT préfère un laxatif de lest ou osmotique pendant l'allaitement.",
+        source: "CRAT — Laxatifs – Grossesse ; Laxatifs – Allaitement. Pursennide : « Contre-indiqué pendant la grossesse par son RCP, du fait de données expérimentales montrant un risque génotoxique de plusieurs anthracéniques (émodine, aloe-émodine), et pendant l'allaitement, les dérivés anthraquinoniques passant dans le lait. »",
+    },
+    Advice {
+        needs: &["tenoretic", "chlortalidone"],
+        never: &[],
+        label: "Aténolol + chlortalidone",
+        pregnancy: Level::Eviter,
+        term: "Poursuivi jusqu'à l'accouchement, le bêtabloquant expose le nouveau-né à une bradycardie, une hypoglycémie et une hypotension : prévenir la maternité.",
+        pregnancy_note: "Aucun effet malformatif retenu pour les bêtabloquants. Dans l'hypertension, le labétalol est préféré, et le diurétique associé n'a pas sa place dans l'hypertension de la grossesse.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "L'enfant allaité peut recevoir jusqu'à 30 % de la dose maternelle d'aténolol : à éviter avant 3 à 4 mois ; le labétalol ou le propranolol sont préférés.",
+        source: "CRAT — aténolol, grossesse et allaitement",
+    },
+    Advice {
+        needs: &["tacrolimus"],
+        never: &["topique"],
+        label: "Tacrolimus (voie générale)",
+        pregnancy: Level::Prudence,
+        term: "Sur toute la grossesse.",
+        pregnancy_note: "Pas d'effet malformatif retenu ; poursuite possible si le traitement est nécessaire à l'équilibre maternel, avec dosages rapprochés (les concentrations peuvent baisser) et surveillance rénale et kaliémique du nouveau-né.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Possible selon le CRAT, même chez le prématuré : l'enfant reçoit moins de 1 % de la dose maternelle et son taux sanguin est indétectable. Le RCP reste plus restrictif.",
+        source: "CRAT — tacrolimus, grossesse et allaitement (mise à jour 2024) ; RCP Advagraf",
+    },
+    Advice {
+        needs: &["picosulfate"],
+        never: &[],
+        label: "Picosulfate de sodium",
+        pregnancy: Level::Eviter,
+        term: "Sur toute la grossesse.",
+        pregnancy_note: "Aucune donnée publiée mais pas d'effet malformatif retenu. Quand un laxatif est nécessaire, préférer un osmotique (macrogol, lactulose) ou un mucilage ; pour une préparation colique, le choix revient au prescripteur.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Pas d'absorption décelable ; utilisation envisageable selon le RCP, voir aussi la page laxatifs et allaitement du CRAT.",
+        source: "CRAT — picosulfate de sodium, grossesse et allaitement (mise à jour 2025) ; RCP Citrafleet",
+    },
 ];
 
 #[cfg(test)]
@@ -1136,7 +1226,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 57;
+        const FLOOR: usize = 65;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules de la table grossesse, il y en avait {FLOOR}",
@@ -1491,10 +1581,11 @@ mod tests {
         // Et une boîte dont la fiche est elle-même prudente : le
         // Sterdex est « déconseillé à partir du deuxième trimestre […]
         // même si l'exposition par voie locale est très faible ». Et
-        // l'emplâtre de diclofénac et le gel de kétoprofène : leur RCP
+        // l'emplâtre et le gel de diclofénac, le gel de kétoprofène : leur RCP
         // garde la contre-indication des AINS au troisième trimestre,
         // voie locale comprise.
-        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] = &["Sterdex", "Flector Tissugel", "Ketum"];
+        const ITS_OWN_CARD_IS_CAUTIOUS: &[&str] =
+            &["Sterdex", "Flector Tissugel", "Ketum", "Voltarenactigo"];
 
         let mut wrong: Vec<String> = Vec::new();
         for (name, dci, class, _antidote) in crate::db::STARTER_DRUGS {
