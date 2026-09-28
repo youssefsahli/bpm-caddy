@@ -10830,7 +10830,7 @@ fn cascade_meetings(
             dci: d.dci.as_str(),
         })
         .collect();
-    let parsed: Vec<crate::cascade::Cascade> = index.iter().map(|e| (*e.parsed).clone()).collect();
+    let parsed: Vec<&crate::cascade::Cascade> = index.iter().map(|e| &*e.parsed).collect();
     crate::cascade::meetings(&parsed, &lines)
         .into_iter()
         .filter_map(|m| {
@@ -43605,15 +43605,31 @@ impl App {
                 (layers - 1) as f32 * layer_pitch + box_h2,
             )
         };
+        // **Une figure qui déborde commence par son début.** Centrée, elle
+        // perdait ses deux bouts à la fois : les ligands en haut, les
+        // effets en bas, c'est-à-dire la question et la réponse — et une
+        // cascade de seize nœuds s'ouvrait sur son milieu. Le débord est
+        // reporté du côté de la fin, qu'on va chercher d'un glissement ;
+        // le jeu du glissement s'élargit d'autant, pour que la fin reste
+        // atteignable.
+        let lead = |zoom: f32| -> egui::Vec2 {
+            if across_rows {
+                egui::vec2((plain_w * zoom - fw).max(0.0) / 2.0, 0.0)
+            } else {
+                egui::vec2(0.0, (plain_h * zoom - fh).max(0.0) / 2.0)
+            }
+        };
+        let before = if live {
+            session.cascade_look
+        } else {
+            session.cascade_preview_look
+        };
+        let reach = lead(before.zoom) / before.zoom.max(0.05);
         let nav = Self::graph_navigate(
             ui,
             field,
-            (plain_w / 2.0, plain_h / 2.0),
-            if live {
-                session.cascade_look
-            } else {
-                session.cascade_preview_look
-            },
+            (plain_w / 2.0 + reach.x, plain_h / 2.0 + reach.y),
+            before,
             if live {
                 "cascade_canvas"
             } else {
@@ -43627,7 +43643,7 @@ impl App {
             session.cascade_preview_look = look;
         }
         let zoom = look.zoom;
-        let centre = field.center() + egui::vec2(look.pan.0, look.pan.1);
+        let centre = field.center() + egui::vec2(look.pan.0, look.pan.1) + lead(zoom);
         let at = |i: usize| -> egui::Pos2 {
             let along = lay.layer[i] as f32 * layer_pitch;
             let across = (lay.x[i] + 0.5) * rank_pitch;
@@ -64516,6 +64532,11 @@ impl App {
                 date: r.taken_on.as_str(),
             })
             .collect();
+        // Les cascades déjà lues : la carte ne les lit pas pour son
+        // propre compte, et un voisin survolé ne vaut pas une lecture de
+        // la base.
+        let cascades: Vec<&crate::cascade::Cascade> =
+            session.cascade_index.iter().map(|e| &*e.parsed).collect();
         companion_signals(
             card,
             &list,
@@ -64523,6 +64544,7 @@ impl App {
             age,
             &session.surveillance,
             &bio,
+            &cascades,
         )
     }
 
@@ -68809,6 +68831,13 @@ impl App {
                     )
                 })
                 .unwrap_or_default();
+            // Les cascades, lues une fois : la puce « Cascade » les joue.
+            if !session.cascades_read {
+                session.cascades_read = true;
+                session.reload_cascades();
+            }
+            let cascades: Vec<&crate::cascade::Cascade> =
+                session.cascade_index.iter().map(|e| &*e.parsed).collect();
             let mut look = companion_look(
                 hits,
                 &session.patient_treats,
@@ -68853,6 +68882,7 @@ impl App {
                         (*id, code.clone(), label)
                     })
                     .collect::<Vec<_>>(),
+                &cascades,
             );
             // **Une rupture se dit avant tout le reste**, avec ce que les
             // collègues ont donné à la place : c'est souvent pour ça
@@ -70372,6 +70402,7 @@ fn companion_look(
     found: Vec<String>,
     filed: (String, String),
     taught: &[(i64, String, String)],
+    cascades: &[&crate::cascade::Cascade],
 ) -> CompanionRead {
     // Ce qu'on a tapé est-il un code-barres ? La clé de contrôle décide,
     // jamais la longueur — c'est la règle de `codebar`, et elle fait
@@ -70423,7 +70454,7 @@ fn companion_look(
             filed,
         };
     };
-    let signals = companion_signals(&card, file, dfg, age, watch, bio);
+    let signals = companion_signals(&card, file, dfg, age, watch, bio, cascades);
     // Les pages qui parlent. La première est toujours là : les puces,
     // le signe d'alerte et ce à quoi le produit sert sont ce que la
     // barre est venue dire, et quand toutes les tables se taisent c'est
@@ -70514,6 +70545,7 @@ fn companion_signals(
     age: Option<u32>,
     watch: &[crate::surveillance::ResolvedDue],
     bio: &[crate::biology::Reading],
+    cascades: &[&crate::cascade::Cascade],
 ) -> Vec<CompanionSignal> {
     let mut out: Vec<CompanionSignal> = Vec::new();
     // Le dossier, plus la fiche cherchée si elle n'y est pas déjà : la
@@ -70713,6 +70745,48 @@ fn companion_signals(
                 tone: CompanionTone::Watch,
                 hover,
                 goes: CompanionWhere::Cross(DdiSection::Cyp),
+            });
+        }
+        // **Et ce que les cascades montrent de la paire** : deux molécules
+        // qui ne se croisent sur aucune enzyme peuvent se rencontrer sur
+        // un récepteur. Une forme locale n'y entre pas.
+        let lines: Vec<crate::cascade::Line> = list
+            .iter()
+            .filter(|d| !crate::classes::stays_local(&d.dci, &d.class))
+            .map(|d| crate::cascade::Line {
+                name: d.name.as_str(),
+                dci: d.dci.as_str(),
+            })
+            .collect();
+        let met: Vec<crate::cascade::Meeting> = crate::cascade::meetings(cascades, &lines)
+            .into_iter()
+            .filter(|m| m.lines.0.trim() == me || m.lines.1.trim() == me)
+            .collect();
+        if crossed && !met.is_empty() {
+            let mut hover = tr("ddi_cascade_scope").to_owned();
+            for m in &met {
+                let other = if m.lines.0.trim() == me {
+                    &m.lines.1
+                } else {
+                    &m.lines.0
+                };
+                let effects = m
+                    .effects
+                    .iter()
+                    .map(|(e, t)| match t {
+                        crate::cascade::Together::Opposes => trf("ddi_cascade_opposes", e),
+                        crate::cascade::Together::Adds => trf("ddi_cascade_adds", e),
+                    })
+                    .collect::<Vec<_>>()
+                    .join(" ; ");
+                let title = cascades.get(m.cascade).map_or("", |c| c.title.as_str());
+                hover.push_str(&format!("\n\n{other} — {title}\n{effects}"));
+            }
+            out.push(CompanionSignal {
+                chip: trf("companion_sig_cascade", met.len()),
+                tone: CompanionTone::Watch,
+                hover,
+                goes: CompanionWhere::Cross(DdiSection::Cascades),
             });
         }
     }
@@ -79188,6 +79262,7 @@ mod tests {
             Vec::new(),
             <(String, String)>::default(),
             &[],
+            &[],
         )
     }
 
@@ -79204,7 +79279,7 @@ mod tests {
         // Le mot est celui de la table, cité : `crush` répond « sous
         // condition » d'une gélule à microgranules, et la puce le
         // reprend plutôt que de le reformuler.
-        let signals = super::companion_signals(&skenan, &[], None, None, &[], &[]);
+        let signals = super::companion_signals(&skenan, &[], None, None, &[], &[], &[]);
         let crush = signals
             .iter()
             .find(|s| s.chip.starts_with("Écrasement"))
@@ -79234,7 +79309,7 @@ mod tests {
             name: "Zorglubine".to_owned(),
             ..Drug::default()
         };
-        assert!(super::companion_signals(&unknown, &[], None, None, &[], &[]).is_empty());
+        assert!(super::companion_signals(&unknown, &[], None, None, &[], &[], &[]).is_empty());
         let read = companion_read(
             std::slice::from_ref(&unknown),
             &[],
@@ -79268,6 +79343,7 @@ mod tests {
             None,
             &[],
             &[],
+            &[],
         );
         assert!(
             crossed.iter().any(|s| s.chip.starts_with("Ordonnance")),
@@ -79299,6 +79375,7 @@ mod tests {
             &[statin.clone(), macrolide.clone()],
             None,
             None,
+            &[],
             &[],
             &[],
         );
@@ -79583,6 +79660,7 @@ mod tests {
             Vec::new(),
             ("50 mg".to_owned(), "1 le matin".to_owned()),
             &[],
+            &[],
         );
         assert!(
             filed.pages.contains(&CompanionPage::Posology),
@@ -79629,7 +79707,7 @@ mod tests {
             date: "2026-09-01",
         }];
         let chips = |card: &Drug, bio: &[crate::biology::Reading]| -> Vec<String> {
-            super::companion_signals(card, &[], None, None, &[], bio)
+            super::companion_signals(card, &[], None, None, &[], bio, &[])
                 .into_iter()
                 .map(|s| s.chip)
                 .collect()
@@ -79708,6 +79786,7 @@ mod tests {
             None,
             &[],
             &[],
+            &[],
         );
         assert!(
             signals.len() >= 2,
@@ -79766,7 +79845,7 @@ mod tests {
             ..Drug::default()
         };
         let chips = |card: &Drug, file: &[Drug]| -> Vec<String> {
-            super::companion_signals(card, file, None, None, &[], &[])
+            super::companion_signals(card, file, None, None, &[], &[], &[])
                 .into_iter()
                 .map(|s| s.chip)
                 .collect()
@@ -80056,6 +80135,7 @@ mod tests {
                 Vec::new(),
                 <(String, String)>::default(),
                 taught,
+                &[],
             )
         };
 
@@ -80294,6 +80374,7 @@ mod tests {
             Vec::new(),
             <(String, String)>::default(),
             &[],
+            &[],
         );
         // Le nom d'abord, sur toutes les pages.
         for page in CompanionPage::ALL {
@@ -80325,6 +80406,7 @@ mod tests {
                 &[],
                 Vec::new(),
                 ("5 mg".to_owned(), "matin et soir".to_owned()),
+                &[],
                 &[],
             ),
             Some(CompanionPage::Posology),
@@ -80468,6 +80550,7 @@ mod tests {
             &[],
             Vec::new(),
             <(String, String)>::default(),
+            &[],
             &[],
         );
         assert_eq!(
@@ -80650,6 +80733,49 @@ mod tests {
     /// champ est obligatoire —, mais un chapitre nommé que plus rien ne
     /// dessine compilerait très bien, et c'est une puce qui renvoie dans
     /// le vide.
+    /// **La barre dit aussi ce que les cascades montrent de la paire** :
+    /// le Plavix cherché contre un dossier qui porte le Kardégic
+    /// s'additionne sur l'agrégation, et la puce mène au chapitre qui le
+    /// montre. Sans autre ligne au dossier, rien à croiser.
+    #[test]
+    fn the_bar_names_a_pair_that_meets_on_a_cascade() {
+        use crate::db::Drug;
+        let card = |id: i64, name: &str, dci: &str| Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            ..Default::default()
+        };
+        let parsed: Vec<crate::cascade::Cascade> = crate::db::STARTER_CASCADES
+            .iter()
+            .map(|t| crate::cascade::parse(t))
+            .collect();
+        let refs: Vec<&crate::cascade::Cascade> = parsed.iter().collect();
+        let plavix = card(1, "Plavix", "clopidogrel");
+        let file = vec![card(2, "Kardégic", "acide acétylsalicylique")];
+        let signals = super::companion_signals(&plavix, &file, None, None, &[], &[], &refs);
+        let chip = signals
+            .iter()
+            .find(|s| {
+                matches!(
+                    s.goes,
+                    super::CompanionWhere::Cross(super::DdiSection::Cascades)
+                )
+            })
+            .expect("pas de puce « Cascade »");
+        assert!(chip.hover.contains("Kardégic"), "{}", chip.hover);
+        assert!(
+            chip.hover.contains("Activation plaquettaire"),
+            "{}",
+            chip.hover
+        );
+        let alone = super::companion_signals(&plavix, &[], None, None, &[], &[], &refs);
+        assert!(!alone.iter().any(|s| matches!(
+            s.goes,
+            super::CompanionWhere::Cross(super::DdiSection::Cascades)
+        )));
+    }
+
     #[test]
     fn every_chapter_a_companion_chip_names_is_drawn_by_the_crossing() {
         const SOURCE: &str = include_str!("app.rs");
@@ -84063,8 +84189,12 @@ mod tests {
         let (mut session, _swept) = scratch_session("cascade-door");
         session.db.seed_cascades().unwrap();
         session.reload_cascades();
+        // Le bisoprolol est dans deux cascades — les récepteurs bêta et
+        // la digoxine, dont il majore la bradycardie : deux portes, dans
+        // l'ordre des cascades livrées.
         let doors = session.cascades_naming("Bisoprolol");
-        assert_eq!(doors.len(), 1, "{doors:?}");
+        assert_eq!(doors.len(), 2, "{doors:?}");
+        assert_eq!(doors[0].1, "Récepteurs bêta-adrénergiques");
         // L'aspirine est dans deux cascades : deux portes.
         assert_eq!(session.cascades_naming("acide acétylsalicylique").len(), 2);
         assert!(session.cascades_naming("bisoprol").is_empty());

@@ -7,6 +7,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.359.0] - 2026-09-29
+
+### Added
+- Treize cascades de plus (39) : axe gonadotrope, récepteur des
+  androgènes (l'abiratérone et la prednisone), récepteurs des œstrogènes
+  et aromatase, vasopressine et eau libre, lévodopa et dégradation de la
+  dopamine, cibles des antiépileptiques, migraine, canal hERG et QT long,
+  digoxine et pompe Na/K-ATPase, purines et goutte (l'allopurinol sous
+  azathioprine), érythropoïèse, thrombopoïèse (le fer pris avec
+  l'eltrombopag), bronchodilatation et inflammation bronchique. Les
+  associations inhalées (Symbicort, Seretide, Trimbow…) ouvrent la leur.
+- Barre de comptoir : une pastille « Cascade » quand le produit cherché
+  rejoint une ligne du dossier sur une même cascade — l'aspirine et le
+  clopidogrel, le nitré et le sildénafil —, les effets qui s'additionnent
+  ou s'opposent au survol ; un clic ouvre le croisement sur ce chapitre.
+- « CYP et P-gp » : le tocilizumab et le sarilumab baissent l'exposition
+  de ce qui passe par le CYP3A4 — bloquer l'interleukine 6 rend aux
+  cytochromes leur activité.
+
+### Fixed
+- « Cascades » : une figure trop haute pour le volet s'ouvre sur son
+  début — les ligands — au lieu d'être coupée aux deux bouts ; la fin se
+  va chercher d'un glissement.
+- Trente-quatre fiches relues contre leur RCP, avec les tables qui les
+  citent : Adempas (seuil rénal à 80 mL/min), Alecensa, Bydureon,
+  Cabometyx, Calquence, Hyperium, Imbruvica, Intuniv, Jakavi, Lenvima,
+  Lonsurf (seuil à 60 mL/min), Mayzent, Moventig, Odrik (palier sous
+  10 mL/min), Opsumit, Orap (contre-indications et associations
+  reprises du RCP), Palexia, Quviviq, Ranexa, Revolade, Rythmodan,
+  Spravato, Stivarga, Torental, Veltassa, Venclyxto (insuffisance rénale
+  sévère), Xagrid, Xenical, Zebinix, Zeposia, Zoxan ; Cartrex, Mobic et
+  Olmetec étaient conformes.
+
 ## [0.358.0] - 2026-09-29
 
 ### Added

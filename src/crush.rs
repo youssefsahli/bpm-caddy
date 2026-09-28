@@ -626,7 +626,7 @@ pub const TABLE: &[Rule] = &[
         needs: &["doxazosine", "zoxan"],
         label: "Zoxan LP",
         verdict: Verdict::No,
-        why: "Comprimé à libération prolongée à système osmotique : écrasé, coupé ou mâché, il libère d'un coup la dose de la journée, avec un risque d'hypotension et de syncope.",
+        why: "Comprimé à libération prolongée, principe actif dans une matrice inerte non absorbable : écrasé, coupé ou mâché, il libère d'un coup la dose de la journée, avec un risque d'hypotension et de syncope.",
         instead: "Une autre molécule ou forme choisie par le prescripteur ; la doxazosine à libération immédiate n'est pas une équivalence dose pour dose.",
         source: "RCP Zoxan LP",
     },

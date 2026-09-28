@@ -610,7 +610,22 @@ conseils à tenir à jour deux fois.
   la metformine non, la statine monte la PCSK9, l'ISRS attend son
   autorécepteur, le sétron tient la phase aiguë et l'anti-NK1 la
   retardée, l'arrêt du dénosumab rebondit et le relais par un
-  bisphosphonate non.
+  bisphosphonate non. Puis treize autres : l'abiratérone perd le
+  potassium que la prednisone rend, le tamoxifène épaissit l'endomètre
+  et l'anti-aromatase amincit l'os, deux bloqueurs du canal hERG
+  allongent le QT plus qu'un et l'hypokaliémie s'y ajoute, l'hypokaliémie
+  majore les troubles du rythme sous digoxine, l'allopurinol majore la
+  toxicité de l'azathioprine et ne fait rien sans elle, l'acide folinique
+  répare le méthotrexate et l'acide folique non, le fer pris avec
+  l'eltrombopag l'annule, le bêta-2 de longue durée seul laisse les
+  exacerbations d'asthme que le corticoïde inhalé baisse.
+- **Le modèle ne sait pas dire une poussée** : l'agoniste de la GnRH
+  stimule avant de désensibiliser, et `adaptation` — qui ramène un nœud
+  stimulé vers le repos, sans le passer — montrerait la poussée puis un
+  retour au repos au lieu de la castration, et à l'arrêt une chute. Les
+  agonistes de la GnRH sont donc écrits comme ce qu'ils font une fois
+  installés, et la poussée, avec l'anti-androgène qui la couvre, est
+  dite en commentaire.
 - **Ce que le modèle ne sait pas dire, et que la cascade écrit en
   commentaire** : un seuil (le GLP-1 qui ne sécrète que sur une
   glycémie haute), une atrophie (la surrénale privée d'ACTH, que

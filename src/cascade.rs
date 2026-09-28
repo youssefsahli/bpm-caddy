@@ -1561,7 +1561,7 @@ fn carried(c: &Cascade, dci: &str) -> Vec<usize> {
 /// qui portent la même molécule n'en font pas une : le doublon est
 /// l'affaire de la revue d'ordonnance, et une molécule donnée deux fois
 /// sur la figure est une molécule donnée une fois.
-pub fn meetings(cascades: &[Cascade], lines: &[Line]) -> Vec<Meeting> {
+pub fn meetings(cascades: &[&Cascade], lines: &[Line]) -> Vec<Meeting> {
     let mut out = Vec::new();
     for (ci, c) in cascades.iter().enumerate() {
         let carried: Vec<Vec<usize>> = lines.iter().map(|l| carried(c, l.dci)).collect();
@@ -2433,7 +2433,7 @@ adaptation Bêta-1
 
     /// Le plancher : une cascade retirée est une question à laquelle le
     /// comptoir ne sait plus répondre. Il ne peut que monter.
-    const SHIPPED: usize = 26;
+    const SHIPPED: usize = 39;
 
     /// Les molécules qu'un mécanisme ne peut pas taire et que la base
     /// n'a pas en fiche. Tenues ici par leur nom : ailleurs, une faute de
@@ -2841,13 +2841,346 @@ adaptation Bêta-1
         }
     }
 
+    #[test]
+    fn a_gnrh_agonist_or_antagonist_castrates_and_clomifene_lifts_the_feedback() {
+        let c = shipped("Axe gonadotrope");
+        assert_eq!(reads(&c, &["triptoréline"], "Testostérone"), Trend::Down);
+        assert_eq!(reads(&c, &["dégarélix"], "Testostérone"), Trend::Down);
+        assert_eq!(reads(&c, &["leuproréline"], "Œstradiol"), Trend::Down);
+        assert_eq!(reads(&c, &["citrate de clomifène"], "FSH"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["citrate de clomifène"], "Croissance folliculaire"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &["testostérone énanthate"], "Spermatogenèse"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn abiraterone_loses_potassium_that_prednisone_gives_back() {
+        let c = shipped("Récepteur des androgènes");
+        assert_eq!(reads(&c, &["abiratérone"], "Kaliémie"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["abiratérone"], "Pression artérielle"),
+            Trend::Up
+        );
+        assert!(
+            level(&c, &["abiratérone", "prednisone"], "Kaliémie")
+                > level(&c, &["abiratérone"], "Kaliémie")
+        );
+        assert_eq!(reads(&c, &["abiratérone"], "PSA"), Trend::Down);
+        assert_eq!(reads(&c, &["enzalutamide"], "PSA"), Trend::Down);
+        assert_eq!(reads(&c, &["finastéride"], "PSA"), Trend::Down);
+    }
+
+    #[test]
+    fn tamoxifen_thickens_the_endometrium_and_an_aromatase_inhibitor_thins_the_bone() {
+        let c = shipped("Récepteurs des œstrogènes et aromatase");
+        assert_eq!(
+            reads(&c, &["tamoxifène"], "Prolifération tumorale mammaire"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["tamoxifène"], "Épaisseur de l'endomètre"),
+            Trend::Up
+        );
+        assert!(
+            level(&c, &["raloxifène"], "Épaisseur de l'endomètre")
+                < level(&c, &["tamoxifène"], "Épaisseur de l'endomètre")
+        );
+        assert_eq!(
+            reads(&c, &["létrozole"], "Risque thromboembolique veineux"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["létrozole"], "Densité minérale osseuse"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["létrozole"], "Risque thromboembolique veineux")
+                < level(&c, &["tamoxifène"], "Risque thromboembolique veineux")
+        );
+        assert_eq!(
+            reads(&c, &["fulvestrant"], "Prolifération tumorale mammaire"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn desmopressin_lowers_the_sodium_and_a_thiazide_adds_to_it() {
+        let c = shipped("Vasopressine et eau libre");
+        assert_eq!(reads(&c, &["desmopressine"], "Natrémie"), Trend::Down);
+        assert_eq!(reads(&c, &["tolvaptan"], "Natrémie"), Trend::Up);
+        assert_eq!(reads(&c, &["tolvaptan"], "Soif"), Trend::Up);
+        assert_eq!(reads(&c, &["hydrochlorothiazide"], "Natrémie"), Trend::Down);
+        assert!(
+            level(&c, &["desmopressine", "hydrochlorothiazide"], "Natrémie")
+                < level(&c, &["desmopressine"], "Natrémie")
+        );
+        assert_eq!(reads(&c, &["lithium"], "Excrétion d'eau libre"), Trend::Up);
+    }
+
+    #[test]
+    fn carbidopa_keeps_levodopa_off_the_stomach_and_entacapone_stretches_it() {
+        let c = shipped("Lévodopa et dégradation de la dopamine");
+        assert_eq!(
+            reads(&c, &["lévodopa + carbidopa"], "Contrôle moteur"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &["lévodopa + carbidopa"], "Nausées et vomissements"),
+            Trend::Rest
+        );
+        assert!(
+            level(
+                &c,
+                &["lévodopa + carbidopa + entacapone"],
+                "Contrôle moteur"
+            ) > level(&c, &["lévodopa + carbidopa"], "Contrôle moteur")
+        );
+        assert_eq!(reads(&c, &["rasagiline"], "Contrôle moteur"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["pramipexole"], "Pression artérielle"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["ropinirole"],
+                "Troubles du contrôle des impulsions et hallucinations"
+            ),
+            Trend::Up
+        );
+    }
+
+    #[test]
+    fn two_sodium_channel_blockers_add_their_dizziness_and_ethosuximide_takes_only_absences() {
+        let c = shipped("Cibles des antiépileptiques");
+        assert_eq!(reads(&c, &["carbamazépine"], "Seuil convulsif"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["carbamazépine"], "Vertiges et ataxie"),
+            Trend::Up
+        );
+        assert!(
+            level(&c, &["carbamazépine", "lacosamide"], "Vertiges et ataxie")
+                > level(&c, &["carbamazépine"], "Vertiges et ataxie")
+        );
+        assert_eq!(reads(&c, &["éthosuximide"], "Seuil convulsif"), Trend::Rest);
+        assert_eq!(reads(&c, &["éthosuximide"], "Absences"), Trend::Down);
+        assert_eq!(reads(&c, &["valproate de sodium"], "Absences"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["vigabatrine"], "Vertiges et ataxie"),
+            Trend::Rest
+        );
+    }
+
+    #[test]
+    fn a_triptan_narrows_the_coronaries_and_an_anti_cgrp_does_not() {
+        let c = shipped("Migraine, sérotonine et CGRP");
+        assert_eq!(
+            reads(&c, &["sumatriptan"], "Céphalée migraineuse"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["sumatriptan"], "Calibre des coronaires"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["érénumab"], "Céphalée migraineuse"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["érénumab"], "Calibre des coronaires"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["galcanézumab"], "Calibre des coronaires"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["rimégépant"], "Céphalée migraineuse"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn two_herg_blockers_lengthen_the_qt_more_than_one_and_hypokalaemia_adds() {
+        let c = shipped("Canal hERG et QT long");
+        assert_eq!(reads(&c, &["citalopram"], "Durée du QT"), Trend::Up);
+        assert!(
+            level(&c, &["citalopram", "clarithromycine"], "Durée du QT")
+                > level(&c, &["citalopram"], "Durée du QT")
+        );
+        assert!(
+            level(
+                &c,
+                &["hydroxyzine", "méthadone"],
+                "Risque de torsades de pointes"
+            ) > level(&c, &["méthadone"], "Risque de torsades de pointes")
+        );
+        assert_eq!(reads(&c, &["furosémide"], "Kaliémie"), Trend::Down);
+        assert!(
+            level(&c, &["dompéridone", "furosémide"], "Durée du QT")
+                > level(&c, &["dompéridone"], "Durée du QT")
+        );
+        assert_eq!(reads(&c, &["sotalol"], "Fréquence cardiaque"), Trend::Down);
+    }
+
+    #[test]
+    fn hypokalaemia_raises_digoxin_arrhythmias() {
+        let c = shipped("Digoxine et pompe Na/K-ATPase");
+        assert_eq!(reads(&c, &["digoxine"], "Contractilité"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["digoxine"], "Conduction auriculo-ventriculaire"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["digoxine", "furosémide"], "Troubles du rythme")
+                > level(&c, &["digoxine"], "Troubles du rythme")
+        );
+        assert!(
+            level(&c, &["digoxine", "bisoprolol"], "Fréquence cardiaque")
+                < level(&c, &["digoxine"], "Fréquence cardiaque")
+        );
+        assert!(
+            level(
+                &c,
+                &["digoxine", "vérapamil"],
+                "Conduction auriculo-ventriculaire"
+            ) < level(&c, &["digoxine"], "Conduction auriculo-ventriculaire")
+        );
+        assert_eq!(reads(&c, &["furosémide"], "Kaliémie"), Trend::Down);
+    }
+
+    #[test]
+    fn allopurinol_raises_thiopurine_toxicity_without_a_thiopurine_it_does_nothing() {
+        let c = shipped("Purines, urate et goutte");
+        assert_eq!(reads(&c, &["allopurinol"], "Uricémie"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["allopurinol"], "Toxicité médullaire des thiopurines"),
+            Trend::Rest
+        );
+        assert!(
+            level(
+                &c,
+                &["azathioprine", "allopurinol"],
+                "Toxicité médullaire des thiopurines"
+            ) > level(&c, &["azathioprine"], "Toxicité médullaire des thiopurines")
+        );
+        assert!(
+            level(
+                &c,
+                &["mercaptopurine", "fébuxostat"],
+                "Toxicité médullaire des thiopurines"
+            ) > level(
+                &c,
+                &["mercaptopurine"],
+                "Toxicité médullaire des thiopurines"
+            )
+        );
+        assert_eq!(
+            reads(&c, &["colchicine"], "Inflammation articulaire"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["colchicine"], "Uricémie"), Trend::Rest);
+        assert_eq!(reads(&c, &["hydrochlorothiazide"], "Uricémie"), Trend::Up);
+        assert!(
+            level(&c, &["losartan", "hydrochlorothiazide"], "Uricémie")
+                < level(&c, &["hydrochlorothiazide"], "Uricémie")
+        );
+    }
+
+    #[test]
+    fn folinic_acid_rescues_methotrexate_and_folic_acid_does_not() {
+        let c = shipped("Érythropoïèse, fer et folates");
+        assert_eq!(reads(&c, &["époétine alfa"], "Hémoglobine"), Trend::Up);
+        assert!(
+            level(
+                &c,
+                &["époétine alfa", "carboxymaltose ferrique"],
+                "Hémoglobine"
+            ) > level(&c, &["époétine alfa"], "Hémoglobine")
+        );
+        assert_eq!(reads(&c, &["méthotrexate"], "Hémoglobine"), Trend::Down);
+        assert!(
+            level(&c, &["méthotrexate", "acide folinique"], "Hémoglobine")
+                > level(&c, &["méthotrexate", "acide folique"], "Hémoglobine")
+        );
+        assert!(
+            level(&c, &["méthotrexate", "acide folinique"], "Hémoglobine")
+                > level(&c, &["méthotrexate"], "Hémoglobine")
+        );
+        assert_eq!(
+            reads(&c, &["méthotrexate", "acide folinique"], "Hémoglobine"),
+            Trend::Rest
+        );
+    }
+
+    #[test]
+    fn iron_or_calcium_taken_with_eltrombopag_cancel_its_rise() {
+        let c = shipped("Thrombopoïèse");
+        assert_eq!(reads(&c, &["eltrombopag"], "Plaquettes"), Trend::Up);
+        assert_eq!(reads(&c, &["sulfate ferreux"], "Plaquettes"), Trend::Rest);
+        assert!(
+            level(&c, &["eltrombopag", "sulfate ferreux"], "Plaquettes")
+                < level(&c, &["eltrombopag"], "Plaquettes")
+        );
+        assert_eq!(
+            reads(&c, &["eltrombopag", "carbonate de calcium"], "Plaquettes"),
+            Trend::Rest
+        );
+        assert_eq!(reads(&c, &["anagrélide"], "Plaquettes"), Trend::Down);
+        assert_eq!(reads(&c, &["hydroxycarbamide"], "Plaquettes"), Trend::Down);
+        assert_eq!(
+            reads(&c, &["eltrombopag"], "Risque thrombotique"),
+            Trend::Up
+        );
+    }
+
+    #[test]
+    fn a_laba_alone_leaves_the_asthma_exacerbations_and_an_ics_lowers_them() {
+        let c = shipped("Bronchodilatation et inflammation bronchique");
+        assert_eq!(reads(&c, &["salmétérol"], "Bronchodilatation"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["salmétérol"], "Exacerbations d'asthme"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["budésonide"], "Exacerbations d'asthme"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["budésonide + formotérol"], "Gêne respiratoire")
+                < level(&c, &["formotérol"], "Gêne respiratoire")
+        );
+        assert_eq!(
+            reads(&c, &["montélukast"], "Inflammation bronchique"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["tiotropium"], "Inflammation bronchique"),
+            Trend::Rest
+        );
+        assert!(
+            level(&c, &["salmétérol", "budésonide"], "Exacerbations d'asthme")
+                < level(&c, &["salmétérol"], "Exacerbations d'asthme")
+        );
+        assert!(
+            level(&c, &["budésonide"], "Inflammation bronchique")
+                < level(&c, &["montélukast"], "Inflammation bronchique")
+        );
+    }
+
     fn meet(given: &[(&str, &str)]) -> Vec<Meeting> {
         let cascades: Vec<Cascade> = STARTER_CASCADES.iter().map(|t| parse(t)).collect();
         let lines: Vec<Line> = given
             .iter()
             .map(|(n, d)| Line { name: n, dci: d })
             .collect();
-        meetings(&cascades, &lines)
+        let refs: Vec<&Cascade> = cascades.iter().collect();
+        meetings(&refs, &lines)
     }
 
     fn effect(m: &[Meeting], title: &str, effect: &str) -> Option<Together> {
@@ -2939,7 +3272,7 @@ adaptation Bêta-1
             },
         ];
         assert!(
-            meetings(&[c], &lines).is_empty(),
+            meetings(&[&c], &lines).is_empty(),
             "une ligne ne se croise pas elle-même"
         );
     }

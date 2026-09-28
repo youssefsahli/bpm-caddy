@@ -1029,7 +1029,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Reduce,
-            conduct: "Au-dessous de 30 : dose de départ réduite dans le cancer thyroïdien et de l'endomètre, fixée par l'oncologue ; pas de données dans le carcinome hépatocellulaire ni en dialyse.",
+            conduct: "Au-dessous de 30 : dose de départ réduite dans le cancer thyroïdien et dans le cancer de l'endomètre, selon le RCP ; pas de recommandation dans le carcinome hépatocellulaire ; insuffisance rénale terminale : non recommandé.",
         }],
         source: "RCP Lenvima",
     },
@@ -1039,9 +1039,9 @@ pub const TABLE: &[Adaptation] = &[
         label: "Trifluridine et tipiracil",
         steps: &[
             Step {
-                below: 50,
+                below: 60,
                 level: Level::Watch,
-                conduct: "Entre 30 et 49 : pas d'adaptation de la dose initiale, surveillance rapprochée de la toxicité hématologique.",
+                conduct: "Entre 30 et 59 : pas d'adaptation de la dose initiale, surveillance hématologique plus fréquente.",
             },
             Step {
                 below: 30,
@@ -1067,9 +1067,9 @@ pub const TABLE: &[Adaptation] = &[
                 conduct: "Au-dessous de 80 : risque de lyse tumorale accru, prophylaxie et surveillance renforcées à l'instauration et pendant la titration.",
             },
             Step {
-                below: 15,
+                below: 30,
                 level: Level::Watch,
-                conduct: "Au-dessous de 15 ou en dialyse : pas de données ; décision du spécialiste.",
+                conduct: "Au-dessous de 30 ou en dialyse : pas d'adaptation de dose, mais seulement si le bénéfice l'emporte sur le risque ; surveillance étroite de la lyse et de la toxicité.",
             },
         ],
         source: "RCP Venclyxto",
@@ -1091,9 +1091,9 @@ pub const TABLE: &[Adaptation] = &[
         label: "Riociguat",
         steps: &[
             Step {
-                below: 50,
+                below: 80,
                 level: Level::Watch,
-                conduct: "Entre 30 et 50 : exposition augmentée, titration particulièrement prudente, risque d'hypotension.",
+                conduct: "Entre 30 et 80 : exposition augmentée, titration particulièrement prudente, risque d'hypotension.",
             },
             Step {
                 below: 30,
@@ -1140,11 +1140,18 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["trandolapril", "odrik"],
         never: &[],
         label: "Trandolapril",
-        steps: &[Step {
-            below: 30,
-            level: Level::Reduce,
-            conduct: "Au-dessous de 30 : débuter à la plus faible dose, sous un plafond réduit, avec une surveillance rapprochée de la kaliémie.",
-        }],
+        steps: &[
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : débuter à la plus faible dose, sous un plafond réduit, avec une surveillance rapprochée de la kaliémie.",
+            },
+            Step {
+                below: 10,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 10 : la plus faible dose est à la fois la dose initiale et la dose maximale.",
+            },
+        ],
         source: "RCP Odrik",
     },
     Adaptation {
@@ -1187,11 +1194,18 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["pentoxifylline", "torental"],
         never: &[],
         label: "Pentoxifylline",
-        steps: &[Step {
-            below: 30,
-            level: Level::Reduce,
-            conduct: "Au-dessous de 30 : posologie réduite de 30 à 50 % selon la tolérance, les métabolites s'accumulant.",
-        }],
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 60 : pas plus de deux comprimés par jour.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Au-dessous de 30 : posologie diminuée et adaptée à la tolérance individuelle, les métabolites pouvant s'accumuler.",
+            },
+        ],
         source: "RCP Torental LP",
     },
     Adaptation {
@@ -1260,7 +1274,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Reduce,
-                conduct: "Au-dessous de 60 : dose initiale réduite pendant deux semaines, puis augmentation selon la réponse, en suivant le schéma du RCP.",
+                conduct: "Au-dessous de 60 : moitié de la dose de départ chaque jour, ou dose de départ un jour sur deux, pendant deux semaines ; puis dose de départ chaque jour, augmentée selon la réponse.",
             },
             Step {
                 below: 30,

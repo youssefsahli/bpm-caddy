@@ -1474,7 +1474,10 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["acalabrutinib", "calquence"],
         label: "Acalabrutinib",
-        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : pas d'adaptation, surveillance attentive de la toxicité."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
         source: "Calquence : « Insuffisance hépatique légère ou modérée : pas d'adaptation ; sévère : non recommandé ».",
     },
     Adaptation {
@@ -1496,8 +1499,8 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["lenvatinib", "lenvima"],
         label: "Lenvatinib",
-        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : dose de départ réduite dans le cancer thyroïdien et de l'endomètre ; au stade Child-Pugh C du carcinome hépatocellulaire, pas de données.")],
-        source: "Lenvima : « Insuffisance hépatique sévère : dose de départ réduite dans le cancer thyroïdien et le cancer de l'endomètre ; au stade Child-Pugh C du carcinome hépatocellulaire, pas de données ».",
+        steps: &[step(Severe, Reduce, "Child-Pugh C : dose de départ réduite, la moitié de la dose usuelle dans le cancer de l'endomètre, un peu plus dans le cancer thyroïdien ; non recommandé dans le carcinome hépatocellulaire.")],
+        source: "Lenvima : « Insuffisance hépatique sévère (Child-Pugh C) ou rénale sévère : dose de départ de 14 mg par jour dans le cancer thyroïdien, de 10 mg par jour dans le cancer de l'endomètre ; dans le carcinome hépatocellulaire, Child-Pugh C non recommandé ».",
     },
     Adaptation {
         needs: &["trifluridine", "lonsurf"],
@@ -1508,8 +1511,8 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["eltrombopag", "revolade"],
         label: "Eltrombopag",
-        steps: &[step(Mild, Reduce, "Toute insuffisance hépatique : seulement si le bénéfice l'emporte sur le risque de thrombose de la veine porte, dose de départ réduite de moitié, bilan hépatique rapproché.")],
-        source: "Revolade : « Insuffisance hépatique : à n'utiliser que si le bénéfice l'emporte sur le risque de thrombose de la veine porte, et dose de départ réduite de moitié ».",
+        steps: &[step(Mild, Reduce, "Toute insuffisance hépatique : seulement si le bénéfice l'emporte sur le risque de thrombose de la veine porte, dose de départ réduite de moitié, pas d'augmentation avant trois semaines dans la thrombopénie immunologique, bilan hépatique rapproché ; hépatite C avec insuffisance légère : pas d'adaptation.")],
+        source: "Revolade : « Insuffisance hépatique : à n'utiliser que si le bénéfice l'emporte sur le risque de thrombose de la veine porte, et dose de départ réduite de moitié, 25 mg par jour, sans augmentation avant trois semaines dans la thrombopénie immunologique ; hépatite C avec insuffisance hépatique légère : pas d'adaptation ».",
     },
     Adaptation {
         needs: &["regorafenib", "stivarga"],
@@ -1545,13 +1548,13 @@ pub const TABLE: &[Adaptation] = &[
             step(Moderate, Watch, "Exposition augmentée : titration particulièrement prudente."),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère, classe C de Child-Pugh : contre-indiqué."),
         ],
-        source: "Adempas : « Insuffisance hépatique sévère, classe C de Child-Pugh » en contre-indication ; « Titration particulièrement prudente chez le sujet âgé de 65 ans et plus, en insuffisance rénale avec clairance de 30 à 50 mL/min et en insuffisance hépatique modérée ».",
+        source: "Adempas : « Insuffisance hépatique sévère, classe C de Child-Pugh » en contre-indication ; « Titration particulièrement prudente chez le sujet âgé de 65 ans et plus, en insuffisance rénale avec clairance de 30 à 80 mL/min et en insuffisance hépatique modérée ».",
     },
     Adaptation {
         needs: &["trandolapril", "odrik"],
         label: "Trandolapril",
-        steps: &[step(Severe, Reduce, "Débuter à la plus faible dose, sous surveillance étroite : la transformation en métabolite actif et son élimination sont ralenties.")],
-        source: "Odrik : « Insuffisance hépatique sévère : débuter à 0,5 mg sous surveillance étroite ».",
+        steps: &[step(Mild, Reduce, "Débuter à la plus faible dose, sous surveillance étroite : la transformation en métabolite actif et son élimination sont ralenties.")],
+        source: "Odrik : « Insuffisance hépatique : posologie initiale faible, adaptée ensuite à la réponse, sous surveillance étroite ».",
     },
     Adaptation {
         needs: &["olmesartan", "olmetec"],
@@ -1565,7 +1568,10 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["macitentan", "opsumit"],
         label: "Macitentan",
-        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué, comme des transaminases au-dessus de trois fois la normale avant l'instauration.")],
+        steps: &[
+            step(Moderate, Contraindicated, "Insuffisance hépatique modérée : non recommandé."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué, comme des transaminases au-dessus de trois fois la normale avant l'instauration."),
+        ],
         source: "Opsumit : contre-indication en « insuffisance hépatique sévère avec ou sans cirrhose » et « transaminases supérieures à trois fois la limite supérieure de la normale avant l'instauration ».",
     },
     Adaptation {
@@ -1580,8 +1586,8 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["pentoxifylline", "torental"],
         label: "Pentoxifylline",
-        steps: &[step(Severe, Reduce, "Réduire la dose selon la tolérance.")],
-        source: "Torental : « Insuffisance hépatique sévère : réduction de dose selon la tolérance ».",
+        steps: &[step(Mild, Watch, "Prudence, surtout avec un traitement hépatotoxique associé ; au stade sévère, demi-vie et biodisponibilité augmentées.")],
+        source: "RCP Pentoxifylline LP : « utilisée avec prudence ... insuffisance hépatique ou traitement hépatotoxique associé » ; « En cas d'insuffisance hépatique sévère la demi-vie d'élimination et la biodisponibilité sont augmentées ».",
     },
     Adaptation {
         needs: &["doxazosine", "zoxan"],
@@ -1604,8 +1610,8 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["guanfacine", "intuniv"],
         label: "Guanfacine",
-        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : réduction de posologie éventuelle ; non évalué chez l'enfant.")],
-        source: "Intuniv : « Insuffisance hépatique ou rénale sévère : réduction de posologie éventuelle ».",
+        steps: &[step(Mild, Reduce, "Insuffisance hépatique, quel qu'en soit le degré : réduction de posologie éventuelle ; non évalué chez l'enfant.")],
+        source: "Intuniv : « Insuffisance hépatique, quel qu'en soit le degré, ou insuffisance rénale sévère : réduction de posologie éventuelle ».",
     },
     Adaptation {
         needs: &["siponimod", "mayzent"],
@@ -1637,8 +1643,11 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["esketamine", "spravato"],
         label: "Eskétamine",
-        steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé.")],
-        source: "Spravato : « Insuffisance hépatique sévère : non recommandé ».",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : pas d'adaptation, la dose la plus forte avec prudence."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Spravato : « Insuffisance hépatique modérée : pas d'adaptation, mais la dose de 84 mg avec prudence ; insuffisance hépatique sévère : non recommandé ».",
     },
     Adaptation {
         needs: &["eslicarbazepine", "zebinix"],
@@ -1650,10 +1659,10 @@ pub const TABLE: &[Adaptation] = &[
         needs: &["ozanimod", "zeposia"],
         label: "Ozanimod",
         steps: &[
-            step(Mild, Reduce, "Insuffisance hépatique légère ou modérée : titration complète, puis prises d'entretien espacées selon le RCP."),
+            step(Mild, Reduce, "Insuffisance hépatique légère ou modérée : titration complète, puis la dose d'entretien un jour sur deux."),
             step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
         ],
-        source: "Zeposia : « Insuffisance hépatique sévère : contre-indiqué ; insuffisance hépatique légère ou modérée : schéma d'entretien espacé selon le RCP ».",
+        source: "Zeposia : « Insuffisance hépatique sévère : contre-indiqué ; insuffisance hépatique chronique légère ou modérée : même titration, puis 0,92 mg un jour sur deux ».",
     },
     Adaptation {
         needs: &["cyproterone", "androcur"],

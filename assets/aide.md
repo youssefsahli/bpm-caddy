@@ -135,7 +135,10 @@ et leurs effets s'additionnent. Une absence d'interaction enzymatique
 n'est pas une absence d'interaction ; les lignes absentes de la table
 sont **listées**. Deux lignes qui se rencontrent sur plusieurs voies —
 la colchicine sous clarithromycine, par le CYP3A4 et la P-gp — tiennent
-en une seule entrée qui les nomme toutes.
+en une seule entrée qui les nomme toutes. Deux anti-interleukine 6, le
+tocilizumab et le sarilumab, y figurent aussi : l'inflammation freine les
+cytochromes, les bloquer leur rend leur activité, et la simvastatine ou
+la ciclosporine voient leur exposition baisser à l'instauration.
 
 Une prodrogue s'y lit à l'envers, et la ligne le précise : inhiber
 l'enzyme qui produit le métabolite actif du clopidogrel, de la codéine,
@@ -468,12 +471,15 @@ noms. Sans dossier ouvert, elle n'apparaît pas.
 
 La barre **reprend les réponses des tables**, en pastilles, sans
 conclure : chaque pastille cite le terme de sa table, et son infobulle
-précise la portée du module avant la conduite. Dix lectures : ce sont
+précise la portée du module avant la conduite. Onze lectures : ce sont
 les interactions citées par les fiches du dossier, la revue d'ordonnance
 avec ce produit ajouté, **la même molécule déjà présente au dossier sous
 un autre nom**, l'interprétation de la biologie du dossier sous ce
 traitement, la surveillance biologique demandée et la date du dernier
-dosage, les cytochromes, l'écrasement, la grossesse et l'allaitement,
+dosage, les cytochromes et les transporteurs, **les cascades où ce
+produit rejoint une ligne du dossier** (« Cascade · 1 paire(s) », les
+effets qui s'additionnent ou s'opposent au survol), l'écrasement, la
+grossesse et l'allaitement,
 l'adaptation à la clairance du dossier, et le sujet âgé, à partir de la
 date de naissance du dossier.
 
@@ -785,16 +791,22 @@ un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
 pour un effet — posé en creux.
 
-**26 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
+**39 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
 muscariniques, dopaminergiques D2, histaminiques H1, opioïde mu,
-GABA-A, synapse sérotoninergique, centre du vomissement. Cœur, rein et
-métabolisme : système rénine-angiotensine-aldostérone, monoxyde d'azote
-et GMPc, néphron et potassium, glycémie et incrétines, LDL-cholestérol,
-activation plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide.
-Hormones et os : axes thyréotrope et corticotrope, remodelage osseux.
-Cytokines : TNF-alpha, interleukine 6, voie JAK-STAT, axe IL-23 et
-IL-17, inflammation de type 2. Semées une fois : une cascade réécrite
-ou supprimée par l'équipe ne revient pas.
+GABA-A, synapse sérotoninergique, centre du vomissement. Neurologie :
+lévodopa et dégradation de la dopamine, cibles des antiépileptiques,
+migraine. Cœur, rein et métabolisme : système
+rénine-angiotensine-aldostérone, monoxyde d'azote et GMPc, néphron et
+potassium, vasopressine et eau libre, canal hERG et QT long, digoxine et
+pompe Na/K-ATPase, glycémie et incrétines, LDL-cholestérol, activation
+plaquettaire, cyclo-oxygénases, coagulation, sécrétion acide. Hormones
+et os : axes thyréotrope, corticotrope et gonadotrope, récepteur des
+androgènes, récepteurs des œstrogènes et aromatase, remodelage osseux.
+Sang et bronches : purines et goutte, érythropoïèse, thrombopoïèse,
+bronchodilatation et inflammation bronchique. Cytokines : TNF-alpha,
+interleukine 6, voie JAK-STAT, axe IL-23 et IL-17, inflammation de
+type 2. Semées une fois : une cascade réécrite ou supprimée par
+l'équipe ne revient pas.
 
 Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
 la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une

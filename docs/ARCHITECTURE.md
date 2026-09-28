@@ -416,7 +416,7 @@ The one that was missing — « combien de fois un autre poste avait
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1565 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1570 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -2683,6 +2683,11 @@ down in a tall pane and across in a wide low one, top-down winning ties;
 the figure then shrinks to 0.7 before overflowing into the pan/zoom of
 `graph_navigate`, shared with the drug map. Zoom moves the boxes apart
 and gives names the room the pane refused; it never enlarges the type.
+**An overflowing figure starts at its start**: centred, a sixteen-node
+cascade lost both ends at once — the ligands and the effects, the
+question and the answer. The overflow along the reading axis is carried
+to the far end (`lead` in `cascade_figure`), and the pan's reach grows by
+as much so the end stays reachable.
 On a pane too low for both (`label_line × 16`), « Figure » and « Courbes »
 take turns rather than share seventy-five pixels.
 

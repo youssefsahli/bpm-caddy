@@ -1536,8 +1536,10 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2c9, Substrate, None),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
         ],
-        source: "Jakavi : « Substrat majeur du CYP3A4, accessoirement du CYP2C9 ».",
+        source: "Jakavi : « Substrat majeur du CYP3A4, accessoirement du CYP2C9 » ; « Le ruxolitinib peut inhiber la glycoprotéine P et la BCRP intestinales ».",
     },
     Profile {
         needs: &["eltrombopag", "revolade"],
@@ -1573,7 +1575,7 @@ pub const TABLE: &[Profile] = &[
         needs: &["anagrelide", "xagrid"],
         label: "Anagrélide",
         actions: &[
-            Action::new(Cyp1a2, Substrate, None),
+            Action::new(Cyp1a2, Substrate, Some(Strong)),
             Action::new(Cyp1a2, Inhibitor, Some(Weak)),
         ],
         source: "Xagrid : « Métabolisé principalement par le CYP1A2 » ; « L'anagrélide exerce une faible inhibition du CYP1A2, avec un effet possible sur la théophylline ».",
@@ -1594,10 +1596,10 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2c8, Substrate, Some(Weak)),
-            Action::new(Cyp2c9, Substrate, Some(Weak)),
+            Action::new(Cyp2c9, Substrate, Some(Moderate)),
             Action::new(Cyp2c19, Substrate, Some(Weak)),
         ],
-        source: "Opsumit : « Métabolisme hépatique principalement par le CYP3A4, en un métabolite actif déméthylé, et accessoirement par les CYP2C8, CYP2C9 et CYP2C19 ».",
+        source: "Opsumit : « le métabolite actif, l'aprocitentan, est formé par dépropylation, principalement par le CYP3A4 et accessoirement par les CYP2C8, CYP2C9 et CYP2C19 ; les autres voies, qui donnent des métabolites inactifs, dépendent surtout du CYP2C9 ».",
     },
     Profile {
         needs: &["ranolazine"],
@@ -1606,11 +1608,11 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2d6, Substrate, Some(Weak)),
             Action::new(Cyp3a4, Inhibitor, Some(Weak)),
-            Action::new(Cyp2d6, Inhibitor, None),
+            Action::new(Cyp2d6, Inhibitor, Some(Weak)),
             Action::new(Pgp, Substrate, None),
             Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et inhibe la P-gp et le CYP2D6 » ; « substrat […] de la P-gp » ; « inhibe la P-gp » — sans force.",
+        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et du CYP2D6, et inhibe la P-gp » ; « substrat […] de la P-gp » ; « inhibe la P-gp » — sans force pour la P-gp.",
     },
     Profile {
         needs: &["disopyramide", "rythmodan"],
@@ -1645,9 +1647,9 @@ pub const TABLE: &[Profile] = &[
         label: "Siponimod",
         actions: &[
             Action::new(Cyp2c9, Substrate, Some(Strong)),
-            Action::new(Cyp3a4, Substrate, Some(Moderate)),
+            Action::new(Cyp3a4, Substrate, Some(Weak)),
         ],
-        source: "Mayzent : « Métabolisme hépatique principalement par le CYP2C9, pour environ quatre cinquièmes, et par le CYP3A4 pour le reste ».",
+        source: "Mayzent : « Métabolisme hépatique principalement par le CYP2C9, pour environ quatre cinquièmes ; le reste par d'autres cytochromes, dont le CYP3A4 pour environ 6 %, voies mineures ».",
     },
     Profile {
         needs: &["meloxicam", "mobic"],
@@ -1673,15 +1675,18 @@ pub const TABLE: &[Profile] = &[
         actions: &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2d6, Substrate, Some(Moderate)),
-            Action::new(Cyp1a2, Substrate, Some(Weak)),
         ],
-        source: "Orap : « Métabolisme hépatique important par N-désalkylation, principalement par le CYP3A4 et dans une moindre mesure par le CYP2D6 et le CYP1A2 ».",
+        source: "Orap : « Métabolisme hépatique important par N-désalkylation, principalement par le CYP3A4 et le CYP2D6, en métabolites sans activité antipsychotique ».",
     },
     Profile {
         needs: &["daridorexant", "quviviq"],
         label: "Daridorexant",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Quviviq : « Métabolisme hépatique très majoritairement par le CYP3A4 » ; « Inhibiteurs puissants du CYP3A4, clarithromycine, itraconazole, kétoconazole, ritonavir : exposition fortement augmentée, association contre-indiquée ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Inhibitor, Some(Weak)),
+            Action::new(Pgp, Inhibitor, Some(Weak)),
+        ],
+        source: "Quviviq : « Métabolisme hépatique très majoritairement par le CYP3A4 » ; « le daridorexant est lui-même un inhibiteur faible du CYP3A4 et de la glycoprotéine P » ; « Inhibiteurs puissants du CYP3A4, clarithromycine, itraconazole, kétoconazole, ritonavir : exposition fortement augmentée, association contre-indiquée ».",
     },
     Profile {
         needs: &["esketamine", "spravato"],
@@ -2147,6 +2152,25 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Nilemdo : « L'acide bempédoïque inhibe l'OATP1B1 et augmente l'exposition à ces statines ».",
     },
+    // ---- Cytokines, ajoutées en 0.359.0 ----
+    // **Une levée de répression, lue comme une induction.** L'IL-6 de
+    // l'inflammation chronique freine les cytochromes ; la bloquer leur
+    // rend leur activité, et ce qui y passe voit son exposition baisser
+    // — à l'instauration, puis remonter à l'arrêt. Le sens est celui
+    // d'un inducteur, la cause ne l'est pas, et la citation le dit. La
+    // force n'est pas qualifiée par les fiches : `None`.
+    Profile {
+        needs: &["tocilizumab"],
+        label: "Tocilizumab",
+        actions: &[Action::new(Cyp3a4, Inducer, None)],
+        source: "RoActemra : « l'interleukine 6 réprimant les cytochromes, son blocage restaure leur activité et diminue les concentrations de ces médicaments » ; « Le CYP3A4 en fait partie : l'exposition à la simvastatine baisse d'environ 57 % une semaine après une dose » — une levée de répression, pas une induction.",
+    },
+    Profile {
+        needs: &["sarilumab"],
+        label: "Sarilumab",
+        actions: &[Action::new(Cyp3a4, Inducer, None)],
+        source: "Kevzara : « le blocage de l'interleukine 6 rétablit l'activité des CYP et fait baisser leurs concentrations » ; « Substrats du CYP3A4 comme les contraceptifs oraux ou les statines : exposition diminuée, la simvastatine perdant environ 45 % une semaine après une injection » — une levée de répression, pas une induction.",
+    },
 ];
 
 #[cfg(test)]
@@ -2191,7 +2215,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 189;
+        const FLOOR: usize = 191;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",
@@ -2367,6 +2391,24 @@ mod tests {
             grouped(&r.crossings).iter().map(|g| g.len()).sum::<usize>(),
             r.crossings.len()
         );
+    }
+
+    /// **Une cytokine bloquée rend les cytochromes.** Le tocilizumab
+    /// n'induit rien : il lève la répression que l'IL-6 exerçait, et la
+    /// simvastatine perd plus de la moitié de son exposition. Le sens
+    /// est celui d'un inducteur, et c'est lui que la lecture annonce.
+    #[test]
+    fn an_anti_il6_lowers_what_the_cytochromes_carry() {
+        let r = cross(&[t("RoActemra", "tocilizumab"), t("Zocor", "simvastatine")]);
+        assert!(
+            r.crossings.iter().any(|c| c.affected == "Zocor"
+                && c.enzyme == Cyp3a4
+                && c.shift == Shift::ExposureDown),
+            "{:?}",
+            r.crossings
+        );
+        let r = cross(&[t("Kevzara", "sarilumab"), t("Néoral", "ciclosporine")]);
+        assert!(r.crossings.iter().any(|c| c.shift == Shift::ExposureDown));
     }
 
     /// **Les interactions que les cytochromes n'expliquent pas.** Le
