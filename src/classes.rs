@@ -2414,6 +2414,31 @@ pub const CLASSES: &[Class] = &[
         family: "divers",
         aliases: &[],
     },
+    Class {
+        name: "inhibiteur de la myosine cardiaque",
+        family: "cardio",
+        aliases: &[],
+    },
+    Class {
+        name: "antianémique — inhibiteur de la HIF-prolyl hydroxylase",
+        family: "hemato",
+        aliases: &[],
+    },
+    Class {
+        name: "chélateur du fer",
+        family: "hemato",
+        aliases: &[],
+    },
+    Class {
+        name: "anticancéreux oral — inhibiteur MEK",
+        family: "immuno",
+        aliases: &[],
+    },
+    Class {
+        name: "sulfone — lèpre et dermatoses",
+        family: "infectio",
+        aliases: &[],
+    },
 ];
 
 /// Ce qu'un libellé nomme **en le niant**, retiré d'une botte de foin

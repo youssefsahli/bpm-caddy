@@ -1308,6 +1308,17 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Pas de donnée sur le passage dans le lait : un autre antidépresseur est préféré.",
         source: "CRAT — dosulépine, grossesse et allaitement",
     },
+    Advice {
+        needs: &["dapsone", "disulone"],
+        never: &[],
+        label: "Dapsone",
+        pregnancy: Level::Prudence,
+        term: "",
+        pregnancy_note: "Recul très important, sans effet malformatif retenu : pas de raison d'arrêter ni de remplacer la dapsone en vue d'une grossesse, et elle se poursuit à tout terme à la dose efficace la plus faible. Poursuivie jusqu'à l'accouchement, elle se signale à la maternité : hémolyse ou méthémoglobinémie néonatale possibles, rares et transitoires.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Passage important : l'enfant reçoit jusqu'à 19 % de la dose maternelle, et une anémie hémolytique a été décrite chez un nourrisson allaité. Préférable d'éviter l'allaitement.",
+        source: "CRAT (dapsone, grossesse et allaitement, mise à jour 28.01.2025) ; Disulone : « Le RCP déconseille en théorie la grossesse, faute de données, tout en admettant l'usage si nécessaire ».",
+    },
 ];
 
 #[cfg(test)]

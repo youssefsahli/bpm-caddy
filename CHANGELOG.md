@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.366.0] - 2026-09-29
+
+### Added
+- Dix monographies de plus (1127 fiches), rédigées d'après leur RCP :
+  Camzyos, Brukinsa, Exjade, Mekinist, Evrenzo, Nplate, Disulone,
+  Sunosi, Vumerity, Dysalfa — avec leurs lignes aux cytochromes (le
+  mavacamten et le CYP2C19, le déférasirox et le CYP2C8), au rein, au
+  foie et à l'écrasement. Vumerity reçoit la surveillance des
+  lymphocytes, Evrenzo celle de l'hémoglobine.
+
 ## [0.365.0] - 2026-09-29
 
 ### Added

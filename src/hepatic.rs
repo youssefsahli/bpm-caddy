@@ -2127,6 +2127,70 @@ pub const TABLE: &[Adaptation] = &[
         ],
         source: "Wakix : « Insuffisance hépatique modérée : augmentation possible deux semaines après l'instauration, sans dépasser 18 mg par jour ; contre-indiqué en insuffisance hépatique sévère » .",
     },
+    Adaptation {
+        needs: &["zanubrutinib", "brukinsa"],
+        label: "Zanubrutinib",
+        steps: &[step(Severe, Reduce, "Insuffisance hépatique sévère : ne pas dépasser 80 mg deux fois par jour, sous surveillance étroite.")],
+        source: "Brukinsa : « Insuffisance hépatique légère ou modérée : pas d'adaptation ; sévère : 80 mg deux fois par jour, sous surveillance étroite ».",
+    },
+    Adaptation {
+        needs: &["mavacamten", "camzyos"],
+        label: "Mavacamten",
+        steps: &[
+            step(Mild, Reduce, "Insuffisance hépatique légère : débuter à la plus faible dose, quel que soit le génotype."),
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : débuter à la plus faible dose, quel que soit le génotype."),
+            step(Severe, Watch, "Insuffisance hépatique sévère : aucune recommandation, faute d'étude."),
+        ],
+        source: "Camzyos : « Insuffisance hépatique légère ou modérée (Child-Pugh A ou B) : débuter à 2,5 mg, quel que soit le génotype ; sévère : aucune recommandation, faute d'étude ».",
+    },
+    Adaptation {
+        needs: &["roxadustat", "evrenzo"],
+        label: "Roxadustat",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : dose initiale réduite de moitié, prudence."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Evrenzo : « Insuffisance hépatique modérée : dose initiale réduite de moitié ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["deferasirox", "exjade"],
+        label: "Déférasirox",
+        steps: &[
+            step(Moderate, Reduce, "Insuffisance hépatique modérée : dose considérablement réduite, ne pas dépasser 50 % de la dose recommandée."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Exjade : « Insuffisance hépatique modérée : dose considérablement réduite puis augmentée progressivement sans dépasser 50 % de la dose recommandée ; sévère : non recommandé ».",
+    },
+    Adaptation {
+        needs: &["trametinib", "mekinist"],
+        label: "Trametinib",
+        steps: &[
+            step(Moderate, Watch, "Insuffisance hépatique modérée : prudence, pas d'adaptation chiffrée."),
+            step(Severe, Watch, "Insuffisance hépatique sévère : prudence, pas d'adaptation chiffrée."),
+        ],
+        source: "Mekinist : « Insuffisance hépatique légère : pas d'adaptation ; modérée à sévère : prudence ».",
+    },
+    Adaptation {
+        needs: &["dapsone", "disulone"],
+        label: "Dapsone",
+        steps: &[step(Mild, Contraindicated, "Insuffisance hépatique : généralement déconseillé, sans distinction de stade ; bilan hépatique à un mois puis tous les trois mois si le traitement est maintenu.")],
+        source: "Disulone : « Généralement déconseillé en cas d'insuffisance hépatique ou rénale » — la fiche ne distingue pas les stades.",
+    },
+    Adaptation {
+        needs: &["terazosine", "dysalfa", "hytrine"],
+        label: "Térazosine",
+        steps: &[
+            step(Mild, Watch, "Titration particulièrement prudente : métabolisme hépatique important, excrétion biliaire."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
+        ],
+        source: "Dysalfa : « Insuffisance hépatique : titration particulièrement prudente ; non recommandé au stade sévère ».",
+    },
+    Adaptation {
+        needs: &["romiplostim", "nplate"],
+        label: "Romiplostim",
+        steps: &[step(Moderate, Contraindicated, "Insuffisance hépatique modérée à sévère : ne pas utiliser, sauf si le bénéfice l'emporte sur le risque de thrombose de la veine porte ; plaquettes étroitement surveillées.")],
+        source: "Nplate : « Ne pas utiliser en insuffisance hépatique modérée à sévère, Child-Pugh ≥ 7, sauf si le bénéfice l'emporte sur le risque de thrombose de la veine porte ».",
+    },
 ];
 
 #[cfg(test)]

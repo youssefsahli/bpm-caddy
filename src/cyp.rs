@@ -2265,6 +2265,54 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Lonsurf : « le tipiracil [est un substrat] des transporteurs OCT2 et MATE1 : leurs inhibiteurs peuvent en augmenter la concentration ».",
     },
+    Profile {
+        needs: &["zanubrutinib", "brukinsa"],
+        label: "Zanubrutinib",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Inducer, Some(Weak)),
+            Action::new(Cyp2c19, Inducer, Some(Weak)),
+            Action::new(Pgp, Inhibitor, None),
+        ],
+        source: "Brukinsa : « Substrat majeur du CYP3A4 » ; « Le zanubrutinib est lui-même un inducteur faible du CYP3A4 et du CYP2C19 » ; « Il augmente la concentration maximale de la digoxine, substrat de la P-gp, de 34 % » — sans force pour la P-gp.",
+    },
+    Profile {
+        needs: &["mavacamten", "camzyos"],
+        label: "Mavacamten",
+        actions: &[
+            Action::new(Cyp2c19, Substrate, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, None),
+        ],
+        source: "Camzyos : « Substrat majeur du CYP2C19 et, dans une moindre mesure, du CYP3A4 ; chez le métaboliseur lent du CYP2C19, c'est le CYP3A4 qui l'élimine » — sans force pour le CYP3A4.",
+    },
+    Profile {
+        needs: &["roxadustat", "evrenzo"],
+        label: "Roxadustat",
+        actions: &[
+            Action::new(Cyp2c8, Substrate, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Evrenzo : « Substrat du CYP2C8 et de l'UGT1A9 : le gemfibrozil et le probénécide multiplient son exposition par 2,3 » ; « Inhibiteur de la BCRP et de l'OATP1B1 : exposition à la simvastatine multipliée par 1,8, à la rosuvastatine par 2,9 » — sans force.",
+    },
+    Profile {
+        needs: &["deferasirox", "exjade"],
+        label: "Déférasirox",
+        actions: &[
+            Action::new(Cyp2c8, Inhibitor, Some(Moderate)),
+            Action::new(Cyp1a2, Inhibitor, None),
+        ],
+        source: "Exjade : « Inhibiteur modéré du CYP2C8 : il multiplie par 2,3 l'aire sous la courbe du répaglinide » ; « Inhibiteur du CYP1A2 : exposition à la théophylline augmentée de 84 % » — sans force pour le CYP1A2.",
+    },
+    Profile {
+        needs: &["trametinib", "mekinist"],
+        label: "Trametinib",
+        actions: &[
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Inhibitor, None),
+        ],
+        source: "Mekinist : « Substrat de la P-gp in vitro : attention avec les inhibiteurs puissants de la P-gp » ; « Inhibition transitoire de la BCRP intestinale » — sans force.",
+    },
 ];
 
 #[cfg(test)]

@@ -674,7 +674,9 @@ pub const WATCHES: &[Watch] = &[
         // « chélateur » prenait aussi le Questran et le Lokelma : un
         // phosphore trimestriel « au milieu du repas » pour un chélateur
         // du potassium.
-        never: &["acides biliaires", "potassium"],
+        // Et l'Exjade, chélateur du fer : sa surveillance est celle du
+        // rein et du foie, pas du phosphore.
+        never: &["acides biliaires", "potassium", "du fer"],
     },
     // --- Divers ---
     Watch {
@@ -687,7 +689,7 @@ pub const WATCHES: &[Watch] = &[
         never: &["anti-androgène"],
     },
     Watch {
-        needs: &["érythropoïétine", "époétine", "darbépoétine", "agent stimulant l'érythropoïèse"],
+        needs: &["érythropoïétine", "époétine", "darbépoétine", "agent stimulant l'érythropoïèse", "roxadustat"],
         code: "HB",
         every_months: 3,
         why: "La cible d'hémoglobine ne se dépasse pas : au-delà de 12 g/dL le risque thrombotique augmente sans bénéfice. Hémoglobine et statut martial régulièrement.",
@@ -752,7 +754,7 @@ pub const WATCHES: &[Watch] = &[
         never: &[],
     },
     Watch {
-        needs: &["diméthyl fumarate", "Tecfidera", "fingolimod", "Gilenya"],
+        needs: &["diméthyl fumarate", "Tecfidera", "diroximel", "Vumerity", "fingolimod", "Gilenya"],
         code: "LYMPHO",
         every_months: 3,
         why: "Une lymphopénie profonde et prolongée expose à la leucoencéphalopathie multifocale progressive : le chiffre décide de la poursuite du traitement, et c'est le seul moyen de voir venir la complication.",

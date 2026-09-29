@@ -1964,6 +1964,62 @@ pub const TABLE: &[Adaptation] = &[
         }],
         source: "RCP Oxeol",
     },
+    Adaptation {
+        needs: &["zanubrutinib", "brukinsa"],
+        never: &[],
+        label: "Zanubrutinib",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 ou en dialyse : données limitées, surveillance des effets indésirables.",
+        }],
+        source: "RCP Brukinsa",
+    },
+    Adaptation {
+        needs: &["mavacamten", "camzyos"],
+        never: &[],
+        label: "Mavacamten",
+        steps: &[Step {
+            below: 30,
+            level: Level::Watch,
+            conduct: "Au-dessous de 30 : non étudié, aucune recommandation posologique ; décision et surveillance du cardiologue.",
+        }],
+        source: "RCP Camzyos",
+    },
+    Adaptation {
+        needs: &["deferasirox", "exjade"],
+        never: &[],
+        label: "Déférasirox",
+        steps: &[Step {
+            below: 60,
+            level: Level::Contraindicated,
+            conduct: "Au-dessous de 60 : contre-indiqué. Au-dessus, créatininémie hebdomadaire le premier mois puis mensuelle.",
+        }],
+        source: "RCP Exjade",
+    },
+    Adaptation {
+        needs: &["solriamfetol", "sunosi"],
+        never: &[],
+        label: "Solriamfétol",
+        steps: &[
+            Step {
+                below: 60,
+                level: Level::Reduce,
+                conduct: "Entre 30 et 59 : la plus faible dose pour débuter et un plafond abaissé, atteint après cinq jours au plus tôt.",
+            },
+            Step {
+                below: 30,
+                level: Level::Reduce,
+                conduct: "Entre 15 et 29 : la plus faible dose, sans augmentation.",
+            },
+            Step {
+                below: 15,
+                level: Level::Contraindicated,
+                conduct: "Au-dessous de 15 : non recommandé.",
+            },
+        ],
+        source: "RCP Sunosi",
+    },
 ];
 
 #[cfg(test)]
