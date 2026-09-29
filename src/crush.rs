@@ -615,22 +615,6 @@ pub const TABLE: &[Rule] = &[
         source: "RCP Ranexa",
     },
     Rule {
-        needs: &["pentoxifylline", "torental"],
-        label: "Torental LP",
-        verdict: Verdict::No,
-        why: "Comprimé à libération prolongée : écrasé ou croqué, il libère d'un coup la dose prévue pour plusieurs heures, avec nausées, bouffées de chaleur, hypotension et tachycardie.",
-        instead: "Pas de forme buvable : l'utilité du traitement se rediscute avec le prescripteur plutôt que de chercher une autre forme.",
-        source: "RCP Torental LP",
-    },
-    Rule {
-        needs: &["doxazosine", "zoxan"],
-        label: "Zoxan LP",
-        verdict: Verdict::No,
-        why: "Comprimé à libération prolongée, principe actif dans une matrice inerte non absorbable : écrasé, coupé ou mâché, il libère d'un coup la dose de la journée, avec un risque d'hypotension et de syncope.",
-        instead: "Une autre molécule ou forme choisie par le prescripteur ; la doxazosine à libération immédiate n'est pas une équivalence dose pour dose.",
-        source: "RCP Zoxan LP",
-    },
-    Rule {
         needs: &["intuniv"],
         label: "Intuniv LP",
         verdict: Verdict::No,

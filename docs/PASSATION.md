@@ -5,11 +5,9 @@ dans le dépôt, rien n'est resté en local.
 
 **Versions.** Dernière version publiée : voir `gh release list`. La
 0.366.0 (dix fiches : Camzyos, Brukinsa, Exjade, Mekinist, Evrenzo,
-Nplate, Disulone, Sunosi, Vumerity, Dysalfa) est committée sur `main`,
-toutes les portes passées (fmt, clippy, tests, deux `cargo check`,
-couverture), **sans le smoke** faute de temps : lancer
-`./scripts/smoke.sh`, puis `git tag v0.366.0 && git push origin v0.366.0`.
-La 0.359.0 n'a jamais été publiée (son contenu, corrigé, est dans la
+Nplate, Disulone, Sunosi, Vumerity, Dysalfa) n'a jamais été étiquetée :
+elle est publiée dans la 0.367.0, avec le retrait de Torental, Zoxan et
+Zeposia. La 0.359.0 n'a jamais été publiée (son contenu, corrigé, est dans la
 0.360.0).
 
 **Ce qui a été fait la nuit du 28 au 29** (le détail est au CHANGELOG,
@@ -24,7 +22,7 @@ sommaire du croisement ; filtre des cascades ; 44 fiches relues ou
 ajoutées d'après leur RCP.
 
 **Décisions qui reviennent à l'officine.**
-- Torental, Zoxan et Zeposia ne figurent plus à la BDPM ; Palexia,
+- Torental, Zoxan et Zeposia : retirés de la base livrée en 0.367.0. Palexia,
   Intuniv et Mayzent ne sont pas commercialisés en France (leur statut
   le dit) ; Bydureon est abrogé. Garder, renommer vers le générique ou
   retirer.

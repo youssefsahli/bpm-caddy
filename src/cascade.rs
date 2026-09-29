@@ -2689,14 +2689,14 @@ adaptation Bêta-1
         let c = shipped("Récepteurs alpha-1 adrénergiques");
         assert_eq!(reads(&c, &["tamsulosine"], "Débit urinaire"), Trend::Up);
         assert_eq!(
-            reads(&c, &["doxazosine"], "Pression artérielle"),
+            reads(&c, &["prazosine"], "Pression artérielle"),
             Trend::Down
         );
         assert!(
             level(&c, &["tamsulosine"], "Pression artérielle")
-                > level(&c, &["doxazosine"], "Pression artérielle")
+                > level(&c, &["prazosine"], "Pression artérielle")
         );
-        assert_eq!(reads(&c, &["doxazosine"], "Fréquence cardiaque"), Trend::Up);
+        assert_eq!(reads(&c, &["prazosine"], "Fréquence cardiaque"), Trend::Up);
         assert_eq!(
             reads(&c, &["tamsulosine"], "Dilatation de l'iris"),
             Trend::Down

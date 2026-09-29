@@ -678,16 +678,6 @@ pub const TABLE: &[Inappropriate] = &[
         source: "Laroche 2007 ; HAS — constipation chez la personne âgée",
     },
     Inappropriate {
-        needs: &["pentoxifylline", "torental"],
-        never: &[],
-        label: "Pentoxifylline",
-        from: 75,
-        level: Level::Avoid,
-        risk: "Efficacité modeste et discutée sur la claudication, pour une hypotension, des vertiges et des chutes, des troubles du rythme chez le coronarien, et des saignements en association aux antithrombotiques, fréquents à cet âge.",
-        instead: "Ce qui améliore le périmètre de marche et le pronostic : marche supervisée, arrêt du tabac, antiagrégant plaquettaire, statine et contrôle tensionnel. Si le traitement est maintenu, une réévaluation écrite à trois mois.",
-        source: "Laroche 2007 — vasodilatateurs ; HAS — artériopathie oblitérante des membres inférieurs",
-    },
-    Inappropriate {
         needs: &["fervex", "pheniramine"],
         never: &["dexchlorpheniramine"],
         label: "Phéniramine (associations du rhume)",
@@ -1350,7 +1340,10 @@ mod tests {
     /// écrit **une fois**, dans une constante que le message relit.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 33;
+        // Descendu d'une ligne une seule fois, et c'est la seule raison
+        // admise : le Torental, retiré du marché, a quitté la base avec
+        // sa ligne (0.367.0).
+        const FLOOR: usize = 32;
         assert!(
             TABLE.len() >= FLOOR,
             "{} lignes, il y en avait {FLOOR}",

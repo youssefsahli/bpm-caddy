@@ -21711,27 +21711,6 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         forms: "",
     },
     StarterDetail {
-        name: "Torental",
-        indications: "Traitement symptomatique de la claudication intermittente de l'artériopathie oblitérante chronique des membres inférieurs au stade II, en complément des mesures qui traitent réellement la maladie : marche supervisée, arrêt du tabac, antiagrégant plaquettaire, statine et contrôle des facteurs de risque. Le bénéfice sur le périmètre de marche est modeste et s'apprécie après quelques mois.",
-        mechanism: "La pentoxifylline est un dérivé méthylxanthique qui agit surtout sur les propriétés rhéologiques du sang : elle augmente la déformabilité des globules rouges, diminue l'agrégation plaquettaire et la viscosité sanguine, et abaisse le fibrinogène, ce qui améliore le débit dans la microcirculation. Elle inhibe les phosphodiestérases ; ses métabolites participent à l'effet.",
-        dosage: "Comprimé à libération prolongée à 400 mg, un à trois comprimés par jour, éventuellement en deux prises inégales, de préférence au cours des repas, avalé entier avec de l'eau, sans être croqué ni écrasé. L'efficacité s'évalue sur le périmètre de marche après deux à trois mois ; sans bénéfice, la poursuite ne se justifie pas. Insuffisance rénale : pas plus de deux comprimés par jour ; insuffisance rénale sévère : posologie diminuée et adaptée à la tolérance individuelle. Insuffisance hépatique : prudence. Chez le sujet âgé, vigilance sur l'hypotension et les saignements.",
-        contraindications: "Hypersensibilité à la pentoxifylline, phase aiguë de l'infarctus du myocarde, hémorragie en cours ou risque hémorragique majeur. Déconseillé pendant la grossesse et l'allaitement. Prudence en cas d'insuffisance rénale ou hépatique, de traitement hépatotoxique associé, de diabète (surveillance ophtalmologique, le risque hémorragique étant accru), de coronaropathie sévère et d'hypotension artérielle.",
-        ddi: "Antivitamines K, anticoagulants oraux directs, héparines, antiagrégants plaquettaires : risque hémorragique majoré, INR contrôlé plus souvent à l'instauration et aux changements de dose. Théophylline : concentrations augmentées, surdosage possible. Ciprofloxacine et cimétidine : concentrations de pentoxifylline augmentées. Antihypertenseurs et dérivés nitrés : hypotension majorée. Insuline et antidiabétiques oraux : hypoglycémie possible à forte dose, glycémie surveillée.",
-        adverse: "Troubles digestifs fréquents : nausées, pesanteur gastrique, ballonnement, vomissements, diarrhée. Bouffées de chaleur, sensations vertigineuses, céphalées, agitation, troubles du sommeil. Tachycardie, troubles du rythme, douleur angineuse, hypotension. Saignements cutanés, muqueux ou digestifs, surtout sous anticoagulant. Plus rarement thrombopénie, cholestase intrahépatique et élévation des transaminases, réactions d'hypersensibilité pouvant aller jusqu'au choc anaphylactique.",
-        monitoring: "Périmètre de marche et symptômes à deux ou trois mois pour décider de la poursuite. INR rapproché sous antivitamine K, recherche de saignements sous tout antithrombotique. Pression artérielle et tolérance cardiaque chez le coronarien et le sujet âgé. Glycémie chez le diabétique traité. Créatininémie, la posologie dépendant de la clairance. Pieds, pouls et plaies dans le cadre du suivi de l'artériopathie.",
-        iup: "Prenez les comprimés au cours des repas, avalés entiers avec un verre d'eau, sans les croquer ni les écraser : ils libèrent le produit lentement. Des nausées, des bouffées de chaleur ou des maux de tête sont possibles au début. Ce médicament ne remplace pas la marche : c'est la marche quotidienne, l'arrêt du tabac et le traitement du cholestérol et de la tension qui améliorent vraiment la distance parcourue. Si vous prenez un anticoagulant ou un antiagrégant, signalez tout saignement inhabituel, des bleus, du sang dans les selles ou des selles noires. Levez-vous lentement si la tête tourne. Consultez si une douleur apparaît au repos ou la nuit, si une plaie ou une zone noire apparaît sur un orteil, ou en cas de douleur dans la poitrine ou de palpitations.",
-        half_life: "Pentoxifylline : environ 0,4 à 0,8 heure ; métabolites actifs : environ 1 à 1,6 heure ; la forme à libération prolongée étale l'absorption",
-        elimination: "Premier passage hépatique important et métabolisme érythrocytaire et hépatique en métabolites actifs ; élimination urinaire de plus de 90 % de la dose sous forme de métabolites, une faible part dans les fèces.",
-        renal: "Insuffisance rénale : ne pas dépasser deux comprimés par jour. Insuffisance rénale sévère : posologie diminuée et adaptée à la tolérance individuelle, les métabolites pouvant s'accumuler. La créatininémie se contrôle chez le sujet âgé et avant toute augmentation, l'élimination étant presque entièrement urinaire.",
-        pregnancy: "Données insuffisantes : utilisation déconseillée pendant la grossesse, d'autant que l'indication est symptomatique et peut attendre. La pentoxifylline passe dans le lait : allaitement déconseillé.",
-        sources: "RCP Torental LP — base de données publique des médicaments (ANSM)\nHAS — prise en charge de l'artériopathie oblitérante des membres inférieurs\nESC 2024 — artériopathie périphérique et maladies de l'aorte\nLaroche 2007 — liste des médicaments potentiellement inappropriés chez la personne âgée",
-        status: "",
-        smr: "",
-        tags: "vasodilatateur, artériopathie, libération prolongée",
-        toxicity: "",
-        forms: "",
-    },
-    StarterDetail {
         name: "Veltassa",
         indications: "Traitement de l'hyperkaliémie de l'adulte et de l'adolescent à partir de 12 ans, notamment chez l'insuffisant rénal chronique et chez l'insuffisant cardiaque, où il permet de maintenir ou de réintroduire les inhibiteurs du système rénine-angiotensine-aldostérone. Son délai d'action, de plusieurs heures, ne permet pas de l'utiliser seul dans une hyperkaliémie menaçante.",
         mechanism: "Le patiromère est un polymère non absorbé, échangeur de cations, présenté sous forme de sel de calcium associé au sorbitol. Il fixe le potassium dans la lumière digestive, principalement dans le côlon, en échange de calcium, et augmente son élimination fécale, ce qui abaisse la kaliémie. L'effet débute en quelques heures et se maintient tant que le traitement est poursuivi.",
@@ -21770,27 +21749,6 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "obésité, inhibiteur des lipases",
-        toxicity: "",
-        forms: "",
-    },
-    StarterDetail {
-        name: "Zoxan",
-        indications: "Traitement des symptômes de l'hypertrophie bénigne de la prostate, chez le patient hypertendu comme normotendu : l'alpha-blocage relâche le col vésical et la prostate. La forme à libération prolongée n'a pas l'indication hypertension artérielle, même si elle abaisse la pression artérielle de l'hypertendu. Zoxan ne figure plus dans la base publique des médicaments : la doxazosine LP se délivre sous forme générique.",
-        mechanism: "La doxazosine est un antagoniste sélectif et compétitif des récepteurs alpha-1 adrénergiques post-synaptiques, dérivé de la quinazoline. Le blocage alpha-1 dilate les artérioles et les veines et abaisse les résistances périphériques, sans tachycardie réflexe marquée avec la forme à libération prolongée ; il relâche aussi le muscle lisse du col vésical et de la prostate. La forme à libération prolongée, à système osmotique, étale l'absorption sur la journée et atténue l'effet de première dose.",
-        dosage: "Forme à libération prolongée : 4 mg une fois par jour ; selon la réponse, jusqu'à 8 mg une fois par jour, dose maximale. Le comprimé s'avale entier avec de l'eau, avec ou sans repas, sans être mâché, coupé ni écrasé ; l'enveloppe vide peut être retrouvée dans les selles, sans que la dose ait été perdue. Chez le sujet âgé, la posologie usuelle s'applique, avec une vigilance particulière sur l'hypotension orthostatique. Insuffisance hépatique : prudence ; non recommandé au stade sévère. Pas d'adaptation à la fonction rénale.",
-        contraindications: "Hypersensibilité à la doxazosine ou aux quinazolines (prazosine, térazosine). Hypotension ou antécédent d'hypotension orthostatique. Antécédent d'occlusion gastro-intestinale ou œsophagienne, ou réduction du diamètre du tube digestif quel qu'en soit le degré. Hypertrophie bénigne de la prostate avec retentissement sur le haut appareil urinaire, infection urinaire chronique ou lithiase vésicale. En monothérapie : anurie ou rétention urinaire, avec ou sans atteinte rénale évolutive. Prudence dans les cardiopathies aiguës : œdème pulmonaire sur sténose aortique ou mitrale, insuffisance cardiaque à haut débit ou droite, insuffisance ventriculaire gauche à faible pression de remplissage.",
-        ddi: "Inhibiteurs de la phosphodiestérase de type 5 (sildénafil, tadalafil, vardénafil) : hypotension symptomatique ; à n'instaurer que chez un patient stabilisé sous alpha-bloquant, à la dose la plus faible et six heures après la doxazosine. Autres antihypertenseurs, dérivés nitrés, diurétiques, autres alpha-bloquants urologiques : hypotension additive. Inhibiteurs puissants du CYP3A4 (clarithromycine, itraconazole, kétoconazole, ritonavir) : prudence, exposition augmentée ; la cimétidine n'augmente l'aire sous la courbe que de 10 %, sans portée clinique. Anesthésiques généraux : hypotension peropératoire, à signaler à l'anesthésiste.",
-        adverse: "Sensations vertigineuses, céphalées, somnolence, asthénie, hypotension orthostatique et syncope, surtout en début de traitement ou après une interruption. Palpitations, tachycardie, œdèmes périphériques, rhinite, dyspepsie, nausées, infections urinaires et incontinence urinaire. Plus rarement troubles de l'éjaculation, priapisme, hépatite et cholestase, thrombopénie. Syndrome de l'iris flasque peropératoire lors de la chirurgie de la cataracte.",
-        monitoring: "Pression artérielle couchée et debout à l'instauration, après chaque augmentation et après toute interruption, surtout chez le sujet âgé ou sous autre antihypertenseur. Recherche de vertiges, de malaises et de chutes à chaque renouvellement. Dans l'hypertrophie prostatique, efficacité sur les symptômes urinaires et cancer de la prostate écarté avant de traiter. Traitement à signaler avant toute chirurgie de la cataracte.",
-        iup: "Un comprimé par jour, toujours au même moment, avalé entier avec un verre d'eau : ne le coupez pas, ne l'écrasez pas, ne le mâchez pas. Il est normal de retrouver parfois l'enveloppe du comprimé dans les selles : le médicament a bien été libéré. Les premiers jours et après chaque augmentation, levez-vous en deux temps, en vous asseyant un instant au bord du lit, surtout la nuit. Si vous avez interrompu le traitement plusieurs jours, demandez conseil avant de reprendre. Ne prenez pas de médicament de l'érection sans en parler au médecin : la tension peut chuter. Prévenez l'ophtalmologiste avant une opération de la cataracte, et l'anesthésiste avant toute intervention. Une érection prolongée et douloureuse est une urgence.",
-        half_life: "Environ 22 heures, autorisant une prise unique quotidienne",
-        elimination: "Métabolisme hépatique important, principalement par le CYP3A4, et dans une moindre mesure par le CYP2D6 et le CYP2C9 ; élimination essentiellement fécale des métabolites, moins de 5 % sous forme inchangée.",
-        renal: "Pas d'adaptation posologique en cas d'insuffisance rénale, la doxazosine n'étant pas éliminée par le rein sous forme active ; elle n'est pas dialysable. Instauration prudente chez l'insuffisant rénal, souvent plus sensible à l'hypotension.",
-        pregnancy: "Sans objet pour la forme à libération prolongée : son indication, l'hypertrophie bénigne de la prostate, ne concerne pas la femme.",
-        sources: "RCP Zoxan LP — base de données publique des médicaments (ANSM)\nHAS — prise en charge de l'hypertension artérielle de l'adulte\nAFU — recommandations sur l'hypertrophie bénigne de la prostate",
-        status: "",
-        smr: "",
-        tags: "alpha-bloquant, libération prolongée",
         toxicity: "",
         forms: "",
     },
@@ -21981,27 +21939,6 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         smr: "",
         tags: "antiépileptique, vigilance conduite",
         toxicity: "L'hyponatrémie est le piège : souvent silencieuse, elle se révèle par une confusion, des nausées, des céphalées ou un retour des crises que l'on met sur le compte de l'épilepsie. Elle se cherche chez le sujet âgé, l'insuffisant rénal et sous diurétique. Deuxième point, l'allergie croisée : un antécédent d'éruption grave sous carbamazépine ou oxcarbazépine ne permet pas de passer à l'eslicarbazépine sans précaution, et l'allèle HLA-B 15:02 expose au syndrome de Lyell. Troisième point, la contraception hormonale échoue sous ce traitement.",
-        forms: "",
-    },
-    StarterDetail {
-        name: "Zeposia",
-        indications: "Traitement de fond des formes rémittentes-récurrentes actives de sclérose en plaques de l'adulte, l'activité étant définie par la clinique ou l'imagerie. Traitement de la rectocolite hémorragique active modérée à sévère de l'adulte, après réponse insuffisante, perte de réponse ou intolérance à un traitement conventionnel ou à un biologique.",
-        mechanism: "Modulateur des récepteurs de la sphingosine-1-phosphate de types 1 et 5. En internalisant le récepteur S1P1 des lymphocytes, il les retient dans les ganglions lymphatiques et réduit leur passage vers le système nerveux central et la muqueuse intestinale. L'essentiel de l'activité est porté par des métabolites actifs à longue demi-vie, formés notamment par la monoamine oxydase B puis éliminés par le CYP2C8. Les récepteurs S1P du nœud sinusal expliquent le ralentissement cardiaque de l'instauration, que la titration atténue.",
-        dosage: "Titration sur sept jours : 0,23 mg par jour du premier au quatrième jour, 0,46 mg par jour du cinquième au septième, puis 0,92 mg une fois par jour à partir du huitième jour, dose d'entretien dans les deux indications. Gélule avalée entière, avec ou sans repas. Après une interruption, la titration est reprise selon sa durée et la date de l'arrêt : un jour ou plus pendant les deux premières semaines, plus de sept jours consécutifs entre le quinzième et le vingt-huitième jour, plus de quatorze jours consécutifs ensuite. Insuffisance hépatique sévère : contre-indiqué ; insuffisance hépatique chronique légère ou modérée : même titration, puis 0,92 mg un jour sur deux. Pas d'adaptation chez l'insuffisant rénal.",
-        contraindications: "Déficit immunitaire, infection active sévère ou infection chronique évolutive comme une hépatite ou une tuberculose, cancer évolutif, insuffisance hépatique sévère. Dans les six mois précédents : infarctus du myocarde, angor instable, accident vasculaire cérébral ou accident ischémique transitoire, insuffisance cardiaque décompensée ayant nécessité une hospitalisation ou de classe III ou IV. Bloc auriculoventriculaire du deuxième degré de type Mobitz II ou du troisième degré, maladie du sinus sans pacemaker. Grossesse et femme en âge de procréer sans contraception efficace. Hypersensibilité à l'ozanimod.",
-        ddi: "Inhibiteurs de la monoamine oxydase, sélégiline, rasagiline, phénelzine : exposition aux métabolites actifs et réponse clinique possiblement diminuées, association non recommandée. Inhibiteurs puissants du CYP2C8, gemfibrozil, clopidogrel : exposition aux métabolites actifs augmentée de moitié environ, prudence. Inducteurs du CYP2C8 comme la rifampicine : exposition aux métabolites actifs diminuée d'environ 60 %, association non recommandée. Bêtabloquants, inhibiteurs calciques bradycardisants, antiarythmiques de classe Ia et III, digoxine, ivabradine : bradycardie et troubles de conduction additifs, avis cardiologique avant l'instauration. Anticancéreux, immunomodulateurs et immunosuppresseurs non stéroïdiens : à ne pas associer, effet immunosuppresseur additif ; corticoïdes prolongés : prudence. Vaccins vivants atténués : à éviter pendant le traitement et trois mois après l'arrêt.",
-        adverse: "Rhinopharyngite, infections urinaires et respiratoires, céphalées, hypotension orthostatique. Élévation des transaminases et des gamma-GT fréquente. Lymphopénie attendue. Bradycardie transitoire et bloc auriculoventriculaire à l'instauration, moins marqués qu'avec le fingolimod grâce à la titration. Hypertension artérielle. Zona et infections herpétiques, leucoencéphalopathie multifocale progressive décrite avec la classe. Œdème maculaire, surtout chez le diabétique ou l'uvéitique. Carcinome basocellulaire et mélanome. Syndrome d'encéphalopathie postérieure réversible, rare.",
-        monitoring: "Avant l'instauration : électrocardiogramme, hémogramme récent, transaminases et bilirubine, sérologie de la varicelle avec vaccination si négative et délai d'un mois avant de débuter, examen dermatologique, examen ophtalmologique chez le diabétique ou en cas d'uvéite ou de maladie rétinienne. Surveillance de six heures à la première dose chez le patient dont la fréquence cardiaque de repos est inférieure à 55 par minute, qui présente un bloc du deuxième degré de type Mobitz I ou un antécédent d'infarctus ou d'insuffisance cardiaque. Sous traitement : hémogramme périodique, interruption si les lymphocytes restent au-dessous de 0,2 G/L et reprise au-dessus de 0,5 G/L ; transaminases périodiques ; surveillance des infections jusqu'à trois mois après l'arrêt ; pression artérielle, examen ophtalmologique devant tout trouble visuel, examen cutané régulier.",
-        iup: "Ce médicament traite la sclérose en plaques ou la rectocolite hémorragique en freinant certains globules blancs. Les sept premiers jours, les gélules augmentent progressivement pour ménager le cœur : suivez exactement le calendrier de la boîte de début, puis une gélule par jour à heure fixe. Si vous oubliez une prise dans les deux premières semaines, ou si vous arrêtez plusieurs jours ensuite, il peut falloir recommencer la boîte de début : appelez le médecin avant de reprendre. Signalez un pouls lent, des vertiges ou un malaise au début. Ce traitement diminue les défenses : fièvre, zona, maux de tête inhabituels ou confusion imposent de consulter vite. Signalez toute vision floue ou tache dans le champ visuel, et montrez toute tache nouvelle sur la peau. Évitez les grandes quantités d'aliments riches en tyramine, comme les fromages affinés, et signalez-le avant tout antidépresseur ou antiparkinsonien. Contraception efficace pendant le traitement et trois mois après l'arrêt. N'arrêtez pas sans avis.",
-        half_life: "Environ 21 heures pour l'ozanimod ; environ 11 jours pour son principal métabolite actif, qui porte l'essentiel de l'activité et commande le délai de retour des lymphocytes après l'arrêt",
-        elimination: "Métabolisme hépatique complexe, par plusieurs voies dont la monoamine oxydase B, qui forme les métabolites actifs, et le CYP2C8, qui les élimine. Élimination urinaire et fécale sous forme de métabolites. Retour des lymphocytes à la normale en trente jours environ, dans les trois mois chez 80 à 90 % des patients.",
-        renal: "Aucune adaptation posologique n'est nécessaire en cas d'insuffisance rénale, l'élimination rénale de l'ozanimod et de ses métabolites actifs n'étant pas prépondérante. La titration et la surveillance cardiaque restent les mêmes.",
-        pregnancy: "Contre-indiqué pendant la grossesse : les modulateurs S1P sont tératogènes chez l'animal et des malformations ont été rapportées avec la classe. Test de grossesse négatif avant l'instauration, contraception efficace pendant le traitement et trois mois après l'arrêt, du fait de la longue demi-vie des métabolites actifs ; arrêt trois mois avant une grossesse programmée. Allaitement : contre-indiqué, les femmes traitées ne doivent pas allaiter.",
-        sources: "RCP Zeposia — base de données publique des médicaments (ANSM)\nHAS — avis de la Commission de la transparence sur l'ozanimod dans la sclérose en plaques et dans la rectocolite hémorragique\nANSM — modulateurs des récepteurs S1P, surveillance cardiaque et contraception",
-        status: "",
-        smr: "",
-        tags: "modulateur s1p, sep, rectocolite hémorragique, surveillance biologique, contre-indiqué grossesse",
-        toxicity: "Le cœur ralentit à l'instauration : la titration sur sept jours est le garde-fou, et une interruption la fait reprendre selon sa durée — un jour ou plus dans les deux premières semaines, plus de sept jours jusqu'au vingt-huitième, plus de quatorze ensuite. Reprendre directement à 0,92 mg après une rupture expose à la bradycardie et au bloc. L'électrocardiogramme est fait avant la première gélule, et certains patients cardiaques sont surveillés six heures. Les métabolites actifs persistent des semaines : l'infection, la tératogénicité et l'interaction avec les inhibiteurs de la monoamine oxydase ne s'arrêtent pas avec la dernière gélule. Ensuite : infections graves, œdème maculaire, rebond de la maladie à l'arrêt.",
         forms: "",
     },
     StarterDetail {
@@ -28713,11 +28650,8 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Ranexa", "Mauvaise tolérance (vertiges, nausées, vomissements)", "Retour au palier précédent, arrêt si les troubles persistent", "Titration prudente chez le sujet âgé, le patient de 60 kg ou moins et l'insuffisant rénal modéré."),
     ("Rythmodan", "Prévention des récidives de troubles du rythme, forme à libération prolongée", "250 mg matin et soir, selon le cardiologue", "Pas plus de deux prises par jour ; demi-comprimé possible, jamais écrasé. Électrocardiogramme et kaliémie avant et pendant ; glycémie devant tout malaise."),
     ("Rythmodan", "Insuffisance rénale ou sujet âgé", "Réduction par espacement des prises, fixée par le cardiologue selon la clairance", "Forme à libération prolongée contre-indiquée en insuffisance rénale ou hépatique : gélule seule. Après 70 ans, forme à libération prolongée à demi-dose."),
-    ("Torental", "Claudication intermittente de l'artériopathie des membres inférieurs", "400 mg à libération prolongée, un à trois comprimés par jour au cours des repas", "Comprimé entier. Réévaluer à deux ou trois mois. Saignements sous anticoagulant ou antiagrégant à signaler."),
-    ("Torental", "Insuffisance rénale", "Pas plus de deux comprimés par jour", "Insuffisance rénale sévère : posologie diminuée et adaptée à la tolérance individuelle."),
     ("Veltassa", "Hyperkaliémie de l'adulte", "8,4 g une fois par jour, pendant ou en dehors des repas, ajustés par paliers de 8,4 g à au moins une semaine d'intervalle, jusqu'à 25,2 g par jour", "Autres médicaments oraux au moins trois heures avant ou après. Kaliémie et magnésémie surveillées. Conserver au réfrigérateur."),
     ("Xenical", "Obésité ou surpoids avec facteurs de risque", "120 mg trois fois par jour, au cours des trois repas principaux ou dans l'heure qui suit", "Omettre la prise si le repas est sauté ou sans graisse. Arrêter à douze semaines si la perte est inférieure à 5 %. Espacer lévothyroxine et vitamines."),
-    ("Zoxan", "Hypertrophie bénigne de la prostate", "4 mg une fois par jour ; jusqu'à 8 mg une fois par jour selon la réponse", "Comprimé entier. Se lever en deux temps les premiers jours et après une interruption. L'enveloppe peut se retrouver dans les selles."),
     ("Cartrex", "Arthrose, polyarthrite rhumatoïde, spondylarthrite ankylosante", "100 mg deux fois par jour, matin et soir", "Dose maximale 200 mg par jour. Vérifier l'absence de maladie cardiovasculaire avant toute délivrance."),
     ("Cartrex", "Insuffisance hépatique légère à modérée", "100 mg par jour pour débuter", "Contre-indiqué en insuffisance hépatique sévère."),
     ("Intuniv", "TDAH de l'enfant de 6 à 12 ans", "1 mg une fois par jour, augmenté de 1 mg au plus chaque semaine ; entretien de 0,05 à 0,12 mg par kilo et par jour", "Dose maximale 4 mg par jour à cet âge. Pouls et tension chaque semaine pendant la titration."),
@@ -28742,8 +28676,6 @@ pub const STARTER_POSOLOGIES: &[(&str, &str, &str, &str)] = &[
     ("Zebinix", "Épilepsie partielle de l'adulte, en association", "400 mg une fois par jour, portés à 800 mg après une à deux semaines, puis jusqu'à 1200 mg une fois par jour selon la réponse", "Une seule prise par jour. Ne jamais arrêter brutalement. Vérifier la contraception : l'efficacité de la pilule est diminuée."),
     ("Zebinix", "Épilepsie nouvellement diagnostiquée de l'adulte, en monothérapie", "400 mg une fois par jour, puis 800 mg après une à deux semaines ; 1200 mg, voire 1600 mg une fois par jour selon la réponse", "La dose de 1600 mg n'est pas recommandée chez le sujet âgé. Natrémie en cas de fatigue, de confusion ou de retour des crises."),
     ("Zebinix", "Insuffisance rénale, clairance de 30 à 60 mL/min", "200 mg une fois par jour ou 400 mg un jour sur deux pendant deux semaines, puis 400 mg une fois par jour, augmentés selon la réponse", "Non recommandé au-dessous de 30 mL/min. Natrémie à surveiller."),
-    ("Zeposia", "Sclérose en plaques rémittente-récurrente active", "0,23 mg par jour du premier au quatrième jour, 0,46 mg du cinquième au septième, puis 0,92 mg une fois par jour", "Électrocardiogramme avant la première gélule. Une interruption peut imposer de reprendre la titration."),
-    ("Zeposia", "Rectocolite hémorragique modérée à sévère", "Même titration sur sept jours, puis 0,92 mg une fois par jour", "Réévaluer l'intérêt en l'absence de réponse après la phase d'induction. Pas de vaccin vivant pendant le traitement et trois mois après."),
     ("Androcur", "Hirsutisme majeur, femme en période d'activité génitale", "50 mg par jour du 1er au 20e jour du cycle avec de l'estradiol, puis 8 jours sans traitement ; entretien à 50 ou 25 mg sur le même schéma", "Attestation annuelle co-signée exigée à la délivrance. IRM cérébrale au début. Utilisation sur plusieurs années à éviter."),
     ("Androcur", "Hirsutisme après la ménopause", "25 à 50 mg par jour, 20 jours sur 28", "Si possible avec une estrogénothérapie substitutive. Bénéfice réévalué chaque année."),
     ("Androcur", "Cancer de la prostate, traitement palliatif", "200 à 300 mg par jour, soit 4 à 6 comprimés, sans interruption", "Dose hépatotoxique : bilan hépatique avant et devant tout ictère. Numération érythrocytaire régulière."),
@@ -31691,7 +31623,7 @@ titre : Récepteurs alpha-1 adrénergiques
 sujet : Alpha-bloquants — prostate, pression artérielle, iris
 source : Rang & Dale's Pharmacology
 source : RCP de la tamsulosine, de l'alfuzosine et de la silodosine : hypotension orthostatique ; syndrome de l'iris flasque peropératoire, prévenir le chirurgien avant une chirurgie de la cataracte
-source : RCP de la doxazosine et de la prazosine : hypotension orthostatique, surveillance étroite en début de traitement
+source : RCP de la prazosine : hypotension orthostatique, surveillance étroite en début de traitement
 
 ligand Noradrénaline
 récepteur Alpha-1A prostatique : muscle lisse de la prostate et du col vésical
@@ -31722,7 +31654,6 @@ molécule tamsulosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, A
 molécule silodosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1A de l'iris
 # Sans sélectivité de sous-type : tous les alpha-1.
 molécule alfuzosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
-molécule doxazosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
 molécule prazosine : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alpha-1B vasculaire, Alpha-1A de l'iris
 # Antihypertenseur : son action centrale, qui freine la tachycardie
 # réflexe, n'est pas dessinée.
@@ -31734,7 +31665,7 @@ molécule urapidil : antagoniste Alpha-1A prostatique, Alpha-1A vasculaire, Alph
 
 # Des histoires toutes prêtes, jouées d'un clic.
 scénario Tamsulosine : tamsulosine 10-
-scénario Doxazosine : doxazosine 10-
+scénario Prazosine : prazosine 10-
 ",
     "\
 titre : Synapse sérotoninergique
@@ -34106,7 +34037,6 @@ molécule natalizumab : antagoniste Intégrine alpha-4 bêta-1, Intégrine alpha
 # CYP2C9 avant l'instauration (contre-indiqué chez le *3/*3).
 molécule fingolimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
 molécule siponimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
-molécule ozanimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
 molécule étrasimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
 # Un bêtabloquant ajoute son ralentissement à celui de la première
 # dose, et freine la compensation adrénergique.
@@ -40200,12 +40130,6 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ("Ranexa", "ranolazine", "antiangineux", ""),
     ("Rythmodan", "disopyramide", "antiarythmique classe Ia", ""),
     (
-        "Torental",
-        "pentoxifylline",
-        "vasodilatateur (artériopathie)",
-        "",
-    ),
-    (
         "Veltassa",
         "patiromère",
         "chélateur du potassium (hyperkaliémie)",
@@ -40217,7 +40141,6 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
         "inhibiteur des lipases digestives (obésité)",
         "",
     ),
-    ("Zoxan", "doxazosine", "alpha-bloquant", ""),
     ("Cartrex", "acéclofénac", "AINS", ""),
     ("Intuniv", "guanfacine", "TDAH — non psychostimulant", ""),
     ("Mayzent", "siponimod", "modulateur S1P — SEP", ""),
@@ -40237,7 +40160,6 @@ pub(crate) const STARTER_DRUGS: &[(&str, &str, &str, &str)] = &[
     ),
     ("Spravato", "eskétamine", "antidépresseur", ""),
     ("Zebinix", "eslicarbazépine", "antiépileptique", ""),
-    ("Zeposia", "ozanimod", "modulateur S1P — SEP", ""),
     ("Androcur", "cyprotérone acétate", "anti-androgène", ""),
     ("Androtardyl", "testostérone énanthate", "androgène", ""),
     (
@@ -54181,7 +54103,10 @@ mod tests {
         // The floor is a single constant the message reads back: it was
         // spelled out in words beside the figure, and the two drifted
         // apart the third time the batch was raised.
-        const TOXIC_FLOOR: usize = 630;
+        // 630 jusqu'en 0.366.0 ; une fiche retirée du marché (Zeposia,
+        // Torental, Zoxan en 0.367.0) emporte sa section, et c'est la
+        // seule raison de descendre ce cliquet.
+        const TOXIC_FLOOR: usize = 629;
         let toxic: Vec<&StarterDetail> = STARTER_DETAILS
             .iter()
             .filter(|d| !d.toxicity.trim().is_empty())
@@ -60923,7 +60848,7 @@ mod tests {
             "{c} fiches reçoivent une conduite à tenir, il y en avait 830"
         );
         // Et les deux autres passes remplissent ce qu'elles annoncent.
-        assert_eq!(f, 16_416, "cases de monographie remplies");
+        assert_eq!(f, 16_373, "cases de monographie remplies");
         assert_eq!(p, STARTER_POSOLOGIES.len(), "lignes de posologie");
         let t = Instant::now();
         db.seed_preparations().unwrap();

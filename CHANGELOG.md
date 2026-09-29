@@ -7,15 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.366.0] - 2026-09-29
+## [0.367.0] - 2026-09-29
 
 ### Added
-- Dix monographies de plus (1127 fiches), rédigées d'après leur RCP :
+- Dix monographies de plus, rédigées d'après leur RCP :
   Camzyos, Brukinsa, Exjade, Mekinist, Evrenzo, Nplate, Disulone,
   Sunosi, Vumerity, Dysalfa — avec leurs lignes aux cytochromes (le
   mavacamten et le CYP2C19, le déférasirox et le CYP2C8), au rein, au
   foie et à l'écrasement. Vumerity reçoit la surveillance des
   lymphocytes, Evrenzo celle de l'hémoglobine.
+
+### Removed
+- Torental, Zoxan et Zeposia quittent la base livrée (1124 fiches) : ils
+  ne figurent plus à la base de données publique des médicaments. Leurs
+  lignes au rein, au foie, au sujet âgé, à l'écrasement et aux
+  cytochromes partent avec eux ; la doxazosine et l'ozanimod quittent les
+  cascades alpha-1 et « Circulation des lymphocytes », où la prazosine,
+  le fingolimod, le siponimod et l'étrasimod restent. Une base déjà
+  installée garde ces fiches telles que l'équipe les a laissées :
+  les supprimer, si l'officine le souhaite, se fait depuis la fiche.
+
 
 ## [0.365.0] - 2026-09-29
 

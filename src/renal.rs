@@ -1191,24 +1191,6 @@ pub const TABLE: &[Adaptation] = &[
         source: "RCP Ranexa",
     },
     Adaptation {
-        needs: &["pentoxifylline", "torental"],
-        never: &[],
-        label: "Pentoxifylline",
-        steps: &[
-            Step {
-                below: 60,
-                level: Level::Reduce,
-                conduct: "Au-dessous de 60 : pas plus de deux comprimés par jour.",
-            },
-            Step {
-                below: 30,
-                level: Level::Reduce,
-                conduct: "Au-dessous de 30 : posologie diminuée et adaptée à la tolérance individuelle, les métabolites pouvant s'accumuler.",
-            },
-        ],
-        source: "RCP Torental LP",
-    },
-    Adaptation {
         needs: &["aceclofenac", "cartrex"],
         never: &[],
         label: "Acéclofénac",

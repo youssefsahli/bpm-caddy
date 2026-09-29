@@ -1584,21 +1584,6 @@ pub const TABLE: &[Adaptation] = &[
         source: "Ranexa : contre-indication en « insuffisance hépatique modérée ou sévère » ; « Titration particulièrement prudente chez le sujet âgé, le patient de 60 kg ou moins, en insuffisance rénale avec clairance de 30 à 80 mL/min, en insuffisance hépatique légère ».",
     },
     Adaptation {
-        needs: &["pentoxifylline", "torental"],
-        label: "Pentoxifylline",
-        steps: &[step(Mild, Watch, "Prudence, surtout avec un traitement hépatotoxique associé ; au stade sévère, demi-vie et biodisponibilité augmentées.")],
-        source: "RCP Pentoxifylline LP : « utilisée avec prudence ... insuffisance hépatique ou traitement hépatotoxique associé » ; « En cas d'insuffisance hépatique sévère la demi-vie d'élimination et la biodisponibilité sont augmentées ».",
-    },
-    Adaptation {
-        needs: &["doxazosine", "zoxan"],
-        label: "Doxazosine",
-        steps: &[
-            step(Mild, Watch, "Prudence : métabolisme hépatique important."),
-            step(Severe, Contraindicated, "Insuffisance hépatique sévère : non recommandé."),
-        ],
-        source: "Zoxan : « Insuffisance hépatique : prudence ; non recommandé au stade sévère ».",
-    },
-    Adaptation {
         needs: &["aceclofenac", "cartrex"],
         label: "Acéclofénac",
         steps: &[
@@ -1654,15 +1639,6 @@ pub const TABLE: &[Adaptation] = &[
         label: "Eslicarbazépine",
         steps: &[step(Severe, Contraindicated, "Insuffisance hépatique sévère : non étudiée, non recommandé.")],
         source: "Zebinix : « Insuffisance hépatique sévère : non étudiée, non recommandée ».",
-    },
-    Adaptation {
-        needs: &["ozanimod", "zeposia"],
-        label: "Ozanimod",
-        steps: &[
-            step(Mild, Reduce, "Insuffisance hépatique légère ou modérée : titration complète, puis la dose d'entretien un jour sur deux."),
-            step(Severe, Contraindicated, "Insuffisance hépatique sévère : contre-indiqué."),
-        ],
-        source: "Zeposia : « Insuffisance hépatique sévère : contre-indiqué ; insuffisance hépatique chronique légère ou modérée : même titration, puis 0,92 mg un jour sur deux ».",
     },
     Adaptation {
         needs: &["cyproterone", "androcur"],

@@ -1651,16 +1651,6 @@ pub const TABLE: &[Profile] = &[
         source: "Rythmodan : « métabolisme hépatique partiel par le CYP3A4 en un métabolite N-désalkylé ».",
     },
     Profile {
-        needs: &["doxazosine", "zoxan"],
-        label: "Doxazosine",
-        actions: &[
-            Action::new(Cyp3a4, Substrate, Some(Strong)),
-            Action::new(Cyp2d6, Substrate, Some(Weak)),
-            Action::new(Cyp2c9, Substrate, Some(Weak)),
-        ],
-        source: "Zoxan : « Métabolisme hépatique important, principalement par le CYP3A4, et dans une moindre mesure par le CYP2D6 et le CYP2C9 ».",
-    },
-    Profile {
         needs: &["aceclofenac", "cartrex"],
         label: "Acéclofénac",
         actions: &[Action::new(Cyp2c9, Substrate, Some(Strong))],
@@ -1735,12 +1725,6 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c19, Inhibitor, Some(Weak)),
         ],
         source: "Zebinix : « Induction du CYP3A4 et inhibition faible du CYP2C19, à l'origine de ses interactions ».",
-    },
-    Profile {
-        needs: &["ozanimod", "zeposia"],
-        label: "Ozanimod",
-        actions: &[Action::new(Cyp2c8, Substrate, None)],
-        source: "Zeposia : « la monoamine oxydase B, qui forme les métabolites actifs, et le CYP2C8, qui les élimine » ; « Inhibiteurs puissants du CYP2C8 comme le gemfibrozil : exposition aux métabolites actifs augmentée ».",
     },
     Profile {
         needs: &["tolterodine", "detrusitol"],

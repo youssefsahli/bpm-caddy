@@ -82,7 +82,7 @@ Deux règles valent partout :
   (la clairance, le poids, l'INR, la kaliémie), l'association qui tue,
   la voie ou le geste à ne pas se tromper, ce qui arrive à l'arrêt, et
   ce que le patient ne dira jamais de lui-même. Le compte est un
-  cliquet (`TOXIC_FLOOR`) : 630 fiches sur 1127.
+  cliquet (`TOXIC_FLOOR`) : 629 fiches sur 1124.
 - **Remplir la colonne « antidote » oblige à écrire la section.** Nommer
   un antidote, c'est affirmer qu'il existe une dose à partir de laquelle
   il faut le donner ; la fiche doit alors dire laquelle et à quoi on la
@@ -110,8 +110,8 @@ Deux règles valent partout :
 - **Où** : `src/facets.rs` — `HALF_LIVES` et `NO_HALF_LIFE` (la demi-vie
   plasmatique en heures, ou la raison pour laquelle il n'y en a pas),
   `BEYOND` (ce qui dure au-delà du plasma) et `IMPACTS` (organe, sens,
-  degré, et la clause qui le justifie) — 2 753 lignes sur douze axes,
-  couvrant 983 des 1127 fiches.
+  degré, et la clause qui le justifie) — 2 742 lignes sur douze axes,
+  couvrant 980 des 1124 fiches.
 - **La question à laquelle ça répond** : toutes les autres vues partent
   du nom — on cherche « Cordarone » et on lit sa fiche. Celle-ci part de
   la propriété : quelle est la plus longue demi-vie, qu'est-ce qui pèse
@@ -126,7 +126,7 @@ Deux règles valent partout :
   ne chiffre pas la demi-vie — « courte », « de l'ordre de quelques
   heures », ou seulement une demi-vie osseuse —, la facette dit
   `NonChiffree` et n'invente pas un nombre que personne ne pourrait
-  relire. 279 fiches sur 1127 sont dans ce cas — 201 parce que la notion
+  relire. 279 fiches sur 1124 sont dans ce cas — 201 parce que la notion
   n'a pas de sens (produit non absorbé, ion, vaccin), 78 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.
@@ -243,7 +243,7 @@ Deux règles valent partout :
   canoniques, et pour chacune les libellés qu'on rencontre réellement
   dans le champ `class` des fiches.
 - **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
-  fiche est du texte libre et il a dérivé — 563 libellés pour 1127
+  fiche est du texte libre et il a dérivé — 563 libellés pour 1124
   fiches, dont 330 sur une seule. Réécrire les 862 fiches écraserait ce
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où
