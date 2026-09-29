@@ -4221,8 +4221,15 @@ struct Session {
     /// Les récepteurs et cascades : la liste, lue au rechargement.
     cascades: Vec<db::CascadeText>,
     cascade_index: Vec<CascadeEntry>,
+    /// Ce que le filtre de la liste des cascades cherche : un titre, un
+    /// sujet ou une molécule.
+    cascade_filter: String,
     /// Compté à chaque relecture des cascades : une clé du croisement.
     cascades_rev: u64,
+    /// Les paires de l'ordonnance du dossier qui se rencontrent sur une
+    /// cascade — refaites avec les autres lectures du dossier, et quand
+    /// les cascades sont relues.
+    file_meetings: Vec<(i64, String, crate::cascade::Meeting)>,
     /// La liste a été lue au moins une fois.
     cascades_read: bool,
     cascade_open: Option<i64>,
@@ -5449,6 +5456,8 @@ impl Session {
             cascades: Vec::new(),
             cascade_index: Vec::new(),
             cascades_rev: 0,
+            cascade_filter: String::new(),
+            file_meetings: Vec::new(),
             cascades_read: false,
             cascade_open: None,
             cascade_read: None,
@@ -9096,8 +9105,10 @@ impl Session {
             })
             .collect();
         // Ce qui a été lu des cascades a changé : le croisement, qui les
-        // joue, se refait à la prochaine question.
+        // joue, se refait à la prochaine question, et le dossier tout de
+        // suite.
         self.cascades_rev = self.cascades_rev.wrapping_add(1);
+        self.file_meetings = cascade_meetings(&self.cascade_index, &self.patient_treats);
         if self
             .cascade_open
             .is_some_and(|id| !self.cascades.iter().any(|c| c.id == id))
@@ -10210,6 +10221,14 @@ impl Session {
         // de les ouvrir toutes. Voir `cyp.rs`, qui écrit d'abord ce
         // qu'il ne sait pas.
         self.cyp = crate::cyp::cross(&terms);
+        // Et les paires de l'ordonnance qui se rencontrent sur une
+        // cascade : la même lecture que le croisement, sous les
+        // cytochromes du dossier.
+        if !self.cascades_read {
+            self.cascades_read = true;
+            self.reload_cascades();
+        }
+        self.file_meetings = cascade_meetings(&self.cascade_index, &self.patient_treats);
     }
 
     /// What the calendrier vaccinal still owes the open file, read
@@ -21592,6 +21611,8 @@ impl App {
     /// tout. Et les lignes que la table ne connaît pas sont **nommées**,
     /// parce qu'une liste vide se lit « rien à signaler ».
     fn bio_cyp_pane(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect) {
+        // La porte d'une paire vers sa cascade, ouverte après le dessin.
+        let mut open_pair: Option<(i64, String, String)> = None;
         motif::inside(ui, rect, |ui| {
             egui::ScrollArea::vertical()
                 .id_salt("bio_cyp")
@@ -21633,6 +21654,14 @@ impl App {
                     for group in crate::cyp::grouped(&reading.crossings) {
                         Self::cyp_group(ui, &group);
                         ui.add_space(8.0);
+                    }
+                    // **L'autre moitié, sous les voies** : deux lignes qui
+                    // ne se croisent sur aucune enzyme peuvent se
+                    // rencontrer sur un récepteur. Seulement s'il y en a :
+                    // un chapitre vide de plus dans un volet étroit serait
+                    // de la garniture.
+                    if !session.file_meetings.is_empty() {
+                        Self::ddi_cascades_section(ui, &session.file_meetings, &mut open_pair);
                     }
                     // **Connues, et sans voie qui compte.** À ne pas
                     // confondre avec les inconnues, qui suivent : « on
@@ -21679,6 +21708,12 @@ impl App {
                     ui.add_space(6.0);
                 });
         });
+        // Un texte de cascade en cours d'écriture ne se perd pas d'un clic.
+        if let Some((id, a, b)) = open_pair {
+            if session.cascade_may_leave() {
+                session.open_cascade_giving(id, &[&a, &b]);
+            }
+        }
     }
 
     /// Une rencontre entre deux lignes, sur une ou plusieurs voies.
@@ -40854,7 +40889,7 @@ impl App {
                                     egui::vec2(ui.available_width(), side),
                                     egui::Sense::hover(),
                                 );
-                                Self::ddi_map(ui, picked, reading, r);
+                                Self::ddi_map(ui, picked, reading, &read.1.cascades, r);
                                 ui.add_space(6.0);
                             }
                         }
@@ -40898,18 +40933,23 @@ impl App {
                 // qui reste.** Une couleur sans légende est une
                 // décoration : trois rouges et un gris ne disent rien
                 // si rien ne nomme ce qu'ils séparent.
-                let legend_h = motif::chart::legend_row_height(ui) + 6.0;
+                // La clé des cascades ne paraît que si une paire est
+                // tracée : une clé sans trait est une promesse vide.
+                let mut keys = vec![
+                    (tr("ddi_legend_major"), motif::alert()),
+                    (tr("ddi_legend_notable"), motif::accent()),
+                    (tr("ddi_legend_minor"), motif::text_faint()),
+                ];
+                if !read.1.cascades.is_empty() {
+                    keys.push((tr("ddi_legend_cascade"), Self::ddi_cascade_ink()));
+                }
+                // Mesurée à la largeur où elle se dessine : elle se replie
+                // quand le volet est étroit, et la carte prend le reste.
+                let legend_h = motif::chart::legend_height(ui, &keys, inner.width()) + 6.0;
                 let split = motif::split_rows(inner, &[0.0, legend_h], 4.0);
-                Self::ddi_map(ui, picked, reading, split[0]);
+                Self::ddi_map(ui, picked, reading, &read.1.cascades, split[0]);
                 motif::inside(ui, split[1], |ui| {
-                    motif::chart::legend(
-                        ui,
-                        &[
-                            (tr("ddi_legend_major"), motif::alert()),
-                            (tr("ddi_legend_notable"), motif::accent()),
-                            (tr("ddi_legend_minor"), motif::text_faint()),
-                        ],
-                    );
+                    motif::chart::legend(ui, &keys);
                 });
             });
         }
@@ -41072,10 +41112,17 @@ impl App {
     ///
     /// La disposition vient de `graph::circle`, pure et testée : la vue
     /// met à l'échelle et peint, elle ne place pas.
+    /// La teinte des paires d'une même cascade sur la carte : une série
+    /// du thème, hors des trois de l'ordre de lecture.
+    fn ddi_cascade_ink() -> egui::Color32 {
+        motif::chart::series_color(5)
+    }
+
     fn ddi_map(
         ui: &mut egui::Ui,
         picked: &[Drug],
         reading: &crate::cyp::Reading,
+        meetings: &[(i64, String, crate::cascade::Meeting)],
         rect: egui::Rect,
     ) {
         use crate::cyp::Weight;
@@ -41126,6 +41173,31 @@ impl App {
                 vec![tip, back + side, back - side],
                 ink,
                 egui::Stroke::NONE,
+            ));
+        }
+        // **Les paires d'une même cascade, en tirets** : ni une enzyme ni
+        // un sens, une rencontre sur un récepteur — le trait ne porte pas
+        // de pointe, et sa teinte n'est aucune des trois de l'ordre de
+        // lecture. Une paire vue sur deux cascades n'est tracée qu'une
+        // fois.
+        let mut drawn: Vec<(usize, usize)> = Vec::new();
+        for (_, _, m) in meetings {
+            let (Some(i), Some(j)) = (
+                picked.iter().position(|d| d.name == m.lines.0),
+                picked.iter().position(|d| d.name == m.lines.1),
+            ) else {
+                continue;
+            };
+            let pair = (i.min(j), i.max(j));
+            if drawn.contains(&pair) {
+                continue;
+            }
+            drawn.push(pair);
+            ui.painter().extend(egui::Shape::dashed_line(
+                &[at(i), at(j)],
+                egui::Stroke::new(1.5_f32, Self::ddi_cascade_ink()),
+                chars_wide(ui, 0.9),
+                chars_wide(ui, 0.6),
             ));
         }
         // Les noms, raccourcis à ce que la carte peut porter — on
@@ -43036,15 +43108,48 @@ impl App {
         let mut story: Option<usize> = None;
         motif::panel(ui, rect, Some(tr("cascades_title")), |ui| {
             let inner = ui.max_rect();
-            motif::inside(ui, inner, |ui| {
+            // **Trois bandes, et non une seule qui défile.** La liste des
+            // titres venait d'abord, les scénarios et les cases des
+            // molécules dessous : à dix cascades on les voyait encore, à
+            // cinquante-neuf il fallait faire défiler toute la liste pour
+            // atteindre ce qu'on vient manipuler. Le filtre en tête, la
+            // liste plafonnée à une part du volet — en rangées entières —
+            // avec sa propre barre, et le reste pour la cascade ouverte.
+            let row_h = Self::row_height(ui);
+            let gap = ui.spacing().item_spacing.y;
+            let list_cap = whole_rows(
+                (inner.height() * 0.4).max(row_h * 3.0),
+                row_h,
+                gap,
+                session.cascade_index.len().max(1) as f32 * 2.0,
+            );
+            // Le bouton, puis le filtre sur toute la largeur : côte à côte
+            // dans une colonne de trente caractères, le champ ne montrait
+            // que « Filtrer : ».
+            let bands = motif::split_rows(inner, &[row_h, row_h, list_cap, 0.0], 6.0);
+            motif::inside(ui, bands[0], |ui| {
+                if motif::button(ui, tr("cascades_new")).clicked() {
+                    make = true;
+                }
+            });
+            motif::inside(ui, bands[1], |ui| {
+                let w = ui.available_width();
+                motif::field(
+                    ui,
+                    w,
+                    egui::TextEdit::singleline(&mut session.cascade_filter)
+                        .hint_text(motif::hint(tr("cascades_filter_hint"))),
+                )
+                .on_hover_text(tr("cascades_filter_tooltip"));
+            });
+            // Un titre, un sujet ou une molécule : « digoxine » trouve la
+            // digoxine et le QT long, « JAK » sa voie.
+            let wanted = fuzzy::sort_key(session.cascade_filter.trim());
+            motif::inside(ui, bands[2], |ui| {
                 ui.spacing_mut().scroll.floating = false;
                 egui::ScrollArea::vertical()
                     .id_salt("cascades_list")
                     .show(ui, |ui| {
-                        if motif::button(ui, tr("cascades_new")).clicked() {
-                            make = true;
-                        }
-                        ui.add_space(6.0);
                         if session.cascade_index.is_empty() {
                             ui.label(
                                 egui::RichText::new(tr("cascades_empty"))
@@ -43052,7 +43157,19 @@ impl App {
                                     .color(motif::text_dim()),
                             );
                         }
+                        let mut shown = 0usize;
                         for c in &session.cascade_index {
+                            if !wanted.is_empty()
+                                && !fuzzy::contains_folded(&fuzzy::sort_key(&c.title), &wanted)
+                                && !fuzzy::contains_folded(&fuzzy::sort_key(&c.subject), &wanted)
+                                && !c
+                                    .molecules
+                                    .iter()
+                                    .any(|m| fuzzy::contains_folded(&fuzzy::sort_key(m), &wanted))
+                            {
+                                continue;
+                            }
+                            shown += 1;
                             let title = if c.title.is_empty() {
                                 tr("cascade_untitled")
                             } else {
@@ -43063,6 +43180,20 @@ impl App {
                                 open = Some(c.id);
                             }
                         }
+                        if shown == 0 && !session.cascade_index.is_empty() {
+                            ui.label(
+                                egui::RichText::new(tr("cascades_filter_none"))
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
+                            );
+                        }
+                    });
+            });
+            motif::inside(ui, bands[3], |ui| {
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("cascades_side_tools")
+                    .show(ui, |ui| {
                         let Some(read) = read.as_ref() else {
                             return;
                         };
@@ -43073,7 +43204,6 @@ impl App {
                         // Pas en « Décrire » : la lecture courrait hors de
                         // l'écran, sur le texte enregistré.
                         if !read.parsed.scenarios.is_empty() && session.cascade_edit.is_none() {
-                            ui.add_space(8.0);
                             motif::section(ui, tr("cascades_scenarios"));
                             ui.add_space(4.0);
                             ui.horizontal_wrapped(|ui| {
@@ -65595,6 +65725,13 @@ impl App {
     /// the base, so the map costs a multiplication per node per frame
     /// and not a pass over eight hundred and fifty fiches.
     fn graph_view(ui: &mut egui::Ui, session: &mut Session) {
+        // Les cascades, lues une fois : la petite fiche d'un voisin porte
+        // la puce « Cascade », et une carte ouverte la première ne l'avait
+        // jamais, faute d'une autre vue qui les ait lues.
+        if !session.cascades_read {
+            session.cascades_read = true;
+            session.reload_cascades();
+        }
         use crate::graph::Tie;
         // Les lectures de la base se font au fil de la carte, démarré à
         // la première image ; ce qu'il a répondu entre deux images est
@@ -66458,6 +66595,7 @@ impl App {
                     session.viewing.as_ref().map(|p| p.id),
                     session.renal_dfg.map(f64::to_bits),
                     on_file.clone(),
+                    session.cascades_rev,
                 );
                 if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, id, &[map.centre.0]);
@@ -66514,6 +66652,7 @@ impl App {
                     session.viewing.as_ref().map(|p| p.id),
                     session.renal_dfg.map(f64::to_bits),
                     on_file.clone(),
+                    session.cascades_rev,
                 );
                 if session.graph_pair.as_ref().map(|(k, _)| k) != Some(&key) {
                     let sig = Self::graph_pair_signals(session, map.centre.0, &on_file);
@@ -70220,7 +70359,7 @@ type CompanionKey = (
 
 /// Ce dont dépend la lecture d'un nœud de la carte : la paire (centre,
 /// nœud), le dossier ouvert, son DFG et son ordonnance.
-type GraphPairKey = (i64, i64, Option<i64>, Option<u64>, Vec<i64>);
+type GraphPairKey = (i64, i64, Option<i64>, Option<u64>, Vec<i64>, u64);
 
 /// La distance au calme d'un signal — jamais une couleur écrite ici.
 ///
@@ -84607,6 +84746,37 @@ mod tests {
 
     /// Une cascade s'ouvre depuis la fiche de sa molécule, **la molécule
     /// déjà donnée** ; et la porte ne s'ouvre que sur un nom entier.
+    /// **Le dossier lit aussi ses paires sur une cascade**, avec ses
+    /// autres lectures : Plavix et Kardégic à l'ordonnance, l'activation
+    /// plaquettaire les montre ensemble.
+    #[test]
+    fn a_file_reads_the_pairs_that_meet_on_a_cascade() {
+        let (mut session, _swept) = scratch_session("file-meetings");
+        session.db.seed_cascades().unwrap();
+        let card = |id: i64, name: &str, dci: &str| crate::db::Drug {
+            id,
+            name: name.to_owned(),
+            dci: dci.to_owned(),
+            ..Default::default()
+        };
+        session.patient_treats = vec![
+            card(1, "Plavix", "clopidogrel"),
+            card(2, "Kardégic", "acide acétylsalicylique"),
+        ];
+        session.refresh_bio_findings();
+        assert!(
+            session
+                .file_meetings
+                .iter()
+                .any(|(_, title, _)| title == "Activation plaquettaire"),
+            "{:?}",
+            session.file_meetings
+        );
+        session.patient_treats.pop();
+        session.refresh_bio_findings();
+        assert!(session.file_meetings.is_empty());
+    }
+
     #[test]
     fn a_card_opens_its_cascade_with_its_molecule_given() {
         let (mut session, _swept) = scratch_session("cascade-door");

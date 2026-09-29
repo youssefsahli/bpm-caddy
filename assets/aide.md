@@ -145,6 +145,11 @@ l'enzyme qui produit le métabolite actif du clopidogrel, de la codéine,
 du tramadol, du losartan ou du tamoxifène ne les fait pas s'accumuler :
 leur effet est supprimé.
 
+Sous les voies, quand l'ordonnance en porte, **les paires qui se
+rencontrent sur une même cascade** — comme au croisement : les effets
+qui s'additionnent ou s'opposent, et le titre de la cascade qui l'ouvre
+avec les deux molécules données.
+
 Trois réponses possibles : interaction, **sans voie connue** (molécule
 présente dans la table, qui ne passe par aucune des voies suivies —
 critère utile pour choisir un traitement de remplacement), ou **absente
@@ -278,7 +283,11 @@ titre de la cascade l'ouvre, les deux molécules déjà données.
 
 La carte trace un arc par interaction, du produit en cause vers le
 produit affecté. La couleur indique l'ordre de lecture, non une gravité
-clinique : dose, durée et terrain ne sont pas connus du logiciel.
+clinique : dose, durée et terrain ne sont pas connus du logiciel. Deux
+lignes qui se rencontrent sur une même cascade sont reliées **en
+tirets**, sans pointe : ni enzyme ni sens, une rencontre sur un
+récepteur ; la clé « même cascade » ne paraît que si un tel trait est
+tracé.
 
 **La durée compte autant que le sens.** « Exposition augmentée » n'a pas
 la même portée pour une demi-vie de deux heures que pour une demi-vie de
@@ -799,26 +808,33 @@ un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
 pour un effet — posé en creux.
 
-**51 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
+**59 cascades livrées**. Récepteurs : bêta-adrénergiques, alpha-1,
 muscariniques, dopaminergiques D2, histaminiques H1, opioïde mu,
-GABA-A, synapse sérotoninergique, centre du vomissement. Neurologie et
-dépendances : lévodopa et dégradation de la dopamine, cibles des
-antiépileptiques, migraine, glutamate et récepteur NMDA, veille et
-sommeil, alcool, nicotine et arrêt du tabac. Cœur, rein et métabolisme :
-système rénine-angiotensine-aldostérone, monoxyde d'azote et GMPc,
-canaux calciques L, néphron et potassium, hyperkaliémie et chélateurs,
-vasopressine et eau libre, canal hERG et QT long, digoxine et pompe
-Na/K-ATPase, glycémie et incrétines, LDL-cholestérol, activation
-plaquettaire, cyclo-oxygénases, coagulation, cycle de la vitamine K,
-sécrétion acide. Hormones et os : axes thyréotrope, corticotrope et
-gonadotrope, contraception hormonale, récepteur des androgènes,
-récepteurs des œstrogènes et aromatase, calcium, parathormone et
-vitamine D, remodelage osseux. Sang et bronches : purines et goutte,
+GABA-A, synapse sérotoninergique, centre du vomissement, vessie
+hyperactive. Neurologie et dépendances : lévodopa et dégradation de la
+dopamine, cibles des antiépileptiques, migraine, glutamate et récepteur
+NMDA, veille et sommeil, alcool, nicotine et arrêt du tabac. Cœur, rein
+et métabolisme : système rénine-angiotensine-aldostérone, monoxyde
+d'azote et GMPc, canaux calciques L, néphron et potassium, hyperkaliémie
+et chélateurs, vasopressine et eau libre, canal hERG et QT long,
+digoxine et pompe Na/K-ATPase, glycémie et incrétines, LDL-cholestérol,
+activation plaquettaire, cyclo-oxygénases, coagulation, cycle de la
+vitamine K, sécrétion acide, transit intestinal et laxatifs. Hormones
+et os : axes thyréotrope, corticotrope et gonadotrope, contraception
+hormonale, récepteur des androgènes, récepteurs des œstrogènes et
+aromatase, calcium, parathormone et vitamine D, remodelage osseux,
+rétinoïdes. Sang, bronches et infections : purines et goutte,
 érythropoïèse, thrombopoïèse, bronchodilatation et inflammation
-bronchique. Immunité et cytokines : lymphocytes T et B, mastocyte,
-TNF-alpha, interleukine 6, voie JAK-STAT, axe IL-23 et IL-17,
-inflammation de type 2. Semées une fois : une cascade réécrite ou
-supprimée par l'équipe ne revient pas.
+bronchique, ritonavir booster du CYP3A4, aminosides. Oncologie :
+inhibiteurs de kinases, VEGF et angiogenèse. Immunité et cytokines :
+lymphocytes T et B, circulation des lymphocytes, mastocyte, TNF-alpha,
+interleukine 6, voie JAK-STAT, axe IL-23 et IL-17, inflammation de
+type 2. Semées une fois : une cascade réécrite ou supprimée par
+l'équipe ne revient pas.
+
+Au-dessus de la liste, un filtre retient les cascades dont le titre,
+le sujet ou une molécule contient le mot tapé : « digoxine » trouve la
+digoxine et le QT long.
 
 Depuis une fiche, « Cascade : … » ouvre la cascade qui nomme sa molécule,
 la molécule déjà donnée. Dans l'autre sens, un clic sur la ligne d'une

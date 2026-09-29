@@ -33451,6 +33451,625 @@ tonus faible Vasodilatation et fuite capillaire
 scénario Antihistaminique, puis adrénaline : cétirizine 10- ; adrénaline 50-80
 scénario Cromoglicate : cromoglicate de sodium 10-
 ",
+    "\
+titre : Inhibiteurs de kinases en oncologie orale
+sujet : BCR-ABL, EGFR, BTK, CDK4/6 — la cible, et ce qu'elle fait hors de la tumeur
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'éruption acnéiforme et la diarrhée des anti-EGFR viennent de l'EGFR de la peau et de la muqueuse digestive ; la neutropénie des inhibiteurs de CDK4/6 vient des précurseurs médullaires
+source : RCP de l'imatinib : inhibiteur de la tyrosine kinase BCR-ABL, de KIT et du PDGFR ; rétention hydrique et œdèmes
+source : RCP de l'erlotinib et de l'osimertinib : éruption cutanée et diarrhée parmi les effets les plus fréquents ; pneumopathie interstitielle
+source : RCP de l'ibrutinib : hémorragies, fibrillation auriculaire, hypertension ; la warfarine et les autres antivitamines K ne doivent pas lui être associées
+source : RCP du palbociclib, du ribociclib et de l'abémaciclib : neutropénie ; allongement du QT sous ribociclib ; diarrhée sous abémaciclib
+
+enzyme BCR-ABL : tyrosine kinase de fusion, active en permanence, du chromosome de Philadelphie
+effet Prolifération leucémique Ph+ : leucémie myéloïde chronique, leucémie aiguë lymphoblastique Ph+
+enzyme EGFR muté : moteur de la tumeur
+effet Prolifération tumorale EGFR muté : cancer bronchique non à petites cellules
+enzyme EGFR des tissus sains : peau, ongles, muqueuse digestive
+effet Éruption acnéiforme : avec la sécheresse cutanée et la paronychie
+effet Diarrhée
+enzyme BTK : Bruton, dans le lymphocyte B et dans la plaquette
+effet Prolifération des lymphocytes B malins : leucémie lymphoïde chronique, lymphome du manteau, maladie de Waldenström
+relais Agrégation plaquettaire : la voie du collagène (GPVI) passe par la BTK
+récepteur Récepteur P2Y12
+relais Coagulation : thrombine et facteur Xa
+effet Hémostase : baissée, ce sont les saignements et les ecchymoses
+ligand Œstrogènes : par le récepteur des œstrogènes, ils font la cycline D de la cellule tumorale
+enzyme CDK4/6 tumorale : fait passer le cycle de G1 à S
+effet Prolifération tumorale RH+ : cancer du sein
+enzyme CDK6 médullaire : précurseurs des polynucléaires
+effet Polynucléaires neutrophiles : baissés, c'est la neutropénie
+
+BCR-ABL -> Prolifération leucémique Ph+
+EGFR muté -> Prolifération tumorale EGFR muté
+EGFR des tissus sains -| Éruption acnéiforme, Diarrhée
+BTK -> Prolifération des lymphocytes B malins, Agrégation plaquettaire
+Récepteur P2Y12 -> Agrégation plaquettaire
+Agrégation plaquettaire, Coagulation -> Hémostase
+Œstrogènes -> CDK4/6 tumorale -> Prolifération tumorale RH+
+CDK6 médullaire -> Polynucléaires neutrophiles
+
+# Les inhibiteurs de kinases : tératogènes ou présumés l'être,
+# contraception efficace pendant le traitement, selon chaque RCP. Ils
+# passent par le CYP3A4 : inhibiteurs puissants, inducteurs et pamplemousse
+# changent leur concentration — une affaire de foie, lue par les
+# cytochromes, pas par la cascade. Le dasatinib et l'erlotinib
+# s'absorbent moins quand l'estomac est moins acide : l'association à
+# un IPP est à éviter (RCP), non dessiné.
+#
+# Inhibiteurs de BCR-ABL. L'imatinib touche aussi KIT (tumeurs
+# stromales digestives) et le PDGFR ; ses œdèmes et sa rétention
+# hydrique ne sont pas dessinés. Le nilotinib allonge le QT (ECG,
+# kaliémie et magnésémie avant de commencer) et se prend à jeun ; le
+# dasatinib donne des épanchements pleuraux. Leur toxicité médullaire,
+# par l'ABL et le KIT des cellules saines, n'est pas dessinée.
+molécule imatinib : inhibiteur BCR-ABL
+molécule dasatinib : inhibiteur BCR-ABL
+molécule nilotinib : inhibiteur BCR-ABL
+# Anti-EGFR. L'éruption et la diarrhée sont l'effet de la cible sur la
+# peau et l'intestin sains, pas une allergie ; l'éruption se prévient
+# (émollients, photoprotection) et se traite sans arrêter d'emblée. Ils
+# freinent aussi l'EGFR normal, l'osimertinib moins que l'erlotinib :
+# ses éruptions sont moins fréquentes, ce que le dessin ne gradue pas.
+# Pneumopathie interstitielle : toux ou dyspnée nouvelles, à signaler
+# sans attendre. L'osimertinib allonge aussi le QT, non dessiné.
+molécule erlotinib : inhibiteur EGFR muté, EGFR des tissus sains
+molécule osimertinib : inhibiteur EGFR muté, EGFR des tissus sains
+# Inhibiteurs de BTK. Dans la plaquette, la BTK relaie le collagène :
+# les saignements s'ajoutent à ceux d'un antiagrégant ou d'un
+# anticoagulant. Suspendre avant un geste invasif, selon le RCP. La
+# fibrillation auriculaire et l'hypertension, plus fréquentes sous
+# ibrutinib que sous acalabrutinib, ne sont pas dessinées : leur
+# mécanisme (une kinase cardiaque touchée hors de la BTK) n'est pas
+# établi.
+molécule ibrutinib : inhibiteur BTK
+molécule acalabrutinib : inhibiteur BTK
+# Ce qui s'ajoute aux inhibiteurs de BTK. L'aspirine se lirait comme
+# le clopidogrel, par une autre voie de la plaquette.
+molécule clopidogrel : antagoniste Récepteur P2Y12
+molécule apixaban : inhibiteur Coagulation
+molécule rivaroxaban : inhibiteur Coagulation
+molécule warfarine : inhibiteur Coagulation
+# Inhibiteurs de CDK4/6, avec une hormonothérapie : l'anti-aromatase
+# retire le signal, l'inhibiteur coupe le relais. La neutropénie
+# demande une numération avant chaque cycle ; fièvre ou frissons, à
+# signaler sans attendre. Le ribociclib allonge le QT (ECG) et touche
+# le foie ; l'abémaciclib, qui épargne plus la moelle, donne surtout
+# des diarrhées — ni l'un ni l'autre n'est gradué ici.
+molécule palbociclib : inhibiteur CDK4/6 tumorale, CDK6 médullaire
+molécule ribociclib : inhibiteur CDK4/6 tumorale, CDK6 médullaire
+molécule abémaciclib : inhibiteur CDK4/6 tumorale, CDK6 médullaire
+molécule létrozole : inhibiteur Œstrogènes
+molécule anastrozole : inhibiteur Œstrogènes
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Ibrutinib, puis apixaban : ibrutinib 10- ; apixaban 50-
+scénario Létrozole et palbociclib : létrozole 10- ; palbociclib 50-
+",
+    "\
+titre : VEGF et angiogenèse
+sujet : Anti-VEGF et inhibiteurs de VEGFR — tension, protéinurie, cicatrisation
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le VEGF fait produire à l'endothélium du monoxyde d'azote et de la prostacycline ; le bloquer élève la pression artérielle et fait apparaître une protéinurie
+source : RCP du bévacizumab : hypertension, protéinurie, perforations gastro-intestinales, complications de la cicatrisation, hémorragies
+source : RCP du sunitinib, du pazopanib, du cabozantinib, du lenvatinib, du sorafénib et du régorafénib : hypertension, hémorragies, troubles de la cicatrisation ; protéinurie
+source : RCP du ramipril : néphropathie glomérulaire, diabétique ou non, avec protéinurie, parmi les indications
+
+ligand VEGF-A : de la tumeur hypoxique, et de l'endothélium sain
+récepteur VEGFR-2 : endothélium
+messager NO et prostacycline : vasodilatateurs endothéliaux
+relais Néoangiogenèse tumorale
+effet Croissance tumorale
+effet Cicatrisation : baissée, ce sont les plaies qui ne ferment pas et les sutures qui lâchent
+effet Intégrité de la paroi vasculaire : baissée, ce sont les saignements et les perforations digestives
+canal Canaux calciques L vasculaires
+ligand Angiotensine II
+effet Pression artérielle
+effet Protéinurie : montée, c'est l'atteinte du filtre glomérulaire ; à la bandelette
+
+VEGF-A -> VEGFR-2
+VEGFR-2 -> NO et prostacycline
+VEGFR-2 -> Néoangiogenèse tumorale -> Croissance tumorale
+VEGFR-2 -> Cicatrisation, Intégrité de la paroi vasculaire
+VEGFR-2 -| Protéinurie
+Canaux calciques L vasculaires, Angiotensine II -> Pression artérielle
+NO et prostacycline -| Pression artérielle
+Angiotensine II -> Protéinurie
+
+# Sans molécule, pas de protéinurie à retirer : un IEC seul n'y change
+# presque rien sur le dessin.
+tonus faible Protéinurie
+
+# Tous : pression artérielle à suivre dès le début et pendant tout le
+# traitement ; protéinurie à la bandelette ; suspendre avant une
+# chirurgie programmée et attendre la cicatrisation pour reprendre,
+# selon le RCP. Tératogènes : contraception efficace. Ostéonécrose de
+# la mâchoire, surtout avec un bisphosphonate : bilan dentaire. La
+# raréfaction des capillaires et l'endothéline, qui participent à
+# l'hypertension, ne sont pas dessinées ; les thromboses artérielles
+# non plus.
+#
+# Il capte le VEGF circulant. Les anti-VEGF intravitréens
+# (ranibizumab, aflibercept) agissent dans l'œil et ne sont pas
+# dessinés ici.
+molécule bévacizumab : inhibiteur VEGF-A
+# Inhibiteurs de tyrosine kinase multicibles : le VEGFR et, selon la
+# molécule, le PDGFR, KIT, RET, MET ou RAF, qui agissent aussi sur la
+# tumeur et ne sont pas dessinés. Ils passent par le CYP3A4 (non
+# dessiné) : l'amlodipine se préfère au vérapamil et au diltiazem, qui
+# inhibent le CYP3A4. Syndrome main-pied (sorafénib, régorafénib, sunitinib,
+# cabozantinib), hypothyroïdie (sunitinib, lenvatinib : TSH),
+# hépatotoxicité (pazopanib, régorafénib : bilan hépatique), QT long
+# (sunitinib, pazopanib, lenvatinib) : non dessinés. Le pazopanib se
+# prend à jeun.
+molécule sunitinib : inhibiteur VEGFR-2
+molécule pazopanib : inhibiteur VEGFR-2
+molécule cabozantinib : inhibiteur VEGFR-2
+molécule lenvatinib : inhibiteur VEGFR-2
+molécule sorafénib : inhibiteur VEGFR-2
+molécule régorafénib : inhibiteur VEGFR-2
+# Ce qui corrige la pression : un inhibiteur calcique dihydropyridine,
+# ou un IEC qui baisse aussi la protéinurie.
+molécule amlodipine : antagoniste Canaux calciques L vasculaires
+molécule ramipril : inhibiteur Angiotensine II
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Sunitinib, puis amlodipine : sunitinib 10- ; amlodipine 50-
+scénario Bévacizumab, puis ramipril : bévacizumab 10- ; ramipril 50-
+",
+    "\
+titre : Vessie hyperactive : détrusor, M3 et bêta-3
+sujet : Antimuscariniques urinaires, mirabégron — urgenturie, résidu, bouche sèche, sujet âgé
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'acétylcholine contracte le détrusor par le M3 ; le M2, plus nombreux, s'oppose à la relaxation par l'AMPc ; la noradrénaline le relâche par le bêta-3 pendant le remplissage
+source : RCP du mirabégron : agoniste des récepteurs bêta-3 ; hausse de la pression artérielle et du pouls ; contre-indiqué dans l'hypertension artérielle sévère non contrôlée ; inhibiteur modéré du CYP2D6
+source : RCP des antimuscariniques urinaires : bouche sèche, constipation, rétention urinaire ; contre-indiqués dans la rétention urinaire, le glaucome à angle fermé non contrôlé et la myasthénie
+
+ligand Acétylcholine : parasympathique pelvien
+récepteur M3 du détrusor : contracte
+récepteur M2 du détrusor : freine la relaxation
+ligand Noradrénaline : sympathique
+récepteur Bêta-3 du détrusor : relâche pendant le remplissage
+messager AMPc
+relais Contractions de remplissage : involontaires, celles de la vessie hyperactive
+relais Contraction mictionnelle : celle qui vide
+effet Urgenturie et fuites
+effet Vidange vésicale : baissée, c'est le résidu, puis la rétention ; surtout sur un obstacle prostatique
+récepteur M3 salivaire
+effet Salivation : baissée, c'est la bouche sèche, première cause d'arrêt
+récepteur M1 central
+effet Mémoire et vigilance : baissées, c'est la confusion du sujet âgé
+récepteur Récepteurs bêta cardiovasculaires : la part du bêta-1 et du bêta-3 est discutée
+effet Pression artérielle
+
+Acétylcholine -> M3 du détrusor, M2 du détrusor, M3 salivaire, M1 central
+Noradrénaline -> Bêta-3 du détrusor, Récepteurs bêta cardiovasculaires
+Bêta-3 du détrusor -> AMPc
+M2 du détrusor -| AMPc
+M3 du détrusor -> Contractions de remplissage, Contraction mictionnelle
+AMPc -| Contractions de remplissage
+Contractions de remplissage -> Urgenturie et fuites
+Contraction mictionnelle -> Vidange vésicale
+M3 salivaire -> Salivation
+M1 central -> Mémoire et vigilance
+Récepteurs bêta cardiovasculaires -> Pression artérielle
+
+# Antimuscariniques : contre-indiqués dans la rétention urinaire, le
+# glaucome à angle fermé non contrôlé et la myasthénie (RCP). Chez le
+# sujet âgé, ils s'ajoutent à la charge anticholinergique ; donnés
+# avec un anticholinestérasique, ils le contrarient (voir la cascade
+# des récepteurs muscariniques). La constipation, par le M3
+# intestinal, n'est pas dessinée. Le dessin montre la vidange baissée
+# sous tout antimuscarinique ; en pratique, aux doses usuelles, le
+# résidu monte peu hors d'un obstacle.
+#
+# L'oxybutynine passe dans le cerveau : la confusion du sujet âgé.
+molécule oxybutynine : antagoniste M3 du détrusor, M2 du détrusor, M3 salivaire, M1 central
+# Non sélectifs, passage cérébral moindre que l'oxybutynine mais non
+# nul : non dessiné. La fésotérodine est transformée en la même
+# substance active que la toltérodine.
+molécule toltérodine : antagoniste M3 du détrusor, M2 du détrusor, M3 salivaire
+molécule fésotérodine : antagoniste M3 du détrusor, M2 du détrusor, M3 salivaire
+# Plus sélective du M3. Allongement du QT : prudence (RCP), non
+# dessiné.
+molécule solifénacine : antagoniste M3 du détrusor, M3 salivaire
+# Ammonium quaternaire : il passe très peu dans le cerveau.
+molécule trospium : antagoniste M3 du détrusor, M2 du détrusor, M3 salivaire
+# Il relâche le détrusor pendant le remplissage sans toucher la
+# contraction qui vide, ni la bouche, ni la mémoire. Il élève la
+# pression artérielle et le pouls : mesurer avant et pendant ;
+# contre-indiqué dans l'hypertension sévère non contrôlée (RCP). Écrit
+# agoniste partiel pour une hausse modeste ; le récepteur en cause
+# n'est pas établi. Inhibiteur modéré du CYP2D6 (métoprolol,
+# flécaïnide, antidépresseurs tricycliques...) : non dessiné. Le RCP
+# signale des rétentions urinaires sur obstacle prostatique et avec un
+# antimuscarinique : le dessin, qui ne baisse pas la vidange, ne les
+# montre pas.
+molécule mirabégron : agoniste Bêta-3 du détrusor ; agoniste partiel Récepteurs bêta cardiovasculaires
+# Le sphincter et la prostate (alpha-1) sont sur la cascade des
+# récepteurs alpha-1 ; la desmopressine de la nycturie, sur celle de
+# la vasopressine (hyponatrémie du sujet âgé).
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Solifénacine, puis mirabégron : solifénacine 10- ; mirabégron 50-
+scénario Oxybutynine ou mirabégron : oxybutynine 10-60 ; mirabégron 70-
+",
+    "\
+titre : Transit intestinal et laxatifs
+sujet : Constipation sous opioïde, antagonistes mu périphériques, laxatifs, prucalopride, linaclotide, lopéramide
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le récepteur mu de l'intestin freine la propulsion et la sécrétion ; le lopéramide, repoussé par la glycoprotéine P, ne franchit presque pas la barrière hémato-encéphalique
+source : RCP du naloxégol : antagoniste périphérique des récepteurs mu, sans effet sur l'analgésie ; contre-indiqué en cas d'occlusion digestive connue ou suspectée et avec les inhibiteurs puissants du CYP3A4
+source : RCP de l'oxycodone + naloxone : la naloxone orale, presque entièrement détruite au premier passage hépatique, agit sur l'intestin
+source : RCP du prucalopride : agoniste sélectif des récepteurs 5-HT4
+source : RCP du linaclotide : agoniste de la guanylate cyclase C ; le GMPc augmente la sécrétion de chlorure et de bicarbonate dans la lumière
+source : RCP du lopéramide : contre-indiqué dans la dysenterie avec fièvre élevée et sang dans les selles, et dans la colite pseudomembraneuse ; troubles du rythme au surdosage
+
+ligand Endorphines
+récepteur Mu central
+effet Douleur : baissée, c'est l'analgésie ; elle doit rester sous antagoniste périphérique
+récepteur Mu intestinal : peu de tolérance, d'où une constipation qui dure
+ligand Sérotonine : des cellules entérochromaffines
+récepteur 5-HT4 entérique : déclenche le réflexe péristaltique
+ligand Guanyline
+récepteur Guanylate cyclase C : épithélium intestinal, ouvre le CFTR par le GMPc
+relais Péristaltisme propulsif
+relais Sécrétion intestinale : chlore, bicarbonate et eau
+relais Eau retenue par osmose : ce que la lumière garde d'eau
+effet Hydratation des selles : baissée, ce sont les selles dures
+effet Transit : baissé, c'est la constipation ; monté, la diarrhée
+
+Endorphines -> Mu central, Mu intestinal
+Mu central -| Douleur
+Sérotonine -> 5-HT4 entérique -> Péristaltisme propulsif
+Guanyline -> Guanylate cyclase C -> Sécrétion intestinale
+Mu intestinal -| Péristaltisme propulsif, Sécrétion intestinale
+Sécrétion intestinale, Eau retenue par osmose -> Hydratation des selles
+Péristaltisme propulsif, Hydratation des selles -> Transit
+
+# Sans opioïde, les récepteurs mu sont presque au repos : un
+# antagoniste seul n'y fait rien de notable.
+tonus faible Mu central, Mu intestinal
+
+# Laxatifs osmotiques et stimulants : contre-indiqués dans l'occlusion
+# et devant une douleur abdominale sans cause connue (RCP). Prucalopride
+# et linaclotide : occlusion contre-indiquée (RCP). La constipation sous
+# opioïde ne s'épuise pas : le laxatif se prescrit avec l'opioïde, dès
+# le début. Les laxatifs de lest (ispaghul) ne sont pas dessinés ; sous
+# opioïde, faute d'eau et de propulsion, ils exposent au fécalome.
+#
+# Agonistes mu : l'analgésie, et le transit freiné.
+molécule morphine : agoniste Mu central, Mu intestinal
+molécule oxycodone : agoniste Mu central, Mu intestinal
+# La naloxone orale ne quitte presque pas l'intestin : l'association
+# garde l'analgésie et freine moins le transit.
+molécule oxycodone + naloxone : agoniste Mu central, Mu intestinal ; antagoniste Mu intestinal
+# Injectée, la naloxone franchit la barrière : elle lève aussi
+# l'analgésie. C'est l'antidote du surdosage, pas un laxatif.
+molécule naloxone : antagoniste Mu central, Mu intestinal
+# Antagonistes mu périphériques : ils ne franchissent pas la barrière
+# hémato-encéphalique et gardent l'analgésie. Contre-indiqués dans
+# l'occlusion (RCP) ; si la barrière est altérée, des signes de manque
+# sont possibles. Le naloxégol est contre-indiqué avec les inhibiteurs
+# puissants du CYP3A4 (clarithromycine, kétoconazole...).
+molécule naloxégol : antagoniste Mu intestinal
+molécule naldémédine : antagoniste Mu intestinal
+molécule méthylnaltrexone : antagoniste Mu intestinal
+# Osmotiques : ils gardent l'eau dans la lumière. Le lactulose et le
+# lactitol fermentent dans le côlon : gaz, ballonnement.
+molécule macrogol : activateur Eau retenue par osmose
+molécule lactulose : activateur Eau retenue par osmose
+molécule lactitol : activateur Eau retenue par osmose
+# Stimulant : la motricité et la sécrétion. Au long cours ou à forte
+# dose, l'hypokaliémie, qui compte avec un médicament qui allonge le
+# QT ou un diurétique hypokaliémiant : non dessinée.
+molécule bisacodyl : activateur Péristaltisme propulsif, Sécrétion intestinale
+# Agoniste 5-HT4 sélectif, sans l'action du cisapride sur le canal
+# hERG.
+molécule prucalopride : agoniste 5-HT4 entérique
+# Sa part sur la douleur viscérale, par le GMPc hors de la cellule,
+# n'est pas dessinée. Diarrhée : l'effet indésirable le plus fréquent.
+molécule linaclotide : agoniste Guanylate cyclase C
+# Agoniste mu que la glycoprotéine P garde hors du cerveau : il freine
+# le transit sans analgésie centrale. Au surdosage, QT long, torsades
+# de pointes et dépression centrale ; les inhibiteurs de la
+# glycoprotéine P et du CYP3A4 élèvent sa concentration (non dessiné).
+molécule lopéramide : agoniste Mu intestinal
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Morphine, puis naloxégol : morphine 5- ; naloxégol 50-
+scénario Morphine, puis naloxone : morphine 5- ; naloxone 60-80
+scénario Morphine et macrogol : morphine 5- ; macrogol 30-
+",
+    "\
+titre : Circulation des lymphocytes : intégrines et S1P
+sujet : Védolizumab, natalizumab, modulateurs des récepteurs S1P — MICI et sclérose en plaques ; ralentissement cardiaque de la première dose
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les lymphocytes quittent les ganglions en suivant le gradient de sphingosine-1-phosphate ; les modulateurs S1P internalisent le récepteur S1P1 et les y retiennent ; le récepteur S1P1 de l'oreillette ralentit le cœur à la première dose, puis se désensibilise
+source : RCP du natalizumab : anticorps anti-intégrine alpha-4 ; leucoencéphalopathie multifocale progressive, risque stratifié par la sérologie du virus JC, la durée de traitement et un immunosuppresseur antérieur
+source : RCP du védolizumab : anticorps anti-intégrine alpha-4 bêta-7, qui bloque sa liaison à MAdCAM-1 sur l'endothélium des vaisseaux de l'intestin
+source : RCP du fingolimod : bradycardie et bloc auriculoventriculaire à la première dose, six heures de surveillance ; ne pas l'instaurer sous bêtabloquant sans avis cardiologique ; surveillance à refaire après une interruption ; lymphopénie, œdème maculaire, tératogénicité
+source : RCP du siponimod, de l'ozanimod et de l'étrasimod : ralentissement de la fréquence cardiaque à l'instauration ; lymphocytes circulants baissés
+
+ligand S1P : sphingosine-1-phosphate, haute dans la lymphe et le sang, basse dans le ganglion
+récepteur S1P1 des lymphocytes : il guide leur sortie du ganglion le long du gradient
+relais Sortie des ganglions
+effet Lymphocytes circulants : baissés sous modulateur S1P, c'est la lymphopénie attendue de l'hémogramme ; les lymphocytes sont retenus dans les ganglions, pas détruits
+récepteur Intégrine alpha-4 bêta-7 : son ligand, MAdCAM-1, est sur l'endothélium des vaisseaux de l'intestin
+récepteur Intégrine alpha-4 bêta-1 : son ligand, VCAM-1, est notamment sur l'endothélium des vaisseaux du cerveau
+relais Passage vers la muqueuse intestinale
+relais Passage vers le système nerveux central : à travers la barrière hémato-encéphalique
+effet Inflammation intestinale : maladie de Crohn, rectocolite hémorragique
+effet Poussées de sclérose en plaques : l'inflammation du système nerveux central
+effet Surveillance immunitaire du cerveau : baissée, c'est le terrain de la leucoencéphalopathie multifocale progressive due au virus JC
+récepteur S1P1 du cœur : sur les myocytes de l'oreillette et le nœud sinusal
+canal Canal potassique GIRK : celui qu'ouvre aussi l'acétylcholine du nerf vague ; sa part ouverte par S1P1 est presque nulle au repos
+récepteur Bêta-1 : cœur
+effet Fréquence cardiaque : baissée à la première dose d'un modulateur S1P, puis revenue quand le récepteur se désensibilise
+
+S1P -> S1P1 des lymphocytes -> Sortie des ganglions -> Lymphocytes circulants
+Lymphocytes circulants, Intégrine alpha-4 bêta-7 -> Passage vers la muqueuse intestinale
+Passage vers la muqueuse intestinale -> Inflammation intestinale
+Lymphocytes circulants, Intégrine alpha-4 bêta-1 -> Passage vers le système nerveux central
+Passage vers le système nerveux central -> Poussées de sclérose en plaques, Surveillance immunitaire du cerveau
+S1P -> S1P1 du cœur -> Canal potassique GIRK
+Canal potassique GIRK -| Fréquence cardiaque
+Bêta-1 -> Fréquence cardiaque
+
+# Anticorps contre l'intégrine alpha-4 bêta-7 seule, celle qui mène
+# les lymphocytes vers l'intestin : le cerveau n'est pas touché, d'où
+# un risque systémique moindre que celui du natalizumab. Son effet
+# s'installe en plusieurs mois. Le RCP demande quand même de guetter
+# tout signe neurologique nouveau.
+molécule védolizumab : antagoniste Intégrine alpha-4 bêta-7
+# Anticorps contre la sous-unité alpha-4, commune aux deux intégrines :
+# il ferme le cerveau, et aussi l'intestin, mais en Europe il n'a que
+# l'indication de la sclérose en plaques. Retenus dans les vaisseaux,
+# les lymphocytes circulants montent un peu sous natalizumab : non
+# dessiné, et sans signification d'alarme.
+# LEMP : sérologie JC répétée, IRM régulières ; tout signe
+# neurologique nouveau, cognitif, visuel ou du comportement, est une
+# LEMP jusqu'à preuve du contraire, pas une poussée. Rebond de la
+# maladie possible à l'arrêt.
+molécule natalizumab : antagoniste Intégrine alpha-4 bêta-1, Intégrine alpha-4 bêta-7
+# Les modulateurs S1P sont des agonistes qui font internaliser le
+# récepteur : sur le lymphocyte, c'est un antagonisme fonctionnel qui
+# dure, le lymphocyte ne sort plus du ganglion ; sur l'oreillette,
+# l'agonisme de la première dose ralentit le cœur par le même canal
+# que le vague, puis le récepteur se désensibilise. Les deux actions
+# sont écrites : l'une seule montrerait des lymphocytes qui sortent,
+# ou un cœur qui ne ralentit pas.
+# Après une interruption, le récepteur du cœur est revenu : la
+# surveillance de première dose, ou la titration, se refait selon la
+# durée de l'arrêt et le RCP de chacun.
+# Non dessinés : l'œdème maculaire (fond d'œil), la sérologie varicelle
+# et les vaccins vivants à éviter pendant et après le traitement, les
+# infections et les rares LEMP, le rebond parfois sévère de la maladie
+# à l'arrêt. Tératogènes : contraception pendant et après l'arrêt, sur
+# une durée propre à chaque molécule. Le siponimod demande le génotype
+# CYP2C9 avant l'instauration (contre-indiqué chez le *3/*3).
+molécule fingolimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
+molécule siponimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
+molécule ozanimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
+molécule étrasimod : antagoniste S1P1 des lymphocytes ; agoniste S1P1 du cœur
+# Un bêtabloquant ajoute son ralentissement à celui de la première
+# dose, et freine la compensation adrénergique.
+molécule bisoprolol : antagoniste Bêta-1
+
+adaptation S1P1 du cœur
+tonus faible Canal potassique GIRK
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Fingolimod, interruption et reprise : fingolimod 10-60 ; fingolimod 80-
+scénario Fingolimod sous bêtabloquant : bisoprolol 10- ; fingolimod 40-
+scénario Védolizumab, puis natalizumab : védolizumab 10-50 ; natalizumab 60-
+",
+    "\
+titre : Rétinoïdes et récepteurs RAR-RXR
+sujet : Isotrétinoïne, acitrétine, alitrétinoïne — acné, psoriasis, eczéma chronique des mains ; tératogènes
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les rétinoïdes agissent par les récepteurs nucléaires RAR et RXR ; l'isotrétinoïne réduit la taille et la sécrétion des glandes sébacées ; sécheresse cutanéo-muqueuse et hypertriglycéridémie sont des effets de classe
+source : RCP de l'isotrétinoïne : programme de prévention de la grossesse ; association aux cyclines contre-indiquée ; lipides et transaminases surveillés ; troubles de l'humeur recherchés
+source : RCP de l'acitrétine : normalise la prolifération et la kératinisation de l'épiderme ; contraception jusqu'à trois ans après l'arrêt, alcool proscrit parce qu'il reforme l'étrétinate ; cyclines et méthotrexate contre-indiqués
+source : RCP de l'alitrétinoïne : eczéma chronique sévère des mains, mécanisme dans cette indication inconnu ; tétracyclines contre-indiquées ; triglycérides surveillés
+
+ligand Acide rétinoïque : dérivé de la vitamine A
+récepteur Récepteurs RAR et RXR : récepteurs nucléaires, facteurs de transcription
+relais Glandes sébacées : leur taille et leur sécrétion
+effet Sébum
+effet Acné
+relais Hyperprolifération des kératinocytes : l'épiderme du psoriasis
+effet Plaques de psoriasis
+effet Sécheresse de la peau et des muqueuses : lèvres, peau, yeux, nez ; montée, c'est l'effet de classe presque constant
+effet Triglycérides : montés, c'est l'hypertriglycéridémie, à doser avant et pendant le traitement
+
+Acide rétinoïque -> Récepteurs RAR et RXR
+Récepteurs RAR et RXR -> Sécheresse de la peau et des muqueuses, Triglycérides
+Glandes sébacées -> Sébum -> Acné
+Sébum -| Sécheresse de la peau et des muqueuses
+Hyperprolifération des kératinocytes -> Plaques de psoriasis
+
+# Chaque rétinoïde a son organe et son indication : l'isotrétinoïne
+# réduit les glandes sébacées, l'acitrétine normalise l'épiderme du
+# psoriasis. La figure les fait agir sur ces nœuds sans dire, par le
+# récepteur, pourquoi l'un et pas l'autre : l'isotrétinoïne n'a pas
+# l'indication du psoriasis, ni l'acitrétine celle de l'acné. La
+# normalisation de la kératinisation du follicule et l'effet
+# anti-inflammatoire de l'isotrétinoïne ne sont pas dessinés.
+#
+# Tératogènes majeurs, non dessiné parce que ce n'est pas un niveau qui
+# monte : une seule prise pendant la grossesse peut suffire.
+# Programme de prévention de la grossesse chez la femme en âge de
+# procréer : contraception, test de grossesse, délivrance dans les
+# sept jours de la prescription et pour trente jours au plus. Pas de
+# don du sang pendant le traitement et après.
+#
+# Isotrétinoïne : contraception poursuivie un mois après l'arrêt.
+# Humeur, dépression et idées suicidaires recherchées à chaque
+# renouvellement. Elle agit en partie après isomérisation en
+# trétinoïne.
+molécule isotrétinoïne : agoniste Récepteurs RAR et RXR ; inhibiteur Glandes sébacées
+# Acitrétine : l'alcool la retransforme en étrétinate, stocké dans la
+# graisse : contraception jusqu'à trois ans après l'arrêt, et pas de
+# don du sang pendant ces trois ans. Méthotrexate contre-indiqué
+# (hépatotoxicité).
+molécule acitrétine : agoniste Récepteurs RAR et RXR ; inhibiteur Hyperprolifération des kératinocytes
+# Alitrétinoïne : isomère 9-cis de l'acide rétinoïque, ligand des RAR et
+# des RXR. Son effet dans l'eczéma des mains n'a pas de mécanisme
+# établi : il n'est pas dessiné. Contraception poursuivie un mois après
+# l'arrêt.
+molécule alitrétinoïne : agoniste Récepteurs RAR et RXR
+# Pour les trois : association aux cyclines contre-indiquée
+# (hypertension intracrânienne) ; vitamine A et autres rétinoïdes
+# exposent à l'hypervitaminose A. Des triglycérides très hauts exposent
+# à la pancréatite.
+# La trétinoïne et l'adapalène en gel ou en crème agissent sur place
+# sur la kératinisation du follicule, sans les effets généraux que
+# dessine la figure ; leur RCP les contre-indique pendant la grossesse
+# et chez la femme qui la projette.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Isotrétinoïne : isotrétinoïne 10-
+scénario Acitrétine : acitrétine 10-
+",
+    "\
+titre : Ritonavir, booster du CYP3A4
+sujet : Ritonavir, nirmatrelvir + ritonavir, darunavir — ce que le booster fait à l'antiprotéase et aux médicaments associés
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le ritonavir à faible dose, inhibiteur puissant du CYP3A4, relève l'exposition de l'antiprotéase associée et celle des autres substrats du CYP3A4
+source : RCP du ritonavir : inhibiteur du CYP3A4 et de la glycoprotéine P ; inducteur de la glucuronoconjugaison et de plusieurs cytochromes ; éthinylestradiol diminué ; digoxine augmentée ; substrats du CYP3A4 contre-indiqués, dont simvastatine, colchicine chez l'insuffisant rénal ou hépatique, midazolam oral, triazolam, quétiapine, amiodarone
+source : RCP du darunavir : toujours associé à un potentialisateur ; rifampicine et millepertuis contre-indiqués
+source : RCP de nirmatrelvir + ritonavir : le ritonavir n'a pas d'activité antivirale propre, il maintient les concentrations de nirmatrelvir ; interactions dominantes ; l'inhibition persiste plusieurs jours après la dernière prise ; inducteurs puissants contre-indiqués
+
+enzyme CYP3A4 : intestin et foie
+transporteur Glycoprotéine P : pompe d'efflux de l'intestin et du rein
+enzyme Glucuronoconjugaison : UGT du foie
+effet Exposition à l'antiprotéase boostée : darunavir, nirmatrelvir ; l'exposition qu'atteint une même dose, relevée par le booster, c'est l'effet recherché
+effet Exposition aux substrats du CYP3A4 associés : simvastatine, colchicine, midazolam oral, triazolam, quétiapine, amiodarone, ticagrélor, fluticasone inhalée ; montée, c'est le surdosage du médicament associé
+effet Exposition aux substrats de la glycoprotéine P : digoxine, dabigatran ; montée, c'est leur surdosage
+effet Exposition à l'éthinylestradiol : baissée, la contraception œstroprogestative ne suffit plus
+enzyme Protéase du VIH
+effet Réplication du VIH : la charge virale
+enzyme Protéase principale du SARS-CoV-2
+effet Réplication du SARS-CoV-2
+
+CYP3A4 -| Exposition à l'antiprotéase boostée, Exposition aux substrats du CYP3A4 associés
+Glycoprotéine P -| Exposition aux substrats de la glycoprotéine P
+Glucuronoconjugaison -| Exposition à l'éthinylestradiol
+Protéase du VIH -> Réplication du VIH
+Protéase principale du SARS-CoV-2 -> Réplication du SARS-CoV-2
+
+# Les nœuds d'exposition disent ce qu'atteindrait une même dose du
+# médicament nommé : ils bougent dès que le booster est coché, qu'on
+# ait coché ou non ce médicament. La figure ne relie pas l'exposition
+# à l'effet antiviral : le ritonavir seul, à dose de booster, ne traite
+# pas le VIH.
+# Le ritonavir inhibe le CYP3A4 et la glycoprotéine P, et il induit la
+# glucuronoconjugaison : l'éthinylestradiol baisse malgré sa part par
+# le CYP3A4. Les deux sens sont écrits ; un seul montrerait une
+# contraception renforcée. Son induction du CYP1A2, du CYP2C9 et du
+# CYP2C19 (warfarine, méthadone, théophylline, voriconazole) n'est pas
+# dessinée.
+# Au comptoir : chaque ligne de l'ordonnance, automédication et
+# phytothérapie comprises, se vérifie avant délivrance ; au
+# changement ou à l'arrêt du booster, les doses des associés se
+# revoient. Un corticoïde inhalé ou nasal comme la fluticasone suffit à
+# un syndrome de Cushing.
+molécule ritonavir : inhibiteur CYP3A4, Glycoprotéine P ; activateur Glucuronoconjugaison
+# Le nirmatrelvir freine la protéase du virus, le ritonavir le
+# maintient : toutes les interactions du ritonavir, pendant la cure et
+# encore plusieurs jours après la dernière prise.
+molécule nirmatrelvir + ritonavir : inhibiteur Protéase principale du SARS-CoV-2, CYP3A4, Glycoprotéine P ; activateur Glucuronoconjugaison
+# Donné sans booster, le darunavir n'atteint pas une exposition
+# suffisante : il se prend toujours avec le ritonavir ou le cobicistat,
+# au cours d'un repas.
+molécule darunavir : inhibiteur Protéase du VIH
+# Non dessinée : la rifampicine, inducteur puissant du CYP3A4, l'emporte
+# sur le booster, l'antiprotéase s'effondre et l'échec virologique
+# suit ; son association au darunavir comme à nirmatrelvir + ritonavir
+# est contre-indiquée. La figure, qualitative, ne sait pas montrer
+# qu'une induction l'emporte sur une inhibition puissante. Même chose
+# pour le millepertuis et les antiépileptiques inducteurs.
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Darunavir boosté : darunavir 10- ; ritonavir 10-
+scénario Cure de nirmatrelvir + ritonavir : nirmatrelvir + ritonavir 20-50
+",
+    "\
+titre : Aminosides, rein et oreille interne
+sujet : Gentamicine, amikacine — néphrotoxicité et ototoxicité, ajoutées par les diurétiques de l'anse et les autres néphrotoxiques
+source : Rang & Dale's Pharmacology
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les aminosides se fixent sur la sous-unité 30S du ribosome bactérien ; ils s'accumulent dans les cellules du tubule proximal et dans les cellules ciliées de l'oreille interne ; ototoxicité cochléaire et vestibulaire irréversible, majorée par les diurétiques de l'anse ; néphrotoxicité majorée par la vancomycine et la ciclosporine
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les diurétiques de l'anse bloquent NKCC2 dans l'anse de Henle et NKCC1 dans la strie vasculaire de la cochlée ; la ciclosporine et le tacrolimus resserrent l'artériole afférente du glomérule
+source : RCP de la gentamicine et de l'amikacine : fonction rénale avant et pendant, concentration résiduelle ; atteinte cochléovestibulaire irréversible
+source : RCP du furosémide : troubles de l'audition, surtout à forte dose intraveineuse et en insuffisance rénale
+source : RCP de la vancomycine : néphrotoxicité majorée par un aminoside
+
+relais Ribosome bactérien 30S
+relais Paroi bactérienne : synthèse du peptidoglycane
+relais Croissance bactérienne
+effet Infection : baissée, c'est l'effet recherché
+relais Cellules ciliées de l'oreille interne : cochlée et vestibule
+transporteur NKCC1 de la strie vasculaire : il fait l'endolymphe riche en potassium
+relais Potentiel endocochléaire
+effet Audition : baissée, c'est l'ototoxicité ; celle de l'aminoside ne revient pas
+effet Équilibre : baissé, c'est l'atteinte vestibulaire, révélée à la reprise de la marche
+relais Cellules du tubule proximal : l'aminoside y entre et s'y accumule
+transporteur NKCC2 : anse de Henle
+relais Natriurèse et diurèse
+relais Volémie : baissée par une diurèse forte, c'est la déshydratation
+relais Artériole afférente : sa dilatation, qui porte la filtration
+effet Fonction rénale : le débit de filtration glomérulaire ; baissée, la créatinine monte
+
+Ribosome bactérien 30S, Paroi bactérienne -> Croissance bactérienne -> Infection
+Cellules ciliées de l'oreille interne -> Audition, Équilibre
+NKCC1 de la strie vasculaire -> Potentiel endocochléaire -> Audition
+NKCC2 -| Natriurèse et diurèse -| Volémie
+Cellules du tubule proximal, Volémie, Artériole afférente -> Fonction rénale
+
+# L'aminoside tue la bactérie par le ribosome, et il abîme les cellules
+# où il s'accumule : tubule proximal (néphrotoxicité le plus souvent
+# réversible) et cellules ciliées (ototoxicité définitive, qui peut
+# apparaître ou s'aggraver après la fin du traitement). La gentamicine
+# touche plutôt le vestibule, l'amikacine plutôt la cochlée : la
+# figure ne fait pas la différence.
+# Il s'élimine par le rein : une fonction rénale qui baisse l'accumule,
+# d'où la posologie adaptée à la clairance, le traitement court et la
+# concentration résiduelle surveillée. L'injection quotidienne unique
+# tient à la bactéricidie concentration-dépendante et à la captation
+# saturable du tubule. Cette boucle n'est pas dessinée.
+# Non dessinés : les autres néphrotoxiques (AINS, produits de contraste
+# iodés, amphotéricine B, cisplatine, ce dernier ototoxique aussi), le
+# bloc neuromusculaire (myasthénie, curares), la
+# prédisposition familiale à la surdité par mutation mitochondriale,
+# le risque pour l'oreille du fœtus pendant la grossesse. Les gouttes
+# auriculaires à aminoside ne se mettent pas sur un tympan ouvert.
+molécule gentamicine : inhibiteur Ribosome bactérien 30S, Cellules ciliées de l'oreille interne, Cellules du tubule proximal
+molécule amikacine : inhibiteur Ribosome bactérien 30S, Cellules ciliées de l'oreille interne, Cellules du tubule proximal
+# Par NKCC1, le diurétique de l'anse baisse le potentiel de la
+# cochlée : son ototoxicité propre, réversible le plus souvent. Par
+# NKCC2, il fait perdre eau et sel : la déshydratation concentre
+# l'aminoside et baisse la filtration. Avec un aminoside : état
+# d'hydratation, fonction rénale et audition surveillés. Le passage
+# facilité de l'aminoside dans l'endolymphe n'est pas dessiné.
+molécule furosémide : inhibiteur NKCC2, NKCC1 de la strie vasculaire
+molécule bumétanide : inhibiteur NKCC2, NKCC1 de la strie vasculaire
+# Glycopeptide : la paroi de la bactérie ; son atteinte du tubule
+# proximal s'ajoute à celle de l'aminoside. Par voie orale, dans la
+# colite à Clostridioides difficile, elle n'est pas absorbée et n'a
+# pas cette toxicité.
+molécule vancomycine : inhibiteur Paroi bactérienne, Cellules du tubule proximal
+# Les anticalcineurines resserrent l'artériole afférente : chez le
+# greffé, un aminoside ajoute son atteinte tubulaire. Leurs
+# concentrations se dosent. Le collyre de ciclosporine et la pommade
+# de tacrolimus n'ont pas cet effet.
+molécule ciclosporine : inhibiteur Artériole afférente
+molécule tacrolimus : inhibiteur Artériole afférente
+
+# Des histoires toutes prêtes, jouées d'un clic.
+scénario Gentamicine, puis furosémide : gentamicine 10- ; furosémide 50-
+scénario Vancomycine et amikacine : vancomycine 10- ; amikacine 40-
+",
 ];
 
 /// One shipped preparation of the codex, before it reaches the base.

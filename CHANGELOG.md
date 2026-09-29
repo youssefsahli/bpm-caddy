@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.361.0] - 2026-09-29
+
+### Added
+- « Croisement » : la carte des croisements relie en tirets deux lignes
+  qui se rencontrent sur une même cascade — l'aspirine et le
+  clopidogrel —, avec sa clé « même cascade ».
+- Dossier patient : sous « CYP et P-gp », les paires de l'ordonnance qui
+  se rencontrent sur une même cascade, comme au croisement.
+- Huit cascades de plus (59) : inhibiteurs de kinases en oncologie orale
+  (l'ibrutinib et les anticoagulants), VEGF et angiogenèse (la pression
+  artérielle sous antiangiogénique), vessie hyperactive (antimuscariniques
+  et mirabégron), transit intestinal et laxatifs (la constipation sous
+  opioïde et les antagonistes périphériques), circulation des
+  lymphocytes (natalizumab, védolizumab, modulateurs S1P et la
+  bradycardie de première dose), rétinoïdes, ritonavir booster du
+  CYP3A4, aminosides (le rein et l'oreille, avec un diurétique de
+  l'anse).
+
+### Fixed
+- « Cascades » : la liste des titres a son filtre (un mot du titre, du
+  sujet ou une molécule — « digoxine » trouve la digoxine et le QT long)
+  et sa propre barre de défilement ; les scénarios et les cases des
+  molécules de la cascade ouverte ne sont plus sous les cinquante-neuf
+  titres.
+
 ## [0.360.0] - 2026-09-29
 
 ### Added

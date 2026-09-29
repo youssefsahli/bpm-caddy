@@ -1361,7 +1361,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 59 regions now set
+  fold is the control you came to use. 60 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2690,6 +2690,13 @@ to the far end (`lead` in `cascade_figure`), and the pan's reach grows by
 as much so the end stays reachable.
 On a pane too low for both (`label_line × 16`), « Figure » and « Courbes »
 take turns rather than share seventy-five pixels.
+
+**The side column is three bands, not one scroll** (`cascades_side`):
+the button and the filter (title, subject or molecule, folded), the list
+of titles capped at 0.4 of the pane in whole rows with its own scroll
+bar, and the open cascade's scenarios and molecule boxes below. At ten
+cascades one scroll held them all; at fifty-nine the boxes one came to
+tick were under fifty-nine titles.
 
 **Dynamic, and cheap.** `run` plays the whole horizon (120 steps) once per
 change of text or doses (`CascadeRun`, memoised against both); a frame

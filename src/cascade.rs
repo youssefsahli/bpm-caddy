@@ -2433,7 +2433,7 @@ adaptation Bêta-1
 
     /// Le plancher : une cascade retirée est une question à laquelle le
     /// comptoir ne sait plus répondre. Il ne peut que monter.
-    const SHIPPED: usize = 51;
+    const SHIPPED: usize = 59;
 
     /// Les molécules qu'un mécanisme ne peut pas taire et que la base
     /// n'a pas en fiche. Tenues ici par leur nom : ailleurs, une faute de
@@ -3500,6 +3500,219 @@ adaptation Bêta-1
             .expect("pas de nœud testostérone");
         assert!(level(&c, &["cyprotérone acétate"], &t) < level(&c, &["bicalutamide"], &t));
         assert_ne!(reads(&c, &["cyprotérone acétate"], &t), Trend::Up);
+    }
+
+    #[test]
+    fn the_cascade_inhibiteurs_de_kinases_en_oncologie_orale_reads_as_drawn() {
+        let c = shipped("Inhibiteurs de kinases en oncologie orale");
+        assert_eq!(reads(&c, &["erlotinib"], "Éruption acnéiforme"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["erlotinib"], "Prolifération tumorale EGFR muté"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["ibrutinib"], "Hémostase"), Trend::Down);
+        assert!(
+            level(&c, &["ibrutinib", "apixaban"], "Hémostase")
+                < level(&c, &["ibrutinib"], "Hémostase")
+        );
+        assert!(
+            level(&c, &["ibrutinib", "clopidogrel"], "Hémostase")
+                < level(&c, &["clopidogrel"], "Hémostase")
+        );
+        assert_eq!(
+            reads(&c, &["palbociclib"], "Polynucléaires neutrophiles"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["létrozole"], "Polynucléaires neutrophiles"),
+            Trend::Rest
+        );
+        assert!(
+            level(
+                &c,
+                &["létrozole", "palbociclib"],
+                "Prolifération tumorale RH+"
+            ) < level(&c, &["létrozole"], "Prolifération tumorale RH+")
+        );
+        assert_eq!(
+            reads(&c, &["imatinib"], "Prolifération leucémique Ph+"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn the_cascade_vegf_et_angiogenese_reads_as_drawn() {
+        let c = shipped("VEGF et angiogenèse");
+        assert_eq!(reads(&c, &["sunitinib"], "Pression artérielle"), Trend::Up);
+        assert!(
+            level(&c, &["sunitinib", "amlodipine"], "Pression artérielle")
+                < level(&c, &["sunitinib"], "Pression artérielle")
+        );
+        assert_eq!(reads(&c, &["bévacizumab"], "Protéinurie"), Trend::Up);
+        assert!(
+            level(&c, &["bévacizumab", "ramipril"], "Protéinurie")
+                < level(&c, &["bévacizumab"], "Protéinurie")
+        );
+        assert_eq!(reads(&c, &["ramipril"], "Protéinurie"), Trend::Rest);
+        assert_eq!(reads(&c, &["lenvatinib"], "Cicatrisation"), Trend::Down);
+    }
+
+    #[test]
+    fn the_cascade_vessie_hyperactive_detrusor_m3_et_beta_3_reads_as_drawn() {
+        let c = shipped("Vessie hyperactive : détrusor, M3 et bêta-3");
+        assert_eq!(
+            reads(&c, &["oxybutynine"], "Mémoire et vigilance"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["trospium"], "Mémoire et vigilance"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["mirabégron"], "Urgenturie et fuites"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["mirabégron"], "Salivation"), Trend::Rest);
+        assert_eq!(reads(&c, &["mirabégron"], "Vidange vésicale"), Trend::Rest);
+        assert_eq!(reads(&c, &["mirabégron"], "Pression artérielle"), Trend::Up);
+        assert!(
+            level(&c, &["solifénacine", "mirabégron"], "Urgenturie et fuites")
+                < level(&c, &["solifénacine"], "Urgenturie et fuites")
+        );
+        assert_eq!(reads(&c, &["solifénacine"], "Salivation"), Trend::Down);
+    }
+
+    #[test]
+    fn the_cascade_transit_intestinal_et_laxatifs_reads_as_drawn() {
+        let c = shipped("Transit intestinal et laxatifs");
+        assert_eq!(reads(&c, &["morphine"], "Transit"), Trend::Down);
+        assert!(
+            level(&c, &["morphine", "naloxégol"], "Transit") > level(&c, &["morphine"], "Transit")
+        );
+        assert_eq!(
+            reads(&c, &["morphine", "naloxégol"], "Douleur"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["morphine", "naloxone"], "Douleur") > level(&c, &["morphine"], "Douleur")
+        );
+        assert_eq!(reads(&c, &["lopéramide"], "Douleur"), Trend::Rest);
+        assert_eq!(reads(&c, &["lopéramide"], "Transit"), Trend::Down);
+        assert_eq!(reads(&c, &["oxycodone + naloxone"], "Douleur"), Trend::Down);
+        assert!(
+            level(&c, &["oxycodone + naloxone"], "Transit") > level(&c, &["oxycodone"], "Transit")
+        );
+        assert!(
+            level(&c, &["morphine", "macrogol"], "Transit") > level(&c, &["morphine"], "Transit")
+        );
+    }
+
+    #[test]
+    fn the_cascade_circulation_des_lymphocytes_integrines_et_s1p_reads_as_drawn() {
+        let c = shipped("Circulation des lymphocytes : intégrines et S1P");
+        assert_eq!(
+            reads(&c, &["védolizumab"], "Inflammation intestinale"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["védolizumab"], "Surveillance immunitaire du cerveau"),
+            Trend::Rest
+        );
+        assert_eq!(
+            reads(&c, &["natalizumab"], "Surveillance immunitaire du cerveau"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["fingolimod"], "Lymphocytes circulants"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(&c, &["fingolimod"], "Fréquence cardiaque"),
+            Trend::Down
+        );
+        assert!(
+            level(&c, &["fingolimod", "bisoprolol"], "Fréquence cardiaque")
+                < level(&c, &["fingolimod"], "Fréquence cardiaque")
+        );
+        assert_eq!(
+            reads(&c, &["étrasimod"], "Inflammation intestinale"),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn the_cascade_retinoides_et_recepteurs_rar_rxr_reads_as_drawn() {
+        let c = shipped("Rétinoïdes et récepteurs RAR-RXR");
+        assert_eq!(reads(&c, &["isotrétinoïne"], "Acné"), Trend::Down);
+        assert_eq!(
+            reads(
+                &c,
+                &["isotrétinoïne"],
+                "Sécheresse de la peau et des muqueuses"
+            ),
+            Trend::Up
+        );
+        assert_eq!(reads(&c, &["isotrétinoïne"], "Triglycérides"), Trend::Up);
+        assert_eq!(
+            reads(&c, &["acitrétine"], "Plaques de psoriasis"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["acitrétine"], "Acné"), Trend::Rest);
+        assert_eq!(reads(&c, &["alitrétinoïne"], "Triglycérides"), Trend::Up);
+    }
+
+    #[test]
+    fn the_cascade_ritonavir_booster_du_cyp3a4_reads_as_drawn() {
+        let c = shipped("Ritonavir, booster du CYP3A4");
+        assert_eq!(
+            reads(&c, &["ritonavir"], "Exposition à l'antiprotéase boostée"),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(&c, &["ritonavir"], "Exposition à l'éthinylestradiol"),
+            Trend::Down
+        );
+        assert_eq!(reads(&c, &["ritonavir"], "Réplication du VIH"), Trend::Rest);
+        assert_eq!(
+            reads(&c, &["darunavir", "ritonavir"], "Réplication du VIH"),
+            Trend::Down
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["nirmatrelvir + ritonavir"],
+                "Exposition aux substrats du CYP3A4 associés"
+            ),
+            Trend::Up
+        );
+        assert_eq!(
+            reads(
+                &c,
+                &["nirmatrelvir + ritonavir"],
+                "Réplication du SARS-CoV-2"
+            ),
+            Trend::Down
+        );
+    }
+
+    #[test]
+    fn the_cascade_aminosides_rein_et_oreille_interne_reads_as_drawn() {
+        let c = shipped("Aminosides, rein et oreille interne");
+        assert_eq!(reads(&c, &["gentamicine"], "Infection"), Trend::Down);
+        assert_eq!(reads(&c, &["gentamicine"], "Audition"), Trend::Down);
+        assert_eq!(reads(&c, &["gentamicine"], "Fonction rénale"), Trend::Down);
+        assert!(
+            level(&c, &["gentamicine", "furosémide"], "Audition")
+                < level(&c, &["gentamicine"], "Audition")
+        );
+        assert!(
+            level(&c, &["gentamicine", "furosémide"], "Fonction rénale")
+                < level(&c, &["gentamicine"], "Fonction rénale")
+        );
+        assert!(
+            level(&c, &["amikacine", "vancomycine"], "Fonction rénale")
+                < level(&c, &["amikacine"], "Fonction rénale")
+        );
     }
 
     fn meet(given: &[(&str, &str)]) -> Vec<Meeting> {
