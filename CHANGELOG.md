@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.362.0] - 2026-09-29
+
+### Added
+- « CYP et P-gp » : deux transporteurs du rein de plus, l'OCT2 et le
+  MATE1. La metformine sous dolutégravir, bictégravir, ranolazine ou
+  cimétidine, la fampridine sous cimétidine sont signalées, chacune avec
+  la phrase de la fiche qui le fonde, associations à la metformine
+  comprises (Janumet, Eucreas, Xigduo, Synjardy). Fiches Glucophage,
+  Stagid, Cimétidine et les quatre associations : le transporteur en
+  cause est nommé.
+
 ## [0.361.0] - 2026-09-29
 
 ### Added

@@ -20,12 +20,13 @@
 //! d'interactions qu'on croit complète est plus dangereuse que pas de
 //! table du tout.
 //!
-//! * **Elle ne connaît que sept cytochromes et trois transporteurs.**
-//!   La glycoprotéine P, l'OATP1B1 et la BCRP y sont entrés en 0.358 :
+//! * **Elle ne connaît que sept cytochromes et cinq transporteurs.**
+//!   La glycoprotéine P, l'OATP1B1 et la BCRP y sont entrés en 0.358,
+//!   l'OCT2 et le MATE1 du rein — la metformine — en 0.362 :
 //!   la rosuvastatine et la ciclosporine, la dabigatran et l'amiodarone
 //!   sont des interactions majeures qu'aucun cytochrome ne porte, et la
-//!   table les taisait. Restent dehors les OAT, OCT et MATE du rein —
-//!   le méthotrexate sous AINS —, les glucuronoconjugaisons, la liaison
+//!   table les taisait. Restent dehors les OAT du rein — le
+//!   méthotrexate sous AINS —, les glucuronoconjugaisons, la liaison
 //!   aux protéines. Une ordonnance sans croisement sur cette table n'est
 //!   pas une ordonnance sans interaction.
 //! * **Elle ne connaît pas la pharmacodynamie.** Deux sédatifs, deux
@@ -111,6 +112,11 @@ pub enum Enzyme {
     Oatp1b1,
     /// La BCRP (ABCG2), l'autre pompe d'efflux.
     Bcrp,
+    /// L'entrée des cations organiques dans la cellule du tubule rénal :
+    /// la metformine, la fampridine.
+    Oct2,
+    /// Leur sortie dans l'urine, de l'autre côté de la même cellule.
+    Mate1,
 }
 
 impl Enzyme {
@@ -125,12 +131,17 @@ impl Enzyme {
         Enzyme::Pgp,
         Enzyme::Oatp1b1,
         Enzyme::Bcrp,
+        Enzyme::Oct2,
+        Enzyme::Mate1,
     ];
 
     /// Un transporteur, et non un cytochrome : c'est ce que la portée
     /// annonce en tête de la lecture, les deux comptés à part.
     pub fn is_transporter(self) -> bool {
-        matches!(self, Enzyme::Pgp | Enzyme::Oatp1b1 | Enzyme::Bcrp)
+        matches!(
+            self,
+            Enzyme::Pgp | Enzyme::Oatp1b1 | Enzyme::Bcrp | Enzyme::Oct2 | Enzyme::Mate1
+        )
     }
 
     /// Les façons dont une fiche nomme cette voie, repliées. La
@@ -142,6 +153,8 @@ impl Enzyme {
             Enzyme::Pgp => &["p-gp", "glycoproteine p", "p-glycoproteine"],
             Enzyme::Oatp1b1 => &["oatp1b1"],
             Enzyme::Bcrp => &["bcrp"],
+            Enzyme::Oct2 => &["oct2"],
+            Enzyme::Mate1 => &["mate1"],
             _ => &[],
         }
     }
@@ -158,6 +171,8 @@ impl Enzyme {
             Enzyme::Pgp => "P-gp",
             Enzyme::Oatp1b1 => "OATP1B1",
             Enzyme::Bcrp => "BCRP",
+            Enzyme::Oct2 => "OCT2",
+            Enzyme::Mate1 => "MATE1",
         }
     }
 }
@@ -511,7 +526,9 @@ pub fn grouped(crossings: &[Crossing]) -> Vec<Vec<&Crossing>> {
     groups
 }
 
-use Enzyme::{Bcrp, Cyp1a2, Cyp2b6, Cyp2c19, Cyp2c8, Cyp2c9, Cyp2d6, Cyp3a4, Oatp1b1, Pgp};
+use Enzyme::{
+    Bcrp, Cyp1a2, Cyp2b6, Cyp2c19, Cyp2c8, Cyp2c9, Cyp2d6, Cyp3a4, Mate1, Oatp1b1, Oct2, Pgp,
+};
 use Force::{Moderate, Strong, Weak};
 use Role::{Inducer, Inhibitor, Substrate};
 
@@ -1520,8 +1537,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["acalabrutinib", "calquence"],
         label: "Acalabrutinib",
-        actions: &[Action::new(Cyp3a4, Substrate, None)],
-        source: "Calquence : « Substrat du CYP3A4 : les inhibiteurs puissants (itraconazole, voriconazole, posaconazole, clarithromycine, ritonavir) sont à éviter ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, None),
+            Action::new(Mate1, Inhibitor, None),
+        ],
+        source: "Calquence : « Substrat du CYP3A4 : les inhibiteurs puissants (itraconazole, voriconazole, posaconazole, clarithromycine, ritonavir) sont à éviter » ; « Metformine : surveillance, inhibition de MATE1 ».",
     },
     Profile {
         needs: &["ibrutinib", "imbruvica"],
@@ -1614,8 +1634,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2d6, Inhibitor, Some(Weak)),
             Action::new(Pgp, Substrate, None),
             Action::new(Pgp, Inhibitor, None),
+            Action::new(Oct2, Inhibitor, None),
         ],
-        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et du CYP2D6, et inhibe la P-gp » ; « substrat […] de la P-gp » ; « inhibe la P-gp » — sans force pour la P-gp.",
+        source: "Ranexa : « Métabolisme hépatique rapide et étendu, principalement par le CYP3A4 et accessoirement par le CYP2D6 » ; « La ranolazine est elle-même un inhibiteur faible du CYP3A4 et du CYP2D6, et inhibe la P-gp » ; « substrat […] de la P-gp » ; « inhibe la P-gp » — sans force pour la P-gp ; « Elle augmente l'exposition à la metformine par inhibition de l'OCT2 ».",
     },
     Profile {
         needs: &["disopyramide", "rythmodan"],
@@ -1862,6 +1883,19 @@ pub const TABLE: &[Profile] = &[
         label: "Tétrabénazine",
         actions: &[Action::new(Cyp2d6, Substrate, Some(Strong))],
         source: "Xenazine : « Inhibiteurs puissants du CYP2D6 (fluoxétine, paroxétine, quinidine) : exposition aux métabolites actifs multipliée par 3 à 9 avec la paroxétine » .",
+    },
+    // **Avant la ligne du Dovato** : ces deux fiches écrivent l'OCT2 que le
+    // dolutégravir inhibe — la metformine qui monte —, celles du Dovato
+    // et du Juluca ne l'écrivent pas, et la ligne commune le leur
+    // prêterait.
+    Profile {
+        needs: &["tivicay", "triumeq"],
+        label: "Dolutégravir (Tivicay, Triumeq)",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Weak)),
+            Action::new(Oct2, Inhibitor, None),
+        ],
+        source: "Tivicay : « Metformine : exposition augmentée par inhibition de l'OCT2, réduction de dose nécessaire » ; Triumeq : « Metformine : concentrations augmentées par inhibition du transporteur OCT2, adaptation de dose nécessaire » — le métabolisme accessoire par le CYP3A4 est celui de la ligne du Dovato.",
     },
     Profile {
         needs: &["dolutégravir", "dovato"],
@@ -2174,6 +2208,49 @@ pub const TABLE: &[Profile] = &[
         actions: &[Action::new(Cyp3a4, Inducer, None)],
         source: "Kevzara : « le blocage de l'interleukine 6 rétablit l'activité des CYP et fait baisser leurs concentrations » ; « Substrats du CYP3A4 comme les contraceptifs oraux ou les statines : exposition diminuée, la simvastatine perdant environ 45 % une semaine après une injection » — une levée de répression, pas une induction.",
     },
+    // ---- Transporteurs du rein, ajoutés en 0.362.0 ----
+    // L'OCT2 fait entrer les cations organiques dans la cellule du tubule,
+    // les MATE les font sortir dans l'urine : la metformine et la
+    // fampridine s'accumulent quand on les freine.
+    Profile {
+        needs: &["metformine"],
+        label: "Metformine",
+        actions: &[
+            Action::new(Oct2, Substrate, None),
+            Action::new(Mate1, Substrate, None),
+        ],
+        source: "Glucophage : « La metformine est un substrat des transporteurs OCT1 et OCT2 : les inhibiteurs de l'OCT2 […] diminuent son élimination rénale et augmentent son exposition » ; « son excrétion urinaire passe aussi par les transporteurs MATE1 et MATE2-K » — et les associations fixes le disent de leur metformine.",
+    },
+    Profile {
+        needs: &["fampridine"],
+        label: "Fampridine",
+        actions: &[Action::new(Oct2, Substrate, None)],
+        source: "Fampyra : « Élimination essentiellement rénale […] par filtration glomérulaire et sécrétion tubulaire active via l'OCT2 » ; « Inhibiteurs de l'OCT2, cimétidine au premier rang […] : augmentation de son exposition, donc du risque convulsif ».",
+    },
+    Profile {
+        needs: &["cimetidine"],
+        label: "Cimétidine",
+        actions: &[Action::new(Oct2, Inhibitor, None)],
+        source: "Cimétidine : « Elle inhibe aussi le transporteur rénal OCT2 : l'élimination de la metformine et de la fampridine diminue » — les cytochromes qu'elle freine ne sont pas nommés par la fiche, et ne sont pas repris.",
+    },
+    Profile {
+        needs: &["bictegravir"],
+        label: "Bictégravir",
+        actions: &[
+            Action::new(Oct2, Inhibitor, None),
+            Action::new(Mate1, Inhibitor, None),
+        ],
+        source: "Biktarvy : « Le bictégravir inhibe les transporteurs OCT2 et MATE1, ce qui augmente la créatininémie et les concentrations de metformine sans traduire de toxicité rénale ».",
+    },
+    Profile {
+        needs: &["tipiracil"],
+        label: "Trifluridine + tipiracil",
+        actions: &[
+            Action::new(Oct2, Substrate, None),
+            Action::new(Mate1, Substrate, None),
+        ],
+        source: "Lonsurf : « le tipiracil [est un substrat] des transporteurs OCT2 et MATE1 : leurs inhibiteurs peuvent en augmenter la concentration ».",
+    },
 ];
 
 #[cfg(test)]
@@ -2218,7 +2295,7 @@ mod tests {
     /// toxicité de `db.rs`.
     #[test]
     fn the_table_only_ever_grows() {
-        const FLOOR: usize = 191;
+        const FLOOR: usize = 197;
         assert!(
             TABLE.len() >= FLOOR,
             "{} molécules aux cytochromes, il y en avait {FLOOR}",
@@ -2412,6 +2489,40 @@ mod tests {
         );
         let r = cross(&[t("Kevzara", "sarilumab"), t("Néoral", "ciclosporine")]);
         assert!(r.crossings.iter().any(|c| c.shift == Shift::ExposureDown));
+    }
+
+    /// **La metformine s'accumule par le rein** : le dolutégravir, le
+    /// bictégravir et la cimétidine freinent l'OCT2 ou le MATE1 qui la
+    /// font passer dans l'urine. Aucun cytochrome n'y est pour rien.
+    #[test]
+    fn the_kidney_transporters_carry_metformin() {
+        for (actor, dci) in [
+            ("Tivicay", "dolutégravir"),
+            ("Biktarvy", "bictégravir + emtricitabine + ténofovir"),
+            ("Cimétidine", "cimétidine"),
+            ("Ranexa", "ranolazine"),
+        ] {
+            let r = cross(&[t(actor, dci), t("Glucophage", "metformine")]);
+            assert!(
+                r.crossings.iter().any(|c| c.affected == "Glucophage"
+                    && matches!(c.enzyme, Oct2 | Mate1)
+                    && c.shift == Shift::ExposureUp),
+                "{actor} : {:?}",
+                r.crossings
+            );
+        }
+        let r = cross(&[t("Cimétidine", "cimétidine"), t("Fampyra", "fampridine")]);
+        assert!(r.crossings.iter().any(|c| c.affected == "Fampyra"));
+        // Le Dovato ne l'écrit pas : pas de rencontre sur l'OCT2.
+        let r = cross(&[
+            t("Dovato", "dolutégravir + lamivudine"),
+            t("Glucophage", "metformine"),
+        ]);
+        assert!(
+            !r.crossings.iter().any(|c| c.enzyme == Oct2),
+            "{:?}",
+            r.crossings
+        );
     }
 
     /// **Les interactions que les cytochromes n'expliquent pas.** Le

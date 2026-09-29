@@ -1620,7 +1620,7 @@ livre = "Une phrase qui n'est plus livrée"
                         .filter(|e| e.is_transporter())
                         .count()
                     {
-                        3 => "trois",
+                        5 => "cinq",
                         n => panic!(
                             "la table porte {n} transporteurs : l'écrire en toutes \
                              lettres dans le manuel et ici"

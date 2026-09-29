@@ -125,11 +125,11 @@ lithium en gel ne demande pas de lithiémie. Les précautions de la voie
 locale figurent sur la fiche du produit.
 
 La dernière lecture recherche les interactions par voie enzymatique
-et par transporteur. Elle **ne connaît que sept cytochromes et trois
-transporteurs** — la glycoprotéine P, l'OATP1B1 et la BCRP, qui portent
-les interactions qu'aucun cytochrome n'explique : le dabigatran sous
-amiodarone, la digoxine sous vérapamil, la rosuvastatine sous
-ciclosporine. Ni les autres transporteurs, ni les glucuronoconjugaisons,
+et par transporteur. Elle **ne connaît que sept cytochromes et cinq
+transporteurs** — la glycoprotéine P, l'OATP1B1, la BCRP, et l'OCT2 et
+le MATE1 du rein, qui portent les interactions qu'aucun cytochrome
+n'explique : le dabigatran sous amiodarone, la digoxine sous vérapamil,
+la rosuvastatine sous ciclosporine, la metformine sous dolutégravir. Ni les autres transporteurs, ni les glucuronoconjugaisons,
 ni les effets additifs — deux sédatifs n'interagissent sur aucune enzyme
 et leurs effets s'additionnent. Une absence d'interaction enzymatique
 n'est pas une absence d'interaction ; les lignes absentes de la table
