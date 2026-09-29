@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.365.0] - 2026-09-29
+
+### Added
+- « CYP et P-gp » : l'atorvastatine sous ciclosporine, létermovir,
+  gemfibrozil ou Maviret (captation hépatique par l'OATP1B1) ; la
+  rosuvastatine sous Maviret ou tériflunomide ; la warfarine et la
+  théophylline sous tocilizumab, qui rend aussi les CYP2C9 et CYP1A2.
+  Fiches Tahor, Caduet, Triveram, Maviret, Aubagio et RoActemra
+  complétées d'après leur RCP.
+
 ## [0.364.0] - 2026-09-29
 
 ### Added

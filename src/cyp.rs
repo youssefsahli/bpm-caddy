@@ -773,8 +773,11 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["atorvastatine"],
         label: "Atorvastatine",
-        actions: &[Action::new(Cyp3a4, Substrate, Some(Strong))],
-        source: "Tahor : « Métabolisme hépatique intense par le CYP3A4 en métabolites actifs ».",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Oatp1b1, Substrate, None),
+        ],
+        source: "Tahor : « Métabolisme hépatique intense par le CYP3A4 en métabolites actifs » ; « L'atorvastatine est un substrat des transporteurs hépatiques OATP1B1 et OATP1B3 ».",
     },
     // **La rosuvastatine n'est pas un substrat du CYP3A4**, et sa fiche
     // le dit en toutes lettres : c'est le contre-exemple qui empêche de
@@ -2162,8 +2165,10 @@ pub const TABLE: &[Profile] = &[
         label: "Glécaprévir + pibrentasvir",
         actions: &[
             Action::new(Pgp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
         ],
-        source: "Maviret : « Dabigatran et digoxine : concentrations augmentées par inhibition de la glycoprotéine P ».",
+        source: "Maviret : « Dabigatran et digoxine : concentrations augmentées par inhibition de la glycoprotéine P » ; « Le glécaprévir et le pibrentasvir inhibent l'OATP1B1/1B3 et la BCRP ».",
     },
     Profile {
         needs: &["teriflunomide"],
@@ -2172,8 +2177,9 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c8, Inhibitor, None),
             Action::new(Cyp1a2, Inducer, None),
             Action::new(Bcrp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
         ],
-        source: "Aubagio : « Le tériflunomide inhibe le CYP2C8 […], induit le CYP1A2 […] et inhibe les transporteurs OAT3 et BCRP ».",
+        source: "Aubagio : « Le tériflunomide inhibe le CYP2C8 […], induit le CYP1A2 […] et inhibe les transporteurs OAT3 et BCRP » ; « Il inhibe aussi l'OATP1B1/1B3 : la dose de rosuvastatine ne dépasse pas 10 mg ».",
     },
     Profile {
         needs: &["leflunomide"],
@@ -2202,8 +2208,13 @@ pub const TABLE: &[Profile] = &[
     Profile {
         needs: &["tocilizumab"],
         label: "Tocilizumab",
-        actions: &[Action::new(Cyp3a4, Inducer, None)],
-        source: "RoActemra : « l'interleukine 6 réprimant les cytochromes, son blocage restaure leur activité et diminue les concentrations de ces médicaments » ; « Le CYP3A4 en fait partie : l'exposition à la simvastatine baisse d'environ 57 % une semaine après une dose » — une levée de répression, pas une induction.",
+        actions: &[
+            Action::new(Cyp3a4, Inducer, None),
+            Action::new(Cyp1a2, Inducer, None),
+            Action::new(Cyp2c9, Inducer, None),
+            Action::new(Cyp2c19, Inducer, None),
+        ],
+        source: "RoActemra : « l'interleukine 6 réprimant les cytochromes, son blocage restaure leur activité et diminue les concentrations de ces médicaments » ; « Le CYP3A4 en fait partie : l'exposition à la simvastatine baisse d'environ 57 % une semaine après une dose » — une levée de répression, pas une induction ; « les CYP1A2, CYP2C9 et CYP2C19 aussi, d'où la warfarine et la théophylline à surveiller ».",
     },
     Profile {
         needs: &["sarilumab"],
@@ -2492,6 +2503,37 @@ mod tests {
         );
         let r = cross(&[t("Kevzara", "sarilumab"), t("Néoral", "ciclosporine")]);
         assert!(r.crossings.iter().any(|c| c.shift == Shift::ExposureDown));
+    }
+
+    /// **Ce que les fiches ont appris à dire** : l'atorvastatine passe
+    /// par l'OATP1B1 que la ciclosporine et le Maviret bloquent ; le
+    /// tocilizumab rend aussi le CYP2C9 de la warfarine.
+    #[test]
+    fn the_liver_uptake_and_the_il6_reach_further() {
+        let meets = |a: (&str, &str), b: (&str, &str), e: Enzyme, sh: Shift| {
+            cross(&[t(a.0, a.1), t(b.0, b.1)])
+                .crossings
+                .iter()
+                .any(|c| c.affected == b.0 && c.enzyme == e && c.shift == sh)
+        };
+        assert!(meets(
+            ("Néoral", "ciclosporine"),
+            ("Tahor", "atorvastatine"),
+            Oatp1b1,
+            Shift::ExposureUp
+        ));
+        assert!(meets(
+            ("Maviret", "glécaprévir + pibrentasvir"),
+            ("Crestor", "rosuvastatine"),
+            Oatp1b1,
+            Shift::ExposureUp
+        ));
+        assert!(meets(
+            ("RoActemra", "tocilizumab"),
+            ("Coumadine", "warfarine"),
+            Cyp2c9,
+            Shift::ExposureDown
+        ));
     }
 
     /// **La metformine s'accumule par le rein** : le dolutégravir, le
