@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.363.0] - 2026-09-29
+
+### Fixed
+- Mode d'emploi imprimé : la barre de comptoir rapporte onze analyses,
+  dont les cascades partagées avec une ligne du dossier ; le référentiel
+  compte plus de mille fiches, avec leurs voies et leurs cascades ; la
+  biologie lit les cytochromes et les transporteurs.
+
 ## [0.362.0] - 2026-09-29
 
 ### Added
