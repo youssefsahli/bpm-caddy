@@ -3866,7 +3866,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Inhibiteur calcique non dihydropyridinique de la classe des phénylalkylamines. Le vérapamil bloque les canaux calciques lents de type L à la fois sur la fibre musculaire lisse vasculaire et sur le tissu nodal cardiaque. Il en résulte une vasodilatation modérée, mais surtout un ralentissement de l'automatisme sinusal et de la conduction auriculo-ventriculaire ainsi qu'une réduction de la contractilité : c'est un antiarythmique de classe IV, à effet inotrope et dromotrope négatif marqué, ce qui le distingue radicalement de l'amlodipine.",
         dosage: "Forme à libération immédiate : 120 mg trois fois par jour, soit 360 mg par jour, la posologie usuelle allant de 240 à 480 mg par jour répartis en trois prises. Forme à libération prolongée : 120 à 240 mg une fois par jour, éventuellement 240 mg deux fois par jour dans l'hypertension résistante. Réduire la posologie chez le sujet âgé et en cas d'insuffisance hépatique, où l'exposition peut être doublée ou triplée : débuter à environ un tiers ou la moitié de la dose usuelle. Les comprimés à libération prolongée s'avalent entiers, sans être croqués ni écrasés.",
         contraindications: "Insuffisance cardiaque avec dysfonction systolique, choc cardiogénique, infarctus du myocarde compliqué de bradycardie ou d'insuffisance cardiaque, bloc auriculo-ventriculaire du deuxième ou du troisième degré et dysfonction sinusale non appareillés, fibrillation ou flutter atrial associés à une voie accessoire de type Wolff-Parkinson-White, hypotension sévère, bradycardie marquée, association aux bêtabloquants par voie intraveineuse, association à l'ivabradine, au dantrolène intraveineux et à certains antiarythmiques.",
-        ddi: "L'association aux bêtabloquants est la plus dangereuse : addition des effets bradycardisants, dromotropes et inotropes négatifs, avec risque de bloc auriculo-ventriculaire complet, de bradycardie sévère et de décompensation cardiaque ; elle est contre-indiquée par voie intraveineuse et déconseillée par voie orale, à réserver au cardiologue sous surveillance étroite. Le vérapamil est un inhibiteur puissant du CYP3A4 et de la P-gp : il augmente les concentrations de simvastatine et d'atorvastatine, dont la dose doit être limitée, de digoxine dont la digoxinémie augmente d'environ 50 %, de ciclosporine, de dabigatran et des immunosuppresseurs. Les inhibiteurs puissants du CYP3A4 augmentent son exposition, les inducteurs (rifampicine, millepertuis) la réduisent. L'association à l'amiodarone, au flécaïnide ou à la digoxine majore les troubles conductifs. Le jus de pamplemousse est à éviter.",
+        ddi: "L'association aux bêtabloquants est la plus dangereuse : addition des effets bradycardisants, dromotropes et inotropes négatifs, avec risque de bloc auriculo-ventriculaire complet, de bradycardie sévère et de décompensation cardiaque ; elle est contre-indiquée par voie intraveineuse et déconseillée par voie orale, à réserver au cardiologue sous surveillance étroite. Le vérapamil est un inhibiteur modéré du CYP3A4 et un inhibiteur de la P-gp : il augmente les concentrations de simvastatine et d'atorvastatine, dont la dose doit être limitée, de digoxine dont la digoxinémie augmente d'environ 50 %, de ciclosporine, de dabigatran et des immunosuppresseurs. Les inhibiteurs puissants du CYP3A4 augmentent son exposition, les inducteurs (rifampicine, millepertuis) la réduisent. L'association à l'amiodarone, au flécaïnide ou à la digoxine majore les troubles conductifs. Le jus de pamplemousse est à éviter.",
         adverse: "Constipation, très fréquente et souvent tenace, principal motif d'arrêt, notamment chez le sujet âgé. Céphalées, vertiges, bouffées vasomotrices, œdèmes des membres inférieurs, fatigue. Bradycardie, hypotension, allongement de l'espace PR et troubles de la conduction auriculo-ventriculaire. Aggravation ou décompensation d'une insuffisance cardiaque. Plus rarement hypertrophie gingivale, gynécomastie, hyperprolactinémie, élévation des transaminases, réactions cutanées.",
         monitoring: "Fréquence cardiaque et pression artérielle à chaque consultation, recherche d'une bradycardie inférieure à 50 battements par minute. Électrocardiogramme à l'instauration et lors des augmentations de dose, à la recherche d'un allongement du PR ou d'un bloc auriculo-ventriculaire. Signes cliniques de décompensation cardiaque : dyspnée, prise de poids rapide, œdèmes. Digoxinémie si association à la digoxine. Transaminases en cas de symptômes hépatiques. Transit intestinal à chaque renouvellement.",
         iup: "Un à trois comprimés par jour selon la forme prescrite, à heure fixe ; les comprimés à libération prolongée s'avalent entiers, sans les couper ni les écraser, sinon la totalité de la dose est libérée d'un coup. La constipation est l'effet le plus fréquent : buvez suffisamment, augmentez les fibres et l'activité physique, et parlez-nous-en avant qu'elle ne devienne un problème. Signalez un pouls lent, en dessous de cinquante, des malaises, un essoufflement inhabituel ou une prise de poids rapide de deux ou trois kilos en quelques jours. Ce médicament interagit avec beaucoup d'autres, en particulier certains bêtabloquants, la digoxine et certaines statines : présentez toujours votre ordonnance complète, y compris les traitements pris ailleurs. Évitez le jus de pamplemousse. N'interrompez jamais le traitement brutalement dans l'angor.",
@@ -9431,7 +9431,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Inhibiteur calcique de la famille des benzothiazépines, dit bradycardisant. Il bloque les canaux calciques lents du muscle lisse vasculaire et du tissu nodal, entraînant une vasodilatation coronaire et artérielle, un ralentissement de la fréquence sinusale et de la conduction auriculo-ventriculaire, et une réduction de la consommation myocardique en oxygène.",
         dosage: "Formes à libération immédiate : trois prises par jour ; formes à libération prolongée : une ou deux prises par jour selon le dosage. La posologie est fixée par le prescripteur en fonction de l'indication, de la fréquence cardiaque et de la tolérance tensionnelle, avec une dose initiale réduite chez le sujet âgé et l'insuffisant hépatique ou rénal.",
         contraindications: "Dysfonction sinusale, bloc auriculo-ventriculaire du deuxième ou troisième degré non appareillé, bradycardie sévère, insuffisance ventriculaire gauche avec congestion pulmonaire, hypotension sévère, infarctus du myocarde compliqué, association à l'ivabradine, au dantrolène en perfusion, au pimozide ou à certains alcaloïdes de l'ergot de seigle, grossesse et allaitement.",
-        ddi: "Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine : concentrations augmentées de la simvastatine et de l'atorvastatine avec risque de rhabdomyolyse, de la ciclosporine, du tacrolimus, de la carbamazépine, du midazolam, de l'ivabradine et de certains anticoagulants oraux directs. Bêta-bloquants, amiodarone, digoxine : bradycardie et bloc auriculo-ventriculaire. Dantrolène : fibrillation ventriculaire, association contre-indiquée. Inducteurs enzymatiques : perte d'efficacité. Jus de pamplemousse : exposition augmentée.",
+        ddi: "Inhibiteur modéré du CYP3A4 et faible de la P-glycoprotéine : concentrations augmentées de la simvastatine et de l'atorvastatine avec risque de rhabdomyolyse, de la ciclosporine, du tacrolimus, de la carbamazépine, du midazolam, de l'ivabradine et de certains anticoagulants oraux directs. Bêta-bloquants, amiodarone, digoxine : bradycardie et bloc auriculo-ventriculaire. Dantrolène : fibrillation ventriculaire, association contre-indiquée. Inducteurs enzymatiques : perte d'efficacité. Jus de pamplemousse : exposition augmentée.",
         adverse: "Bradycardie, blocs auriculo-ventriculaires, hypotension, œdèmes des membres inférieurs, bouffées vasomotrices, céphalées. Constipation. Hypertrophie gingivale. Élévation des transaminases, hépatite rare. Éruptions cutanées, dont de rares toxidermies graves comme le syndrome de Stevens-Johnson ou le syndrome d'hypersensibilité médicamenteuse. Aggravation d'une insuffisance cardiaque.",
         monitoring: "Fréquence cardiaque et pression artérielle à chaque consultation ; électrocardiogramme à l'instauration et en cas d'association bradycardisante ou de bradycardie clinique. Transaminases à l'instauration puis périodiquement. Surveillance clinique des œdèmes, de l'état gingival et de tout exanthème fébrile. Créatininémie chez le sujet âgé.",
         iup: "Respecter le rythme de prises correspondant à la forme délivrée ; les gélules et comprimés à libération prolongée s'avalent entiers, sans être ouverts, croqués ni écrasés, sous peine de libérer la dose d'un coup. Ne pas arrêter le traitement brutalement, en particulier dans l'angine de poitrine, où l'arrêt soudain peut faire réapparaître les crises. Se lever lentement, en deux temps, surtout en début de traitement et chez le sujet âgé. Éviter le jus de pamplemousse, qui augmente les concentrations du médicament. Signaler un pouls très lent, des malaises, des chevilles gonflées, une constipation gênante ou un gonflement des gencives ; une éruption cutanée étendue accompagnée de fièvre impose un avis médical urgent. Prévenir tout médecin de ce traitement avant l'ajout d'un autre médicament, les interactions étant nombreuses avec cette molécule.",
@@ -10250,7 +10250,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Le gemfibrozil est un fibrate agoniste des récepteurs PPAR-alpha. Il stimule la lipolyse des particules riches en triglycérides par activation de la lipoprotéine lipase, réduit la synthèse hépatique des VLDL et l'apolipoprotéine C-III, et augmente le HDL-cholestérol.",
         dosage: "Chez l'adulte, la posologie usuelle est de 600 mg deux fois par jour, une demi-heure avant le repas du matin et le repas du soir. L'efficacité s'apprécie sur le bilan lipidique après trois mois de traitement associé au régime ; en l'absence de réponse suffisante, la poursuite ne se justifie pas.",
         contraindications: "Insuffisance hépatique, insuffisance rénale sévère, lithiase biliaire et affection de la vésicule biliaire, antécédent de photosensibilité aux fibrates, hypersensibilité, association au répaglinide qui est formellement contre-indiquée, association à la simvastatine, grossesse et allaitement.",
-        ddi: "Le gemfibrozil est un inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée, l'exposition à ce dernier étant multipliée avec risque d'hypoglycémie sévère et prolongée. L'association aux statines est à proscrire ou à réserver à des situations exceptionnelles en raison d'un risque de rhabdomyolyse nettement supérieur à celui des autres fibrates. Il potentialise les antivitamines K, imposant une réduction de dose et un contrôle rapproché de l'INR, et augmente l'exposition à la dapagliflozine et à certains antidiabétiques métabolisés par le CYP2C8.",
+        ddi: "Le gemfibrozil est un inhibiteur puissant du CYP2C8 et un inhibiteur du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée, l'exposition à ce dernier étant multipliée avec risque d'hypoglycémie sévère et prolongée. L'association aux statines est à proscrire ou à réserver à des situations exceptionnelles en raison d'un risque de rhabdomyolyse nettement supérieur à celui des autres fibrates. Il potentialise les antivitamines K, imposant une réduction de dose et un contrôle rapproché de l'INR, et augmente l'exposition à la dapagliflozine et à certains antidiabétiques métabolisés par le CYP2C8.",
         adverse: "Troubles digestifs fréquents, dyspepsie, douleurs abdominales, diarrhée, nausées. Myalgies, myosite, élévation des créatine phosphokinases et rhabdomyolyse, risque majeur lorsqu'une statine est associée. Lithiase biliaire, cholécystite, élévation des transaminases. Éruptions cutanées, photosensibilité, eczéma, plus rarement anémie, leucopénie et thrombopénie.",
         monitoring: "Bilan lipidique avant l'instauration puis à trois mois pour décider de la poursuite. Transaminases périodiquement et devant tout signe d'appel. Créatine phosphokinases à la moindre plainte musculaire, avec un seuil de vigilance abaissé en cas d'insuffisance rénale, d'hypothyroïdie, d'âge avancé ou d'alcoolisme. Hémogramme périodique en cours de traitement prolongé. INR rapproché chez le patient sous antivitamine K, et surveillance glycémique étroite si un antidiabétique interagissant est associé.",
         iup: "Prendre un comprimé une demi-heure avant le repas du matin et un autre une demi-heure avant le repas du soir : cet horaire précis avant les repas fait partie du traitement et améliore son efficacité. Le signe d'alerte à connaître est musculaire : des douleurs, des crampes, une sensibilité ou une faiblesse des cuisses, des mollets ou des épaules apparaissant sans effort inhabituel, surtout accompagnées de fièvre, d'une grande fatigue ou d'urines de couleur brune, imposent d'arrêter le traitement et de consulter rapidement pour faire doser les enzymes musculaires. Ce fibrate ne doit jamais être associé de sa propre initiative à un autre traitement du cholestérol, en particulier une statine, ni au répaglinide, avec lequel il est formellement interdit en raison d'un risque d'hypoglycémie grave. Le régime pauvre en graisses et en sucres rapides, la limitation stricte de l'alcool et l'activité physique sont indissociables du médicament, particulièrement pour faire baisser les triglycérides. En cas d'oubli, ne pas rattraper et reprendre à la prise suivante, et signaler une douleur du ventre à droite, un jaunissement des yeux, des urines foncées ou une éruption cutanée après exposition au soleil.",
@@ -11741,7 +11741,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Posaconazole, triazolé de deuxième génération à large spectre. Il inhibe la 14-alpha-déméthylase fongique, bloquant la synthèse de l'ergostérol membranaire et provoquant l'accumulation de précurseurs méthylés toxiques. Son spectre est le plus large des azolés disponibles, couvrant Aspergillus, Candida y compris certaines espèces résistantes au fluconazole, et surtout les Mucorales, ce qui le distingue du voriconazole.",
         dosage: "Traitement initié à l'hôpital. Les comprimés gastro-résistants et la suspension buvable ne sont pas interchangeables : les comprimés, forme de référence, comportent une dose de charge le premier jour puis une dose d'entretien quotidienne unique et se prennent au cours d'un repas ; la suspension buvable exige un fractionnement en plusieurs prises et une administration au cours d'un repas riche en graisses. Les posologies exactes sont fixées par le prescripteur selon l'indication et la forme galénique.",
         contraindications: "Allergie aux azolés. Association aux alcaloïdes de l'ergot de seigle, au pimozide, à la quinidine, à la simvastatine et aux autres statines métabolisées par le CYP3A4, au sirolimus et au vénétoclax en phase d'initiation. Prudence en cas d'allongement du QT ou de trouble électrolytique non corrigé.",
-        ddi: "Inhibiteur très puissant du CYP3A4 et de la P-glycoprotéine, sans effet notable sur les autres cytochromes. Immunosuppresseurs (ciclosporine, tacrolimus, sirolimus) : élévation majeure des concentrations, nécessitant une réduction de dose anticipée et des dosages rapprochés. Statines : rhabdomyolyse. Alcaloïdes de la pervenche : neurotoxicité. Midazolam : sédation prolongée. Vénétoclax et autres anticancéreux oraux : surdosage. Inducteurs enzymatiques (rifampicine, phénytoïne, carbamazépine, éfavirenz) : effondrement des concentrations de posaconazole. Inhibiteurs de la pompe à protons et métoclopramide : réduction de l'absorption de la suspension buvable, sans effet notable sur les comprimés gastro-résistants.",
+        ddi: "Inhibiteur très puissant du CYP3A4, sans effet notable sur les autres cytochromes ; il inhibe aussi la P-glycoprotéine dans une mesure non chiffrée, et en est le substrat. Immunosuppresseurs (ciclosporine, tacrolimus, sirolimus) : élévation majeure des concentrations, nécessitant une réduction de dose anticipée et des dosages rapprochés. Statines : rhabdomyolyse. Alcaloïdes de la pervenche : neurotoxicité. Midazolam : sédation prolongée. Vénétoclax et autres anticancéreux oraux : surdosage. Inducteurs enzymatiques (rifampicine, phénytoïne, carbamazépine, éfavirenz) : effondrement des concentrations de posaconazole. Inhibiteurs de la pompe à protons et métoclopramide : réduction de l'absorption de la suspension buvable, sans effet notable sur les comprimés gastro-résistants.",
         adverse: "Nausées, vomissements, diarrhée, douleurs abdominales, sécheresse buccale. Hypokaliémie, hypomagnésémie, fréquentes chez ces patients et à corriger. Élévation des transaminases et de la bilirubine, hépatite plus rarement. Allongement du QT. Céphalées, vertiges, paresthésies, somnolence. Cytopénies, difficiles à distinguer de celles de la maladie et de la chimiothérapie. Éruptions cutanées. Pseudo-hyperaldostéronisme avec hypertension artérielle et hypokaliémie, décrit lors des traitements prolongés.",
         monitoring: "Suivi thérapeutique pharmacologique recommandé, en particulier avec la suspension buvable, chez le patient présentant une mucite, une diarrhée, sous inhibiteur de la pompe à protons ou en cas de suspicion d'échec : la concentration résiduelle est mesurée après cinq à sept jours puis lors de tout changement. Transaminases et bilirubine avant traitement puis régulièrement. Kaliémie et magnésémie régulières, avec correction avant et pendant le traitement. Électrocardiogramme chez les patients à risque de QT long ou recevant d'autres médicaments torsadogènes. Dosages des immunosuppresseurs à chaque instauration et à chaque arrêt du posaconazole.",
         iup: "Prenez ce médicament au cours d'un repas, et si la forme prescrite est la suspension buvable, impérativement pendant un repas riche en graisses ou avec une boisson lactée ou nutritive, car son absorption en dépend entièrement : prise à jeun, elle est deux à trois fois moins efficace. La suspension doit être agitée avant chaque emploi et mesurée avec la cuillère ou la seringue fournie ; les comprimés, eux, s'avalent entiers sans être écrasés ni croqués. Ces deux formes ne se remplacent pas l'une l'autre et n'ont ni la même posologie ni le même rythme de prise : ne substituez jamais l'une à l'autre, même en cas de rupture, sans nouvelle prescription. Si vous vomissez ou avez une diarrhée importante pendant le traitement, signalez-le, car l'absorption est alors compromise et le dosage sanguin devra être vérifié ; de même, signalez toute prise d'un médicament contre les brûlures d'estomac. Ce traitement est le plus souvent préventif et doit être poursuivi sans interruption pendant toute la période prescrite, même si vous vous sentez bien ; consultez en cas de jaunisse, d'urines foncées, de palpitations, de malaise, de crampes musculaires ou de fatigue intense.",
@@ -21506,7 +21506,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         mechanism: "Inhibiteur sélectif de BCL-2, protéine anti-apoptotique surexprimée dans les cellules de leucémie lymphoïde chronique et dont dépend leur survie. En occupant le site de liaison de BCL-2, le vénétoclax libère les protéines pro-apoptotiques et déclenche rapidement la mort des cellules tumorales par la voie mitochondriale. C'est cette rapidité qui fait le syndrome de lyse tumorale des premières semaines, d'autant plus fréquent que la masse tumorale et la lymphocytose sont élevées, et qui impose une montée de dose progressive.",
         dosage: "Leucémie lymphoïde chronique : titration sur cinq semaines, 20 mg par jour la première semaine, 50 mg la deuxième, 100 mg la troisième, 200 mg la quatrième, puis 400 mg par jour à partir de la cinquième ; la durée totale dépend de l'association (durée fixe avec l'acalabrutinib, l'obinutuzumab ou l'ibrutinib, deux ans avec le rituximab). Leucémie aiguë myéloïde : 100 mg le premier jour, 200 mg le deuxième, 400 mg le troisième puis chaque jour, en cycles de 28 jours avec l'agent hypométhylant. Une prise par jour, au cours d'un repas, à heure fixe, avec un verre d'eau, comprimé avalé entier sans être mâché, écrasé ni coupé. Les paliers ne se sautent jamais. Insuffisance hépatique sévère : dose réduite d'au moins moitié pendant tout le traitement. Avec un inhibiteur du CYP3A4 après la titration, la dose est réduite selon le RCP par l'hématologue.",
         contraindications: "Hypersensibilité au vénétoclax. Dans la leucémie lymphoïde chronique, association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration. Association aux préparations à base de millepertuis. Vaccins vivants atténués pendant le traitement et jusqu'à la reconstitution des lymphocytes B.",
-        ddi: "Substrat majeur du CYP3A4 et de la P-gp. Inhibiteurs puissants du CYP3A4 (kétoconazole, itraconazole, posaconazole, voriconazole, clarithromycine, ritonavir, cobicistat) : contre-indiqués pendant la titration dans la leucémie lymphoïde chronique, exposition multipliée et lyse tumorale ; après la titration, dose réduite d'au moins trois quarts si l'association est inévitable. Inhibiteurs modérés du CYP3A4 (fluconazole, érythromycine, ciprofloxacine, diltiazem, vérapamil) : à éviter, sinon dose réduite d'au moins moitié. Inhibiteurs de la P-gp ou de la BCRP (amiodarone, ciclosporine, ticagrélor) : à éviter à l'instauration et pendant la titration, sinon surveillance étroite de la toxicité. L'azithromycine abaisse modérément l'exposition, sans adaptation pour une cure courte. Pamplemousse, orange amère (bigarade) et carambole à exclure. Inducteurs (rifampicine, carbamazépine, phénytoïne, millepertuis) : efficacité perdue, à éviter ; millepertuis contre-indiqué. Antivitamines K : INR augmenté, surveillance rapprochée. Substrats de la P-gp ou de la BCRP à marge étroite (digoxine, dabigatran, évérolimus, sirolimus) : association déconseillée ; si elle est nécessaire, prudence, et pour le dabigatran, prise la plus éloignée possible de celle du vénétoclax. Chélateurs des acides biliaires : non recommandés, sinon vénétoclax au moins 4 à 6 heures après.",
+        ddi: "Substrat majeur du CYP3A4 et de la P-gp ; le vénétoclax inhibe lui-même la P-gp et la BCRP (Cmax de la digoxine augmentée d'environ 35 %). Inhibiteurs puissants du CYP3A4 (kétoconazole, itraconazole, posaconazole, voriconazole, clarithromycine, ritonavir, cobicistat) : contre-indiqués pendant la titration dans la leucémie lymphoïde chronique, exposition multipliée et lyse tumorale ; après la titration, dose réduite d'au moins trois quarts si l'association est inévitable. Inhibiteurs modérés du CYP3A4 (fluconazole, érythromycine, ciprofloxacine, diltiazem, vérapamil) : à éviter, sinon dose réduite d'au moins moitié. Inhibiteurs de la P-gp ou de la BCRP (amiodarone, ciclosporine, ticagrélor) : à éviter à l'instauration et pendant la titration, sinon surveillance étroite de la toxicité. L'azithromycine abaisse modérément l'exposition, sans adaptation pour une cure courte. Pamplemousse, orange amère (bigarade) et carambole à exclure. Inducteurs (rifampicine, carbamazépine, phénytoïne, millepertuis) : efficacité perdue, à éviter ; millepertuis contre-indiqué. Antivitamines K : INR augmenté, surveillance rapprochée. Substrats de la P-gp ou de la BCRP à marge étroite (digoxine, dabigatran, évérolimus, sirolimus) : association déconseillée ; si elle est nécessaire, prudence, et pour le dabigatran, prise la plus éloignée possible de celle du vénétoclax. Chélateurs des acides biliaires : non recommandés, sinon vénétoclax au moins 4 à 6 heures après.",
         adverse: "Neutropénie très fréquente et souvent profonde, neutropénie fébrile, anémie, thrombopénie ; infections, dont pneumonies et sepsis. Syndrome de lyse tumorale à l'instauration et à chaque palier : hyperkaliémie, hyperphosphatémie, hyperuricémie, hypocalcémie, insuffisance rénale aiguë, troubles du rythme, parfois mortel. Diarrhée, nausées, vomissements, constipation, fatigue.",
         monitoring: "Avant la première dose : évaluation de la masse tumorale et du risque de lyse, créatininémie, kaliémie, phosphorémie, calcémie, uricémie. Pendant la titration : même bilan avant la dose, puis 6 à 8 heures et 24 heures après la première dose de 20 mg et de 50 mg, et avant chaque nouveau palier, hospitalisation chez le patient à haut risque. Hémogramme régulier pendant tout le traitement. Clairance à connaître : au-dessous de 80 mL/min, la prophylaxie et la surveillance de la lyse sont renforcées. Fonction hépatique : insuffisance hépatique modérée, surveillance rapprochée de la tolérance ; sévère, dose réduite.",
         iup: "Ce traitement démarre par une montée de dose sur plusieurs semaines : suivez exactement le calendrier remis, un palier par semaine, sans en sauter ni en rajouter, avec les boîtes de l'étape en cours. Prenez le comprimé une fois par jour, au cours d'un repas, à la même heure, avalé entier avec de l'eau. Buvez 1,5 à 2 litres d'eau par jour à partir de deux jours avant le début et pendant toute la montée de dose : c'est ce qui protège vos reins, avec le médicament contre l'acide urique prescrit. Les prises de sang du début sont à faire aux heures prévues, sans les décaler. Appelez l'équipe le jour même en cas de fièvre égale ou supérieure à 38 °C, de frissons, de nausées ou vomissements, de crampes, de confusion, d'urines rares ou foncées, de palpitations ou de convulsions. Supprimez le pamplemousse, l'orange amère et la carambole, et ne prenez aucun médicament, antibiotique, antifongique, plante ou millepertuis sans avis du pharmacien. Pas de vaccin vivant. Si vous oubliez une prise depuis moins de huit heures, prenez-la ; au-delà, attendez le lendemain. Si vous vomissez, ne reprenez pas de comprimé ce jour-là.",
@@ -24380,7 +24380,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
     StarterDetail {
         name: "Genvoya",
         indications: "Infection par le VIH-1 sans mutation connue de résistance aux inhibiteurs d'intégrase, à l'emtricitabine ou au ténofovir, chez l'adulte et l'enfant de 2 ans et plus pesant au moins 14 kg. Trithérapie complète en un comprimé par jour, dont le quatrième composant n'est pas un antiviral mais un potentialisateur. Prescription initiale hospitalière annuelle, renouvellement non restreint.",
-        mechanism: "Association fixe d'elvitégravir, inhibiteur du transfert de brin de l'intégrase, d'emtricitabine et de ténofovir alafénamide, inhibiteurs nucléosidique et nucléotidique de la transcriptase inverse, et de cobicistat. Le cobicistat n'a pas d'activité antivirale : puissant inhibiteur du CYP3A4, il ralentit le métabolisme de l'elvitégravir, qui sans lui serait éliminé trop vite. Il inhibe aussi faiblement le CYP2D6, ainsi que la P-gp, la BCRP et les OATP1B1/1B3. L'elvitégravir peut induire le CYP2C9 et les UGT. Emtricitabine et ténofovir sont aussi actifs sur le virus de l'hépatite B.",
+        mechanism: "Association fixe d'elvitégravir, inhibiteur du transfert de brin de l'intégrase, d'emtricitabine et de ténofovir alafénamide, inhibiteurs nucléosidique et nucléotidique de la transcriptase inverse, et de cobicistat. Le cobicistat n'a pas d'activité antivirale : puissant inhibiteur du CYP3A4, il ralentit le métabolisme de l'elvitégravir, qui sans lui serait éliminé trop vite. Il inhibe aussi faiblement le CYP2D6. Il inhibe la P-gp, la BCRP et les OATP1B1/1B3 : le dabigatran et la rosuvastatine voient leur exposition nettement augmentée. L'elvitégravir peut induire le CYP2C9 et les UGT. Emtricitabine et ténofovir sont aussi actifs sur le virus de l'hépatite B.",
         dosage: "Adulte et enfant d'au moins 25 kg : un comprimé de 150 mg/150 mg/200 mg/10 mg une fois par jour avec de la nourriture ; enfant de 14 à moins de 25 kg : un comprimé de 90 mg/90 mg/120 mg/6 mg. Oubli de moins de 18 heures : prendre la dose dès que possible avec de la nourriture ; au-delà, ne pas la prendre. Vomissement dans l'heure : reprendre un comprimé. Ne pas croquer ni écraser, en raison du goût amer ; le comprimé peut être coupé en deux, les deux moitiés prises l'une après l'autre. Pas d'adaptation chez le sujet âgé ni en insuffisance hépatique légère ou modérée ; non recommandé en insuffisance hépatique sévère. Seuils rénaux : voir la rubrique rein.",
         contraindications: "Hypersensibilité à l'un des composants. Médicaments dont la clairance dépend largement du CYP3A4 et dont l'élévation est grave : alfuzosine, amiodarone, quinidine, dihydroergotamine, ergométrine, ergotamine, cisapride, lovastatine, simvastatine, lomitapide, pimozide, lurasidone, sildénafil dans l'hypertension artérielle pulmonaire, midazolam oral, triazolam. Inducteurs puissants du CYP3A4, par perte d'efficacité : carbamazépine, phénobarbital, phénytoïne, rifampicine, millepertuis. Dabigatran étexilate.",
         ddi: "Cations polyvalents (antiacides, calcium, fer, magnésium, zinc, multivitamines, laxatifs à base de cations, sucralfate) : au moins 4 heures d'écart avec Genvoya. Anticoagulants oraux directs : dabigatran contre-indiqué, apixaban, rivaroxaban et édoxaban non recommandés ; warfarine, INR à surveiller, y compris les premières semaines après l'arrêt. Corticoïdes métabolisés par le CYP3A4, fluticasone et budésonide inhalés ou nasaux compris : non recommandés, syndrome de Cushing et insuffisance surrénalienne. Atorvastatine à la plus faible dose, rosuvastatine avec prudence. Clopidogrel : association non recommandée. Sildénafil, tadalafil, vardénafil dans la dysfonction érectile : doses réduites. Contraception : pilule contenant au moins 30 µg d'éthinylestradiol avec drospirénone ou norgestimate, ou autre méthode fiable ; drospirénone augmentée, kaliémie à surveiller. Metformine : surveillance. Clarithromycine : dose selon la clairance. Aucun autre antirétroviral.",
@@ -30501,7 +30501,7 @@ pub const STARTER_CASCADES: &[&str] = &[
 titre : Récepteurs bêta-adrénergiques
 sujet : Bêtabloquants, salbutamol — cœur et bronches
 source : Rang & Dale's Pharmacology
-source : RCP des bêtabloquants : arrêt progressif ; asthme et BPCO sévères contre-indiqués, cardiosélectifs compris
+source : RCP des bêtabloquants : arrêt progressif ; asthme sévère contre-indiqué, cardiosélectifs compris ; BPCO sévère contre-indiquée pour l'aténolol, le métoprolol et l'acébutolol, mise en garde pour le bisoprolol
 
 ligand Noradrénaline
 ligand Adrénaline
@@ -30991,7 +30991,7 @@ titre : Interleukine 6
 sujet : Tocilizumab, sarilumab — CRP masquée, cytochromes rendus
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'hepcidine, induite par l'IL-6, fait l'anémie inflammatoire
-source : RCP du tocilizumab : CRP et fièvre peuvent rester basses pendant une infection grave ; l'IL-6 freine les CYP450, qui se normalisent à l'instauration comme à l'arrêt ; surveiller les substrats à dose ajustée (ciclosporine, warfarine, théophylline) ; exposition à la simvastatine baissée
+source : RCP du tocilizumab : CRP et signes d'inflammation aiguë atténués pendant une infection grave ; l'IL-6 réduit l'expression des CYP450, que le tocilizumab normalise ; à l'instauration comme à l'arrêt, l'effet persistant plusieurs semaines, surveiller les substrats à dose ajustée (ciclosporine, warfarine, théophylline) ; exposition à la simvastatine baissée
 source : RCP du sarilumab : même mise en garde sur les substrats du CYP3A4, simvastatine et contraceptifs oraux compris
 
 ligand IL-6 : produite par les macrophages, les fibroblastes synoviaux et l'endothélium
@@ -31264,7 +31264,7 @@ scénario Trinitrine en continu, puis arrêt : trinitrine 10-80
 titre : Néphron et potassium
 sujet : Diurétiques de l'anse, thiazidiques, épargneurs de potassium
 source : Rang & Dale's Pharmacology
-source : RCP du furosémide et de l'hydrochlorothiazide : hypokaliémie, déshydratation ; hypercalciurie sous diurétique de l'anse, calciurie baissée sous thiazidique
+source : RCP du furosémide et de l'hydrochlorothiazide : hypokaliémie, déshydratation ; calciurie baissée sous thiazidique ; hypercalciurie sous furosémide écrite chez le grand prématuré seulement
 source : RCP de la spironolactone, de l'éplérénone et de l'amiloride : hyperkaliémie, surtout avec un IEC, un sartan ou une insuffisance rénale
 
 transporteur NKCC2 : cotransport Na-K-2Cl de la branche large ascendante de l'anse de Henle
@@ -31446,7 +31446,7 @@ titre : Récepteurs alpha-1 adrénergiques
 sujet : Alpha-bloquants — prostate, pression artérielle, iris
 source : Rang & Dale's Pharmacology
 source : RCP de la tamsulosine, de l'alfuzosine et de la silodosine : hypotension orthostatique ; syndrome de l'iris flasque peropératoire, prévenir le chirurgien avant une chirurgie de la cataracte
-source : RCP de la doxazosine et de la prazosine : hypotension de première dose
+source : RCP de la doxazosine et de la prazosine : hypotension orthostatique, surveillance étroite en début de traitement
 
 ligand Noradrénaline
 récepteur Alpha-1A prostatique : muscle lisse de la prostate et du col vésical
@@ -31746,7 +31746,9 @@ scénario Fludrocortisone : fludrocortisone 10-
 titre : Remodelage osseux
 sujet : Bisphosphonates, dénosumab, tériparatide, romosozumab, raloxifène
 source : Rang & Dale's Pharmacology
-source : RCP du dénosumab : rebond de résorption et fractures vertébrales multiples à l'arrêt sans relais ; hypocalcémie
+source : RCP du dénosumab : à l'arrêt, baisse de la densité minérale osseuse et risque de fracture accru, traitement alternatif à envisager ; marqueurs du remodelage revenus au niveau initial dans les 9 mois ; hypocalcémie
+# Le rebond de résorption et les fractures vertébrales multiples à
+# l'arrêt sans relais viennent des analyses de FREEDOM, pas du RCP.
 source : RCP du romosozumab : résorption remontée au-dessus de son niveau initial après l'arrêt, relais par un antirésorbeur
 source : RCP du tériparatide : élévation transitoire de la calcémie
 source : RCP de l'acide zolédronique : hypocalcémie
@@ -31816,7 +31818,7 @@ scénario Romosozumab, puis alendronate : romosozumab 10-60 ; alendronate 60-
 titre : Récepteurs histaminiques H1
 sujet : Antihistaminiques sédatifs et non sédatifs
 source : Rang & Dale's Pharmacology
-source : RCP de la bilastine : substrat de la glycoprotéine P, passage cérébral très limité, pas de sédation aux doses recommandées
+source : RCP de la bilastine : substrat de la glycoprotéine P ; pas d'accumulation dans le système nerveux central chez l'animal ; antihistaminique non sédatif, somnolence comparable au placebo à 20 mg
 source : RCP de l'hydroxyzine et de la dexchlorphéniramine : somnolence, effets atropiniques
 
 ligand Histamine mastocytaire : libérée par les mastocytes dans la réaction allergique
@@ -31870,7 +31872,7 @@ source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : la GnRH 
 source : RCP de la triptoréline : élévation transitoire initiale de la testostérone, puis suppression de la sécrétion des gonadotrophines et testostérone au niveau de la castration
 source : RCP du dégarélix : suppression de la testostérone sans pic initial
 source : RCP du citrate de clomifène : stimulation de l'ovulation par levée du rétrocontrôle des œstrogènes ; hyperstimulation ovarienne
-source : RCP de la testostérone énanthate : oligospermie par freinage des gonadotrophines
+source : RCP de la testostérone énanthate : spermatogenèse inhibée de façon réversible à fortes doses prolongées ; sécrétion hypophysaire des gonadotrophines diminuée
 
 ligand GnRH : hypothalamus, libérée par pulses
 récepteur Récepteur de la GnRH : cellule gonadotrope de l'hypophyse ; stimulé par pulses il fait sécréter, stimulé en continu il se désensibilise
@@ -31933,8 +31935,8 @@ sujet : Abiratérone, anti-androgènes, inhibiteurs de la 5-alpha-réductase
 source : Rang & Dale's Pharmacology
 source : RCP de l'abiratérone : inhibition du CYP17 ; excès de minéralocorticoïdes par montée de l'ACTH, hypokaliémie, hypertension, rétention hydrique ; associée à la prednisone, qui freine l'ACTH
 source : RCP de l'enzalutamide : antagoniste du récepteur des androgènes ; inducteur puissant du CYP3A4
-source : RCP du bicalutamide : anti-androgène ; en monothérapie, testostérone augmentée et gynécomastie
-source : RCP du dutastéride et du finastéride : baisse de la DHT ; réduction du volume prostatique ; PSA abaissé d'environ moitié, à doubler pour le comparer aux valeurs usuelles
+source : RCP du bicalutamide : anti-androgène non stéroïdien, dépourvu de toute autre activité endocrinienne ; gynécomastie ou douleurs mammaires chez la majorité des patients à 150 mg en monothérapie
+source : RCP du dutastéride et du finastéride : baisse de la DHT ; réduction du volume prostatique ; PSA abaissé d'environ moitié ; sous finastéride, valeur à doubler pour la comparer aux valeurs usuelles ; sous dutastéride, nouvelle valeur de référence après 6 mois
 
 ligand ACTH : hypophyse
 ligand LH : hypophyse, vers le testicule
@@ -31948,7 +31950,7 @@ ligand DHT : dihydrotestostérone, l'androgène de la prostate
 récepteur Récepteur des androgènes : prostate, et les cellules du cancer de la prostate
 récepteur Récepteur minéralocorticoïde : tubule rénal
 effet Volume prostatique
-effet PSA : suit l'activité de la prostate ; sous inhibiteur de la 5-alpha-réductase, la valeur lue se double avant de la comparer
+effet PSA : suit l'activité de la prostate ; sous finastéride la valeur lue se double avant de la comparer, sous dutastéride une nouvelle référence se prend après six mois
 effet Pression artérielle
 effet Kaliémie
 
@@ -31996,7 +31998,8 @@ molécule bicalutamide : antagoniste Récepteur des androgènes
 # recommandations ; non dessiné.
 molécule cyprotérone acétate : antagoniste Récepteur des androgènes ; inhibiteur LH
 # La DHT baisse, la testostérone reste : la prostate diminue, et le PSA
-# avec elle — d'où la valeur lue qui se double.
+# avec elle — d'où la valeur doublée sous finastéride, et la nouvelle
+# référence après six mois sous dutastéride.
 molécule finastéride : inhibiteur 5-alpha-réductase
 molécule dutastéride : inhibiteur 5-alpha-réductase
 
@@ -32012,7 +32015,7 @@ source : Rang & Dale's Pharmacology
 source : RCP du tamoxifène : hyperplasie et cancer de l'endomètre, accidents thromboemboliques veineux, bouffées de chaleur
 source : RCP du létrozole, de l'anastrozole et de l'exémestane : diminution de la densité minérale osseuse, arthralgies, bouffées de chaleur
 source : RCP du raloxifène : pas de stimulation de l'endomètre ; accidents thromboemboliques veineux ; bouffées de chaleur
-source : RCP du fulvestrant : antagoniste qui dégrade le récepteur des œstrogènes
+source : RCP du fulvestrant : antagoniste compétitif du récepteur des œstrogènes, sans activité agoniste partielle ; expression de la protéine du récepteur diminuée
 source : RCP de l'estradiol : chez la femme non hystérectomisée, progestatif associé contre l'hyperplasie de l'endomètre ; risque thromboembolique veineux
 
 ligand Androgènes : androstènedione et testostérone, surrénale et ovaire
@@ -32214,7 +32217,7 @@ titre : Cibles des antiépileptiques
 sujet : Bloqueurs des canaux sodiques, lévétiracétam, gabapentinoïdes, valproate, vigabatrine, éthosuximide
 source : Rang & Dale's Pharmacology
 source : RCP de la carbamazépine, de l'oxcarbazépine, de la lamotrigine, du lacosamide et de la phénytoïne : sensations vertigineuses, ataxie, diplopie, somnolence
-source : RCP du lacosamide : sensations vertigineuses et diplopie plus fréquentes en association à un autre bloqueur des canaux sodiques
+source : RCP du lacosamide : sensations vertigineuses et diplopie parmi les effets les plus fréquents ; prudence avec les antiépileptiques bloquant les canaux sodiques, qui allongent aussi le PR
 source : RCP du lévétiracétam, du brivaracétam, de la prégabaline et de la gabapentine : somnolence, sensations vertigineuses
 source : RCP de l'éthosuximide : absences typiques ; RCP de la carbamazépine : peut aggraver les absences
 
@@ -32437,7 +32440,7 @@ scénario Digoxine et bisoprolol : digoxine 10- ; bisoprolol 50-
 titre : Purines, urate et goutte
 sujet : Allopurinol, fébuxostat, colchicine ; thiopurines et diurétiques
 source : Rang & Dale's Pharmacology
-source : RCP de l'allopurinol : avec l'azathioprine ou la mercaptopurine, dose de la thiopurine fortement réduite, toxicité médullaire ; crises de goutte à l'instauration
+source : RCP de l'allopurinol : association à l'azathioprine ou à la mercaptopurine contre-indiquée ; si elle est indispensable, dose de la thiopurine réduite au quart, toxicité médullaire ; crises de goutte à l'instauration
 source : RCP du fébuxostat : association à l'azathioprine et à la mercaptopurine déconseillée ; crises de goutte à l'instauration, traitement préventif
 source : RCP de l'azathioprine et de la mercaptopurine : inactivées par la xanthine oxydase, myélotoxicité avec les inhibiteurs de la xanthine oxydase
 source : RCP des diurétiques thiazidiques et de l'anse : hyperuricémie, crise de goutte
@@ -32836,7 +32839,8 @@ titre : Hyperkaliémie et chélateurs du potassium
 sujet : IEC, sartans, antialdostérones, triméthoprime, héparine, AINS — et les chélateurs qui retirent le potassium par l'intestin
 source : Rang & Dale's Pharmacology
 source : RCP des IEC, des sartans, de la spironolactone et de la finérénone : hyperkaliémie, surtout en insuffisance rénale, avec un sel de potassium ou un autre médicament hyperkaliémiant
-source : RCP du triméthoprime : hyperkaliémie, par un effet de type amiloride sur le tube collecteur
+source : RCP du triméthoprime : hyperkaliémie, par un effet épargneur de potassium
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le triméthoprime bloque le canal sodique épithélial du tube collecteur, comme l'amiloride
 source : RCP de l'héparine : hyperkaliémie par hypoaldostéronisme
 source : RCP du patiromère, du cyclosilicate de sodium et de zirconium et des polystyrènes sulfonates : fixation du potassium dans l'intestin, éliminé dans les selles
 
@@ -32902,8 +32906,8 @@ titre : Cycle de la vitamine K
 sujet : Vitamine K contre AVK — et ce qu'elle ne rattrape pas
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics
 source : Rang & Dale's Pharmacology
-source : RCP de la phytoménadione : antidote des AVK ; sans effet sur l'héparine
-source : RCP de l'héparine, de l'apixaban et du dabigatran : leurs antidotes, protamine, andexanet alfa, idarucizumab, en établissement
+source : RCP de la phytoménadione : antidote des AVK ; l'héparine agit par un autre mécanisme
+source : RCP de l'héparine, de l'apixaban et du dabigatran : leurs antidotes, protamine, andexanet alfa, idarucizumab
 
 enzyme VKORC1 : vitamine K époxyde réductase, la cible des AVK ; recycle la vitamine K dans le foie
 ligand Vitamine K apportée : alimentation ou phytoménadione
@@ -32950,10 +32954,13 @@ scénario Vitamine K sous apixaban : apixaban 10- ; phytoménadione 60-
 titre : Alcool, acétaldéhyde et récompense
 sujet : Disulfirame, effet antabuse, naltrexone, nalméfène, acamprosate, baclofène
 source : Rang & Dale's Pharmacology
-source : RCP du disulfirame : inhibition irréversible de l'aldéhyde déshydrogénase, accumulation d'acétaldéhyde et réaction antabuse à la moindre prise d'alcool
+source : RCP du disulfirame : inhibition de l'acétaldéhyde-déshydrogénase, accumulation d'acétaldéhyde et réaction antabuse même avec une petite quantité d'alcool, jusqu'à deux semaines après l'arrêt
+source : Rang & Dale's Pharmacology : l'inhibition de l'aldéhyde déshydrogénase par le disulfirame est irréversible
 source : RCP du métronidazole : effet antabuse avec l'alcool ; association au disulfirame déconseillée, bouffées délirantes et état confusionnel
-source : RCP de la naltrexone et du nalméfène : blocage du renforcement lié aux opioïdes endogènes libérés par l'alcool
-source : RCP de l'acamprosate : correction de l'hyperexcitabilité glutamatergique qui persiste après le sevrage
+source : RCP de la naltrexone : blocage du renforcement lié aux opioïdes endogènes libérés par l'alcool
+source : RCP du nalméfène : antagoniste des récepteurs mu et delta, agoniste partiel kappa ; consommation d'alcool réduite, probablement par modulation des fonctions cortico-mésolimbiques
+source : RCP de l'acamprosate : antagonise l'action des acides aminés excitateurs, en particulier du glutamate, et stimule la neurotransmission inhibitrice GABAergique
+source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'acamprosate corrige l'hyperexcitabilité glutamatergique qui persiste après le sevrage
 source : RCP du baclofène dans l'alcoolodépendance : agoniste GABA-B, moins de dopamine libérée par l'alcool
 
 ligand Éthanol : l'alcool bu ; dessiné comme en consommation
@@ -33015,8 +33022,8 @@ sujet : Substituts nicotiniques, varénicline, bupropion
 source : Rang & Dale's Pharmacology
 source : RCP de la varénicline : agoniste partiel alpha-4-bêta-2, moins de manque, et une cigarette fumée pendant le traitement procure moins de satisfaction
 source : RCP des substituts nicotiniques : agoniste des récepteurs nicotiniques, suppression des symptômes de manque
-source : RCP du bupropion : inhibition de la recapture de la dopamine et de la noradrénaline, manque atténué sans apport de nicotine
-source : RCP des substituts nicotiniques : l'arrêt du tabac lève l'induction du CYP1A2 (clozapine, olanzapine, théophylline)
+source : RCP du bupropion : inhibition de la recapture de la noradrénaline et de la dopamine ; son mécanisme dans l'aide à l'arrêt du tabac n'est pas connu, noradrénergique et/ou dopaminergique
+source : RCP des substituts nicotiniques : l'arrêt du tabac lève l'induction du CYP1A2 (clozapine, théophylline, ropinirole)
 
 ligand Acétylcholine
 récepteur Nicotinique alpha-4-bêta-2 : aire tegmentale ventrale ; sa réponse s'émousse sous nicotine au long cours
@@ -33061,11 +33068,13 @@ scénario Cigarette sous varénicline : varénicline 10- ; nicotine 50-70
 titre : Veille et sommeil
 sujet : Antagonistes de l'orexine, mélatonine, éveillants, oxybate de sodium
 source : Rang & Dale's Pharmacology
-source : RCP du daridorexant : antagoniste des récepteurs OX1R et OX2R, baisse de la pression d'éveil, sans action sur le récepteur GABA-A
-source : RCP de la mélatonine : récepteurs MT1 et MT2 des noyaux suprachiasmatiques, endormissement favorisé, pas une sédation directe
+source : RCP du daridorexant : antagoniste des récepteurs OX1R et OX2R, baisse de l'état d'éveil, ce qui laisse venir le sommeil
+source : RCP de la mélatonine : récepteurs MT1 et MT2, régulation des rythmes circadiens et du sommeil, latence d'endormissement raccourcie
+source : Rang & Dale's Pharmacology : les récepteurs MT1 et MT2 de la mélatonine siègent dans les noyaux suprachiasmatiques
 source : RCP du pitolisant : antagoniste et agoniste inverse H3, activité des neurones histaminergiques renforcée ; efficacité diminuée par les antihistaminiques H1 qui passent dans le cerveau
 source : RCP du modafinil : inhibition de la recapture de la dopamine, mécanisme incomplètement élucidé
-source : RCP de l'oxybate de sodium : agoniste GABA-B, endormissement rapide, dépression centrale majorée par les hypnotiques, les opioïdes et l'alcool
+source : RCP de l'oxybate de sodium : dépresseur du système nerveux central, mécanisme précis inconnu ; dépression centrale majorée par les hypnotiques sédatifs et l'alcool ; contre-indiqué avec les opiacés et les barbituriques
+source : Rang & Dale's Pharmacology : l'oxybate de sodium est agoniste du récepteur GABA-B
 
 ligand Orexines : neurones de l'hypothalamus latéral, entretiennent l'éveil
 récepteur OX1R et OX2R
@@ -33118,9 +33127,11 @@ scénario Oxybate, puis daridorexant : oxybate de sodium 10- ; daridorexant 50-
 titre : Glutamate et récepteur NMDA
 sujet : Mémantine, eskétamine, riluzole
 source : Rang & Dale's Pharmacology
-source : RCP de la mémantine : antagoniste NMDA d'affinité modérée, bloque l'activation tonique excessive et laisse passer le signal physiologique ; association à l'amantadine, à la kétamine et au dextrométhorphane à éviter
+source : RCP de la mémantine : antagoniste NMDA d'affinité modérée, module les effets de taux pathologiquement élevés de glutamate ; association à l'amantadine, à la kétamine et au dextrométhorphane à éviter
+source : Rang & Dale's Pharmacology : la mémantine bloque l'activation tonique excessive du récepteur NMDA et laisse passer le signal physiologique
 source : RCP de l'eskétamine : blocage NMDA, libération de glutamate et activation des récepteurs AMPA ; dissociation et élévation de la pression artérielle après chaque séance
-source : RCP du riluzole : inhibition de la libération présynaptique de glutamate, excitotoxicité réduite
+source : RCP du riluzole : inhibition de processus glutamatergiques, le glutamate jouant un rôle dans la mort neuronale de la SLA ; mécanisme incertain
+source : Rang & Dale's Pharmacology : le riluzole inhibe la libération présynaptique de glutamate
 
 récepteur NMDA des interneurones : sur les interneurones GABAergiques du cortex
 relais Interneurones GABAergiques : freinent les neurones glutamatergiques
@@ -33246,7 +33257,7 @@ titre : Lymphocyte B et anticorps
 sujet : Anti-CD20, bélimumab — vacciner avant de commencer
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les plasmocytes à longue vie ne portent pas CD20 et échappent aux anti-CD20
-source : RCP du rituximab : déplétion des lymphocytes B CD20 ; hypogammaglobulinémie ; réponse diminuée aux vaccins à antigène nouveau ; vaccins vivants contre-indiqués ; dépistage de l'hépatite B avant traitement
+source : RCP du rituximab : déplétion des lymphocytes B CD20 ; hypogammaglobulinémie ; réponse diminuée aux vaccins à antigène nouveau ; vaccins viraux vivants non recommandés ; dépistage de l'hépatite B avant traitement
 source : RCP de l'ocrélizumab et de l'ofatumumab : terminer les vaccinations avant le début du traitement ; baisse des immunoglobulines
 source : RCP du bélimumab : inhibe la survie des lymphocytes B, dont les lymphocytes B autoréactifs, et leur différenciation en plasmocytes ; baisse des auto-anticorps anti-ADN double brin
 
@@ -33382,7 +33393,7 @@ source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : l'adrénaline, par les récepteurs alpha-1, relève la pression artérielle, par les bêta-2, dilate les bronches et freine la libération des médiateurs du mastocyte ; les antihistaminiques ne traitent pas le choc anaphylactique
 source : RCP de l'adrénaline en auto-injecteur : traitement d'urgence de l'anaphylaxie
 source : RCP du cromoglicate de sodium collyre : stabilisant de la membrane des mastocytes, usage préventif et régulier
-source : RCP du kétotifène collyre et de l'olopatadine collyre : antagoniste H1 et inhibiteur de la libération des médiateurs par les mastocytes
+source : RCP du kétotifène collyre et de l'olopatadine collyre : antagoniste H1 ; une action sur la libération des médiateurs par les mastocytes suggérée par des études in vitro (et chez l'animal pour le kétotifène)
 source : RCP de l'omalizumab : asthme allergique sévère, polypose naso-sinusienne, urticaire chronique spontanée
 
 ligand Allergène
@@ -33700,7 +33711,7 @@ sujet : Constipation sous opioïde, antagonistes mu périphériques, laxatifs, p
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le récepteur mu de l'intestin freine la propulsion et la sécrétion ; le lopéramide, repoussé par la glycoprotéine P, ne franchit presque pas la barrière hémato-encéphalique
 source : RCP du naloxégol : antagoniste périphérique des récepteurs mu, sans effet sur l'analgésie ; contre-indiqué en cas d'occlusion digestive connue ou suspectée et avec les inhibiteurs puissants du CYP3A4
-source : RCP de l'oxycodone + naloxone : la naloxone orale, presque entièrement détruite au premier passage hépatique, agit sur l'intestin
+source : RCP britannique de l'oxycodone + naloxone : la naloxone orale, presque entièrement détruite au premier passage hépatique, agit sur l'intestin
 source : RCP du prucalopride : agoniste sélectif des récepteurs 5-HT4
 source : RCP du linaclotide : agoniste de la guanylate cyclase C ; le GMPc augmente la sécrétion de chlorure et de bicarbonate dans la lumière
 source : RCP du lopéramide : contre-indiqué dans la dysenterie avec fièvre élevée et sang dans les selles, et dans la colite pseudomembraneuse ; troubles du rythme au surdosage
@@ -33870,7 +33881,7 @@ sujet : Isotrétinoïne, acitrétine, alitrétinoïne — acné, psoriasis, ecz�
 source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les rétinoïdes agissent par les récepteurs nucléaires RAR et RXR ; l'isotrétinoïne réduit la taille et la sécrétion des glandes sébacées ; sécheresse cutanéo-muqueuse et hypertriglycéridémie sont des effets de classe
 source : RCP de l'isotrétinoïne : programme de prévention de la grossesse ; association aux cyclines contre-indiquée ; lipides et transaminases surveillés ; troubles de l'humeur recherchés
-source : RCP de l'acitrétine : normalise la prolifération et la kératinisation de l'épiderme ; contraception jusqu'à trois ans après l'arrêt, alcool proscrit parce qu'il reforme l'étrétinate ; cyclines et méthotrexate contre-indiqués
+source : RCP de l'acitrétine : normalise la prolifération et la kératinisation de l'épiderme ; contraception jusqu'à trois ans après l'arrêt, alcool contre-indiqué chez la femme en âge de procréer pendant le traitement et deux mois après, parce qu'il favorise la transformation en étrétinate ; cyclines et méthotrexate contre-indiqués
 source : RCP de l'alitrétinoïne : eczéma chronique sévère des mains, mécanisme dans cette indication inconnu ; tétracyclines contre-indiquées ; triglycérides surveillés
 
 ligand Acide rétinoïque : dérivé de la vitamine A
@@ -33939,7 +33950,7 @@ source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : le ritonavir à faible dose, inhibiteur puissant du CYP3A4, relève l'exposition de l'antiprotéase associée et celle des autres substrats du CYP3A4
 source : RCP du ritonavir : inhibiteur du CYP3A4 et de la glycoprotéine P ; inducteur de la glucuronoconjugaison et de plusieurs cytochromes ; éthinylestradiol diminué ; digoxine augmentée ; substrats du CYP3A4 contre-indiqués, dont simvastatine, colchicine chez l'insuffisant rénal ou hépatique, midazolam oral, triazolam, quétiapine, amiodarone
 source : RCP du darunavir : toujours associé à un potentialisateur ; rifampicine et millepertuis contre-indiqués
-source : RCP de nirmatrelvir + ritonavir : le ritonavir n'a pas d'activité antivirale propre, il maintient les concentrations de nirmatrelvir ; interactions dominantes ; l'inhibition persiste plusieurs jours après la dernière prise ; inducteurs puissants contre-indiqués
+source : RCP de nirmatrelvir + ritonavir : le ritonavir inhibe le métabolisme du nirmatrelvir par le CYP3A et en augmente les concentrations plasmatiques ; risque d'effets indésirables graves par interactions ; l'inhibition persiste plusieurs jours après la dernière prise ; inducteurs puissants contre-indiqués
 
 enzyme CYP3A4 : intestin et foie
 transporteur Glycoprotéine P : pompe d'efflux de l'intestin et du rein
@@ -34002,7 +34013,7 @@ source : Rang & Dale's Pharmacology
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les aminosides se fixent sur la sous-unité 30S du ribosome bactérien ; ils s'accumulent dans les cellules du tubule proximal et dans les cellules ciliées de l'oreille interne ; ototoxicité cochléaire et vestibulaire irréversible, majorée par les diurétiques de l'anse ; néphrotoxicité majorée par la vancomycine et la ciclosporine
 source : Goodman & Gilman's The Pharmacological Basis of Therapeutics : les diurétiques de l'anse bloquent NKCC2 dans l'anse de Henle et NKCC1 dans la strie vasculaire de la cochlée ; la ciclosporine et le tacrolimus resserrent l'artériole afférente du glomérule
 source : RCP de la gentamicine et de l'amikacine : fonction rénale avant et pendant, concentration résiduelle ; atteinte cochléovestibulaire irréversible
-source : RCP du furosémide : troubles de l'audition, surtout à forte dose intraveineuse et en insuffisance rénale
+source : RCP du furosémide : troubles de l'audition, surtout chez l'insuffisant rénal ou hypoprotéinémique, surdité parfois irréversible ; risques néphrotoxiques et ototoxiques des aminosides augmentés
 source : RCP de la vancomycine : néphrotoxicité majorée par un aminoside
 
 relais Ribosome bactérien 30S

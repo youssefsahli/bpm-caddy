@@ -693,16 +693,23 @@ fn conversion_tables_values(edits: &TableEdits) -> Vec<(&'static str, String)> {
 /// One drug card as a printable A4 monograph: identity, every filled
 /// section in reading order, the pharmacokinetics as a definition list
 /// and the numbered sources at the foot.
+///
+/// `routes` : la section « Cytochromes et transporteurs » telle que
+/// l'écran l'écrit — les voies de la fiche et les fiches de la base
+/// qu'elle y rencontre, en texte. Elle se calcule contre la base entière,
+/// que ce module ne connaît pas : l'appelant la lui passe, vide quand la
+/// fiche n'est pas dans la table.
 pub fn open_drug_monograph(
     d: &Drug,
     posologies: &[crate::db::Posologie],
     sourced: &[(String, String)],
+    routes: &str,
     template_path: &std::path::Path,
 ) -> Result<PathBuf, String> {
     compile_and_open(
         fill(
             &template_source("monographie", template_path),
-            &monograph_values(d, posologies, sourced),
+            &monograph_values(d, posologies, sourced, routes),
         ),
         &format!("monographie_{}", d.id),
     )
@@ -715,6 +722,7 @@ fn monograph_values(
     d: &Drug,
     posologies: &[crate::db::Posologie],
     sourced: &[(String, String)],
+    routes: &str,
 ) -> Vec<(&'static str, String)> {
     let mut src = String::new();
     let mut sub = d.dci.trim().to_owned();
@@ -759,6 +767,9 @@ fn monograph_values(
         ("Posologie", d.dosage.as_str()),
         ("Contre-indications", d.contraindications.as_str()),
         ("Interactions", d.ddi.as_str()),
+        // La feuille dit ce que dit l'écran : la section des voies suit
+        // les interactions, comme à l'écran.
+        ("Cytochromes et transporteurs", routes),
         ("Effets indésirables", d.adverse.as_str()),
         ("Toxicité / marge thérapeutique", d.toxicity.as_str()),
         ("Surveillance", d.monitoring.as_str()),
@@ -5030,6 +5041,9 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 "Liaison aux protéines".to_owned(),
                 "87 % (RCP Eliquis, 5.2)".to_owned(),
             )],
+            "CYP3A4 — substrat, voie partielle. Freiné par : Clarithromycine, Itraconazole, \
+             Posaconazole. Accéléré par : Rifampicine, Millepertuis.\n\nP-gp — substrat, force \
+             non chiffrée par la fiche. Freiné par : Clarithromycine, Vérapamil.",
         ),
         // **Une liste d'aperçu a plus d'une ligne.** Ce modèle-ci range
         // les fiches par famille : sur un seul dispositif, ni le
@@ -8796,7 +8810,12 @@ mod tests {
         };
         let source = fill(
             DEFAULT_MONOGRAPHIE_TEMPLATE,
-            &monograph_values(&d, &[], &[]),
+            &monograph_values(
+                &d,
+                &[],
+                &[],
+                "CYP3A4 — substrat, voie partielle. Freiné par : Clarithromycine, Itraconazole.",
+            ),
         );
         // Hostile text is escaped, never interpreted as Typst markup.
         assert!(!source.contains("#eval \"X\"]"));
@@ -8825,7 +8844,12 @@ mod tests {
         d.sources.clear();
         let world = PdfWorld::new(fill(
             DEFAULT_MONOGRAPHIE_TEMPLATE,
-            &monograph_values(&d, &[], &[]),
+            &monograph_values(
+                &d,
+                &[],
+                &[],
+                "CYP3A4 — substrat, voie partielle. Freiné par : Clarithromycine, Itraconazole.",
+            ),
         ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
     }

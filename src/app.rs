@@ -42801,6 +42801,9 @@ impl App {
         let mut out = vec![
             motif::select_width(ui, titles).min(width * 0.7),
             Self::button_width(ui, tr("cascades_new")),
+            // Le filtre du choix : cinquante-neuf titres ne se parcourent
+            // pas dans une liste déroulante.
+            Self::field_width(ui, std::iter::once(tr("cascades_filter_hint"))).min(width * 0.7),
         ];
         if let Some(read) = &session.cascade_read {
             if session.cascade_edit.is_none() {
@@ -42866,9 +42869,22 @@ impl App {
                 .id_salt("cascades_strip")
                 .show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
+                        // Le choix ne propose que ce que le filtre retient —
+                        // et toujours la cascade ouverte, que le choix
+                        // doit pouvoir nommer.
+                        let wanted = fuzzy::sort_key(session.cascade_filter.trim());
                         let options: Vec<(i64, String)> = session
                             .cascade_index
                             .iter()
+                            .filter(|c| {
+                                wanted.is_empty()
+                                    || session.cascade_open == Some(c.id)
+                                    || fuzzy::contains_folded(&fuzzy::sort_key(&c.title), &wanted)
+                                    || fuzzy::contains_folded(&fuzzy::sort_key(&c.subject), &wanted)
+                                    || c.molecules.iter().any(|m| {
+                                        fuzzy::contains_folded(&fuzzy::sort_key(m), &wanted)
+                                    })
+                            })
                             .map(|c| {
                                 let title = if c.title.is_empty() {
                                     tr("cascade_untitled").to_owned()
@@ -42887,6 +42903,13 @@ impl App {
                         if motif::button(ui, tr("cascades_new")).clicked() {
                             make = true;
                         }
+                        motif::field(
+                            ui,
+                            widths[2],
+                            egui::TextEdit::singleline(&mut session.cascade_filter)
+                                .hint_text(motif::hint(tr("cascades_filter_hint"))),
+                        )
+                        .on_hover_text(tr("cascades_filter_tooltip"));
                         if let Some(read) = read.as_ref() {
                             let stories = if session.cascade_edit.is_none() {
                                 read.parsed.scenarios.as_slice()
@@ -56413,10 +56436,24 @@ impl App {
                             )
                         })
                         .collect();
+                    // Les voies, telles que l'écran les écrit : le même
+                    // texte, sans les liens.
+                    let routes: String = session
+                        .mono_links
+                        .get("routes")
+                        .map(|segs| {
+                            segs.iter()
+                                .map(|s| match s {
+                                    MonoSeg::Text(t) | MonoSeg::Link(t, _) => t.as_str(),
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
                     if let Err(e) = crate::pdf::open_drug_monograph(
                         &card,
                         &session.posologies,
                         &sourced,
+                        &routes,
                         &config.doc_template_path("monographie"),
                     ) {
                         session.error = Some(e);

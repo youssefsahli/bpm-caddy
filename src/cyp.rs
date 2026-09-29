@@ -569,9 +569,10 @@ pub const TABLE: &[Profile] = &[
         label: "Posaconazole",
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
-            Action::new(Pgp, Inhibitor, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Pgp, Substrate, None),
         ],
-        source: "Noxafil : « Inhibiteur très puissant du CYP3A4 et de la P-glycoprotéine, sans effet notable sur les autres cytochromes » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
+        source: "Noxafil : « Inhibiteur très puissant du CYP3A4, sans effet notable sur les autres cytochromes ; il inhibe aussi la P-glycoprotéine dans une mesure non chiffrée, et en est le substrat ».",
     },
     Profile {
         needs: &["fluconazole"],
@@ -633,21 +634,21 @@ pub const TABLE: &[Profile] = &[
         needs: &["verapamil"],
         label: "Vérapamil",
         actions: &[
-            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
-            Action::new(Pgp, Inhibitor, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
         ],
-        source: "Isoptine : « Le vérapamil est un inhibiteur puissant du CYP3A4 et de la P-gp » ; « Métabolisme hépatique intense de premier passage par le CYP3A4 » ; Tarka : « Le vérapamil inhibe le CYP3A4 et la P-gp ».",
+        source: "Isoptine : « Le vérapamil est un inhibiteur modéré du CYP3A4 et un inhibiteur de la P-gp » ; « Métabolisme hépatique intense de premier passage par le CYP3A4 » ; Tarka : « Le vérapamil inhibe le CYP3A4 et la P-gp ».",
     },
     Profile {
         needs: &["diltiazem"],
         label: "Diltiazem",
         actions: &[
-            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
             Action::new(Cyp3a4, Substrate, Some(Strong)),
-            Action::new(Pgp, Inhibitor, Some(Strong)),
+            Action::new(Pgp, Inhibitor, Some(Weak)),
         ],
-        source: "Tildiem : « Inhibiteur puissant du CYP3A4 et de la P-glycoprotéine » ; « Métabolisme hépatique important par le CYP3A4 » ; la P-glycoprotéine est dans la même phrase que le CYP3A4.",
+        source: "Tildiem : « Inhibiteur modéré du CYP3A4 et faible de la P-glycoprotéine » ; « Métabolisme hépatique important par le CYP3A4 ».",
     },
     Profile {
         needs: &["fluvoxamine"],
@@ -1033,9 +1034,9 @@ pub const TABLE: &[Profile] = &[
         label: "Gemfibrozil",
         actions: &[
             Action::new(Cyp2c8, Inhibitor, Some(Strong)),
-            Action::new(Oatp1b1, Inhibitor, Some(Strong)),
+            Action::new(Oatp1b1, Inhibitor, None),
         ],
-        source: "Lipur : « Le gemfibrozil est un inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée » ; Lipur : « inhibiteur puissant du CYP2C8 et du transporteur OATP1B1 ».",
+        source: "Lipur : « Le gemfibrozil est un inhibiteur puissant du CYP2C8 et un inhibiteur du transporteur OATP1B1 : l'association au répaglinide est contre-indiquée » — le « puissant » ne porte que sur le CYP2C8.",
     },
     Profile {
         needs: &["aprepitant"],
@@ -1591,8 +1592,10 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Pgp, Substrate, Some(Strong)),
             Action::new(Bcrp, Substrate, None),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
         ],
-        source: "Venclyxto : « Substrat majeur du CYP3A4 et de la P-gp » ; « association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration » ; « Substrat majeur du CYP3A4 et de la P-gp » ; « substrat de la P-gp et de la BCRP ».",
+        source: "Venclyxto : « le vénétoclax inhibe lui-même la P-gp et la BCRP » ; « Substrat majeur du CYP3A4 et de la P-gp » ; « association aux inhibiteurs puissants du CYP3A4 contre-indiquée à l'instauration et pendant toute la phase de titration » ; « Substrat majeur du CYP3A4 et de la P-gp » ; « substrat de la P-gp et de la BCRP ».",
     },
     Profile {
         needs: &["anagrelide", "xagrid"],
@@ -1920,11 +1923,11 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp3a4, Substrate, Some(Strong)),
             Action::new(Cyp2d6, Inhibitor, Some(Weak)),
             Action::new(Cyp2c9, Inducer, None),
-            Action::new(Pgp, Inhibitor, Some(Weak)),
-            Action::new(Bcrp, Inhibitor, Some(Weak)),
-            Action::new(Oatp1b1, Inhibitor, Some(Weak)),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Bcrp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
         ],
-        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6, ainsi que la P-gp, la BCRP et les OATP1B1/1B3 ».",
+        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 » ; « Il inhibe la P-gp, la BCRP et les OATP1B1/1B3 » — sans force, le « faiblement » de la fiche ne portant que sur le CYP2D6.",
     },
     Profile {
         needs: &["doravirine", "pifeltro"],
@@ -1940,7 +1943,7 @@ pub const TABLE: &[Profile] = &[
         label: "Letermovir",
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Moderate)),
-            Action::new(Cyp2c19, Inducer, Some(Moderate)),
+            Action::new(Cyp2c19, Inducer, None),
             Action::new(Cyp2c9, Inducer, None),
             Action::new(Oatp1b1, Inhibitor, None),
             Action::new(Pgp, Inducer, None),
@@ -2554,13 +2557,20 @@ mod tests {
         // Et la clarithromycine ne touche toujours pas la rosuvastatine :
         // sa fiche ne lui prête aucun rôle sur l'OATP1B1.
         assert!(on(("Zeclar", "clarithromycine"), ("Crestor", "rosuvastatine")).is_empty());
-        // La weight lit les deux forces sur un transporteur comme sur une
-        // enzyme : vérapamil puissant, dabigatran non chiffré.
-        let r = cross(&[t("Isoptine", "vérapamil"), t("Pradaxa", "dabigatran")]);
+        // Le poids lit les deux forces sur un transporteur comme sur une
+        // enzyme : clarithromycine puissante, dabigatran non chiffré — au
+        // premier rang ; le diltiazem, que sa fiche dit faible sur la
+        // P-gp, au dernier.
+        let r = cross(&[t("Zeclar", "clarithromycine"), t("Pradaxa", "dabigatran")]);
         assert!(r
             .crossings
             .iter()
             .any(|c| c.enzyme == Pgp && c.weight == Weight::Major));
+        let r = cross(&[t("Tildiem", "diltiazem"), t("Pradaxa", "dabigatran")]);
+        assert!(r
+            .crossings
+            .iter()
+            .any(|c| c.enzyme == Pgp && c.weight == Weight::Minor));
     }
 
     /// **Le choix de l'IPP sous clopidogrel, tel que les fiches

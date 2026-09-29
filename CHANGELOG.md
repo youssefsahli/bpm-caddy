@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.364.0] - 2026-09-29
+
+### Added
+- Monographie imprimée : la section « Cytochromes et transporteurs »
+  suit les interactions, comme à l'écran.
+
+### Fixed
+- « CYP et P-gp » : forces relues contre les RCP. Le diltiazem et le
+  vérapamil sont des inhibiteurs modérés du CYP3A4, et le diltiazem un
+  inhibiteur faible de la P-gp (le dabigatran sous diltiazem n'est plus
+  au premier rang) ; le posaconazole inhibe la P-gp sans force chiffrée
+  et en est substrat ; le gemfibrozil n'est puissant que sur le CYP2C8 ;
+  le cobicistat inhibe la P-gp, la BCRP et l'OATP1B1 sans le
+  « faiblement » que la fiche lui prêtait ; le vénétoclax inhibe la P-gp
+  et la BCRP (la digoxine et le dabigatran sont signalés). Fiches
+  Tildiem, Isoptine, Noxafil, Lipur, Genvoya et Venclyxto corrigées.
+- Cascades : chaque ligne « RCP de … » relue contre le RCP français
+  (trente corrections). L'allopurinol avec l'azathioprine ou la
+  mercaptopurine est contre-indiqué ; le bisoprolol ne contre-indique
+  que l'asthme sévère ; sous dutastéride, le PSA se relit contre une
+  nouvelle valeur de référence prise après six mois (le doublement vaut
+  pour le finastéride) ; ce que le RCP ne dit pas est attribué au manuel
+  qui le dit, ou passé en commentaire.
+- « Cascades », fenêtre étroite : le filtre des titres est aussi dans la
+  bande, et le choix ne propose que les cascades qu'il retient.
+
 ## [0.363.0] - 2026-09-29
 
 ### Fixed
