@@ -61295,7 +61295,7 @@ impl App {
             // ment est alors la mesure.
             let money_text = |c: i64| format!("{} €", euros(c));
             let expected_text =
-                |c: &crate::caisse::Counted| c.expected.map_or_else(|| "—".to_owned(), &money_text);
+                |c: &crate::caisse::Counted| c.expected.map_or_else(|| "—".to_owned(), money_text);
             let gap_text = |c: &crate::caisse::Counted| match c.gap() {
                 None => "—".to_owned(),
                 Some(0) => "0,00 €".to_owned(),

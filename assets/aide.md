@@ -109,8 +109,8 @@ clairance, grossesse et allaitement, sujet âgé, et interactions sur les
 cytochromes.
 
 La lecture du sujet âgé est la seule dont la donnée est **déjà au
-dossier** : la date de naissance, saisie à la création. Le rein modifie
-la dose, l'âge modifie le choix. Les lignes viennent de la liste
+dossier** : la date de naissance, saisie à la création. La fonction rénale
+conduit à adapter la dose ; l'âge, à reconsidérer le choix de la molécule. Les lignes viennent de la liste
 française de Laroche, des critères STOPP/START et des critères de Beers ;
 chacune indique le risque et l'alternative. Aucun arrêt brutal : l'arrêt
 d'un psychotrope chez le sujet âgé expose davantage que sa poursuite, et
@@ -171,7 +171,7 @@ colonnes et est imprimée telle quelle : quatre cases vides se liraient
 « rien à prendre ». Une prise « si besoin » est sortie de la grille avec
 sa condition, pour ne pas devenir systématique au pilulier. Une prise
 hebdomadaire est également sortie de la grille et écrite en toutes
-lettres : le méthotrexate est hebdomadaire.
+lettres, comme pour le méthotrexate.
 
 **Renouvellement.** Le rang de la délivrance sur le total, la période
 couverte par la délivrance en cours, la date de fin de l'ordonnance, et
@@ -207,7 +207,7 @@ ouverte » — les microgranules s'avalent sans être croqués. C'est le cas
 le plus fréquent en gériatrie ; le classer en « non » ferait modifier
 une ordonnance sans nécessité.
 
-**La forme galénique décide, non la molécule.** Pour la morphine :
+**La conduite dépend de la forme galénique et non de la molécule.** Pour la morphine :
 Moscontin jamais, Skenan en ouvrant la gélule. Les formes non orales —
 injectables, implants — ont aussi leur ligne, qui indique l'absence
 d'objet.
@@ -256,7 +256,7 @@ cascade. Un clic pose l'écran sur le chapitre. Les tables du terrain
 lignes disent aussi « aucune adaptation », et un compte les lirait
 comme des alertes.
 
-**Le foie n'a pas de DFG.** La fonction rénale s'exprime par un chiffre
+**Le foie ne s'évalue pas par un DFG.** La fonction rénale s'exprime par un chiffre
 de laboratoire ; la fonction hépatique par un stade — Child-Pugh A, B ou
 C — attribué par le clinicien sur cinq critères, dont deux cliniques.
 Le panneau propose donc trois boutons et non un champ numérique.
@@ -404,7 +404,7 @@ parcourent ainsi. Le titre du cadre indique le facteur de zoom dès qu'il
 diffère de cent pour cent, le nombre de noms non affichés, lisibles au
 survol, et le nombre de produits hors du cadre.
 
-Le zoom arbitre entre **vue d'ensemble** et **exploration**. Réduite, la
+Le zoom permet de passer de la vue d'ensemble à l'exploration. Réduite, la
 carte affiche davantage de produits — dans la limite d'un plafond fixe —
 au détriment des noms. Agrandie, elle s'étend au-delà du cadre et fait
 entrer d'autres produits, tous nommés, jusqu'à huit fois la taille
@@ -445,7 +445,7 @@ clavier, une boîte dans l'autre main.
 contre-indication, triangle pour une précaution, coche pour une
 utilisation autorisée par la table, points de suspension quand une
 donnée manque. Elles se lisent sans le texte et sans la couleur.
-L'onglet « Signaux » prend la couleur de l'alerte la plus grave : visible
+L'onglet « Signaux » prend la couleur de l'alerte la plus grave, visible
 depuis « Conseils » ou « Posologie ».
 
 **Cinq pages, parcourues avec les flèches gauche et droite.** Haut et
@@ -466,7 +466,7 @@ page, la bande d'onglets disparaît.
 **« Précautions » s'ouvre sur une rangée d'organes** : les organes
 exposés à une toxicité, du plus grave au moins grave, en couleur. Pour
 la Cordarone : thyroïde et poumon en rouge, puis cœur, œil, foie, peau,
-système nerveux — le profil de l'amiodarone d'un coup d'œil. Degré et
+système nerveux. Degré et
 source au survol. La rangée ne retient que la **toxicité** :
 l'amiodarone traite le cœur et l'altère, et mêler indication et
 toxicité afficherait deux fois « Cœur ». Un organe absent ne signifie
@@ -482,7 +482,7 @@ sur la fiche recherchée : chaque ligne **avec la posologie du dossier**
 ligne en fait la recherche en cours**. Un liseré signale les lignes
 qu'une table demande de vérifier, pour trier avant de les ouvrir. Seules
 ces lignes sont marquées : « à vérifier » et « sans donnée » sont des
-réponses, non des alertes, et les marquer marquerait toute l'ordonnance.
+réponses et non des alertes ; les marquer reviendrait à marquer toute l'ordonnance.
 Cette page permet la revue d'ordonnance au comptoir sans ressaisir les
 noms. Sans dossier ouvert, elle n'apparaît pas.
 
@@ -507,7 +507,7 @@ position serait manquée.
 
 Une table sans réponse n'affiche pas de pastille : une rangée de « à
 vérifier » ne signale rien. Quand aucune table ne répond, une ligne
-l'indique — **l'absence de donnée n'est pas une autorisation**.
+l'indique : **l'absence de donnée n'est pas une autorisation**.
 
 Le foie n'y figure pas : il demande un stade de Child-Pugh, qu'aucun
 dossier ne porte. Le stade se choisit au croisement.
@@ -585,7 +585,7 @@ anticoagulant, malaise antérieur, vaccin récent), le vaccin tracé —
 nom, dose, lot, péremption, voie, site, heure —, les suites
 (surveillance de quinze minutes, inscription au carnet, consignes) et
 ce que le calendrier vaccinal doit encore d'après le carnet du patient.
-Une réponse « oui » est une question à instruire, pas une
+Une réponse « oui » est une question à instruire et non une
 contre-indication calculée. Phrases réécrivables sous « Fiche de
 vaccination » ; mise en page, modèle `vaccin`.
 
@@ -632,7 +632,7 @@ ils ne bloquent rien. Si aucune ligne ne s'applique, l'écran le signale :
 orientation médicale.
 
 Aucune ligne n'est présélectionnée et toute posologie est modifiable :
-l'application propose, le pharmacien décide.
+le choix revient au pharmacien.
 
 Les adjuvants sont les fiches portant l'étiquette correspondante, avec
 leurs propres lignes de posologie : ajouter un produit revient à ajouter
@@ -722,8 +722,8 @@ occurrence. La trame est conservée, une exception s'applique ce jour-là.
 de congés, vérifications avant délivrance. Impression A4, une case par
 ligne, date et intervenant à remplir.
 
-Une liste n'est pas un protocole : un protocole est un arbre de
-décision ; une liste est une vérification d'exhaustivité.
+Une liste diffère d'un protocole : un protocole est un arbre de
+décision, une liste une vérification d'exhaustivité.
 
 **Aucune liste livrée** : une base neuve n'en comporte aucune. Chaque
 officine rédige les siennes.
@@ -732,9 +732,9 @@ officine rédige les siennes.
 
 « Cascades » dessine un mécanisme d'action : le ligand en haut, son
 récepteur, les relais, les messagers, et les effets en bas. Les flèches
-pleines activent, les flèches barrées inhibent ; les points qui courent
-le long d'une flèche disent que le signal passe, et une flèche dont la
-source est éteinte ne porte plus rien.
+pleines activent, les flèches barrées inhibent ; les points qui défilent
+le long d'une flèche indiquent que le signal passe ; une flèche dont la
+source est inactive ne transmet plus rien.
 
 **Les molécules** se cochent dans la liste de gauche. Cochée, une
 molécule est donnée à partir du temps affiché ; décochée, elle s'arrête.
@@ -759,8 +759,8 @@ filet horizontal étant l'état de repos ; un clic sur une clé de la
 légende masque ou rend une courbe. Un récepteur qui s'adapte se
 multiplie quand il est longtemps bloqué et se raréfie quand il est
 longtemps stimulé — son adaptation est tracée en tirets, et le filet
-sous sa case la montre sur la figure. C'est ce qui fait la tolérance, et le
-rebond à l'arrêt brutal : donner un bêtabloquant, avancer, le décocher,
+sous sa case la montre sur la figure. Ce mécanisme rend compte de la tolérance et du
+rebond à l'arrêt brutal ; pour l'observer : donner un bêtabloquant, avancer, le décocher,
 avancer encore.
 
 Sur un écran bas, « Figure » et « Courbes » se montrent l'une après
@@ -929,8 +929,8 @@ Six feuilles d'automesure à domicile : pression artérielle, glycémie,
 poids, débit expiratoire de pointe, INR, douleur.
 
 **Chaque feuille porte le protocole de mesure.** Une pression prise
-après un café, debout, ou une glycémie notée de mémoire n'ont pas de
-valeur. Chaque feuille comporte donc quatre parties : technique de
+après un café, debout, ou une glycémie notée de mémoire ne sont pas
+interprétables. Chaque feuille comporte donc quatre parties : technique de
 mesure, objectif, signes justifiant un appel immédiat, et grille de
 relevés.
 
@@ -1132,7 +1132,7 @@ même dossier sans se lire), et **ce qui y est partagé** — ruptures,
 versions des fiches et du contenu, valeurs sourcées — réglé réseau par
 réseau. Les messages et les fichiers vont toujours aux seules officines
 choisies, par le réseau qui les réunit. « Quitter ce réseau » retire sa
-clé et ses enregistrements ; les autres réseaux ne bougent pas. La carte
+clé et ses enregistrements ; les autres réseaux ne sont pas modifiés. La carte
 des connexions montre chaque réseau sur son arc, avec son nom.
 
 **Suivi de chaque officine.** Sous chaque officine appairée, la liste
@@ -1144,7 +1144,7 @@ dernier échec et sa raison : pas de réponse à l'adresse (poste éteint,
 port fermé ou adresse hors d'atteinte), officine qui n'est pas celle
 appairée, ou clé de réseau différente. Le nom sous lequel elle signe sert
 d'invite au champ du nom. « Essayer », à côté d'une officine à adresse,
-compose cette officine seule : on sait tout de suite si elle répond, sans
+contacte cette officine seule et indique aussitôt si elle répond, sans
 synchroniser les autres.
 
 Dans « Connexions », **« Derniers reçus »** liste ce que les autres
@@ -1192,8 +1192,8 @@ fiches, réglages. « Postes de l'officine… », dans Options › Base. Les
 le réseau d'officines a sa propre clé et n'accède à aucune de ces
 données.
 
-**Relier deux postes, pas à pas.** Un poste hors groupe dit dans
-Connexions ce qu'il entend et quoi faire :
+**Relier deux postes, pas à pas.** Un poste hors groupe indique dans
+Connexions les postes détectés et la marche à suivre :
 
 - Premier poste de l'officine : « Fonder le groupe sur cette base ». Sa
   base est conservée, avec sa numérotation des dossiers.
@@ -1266,8 +1266,8 @@ téléphone.
 l'opérateur) : « Se faire relayer par le réseau » sur un poste, et une
 officine amie du réseau qui coche « Relayer les téléphones des officines
 du réseau ». Le poste attend chez elle ; le téléphone l'y demande. Elle
-ne lit ni ne garde rien : la conversation, chiffrée de bout en bout, ne
-fait que passer.
+ne lit ni ne conserve rien : la conversation, chiffrée de bout en bout, ne
+fait que transiter.
 
 # Messagerie
 
@@ -1289,7 +1289,7 @@ conversations pour lui écrire d'un clic.
 
 « Groupes… » crée des **groupes de collègues** (« Préparateurs »,
 « Garde »). Une conversation adressée à un groupe en suit la
-composition : qui y entre la voit, qui en sort ne la voit plus.
+composition : un membre ajouté la voit, un membre retiré ne la voit plus.
 
 Un message peut **lier le dossier ouvert** : son nom s'affiche dans le
 fil, et un clic ouvre le dossier. Ctrl+Entrée envoie ; un message envoyé
@@ -1311,7 +1311,7 @@ conversations.
 (5 Mo au plus), chiffré comme lui. Il voyage en morceaux ; dans le fil,
 il s'enregistre d'un clic une fois entier, après vérification de son
 empreinte — un fichier incomplet ou altéré ne s'enregistre pas. Le nom
-reçu ne choisit pas où le fichier s'écrit. Un fichier pour une autre
+reçu ne détermine pas l'emplacement d'enregistrement. Un fichier pour une autre
 officine demande la même confirmation qu'un patient nommé.
 
 # Connexions
@@ -1455,7 +1455,7 @@ Quelques totaux : dossiers ouverts, fiches consultées, documents
 imprimés, lignes au registre, nombre de journées. Consultables dans
 **bpm-audit**, la fenêtre d'audit de l'officine.
 
-Le plus utile : « écritures concurrentes signalées », soit le nombre de
+Le compteur « écritures concurrentes signalées » indique le nombre de
 rechargements provoqués par l'écriture préalable d'un autre poste. Il
 révèle deux personnes travaillant sur la même donnée au même moment.
 
@@ -1528,8 +1528,8 @@ console ».
 
 **Coloration syntaxique** en cinq catégories : commentaires, chaînes,
 nombres, mots-clés et fonctions reconnues par la console. Un nom de
-fonction non coloré est inconnu du moteur : la faute de frappe se voit
-avant l'exécution.
+fonction non coloré est inconnu du moteur : une faute de frappe est ainsi
+repérable avant l'exécution.
 
 **Complétion.** Dès le début d'un mot, une liste s'ouvre sous le
 curseur : flèches haut et bas pour parcourir, tabulation pour insérer,

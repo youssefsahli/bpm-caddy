@@ -178,7 +178,7 @@ static TALLY: [AtomicU64; Signal::ALL.len()] = [const { AtomicU64::new(0) }; Sig
 /// Counted where the thing happens. Saturating, like everything here.
 pub fn tally(signal: Signal) {
     let slot = &TALLY[index(signal)];
-    let _ = slot.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
+    let _ = slot.try_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
         Some(n.saturating_add(1))
     });
 }

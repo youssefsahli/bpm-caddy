@@ -386,7 +386,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Bêtabloquant + anticholinestérasique",
-        detail: "Les deux ralentissent le cœur par des voies différentes et l'effet s'additionne : bradycardie, syncope, et la chute qui s'ensuit chez quelqu'un qu'on traite déjà pour ses troubles cognitifs. Prendre le pouls, demander s'il y a eu des malaises, et signaler l'association.",
+        detail: "Les deux ralentissent le cœur par des voies différentes et l'effet s'additionne : bradycardie, syncope et chute, chez un patient déjà traité pour des troubles cognitifs. Prendre le pouls, demander s'il y a eu des malaises, et signaler l'association.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -395,13 +395,13 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Bêtabloquant + amiodarone",
-        detail: "Bradycardie et troubles de la conduction, d'autant que l'amiodarone allonge aussi le QT et s'élimine sur des mois. L'association existe et se surveille, mais elle n'est jamais anodine : pouls, tolérance à l'effort, et un ECG si le patient dit se sentir ralenti.",
+        detail: "Bradycardie et troubles de la conduction, d'autant que l'amiodarone allonge aussi le QT et s'élimine sur des mois. L'association est possible sous surveillance étroite : pouls, tolérance à l'effort, et un ECG si le patient dit se sentir ralenti.",
     },
     Rule {
         kind: Kind::Duplicate(&["codéine", "tramadol", "lamaline", "izalgi", "poudre d'opium", "dihydrocodéine"], 2),
         severity: Severity::Alert,
         title: "Deux opioïdes faibles",
-        detail: "Deux sources d'opioïde faible sur la même ordonnance : les effets s'additionnent — somnolence, constipation, dépression respiratoire — et l'une des deux est souvent cachée dans une association au paracétamol. Faire la somme devant le patient et n'en garder qu'une.",
+        detail: "Deux sources d'opioïde faible sur la même ordonnance : les effets s'additionnent (somnolence, constipation, dépression respiratoire) et l'une des deux est souvent cachée dans une association au paracétamol. Faire la somme devant le patient et n'en garder qu'une.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -410,7 +410,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Sulfamide + insuline",
-        detail: "Les deux seuls antidiabétiques qui font l'hypoglycémie, ensemble : le risque est celui du malaise nocturne et de la chute chez le sujet âgé. Vérifier que le patient a du sucre sur lui, qu'il sait reconnaître les signes, et que l'entourage sait quoi faire.",
+        detail: "Association des deux seuls antidiabétiques hypoglycémiants : risque de malaise nocturne et de chute chez le sujet âgé. Vérifier que le patient a du sucre sur lui, qu'il sait reconnaître les signes, et que l'entourage sait quoi faire.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -419,7 +419,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Alpha-bloquant + antihypertenseur",
-        detail: "Hypotension orthostatique, surtout à l'instauration et à la première dose du soir : c'est un mécanisme de chute que personne ne relie au traitement de la prostate. Se lever en deux temps, prendre la dose au coucher, et signaler tout vertige au lever.",
+        detail: "Hypotension orthostatique, surtout à l'instauration et à la première dose du soir : ce mécanisme de chute est rarement rattaché au traitement de la prostate. Se lever en deux temps, prendre la dose au coucher, et signaler tout vertige au lever.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -428,7 +428,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "IPP + fer oral",
-        detail: "Le fer a besoin de l'acidité de l'estomac pour être absorbé, et l'IPP la supprime : le traitement martial échoue sans que personne comprenne pourquoi, et on augmente la dose au lieu de regarder l'ordonnance. Fer à distance, avec de la vitamine C, et réévaluer l'IPP.",
+        detail: "Le fer a besoin de l'acidité de l'estomac pour être absorbé, et l'IPP la supprime : le traitement martial échoue sans cause apparente, et la dose est parfois augmentée sans que l'ordonnance soit relue. Fer à distance, avec de la vitamine C, et réévaluer l'IPP.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -438,13 +438,13 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Triade néfaste",
-        detail: "Bloqueur du système rénine-angiotensine, diurétique et AINS ensemble : c'est l'association qui fait l'insuffisance rénale aiguë, d'autant plus vite qu'il fait chaud ou que le patient se déshydrate. L'AINS est celui des trois qui se retire.",
+        detail: "Bloqueur du système rénine-angiotensine, diurétique et AINS ensemble : cette association expose à l'insuffisance rénale aiguë, d'autant plus vite qu'il fait chaud ou que le patient se déshydrate. L'AINS est le médicament à retirer.",
     },
     Rule {
         kind: Kind::Combination(&[&["IEC"], &["sartan", "ARA II"]]),
         severity: Severity::Alert,
         title: "Double blocage",
-        detail: "IEC et sartan ensemble : le double blocage du système rénine-angiotensine n'apporte rien et multiplie l'insuffisance rénale et l'hyperkaliémie. À signaler au prescripteur.",
+        detail: "IEC et sartan ensemble : le double blocage du système rénine-angiotensine n'apporte pas de bénéfice et majore le risque d'insuffisance rénale et d'hyperkaliémie. À signaler au prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -453,7 +453,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Anticoagulant + AINS",
-        detail: "Le risque hémorragique digestif est multiplié, et ce n'est pas une question de dose : l'AINS se remplace par du paracétamol ou un topique, jamais délivré en conseil.",
+        detail: "Le risque hémorragique digestif est multiplié, quelle que soit la dose : l'AINS se remplace par du paracétamol ou un topique, jamais délivré en conseil.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -471,7 +471,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Cascade anticholinergique",
-        detail: "Un anticholinestérasique et un anticholinergique s'annulent : l'un est donné pour la mémoire, l'autre l'aggrave. C'est le critère STOPP le plus souvent retrouvé sur une ordonnance de sujet âgé.",
+        detail: "Un anticholinestérasique et un anticholinergique ont des effets opposés : l'un est prescrit pour la mémoire, l'autre l'altère. C'est le critère STOPP le plus souvent retrouvé sur une ordonnance de sujet âgé.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -525,7 +525,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Clopidogrel et IPP",
-        detail: "L'oméprazole et l'ésoméprazole inhibent le CYP2C19 qui active le clopidogrel. Le pantoprazole ou le rabéprazole font le même travail sans cette réserve.",
+        detail: "L'oméprazole et l'ésoméprazole inhibent le CYP2C19 qui active le clopidogrel. Le pantoprazole ou le rabéprazole n'exposent pas à cette interaction.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -552,7 +552,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Alert,
         title: "Deux sérotoninergiques",
-        detail: "Agitation, sueurs, tremblement, fièvre et diarrhée dans les heures qui suivent une introduction : c'est le syndrome sérotoninergique. Le tramadol et les triptans comptent, le millepertuis aussi.",
+        detail: "Agitation, sueurs, tremblement, fièvre et diarrhée dans les heures qui suivent une introduction : évoquer un syndrome sérotoninergique. Le tramadol, les triptans et le millepertuis sont à prendre en compte.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -574,7 +574,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Colchicine exposée",
-        detail: "La colchicine a une marge très étroite et un antidote inexistant : macrolides, azolés, vérapamil et ciclosporine font grimper ses concentrations. Diarrhée précoce sous colchicine : arrêt immédiat, c'est le premier signe de surdosage.",
+        detail: "La colchicine a une marge très étroite et pas d'antidote : macrolides, azolés, vérapamil et ciclosporine augmentent ses concentrations. Une diarrhée précoce sous colchicine, premier signe de surdosage, impose l'arrêt immédiat.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -619,7 +619,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Charge anticholinergique",
-        detail: "Confusion, chutes, rétention urinaire, constipation et sécheresse : les effets s'additionnent d'une molécule à l'autre. C'est l'ordonnance entière qu'il faut compter, pas chaque ligne.",
+        detail: "Confusion, chutes, rétention urinaire, constipation et sécheresse : les effets s'additionnent d'une molécule à l'autre. La charge anticholinergique s'évalue sur l'ensemble de l'ordonnance, et non ligne par ligne.",
     },
     Rule {
         kind: Kind::Duplicate(
@@ -628,7 +628,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Trois sédatifs",
-        detail: "Trois molécules sédatives ou plus : chutes et confusion, surtout après 75 ans. Chacune est justifiable, l'addition ne l'est pas — on hiérarchise et on retire dans l'ordre.",
+        detail: "Trois molécules sédatives ou plus : chutes et confusion, surtout après 75 ans. Chacune peut se justifier isolément, mais leur cumul expose au risque : hiérarchiser les molécules et les retirer dans l'ordre.",
     },
     Rule {
         kind: Kind::Duplicate(&["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"], 2),
@@ -640,7 +640,7 @@ const RULES: &[Rule] = &[
         kind: Kind::Duplicate(&["benzodiazépine", "zolpidem", "zopiclone"], 2),
         severity: Severity::Warn,
         title: "Deux benzodiazépines",
-        detail: "Deux benzodiazépines ou apparentés ensemble : rien n'est gagné en efficacité, tout l'est en dépendance et en chutes. Le relais vers une seule molécule se prépare.",
+        detail: "Deux benzodiazépines ou apparentés ensemble : aucun gain d'efficacité, mais un risque accru de dépendance et de chutes. Le relais vers une seule molécule se prépare.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -649,7 +649,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Info,
         title: "Œdème et diurétique",
-        detail: "L'œdème des chevilles des dihydropyridines n'est pas une rétention d'eau : un diurétique ne le corrige pas. Si le diurétique a été ajouté pour cela, c'est une cascade — la baisse de dose ou le changement de classe est la réponse.",
+        detail: "L'œdème des chevilles des dihydropyridines n'est pas une rétention d'eau : un diurétique ne le corrige pas. Si le diurétique a été ajouté pour cela, il s'agit d'une cascade de prescription : la baisse de dose ou le changement de classe est à proposer.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -673,7 +673,7 @@ const RULES: &[Rule] = &[
         kind: Kind::Duplicate(&["paracétamol"], 2),
         severity: Severity::Alert,
         title: "Deux sources de paracétamol",
-        detail: "Deux spécialités contenant du paracétamol sur la même ordonnance : c'est ainsi que se fait le surdosage, sans que personne l'ait voulu, parce que l'un des deux noms ne dit pas ce qu'il contient. Faire la somme des grammes par jour devant le patient, et ne garder qu'une source.",
+        detail: "Deux spécialités contenant du paracétamol sur la même ordonnance : situation classique de surdosage involontaire, le nom de l'une des spécialités ne mentionnant pas le paracétamol. Faire la somme des grammes par jour devant le patient, et ne garder qu'une source.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -682,7 +682,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Statine + inhibiteur enzymatique",
-        detail: "Macrolide, azolé ou inhibiteur calcique bradycardisant : la concentration de la statine grimpe et c'est la rhabdomyolyse. Pour une antibiothérapie courte, la statine se suspend le temps du traitement — l'arrêt de quelques jours ne coûte rien, l'association coûte un muscle.",
+        detail: "Macrolide, azolé ou inhibiteur calcique bradycardisant : la concentration de la statine augmente, avec un risque de rhabdomyolyse. Pour une antibiothérapie courte, la statine se suspend le temps du traitement : un arrêt de quelques jours est sans conséquence.",
     },
     // L'amlodipine et l'amiodarone ne sont **pas** dans la règle
     // ci-dessus, et c'est voulu : ce qu'elles imposent est un plafond de
@@ -717,7 +717,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Allopurinol + azathioprine",
-        detail: "L'allopurinol bloque la voie qui dégrade l'azathioprine : l'exposition est multipliée et l'aplasie médullaire est le risque, pas une éventualité théorique. L'association se refuse en délivrance et se discute avec le prescripteur ; si elle est maintenue, la dose d'azathioprine est divisée par quatre et la NFS surveillée.",
+        detail: "L'allopurinol bloque la voie qui dégrade l'azathioprine : l'exposition est multipliée, avec un risque réel d'aplasie médullaire. L'association se refuse en délivrance et se discute avec le prescripteur ; si elle est maintenue, la dose d'azathioprine est divisée par quatre et la NFS surveillée.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -746,7 +746,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Metformine et jours de maladie",
-        detail: "Metformine, diurétique et bloqueur du système rénine-angiotensine : le rein tient tant que le patient boit. Fièvre, diarrhée, vomissements ou forte chaleur, et les trois se suspendent le temps de l'épisode — c'est la règle des jours de maladie, et elle s'explique une fois pour toutes, par écrit.",
+        detail: "Metformine, diurétique et bloqueur du système rénine-angiotensine : la fonction rénale dépend de l'hydratation. En cas de fièvre, de diarrhée, de vomissements ou de forte chaleur, les trois se suspendent le temps de l'épisode. C'est la règle des jours de maladie, à expliquer au patient par écrit.",
     },
     Rule {
         kind: Kind::Duplicate(
@@ -755,7 +755,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Double antiagrégation",
-        detail: "Deux antiagrégants : après un stent c'est le traitement, mais il a une durée — souvent six à douze mois — au terme de laquelle il n'en reste qu'un. Chercher la date de pose sur le dossier, et si elle est ancienne, poser la question au prescripteur.",
+        detail: "Deux antiagrégants : après un stent, c'est le traitement, pour une durée limitée (souvent six à douze mois) au terme de laquelle un seul est conservé. Chercher la date de pose sur le dossier, et si elle est ancienne, poser la question au prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -764,7 +764,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Bêtabloquant + hypoglycémiant",
-        detail: "Le bêtabloquant masque les signes de l'hypoglycémie — tremblements, palpitations — et n'en laisse que les sueurs. Le patient doit le savoir : la sueur seule devient le signal, et la glycémie se contrôle au moindre doute plutôt que de se fier aux sensations.",
+        detail: "Le bêtabloquant masque les signes de l'hypoglycémie (tremblements, palpitations) et n'en laisse que les sueurs. En informer le patient : la sueur seule devient le signal, et la glycémie se contrôle au moindre doute plutôt que de se fier aux sensations.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -773,7 +773,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "AINS et tension",
-        detail: "Un AINS fait remonter la tension et annule une partie de l'effet du traitement, y compris pris quelques jours en automédication. Une tension qui se dérègle sans raison se cherche d'abord dans l'armoire à pharmacie du patient.",
+        detail: "Un AINS fait remonter la tension et annule une partie de l'effet du traitement, y compris pris quelques jours en automédication. Devant une tension qui se dérègle sans raison, rechercher d'abord une automédication par AINS.",
     },
     Rule {
         kind: Kind::Without(
@@ -791,7 +791,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Opioïde sans laxatif",
-        detail: "La constipation sous opioïde est constante, ne s'épuise pas avec le temps et se prévient dès la première prise. Aucun laxatif sur cette ordonnance : le proposer maintenant coûte une phrase, l'occlusion coûte une hospitalisation.",
+        detail: "La constipation sous opioïde est constante, ne s'épuise pas avec le temps et se prévient dès la première prise. Aucun laxatif sur cette ordonnance : en proposer un dès maintenant pour prévenir l'occlusion.",
     },
     Rule {
         kind: Kind::Without(
@@ -821,7 +821,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Corticoïde sans protection osseuse",
-        detail: "Une corticothérapie orale prolongée fait perdre de l'os dès les premiers mois, et rien sur cette ordonnance ne s'y oppose. Si la cure dépasse trois mois, la question du calcium, de la vitamine D et d'un bisphosphonate se pose au prescripteur — s'il s'agit d'une cure courte, il n'y a rien à faire et cette ligne se referme.",
+        detail: "Une corticothérapie orale prolongée fait perdre de l'os dès les premiers mois, et rien sur cette ordonnance ne s'y oppose. Si la cure dépasse trois mois, la question du calcium, de la vitamine D et d'un bisphosphonate se pose au prescripteur. S'il s'agit d'une cure courte, aucune mesure n'est nécessaire.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -830,7 +830,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Méthotrexate + cotrimoxazole",
-        detail: "Deux antifoliques ensemble : l'aplasie médullaire est le risque, et elle survient même sous méthotrexate hebdomadaire à faible dose. L'association est à proscrire — appeler le prescripteur pour un autre antibiotique avant de délivrer.",
+        detail: "Deux antifoliques ensemble : l'aplasie médullaire est le risque, et elle survient même sous méthotrexate hebdomadaire à faible dose. L'association est à proscrire : appeler le prescripteur pour un autre antibiotique avant de délivrer.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -848,7 +848,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Digoxine potentialisée",
-        detail: "Ces molécules font grimper la digoxinémie, parfois du double : nausées, vision jaune, pouls lent ou irrégulier et confusion en sont les premiers signes. La dose de digoxine se réduit à l'introduction et la digoxinémie se contrôle — cela ne s'improvise pas au comptoir.",
+        detail: "Ces molécules augmentent la digoxinémie, parfois du double : nausées, vision jaune, pouls lent ou irrégulier et confusion en sont les premiers signes. La dose de digoxine se réduit à l'introduction et la digoxinémie se contrôle, en lien avec le prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -857,7 +857,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Risque de syndrome sérotoninergique",
-        detail: "Agitation, tremblements, sueurs, diarrhée, fièvre et rigidité dans les heures qui suivent l'ajout : c'est un syndrome sérotoninergique, et il peut être grave. Le tramadol est le plus souvent en cause parce qu'il passe pour un simple antalgique. Signaler avant de délivrer.",
+        detail: "Agitation, tremblements, sueurs, diarrhée, fièvre et rigidité dans les heures qui suivent l'ajout : évoquer un syndrome sérotoninergique, potentiellement grave. Le tramadol est le plus souvent en cause parce qu'il passe pour un simple antalgique. Signaler avant de délivrer.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -875,7 +875,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Fluoroquinolone + corticoïde",
-        detail: "Le risque de rupture du tendon d'Achille est multiplié, et il est le plus élevé après 60 ans. Toute douleur tendineuse fait arrêter la quinolone et cesser tout appui sur le tendon — la rupture survient souvent sans effort particulier, parfois après l'arrêt du traitement.",
+        detail: "Le risque de rupture du tendon d'Achille est multiplié, et il est le plus élevé après 60 ans. Toute douleur tendineuse fait arrêter la quinolone et cesser tout appui sur le tendon ; la rupture survient souvent sans effort particulier, parfois après l'arrêt du traitement.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -905,7 +905,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Corticoïde inhalé sans traitement de crise",
-        detail: "Un traitement de fond de l'asthme sans bronchodilatateur de secours sur l'ordonnance : soit le patient en a un chez lui et il faut vérifier sa date de péremption et sa technique, soit il n'en a pas, et c'est la crise qui le découvrira. La question se pose maintenant.",
+        detail: "Un traitement de fond de l'asthme sans bronchodilatateur de secours sur l'ordonnance : soit le patient en a un chez lui et il faut vérifier sa date de péremption et sa technique, soit il n'en a pas, et il en sera dépourvu lors de la prochaine crise. Poser la question dès maintenant.",
     },
     Rule {
         // The oral group deliberately lists molecules and not the class:
@@ -928,7 +928,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Bêtabloquant caché",
-        detail: "Un collyre bêtabloquant du glaucome passe dans la circulation par la muqueuse nasale et échappe au premier passage hépatique : il s'ajoute au bêtabloquant oral et la bradycardie, l'asthénie ou le bronchospasme qui suivent ne sont attribués ni à l'un ni à l'autre. Occlure le point lacrymal une minute après l'instillation divise ce passage. Un asthme est une contre-indication qui vaut aussi pour la goutte dans l'œil.",
+        detail: "Un collyre bêtabloquant du glaucome passe dans la circulation par la muqueuse nasale et échappe au premier passage hépatique : il s'ajoute au bêtabloquant oral et la bradycardie, l'asthénie ou le bronchospasme qui suivent ne sont attribués ni à l'un ni à l'autre. Occlure le point lacrymal une minute après l'instillation divise ce passage. L'asthme contre-indique aussi la forme collyre.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -955,7 +955,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Contraception sous inducteur",
-        detail: "L'inducteur enzymatique accélère la dégradation des hormones et fait échouer la contraception, pilule comme implant et anneau — le stérilet au cuivre et le dispositif au lévonorgestrel sont les deux méthodes qui n'en dépendent pas. L'échec est silencieux jusqu'au test de grossesse. Cela vaut pendant tout le traitement et encore quatre semaines après son arrêt, et le millepertuis compte, même acheté sans ordonnance.",
+        detail: "L'inducteur enzymatique accélère la dégradation des hormones et fait échouer la contraception, pilule comme implant et anneau ; le stérilet au cuivre et le dispositif au lévonorgestrel sont les deux méthodes qui n'en dépendent pas. L'échec est silencieux jusqu'au test de grossesse. Cela vaut pendant tout le traitement et encore quatre semaines après son arrêt, et le millepertuis compte, même acheté sans ordonnance.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -974,7 +974,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "AOD potentialisé",
-        detail: "Ces molécules inhibent la P-glycoprotéine, et pour certaines le CYP3A4 : l'exposition à l'anticoagulant direct monte sans que rien ne se voie, puisqu'il n'y a pas d'INR pour le dire. Selon la molécule et l'association, la dose se réduit ou l'association se contre-indique — la dronédarone et le kétoconazole sont contre-indiqués avec le dabigatran. Vérifier la dose prescrite contre l'âge, le poids et la clairance, et signaler tout saignement.",
+        detail: "Ces molécules inhibent la P-glycoprotéine, et pour certaines le CYP3A4 : l'exposition à l'anticoagulant direct augmente sans signe visible, faute d'INR pour le mesurer. Selon la molécule et l'association, la dose se réduit ou l'association se contre-indique : la dronédarone et le kétoconazole sont contre-indiqués avec le dabigatran. Vérifier la dose prescrite contre l'âge, le poids et la clairance, et signaler tout saignement.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -991,13 +991,13 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Corticoïde et glycémie",
-        detail: "Une corticothérapie fait monter la glycémie dès les premiers jours, surtout en fin de journée avec une prise matinale, et un diabète équilibré ne l'est plus. Prévenir le patient d'augmenter l'autosurveillance pendant la cure et de ne pas s'inquiéter d'une baisse à l'arrêt : c'est l'adaptation qui suit la corticothérapie, et elle se fait avec le prescripteur. Chez un patient non diabétique connu, une cure prolongée justifie de vérifier la glycémie.",
+        detail: "Une corticothérapie fait monter la glycémie dès les premiers jours, surtout en fin de journée avec une prise matinale, et peut déséquilibrer un diabète jusque-là contrôlé. Prévenir le patient d'augmenter l'autosurveillance pendant la cure et de ne pas s'inquiéter d'une baisse à l'arrêt : c'est l'adaptation qui suit la corticothérapie, et elle se fait avec le prescripteur. Chez un patient non diabétique connu, une cure prolongée justifie de vérifier la glycémie.",
     },
     Rule {
         kind: Kind::Duplicate(&["corticoïde", "prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif"], 3),
         severity: Severity::Info,
         title: "Charge corticoïde cumulée",
-        detail: "Trois corticoïdes ou plus sur une même ordonnance — inhalé, nasal, cutané, collyre, oral — s'additionnent : chacun pris isolément est faible, la somme ne l'est pas. La freination surrénalienne, la fragilité cutanée, la cataracte et l'ostéoporose se jugent sur le total et non sur une ligne. Vérifier que chacun garde une indication actuelle et une durée, en particulier le dermocorticoïde renouvelé sans limite.",
+        detail: "Trois corticoïdes ou plus sur une même ordonnance (inhalé, nasal, cutané, collyre, oral) s'additionnent : l'exposition de chacun est faible, mais leur somme est significative. La freination surrénalienne, la fragilité cutanée, la cataracte et l'ostéoporose se jugent sur le total et non sur une ligne. Vérifier que chacun garde une indication actuelle et une durée, en particulier le dermocorticoïde renouvelé sans limite.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1006,7 +1006,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "AVK + amiodarone",
-        detail: "L'amiodarone augmente fortement l'effet de l'antivitamine K, et elle le fait lentement : l'INR s'emballe au bout d'une à trois semaines, longtemps après l'introduction, puis reste perturbé des mois après l'arrêt tant la molécule est stockée. Un INR est nécessaire dans la semaine qui suit l'introduction, puis rapproché, et la dose d'AVK se réduit le plus souvent d'un tiers.",
+        detail: "L'amiodarone augmente fortement l'effet de l'antivitamine K, et elle le fait lentement : l'INR augmente au bout d'une à trois semaines, longtemps après l'introduction, puis reste perturbé des mois après l'arrêt tant la molécule est stockée. Un INR est nécessaire dans la semaine qui suit l'introduction, puis rapproché, et la dose d'AVK se réduit le plus souvent d'un tiers.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1016,7 +1016,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Calcémie cumulée",
-        detail: "Le thiazidique réduit l'élimination urinaire du calcium pendant que la supplémentation en apporte : l'hypercalcémie s'installe lentement et se manifeste par de la soif, des urines abondantes, une constipation, des nausées et une confusion — signes qu'on met volontiers sur le compte de l'âge. Une calcémie suffit à trancher, et la supplémentation se réévalue : elle est souvent prescrite pour une durée que personne n'a rediscutée.",
+        detail: "Le thiazidique réduit l'élimination urinaire du calcium pendant que la supplémentation en apporte : l'hypercalcémie s'installe lentement et se manifeste par de la soif, des urines abondantes, une constipation, des nausées et une confusion, signes souvent attribués à l'âge. Une calcémie suffit à trancher, et la supplémentation se réévalue : elle est souvent poursuivie sans réévaluation.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1025,7 +1025,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Carbapénème + valproate",
-        detail: "Le carbapénème effondre les concentrations de valproate en quelques jours, de façon massive et sans que rien ne l'annonce : des états de mal épileptiques sont survenus chez des patients jusque-là équilibrés. Augmenter la dose de valproate ne compense pas le phénomène. L'association est à éviter et impose de choisir un autre antibiotique ; si elle est maintenue, la couverture antiépileptique doit être assurée autrement et le patient surveillé.",
+        detail: "Le carbapénème diminue massivement les concentrations de valproate en quelques jours, sans signe d'alerte : des états de mal épileptiques sont survenus chez des patients jusque-là équilibrés. Augmenter la dose de valproate ne compense pas le phénomène. L'association est à éviter et impose de choisir un autre antibiotique ; si elle est maintenue, la couverture antiépileptique doit être assurée autrement et le patient surveillé.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1034,7 +1034,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Miconazole + AVK",
-        detail: "Le miconazole inhibe puissamment le CYP2C9 et fait grimper l'INR jusqu'à l'hémorragie, et cela vaut aussi pour le gel buccal et pour l'ovule gynécologique, dont le passage systémique suffit, ce qui rend l'association traîtresse, personne ne considérant un gel pour la bouche comme un médicament général. L'association est contre-indiquée. Si un traitement local a déjà été commencé, l'INR se contrôle sans attendre.",
+        detail: "Le miconazole inhibe puissamment le CYP2C9 et augmente l'INR jusqu'au risque hémorragique, et cela vaut aussi pour le gel buccal et pour l'ovule gynécologique, dont le passage systémique suffit ; un gel buccal est rarement considéré comme un médicament à action générale. L'association est contre-indiquée. Si un traitement local a déjà été commencé, l'INR se contrôle sans attendre.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1048,7 +1048,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Miconazole + sulfamide hypoglycémiant",
-        detail: "Même mécanisme que pour les AVK : l'inhibition du CYP2C9 majore fortement l'exposition au sulfamide et provoque des hypoglycémies sévères et prolongées, gel buccal et ovule compris. L'association est contre-indiquée. Un antifongique local qui ne passe pas par cette voie est à préférer, et une hypoglycémie inexpliquée chez un patient qui vient de traiter une mycose doit faire chercher ce gel que personne n'a noté sur l'ordonnance.",
+        detail: "Même mécanisme que pour les AVK : l'inhibition du CYP2C9 majore fortement l'exposition au sulfamide et provoque des hypoglycémies sévères et prolongées, gel buccal et ovule compris. L'association est contre-indiquée. Un antifongique local qui ne passe pas par cette voie est à préférer, et une hypoglycémie inexpliquée chez un patient qui vient de traiter une mycose doit faire rechercher ce gel, souvent absent de l'ordonnance.",
     },
     Rule {
         kind: Kind::Combination(&[&["gemfibrozil"], &["répaglinide", "glinide"]]),
@@ -1078,7 +1078,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Cotrimoxazole + hyperkaliémiant",
-        detail: "Le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur : sur un bloqueur du système rénine-angiotensine ou une spironolactone, la kaliémie monte sans qu'aucun signe précède le trouble du rythme. Cinq jours de cure suffisent, et le sujet âgé ou insuffisant rénal est celui qui en meurt. Demander une kaliémie en cours de cure, écarter les sels de régime, et signaler l'association au prescripteur.",
+        detail: "Le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur : sur un bloqueur du système rénine-angiotensine ou une spironolactone, la kaliémie monte sans qu'aucun signe précède le trouble du rythme. Cinq jours de cure suffisent ; le sujet âgé ou insuffisant rénal est le plus exposé, avec un risque vital. Demander une kaliémie en cours de cure, écarter les sels de régime, et signaler l'association au prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1087,7 +1087,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Tamoxifène + paroxétine ou fluoxétine",
-        detail: "Le tamoxifène est une prodrogue que le CYP2D6 active en endoxifène : la paroxétine et la fluoxétine, inhibiteurs puissants, amputent l'efficacité d'un traitement dont l'enjeu est la récidive. L'association naît le plus souvent du traitement des bouffées de chaleur dues au tamoxifène lui-même, ce qui la rend banale à l'ordonnance. Signaler avant délivrance ; la venlafaxine et l'escitalopram sont les alternatives usuelles.",
+        detail: "Le tamoxifène est une prodrogue que le CYP2D6 active en endoxifène : la paroxétine et la fluoxétine, inhibiteurs puissants, réduisent l'efficacité d'un traitement destiné à prévenir la récidive. L'association naît le plus souvent du traitement des bouffées de chaleur dues au tamoxifène lui-même, ce qui la rend fréquente à l'ordonnance. Signaler avant délivrance ; la venlafaxine et l'escitalopram sont les alternatives usuelles.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1105,7 +1105,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Inhibiteur d'intégrase + cations",
-        detail: "Les cations chélatent l'inhibiteur d'intégrase et effondrent son absorption : le traitement échoue et des résistances émergent, sans qu'aucun symptôme prévienne. Ces produits s'achètent sans ordonnance, ce qui met le repérage au comptoir et nulle part ailleurs. Jamais ensemble : deux heures avant ou six heures après le cation, et poser la question du pansement gastrique que le patient ne cite jamais.",
+        detail: "Les cations chélatent l'inhibiteur d'intégrase et réduisent fortement son absorption : le traitement échoue et des résistances émergent, sans qu'aucun symptôme prévienne. Ces produits s'achètent sans ordonnance, le repérage se fait donc au comptoir. Jamais ensemble : deux heures avant ou six heures après le cation, et poser la question du pansement gastrique, que le patient cite rarement.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1114,7 +1114,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Méthylergométrine + inhibiteur CYP3A4",
-        detail: "L'inhibition du CYP3A4 fait monter l'exposition à un alcaloïde de l'ergot de seigle : c'est l'ergotisme — vasoconstriction des extrémités, ischémie, et le tableau ne se rattrape pas toujours. L'association est contre-indiquée. En post-partum, c'est un macrolide prescrit pour une mastite qui l'amène ; refuser la délivrance et rappeler le prescripteur.",
+        detail: "L'inhibition du CYP3A4 fait monter l'exposition à un alcaloïde de l'ergot de seigle : risque d'ergotisme, avec vasoconstriction des extrémités et ischémie parfois irréversible. L'association est contre-indiquée. En post-partum, elle survient typiquement avec un macrolide prescrit pour une mastite ; refuser la délivrance et rappeler le prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1123,7 +1123,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Fluconazole + AVK",
-        detail: "Le fluconazole inhibe le CYP2C9 et majore fortement l'effet de l'AVK : l'INR part en quelques jours et l'hémorragie suit. Une dose unique de 150 mg pour une mycose vaginale suffit à le faire. Prévoir un INR à quarante-huit heures, prévenir le patient avant qu'il sorte, et poser la question de l'antifongique local qui ne passe pas par cette voie.",
+        detail: "Le fluconazole inhibe le CYP2C9 et majore fortement l'effet de l'AVK : l'INR augmente en quelques jours, avec un risque hémorragique. Une dose unique de 150 mg pour une mycose vaginale suffit à le faire. Prévoir un INR à quarante-huit heures, prévenir le patient avant qu'il sorte, et poser la question de l'antifongique local qui ne passe pas par cette voie.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1132,7 +1132,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Inhibiteur de tyrosine kinase + IPP",
-        detail: "L'absorption de ces anticancéreux oraux dépend de l'acidité gastrique : sous IPP elle chute, et c'est l'efficacité du traitement du cancer qui chute avec elle, sans qu'aucun signe le dise. L'IPP est souvent là depuis longtemps et personne ne le rattache. Signaler au prescripteur : l'antiacide décalé ou l'anti-H2 sont les recours, jamais l'IPP maintenu tel quel.",
+        detail: "L'absorption de ces anticancéreux oraux dépend de l'acidité gastrique : sous IPP elle diminue, et l'efficacité du traitement anticancéreux avec elle, sans signe d'alerte. L'IPP est souvent ancien et rarement mis en cause. Signaler au prescripteur : l'antiacide décalé ou l'anti-H2 sont les recours, jamais l'IPP maintenu tel quel.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1141,7 +1141,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Buprénorphine ou nalbuphine + agoniste pur",
-        detail: "L'agoniste partiel déloge l'agoniste pur de son récepteur : chez un patient sous morphinique, c'est un syndrome de sevrage aigu et la douleur qui revient d'un coup. L'association n'a pas de place sur la même ordonnance. Chercher lequel des deux est le traitement de fond, et appeler le prescripteur avant de délivrer le second.",
+        detail: "L'agoniste partiel déloge l'agoniste pur de son récepteur : chez un patient sous morphinique, l'association déclenche un syndrome de sevrage aigu et une reprise brutale de la douleur. L'association n'a pas lieu d'être sur la même ordonnance. Chercher lequel des deux est le traitement de fond, et appeler le prescripteur avant de délivrer le second.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1150,7 +1150,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Drospirénone + hyperkaliémiant",
-        detail: "La drospirénone est un dérivé de la spironolactone et retient le potassium comme elle : personne ne lit une pilule comme un traitement hyperkaliémiant, ce qui la rend dangereuse en association. Contrôler la kaliémie le premier mois, et davantage sur un rein qui n'est pas neuf.",
+        detail: "La drospirénone est un dérivé de la spironolactone et retient le potassium comme elle : une pilule est rarement identifiée comme hyperkaliémiante, ce qui expose à méconnaître l'association. Contrôler la kaliémie le premier mois, et plus étroitement en cas d'altération de la fonction rénale.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1159,7 +1159,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Lamotrigine + valproate",
-        detail: "Le valproate double la demi-vie de la lamotrigine : à titration normale, c'est le syndrome de Lyell ou de Stevens-Johnson, et c'est la vitesse de montée qui décide, pas la dose finale. Le protocole d'association divise les paliers par deux. Vérifier la titration écrite sur l'ordonnance, et dire au patient qu'une éruption dans les huit semaines s'arrête et se montre le jour même.",
+        detail: "Le valproate double la demi-vie de la lamotrigine : à titration normale, le risque est le syndrome de Lyell ou de Stevens-Johnson, qui dépend de la vitesse de montée plus que de la dose finale. Le protocole d'association divise les paliers par deux. Vérifier la titration écrite sur l'ordonnance, et dire au patient qu'une éruption dans les huit semaines impose l'arrêt et une consultation le jour même.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1168,7 +1168,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Naltrexone + opioïde",
-        detail: "La naltrexone bloque le récepteur : l'opioïde ne fait plus rien, et chez quelqu'un qui en prenait c'est un sevrage aigu déclenché en une prise. À l'arrêt de la naltrexone, la tolérance est perdue et la dose d'avant devient une overdose. L'association ne se délivre pas sans avoir joint le prescripteur.",
+        detail: "La naltrexone bloque le récepteur : l'opioïde devient inefficace, et chez un patient qui en prenait, une seule prise déclenche un sevrage aigu. À l'arrêt de la naltrexone, la tolérance est perdue et la dose antérieure expose à un surdosage. L'association ne se délivre pas sans avoir joint le prescripteur.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1177,7 +1177,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Ulipristal + progestatif",
-        detail: "Le progestatif prend la place de l'ulipristal sur le récepteur et lui retire son effet : reprendre la pilule le lendemain d'une contraception d'urgence à l'ulipristal, c'est perdre les deux. Attendre cinq jours avant de reprendre le progestatif, et préservatif jusqu'à la fin du cycle. Si la pilule ne peut pas être suspendue, c'est le lévonorgestrel qu'il fallait délivrer.",
+        detail: "Le progestatif prend la place de l'ulipristal sur le récepteur et lui retire son effet : reprendre la pilule le lendemain d'une contraception d'urgence à l'ulipristal fait perdre l'efficacité des deux. Attendre cinq jours avant de reprendre le progestatif, et préservatif jusqu'à la fin du cycle. Si la pilule ne peut pas être suspendue, le lévonorgestrel est la contraception d'urgence à délivrer.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1186,7 +1186,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Cycline + rétinoïde oral",
-        detail: "Les deux montent la pression intracrânienne et l'association est contre-indiquée : céphalées, vision qui se trouble, vomissements — un tableau d'hypertension intracrânienne bénigne qui peut laisser une atteinte du nerf optique. C'est l'acné qui met les deux sur la même ordonnance, chez des patients jeunes. Refuser l'association et faire arrêter la cycline avant l'instauration.",
+        detail: "Les deux augmentent la pression intracrânienne et l'association est contre-indiquée : céphalées, vision qui se trouble, vomissements, tableau d'hypertension intracrânienne bénigne qui peut laisser une atteinte du nerf optique. L'association se rencontre dans l'acné, chez des patients jeunes. Refuser l'association et faire arrêter la cycline avant l'instauration.",
     },
     Rule {
         kind: Kind::Without(
@@ -1197,7 +1197,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Anti-aromatase sans protection osseuse",
-        detail: "L'anti-aromatase supprime les œstrogènes restants : la perte osseuse est rapide, le traitement dure cinq ans, et rien sur l'ordonnance ne s'y oppose. Demander où en est la densitométrie, et si le calcium et la vitamine D ont été prévus — c'est la question qui ne se pose jamais parce que le sujet de la consultation est ailleurs.",
+        detail: "L'anti-aromatase supprime les œstrogènes restants : la perte osseuse est rapide, le traitement dure cinq ans, et rien sur l'ordonnance ne s'y oppose. Demander où en est la densitométrie, et si le calcium et la vitamine D ont été prévus. Cette question est souvent omise en consultation.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1206,7 +1206,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "AVK + inducteur enzymatique",
-        detail: "L'inducteur accélère la dégradation de l'AVK et l'INR s'effondre : le patient est anticoagulé sur le papier et pas dans le sang, ce qui ne se voit par aucun symptôme jusqu'à la thrombose. L'arrêt de l'inducteur fait le chemin inverse et expose à l'hémorragie. INR une semaine après toute introduction et tout arrêt, et le dire au patient dans les deux sens.",
+        detail: "L'inducteur accélère la dégradation de l'AVK et l'INR s'effondre : l'anticoagulation devient insuffisante, sans symptôme jusqu'à la thrombose. L'arrêt de l'inducteur a l'effet inverse et expose à l'hémorragie. INR une semaine après toute introduction et tout arrêt, et le dire au patient dans les deux sens.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1215,7 +1215,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Élétriptan + inhibiteur CYP3A4",
-        detail: "L'inhibiteur puissant du CYP3A4 multiplie l'exposition à l'élétriptan et le vasospasme devient coronarien. L'association est contre-indiquée, et il suffit d'attendre : soixante-douze heures après la dernière prise de l'inhibiteur. Un autre triptan, non métabolisé par cette voie, est le recours si la crise ne peut pas attendre.",
+        detail: "L'inhibiteur puissant du CYP3A4 multiplie l'exposition à l'élétriptan, avec un risque de vasospasme coronarien. L'association est contre-indiquée ; respecter un délai de soixante-douze heures après la dernière prise de l'inhibiteur. Un autre triptan, non métabolisé par cette voie, est le recours si la crise ne peut pas attendre.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1224,7 +1224,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Warn,
         title: "Quinolone ou cycline + cations",
-        detail: "Le cation chélate l'antibiotique dans l'estomac et l'absorption tombe de moitié ou plus : la cure est faite, elle n'a pas eu lieu, et l'échec se lit comme une résistance. Le lait, les pansements gastriques et les compléments en font partie, et aucun n'est sur l'ordonnance. Deux heures avant ou quatre heures après, et le demander explicitement au patient.",
+        detail: "Le cation chélate l'antibiotique dans l'estomac et l'absorption tombe de moitié ou plus : la cure est inefficace, et l'échec peut être pris pour une résistance. Le lait, les pansements gastriques et les compléments en font partie, et aucun n'est sur l'ordonnance. Deux heures avant ou quatre heures après, et le demander explicitement au patient.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1233,7 +1233,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Sofosbuvir + amiodarone",
-        detail: "Bradycardies sévères et arrêts cardiaques rapportés dès les premières heures, par un mécanisme qu'on n'explique toujours pas : l'association est à éviter, et la demi-vie de l'amiodarone la rend encore possible des mois après son arrêt. Si elle est maintenue, la surveillance du rythme est hospitalière les quarante-huit premières heures.",
+        detail: "Bradycardies sévères et arrêts cardiaques rapportés dès les premières heures, par un mécanisme encore inexpliqué : l'association est à éviter, et la demi-vie de l'amiodarone la rend encore possible des mois après son arrêt. Si elle est maintenue, la surveillance du rythme est hospitalière les quarante-huit premières heures.",
     },
     Rule {
         kind: Kind::Combination(&[
@@ -1251,7 +1251,7 @@ const RULES: &[Rule] = &[
         ]),
         severity: Severity::Alert,
         title: "Gabapentinoïde + opioïde",
-        detail: "Dépression respiratoire par addition, et l'association est banale sur une ordonnance de douleur chronique : c'est le motif d'une alerte de pharmacovigilance et non une précaution de principe. Le risque est maximal à l'instauration, à toute augmentation, et chez l'insuffisant respiratoire ou le sujet âgé. Signaler, et expliquer à l'entourage ce qu'est une somnolence anormale.",
+        detail: "Dépression respiratoire par addition, et l'association est banale sur une ordonnance de douleur chronique : elle a fait l'objet d'une alerte de pharmacovigilance. Le risque est maximal à l'instauration, à toute augmentation, et chez l'insuffisant respiratoire ou le sujet âgé. Signaler, et expliquer à l'entourage ce qu'est une somnolence anormale.",
     },
     Rule {
         kind: Kind::Without(
@@ -1272,7 +1272,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Bisphosphonate sans vitamine D",
-        detail: "Les fiches de ces produits demandent toutes que le statut en vitamine D soit corrigé avant l'instauration, et rien sur cette ordonnance n'y pourvoit. Sur une carence préexistante, l'hypocalcémie devient symptomatique — c'est l'effet que la perfusion annuelle donne le plus volontiers. Demander où en est le dosage, et si le calcium alimentaire suffit : l'un et l'autre se règlent avant la première prise, pas après.",
+        detail: "Les fiches de ces produits demandent toutes que le statut en vitamine D soit corrigé avant l'instauration, et rien sur cette ordonnance n'y pourvoit. Sur une carence préexistante, l'hypocalcémie devient symptomatique, effet le plus fréquent de la perfusion annuelle. Demander où en est le dosage, et si le calcium alimentaire suffit : l'un et l'autre se règlent avant la première prise.",
     },
     Rule {
         kind: Kind::Without(
@@ -1289,7 +1289,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Méthotrexate sans acide folique",
-        detail: "L'acide folique se prescrit avec le méthotrexate hebdomadaire et rien sur cette ordonnance n'en porte : il divise par deux les effets qui font arrêter le traitement — les aphtes, les nausées, la cytolyse — sans rien lui retirer de son efficacité dans le rhumatisme ou le psoriasis. Il se prend à distance de la prise, jamais le même jour. Et rappeler la règle qui tue quand elle est oubliée : le méthotrexate est hebdomadaire, un jour fixe de la semaine, jamais quotidien.",
+        detail: "L'acide folique se prescrit avec le méthotrexate hebdomadaire et rien sur cette ordonnance n'en porte : il divise par deux les effets qui font arrêter le traitement (aphtes, nausées, cytolyse) sans rien lui retirer de son efficacité dans le rhumatisme ou le psoriasis. Il se prend à distance de la prise, jamais le même jour. Rappeler la règle dont l'oubli peut être mortel : le méthotrexate est hebdomadaire, un jour fixe de la semaine, jamais quotidien.",
     },
     Rule {
         kind: Kind::Without(
@@ -1299,7 +1299,7 @@ const RULES: &[Rule] = &[
         ),
         severity: Severity::Warn,
         title: "Isoniazide sans vitamine B6",
-        detail: "L'isoniazide épuise la pyridoxine et donne une neuropathie périphérique qui ne se rattrape pas toujours — dénutri, alcoolique, diabétique, insuffisant rénal et femme enceinte sont les plus exposés. La pyridoxine se prescrit avec, à 10 à 25 mg par jour, et elle manque ici. Poser la question au prescripteur avant que les fourmillements commencent.",
+        detail: "L'isoniazide épuise la pyridoxine et donne une neuropathie périphérique parfois irréversible ; dénutri, alcoolique, diabétique, insuffisant rénal et femme enceinte sont les plus exposés. La pyridoxine se prescrit avec, à 10 à 25 mg par jour, et elle manque ici. Poser la question au prescripteur avant que les fourmillements commencent.",
     },
 ];
 

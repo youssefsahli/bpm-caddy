@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.369.0] - 2026-10-08
+
+### Changed
+- Relecture de la rédaction de tout le contenu livré, au registre d'un
+  texte professionnel de santé : environ 3 100 phrases reprises dans les
+  monographies, les posologies, les conduites en cas d'oubli, les
+  protocoles, les préparations, les dispositifs, les tables de
+  référence, la revue d'ordonnance, la surveillance biologique, les
+  carnets, les libellés et le mode d'emploi. Les antithèses de style,
+  formules dramatisées, images, chutes et adresses au lecteur sont
+  remplacées par des phrases déclaratives ; aucun chiffre, aucune dose,
+  aucune contre-indication n'a changé (chaque reprise est refusée si un
+  nombre diffère).
+- « Synchroniser le contenu de référence » met désormais à jour le texte
+  livré des champs de fiche que l'équipe n'a jamais modifiés (ni verrou
+  ni version) : les relectures atteignent les bases existantes sans
+  toucher au texte de l'officine. Les compléments nutritionnels sont
+  semés par la même commande.
+
+### Fixed
+- Kerendia : seuils de kaliémie écrits sans ambiguïté (pas d'instauration
+  au-dessus de 5, suspension au-dessus de 5,5). Spiolto Respimat :
+  phrase incohérente retirée. Ercéfuryl, réservé à l'adulte : la mention
+  du nourrisson est retirée des conseils.
+- Compilation avec Rust 1.99 (nouveaux avertissements de clippy).
+
 ## [0.368.0] - 2026-10-08
 
 ### Added
