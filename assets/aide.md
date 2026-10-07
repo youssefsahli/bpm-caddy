@@ -889,6 +889,40 @@ le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
 stock qui périme le premier.
 
+# Mesures et conseils
+
+Ouvert par le bouton **Mesures et conseils** de la page des médicaments,
+ou par « Aller à… ». Trois pages, chacune avec sa fiche imprimée remise
+au patient : les relevés de la page, puis les conseils, que l'officine
+peut réécrire dans « Textes ». Le dossier ouvert reçoit ce qui est
+enregistré ; sans dossier, les calculs et l'impression restent
+disponibles.
+
+**Compression.** L'article (chaussettes, bas-cuisse, collant) fixe les
+points à mesurer ; chaque point indique son repère au survol. La
+vérification signale les points manquants, une mesure plus faible
+au-dessus qu'au-dessous (repère ou saisie à reprendre) et l'écart entre
+les deux jambes. Les grilles de tailles ne sont pas livrées : elles
+diffèrent d'un modèle à l'autre. L'officine saisit celles des modèles
+qu'elle délivre, une taille par ligne (`2 : cB 20-22 ; cC 30-37`), et la
+page lit la taille de chaque jambe. Le renouvellement compte les paires
+délivrées pour la même classe et la même taille : 2 par période de
+6 mois, 4 par an au plus.
+
+**Nutrition orale.** L'évaluation lit les critères de la HAS (2019 avant
+70 ans, 2021 à partir de 70 ans) : un critère phénotypique et un critère
+étiologique posent le diagnostic, et un seul critère de sévérité suffit
+à la dénutrition sévère. Les critères de prise en charge des
+compléments par la LPP sont affichés à part : ils ne sont pas les mêmes.
+Le plan additionne les apports des produits choisis contre l'objectif de
+400 kcal et/ou 30 g de protéines par jour. Les produits livrés viennent
+des pages des fabricants ; l'équipe corrige leurs teneurs d'un clic
+droit.
+
+**Protections périodiques.** Les droits (moins de 26 ans, ou C2S), la
+période annuelle ouverte par la première délivrance, les codes
+individuels des fabricants et les règles de facturation.
+
 # Carnets de suivi du patient
 
 Six feuilles d'automesure à domicile : pression artérielle, glycémie,

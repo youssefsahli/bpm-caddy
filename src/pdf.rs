@@ -3407,6 +3407,124 @@ const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
+/// Une feuille « Mesures et conseils », prête à imprimer : ce que la vue
+/// a relevé pour la personne, puis les conseils de la feuille.
+pub struct ConseilPaper {
+    /// Le titre de la feuille (`conseils::Sheet::title`).
+    pub title: String,
+    /// Le nom et l'âge de la personne, ou vide : la feuille se donne
+    /// aussi sans dossier.
+    pub patient: String,
+    /// La date du jour, à la française.
+    pub date: String,
+    /// Les relevés, libellé et valeur : classe, article, IMC, droits…
+    pub facts: Vec<(String, String)>,
+    /// Un tableau facultatif : en-têtes, puis lignes (les mesures, le
+    /// plan de compléments).
+    pub table: Option<(Vec<String>, Vec<Vec<String>>)>,
+    /// Les conseils, réécrits par l'officine.
+    pub sections: Vec<crate::conseils::Filled>,
+    /// Les sources, en pied de feuille.
+    pub sources: Vec<String>,
+}
+
+pub fn open_conseil(
+    paper: &ConseilPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("conseil", template_path),
+            &conseil_values(paper, pharmacy),
+        ),
+        "conseil",
+    )
+}
+
+fn conseil_values(paper: &ConseilPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(16pt, weight: \"bold\")[#{}]\n",
+        typst_str(&paper.title)
+    ));
+    let who = if paper.patient.trim().is_empty() {
+        paper.date.clone()
+    } else {
+        format!("{} — {}", paper.patient.trim(), paper.date)
+    };
+    src.push_str(&format!(
+        "#v(1mm)\n#text(10pt, style: \"italic\")[#{}]\n",
+        typst_str(&who)
+    ));
+    if !paper.facts.is_empty() {
+        src.push_str("#v(3mm)\n#table(columns: (auto, 1fr), stroke: 0.4pt, inset: 4pt,\n");
+        for (k, v) in &paper.facts {
+            src.push_str(&format!(
+                "  [#text(weight: \"bold\")[#{}]], [#{}],\n",
+                typst_str(k),
+                typst_str(v)
+            ));
+        }
+        src.push_str(")\n");
+    }
+    if let Some((head, rows)) = &paper.table {
+        if !head.is_empty() {
+            src.push_str(&format!(
+                "#v(3mm)\n#table(columns: {}, stroke: 0.4pt, inset: 4pt,\n",
+                head.len()
+            ));
+            for h in head {
+                src.push_str(&format!(
+                    "  [#text(weight: \"bold\")[#{}]],\n",
+                    typst_str(h)
+                ));
+            }
+            for row in rows {
+                for i in 0..head.len() {
+                    let cell = row.get(i).map(String::as_str).unwrap_or("");
+                    src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+                }
+            }
+            src.push_str(")\n");
+        }
+    }
+    for section in &paper.sections {
+        if section.lines.is_empty() {
+            continue;
+        }
+        src.push_str(&format!("#sec[#{}]\n", typst_str(section.title)));
+        for line in &section.lines {
+            src.push_str(&format!("- #{}\n", typst_str(line)));
+        }
+    }
+    if !paper.sources.is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(8pt, style: \"italic\")[Sources : #{}]\n",
+            typst_str(&paper.sources.join(" · "))
+        ));
+    }
+    vec![("{{BODY}}", src)]
+}
+
+const MARKERS_CONSEIL: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_CONSEIL_TEMPLATE: &str = r##"
+#set page(paper: "a4", margin: 1.8cm)
+#set text(size: 10pt, lang: "fr", hyphenate: true)
+#set par(justify: true)
+
+#let sec(t) = block(sticky: true, above: 5mm, below: 2.5mm)[#text(10.5pt, weight: "bold")[#t] #v(-1.5mm) #line(length: 100%, stroke: 0.5pt)]
+
+{{BODY}}
+"##;
+
 /// The sections of a dispositif fiche, in the order of the gesture —
 /// shared by the single sheet and the whole booklet so the two can
 /// never drift apart.
@@ -4516,6 +4634,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_DISPOSITIF_TEMPLATE,
     },
     Doc {
+        key: "conseil",
+        label: "tpl_target_conseil",
+        markers: MARKERS_CONSEIL,
+        default: DEFAULT_CONSEIL_TEMPLATE,
+    },
+    Doc {
         key: "dispositifs",
         label: "tpl_target_dispositifs",
         markers: MARKERS_DISPOSITIFS,
@@ -5352,6 +5476,32 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // n'avait qu'un nom : l'officine ouvrait l'éditeur et voyait une
         // page blanche sous un titre, sans savoir ce que le modèle fait
         // des sections. Elles sont toutes remplies, brièvement.
+        // La feuille de compression, la plus fournie des trois : des
+        // relevés, le tableau des mesures et tous ses conseils.
+        "conseil" => conseil_values(
+            &ConseilPaper {
+                title: crate::conseils::SHEETS[0].title.to_owned(),
+                patient: "Jean Dupont, 68 ans".to_owned(),
+                date: "08/10/2026".to_owned(),
+                facts: vec![
+                    ("Article".to_owned(), "Chaussettes".to_owned()),
+                    ("Classe".to_owned(), "Classe II — 15,1 à 20 mmHg".to_owned()),
+                ],
+                table: Some((
+                    vec!["Point".to_owned(), "Droite".to_owned(), "Gauche".to_owned()],
+                    vec![
+                        vec!["Cheville (cB)".to_owned(), "22,5".to_owned(), "23".to_owned()],
+                        vec!["Mollet (cC)".to_owned(), "36".to_owned(), "37,5".to_owned()],
+                    ],
+                )),
+                sections: crate::conseils::fill(
+                    &crate::conseils::SHEETS[0],
+                    &crate::content::Overrides::default(),
+                ),
+                sources: vec!["HAS, fiches de bon usage de la compression médicale (2010)".to_owned()],
+            },
+            &sample_pharmacy(),
+        ),
         "dispositif" => dispositif_values(
             &crate::db::Dispositif {
                 id: 1,
@@ -10209,6 +10359,37 @@ mod tests {
             &dispositifs_values(&[], &sample_pharmacy()),
         ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// La feuille « Mesures et conseils » compile, avec ses relevés, son
+    /// tableau, ses conseils et une saisie hostile.
+    #[test]
+    fn the_counsel_sheet_compiles_with_its_table_and_its_advice() {
+        for sheet in &crate::conseils::SHEETS {
+            let paper = ConseilPaper {
+                title: sheet.title.to_owned(),
+                patient: "Jean #[Dupont] \"x\"".to_owned(),
+                date: "08/10/2026".to_owned(),
+                facts: vec![("Classe".to_owned(), "II — 15,1 à 20 mmHg".to_owned())],
+                table: Some((
+                    vec!["Point".to_owned(), "Droite".to_owned(), "Gauche".to_owned()],
+                    vec![vec!["Cheville (cB)".to_owned(), "22,5".to_owned()]],
+                )),
+                sections: crate::conseils::fill(sheet, &crate::content::Overrides::default()),
+                sources: vec!["HAS 2010".to_owned()],
+            };
+            let src = fill(
+                DEFAULT_CONSEIL_TEMPLATE,
+                &conseil_values(&paper, &sample_pharmacy()),
+            );
+            assert!(src.contains("Cheville"));
+            let world = PdfWorld::new(src);
+            assert!(
+                typst::compile::<PagedDocument>(&world).output.is_ok(),
+                "{} ne compile pas",
+                sheet.doc
+            );
+        }
     }
 
     /// The fiche de fabrication is the record the bonnes pratiques ask

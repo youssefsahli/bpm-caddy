@@ -282,12 +282,12 @@ are read verbatim by tests in `src/strings.rs`.
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be 40 chances to forget one.
+  `pdf::open_*` call sites would be 41 chances to forget one.
 The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  76 of them, and counting at all but one would be a counter quietly
+  83 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -416,7 +416,7 @@ The one that was missing — « combien de fois un autre poste avait
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1606 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1643 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -1361,7 +1361,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 62 regions now set
+  fold is the control you came to use. 68 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2225,7 +2225,7 @@ add clicking and typing; it is not the price of entry.
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
-  codex_open|dispositifs|dispositif_open|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
+  codex_open|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|

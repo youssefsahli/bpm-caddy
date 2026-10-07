@@ -229,6 +229,14 @@ pub fn documents() -> Vec<Document> {
         label: crate::strings::tr("textes_doc_entretien").to_owned(),
         phrases: crate::entretien::phrases(),
     });
+    // Les trois feuilles « Mesures et conseils ».
+    for sheet in &crate::conseils::SHEETS {
+        out.push(Document {
+            subject: sheet.doc.to_owned(),
+            label: sheet.title.to_owned(),
+            phrases: crate::conseils::phrases(sheet),
+        });
+    }
     out.push(Document {
         subject: crate::vaccsheet::DOC.to_owned(),
         label: crate::strings::tr("textes_doc_vaccination").to_owned(),

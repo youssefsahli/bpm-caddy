@@ -515,7 +515,7 @@ conseils à tenir à jour deux fois.
   « Réinitialiser la base… » les ramène, en effaçant les marques.
 - **La famille est un vocabulaire, pas un texte libre** : la liste et
   l'impression groupent dessus, donc une famille inventée une fois reste
-  seule pour toujours. Les onze familles sont dans le test.
+  seule pour toujours. Les treize familles sont dans le test.
 - **La ligne LPP porte la règle, jamais le prix** : ce que la
   prescription doit mentionner, ce qui entre dans un forfait, ce qui se
   facture à part. Le tarif se vérifie sur ameli.fr au moment de la
@@ -530,6 +530,29 @@ conseils à tenir à jour deux fois.
 - **Ajouter une fiche** : une entrée `StarterDispositif`, une famille
   déjà utilisée, et les neuf champs. Ou, ce qui est mieux, directement
   dans l'application — c'est le contenu de l'équipe.
+
+## Mesures et conseils : compression, nutrition orale, protections périodiques
+
+- **Où** : `src/compression.rs` (classes françaises et LPP, points de
+  mesure par article, vérification d'une prise de mesures, lecture des
+  grilles de tailles saisies par l'officine, renouvellement 2 paires par
+  6 mois et 4 par an), `src/nutrition.rs` (diagnostic HAS 2019/2021,
+  critères LPP des CNO, objectifs HAS 2007, catégories de densité, et
+  `STARTER_CNO`, les produits relevés sur les pages des fabricants),
+  `src/protections.rs` (droits, période annuelle de date à date, codes
+  individuels), `src/conseils.rs` (les trois feuilles de conseils,
+  réécrivables).
+- **Aucune grille de tailles livrée** : une grille recopiée d'un
+  catalogue est fausse au catalogue suivant ; l'officine saisit celles
+  de ses modèles (table `compression_grids`).
+- **Deux jeux de critères pour la dénutrition**, affichés côte à côte et
+  jamais mélangés : le diagnostic de la HAS et l'éligibilité LPP.
+- **Ajouter un produit nutritionnel** : une entrée `StarterCno` dont
+  chaque chiffre vient de la page citée en source, ou directement dans
+  l'application. Le test vérifie les noms uniques, les teneurs positives
+  et la catégorie des produits concentrés.
+- **Les codes individuels des protections** suivent la base de codage de
+  l'Assurance Maladie ; la liste s'allonge à chaque référencement.
 
 ## Les protocoles
 

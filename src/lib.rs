@@ -22,8 +22,10 @@ pub mod cascade;
 pub mod classes;
 pub mod codebar;
 pub mod codex;
+pub mod compression;
 pub mod conciliation;
 pub mod config;
+pub mod conseils;
 pub mod content;
 pub mod crush;
 pub mod cyp;
@@ -47,6 +49,7 @@ pub mod messages;
 pub mod netmap;
 #[cfg(feature = "sync")]
 pub mod network;
+pub mod nutrition;
 pub mod ordonnance;
 pub mod ordonnancier;
 #[cfg(feature = "desktop")]
@@ -56,6 +59,7 @@ pub mod planning;
 #[cfg(feature = "sync")]
 pub mod postes;
 pub mod prescribers;
+pub mod protections;
 #[cfg(feature = "sync")]
 pub mod reach;
 #[cfg(feature = "sync")]

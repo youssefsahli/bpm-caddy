@@ -3000,6 +3000,7 @@ enum Tool {
     Postes,
     Codex,
     Dispositifs,
+    Conseil,
     Ordonnancier,
     Vigilance,
     Destruction,
@@ -3030,6 +3031,7 @@ impl Tool {
             Tool::Postes => "postes",
             Tool::Codex => "codex",
             Tool::Dispositifs => "dispositifs",
+            Tool::Conseil => "conseil",
             Tool::Ordonnancier => "ordonnancier",
             Tool::Vigilance => "vigilance",
             Tool::Destruction => "destruction",
@@ -3053,13 +3055,14 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.key() == key)
     }
 
-    const ALL: [Tool; 22] = [
+    const ALL: [Tool; 23] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
         Tool::Postes,
         Tool::Codex,
         Tool::Dispositifs,
+        Tool::Conseil,
         Tool::Ordonnancier,
         Tool::Vigilance,
         Tool::Destruction,
@@ -3086,6 +3089,7 @@ impl Tool {
             Tool::Postes => tr("tool_postes"),
             Tool::Codex => tr("tool_codex"),
             Tool::Dispositifs => tr("tool_dispositifs"),
+            Tool::Conseil => tr("tool_conseil"),
             Tool::Ordonnancier => tr("tool_ordonnancier"),
             Tool::Vigilance => tr("tool_vigilance"),
             Tool::Destruction => tr("tool_destruction"),
@@ -3115,6 +3119,7 @@ impl Tool {
             Tool::Postes => tr("tool_postes_purpose"),
             Tool::Codex => tr("tool_codex_purpose"),
             Tool::Dispositifs => tr("tool_dispositifs_purpose"),
+            Tool::Conseil => tr("tool_conseil_purpose"),
             Tool::Ordonnancier => tr("tool_ordonnancier_purpose"),
             Tool::Vigilance => tr("tool_vigilance_purpose"),
             Tool::Destruction => tr("tool_destruction_purpose"),
@@ -3928,6 +3933,132 @@ impl MapLens {
             Self::JapaneseEnceph => tr("map_lens_ej"),
         }
     }
+}
+
+/// Les trois pages de « Mesures et conseils ».
+#[derive(Clone, Copy, PartialEq, Eq, Default, Debug)]
+enum ConseilPage {
+    #[default]
+    Contention,
+    Nutrition,
+    Protections,
+}
+
+impl ConseilPage {
+    const ALL: [ConseilPage; 3] = [
+        ConseilPage::Contention,
+        ConseilPage::Nutrition,
+        ConseilPage::Protections,
+    ];
+
+    /// Le `kind` des fiches de dossier de cette page.
+    fn kind(self) -> &'static str {
+        match self {
+            ConseilPage::Contention => "contention",
+            ConseilPage::Nutrition => "nutrition",
+            ConseilPage::Protections => "protections",
+        }
+    }
+
+    fn label(self) -> &'static str {
+        match self {
+            ConseilPage::Contention => tr("conseil_page_contention"),
+            ConseilPage::Nutrition => tr("conseil_page_nutrition"),
+            ConseilPage::Protections => tr("conseil_page_protections"),
+        }
+    }
+
+    fn sheet(self) -> &'static crate::conseils::Sheet {
+        &crate::conseils::SHEETS[match self {
+            ConseilPage::Contention => 0,
+            ConseilPage::Nutrition => 1,
+            ConseilPage::Protections => 2,
+        }]
+    }
+}
+
+/// Ce qui est tapé dans l'évaluation nutritionnelle, tel quel : la
+/// lecture se fait sur ces textes, à chaque changement.
+#[derive(Clone, Default)]
+struct NutritionForm {
+    age: String,
+    weight: String,
+    height: String,
+    usual: String,
+    w1m: String,
+    w6m: String,
+    albumin: String,
+    mna: String,
+    muscle: bool,
+    intake: bool,
+    malabsorption: bool,
+    aggression: bool,
+}
+
+impl NutritionForm {
+    fn assessment(&self) -> Option<crate::nutrition::Assessment> {
+        let num = |s: &str| -> Option<f64> {
+            let v: f64 = s.trim().replace(',', ".").parse().ok()?;
+            (v > 0.0).then_some(v)
+        };
+        Some(crate::nutrition::Assessment {
+            age: self.age.trim().parse().ok()?,
+            weight: num(&self.weight)?,
+            height: num(&self.height)?,
+            usual_weight: num(&self.usual),
+            weight_1m: num(&self.w1m),
+            weight_6m: num(&self.w6m),
+            albumin: num(&self.albumin),
+            mna: num(&self.mna),
+            muscle: self.muscle,
+            reduced_intake: self.intake,
+            malabsorption: self.malabsorption,
+            aggression: self.aggression,
+        })
+    }
+}
+
+/// « Mesures et conseils » : la compression, les compléments
+/// nutritionnels oraux, les protections périodiques. Ce qui vient de la
+/// base est lu par `reload_conseil`, à l'ouverture, au changement de
+/// page ou de dossier, et après un geste — jamais par image.
+#[derive(Default)]
+struct ConseilState {
+    page: ConseilPage,
+    /// Le dossier et la page pour lesquels `records` a été lu.
+    loaded_for: Option<(Option<i64>, ConseilPage)>,
+    records: Vec<db::CounselRecord>,
+    confirm_delete: Option<i64>,
+    error: Option<String>,
+    // --- Compression
+    article: String,
+    class: String,
+    /// 0 : les deux jambes ; 1 : droite ; 2 : gauche.
+    legs: usize,
+    /// `point.D` ou `point.G` → ce qui est tapé.
+    measures: std::collections::BTreeMap<String, String>,
+    model: String,
+    size: String,
+    pairs: String,
+    grids: Vec<db::CompressionGrid>,
+    grid: Option<i64>,
+    grid_edit: Option<db::CompressionGrid>,
+    grid_base: Option<db::CompressionGrid>,
+    // --- Nutrition
+    nut: NutritionForm,
+    products: Vec<crate::nutrition::Product>,
+    product_query: String,
+    /// Le plan en cours : produit et unités par jour.
+    plan: Vec<(i64, f64)>,
+    product_edit: Option<crate::nutrition::Product>,
+    product_base: Option<crate::nutrition::Product>,
+    // --- Protections
+    prot_kind: String,
+    prot_code: String,
+    prot_qty: u32,
+    prot_c2s: bool,
+    prot_age: String,
+    prot_size: String,
 }
 
 /// La campagne de vaccination, telle que la vue la lit : tout est
@@ -5236,6 +5367,10 @@ struct Session {
     show_dispositifs: bool,
     /// La campagne de vaccination.
     camp: CampagneState,
+    /// « Mesures et conseils » : compression, nutrition orale,
+    /// protections périodiques.
+    show_conseil: bool,
+    conseil: ConseilState,
     dispositifs: Vec<db::Dispositif>,
     dispo_query: String,
     dispo_open: Option<i64>,
@@ -5391,6 +5526,8 @@ impl Session {
             // And the dispositifs, by the same rule: seeded once, and a
             // fiche the team emptied never comes back to argue.
             let _ = db.seed_dispositifs();
+            // And the oral nutrition supplements, by the same rule.
+            let _ = db.seed_cno();
             // And the TROD ordonnance lines, by the same rule: the shipped
             // protocols once, the team's rows after that.
             let _ = db.seed_trod_lines();
@@ -5844,6 +5981,8 @@ impl Session {
             insulin_target: 1.2,
             show_dispositifs: false,
             camp: CampagneState::default(),
+            show_conseil: false,
+            conseil: ConseilState::default(),
             dispositifs: Vec::new(),
             dispo_query: String::new(),
             dispo_open: None,
@@ -6866,6 +7005,11 @@ impl Session {
                 self.show_dispositifs = true;
                 self.reload_dispositifs();
             }
+            Tool::Conseil => {
+                self.enter_drug_panel();
+                self.show_conseil = true;
+                self.reload_conseil();
+            }
             Tool::Ordonnancier => self.open_registres(RegistreTab::Ordonnancier),
             Tool::Vigilance => self.open_registres(RegistreTab::Vigilance),
             Tool::Destruction => self.open_registres(RegistreTab::Destruction),
@@ -6938,6 +7082,7 @@ impl Session {
         self.show_codex = false;
         self.show_protocols = false;
         self.show_dispositifs = false;
+        self.show_conseil = false;
         self.show_mono = false;
         self.show_graph = false;
         self.show_scans = None;
@@ -9662,6 +9807,44 @@ impl Session {
     }
 
     /// Reload the dispositifs from the base.
+    /// Relire « Mesures et conseils » : les fiches du dossier ouvert pour
+    /// la page affichée, les grilles de tailles et les compléments. Au
+    /// changement de dossier, les formulaires repartent de ce dossier.
+    fn reload_conseil(&mut self) {
+        let pid = self.viewing.as_ref().map(|p| p.id);
+        let page = self.conseil.page;
+        let changed_patient = self.conseil.loaded_for.map(|(p, _)| p) != Some(pid);
+        self.conseil.records = match pid {
+            Some(id) => self.db.counsel_records(id, page.kind()).unwrap_or_default(),
+            None => Vec::new(),
+        };
+        self.conseil.grids = self.db.compression_grids().unwrap_or_default();
+        self.conseil.products = self.db.cno_products().unwrap_or_default();
+        if changed_patient {
+            let age = self
+                .viewing
+                .as_ref()
+                .and_then(|p| db::age_on(&p.birth_date, &self.today))
+                .map(|a| a.to_string())
+                .unwrap_or_default();
+            self.conseil.measures.clear();
+            self.conseil.model.clear();
+            self.conseil.size.clear();
+            self.conseil.pairs.clear();
+            self.conseil.plan.clear();
+            self.conseil.nut = NutritionForm {
+                age,
+                ..NutritionForm::default()
+            };
+            self.conseil.prot_age.clear();
+            self.conseil.prot_c2s = false;
+            self.conseil.prot_size.clear();
+            self.conseil.confirm_delete = None;
+            self.conseil.error = None;
+        }
+        self.conseil.loaded_for = Some((pid, page));
+    }
+
     /// Relire la campagne : les lots et ce que le carnet en a utilisé,
     /// les doses de la saison, la courbe du vaccin choisi, et la liste
     /// des rappels. Appelé à l'ouverture de la vue et après un geste.
@@ -16238,6 +16421,36 @@ impl App {
                         }
                         // The dispositifs, and one fiche open: the sheet
                         // is only drawn once a fiche is chosen.
+                        // Les trois pages de « Mesures et conseils », sur le
+                        // dossier de démonstration pour que les fiches et le
+                        // renouvellement aient de quoi s'écrire.
+                        Ok(
+                            v
+                            @ ("conseil_contention" | "conseil_nutrition" | "conseil_protections"),
+                        ) => {
+                            // Les protections : le dossier le plus jeune,
+                            // celui qui a des droits à lire.
+                            let pick = if v == "conseil_protections" {
+                                session
+                                    .patients
+                                    .iter()
+                                    .max_by(|a, b| a.birth_date.cmp(&b.birth_date))
+                                    .cloned()
+                            } else {
+                                session.patients.first().cloned()
+                            };
+                            if let Some(p) = pick {
+                                session.open_patient(p);
+                            }
+                            session.show_conseil = true;
+                            session.conseil.page = match v {
+                                "conseil_nutrition" => ConseilPage::Nutrition,
+                                "conseil_protections" => ConseilPage::Protections,
+                                _ => ConseilPage::Contention,
+                            };
+                            session.reload_conseil();
+                            session.view = MainView::Drugs;
+                        }
                         Ok(v @ ("dispositifs" | "dispositif_open")) => {
                             session.show_dispositifs = true;
                             session.reload_dispositifs();
@@ -51668,6 +51881,1615 @@ impl App {
         }
     }
 
+    /// « Mesures et conseils » : trois pages, une feuille imprimée par
+    /// page. Le dossier ouvert reçoit ce qui est enregistré ; sans
+    /// dossier, tout se mesure, se calcule et s'imprime, rien ne
+    /// s'enregistre.
+    fn conseil_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
+        let pid = session.viewing.as_ref().map(|p| p.id);
+        if session.conseil.loaded_for != Some((pid, session.conseil.page)) {
+            session.reload_conseil();
+        }
+        let body = motif::visible_rect(ui);
+        let who = match &session.viewing {
+            Some(p) => match db::age_on(&p.birth_date, &session.today) {
+                Some(a) => trn("conseil_patient_age", &[&p.full_name(), &a]),
+                None => trf("conseil_patient", p.full_name()),
+            },
+            None => tr("conseil_no_patient").to_owned(),
+        };
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("conseil_title")),
+                Self::button_width(ui, tr("patient_back")),
+                Self::button_width(ui, tr("conseil_print")),
+            ]
+            .into_iter()
+            .chain(
+                ConseilPage::ALL
+                    .iter()
+                    .map(|p| Self::button_width(ui, p.label())),
+            ),
+            &who,
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        let mut print = false;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("conseil_title"));
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_conseil = false;
+                }
+                if motif::button(ui, tr("conseil_print"))
+                    .on_hover_text(tr("conseil_print_tooltip"))
+                    .clicked()
+                {
+                    print = true;
+                }
+                for page in ConseilPage::ALL {
+                    if motif::toggle(ui, page.label(), session.conseil.page == page).clicked() {
+                        session.conseil.page = page;
+                        session.conseil.confirm_delete = None;
+                        session.conseil.error = None;
+                    }
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(&who)
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+        let wide = rows[1].width() >= chars_wide(ui, 90.0);
+        let panes = if wide {
+            motif::split_columns(rows[1], 2, 8.0)
+        } else {
+            motif::split_rows(rows[1], &[0.0, 0.0], 8.0)
+        };
+        match session.conseil.page {
+            ConseilPage::Contention => Self::conseil_contention(ui, session, &panes, operator),
+            ConseilPage::Nutrition => Self::conseil_nutrition(ui, session, &panes, operator),
+            ConseilPage::Protections => Self::conseil_protections(ui, session, &panes, operator),
+        }
+        if print {
+            let paper = Self::conseil_paper(session, &who);
+            if let Err(e) = crate::pdf::open_conseil(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("conseil"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+    }
+
+    /// Le texte d'une mesure de compression tapée dans le formulaire.
+    fn conseil_measure_key(point: &str, side: crate::compression::Side) -> String {
+        match side {
+            crate::compression::Side::Droite => format!("{point}.D"),
+            crate::compression::Side::Gauche => format!("{point}.G"),
+        }
+    }
+
+    /// Les mesures lues dans le formulaire.
+    fn conseil_measures(state: &ConseilState) -> crate::compression::Measures {
+        use crate::compression::{parse_cm, Measures, Side};
+        let mut m = Measures::default();
+        for (k, v) in &state.measures {
+            let Some((p, s)) = k.rsplit_once('.') else {
+                continue;
+            };
+            let side = if s == "G" { Side::Gauche } else { Side::Droite };
+            m.set(p, side, parse_cm(v));
+        }
+        m
+    }
+
+    fn conseil_sides(state: &ConseilState) -> Vec<crate::compression::Side> {
+        use crate::compression::Side;
+        match state.legs {
+            1 => vec![Side::Droite],
+            2 => vec![Side::Gauche],
+            _ => vec![Side::Droite, Side::Gauche],
+        }
+    }
+
+    fn conseil_side_label(side: crate::compression::Side) -> &'static str {
+        match side {
+            crate::compression::Side::Droite => tr("conseil_side_d"),
+            crate::compression::Side::Gauche => tr("conseil_side_g"),
+        }
+    }
+
+    /// Une ligne d'aide, en petit et en gris.
+    fn conseil_note(ui: &mut egui::Ui, text: &str) {
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(text)
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_dim()),
+            )
+            .wrap(),
+        );
+    }
+
+    /// Une ligne de relevé : en couleur quand elle signale.
+    fn conseil_line(ui: &mut egui::Ui, text: &str, alert: bool) {
+        ui.add(
+            egui::Label::new(
+                egui::RichText::new(text)
+                    .size(motif::pt(ui, 11.5))
+                    .color(if alert { motif::warn() } else { motif::text() }),
+            )
+            .wrap(),
+        );
+    }
+
+    /// La page « Compression ».
+    fn conseil_contention(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        panes: &[egui::Rect],
+        operator: &str,
+    ) {
+        use crate::compression::{self, Article, Finding, Side};
+        let today = session.today.clone();
+        let has_patient = session.viewing.is_some();
+        let pid = session.viewing.as_ref().map(|p| p.id);
+        let mut save = false;
+        let mut delete: Option<db::CounselRecord> = None;
+        let mut resume: Option<db::CounselRecord> = None;
+        let mut new_grid = false;
+        let mut save_grid = false;
+        let mut delete_grid = false;
+        let state = &mut session.conseil;
+        if state.article.is_empty() {
+            state.article = Article::Chaussette.key().to_owned();
+        }
+        if state.class.is_empty() {
+            state.class = "II".to_owned();
+        }
+        let article = Article::from_key(&state.article).unwrap_or(Article::Chaussette);
+        let sides = Self::conseil_sides(state);
+        let measures = Self::conseil_measures(state);
+        let findings = compression::check(article, &sides, &measures);
+
+        motif::panel(ui, panes[0], Some(tr("conseil_measures_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_measures")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        let articles: Vec<(String, String)> = Article::ALL
+                            .iter()
+                            .map(|a| (a.key().to_owned(), a.label().to_owned()))
+                            .collect();
+                        let w = motif::select_width(ui, articles.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "conseil_article", w, &mut state.article, &articles);
+                        let classes: Vec<(String, String)> = compression::CLASSES
+                            .iter()
+                            .map(|c| (c.key.to_owned(), format!("{} — {}", c.label, c.mmhg)))
+                            .collect();
+                        let w = motif::select_width(ui, classes.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "conseil_class", w, &mut state.class, &classes);
+                        let legs: Vec<(usize, String)> = vec![
+                            (0, tr("conseil_legs_both").to_owned()),
+                            (1, tr("conseil_legs_d").to_owned()),
+                            (2, tr("conseil_legs_g").to_owned()),
+                        ];
+                        let w = motif::select_width(ui, legs.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "conseil_legs", w, &mut state.legs, &legs);
+                    });
+                    ui.add_space(4.0);
+                    Self::conseil_note(ui, tr("conseil_measures_how"));
+                    ui.add_space(4.0);
+                    let fw = chars_wide(ui, 6.0);
+                    let h = Self::row_height(ui);
+                    egui::Grid::new("conseil_measure_grid")
+                        .num_columns(3)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            ui.label("");
+                            for s in [Side::Droite, Side::Gauche] {
+                                ui.label(
+                                    egui::RichText::new(Self::conseil_side_label(s))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                );
+                            }
+                            ui.end_row();
+                            for &key in article.points() {
+                                let Some(p) = compression::point(key) else {
+                                    continue;
+                                };
+                                ui.label(p.label).on_hover_text(p.hint);
+                                for s in [Side::Droite, Side::Gauche] {
+                                    let shown = if article.per_leg(key) {
+                                        sides.contains(&s)
+                                    } else {
+                                        s == Side::Droite
+                                    };
+                                    if shown {
+                                        let text = state
+                                            .measures
+                                            .entry(Self::conseil_measure_key(key, s))
+                                            .or_default();
+                                        motif::field_sized(
+                                            ui,
+                                            egui::vec2(fw, h),
+                                            egui::TextEdit::singleline(text)
+                                                .hint_text(motif::hint(tr("conseil_cm_hint"))),
+                                        );
+                                    } else {
+                                        ui.label("");
+                                    }
+                                }
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(6.0);
+                    // Les points manquants, une ligne par jambe : point par
+                    // point, une prise à peine commencée remplissait le
+                    // panneau de « manquant ».
+                    for &s in &sides {
+                        let missing: Vec<&str> = findings
+                            .iter()
+                            .filter_map(|f| match f {
+                                Finding::Missing(p, side) if *side == s => Some(*p),
+                                _ => None,
+                            })
+                            .collect();
+                        if !missing.is_empty() {
+                            Self::conseil_note(
+                                ui,
+                                &trn(
+                                    "conseil_missing",
+                                    &[&Self::conseil_side_label(s), &missing.join(", ")],
+                                ),
+                            );
+                        }
+                    }
+                    for f in &findings {
+                        let text = match f {
+                            Finding::Missing(..) => continue,
+                            Finding::Inverted { lower, upper, side } => trn(
+                                "conseil_inverted",
+                                &[upper, lower, &Self::conseil_side_label(*side)],
+                            ),
+                            Finding::Asymmetry { point, diff } => {
+                                trn("conseil_asymmetry", &[&compression::fmt_cm(*diff), point])
+                            }
+                        };
+                        Self::conseil_line(ui, &text, !matches!(f, Finding::Missing(..)));
+                    }
+                    motif::section(ui, tr("conseil_delivery_title"));
+                    ui.horizontal_wrapped(|ui| {
+                        let fw = |hint: &str| Self::field_width(ui, [hint].into_iter());
+                        let (wm, ws, wp) = (
+                            fw(tr("conseil_model_hint")).max(chars_wide(ui, 18.0)),
+                            fw(tr("conseil_size_hint")),
+                            fw(tr("conseil_pairs_hint")),
+                        );
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(wm, h),
+                            egui::TextEdit::singleline(&mut state.model)
+                                .hint_text(motif::hint(tr("conseil_model_hint"))),
+                        );
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(ws, h),
+                            egui::TextEdit::singleline(&mut state.size)
+                                .hint_text(motif::hint(tr("conseil_size_hint"))),
+                        );
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(wp, h),
+                            egui::TextEdit::singleline(&mut state.pairs)
+                                .hint_text(motif::hint(tr("conseil_pairs_hint"))),
+                        );
+                        if motif::button_enabled(ui, tr("conseil_save"), has_patient)
+                            .on_hover_text(if has_patient {
+                                tr("conseil_save_tooltip")
+                            } else {
+                                tr("conseil_save_needs_patient")
+                            })
+                            .clicked()
+                        {
+                            save = true;
+                        }
+                    });
+                    if let Some(err) = &state.error {
+                        ui.colored_label(motif::alert(), err.as_str());
+                    }
+                });
+        });
+
+        motif::panel(ui, panes[1], Some(tr("conseil_size_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_size")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // --- Les grilles de l'officine
+                    let mine: Vec<(Option<i64>, String)> =
+                        std::iter::once((None, tr("conseil_grid_none").to_owned()))
+                            .chain(
+                                state
+                                    .grids
+                                    .iter()
+                                    .filter(|g| g.article == state.article)
+                                    .map(|g| (Some(g.id), g.model.clone())),
+                            )
+                            .collect();
+                    if state.grid.is_some() && !mine.iter().any(|(id, _)| *id == state.grid) {
+                        state.grid = None;
+                    }
+                    ui.horizontal_wrapped(|ui| {
+                        let w = motif::select_width(ui, mine.iter().map(|(_, l)| l.as_str()))
+                            .min(ui.available_width());
+                        motif::select(ui, "conseil_grid", w, &mut state.grid, &mine);
+                        if motif::button(ui, tr("conseil_grid_new")).clicked() {
+                            new_grid = true;
+                        }
+                        if state.grid.is_some()
+                            && state.grid_edit.is_none()
+                            && motif::button(ui, tr("drug_edit")).clicked()
+                        {
+                            let g = state
+                                .grids
+                                .iter()
+                                .find(|g| Some(g.id) == state.grid)
+                                .cloned();
+                            state.grid_base = g.clone();
+                            state.grid_edit = g;
+                        }
+                    });
+                    if let Some(form) = state.grid_edit.as_mut() {
+                        let w = ui.available_width();
+                        motif::field(
+                            ui,
+                            w,
+                            egui::TextEdit::singleline(&mut form.model)
+                                .hint_text(motif::hint(tr("conseil_grid_model_hint"))),
+                        );
+                        motif::area(
+                            ui,
+                            egui::vec2(w, Self::row_height(ui) * 6.0),
+                            egui::TextEdit::multiline(&mut form.grid)
+                                .hint_text(motif::hint(tr("conseil_grid_hint")))
+                                .desired_rows(6),
+                        );
+                        let (_, errors) = compression::parse_grid(&form.grid);
+                        for (n, line) in errors.iter().take(4) {
+                            Self::conseil_line(ui, &trn("conseil_grid_error", &[n, line]), true);
+                        }
+                        Self::conseil_note(ui, tr("conseil_grid_syntax"));
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("form_save")).clicked() {
+                                save_grid = true;
+                            }
+                            if motif::button(ui, tr("tpl_close")).clicked() {
+                                state.grid_edit = None;
+                                state.grid_base = None;
+                            }
+                            if motif::button(ui, tr("patient_delete")).clicked() {
+                                delete_grid = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+                    if let Some(g) = state.grids.iter().find(|g| Some(g.id) == state.grid) {
+                        let (sizes, _) = compression::parse_grid(&g.grid);
+                        for &side in &sides {
+                            let fits = compression::fit(&sizes, &measures, side);
+                            let leg = Self::conseil_side_label(side);
+                            match fits.first() {
+                                Some(f) if f.fits() => {
+                                    ui.horizontal_wrapped(|ui| {
+                                        Self::conseil_line(
+                                            ui,
+                                            &trn("conseil_fit", &[&leg, &f.size]),
+                                            false,
+                                        );
+                                        if motif::button(ui, tr("conseil_fit_take")).clicked() {
+                                            state.size = f.size.clone();
+                                        }
+                                    });
+                                }
+                                Some(f) => {
+                                    let why: Vec<String> = f
+                                        .outside
+                                        .iter()
+                                        .map(|(k, v)| format!("{k} {}", compression::fmt_cm(*v)))
+                                        .chain(
+                                            f.unmeasured
+                                                .iter()
+                                                .map(|k| trf("conseil_fit_unmeasured", k)),
+                                        )
+                                        .collect();
+                                    Self::conseil_line(
+                                        ui,
+                                        &trn("conseil_fit_none", &[&leg, &f.size, &why.join(", ")]),
+                                        true,
+                                    );
+                                }
+                                None => Self::conseil_note(ui, tr("conseil_grid_empty")),
+                            }
+                        }
+                    } else if state.grid_edit.is_none() {
+                        Self::conseil_note(ui, tr("conseil_grid_explain"));
+                    }
+
+                    // --- Le renouvellement
+                    motif::section(ui, tr("conseil_renewal_title"));
+                    if has_patient {
+                        let history: Vec<compression::Delivery> = state
+                            .records
+                            .iter()
+                            .filter_map(|r| {
+                                let pairs: u32 = r.field("paires").parse().ok()?;
+                                (pairs > 0).then(|| compression::Delivery {
+                                    on: r.on_date.clone(),
+                                    pairs,
+                                    class: r.field("classe").to_owned(),
+                                    size: r.field("taille").to_owned(),
+                                })
+                            })
+                            .collect();
+                        let r =
+                            compression::renewal(&history, &state.class, state.size.trim(), &today);
+                        let text = if r.allowed > 0 {
+                            trn("conseil_renewal_ok", &[&r.allowed, &r.half_year, &r.year])
+                        } else {
+                            trn(
+                                "conseil_renewal_wait",
+                                &[
+                                    &r.half_year,
+                                    &r.year,
+                                    &r.next
+                                        .as_deref()
+                                        .map(db::format_french_date)
+                                        .unwrap_or_default(),
+                                ],
+                            )
+                        };
+                        Self::conseil_line(ui, &text, r.allowed == 0);
+                    }
+                    Self::conseil_note(ui, tr("conseil_renewal_rule"));
+
+                    // --- L'historique du dossier
+                    if has_patient {
+                        motif::section(ui, tr("conseil_history_title"));
+                        if state.records.is_empty() {
+                            Self::conseil_note(ui, tr("conseil_history_none"));
+                        }
+                        for r in &state.records {
+                            let article = Article::from_key(r.field("article"))
+                                .map(|a| a.label())
+                                .unwrap_or("");
+                            let mut line = format!(
+                                "{} · {} · {} {}",
+                                db::format_french_date(&r.on_date),
+                                article,
+                                tr("conseil_class_short"),
+                                r.field("classe")
+                            );
+                            for (k, label) in [("taille", "conseil_size_short"), ("modele", "")] {
+                                let v = r.field(k);
+                                if !v.is_empty() {
+                                    line.push_str(" · ");
+                                    if !label.is_empty() {
+                                        line.push_str(tr(label));
+                                        line.push(' ');
+                                    }
+                                    line.push_str(v);
+                                }
+                            }
+                            let pairs = r.field("paires");
+                            if !pairs.is_empty() && pairs != "0" {
+                                line.push_str(&format!(" · {}", trf("conseil_pairs_n", pairs)));
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(line).size(motif::pt(ui, 11.0)));
+                                if motif::button(ui, tr("conseil_resume")).clicked() {
+                                    resume = Some(r.clone());
+                                }
+                                let confirm = state.confirm_delete == Some(r.id);
+                                if motif::button(
+                                    ui,
+                                    if confirm {
+                                        tr("patient_delete_confirm")
+                                    } else {
+                                        tr("conseil_remove")
+                                    },
+                                )
+                                .clicked()
+                                {
+                                    if confirm {
+                                        delete = Some(r.clone());
+                                    } else {
+                                        state.confirm_delete = Some(r.id);
+                                    }
+                                }
+                            });
+                        }
+                    }
+
+                    // --- Les repères
+                    motif::section(ui, tr("conseil_ref_title"));
+                    for c in &compression::CLASSES {
+                        Self::conseil_note(ui, &format!("{} : {} ({})", c.label, c.mmhg, c.hpa));
+                    }
+                    ui.add_space(4.0);
+                    Self::conseil_line(ui, tr("conseil_ci_absolute"), true);
+                    Self::conseil_note(ui, tr("conseil_ci_relative"));
+                    Self::conseil_note(ui, tr("conseil_ref_sources"));
+                });
+        });
+
+        // --- Les gestes
+        let state = &mut session.conseil;
+        if let Some(r) = resume {
+            state.measures.clear();
+            let m = compression::Measures::decode(
+                &r.field("mesures").replace(':', "=").replace(' ', ";"),
+            );
+            for (p, s, v) in &m.values {
+                state
+                    .measures
+                    .insert(Self::conseil_measure_key(p, *s), compression::fmt_cm(*v));
+            }
+            state.article = r.field("article").to_owned();
+            state.class = r.field("classe").to_owned();
+            state.size = r.field("taille").to_owned();
+            state.model = r.field("modele").to_owned();
+            let has = |s: Side| m.values.iter().any(|(_, x, _)| *x == s);
+            state.legs = match (has(Side::Droite), has(Side::Gauche)) {
+                (true, false) => 1,
+                (false, true) => 2,
+                _ => 0,
+            };
+        }
+        if save {
+            if let Some(pid) = pid {
+                let pairs: u32 = state.pairs.trim().parse().unwrap_or(0);
+                let mut kept = Self::conseil_measures(state);
+                // Seules les jambes mesurées, et seuls les points de
+                // l'article : un champ d'un autre article resté rempli
+                // n'entre pas dans la fiche.
+                kept.values.retain(|(p, s, _)| {
+                    article.points().contains(&p.as_str())
+                        && (sides.contains(s) || !article.per_leg(p))
+                });
+                // Les mesures vont dans un seul champ de `data` : leurs
+                // `=` et `;` deviennent `:` et espaces, qui ne coupent pas
+                // la ligne (la virgule est déjà prise par les décimales).
+                let measures_text = kept.encode().replace('=', ":").replace(';', " ");
+                let pairs_text = pairs.to_string();
+                let data = db::CounselRecord::encode(&[
+                    ("article", &state.article),
+                    ("classe", &state.class),
+                    ("taille", state.size.trim()),
+                    ("modele", state.model.trim()),
+                    ("paires", &pairs_text),
+                    ("mesures", &measures_text),
+                ]);
+                let rec = db::CounselRecord {
+                    patient_id: pid,
+                    kind: ConseilPage::Contention.kind().to_owned(),
+                    on_date: today.clone(),
+                    data,
+                    operator: operator.to_owned(),
+                    ..Default::default()
+                };
+                match session.db.add_counsel_record(&rec) {
+                    Ok(_) => {
+                        session.conseil.pairs.clear();
+                        session.conseil.error = None;
+                        session.reload_conseil();
+                    }
+                    Err(e) => session.conseil.error = Some(e),
+                }
+            }
+        }
+        if let Some(r) = delete {
+            session.conseil.confirm_delete = None;
+            match session.db.delete_counsel_record(&r) {
+                Ok(true) => session.reload_conseil(),
+                Ok(false) => {
+                    session.stale("conseil_stale");
+                    session.reload_conseil();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if new_grid {
+            let article = session.conseil.article.clone();
+            match session
+                .db
+                .add_compression_grid(tr("conseil_grid_new_name"), &article)
+            {
+                Ok(id) => {
+                    session.reload_conseil();
+                    let g = session.conseil.grids.iter().find(|g| g.id == id).cloned();
+                    session.conseil.grid = Some(id);
+                    session.conseil.grid_base = g.clone();
+                    session.conseil.grid_edit = g;
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if save_grid {
+            if let (Some(form), Some(base)) = (
+                session.conseil.grid_edit.clone(),
+                session.conseil.grid_base.clone(),
+            ) {
+                match session.db.update_compression_grid(&form, &base) {
+                    Ok(true) => {
+                        session.conseil.grid_edit = None;
+                        session.conseil.grid_base = None;
+                        session.reload_conseil();
+                    }
+                    Ok(false) => {
+                        session.conseil.grid_edit = None;
+                        session.conseil.grid_base = None;
+                        session.stale("conseil_stale");
+                        session.reload_conseil();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if delete_grid {
+            if let Some(base) = session.conseil.grid_base.clone() {
+                match session.db.delete_compression_grid(&base) {
+                    Ok(ok) => {
+                        if !ok {
+                            session.stale("conseil_stale");
+                        }
+                        session.conseil.grid_edit = None;
+                        session.conseil.grid_base = None;
+                        session.conseil.grid = None;
+                        session.reload_conseil();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+    }
+
+    /// La page « Nutrition orale ».
+    fn conseil_nutrition(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        panes: &[egui::Rect],
+        operator: &str,
+    ) {
+        use crate::nutrition::{self, Severity};
+        let today = session.today.clone();
+        let pid = session.viewing.as_ref().map(|p| p.id);
+        let mut save = false;
+        let mut delete: Option<db::CounselRecord> = None;
+        let mut new_product = false;
+        let mut save_product = false;
+        let mut delete_product = false;
+        let state = &mut session.conseil;
+        let reading = state.nut.assessment().map(|a| (nutrition::assess(&a), a));
+
+        motif::panel(ui, panes[0], Some(tr("conseil_nut_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_nut")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let fw = chars_wide(ui, 7.0);
+                    let h = Self::row_height(ui);
+                    let f = &mut state.nut;
+                    egui::Grid::new("conseil_nut_grid")
+                        .num_columns(2)
+                        .spacing([10.0, 4.0])
+                        .show(ui, |ui| {
+                            for (label, value) in [
+                                (tr("conseil_nut_age"), &mut f.age),
+                                (tr("conseil_nut_weight"), &mut f.weight),
+                                (tr("conseil_nut_height"), &mut f.height),
+                                (tr("conseil_nut_usual"), &mut f.usual),
+                                (tr("conseil_nut_w1m"), &mut f.w1m),
+                                (tr("conseil_nut_w6m"), &mut f.w6m),
+                                (tr("conseil_nut_albumin"), &mut f.albumin),
+                                (tr("conseil_nut_mna"), &mut f.mna),
+                            ] {
+                                ui.label(label);
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(fw, h),
+                                    egui::TextEdit::singleline(value),
+                                );
+                                ui.end_row();
+                            }
+                        });
+                    ui.add_space(4.0);
+                    let elderly = f.age.trim().parse::<u32>().is_ok_and(|a| a >= 70);
+                    // Des libellés courts, le critère entier au survol : la
+                    // phrase de la recommandation ne tient pas dans une
+                    // demi-vue et se coupait au bord du panneau.
+                    motif::checkbox(
+                        ui,
+                        &mut f.muscle,
+                        if elderly {
+                            tr("conseil_nut_sarcopenia")
+                        } else {
+                            tr("conseil_nut_muscle")
+                        },
+                    )
+                    .on_hover_text(if elderly {
+                        tr("conseil_nut_sarcopenia_tooltip")
+                    } else {
+                        tr("conseil_nut_muscle_tooltip")
+                    });
+                    motif::checkbox(ui, &mut f.intake, tr("conseil_nut_intake"))
+                        .on_hover_text(tr("conseil_nut_intake_tooltip"));
+                    motif::checkbox(ui, &mut f.malabsorption, tr("conseil_nut_malabsorption"))
+                        .on_hover_text(tr("conseil_nut_malabsorption_tooltip"));
+                    motif::checkbox(ui, &mut f.aggression, tr("conseil_nut_aggression"))
+                        .on_hover_text(tr("conseil_nut_aggression_tooltip"));
+                    motif::section(ui, tr("conseil_nut_reading"));
+                    let Some((r, a)) = &reading else {
+                        Self::conseil_note(ui, tr("conseil_nut_incomplete"));
+                        return;
+                    };
+                    let pct = |v: Option<f64>| v.map(|x| format!("{x:.1} %").replace('.', ","));
+                    if let Some(b) = r.bmi {
+                        let mut line = trf("conseil_nut_bmi", format!("{b:.1}").replace('.', ","));
+                        if r.obese {
+                            line.push_str(tr("conseil_nut_obese"));
+                        }
+                        Self::conseil_line(ui, &line, false);
+                    }
+                    for (key, v) in [
+                        ("conseil_nut_loss_1m", pct(r.loss_1m)),
+                        ("conseil_nut_loss_6m", pct(r.loss_6m)),
+                        ("conseil_nut_loss_usual", pct(r.loss_usual)),
+                    ] {
+                        if let Some(v) = v {
+                            Self::conseil_line(ui, &trf(key, v), false);
+                        }
+                    }
+                    ui.add_space(4.0);
+                    let reco = if r.elderly {
+                        tr("conseil_nut_reco_2021")
+                    } else {
+                        tr("conseil_nut_reco_2019")
+                    };
+                    let verdict = match r.severity {
+                        Some(Severity::Severe) => trf("conseil_nut_severe", reco),
+                        Some(Severity::Moderate) => trf("conseil_nut_moderate", reco),
+                        None => trf("conseil_nut_none", reco),
+                    };
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(verdict)
+                                .size(motif::pt(ui, 12.5))
+                                .strong()
+                                .color(if r.severity.is_some() {
+                                    motif::alert()
+                                } else {
+                                    motif::text()
+                                }),
+                        )
+                        .wrap(),
+                    );
+                    for c in r
+                        .phenotypic
+                        .iter()
+                        .chain(&r.etiologic)
+                        .chain(&r.severe_because)
+                    {
+                        Self::conseil_note(ui, &format!("· {c}"));
+                    }
+                    if r.severity.is_none() && !r.phenotypic.is_empty() && r.etiologic.is_empty() {
+                        Self::conseil_note(ui, tr("conseil_nut_need_etio"));
+                    }
+                    ui.add_space(4.0);
+                    if r.lpp.is_empty() {
+                        Self::conseil_line(ui, tr("conseil_nut_lpp_none"), true);
+                    } else {
+                        Self::conseil_line(ui, &trf("conseil_nut_lpp", r.lpp.join(" ; ")), false);
+                    }
+                    Self::conseil_note(ui, tr("conseil_nut_lpp_rule"));
+                    if let Some((k1, k2, p1, p2)) = nutrition::targets(a.age, a.weight) {
+                        let n = |x: f64| format!("{x:.0}");
+                        Self::conseil_line(
+                            ui,
+                            &trn("conseil_nut_targets", &[&n(k1), &n(k2), &n(p1), &n(p2)]),
+                            false,
+                        );
+                    }
+                });
+        });
+
+        motif::panel(ui, panes[1], Some(tr("conseil_cno_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_cno")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    // --- Le plan
+                    let lines: Vec<nutrition::PlanLine> = state
+                        .plan
+                        .iter()
+                        .filter_map(|(id, u)| {
+                            let p = state.products.iter().find(|p| p.id == *id)?;
+                            Some(nutrition::PlanLine {
+                                product: p.clone(),
+                                units: *u,
+                            })
+                        })
+                        .collect();
+                    if lines.is_empty() {
+                        Self::conseil_note(ui, tr("conseil_plan_empty"));
+                    }
+                    let mut change: Option<(i64, f64)> = None;
+                    for l in &lines {
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, "-").clicked() {
+                                change = Some((l.product.id, l.units - 1.0));
+                            }
+                            ui.label(
+                                egui::RichText::new(format!("{}", l.units).replace('.', ","))
+                                    .size(motif::pt(ui, 12.0))
+                                    .strong(),
+                            );
+                            if motif::button(ui, "+").clicked() {
+                                change = Some((l.product.id, l.units + 1.0));
+                            }
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "conseil_plan_line",
+                                    &[
+                                        &l.product.name,
+                                        &format!("{:.0}", l.product.kcal * l.units),
+                                        &format!("{:.0}", l.product.protein * l.units),
+                                    ],
+                                ))
+                                .size(motif::pt(ui, 11.5)),
+                            );
+                        });
+                    }
+                    if let Some((id, u)) = change {
+                        if u <= 0.0 {
+                            state.plan.retain(|(x, _)| *x != id);
+                        } else if let Some(slot) = state.plan.iter_mut().find(|(x, _)| *x == id) {
+                            slot.1 = u;
+                        }
+                    }
+                    if !lines.is_empty() {
+                        let (kcal, prot) = nutrition::plan_totals(&lines);
+                        let reached = kcal >= nutrition::CNO_KCAL || prot >= nutrition::CNO_PROTEIN;
+                        Self::conseil_line(
+                            ui,
+                            &trn(
+                                "conseil_plan_total",
+                                &[&format!("{kcal:.0}"), &format!("{prot:.0}")],
+                            ),
+                            !reached,
+                        );
+                        ui.horizontal_wrapped(|ui| {
+                            let ok = pid.is_some();
+                            if motif::button_enabled(ui, tr("conseil_plan_save"), ok)
+                                .on_hover_text(if ok {
+                                    tr("conseil_plan_save_tooltip")
+                                } else {
+                                    tr("conseil_save_needs_patient")
+                                })
+                                .clicked()
+                            {
+                                save = true;
+                            }
+                            if motif::button(ui, tr("conseil_plan_clear")).clicked() {
+                                state.plan.clear();
+                            }
+                        });
+                    }
+                    Self::conseil_note(ui, tr("conseil_plan_rule"));
+
+                    // --- Les produits
+                    motif::section(ui, tr("conseil_products_title"));
+                    ui.horizontal_wrapped(|ui| {
+                        let w = Self::field_width(ui, [tr("conseil_products_search")].into_iter())
+                            .max(chars_wide(ui, 18.0));
+                        motif::field(
+                            ui,
+                            w,
+                            egui::TextEdit::singleline(&mut state.product_query)
+                                .hint_text(motif::hint(tr("conseil_products_search"))),
+                        );
+                        if motif::button(ui, tr("conseil_product_new")).clicked() {
+                            new_product = true;
+                        }
+                    });
+                    if let Some(form) = state.product_edit.as_mut() {
+                        let w = ui.available_width().min(chars_wide(ui, 60.0));
+                        let mut portion = format!("{}", form.portion);
+                        let mut kcal = format!("{}", form.kcal);
+                        let mut protein = format!("{}", form.protein);
+                        egui::Grid::new("conseil_product_form")
+                            .num_columns(2)
+                            .spacing([10.0, 4.0])
+                            .show(ui, |ui| {
+                                for (label, value) in [
+                                    (tr("conseil_product_name"), &mut form.name),
+                                    (tr("conseil_product_maker"), &mut form.maker),
+                                    (tr("conseil_product_form"), &mut form.form),
+                                    (tr("conseil_product_portion"), &mut portion),
+                                    (tr("conseil_product_unit"), &mut form.unit),
+                                    (tr("conseil_product_kcal"), &mut kcal),
+                                    (tr("conseil_product_protein"), &mut protein),
+                                    (tr("conseil_product_features"), &mut form.features),
+                                    (tr("conseil_product_caution"), &mut form.caution),
+                                    (tr("tables_sources"), &mut form.source),
+                                ] {
+                                    ui.label(label);
+                                    motif::field(ui, w * 0.7, egui::TextEdit::singleline(value));
+                                    ui.end_row();
+                                }
+                            });
+                        let num =
+                            |s: &str, old: f64| s.trim().replace(',', ".").parse().unwrap_or(old);
+                        form.portion = num(&portion, form.portion);
+                        form.kcal = num(&kcal, form.kcal);
+                        form.protein = num(&protein, form.protein);
+                        ui.horizontal_wrapped(|ui| {
+                            if motif::button(ui, tr("form_save")).clicked() {
+                                save_product = true;
+                            }
+                            if motif::button(ui, tr("tpl_close")).clicked() {
+                                state.product_edit = None;
+                                state.product_base = None;
+                            }
+                            if motif::button(ui, tr("patient_delete")).clicked() {
+                                delete_product = true;
+                            }
+                        });
+                        ui.add_space(6.0);
+                    }
+                    let q = state.product_query.trim().to_owned();
+                    let mut add: Option<i64> = None;
+                    let mut edit: Option<nutrition::Product> = None;
+                    for p in state.products.iter().filter(|p| {
+                        q.is_empty()
+                            || [
+                                p.name.as_str(),
+                                p.maker.as_str(),
+                                p.form.as_str(),
+                                p.features.as_str(),
+                            ]
+                            .iter()
+                            .any(|f| fuzzy::score(&q, f).is_some())
+                    }) {
+                        let side = trn(
+                            "conseil_product_side",
+                            &[
+                                &format!("{:.0}", p.kcal),
+                                &format!("{}", p.protein).replace('.', ","),
+                                &format!("{:.0} {}", p.portion, p.unit),
+                                &p.form,
+                            ],
+                        );
+                        let mut hover = String::new();
+                        if let Some(c) = nutrition::category(p) {
+                            hover.push_str(&trf("conseil_product_category", c));
+                        }
+                        for extra in [&p.features, &p.caution, &p.source] {
+                            if !extra.trim().is_empty() {
+                                if !hover.is_empty() {
+                                    hover.push('\n');
+                                }
+                                hover.push_str(extra.trim());
+                            }
+                        }
+                        // Un clic ajoute au plan, le clic droit ouvre la
+                        // fiche du produit : deux boutons par ligne
+                        // prenaient la place des teneurs, que la rangée
+                        // existe pour montrer.
+                        hover.insert_str(0, &format!("{}\n", tr("conseil_product_row_tooltip")));
+                        let row = motif::list_row(
+                            ui,
+                            egui::RichText::new(&p.name).size(motif::pt(ui, 12.0)),
+                            false,
+                        )
+                        .on_hover_text(hover);
+                        if row.clicked() {
+                            add = Some(p.id);
+                        }
+                        row.context_menu(|ui| {
+                            if motif::button(ui, tr("drug_edit")).clicked() {
+                                edit = Some(p.clone());
+                                ui.close_menu();
+                            }
+                        });
+                        Self::conseil_note(ui, &side);
+                        if !p.caution.trim().is_empty() {
+                            Self::conseil_note(ui, p.caution.trim());
+                        }
+                    }
+                    if let Some(id) = add {
+                        match state.plan.iter_mut().find(|(x, _)| *x == id) {
+                            Some(slot) => slot.1 += 1.0,
+                            None => state.plan.push((id, 1.0)),
+                        }
+                    }
+                    if let Some(p) = edit {
+                        state.product_base = Some(p.clone());
+                        state.product_edit = Some(p);
+                    }
+
+                    // --- Le suivi du dossier
+                    if pid.is_some() {
+                        motif::section(ui, tr("conseil_nut_history"));
+                        if state.records.is_empty() {
+                            Self::conseil_note(ui, tr("conseil_history_none"));
+                        }
+                        for r in &state.records {
+                            let mut line = db::format_french_date(&r.on_date);
+                            for (k, key) in [
+                                ("poids", "conseil_hist_weight"),
+                                ("imc", "conseil_hist_bmi"),
+                                ("bilan", ""),
+                                ("apport", ""),
+                            ] {
+                                let v = r.field(k);
+                                if !v.is_empty() {
+                                    line.push_str(" · ");
+                                    if key.is_empty() {
+                                        line.push_str(v);
+                                    } else {
+                                        line.push_str(&trf(key, v));
+                                    }
+                                }
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(line).size(motif::pt(ui, 11.0)));
+                                let confirm = state.confirm_delete == Some(r.id);
+                                if motif::button(
+                                    ui,
+                                    if confirm {
+                                        tr("patient_delete_confirm")
+                                    } else {
+                                        tr("conseil_remove")
+                                    },
+                                )
+                                .clicked()
+                                {
+                                    if confirm {
+                                        delete = Some(r.clone());
+                                    } else {
+                                        state.confirm_delete = Some(r.id);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    if let Some(err) = &state.error {
+                        ui.colored_label(motif::alert(), err.as_str());
+                    }
+                });
+        });
+
+        if save {
+            if let Some(pid) = pid {
+                let state = &session.conseil;
+                let lines: Vec<nutrition::PlanLine> = state
+                    .plan
+                    .iter()
+                    .filter_map(|(id, u)| {
+                        Some(nutrition::PlanLine {
+                            product: state.products.iter().find(|p| p.id == *id)?.clone(),
+                            units: *u,
+                        })
+                    })
+                    .collect();
+                let (kcal, prot) = nutrition::plan_totals(&lines);
+                let plan = nutrition::encode_plan(&state.plan);
+                let weight = state.nut.weight.trim().replace(',', ".");
+                let bmi = reading
+                    .as_ref()
+                    .and_then(|(r, _)| r.bmi)
+                    .map(|b| format!("{b:.1}").replace('.', ","))
+                    .unwrap_or_default();
+                let bilan = match reading.as_ref().and_then(|(r, _)| r.severity) {
+                    Some(Severity::Severe) => tr("conseil_hist_severe"),
+                    Some(Severity::Moderate) => tr("conseil_hist_moderate"),
+                    None if reading.is_some() => tr("conseil_hist_no"),
+                    None => "",
+                };
+                let apport = trn(
+                    "conseil_hist_plan",
+                    &[&format!("{kcal:.0}"), &format!("{prot:.0}")],
+                );
+                let data = db::CounselRecord::encode(&[
+                    ("poids", &weight.replace('.', ",")),
+                    ("imc", &bmi),
+                    ("bilan", bilan),
+                    ("plan", &plan),
+                    ("apport", &apport),
+                ]);
+                let rec = db::CounselRecord {
+                    patient_id: pid,
+                    kind: ConseilPage::Nutrition.kind().to_owned(),
+                    on_date: today.clone(),
+                    data,
+                    operator: operator.to_owned(),
+                    ..Default::default()
+                };
+                match session.db.add_counsel_record(&rec) {
+                    Ok(_) => session.reload_conseil(),
+                    Err(e) => session.conseil.error = Some(e),
+                }
+            }
+        }
+        if let Some(r) = delete {
+            session.conseil.confirm_delete = None;
+            match session.db.delete_counsel_record(&r) {
+                Ok(true) => session.reload_conseil(),
+                Ok(false) => {
+                    session.stale("conseil_stale");
+                    session.reload_conseil();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if new_product {
+            match session.db.add_cno_product(tr("conseil_product_new_name")) {
+                Ok(id) => {
+                    session.reload_conseil();
+                    let p = session
+                        .conseil
+                        .products
+                        .iter()
+                        .find(|p| p.id == id)
+                        .cloned();
+                    session.conseil.product_base = p.clone();
+                    session.conseil.product_edit = p;
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if save_product {
+            if let (Some(form), Some(base)) = (
+                session.conseil.product_edit.clone(),
+                session.conseil.product_base.clone(),
+            ) {
+                match session.db.update_cno_product(&form, &base) {
+                    Ok(ok) => {
+                        if !ok {
+                            session.stale("conseil_stale");
+                        }
+                        session.conseil.product_edit = None;
+                        session.conseil.product_base = None;
+                        session.reload_conseil();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+        if delete_product {
+            if let Some(base) = session.conseil.product_base.clone() {
+                match session.db.delete_cno_product(base.id, &base.name) {
+                    Ok(ok) => {
+                        if !ok {
+                            session.stale("conseil_stale");
+                        }
+                        session.conseil.plan.retain(|(id, _)| *id != base.id);
+                        session.conseil.product_edit = None;
+                        session.conseil.product_base = None;
+                        session.reload_conseil();
+                    }
+                    Err(e) => session.error = Some(e),
+                }
+            }
+        }
+    }
+
+    /// La page « Protections périodiques ».
+    fn conseil_protections(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        panes: &[egui::Rect],
+        operator: &str,
+    ) {
+        use crate::protections::{self, Eligibility, Kind};
+        let today = session.today.clone();
+        let pid = session.viewing.as_ref().map(|p| p.id);
+        let patient_age = session
+            .viewing
+            .as_ref()
+            .and_then(|p| db::age_on(&p.birth_date, &today));
+        let mut save = false;
+        let mut delete: Option<db::CounselRecord> = None;
+        let state = &mut session.conseil;
+        if state.prot_kind.is_empty() {
+            state.prot_kind = Kind::Culotte.key().to_owned();
+        }
+        if state.prot_qty == 0 {
+            state.prot_qty = 1;
+        }
+        let kind = Kind::from_key(&state.prot_kind).unwrap_or(Kind::Culotte);
+        let history: Vec<protections::Delivery> = state
+            .records
+            .iter()
+            .map(|r| protections::Delivery {
+                on: r.on_date.clone(),
+                quantity: r.field("quantite").parse().unwrap_or(1),
+            })
+            .collect();
+        let period = protections::period(&history, &today);
+
+        motif::panel(ui, panes[0], Some(tr("conseil_prot_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_prot")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    let h = Self::row_height(ui);
+                    let age = match patient_age {
+                        Some(a) => Some(a),
+                        None => {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(tr("conseil_prot_age"));
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(chars_wide(ui, 5.0), h),
+                                    egui::TextEdit::singleline(&mut state.prot_age),
+                                );
+                            });
+                            state.prot_age.trim().parse().ok()
+                        }
+                    };
+                    motif::checkbox(ui, &mut state.prot_c2s, tr("conseil_prot_c2s"));
+                    let verdict = protections::eligibility(age, state.prot_c2s);
+                    let (text, ok) = match verdict {
+                        Eligibility::Age => (tr("conseil_prot_ok_age"), true),
+                        Eligibility::C2s => (tr("conseil_prot_ok_c2s"), true),
+                        Eligibility::No => (tr("conseil_prot_no"), false),
+                        Eligibility::Unknown => (tr("conseil_prot_unknown"), false),
+                    };
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(text)
+                                .size(motif::pt(ui, 12.5))
+                                .strong()
+                                .color(if ok { motif::text() } else { motif::warn() }),
+                        )
+                        .wrap(),
+                    );
+                    Self::conseil_note(ui, tr("conseil_prot_rule"));
+                    motif::section(ui, tr("conseil_prot_period"));
+                    if pid.is_some() {
+                        let text = match (&period.start, &period.next) {
+                            (Some(s), Some(n)) => trn(
+                                "conseil_prot_period_open",
+                                &[
+                                    &db::format_french_date(s),
+                                    &period.used,
+                                    &period.remaining,
+                                    &db::format_french_date(n),
+                                ],
+                            ),
+                            _ => tr("conseil_prot_period_none").to_owned(),
+                        };
+                        Self::conseil_line(ui, &text, period.remaining == 0);
+                    } else {
+                        Self::conseil_note(ui, tr("conseil_prot_period_no_patient"));
+                    }
+                    motif::section(ui, tr("conseil_prot_delivery"));
+                    ui.horizontal_wrapped(|ui| {
+                        let kinds: Vec<(String, String)> = [Kind::Culotte, Kind::Coupe]
+                            .iter()
+                            .map(|k| (k.key().to_owned(), k.label().to_owned()))
+                            .collect();
+                        let w = motif::select_width(ui, kinds.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "conseil_prot_kind", w, &mut state.prot_kind, &kinds);
+                        let codes: Vec<(String, String)> = protections::CODES
+                            .iter()
+                            .filter(|c| c.kind == kind)
+                            .map(|c| (c.code.to_owned(), format!("{} — {}", c.code, c.maker)))
+                            .collect();
+                        if !codes.iter().any(|(c, _)| *c == state.prot_code) {
+                            state.prot_code =
+                                codes.first().map(|c| c.0.clone()).unwrap_or_default();
+                        }
+                        let w = motif::select_width(ui, codes.iter().map(|(_, l)| l.as_str()))
+                            .min(ui.available_width());
+                        motif::select(ui, "conseil_prot_code", w, &mut state.prot_code, &codes);
+                        let qty: Vec<(u32, String)> =
+                            vec![(1, "1".to_owned()), (2, "2".to_owned())];
+                        let w = motif::select_width(ui, qty.iter().map(|(_, l)| l.as_str()));
+                        motif::select(ui, "conseil_prot_qty", w, &mut state.prot_qty, &qty);
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(
+                                Self::field_width(ui, [tr("conseil_prot_size_hint")].into_iter()),
+                                h,
+                            ),
+                            egui::TextEdit::singleline(&mut state.prot_size)
+                                .hint_text(motif::hint(tr("conseil_prot_size_hint"))),
+                        );
+                    });
+                    if pid.is_some() && state.prot_qty > period.remaining {
+                        Self::conseil_line(ui, tr("conseil_prot_over"), true);
+                    }
+                    if !ok {
+                        Self::conseil_line(ui, tr("conseil_prot_not_covered"), true);
+                    }
+                    if motif::button_enabled(ui, tr("conseil_prot_save"), pid.is_some())
+                        .on_hover_text(if pid.is_some() {
+                            tr("conseil_prot_save_tooltip")
+                        } else {
+                            tr("conseil_save_needs_patient")
+                        })
+                        .clicked()
+                    {
+                        save = true;
+                    }
+                    if pid.is_some() {
+                        motif::section(ui, tr("conseil_history_title"));
+                        if state.records.is_empty() {
+                            Self::conseil_note(ui, tr("conseil_history_none"));
+                        }
+                        for r in &state.records {
+                            let what = Kind::from_key(r.field("produit"))
+                                .map(|k| k.label())
+                                .unwrap_or("");
+                            let mut line = format!(
+                                "{} · {} × {} · {}",
+                                db::format_french_date(&r.on_date),
+                                r.field("quantite"),
+                                what,
+                                r.field("code")
+                            );
+                            let size = r.field("taille");
+                            if !size.is_empty() {
+                                line.push_str(&format!(" · {}", trf("conseil_size_of", size)));
+                            }
+                            ui.horizontal_wrapped(|ui| {
+                                ui.label(egui::RichText::new(line).size(motif::pt(ui, 11.0)));
+                                let confirm = state.confirm_delete == Some(r.id);
+                                if motif::button(
+                                    ui,
+                                    if confirm {
+                                        tr("patient_delete_confirm")
+                                    } else {
+                                        tr("conseil_remove")
+                                    },
+                                )
+                                .clicked()
+                                {
+                                    if confirm {
+                                        delete = Some(r.clone());
+                                    } else {
+                                        state.confirm_delete = Some(r.id);
+                                    }
+                                }
+                            });
+                        }
+                    }
+                    if let Some(err) = &state.error {
+                        ui.colored_label(motif::alert(), err.as_str());
+                    }
+                });
+        });
+
+        motif::panel(ui, panes[1], Some(tr("conseil_prot_codes_title")), |ui| {
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("conseil_prot_codes")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for k in [Kind::Culotte, Kind::Coupe] {
+                        motif::section(ui, k.label());
+                        for c in protections::CODES.iter().filter(|c| c.kind == k) {
+                            motif::list_row_pair(ui, c.code, c.maker, false, 0.0);
+                        }
+                    }
+                    ui.add_space(4.0);
+                    for key in [
+                        "conseil_prot_generic",
+                        "conseil_prot_billing",
+                        "conseil_prot_vitale",
+                        "conseil_prot_list",
+                        "conseil_prot_price",
+                    ] {
+                        Self::conseil_note(ui, tr(key));
+                        ui.add_space(2.0);
+                    }
+                    motif::section(ui, tr("conseil_prot_sizes_title"));
+                    Self::conseil_note(ui, tr("conseil_prot_sizes"));
+                    Self::conseil_note(ui, tr("conseil_prot_cup_sizes"));
+                    Self::conseil_note(ui, tr("conseil_prot_sources"));
+                });
+        });
+
+        if save {
+            if let Some(pid) = pid {
+                let state = &session.conseil;
+                let qty = state.prot_qty.to_string();
+                let data = db::CounselRecord::encode(&[
+                    ("produit", &state.prot_kind),
+                    ("code", &state.prot_code),
+                    ("quantite", &qty),
+                    ("taille", state.prot_size.trim()),
+                    ("c2s", if state.prot_c2s { "oui" } else { "" }),
+                ]);
+                let rec = db::CounselRecord {
+                    patient_id: pid,
+                    kind: ConseilPage::Protections.kind().to_owned(),
+                    on_date: today.clone(),
+                    data,
+                    operator: operator.to_owned(),
+                    ..Default::default()
+                };
+                match session.db.add_counsel_record(&rec) {
+                    Ok(_) => session.reload_conseil(),
+                    Err(e) => session.conseil.error = Some(e),
+                }
+            }
+        }
+        if let Some(r) = delete {
+            session.conseil.confirm_delete = None;
+            match session.db.delete_counsel_record(&r) {
+                Ok(true) => session.reload_conseil(),
+                Ok(false) => {
+                    session.stale("conseil_stale");
+                    session.reload_conseil();
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+    }
+
+    /// La feuille imprimée de la page ouverte : les relevés de la page,
+    /// puis les conseils réécrits par l'officine.
+    fn conseil_paper(session: &Session, who: &str) -> crate::pdf::ConseilPaper {
+        use crate::compression::{self, Article, Side};
+        let state = &session.conseil;
+        let sheet = state.page.sheet();
+        let mut facts: Vec<(String, String)> = Vec::new();
+        let mut table = None;
+        let mut sources: Vec<String> = Vec::new();
+        match state.page {
+            ConseilPage::Contention => {
+                let article = Article::from_key(&state.article).unwrap_or(Article::Chaussette);
+                facts.push((
+                    tr("conseil_fact_article").to_owned(),
+                    article.label().to_owned(),
+                ));
+                if let Some(c) = compression::class(&state.class) {
+                    facts.push((
+                        tr("conseil_fact_class").to_owned(),
+                        format!("{} — {}", c.label, c.mmhg),
+                    ));
+                }
+                for (key, v) in [
+                    ("conseil_fact_model", state.model.trim()),
+                    ("conseil_fact_size", state.size.trim()),
+                ] {
+                    if !v.is_empty() {
+                        facts.push((tr(key).to_owned(), v.to_owned()));
+                    }
+                }
+                let m = Self::conseil_measures(state);
+                let rows: Vec<Vec<String>> = article
+                    .points()
+                    .iter()
+                    .filter_map(|p| {
+                        let d = m.get(p, Side::Droite);
+                        let g = m.get(p, Side::Gauche);
+                        (d.is_some() || g.is_some()).then(|| {
+                            vec![
+                                compression::point(p)
+                                    .map(|x| x.label)
+                                    .unwrap_or(p)
+                                    .to_owned(),
+                                d.map(compression::fmt_cm).unwrap_or_default(),
+                                g.map(compression::fmt_cm).unwrap_or_default(),
+                            ]
+                        })
+                    })
+                    .collect();
+                if !rows.is_empty() {
+                    table = Some((
+                        vec![
+                            tr("conseil_table_point").to_owned(),
+                            tr("conseil_side_d").to_owned(),
+                            tr("conseil_side_g").to_owned(),
+                        ],
+                        rows,
+                    ));
+                }
+                sources.push(tr("conseil_src_contention").to_owned());
+            }
+            ConseilPage::Nutrition => {
+                if let Some(a) = state.nut.assessment() {
+                    let r = crate::nutrition::assess(&a);
+                    facts.push((
+                        tr("conseil_fact_weight").to_owned(),
+                        format!("{} kg", state.nut.weight.trim()),
+                    ));
+                    if let Some(b) = r.bmi {
+                        facts.push((
+                            tr("conseil_fact_bmi").to_owned(),
+                            format!("{b:.1}").replace('.', ","),
+                        ));
+                    }
+                }
+                let rows: Vec<Vec<String>> = state
+                    .plan
+                    .iter()
+                    .filter_map(|(id, u)| {
+                        let p = state.products.iter().find(|p| p.id == *id)?;
+                        Some(vec![
+                            p.name.clone(),
+                            format!("{u}").replace('.', ","),
+                            format!("{:.0} {}", p.portion, p.unit),
+                            format!("{:.0}", p.kcal * u),
+                            format!("{:.0}", p.protein * u).replace('.', ","),
+                        ])
+                    })
+                    .collect();
+                if !rows.is_empty() {
+                    table = Some((
+                        vec![
+                            tr("conseil_table_product").to_owned(),
+                            tr("conseil_table_units").to_owned(),
+                            tr("conseil_table_portion").to_owned(),
+                            tr("conseil_table_kcal").to_owned(),
+                            tr("conseil_table_protein").to_owned(),
+                        ],
+                        rows,
+                    ));
+                }
+                sources.push(tr("conseil_src_nutrition").to_owned());
+            }
+            ConseilPage::Protections => {
+                if let Some(k) = crate::protections::Kind::from_key(&state.prot_kind) {
+                    facts.push((tr("conseil_fact_product").to_owned(), k.label().to_owned()));
+                }
+                if !state.prot_size.trim().is_empty() {
+                    facts.push((
+                        tr("conseil_fact_size").to_owned(),
+                        state.prot_size.trim().to_owned(),
+                    ));
+                }
+                facts.push((
+                    tr("conseil_fact_rights").to_owned(),
+                    tr("conseil_fact_rights_text").to_owned(),
+                ));
+                sources.push(tr("conseil_src_protections").to_owned());
+            }
+        }
+        crate::pdf::ConseilPaper {
+            title: sheet.title.to_owned(),
+            patient: if session.viewing.is_some() {
+                who.to_owned()
+            } else {
+                String::new()
+            },
+            date: db::format_french_date(&session.today),
+            facts,
+            table,
+            sections: crate::conseils::fill(sheet, &session.content),
+            sources,
+        }
+    }
+
     fn dispositifs_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
@@ -55318,6 +57140,15 @@ impl App {
             "signe" => tr("content_f_signe"),
             "temps" => tr("content_f_temps"),
             "terme" => tr("content_f_terme"),
+            // Les feuilles « Mesures et conseils ».
+            "pose" => tr("content_f_pose"),
+            "port" => tr("content_f_port"),
+            "entretien" => tr("content_f_entretien"),
+            "prise" => tr("content_f_prise"),
+            "conservation" => tr("content_f_conservation"),
+            "alimentation" => tr("content_f_alimentation"),
+            "suivi" => tr("content_f_suivi"),
+            "usage" => tr("content_f_usage"),
             _ => "?",
         }
     }
@@ -56021,6 +57852,8 @@ impl App {
                 } else {
                     session.show_protocols = false;
                 }
+            } else if session.show_conseil {
+                session.show_conseil = false;
             } else if session.show_dispositifs {
                 if session.dispo_edit.is_some() {
                     session.dispo_edit = None;
@@ -56082,6 +57915,10 @@ impl App {
         }
         if session.show_dispositifs {
             Self::dispositifs_view(ui, session, config);
+            return;
+        }
+        if session.show_conseil {
+            Self::conseil_view(ui, session, config, operator);
             return;
         }
         if session.show_tables {
@@ -56209,6 +58046,13 @@ impl App {
                     {
                         session.show_dispositifs = true;
                         session.reload_dispositifs();
+                    }
+                    if motif::button(ui, tr("conseil_button"))
+                        .on_hover_text(tr("conseil_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_conseil = true;
+                        session.reload_conseil();
                     }
                     if motif::button(ui, tr("cascades_button"))
                         .on_hover_text(tr("cascades_button_tooltip"))

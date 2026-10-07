@@ -726,6 +726,46 @@ CREATE TABLE IF NOT EXISTS campaign_calls (
     outcome     TEXT NOT NULL,
     operator    TEXT NOT NULL DEFAULT ''
 );
+-- « Mesures et conseils » : ce que l'équipe note pour un dossier — une
+-- prise de mesures et une délivrance de compression, un plan de
+-- compléments nutritionnels, une délivrance de protections périodiques.
+-- `kind` dit lequel (`contention`, `nutrition`, `protections`) et `data`
+-- porte ses champs en `clé=valeur` séparés par des points-virgules, que
+-- le module du sujet lit (`compression.rs`, `nutrition.rs`,
+-- `protections.rs`).
+-- Les grilles de tailles de compression, saisies par l'officine depuis
+-- la notice de chaque modèle : rien n'est livré, une grille recopiée
+-- d'un catalogue est fausse au catalogue suivant.
+-- Les compléments nutritionnels oraux : semés une fois depuis
+-- `nutrition::STARTER_CNO`, puis à l'équipe.
+CREATE TABLE IF NOT EXISTS counsel_records (
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    kind        TEXT NOT NULL,
+    on_date     TEXT NOT NULL,
+    data        TEXT NOT NULL DEFAULT '',
+    operator    TEXT NOT NULL DEFAULT '',
+    remark      TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS compression_grids (
+    id          INTEGER PRIMARY KEY,
+    model       TEXT NOT NULL,
+    article     TEXT NOT NULL DEFAULT '',
+    grid        TEXT NOT NULL DEFAULT ''
+);
+CREATE TABLE IF NOT EXISTS cno_products (
+    id          INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    maker       TEXT NOT NULL DEFAULT '',
+    form        TEXT NOT NULL DEFAULT '',
+    portion     REAL NOT NULL DEFAULT 0,
+    unit        TEXT NOT NULL DEFAULT 'ml',
+    kcal        REAL NOT NULL DEFAULT 0,
+    protein     REAL NOT NULL DEFAULT 0,
+    features    TEXT NOT NULL DEFAULT '',
+    caution     TEXT NOT NULL DEFAULT '',
+    source      TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS patient_travel (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     country     TEXT NOT NULL,
@@ -1517,6 +1557,35 @@ const MIGRATIONS: &[&str] = &[
         called_on   TEXT NOT NULL,
         outcome     TEXT NOT NULL,
         operator    TEXT NOT NULL DEFAULT ''
+    )",
+    // « Mesures et conseils » — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS counsel_records (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        kind        TEXT NOT NULL,
+        on_date     TEXT NOT NULL,
+        data        TEXT NOT NULL DEFAULT '',
+        operator    TEXT NOT NULL DEFAULT '',
+        remark      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS compression_grids (
+        id          INTEGER PRIMARY KEY,
+        model       TEXT NOT NULL,
+        article     TEXT NOT NULL DEFAULT '',
+        grid        TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS cno_products (
+        id          INTEGER PRIMARY KEY,
+        name        TEXT NOT NULL,
+        maker       TEXT NOT NULL DEFAULT '',
+        form        TEXT NOT NULL DEFAULT '',
+        portion     REAL NOT NULL DEFAULT 0,
+        unit        TEXT NOT NULL DEFAULT 'ml',
+        kcal        REAL NOT NULL DEFAULT 0,
+        protein     REAL NOT NULL DEFAULT 0,
+        features    TEXT NOT NULL DEFAULT '',
+        caution     TEXT NOT NULL DEFAULT '',
+        source      TEXT NOT NULL DEFAULT ''
     )",
 ];
 
@@ -2351,6 +2420,58 @@ pub struct Vaccination {
     /// ISO `YYYY-MM-DD` of the next dose, possibly empty.
     pub next_due: String,
     pub remark: String,
+}
+
+/// Une fiche « Mesures et conseils » d'un dossier : voir la table
+/// `counsel_records`.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CounselRecord {
+    pub id: i64,
+    pub patient_id: i64,
+    /// `contention`, `nutrition` ou `protections`.
+    pub kind: String,
+    /// ISO.
+    pub on_date: String,
+    /// `clé=valeur` séparés par des points-virgules.
+    pub data: String,
+    pub operator: String,
+    pub remark: String,
+}
+
+impl CounselRecord {
+    /// Un champ de `data`.
+    pub fn field(&self, key: &str) -> &str {
+        self.data
+            .split(';')
+            .filter_map(|p| p.split_once('='))
+            .find(|(k, _)| k.trim() == key)
+            .map(|(_, v)| v.trim())
+            .unwrap_or("")
+    }
+
+    /// Écrire des champs dans la forme de `data`. Les séparateurs sont
+    /// retirés des valeurs : un `;` tapé dans un nom de modèle couperait
+    /// la ligne.
+    pub fn encode(fields: &[(&str, &str)]) -> String {
+        fields
+            .iter()
+            .filter(|(_, v)| !v.trim().is_empty())
+            .map(|(k, v)| format!("{k}={}", v.replace([';', '='], " ").trim()))
+            .collect::<Vec<_>>()
+            .join(";")
+    }
+}
+
+/// Une grille de tailles de compression saisie par l'officine.
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct CompressionGrid {
+    pub id: i64,
+    /// Le fabricant et le modèle, tels que la notice les nomme.
+    pub model: String,
+    /// `compression::Article::key`.
+    pub article: String,
+    /// Le texte lu par `compression::parse_grid`.
+    pub grid: String,
 }
 
 /// A destination recorded on a patient's file, for the travel panel.
@@ -35602,14 +35723,14 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
     StarterDispositif {
         name: "Bas et chaussettes de compression",
         family: "Compression",
-        indication: "Insuffisance veineuse chronique, œdème, prévention et suites de thrombose veineuse, grossesse, station debout prolongée. La classe se choisit sur l'indication, pas sur le confort.",
-        sizes: "Classes I à IV par pression à la cheville ; chaussette, bas-cuisse ou collant ; tailles sur mesures prises le matin, mollet et cheville, jambe fine ou large.",
-        application: "Enfiler le matin au lever, jambe encore désœdématiée, en retournant le bas jusqu'au talon puis en le déroulant sans tirer sur le bord. Un enfile-bas change tout chez la personne âgée ou arthrosique, et se propose systématiquement.",
-        renewal: "Une paire dure trois à six mois de port quotidien : la maille se détend et la pression avec elle. Deux paires en alternance, lavées à la main ou en filet à 30 °C, sans sèche-linge.",
-        lpp: "Prise en charge sur prescription mentionnant la classe et le type ; la mesure est prise à l'officine et notée. Le nombre de paires par an est encadré — le vérifier avant de promettre.",
-        caution: "Contre-indiquée en cas d'artériopathie évoluée : mesurer ou faire mesurer l'index de pression systolique avant une compression forte chez l'artéritique et le diabétique. Un bas qui roule au bord ou marque la peau est mal dimensionné, et il faut le reprendre.",
-        tags: "compression, veineux, bas, contention",
-        sources: "HAS — compression médicale en pathologie vasculaire\nLPP — titre II",
+        indication: "Insuffisance veineuse chronique selon le stade clinique, œdème, traitement et prévention du syndrome post-thrombotique après thrombose veineuse profonde, grossesse et post-partum, prévention de la thrombose en cas d'alitement ou de chirurgie. La pression retenue est la plus forte que le patient supporte.",
+        sizes: "Classes françaises à la cheville : I de 10 à 15 mmHg, II de 15,1 à 20, III de 20,1 à 36, IV au-delà de 36 mmHg. Chaussette, bas-cuisse ou collant, sans différence d'efficacité démontrée entre les types ; la culotte du collant n'exerce aucune compression. Taille déterminée par les mesures prises à l'officine (page « Mesures et conseils »).",
+        application: "Mesures prises le matin, debout, aux deux jambes, et à chaque renouvellement ; essayage avant la délivrance. Enfilage au lever après la toilette, sur peau sèche, le bas retourné jusqu'au talon puis déroulé sans plis ; enfile-bas en cas de difficulté. Retrait le soir, sauf prescription contraire.",
+        renewal: "Garantie de 6 mois. En port quotidien, renouvellement tous les 4 à 6 mois, ou plus tôt en cas d'usure (bande qui frise, cheville lâche). Deux paires pour un lavage en alternance, à l'eau tiède, sans adoucissant, séchage à plat.",
+        lpp: "Titre II, chapitre 1er, section D. Ordonnance séparée mentionnant l'article, la classe ou la pression et l'indication. Sans changement de classe ni de taille : 2 paires par période de 6 mois, 4 paires par an au plus. Le sur-mesure relève de l'orthopédiste-orthésiste.",
+        caution: "Contre-indications : artériopathie oblitérante avec IPS inférieur à 0,6, microangiopathie diabétique évoluée au-delà de 30 mmHg, phlegmatia cœrulea dolens, thrombose septique. Réévaluation si IPS entre 0,6 et 0,9, neuropathie périphérique évoluée ou dermatose suintante. Retrait et avis médical en cas de douleur, de cyanose ou de froideur des orteils.",
+        tags: "compression, veineux, bas, contention, chaussette, collant, mesures",
+        sources: "HAS — fiches de bon usage de la compression médicale (2010)\nAssurance Maladie — mémo LPP des orthèses élastiques de contention (07/2025)\nAssurance Maladie — utiliser des bas ou collants de compression (10/2025)\nSFMV — fiches patient (2022)",
     },
     StarterDispositif {
         name: "Bande de compression à allongement court",
@@ -36107,6 +36228,42 @@ pub const STARTER_DISPOSITIFS: &[StarterDispositif] = &[
         caution: "La mesure au poignet n'est fiable que si le poignet est à hauteur du cœur, ce qui n'arrive presque jamais spontanément : préférer le bras. Le thermomètre frontal est le moins fiable chez le nourrisson, où la voie rectale reste la référence. Un chiffre isolé ne s'interprète pas : c'est la série qui compte, et le carnet qui la porte.",
         tags: "automesure, tension, thermomètre, hypertension, brassard",
         sources: "HAS — mesure de la pression artérielle et automesure\nSociété française d'hypertension artérielle — règle des trois",
+    },
+    StarterDispositif {
+        name: "Culotte menstruelle",
+        family: "Protection périodique",
+        indication: "Protection périodique externe et réutilisable. Prise en charge depuis le 01/10/2026 pour les moins de 26 ans et les bénéficiaires de la C2S, sans ordonnance.",
+        sizes: "Au moins 8 tailles par modèle, dont une taille adolescente ; correspondance entre taille, tour de bassin et stature propre à chaque fabricant. Capacité d'absorption indiquée sur le conditionnement (au moins 12 ml, et 20 ml ou plus pour l'un des produits de la gamme).",
+        application: "Changer selon le flux. Laver selon la notice du fabricant ; un lavage à 60 °C, lorsque la notice l'autorise, limite mieux le risque microbiologique. Sans adoucissant.",
+        renewal: "Deux produits pris en charge par période annuelle, coupe ou culotte dans toute combinaison ; la période débute à la première délivrance et court de date à date.",
+        lpp: "Hors LPP : liste de l'article L. 162-59 du code de la sécurité sociale, facturée par le canal LPP avec le code individuel du fabricant (code générique 1724852 rejeté). Le pharmacien inscrit son propre numéro comme prescripteur. Participation de l'assuré : 40 % ; C2S intégrale.",
+        caution: "La durée de port des essais de fabrication n'est pas une durée de port recommandée. Vérifier les délivrances antérieures avant de délivrer au-delà de deux produits sur la période.",
+        tags: "culotte menstruelle, protection périodique, règles, précarité menstruelle, C2S",
+        sources: "Décret n° 2026-288 du 17/04/2026\nArrêté du 06/08/2026 — modalités de prise en charge\nAssurance Maladie — modalités pour l'officine (29/09/2026)\nANSES — avis 2026-SA-0069",
+    },
+    StarterDispositif {
+        name: "Coupe menstruelle",
+        family: "Protection périodique",
+        indication: "Protection périodique interne et réutilisable. Prise en charge depuis le 01/10/2026 pour les moins de 26 ans et les bénéficiaires de la C2S, sans ordonnance.",
+        sizes: "Silicone médical ou élastomère thermoplastique de qualité médicale. Au moins deux tailles par modèle : 20 ml au plus, et plus de 20 ml jusqu'à 30 ml.",
+        application: "Se laver les mains avant la mise en place et avant le retrait. Une seule coupe à la fois, 6 heures au plus, uniquement pendant les règles, d'un volume adapté au flux. La nuit, préférer une protection externe. Nettoyer et désinfecter selon la notice entre deux cycles.",
+        renewal: "Deux produits pris en charge par période annuelle, coupe ou culotte dans toute combinaison ; la période débute à la première délivrance et court de date à date.",
+        lpp: "Hors LPP : liste de l'article L. 162-59 du code de la sécurité sociale, facturée par le canal LPP avec le code individuel du fabricant (code générique 1719621 rejeté). Le pharmacien inscrit son propre numéro comme prescripteur. Participation de l'assuré : 40 % ; C2S intégrale.",
+        caution: "Syndrome de choc toxique : retirer la coupe et consulter sans délai en cas de fièvre supérieure à 39 °C, de vomissements, de diarrhée, d'éruption évoquant un coup de soleil, de maux de gorge, de vertiges ou de malaise. Pas de protection interne après un antécédent de syndrome de choc toxique.",
+        tags: "coupe menstruelle, cup, protection périodique, règles, choc toxique, C2S",
+        sources: "Décret n° 2026-288 du 17/04/2026\nArrêté du 06/08/2026 — modalités de prise en charge\nDécret n° 2023-1427 du 30/12/2023 — information sur les protections intimes",
+    },
+    StarterDispositif {
+        name: "Compléments nutritionnels oraux",
+        family: "Nutrition",
+        indication: "Dénutrition chez l'adulte dont la fonction intestinale est normale, lorsque les conseils diététiques et l'enrichissement de l'alimentation ne suffisent pas. Diagnostic : un critère phénotypique et un critère étiologique (HAS 2019, et 2021 à partir de 70 ans).",
+        sizes: "Boissons lactées, jus de fruits, crèmes, potages, compotes, poudres ; produits concentrés de petit volume, sans lactose, enrichis en fibres ou adaptés aux troubles de la déglutition. Teneurs par produit à la page « Mesures et conseils ».",
+        application: "Objectif : 400 kcal et/ou 30 g de protéines de plus par jour, le plus souvent en 2 unités, en collation à distance d'au moins deux heures d'un repas ou pendant le repas en plus de celui-ci. Après ouverture : 2 heures à température ambiante, 24 heures au réfrigérateur.",
+        renewal: "Première prescription pour 1 mois au plus, renouvellements de 3 mois au plus après réévaluation du poids, de l'état nutritionnel, des apports, de la tolérance et de l'observance. Première délivrance limitée à 10 jours ; le pharmacien peut ensuite adapter forme et saveur dans la limite des apports prescrits.",
+        lpp: "Titre I, chapitre 1er, section 5. Ordonnance séparée portant l'âge, le poids, le produit, la texture, le volume, le nombre d'unités par jour et les modalités de prise. Critères de prise en charge : perte de poids de 5 % en 1 mois ou de 10 % en 6 mois ; IMC inférieur ou égal à 18,5 avant 70 ans ; après 70 ans, IMC inférieur ou égal à 21, MNA inférieur ou égal à 17 ou albuminémie inférieure à 35 g/L.",
+        caution: "Ni indiqués ni pris en charge dans un régime amaigrissant ou chez le sportif. Précautions selon le produit : galactosémie, allergie aux protéines de lait, insuffisance rénale, âge minimal. Le diabète oriente vers un produit adapté, sans dispenser du contrôle glycémique.",
+        tags: "CNO, dénutrition, complément nutritionnel, Clinutren, Fortimel, Fresubin, Delical",
+        sources: "HAS — diagnostic de la dénutrition (2019, 2021)\nHAS — stratégie de prise en charge de la dénutrition chez la personne âgée (2007)\nAssurance Maladie — mémo CNO chez l'adulte (08/2025)",
     },
 ];
 
@@ -43523,6 +43680,7 @@ impl Db {
             "DELETE FROM biology WHERE patient_id = ?1",
             "DELETE FROM vaccinations WHERE patient_id = ?1",
             "DELETE FROM campaign_calls WHERE patient_id = ?1",
+            "DELETE FROM counsel_records WHERE patient_id = ?1",
             "DELETE FROM locations WHERE patient_id = ?1",
             "DELETE FROM patient_travel WHERE patient_id = ?1",
             "DELETE FROM scans WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
@@ -43784,6 +43942,7 @@ impl Db {
         self.seed_posologies()?;
         self.seed_preparations()?;
         self.seed_dispositifs()?;
+        self.seed_cno()?;
         self.seed_conduite()?;
         self.seed_protocols()?;
         self.seed_cascades()?;
@@ -43954,6 +44113,9 @@ impl Db {
         for sql in [
             "DELETE FROM vaccinations",
             "DELETE FROM campaign_calls",
+            "DELETE FROM counsel_records",
+            "DELETE FROM compression_grids",
+            "DELETE FROM cno_products",
             "DELETE FROM vaccine_lots",
             "DELETE FROM patient_travel",
             "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
@@ -48378,6 +48540,299 @@ impl Db {
             .execute(
                 "DELETE FROM vaccinations WHERE id = ?1 AND label = ?2",
                 (id, expected_label),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    // --- Mesures et conseils ---------------------------------------
+
+    /// Les fiches d'un dossier pour un sujet, la plus récente d'abord.
+    pub fn counsel_records(
+        &self,
+        patient_id: i64,
+        kind: &str,
+    ) -> Result<Vec<CounselRecord>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, patient_id, kind, on_date, data, operator, remark
+                 FROM counsel_records WHERE patient_id = ?1 AND kind = ?2
+                 ORDER BY on_date DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((patient_id, kind), |r| {
+                Ok(CounselRecord {
+                    id: r.get(0)?,
+                    patient_id: r.get(1)?,
+                    kind: r.get(2)?,
+                    on_date: r.get(3)?,
+                    data: r.get(4)?,
+                    operator: r.get(5)?,
+                    remark: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_counsel_record(&self, r: &CounselRecord) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO counsel_records
+                         (id, patient_id, kind, on_date, data, operator, remark)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                    next = next_id("counsel_records")
+                ),
+                rusqlite::params![
+                    r.patient_id,
+                    &r.kind,
+                    &r.on_date,
+                    &r.data,
+                    &r.operator,
+                    &r.remark
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Retirer une fiche, compare-and-set sur sa date et ses champs.
+    pub fn delete_counsel_record(&self, expected: &CounselRecord) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM counsel_records WHERE id = ?1 AND on_date = ?2 AND data = ?3",
+                (expected.id, &expected.on_date, &expected.data),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Les grilles de tailles de compression, par modèle.
+    pub fn compression_grids(&self) -> Result<Vec<CompressionGrid>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, model, article, grid FROM compression_grids ORDER BY model, id")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(CompressionGrid {
+                    id: r.get(0)?,
+                    model: r.get(1)?,
+                    article: r.get(2)?,
+                    grid: r.get(3)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_compression_grid(&self, model: &str, article: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO compression_grids (id, model, article) VALUES ({next}, ?1, ?2)",
+                    next = next_id("compression_grids")
+                ),
+                (model, article),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Réécrire une grille, compare-and-set sur ce qui était affiché.
+    pub fn update_compression_grid(
+        &self,
+        g: &CompressionGrid,
+        expected: &CompressionGrid,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE compression_grids SET model = ?1, article = ?2, grid = ?3
+                 WHERE id = ?4 AND model = ?5 AND article = ?6 AND grid = ?7",
+                rusqlite::params![
+                    &g.model,
+                    &g.article,
+                    &g.grid,
+                    expected.id,
+                    &expected.model,
+                    &expected.article,
+                    &expected.grid
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    pub fn delete_compression_grid(&self, expected: &CompressionGrid) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM compression_grids WHERE id = ?1 AND model = ?2 AND grid = ?3",
+                (expected.id, &expected.model, &expected.grid),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Semer les compléments nutritionnels, une fois, par nom : un
+    /// produit que l'équipe a corrigé ou retiré ne revient pas.
+    pub fn seed_cno(&self) -> Result<usize, String> {
+        {
+            let seeded = self.seeded_names("cno")?;
+            if crate::nutrition::STARTER_CNO
+                .iter()
+                .all(|p| seeded.contains(p.name))
+            {
+                return Ok(0);
+            }
+        }
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let mut present: std::collections::HashSet<String> = std::collections::HashSet::new();
+        {
+            let mut stmt = tx
+                .prepare("SELECT name FROM cno_products")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for row in rows {
+                present.insert(row.map_err(|e| e.to_string())?);
+            }
+        }
+        let seeded = self.seeded_names("cno")?;
+        let mut added = 0;
+        for p in crate::nutrition::starter_products() {
+            if seeded.contains(p.name.as_str()) {
+                continue;
+            }
+            self.mark_seeded_name("cno", &p.name)?;
+            if present.contains(&p.name) {
+                continue;
+            }
+            added += tx
+                .execute(
+                    &format!(
+                        "INSERT INTO cno_products
+                         (id, name, maker, form, portion, unit, kcal, protein, features, caution, source)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+                        next = next_id("cno_products")
+                    ),
+                    rusqlite::params![
+                        &p.name,
+                        &p.maker,
+                        &p.form,
+                        p.portion,
+                        &p.unit,
+                        p.kcal,
+                        p.protein,
+                        &p.features,
+                        &p.caution,
+                        &p.source
+                    ],
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(added)
+    }
+
+    /// Les compléments nutritionnels, par fabricant puis par nom.
+    pub fn cno_products(&self) -> Result<Vec<crate::nutrition::Product>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, name, maker, form, portion, unit, kcal, protein, features, caution, source
+                 FROM cno_products ORDER BY maker, name",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::nutrition::Product {
+                    id: r.get(0)?,
+                    name: r.get(1)?,
+                    maker: r.get(2)?,
+                    form: r.get(3)?,
+                    portion: r.get(4)?,
+                    unit: r.get(5)?,
+                    kcal: r.get(6)?,
+                    protein: r.get(7)?,
+                    features: r.get(8)?,
+                    caution: r.get(9)?,
+                    source: r.get(10)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_cno_product(&self, name: &str) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO cno_products (id, name) VALUES ({next}, ?1)",
+                    next = next_id("cno_products")
+                ),
+                [name],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Réécrire un produit, compare-and-set sur **toutes** les colonnes
+    /// affichées : une teneur corrigée sur un autre poste n'est pas
+    /// remise à l'ancienne par une correction de nom faite ici.
+    pub fn update_cno_product(
+        &self,
+        p: &crate::nutrition::Product,
+        expected: &crate::nutrition::Product,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE cno_products SET name = ?1, maker = ?2, form = ?3, portion = ?4, unit = ?5,
+                     kcal = ?6, protein = ?7, features = ?8, caution = ?9, source = ?10
+                 WHERE id = ?11 AND name = ?12 AND maker = ?13 AND form = ?14 AND portion = ?15
+                   AND unit = ?16 AND kcal = ?17 AND protein = ?18 AND features = ?19
+                   AND caution = ?20 AND source = ?21",
+                rusqlite::params![
+                    &p.name,
+                    &p.maker,
+                    &p.form,
+                    p.portion,
+                    &p.unit,
+                    p.kcal,
+                    p.protein,
+                    &p.features,
+                    &p.caution,
+                    &p.source,
+                    expected.id,
+                    &expected.name,
+                    &expected.maker,
+                    &expected.form,
+                    expected.portion,
+                    &expected.unit,
+                    expected.kcal,
+                    expected.protein,
+                    &expected.features,
+                    &expected.caution,
+                    &expected.source
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    pub fn delete_cno_product(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM cno_products WHERE id = ?1 AND name = ?2",
+                (id, expected_name),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -59829,6 +60284,8 @@ mod tests {
             "Diabète",
             "Respiratoire",
             "Location",
+            "Protection périodique",
+            "Nutrition",
         ];
         for d in &all {
             assert!(

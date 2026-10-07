@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.368.0] - 2026-10-08
+
+### Added
+- « Mesures et conseils » (page des médicaments et « Aller à… »), trois
+  pages et une fiche imprimée par page, aux conseils réécrivables :
+  - **Compression** : prise de mesures par article (chaussettes,
+    bas-cuisse, collant), repère de chaque point au survol, vérification
+    (points manquants, mesure inversée, écart entre les jambes) ; grilles
+    de tailles saisies par l'officine pour lire la taille de chaque
+    jambe ; renouvellement compté sur le dossier (2 paires par 6 mois,
+    4 par an, même classe et même taille) ; contre-indications et
+    classes françaises en mmHg et en hPa.
+  - **Nutrition orale** : diagnostic de la dénutrition selon la HAS (2019
+    avant 70 ans, 2021 à partir de 70 ans) et sa sévérité ; critères de
+    prise en charge LPP des CNO, affichés à part ; objectifs HAS 2007 de
+    la personne âgée ; plan de compléments additionnant kcal et
+    protéines contre l'objectif de 400 kcal et/ou 30 g ; 18 produits
+    Clinutren, Fortimel, Fresubin et Delical relevés sur les pages des
+    fabricants, modifiables par l'équipe ; suivi du poids au dossier.
+  - **Protections périodiques réutilisables** (prise en charge depuis le
+    01/10/2026) : droits (moins de 26 ans ou C2S), période annuelle
+    ouverte par la première délivrance, codes individuels des
+    fabricants, règles de facturation.
+- Fiches de dispositifs « Culotte menstruelle », « Coupe menstruelle » et
+  « Compléments nutritionnels oraux » (familles « Protection périodique »
+  et « Nutrition »).
+
+### Changed
+- Fiche « Bas et chaussettes de compression » réécrite d'après la HAS,
+  le mémo LPP de l'Assurance Maladie et la SFMV : classes, règle de
+  renouvellement, contre-indications chiffrées.
+
 ## [0.367.0] - 2026-10-08
 
 ### Added

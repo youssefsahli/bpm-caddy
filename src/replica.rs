@@ -130,6 +130,11 @@ pub const TABLES: &[Table] = &[
     // les dossiers. Les lots sont le stock de l'officine.
     t("campaign_calls", Main, Dossiers, false, true),
     t("vaccine_lots", Main, Officine, false, true),
+    // « Mesures et conseils » : les fiches d'un dossier voyagent avec les
+    // dossiers ; les grilles et les compléments sont du contenu.
+    t("counsel_records", Main, Dossiers, false, true),
+    t("compression_grids", Main, Fiches, false, true),
+    t("cno_products", Main, Fiches, false, true),
     t("drugs", Main, Fiches, false, true),
     t("drug_field_locks", Main, Fiches, false, false),
     t("protocols", Main, Fiches, false, true),

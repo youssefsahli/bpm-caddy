@@ -863,6 +863,7 @@ livre = "Une phrase qui n'est plus livrée"
         // l'être : c'est le mot `rewrite` qui les réunit.
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
+            ("conseils.rs", include_str!("conseils.rs")),
             ("crush.rs", include_str!("crush.rs")),
             ("elderly.rs", include_str!("elderly.rs")),
             ("entretien.rs", include_str!("entretien.rs")),
@@ -1887,6 +1888,7 @@ livre = "Une phrase qui n'est plus livrée"
         const SOURCES: &[(&str, &str)] = &[
             ("app.rs", include_str!("app.rs")),
             ("biology.rs", include_str!("biology.rs")),
+            ("conseils.rs", include_str!("conseils.rs")),
             ("classes.rs", include_str!("classes.rs")),
             ("crush.rs", include_str!("crush.rs")),
             ("elderly.rs", include_str!("elderly.rs")),
@@ -1962,6 +1964,7 @@ livre = "Une phrase qui n'est plus livrée"
     fn no_list_of_searched_words_repeats_itself() {
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
+            ("conseils.rs", include_str!("conseils.rs")),
             ("crush.rs", include_str!("crush.rs")),
             ("elderly.rs", include_str!("elderly.rs")),
             ("cyp.rs", include_str!("cyp.rs")),
@@ -2029,6 +2032,7 @@ livre = "Une phrase qui n'est plus livrée"
         // la source, et non ce qui se trouve sur le disque à l'exécution.
         const SOURCES: &[(&str, &str)] = &[
             ("biology.rs", include_str!("biology.rs")),
+            ("conseils.rs", include_str!("conseils.rs")),
             ("crush.rs", include_str!("crush.rs")),
             ("elderly.rs", include_str!("elderly.rs")),
             ("entretien.rs", include_str!("entretien.rs")),
