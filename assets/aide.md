@@ -858,6 +858,37 @@ dates, le lot, le site d'injection et la date du prochain rappel
 lorsqu'elle est connue. Les vaccinations **manquantes** s'affichent dans
 le dossier, par comparaison du calendrier et des doses enregistrées.
 
+# Campagne de vaccination
+
+L'onglet **Campagne** regroupe ce que l'équipe consulte chaque jour
+d'octobre à février. La saison court du 1er septembre au 31 août.
+
+**À rappeler.** Les dossiers que le calendrier vaccinal déclare dus
+pour la grippe, le COVID-19 ou le VRS — 65 ans et plus, grossesse en
+cours selon la date des dernières règles, 75 ans et plus pour le VRS —
+et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
+âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
+**Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la
+liste pour la saison ; **Message** le laisse, avec la date de l'appel.
+Les facteurs de risque (diabète, BPCO, insuffisance cardiaque…) ne sont
+pas connus du logiciel : ces patients ne figurent pas dans la liste et
+relèvent de l'entretien au comptoir.
+
+**Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
+la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
+vaccin choisi.
+
+**Lots reçus.** Chaque lot est saisi à réception : vaccin, spécialité,
+numéro, péremption (`06/2027` suffit, le dernier jour du mois est
+retenu) et nombre de doses. Le stock restant n'est jamais décompté à la
+main : il se calcule à partir des doses inscrites au carnet avec ce
+numéro. Une dose corrigée ou supprimée au carnet se retrouve donc dans
+le stock. Un lot est signalé périmé, épuisé, proche de la péremption
+(moins de 30 jours) ou en stock bas (moins de 5 doses).
+
+Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
+stock qui périme le premier.
+
 # Carnets de suivi du patient
 
 Six feuilles d'automesure à domicile : pression artérielle, glycémie,

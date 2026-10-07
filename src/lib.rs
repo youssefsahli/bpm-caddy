@@ -17,6 +17,7 @@ pub mod audit_window;
 pub mod biology;
 pub mod bulletin;
 pub mod caisse;
+pub mod campagne;
 pub mod cascade;
 pub mod classes;
 pub mod codebar;

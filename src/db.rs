@@ -700,6 +700,32 @@ CREATE TABLE IF NOT EXISTS vaccinations (
     next_due    TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT ''
 );
+-- Les lots de vaccins reçus pendant la campagne (`src/campagne.rs`).
+-- Ce qui reste d'un lot n'est pas écrit : il se compte contre les lignes
+-- du carnet qui portent son numéro, si bien qu'une dose corrigée ou
+-- supprimée au carnet se retrouve dans le stock sans rien décrémenter.
+CREATE TABLE IF NOT EXISTS vaccine_lots (
+    id          INTEGER PRIMARY KEY,
+    code        TEXT NOT NULL DEFAULT '',
+    product     TEXT NOT NULL DEFAULT '',
+    lot         TEXT NOT NULL,
+    expires_on  TEXT NOT NULL DEFAULT '',
+    received    INTEGER NOT NULL DEFAULT 0,
+    received_on TEXT NOT NULL DEFAULT '',
+    remark      TEXT NOT NULL DEFAULT ''
+);
+-- Les appels de la campagne : qui a été appelé, pour quel vaccin, quelle
+-- saison (« 2026-2027 ») et avec quelle issue (`campagne::Outcome`). Une
+-- ligne par appel, jamais réécrite : la liste lit le dernier.
+CREATE TABLE IF NOT EXISTS campaign_calls (
+    id          INTEGER PRIMARY KEY,
+    patient_id  INTEGER NOT NULL REFERENCES patients(id),
+    season      TEXT NOT NULL,
+    code        TEXT NOT NULL,
+    called_on   TEXT NOT NULL,
+    outcome     TEXT NOT NULL,
+    operator    TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS patient_travel (
     patient_id  INTEGER NOT NULL REFERENCES patients(id),
     country     TEXT NOT NULL,
@@ -1472,7 +1498,26 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
     // Un poste de bureau ou un compagnon — voir `SCHEMA`.
     "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''", // La campagne de vaccination — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS vaccine_lots (
+        id          INTEGER PRIMARY KEY,
+        code        TEXT NOT NULL DEFAULT '',
+        product     TEXT NOT NULL DEFAULT '',
+        lot         TEXT NOT NULL,
+        expires_on  TEXT NOT NULL DEFAULT '',
+        received    INTEGER NOT NULL DEFAULT 0,
+        received_on TEXT NOT NULL DEFAULT '',
+        remark      TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS campaign_calls (
+        id          INTEGER PRIMARY KEY,
+        patient_id  INTEGER NOT NULL REFERENCES patients(id),
+        season      TEXT NOT NULL,
+        code        TEXT NOT NULL,
+        called_on   TEXT NOT NULL,
+        outcome     TEXT NOT NULL,
+        operator    TEXT NOT NULL DEFAULT ''
+    )",
 ];
 
 /// The folder the daily backups live in: `backups/` beside the base.
@@ -43477,6 +43522,7 @@ impl Db {
             "DELETE FROM patient_drugs WHERE patient_id = ?1",
             "DELETE FROM biology WHERE patient_id = ?1",
             "DELETE FROM vaccinations WHERE patient_id = ?1",
+            "DELETE FROM campaign_calls WHERE patient_id = ?1",
             "DELETE FROM locations WHERE patient_id = ?1",
             "DELETE FROM patient_travel WHERE patient_id = ?1",
             "DELETE FROM scans WHERE subject_kind = 'PATIENT' AND subject_id = ?1",
@@ -43907,6 +43953,8 @@ impl Db {
         };
         for sql in [
             "DELETE FROM vaccinations",
+            "DELETE FROM campaign_calls",
+            "DELETE FROM vaccine_lots",
             "DELETE FROM patient_travel",
             "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
         ] {
@@ -48333,6 +48381,198 @@ impl Db {
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
+    }
+
+    // --- La campagne de vaccination --------------------------------
+
+    /// Les lots reçus, le plus récemment reçu d'abord.
+    pub fn vaccine_lots(&self) -> Result<Vec<crate::campagne::Lot>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, code, product, lot, expires_on, received, received_on, remark
+                 FROM vaccine_lots ORDER BY received_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::campagne::Lot {
+                    id: r.get(0)?,
+                    code: r.get(1)?,
+                    product: r.get(2)?,
+                    lot: r.get(3)?,
+                    expires_on: r.get(4)?,
+                    received: r.get(5)?,
+                    received_on: r.get(6)?,
+                    remark: r.get(7)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn add_vaccine_lot(&self, l: &crate::campagne::Lot) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO vaccine_lots
+                         (id, code, product, lot, expires_on, received, received_on, remark)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    next = next_id("vaccine_lots")
+                ),
+                rusqlite::params![
+                    &l.code,
+                    &l.product,
+                    &l.lot,
+                    &l.expires_on,
+                    l.received,
+                    &l.received_on,
+                    &l.remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Corriger un lot, compare-and-set sur toutes les colonnes affichées :
+    /// une quantité corrigée sur un autre poste n'est jamais écrasée.
+    pub fn update_vaccine_lot(
+        &self,
+        l: &crate::campagne::Lot,
+        expected: &crate::campagne::Lot,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE vaccine_lots SET code = ?1, product = ?2, lot = ?3, expires_on = ?4,
+                     received = ?5, received_on = ?6, remark = ?7
+                 WHERE id = ?8 AND code = ?9 AND product = ?10 AND lot = ?11
+                   AND expires_on = ?12 AND received = ?13 AND received_on = ?14
+                   AND remark = ?15",
+                rusqlite::params![
+                    &l.code,
+                    &l.product,
+                    &l.lot,
+                    &l.expires_on,
+                    l.received,
+                    &l.received_on,
+                    &l.remark,
+                    expected.id,
+                    &expected.code,
+                    &expected.product,
+                    &expected.lot,
+                    &expected.expires_on,
+                    expected.received,
+                    &expected.received_on,
+                    &expected.remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer un lot, compare-and-set sur le numéro affiché. Les doses du
+    /// carnet qui le portent restent : c'est le carnet qui fait foi.
+    pub fn delete_vaccine_lot(&self, id: i64, expected_lot: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM vaccine_lots WHERE id = ?1 AND lot = ?2",
+                (id, expected_lot),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Toutes les doses de tous les carnets depuis `since` (ISO), pour
+    /// le décompte de la saison : code, libellé, date.
+    pub fn vaccinations_since(&self, since: &str) -> Result<Vec<(String, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT code, label, given_on FROM vaccinations
+                 WHERE given_on >= ?1 ORDER BY given_on, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([since], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les lots portés par le carnet, toutes dates confondues : un lot
+    /// reçu en septembre peut servir jusqu'en mars.
+    pub fn vaccination_lots(&self) -> Result<Vec<String>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT lot FROM vaccinations WHERE lot <> ''")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Chaque dose datée de chaque carnet, pour la liste des rappels :
+    /// dossier, code, date.
+    pub fn all_vaccination_dates(&self) -> Result<Vec<(i64, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT patient_id, code, given_on FROM vaccinations WHERE code <> ''")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les appels d'une saison (« 2026-2027 »).
+    pub fn campaign_calls(&self, season: &str) -> Result<Vec<crate::campagne::Call>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, patient_id, season, code, called_on, outcome, operator
+                 FROM campaign_calls WHERE season = ?1 ORDER BY called_on, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([season], |r| {
+                Ok(crate::campagne::Call {
+                    id: r.get(0)?,
+                    patient_id: r.get(1)?,
+                    season: r.get(2)?,
+                    code: r.get(3)?,
+                    called_on: r.get(4)?,
+                    outcome: r.get(5)?,
+                    operator: r.get(6)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Noter un appel. Une ligne de plus, jamais une réécriture : la
+    /// liste lit le dernier appel de la saison.
+    pub fn add_campaign_call(&self, c: &crate::campagne::Call) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO campaign_calls
+                         (id, patient_id, season, code, called_on, outcome, operator)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6)",
+                    next = next_id("campaign_calls")
+                ),
+                rusqlite::params![
+                    c.patient_id,
+                    &c.season,
+                    &c.code,
+                    &c.called_on,
+                    &c.outcome,
+                    &c.operator,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
     }
 
     /// The destinations recorded on a patient's file, soonest first.
@@ -62493,6 +62733,70 @@ mod tests {
                         .unwrap();
                 }
             }
+        }
+        // La campagne de l'hiver : deux lots reçus, des doses de
+        // la saison au carnet de chaque dossier de 65 ans et
+        // plus sauf un, et un appel resté sans réponse — de quoi
+        // montrer les trois panneaux de la vue « Campagne ».
+        // Les dates suivent le jour : la démonstration doit
+        // tomber dans la saison en cours, quelle qu'elle soit.
+        let today = db.today_iso().unwrap();
+        let ago = |d: i64| crate::date::add_days(&today, -d).unwrap_or_default();
+        let ahead = |d: i64| crate::date::add_days(&today, d).unwrap_or_default();
+        for (code, product, lot, expires, received) in [
+            ("GRIPPE", "Efluelda", "DEMO-EF26A", ahead(240), 40),
+            ("GRIPPE", "Vaxigrip", "DEMO-VX26B", ahead(20), 20),
+            ("COVID", "Comirnaty XFG 30 µg", "DEMO-CX26", ahead(60), 12),
+        ] {
+            db.add_vaccine_lot(&crate::campagne::Lot {
+                code: code.to_owned(),
+                product: product.to_owned(),
+                lot: lot.to_owned(),
+                expires_on: expires,
+                received,
+                received_on: ago(5),
+                ..Default::default()
+            })
+            .unwrap();
+        }
+        let season = crate::campagne::season(&today);
+        let mut seniors: Vec<Patient> = db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .filter(|p| age_on(&p.birth_date, &today).is_some_and(|a| a >= 65))
+            .collect();
+        seniors.sort_by_key(|p| p.id);
+        if let Some(last) = seniors.pop() {
+            db.add_campaign_call(&crate::campagne::Call {
+                id: 0,
+                patient_id: last.id,
+                season: season.label.clone(),
+                code: "GRIPPE".to_owned(),
+                called_on: ago(1),
+                outcome: "message".to_owned(),
+                operator: "CL".to_owned(),
+            })
+            .unwrap();
+        }
+        for (i, p) in seniors.iter().enumerate() {
+            let day = ago(i as i64 % 3);
+            if day.as_str() < season.start.as_str() {
+                continue;
+            }
+            db.add_vaccination(
+                p.id,
+                &Vaccination {
+                    code: "GRIPPE".to_owned(),
+                    label: "Grippe saisonnière".to_owned(),
+                    given_on: day,
+                    lot: "DEMO-EF26A".to_owned(),
+                    site: "Deltoïde G".to_owned(),
+                    operator: "CL".to_owned(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
         }
     }
 

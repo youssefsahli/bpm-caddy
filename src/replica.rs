@@ -126,6 +126,10 @@ pub const TABLES: &[Table] = &[
     t("message_chunks", Main, Equipe, true, true),
     t("vaccinations", Main, Dossiers, false, true),
     t("patient_travel", Main, Dossiers, false, false),
+    // Les appels de la campagne nomment un dossier : ils voyagent avec
+    // les dossiers. Les lots sont le stock de l'officine.
+    t("campaign_calls", Main, Dossiers, false, true),
+    t("vaccine_lots", Main, Officine, false, true),
     t("drugs", Main, Fiches, false, true),
     t("drug_field_locks", Main, Fiches, false, false),
     t("protocols", Main, Fiches, false, true),

@@ -425,27 +425,27 @@ pub const CATALOGUE: &[VaccineRef] = &[
     VaccineRef {
         code: "GRIPPE",
         label: "Grippe saisonnière",
-        schedule: "Chaque automne",
+        schedule: "Chaque automne ; 65 ans et plus : Efluelda ou Fluad de préférence",
     },
     VaccineRef {
         code: "COVID",
         label: "COVID-19",
-        schedule: "Campagne annuelle",
+        schedule: "Campagne annuelle ; au moins 6 mois après la dernière dose (3 mois à 80 ans et plus ou en cas d'immunodépression)",
     },
     VaccineRef {
         code: "PNEUMO",
         label: "Pneumocoque",
-        schedule: "Selon les facteurs de risque et les doses déjà reçues",
+        schedule: "Dose unique de Prevenar 20 ou Capvaxive : 65 ans et plus, adultes à risque",
     },
     VaccineRef {
         code: "ZONA",
         label: "Zona (Shingrix)",
-        schedule: "2 doses ; à partir de 65 ans",
+        schedule: "2 doses à 2 mois d'intervalle (jusqu'à 6 mois) ; 65 ans et plus, immunodéprimés dès 18 ans",
     },
     VaccineRef {
         code: "VRS",
         label: "VRS (virus respiratoire syncytial)",
-        schedule: "Dose unique à partir de 75 ans",
+        schedule: "Dose unique : 75 ans et plus ; dès 65 ans avec maladie respiratoire ou cardiaque chronique",
     },
     VaccineRef {
         code: "ROR",
@@ -459,12 +459,12 @@ pub const CATALOGUE: &[VaccineRef] = &[
         // infobulle sur le nom, au moment où l'on **note une dose**, et
         // elle ne répondait qu'à « pour qui ». Le schéma vient de la
         // table de référence « Vaccination à l'officine ».
-        schedule: "2 doses avant 15 ans, 3 au-delà ; 11-14 ans, rattrapage jusqu'à 19 ans",
+        schedule: "2 doses avant 15 ans, 3 au-delà ; 11-14 ans, rattrapage jusqu'à 26 ans révolus",
     },
     VaccineRef {
         code: "MENACYW",
         label: "Méningocoque ACYW",
-        schedule: "Calendrier du nourrisson ; voyage, pèlerinage",
+        schedule: "Nourrisson ; une dose entre 11 et 14 ans, rattrapage jusqu'à 24 ans ; voyage, pèlerinage",
     },
     VaccineRef {
         code: "MENB",
@@ -806,7 +806,11 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             detail: if done {
                 "Dose de la campagne en cours enregistrée.".to_owned()
             } else if age.is_some_and(|a| a >= 65) {
-                "Campagne en cours, aucune dose enregistrée.".to_owned()
+                // Calendrier 2026 : à 65 ans et plus, le vaccin haute dose
+                // ou adjuvanté de préférence ; la dose standard reste
+                // possible.
+                "Campagne en cours, aucune dose enregistrée. À 65 ans et plus : Efluelda ou Fluad de préférence."
+                    .to_owned()
             } else {
                 "Selon les facteurs de risque et l'entourage.".to_owned()
             },
@@ -814,9 +818,39 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     }
 
     // --- COVID-19: annual campaign, same reading ---
+    //
+    // **Le délai depuis la dernière dose** (calendrier 2026) : six mois,
+    // trois à 80 ans et plus ou en cas d'immunodépression. Une dose du
+    // printemps n'appartient pas à la saison mais peut encore être trop
+    // récente à l'automne : la ligne dit alors à partir de quand.
     {
         let season = flu_season_start(today);
         let done = last("COVID").is_some_and(|d| d >= season.as_str());
+        let mut detail = if done {
+            "Dose de la campagne en cours enregistrée.".to_owned()
+        } else {
+            "Campagne annuelle : 65 ans et plus, comorbidités, immunodéprimés, entourage."
+                .to_owned()
+        };
+        if !done {
+            if let Some(prev) = last("COVID") {
+                let months = if age.is_some_and(|a| a >= 80) { 3 } else { 6 };
+                if let Some(from) = crate::date::add_months(prev, months) {
+                    if from.as_str() > today {
+                        detail = format!(
+                            "Dernière dose le {} : délai minimal de {months} mois, soit à partir du {}{}.",
+                            crate::db::format_french_date(prev),
+                            crate::db::format_french_date(&from),
+                            if months == 6 {
+                                " (3 mois en cas d'immunodépression)"
+                            } else {
+                                ""
+                            },
+                        );
+                    }
+                }
+            }
+        }
         out.push(DueLine {
             code: "COVID",
             label: "COVID-19",
@@ -827,11 +861,7 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             } else {
                 DueLevel::Ask
             },
-            detail: if done {
-                "Dose de la campagne en cours enregistrée.".to_owned()
-            } else {
-                "Campagne annuelle : 65 ans et plus, immunodéprimés, entourage.".to_owned()
-            },
+            detail,
         });
     }
 
@@ -878,17 +908,24 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
         });
     }
 
-    // --- Pneumocoque: on risk, so always a question ---
+    // --- Pneumocoque: everyone from 65 (calendrier 2026) ---
+    //
+    // Depuis le calendrier 2026, **toute personne de 65 ans et plus**
+    // reçoit une dose unique de Prevenar 20 ou de Capvaxive : ce n'est
+    // plus une question de facteurs de risque. Une dose au carnet peut
+    // être d'un ancien schéma (VPC13, VPP23) : la ligne demande alors de
+    // vérifier le vaccin reçu.
     if age.is_some_and(|a| a >= 65) {
         let n = count("PNEUMO");
         out.push(DueLine {
             code: "PNEUMO",
             label: "Pneumocoque",
-            level: if n >= 1 { DueLevel::Ok } else { DueLevel::Ask },
+            level: if n >= 1 { DueLevel::Ok } else { DueLevel::Due },
             detail: if n >= 1 {
-                "Dose enregistrée ; vérifier le schéma selon les vaccins déjà reçus.".to_owned()
+                "Dose enregistrée ; après un VPC13 ou un VPP23 seul, une dose de Prevenar 20 ou Capvaxive si plus d'un an ; après la séquence VPC13 puis VPP23, 5 ans après le VPP23."
+                    .to_owned()
             } else {
-                "Recommandé sur facteurs de risque ; schéma selon les doses antérieures.".to_owned()
+                "Dose unique de Prevenar 20 ou Capvaxive recommandée à partir de 65 ans.".to_owned()
             },
         });
     }
@@ -909,7 +946,7 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     // **Le nombre de doses dépend de l'âge à la première**, et non du
     // nombre qu'on en a : commencé à quinze ans ou plus, le schéma en
     // compte trois, et deux doses se lisaient « complet ».
-    if age.is_some_and(|a| (11..=19).contains(&a)) {
+    if age.is_some_and(|a| (11..=26).contains(&a)) {
         let n = count("HPV");
         let first = doses
             .iter()
@@ -924,15 +961,53 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             None if age.is_some_and(|a| a >= 15) => 3,
             None => 2,
         };
+        // De 20 à 26 ans révolus, le rattrapage (Gardasil 9) est
+        // possible depuis le calendrier 2026 : une proposition, pas un dû.
+        let catch_up = age.is_some_and(|a| a >= 20);
         out.push(DueLine {
             code: "HPV",
             label: "Papillomavirus",
             level: if n >= needed {
                 DueLevel::Ok
+            } else if catch_up {
+                DueLevel::Ask
             } else {
                 DueLevel::Due
             },
-            detail: format!("{n} dose(s) sur {needed} ; 2 doses avant 15 ans, 3 doses ensuite."),
+            detail: if catch_up && n < needed {
+                format!("{n} dose(s) sur {needed} ; rattrapage possible jusqu'à 26 ans révolus (Gardasil 9).")
+            } else {
+                format!("{n} dose(s) sur {needed} ; 2 doses avant 15 ans, 3 doses ensuite.")
+            },
+        });
+    }
+
+    // --- Méningocoque ACWY: l'adolescent et le jeune adulte ---
+    //
+    // Une dose entre 11 et 14 ans quelle que soit la vaccination
+    // antérieure, rattrapage de 15 à 24 ans (calendrier 2026). Une dose
+    // reçue dans l'enfance ne compte pas : seule une dose faite à 11 ans
+    // ou plus ferme la ligne.
+    if age.is_some_and(|a| (11..=24).contains(&a)) {
+        let done = doses.iter().any(|d| {
+            d.code == "MENACYW" && !d.date.is_empty() && age_at(d.date).is_some_and(|a| a >= 11)
+        });
+        out.push(DueLine {
+            code: "MENACYW",
+            label: "Méningocoque ACWY",
+            level: if done {
+                DueLevel::Ok
+            } else if age.is_some_and(|a| a <= 14) {
+                DueLevel::Due
+            } else {
+                DueLevel::Ask
+            },
+            detail: if done {
+                "Dose de l'adolescence enregistrée.".to_owned()
+            } else {
+                "Une dose entre 11 et 14 ans, quelle que soit la vaccination antérieure ; rattrapage de 15 à 24 ans."
+                    .to_owned()
+            },
         });
     }
 
@@ -964,7 +1039,7 @@ fn dtp_next_after(m: u32) -> u32 {
 
 /// The first day of the vaccination campaign `today` falls in: doses
 /// are counted from the 1st of September before it.
-fn flu_season_start(today: &str) -> String {
+pub fn flu_season_start(today: &str) -> String {
     let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
     let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(1);
     let start = if month >= 9 {
@@ -2883,5 +2958,54 @@ mod tests {
         let none = due_lines_with("1996-01-01", "2026-09-23", &[], "");
         assert!(none.iter().all(|l| !l.label.contains("grossesse")));
         assert!(!none.iter().any(|l| l.code == "VIVANTS"));
+    }
+    /// Le calendrier 2026 : le pneumocoque pour tous à 65 ans, le
+    /// rattrapage HPV jusqu'à 26 ans, l'ACWY de l'adolescent, et le délai
+    /// du COVID depuis la dernière dose.
+    #[test]
+    fn the_2026_calendar_reads_as_published() {
+        let today = "2026-10-20";
+        let find = |lines: &[DueLine], code: &str| -> (DueLevel, String) {
+            let l = lines.iter().find(|l| l.code == code).expect(code);
+            (l.level, l.detail.clone())
+        };
+        let senior = due_lines("1955-01-01", today, &[]);
+        assert_eq!(find(&senior, "PNEUMO").0, DueLevel::Due);
+        assert!(find(&senior, "GRIPPE").1.contains("Efluelda"));
+        let young = due_lines("2004-05-05", today, &[]);
+        assert_eq!(find(&young, "HPV").0, DueLevel::Ask, "22 ans : rattrapage");
+        assert!(find(&young, "HPV").1.contains("26 ans"));
+        assert_eq!(
+            find(&young, "MENACYW").0,
+            DueLevel::Ask,
+            "22 ans : rattrapage ACWY"
+        );
+        let older = due_lines("1999-01-01", today, &[]);
+        assert!(
+            !older.iter().any(|l| l.code == "MENACYW" || l.code == "HPV"),
+            "26 ans passés"
+        );
+        let teen = due_lines("2013-03-03", today, &[]);
+        assert_eq!(find(&teen, "MENACYW").0, DueLevel::Due);
+        let childhood = [Dose {
+            code: "MENACYW",
+            date: "2014-09-01",
+        }];
+        assert_eq!(
+            find(&due_lines("2013-03-03", today, &childhood), "MENACYW").0,
+            DueLevel::Due,
+            "une dose du nourrisson ne vaut pas celle de l'adolescence"
+        );
+        // Une dose du printemps : trop récente en octobre à 70 ans.
+        let spring = [Dose {
+            code: "COVID",
+            date: "2026-05-15",
+        }];
+        let (level, detail) = find(&due_lines("1956-01-01", today, &spring), "COVID");
+        assert_eq!(level, DueLevel::Due);
+        assert!(detail.contains("15/11/2026"), "{detail}");
+        // À 80 ans et plus, trois mois suffisent : rien à attendre.
+        let (_, detail) = find(&due_lines("1940-01-01", today, &spring), "COVID");
+        assert!(!detail.contains("délai"), "{detail}");
     }
 }

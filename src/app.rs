@@ -1649,6 +1649,7 @@ fn help_title_for(
         MainView::Drugs => "Recherche",
         MainView::Agenda => "Agenda et planning",
         MainView::VaccineMap => "Carte vaccinale",
+        MainView::Campagne => "Campagne de vaccination",
         MainView::Registres => "Registre des stupéfiants",
         MainView::Script => "Console",
         MainView::Caisse | MainView::CaisseHistory => "Caisse",
@@ -2671,6 +2672,9 @@ enum MainView {
     Transmissions,
     /// The vaccination world map and its country groups (F7).
     VaccineMap,
+    /// La campagne de vaccination de l'hiver : les lots, les doses de la
+    /// saison et les patients à rappeler (`src/campagne.rs`).
+    Campagne,
     /// Les registres de l'officine : les stupéfiants, et les pièces qui
     /// n'appartiennent à aucun dossier.
     ///
@@ -2806,6 +2810,7 @@ impl MainView {
             MainView::Agenda => "agenda",
             MainView::Transmissions => "transmissions",
             MainView::VaccineMap => "map",
+            MainView::Campagne => "campagne",
             MainView::Registres => "registres",
             MainView::Explorer => "explorer",
             MainView::Classes => "classes",
@@ -2832,6 +2837,7 @@ impl MainView {
             "agenda" => Some(MainView::Agenda),
             "transmissions" => Some(MainView::Transmissions),
             "map" => Some(MainView::VaccineMap),
+            "campagne" => Some(MainView::Campagne),
             "registres" => Some(MainView::Registres),
             "explorer" => Some(MainView::Explorer),
             "classes" => Some(MainView::Classes),
@@ -2923,6 +2929,8 @@ enum WorkTab {
     Carnet,
     /// The vaccination map.
     Map,
+    /// La campagne de vaccination.
+    Campagne,
     /// Les registres de l'officine.
     Registres,
     /// L'explorateur de facettes.
@@ -3920,6 +3928,44 @@ impl MapLens {
             Self::JapaneseEnceph => tr("map_lens_ej"),
         }
     }
+}
+
+/// La campagne de vaccination, telle que la vue la lit : tout est
+/// calculé au chargement (`reload_campagne`) et après chaque geste,
+/// jamais par image.
+#[derive(Default)]
+struct CampagneState {
+    /// Le vaccin dont on lit les rappels et la courbe (`GRIPPE` par
+    /// défaut).
+    code: &'static str,
+    lots: Vec<crate::campagne::Lot>,
+    /// Les doses du carnet sur chaque lot, dans l'ordre de `lots`.
+    used: Vec<i64>,
+    tally: Vec<crate::campagne::Tally>,
+    weekly: Vec<(String, usize)>,
+    recalls: Vec<RecallRow>,
+    /// Combien de dossiers à rappeler, par vaccin de
+    /// `campagne::CAMPAIGN_CODES`.
+    counts: [usize; 3],
+    new_lot: crate::campagne::Lot,
+    /// La page montrée quand la vue est trop étroite pour les trois
+    /// panneaux : 0 rappels, 1 doses, 2 lots.
+    page: usize,
+    new_received: String,
+    new_expiry: String,
+    confirm_delete: Option<i64>,
+    error: Option<String>,
+}
+
+/// Une ligne de la liste des rappels, avec ce que la vue affiche du
+/// dossier.
+struct RecallRow {
+    patient_id: i64,
+    name: String,
+    age: Option<u32>,
+    phone: String,
+    detail: String,
+    last_call: Option<(String, String)>,
 }
 
 struct Session {
@@ -5188,6 +5234,8 @@ struct Session {
     /// rewritten. Same shape as the codex, because it is the same kind
     /// of content — the team's, not the update's.
     show_dispositifs: bool,
+    /// La campagne de vaccination.
+    camp: CampagneState,
     dispositifs: Vec<db::Dispositif>,
     dispo_query: String,
     dispo_open: Option<i64>,
@@ -5795,6 +5843,7 @@ impl Session {
             insulin_measured: 2.0,
             insulin_target: 1.2,
             show_dispositifs: false,
+            camp: CampagneState::default(),
             dispositifs: Vec::new(),
             dispo_query: String::new(),
             dispo_open: None,
@@ -5863,6 +5912,10 @@ impl Session {
                 WorkTab::Agenda,
                 WorkTab::Carnet,
                 WorkTab::Map,
+                // La campagne de l'hiver : un onglet permanent, parce
+                // que d'octobre à février c'est l'écran qu'on rouvre
+                // entre deux injections.
+                WorkTab::Campagne,
                 WorkTab::Registres,
                 // Les récepteurs et cascades : sans onglet, la vue
                 // n'avait que des portes qu'il fallait connaître — le
@@ -5914,6 +5967,7 @@ impl Session {
             MainView::Agenda => WorkTab::Agenda,
             MainView::Transmissions => WorkTab::Carnet,
             MainView::VaccineMap => WorkTab::Map,
+            MainView::Campagne => WorkTab::Campagne,
             MainView::Registres => WorkTab::Registres,
             MainView::Explorer => WorkTab::Explorer,
             MainView::Classes => WorkTab::Classes,
@@ -5977,6 +6031,10 @@ impl Session {
             }
             WorkTab::Map => {
                 self.view = MainView::VaccineMap;
+            }
+            WorkTab::Campagne => {
+                self.view = MainView::Campagne;
+                self.reload_campagne();
             }
             WorkTab::Registres => self.open_registres(self.registre_tab),
             WorkTab::Explorer => {
@@ -6150,6 +6208,7 @@ impl Session {
             WorkTab::Agenda,
             WorkTab::Carnet,
             WorkTab::Map,
+            WorkTab::Campagne,
             WorkTab::Registres,
             WorkTab::Cascades,
             WorkTab::Explorer,
@@ -8924,6 +8983,7 @@ impl Session {
             WorkTab::Agenda => tr("tab_agenda").to_owned(),
             WorkTab::Carnet => tr("tab_carnet").to_owned(),
             WorkTab::Map => tr("tab_map").to_owned(),
+            WorkTab::Campagne => tr("tab_campagne").to_owned(),
             WorkTab::Registres => tr("tab_registres").to_owned(),
             WorkTab::Explorer => tr("tab_explorer").to_owned(),
             WorkTab::Ddi => tr("tab_ddi").to_owned(),
@@ -9602,6 +9662,98 @@ impl Session {
     }
 
     /// Reload the dispositifs from the base.
+    /// Relire la campagne : les lots et ce que le carnet en a utilisé,
+    /// les doses de la saison, la courbe du vaccin choisi, et la liste
+    /// des rappels. Appelé à l'ouverture de la vue et après un geste.
+    fn reload_campagne(&mut self) {
+        use crate::campagne;
+        let today = self.today.clone();
+        let season = campagne::season(&today);
+        if self.camp.code.is_empty() {
+            self.camp.code = campagne::CAMPAIGN_CODES[0];
+        }
+        let lots = self.db.vaccine_lots().unwrap_or_default();
+        let dose_lots = self.db.vaccination_lots().unwrap_or_default();
+        let refs: Vec<&str> = dose_lots.iter().map(String::as_str).collect();
+        self.camp.used = campagne::usage(&lots, &refs);
+        self.camp.lots = lots;
+        let rows = self
+            .db
+            .vaccinations_since(&season.start)
+            .unwrap_or_default();
+        let doses: Vec<campagne::DoseRow> = rows
+            .iter()
+            .map(|(code, label, date)| campagne::DoseRow {
+                code,
+                label,
+                given_on: date,
+            })
+            .collect();
+        self.camp.tally = campagne::tally(&doses, &today);
+        self.camp.weekly = campagne::weekly(&doses, self.camp.code, &today);
+        let dates = self.db.all_vaccination_dates().unwrap_or_default();
+        let calls = self.db.campaign_calls(&season.label).unwrap_or_default();
+        let mut by_patient: std::collections::HashMap<i64, Vec<vaccines::Dose>> =
+            std::collections::HashMap::new();
+        for (pid, code, date) in &dates {
+            by_patient
+                .entry(*pid)
+                .or_default()
+                .push(vaccines::Dose { code, date });
+        }
+        let people: Vec<campagne::Person> = self
+            .patients
+            .iter()
+            .map(|p| campagne::Person {
+                id: p.id,
+                birth: &p.birth_date,
+                ddr: &p.pregnancy_ddr,
+                doses: by_patient.remove(&p.id).unwrap_or_default(),
+            })
+            .collect();
+        let mut counts = [0usize; 3];
+        let mut chosen = Vec::new();
+        for (i, code) in campagne::CAMPAIGN_CODES.iter().enumerate() {
+            let list = campagne::recalls(&people, &calls, code, &today);
+            counts[i] = list.len();
+            if *code == self.camp.code {
+                chosen = list;
+            }
+        }
+        drop(people);
+        self.camp.counts = counts;
+        self.camp.recalls = chosen
+            .into_iter()
+            .filter_map(|r| {
+                let p = self.patients.iter().find(|p| p.id == r.patient_id)?;
+                Some(RecallRow {
+                    patient_id: p.id,
+                    name: format!("{} {}", p.last_name.to_uppercase(), p.first_name),
+                    age: db::age_on(&p.birth_date, &today),
+                    phone: p.phone.clone(),
+                    detail: r.detail,
+                    last_call: r.last_call,
+                })
+            })
+            .collect();
+    }
+
+    /// Le numéro du lot en stock pour ce vaccin qui périme le premier,
+    /// s'il y en a un d'utilisable. Lu à la demande — au choix d'un
+    /// vaccin dans le carnet — et non par image.
+    fn first_usable_lot(&self, code: &str) -> Option<String> {
+        if code.trim().is_empty() {
+            return None;
+        }
+        let lots = self.db.vaccine_lots().ok()?;
+        let dose_lots = self.db.vaccination_lots().ok()?;
+        let refs: Vec<&str> = dose_lots.iter().map(String::as_str).collect();
+        let used = crate::campagne::usage(&lots, &refs);
+        crate::campagne::usable_lots(&lots, &used, code, &self.today)
+            .first()
+            .map(|l| l.lot.clone())
+    }
+
     fn reload_dispositifs(&mut self) {
         self.dispositifs = self.db.dispositifs().unwrap_or_default();
         self.catalog_rev = self.catalog_rev.wrapping_add(1);
@@ -13862,7 +14014,7 @@ fn goto_rank(mut scored: Vec<(i32, GotoHit)>, limit: usize) -> Vec<GotoHit> {
 /// Une rangée de la boîte « Aller à… » : le libellé, élidé avant la
 /// nature, et la nature en petit à droite.
 /// Les vues permanentes qu'on peut épingler, et leur clé en base.
-fn standing_views() -> [(WorkTab, &'static str); 17] {
+fn standing_views() -> [(WorkTab, &'static str); 18] {
     [
         (WorkTab::Dashboard, "tableau"),
         (WorkTab::Search, "recherche"),
@@ -13870,6 +14022,7 @@ fn standing_views() -> [(WorkTab, &'static str); 17] {
         (WorkTab::Agenda, "agenda"),
         (WorkTab::Carnet, "carnet"),
         (WorkTab::Map, "carte"),
+        (WorkTab::Campagne, "campagne"),
         (WorkTab::Registres, "registres"),
         (WorkTab::Cascades, "cascades"),
         (WorkTab::Explorer, "explorateur"),
@@ -16277,6 +16430,10 @@ impl App {
                             session.map_country = Some("ML");
                             session.view = MainView::VaccineMap;
                         }
+                        Ok("campagne") => {
+                            session.view = MainView::Campagne;
+                            session.reload_campagne();
+                        }
                         // The carnet de vaccination is the patient
                         // file's second tab: open a patient, then turn
                         // to it.
@@ -17389,6 +17546,9 @@ impl App {
                             MainView::Agenda => Self::nav_agenda(ui, session),
                             MainView::Transmissions => Self::nav_carnet(ui, session),
                             MainView::VaccineMap => Self::nav_map(ui, session),
+                            // La campagne nomme des dossiers : le dock
+                            // des patients est celui qui les ouvre.
+                            MainView::Campagne => Self::nav_patients(ui, session, focus, &config),
                             // Le dock des patients, et pas par défaut : pour
                             // inscrire une délivrance au registre il faut le
                             // dossier ouvert, et c'est cette liste qui
@@ -19065,6 +19225,10 @@ impl App {
             }
             if session.view == MainView::VaccineMap {
                 Self::vaccine_map_view(ui, session, &config);
+                return;
+            }
+            if session.view == MainView::Campagne {
+                Self::campagne_view(ui, session, &operator);
                 return;
             }
             if session.view == MainView::Registres {
@@ -21218,6 +21382,15 @@ impl App {
                                 session.vacc_new.label = v.label.clone();
                                 session.vacc_new.code = v.code.clone();
                                 session.vacc_cursor = 0;
+                                // Le lot en stock qui périme le premier,
+                                // proposé : c'est lui qu'on écoule, et
+                                // c'est le champ qu'on tapait à chaque
+                                // injection. Un lot déjà tapé reste.
+                                if session.vacc_new.lot.trim().is_empty() {
+                                    if let Some(lot) = session.first_usable_lot(&v.code) {
+                                        session.vacc_new.lot = lot;
+                                    }
+                                }
                             }
                         }
                         let offered = !hits.is_empty();
@@ -50973,6 +51146,528 @@ impl App {
         }
     }
 
+    /// La campagne de vaccination de l'hiver.
+    ///
+    /// Trois panneaux : **à rappeler** (les dossiers que le calendrier
+    /// déclare dus et qui n'ont pas de dose de la saison), **les doses
+    /// de la saison** (par vaccin, et la courbe de la semaine), **les
+    /// lots** (reçus, utilisés d'après le carnet, restants). Tout ce qui
+    /// est affiché est calculé par `reload_campagne`, jamais par image.
+    fn campagne_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
+        use crate::campagne::{self, LotState, Outcome, CAMPAIGN_CODES};
+        let body = motif::visible_rect(ui);
+        let season = campagne::season(&session.today);
+        let title = trf("camp_title", &season.label);
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, &title),
+                Self::button_width(ui, tr("camp_reload")),
+            ]
+            .into_iter(),
+            tr("camp_subtitle"),
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        let mut reload = false;
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(&title);
+                if motif::button(ui, tr("camp_reload"))
+                    .on_hover_text(tr("camp_reload_tooltip"))
+                    .clicked()
+                {
+                    reload = true;
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(tr("camp_subtitle"))
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+        // Large : les rappels à gauche, les doses et les lots à droite.
+        // Étroit : les trois l'un sous l'autre, les rappels en premier —
+        // c'est la liste qu'on vient chercher.
+        let wide = rows[1].width() >= chars_wide(ui, 90.0);
+        // Étroit, **un panneau à la fois** : trois panneaux empilés à
+        // 1024x700 en texte 1,6 ne montraient que leurs en-têtes — la
+        // liste des rappels n'avait plus une seule ligne. Une rangée de
+        // pages choisit lequel prend toute la hauteur.
+        let hidden = egui::Rect::NOTHING;
+        let (recall_rect, tally_rect, lots_rect) = if wide {
+            let cols = motif::split_columns(rows[1], 2, 8.0);
+            let right = motif::split_rows(cols[1], &[0.0, 0.0], 8.0);
+            (cols[0], right[0], right[1])
+        } else {
+            let pages = [
+                tr("camp_page_recalls"),
+                tr("camp_page_tally"),
+                tr("camp_page_lots"),
+            ];
+            let strip = Self::wrapped_rows(ui, rows[1].width(), pages.iter().copied())
+                * (Self::row_height(ui) + ui.spacing().item_spacing.y);
+            let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
+            motif::inside(ui, r[0], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (i, label) in pages.iter().enumerate() {
+                        if motif::toggle(ui, label, session.camp.page == i).clicked() {
+                            session.camp.page = i;
+                        }
+                    }
+                });
+            });
+            match session.camp.page {
+                1 => (hidden, r[1], hidden),
+                2 => (hidden, hidden, r[1]),
+                _ => (r[1], hidden, hidden),
+            }
+        };
+
+        // --- À rappeler -------------------------------------------------
+        let mut pick_code: Option<&'static str> = None;
+        let mut call: Option<(i64, Outcome)> = None;
+        let mut open: Option<i64> = None;
+        let caption = trf("camp_recall_title", session.camp.recalls.len());
+        if recall_rect.is_positive() {
+            motif::panel(ui, recall_rect, Some(&caption), |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (i, code) in CAMPAIGN_CODES.iter().enumerate() {
+                        let label = trn(
+                            "camp_code_count",
+                            &[&Self::campaign_code_label(code), &session.camp.counts[i]],
+                        );
+                        if motif::toggle(ui, &label, session.camp.code == *code).clicked() {
+                            pick_code = Some(code);
+                        }
+                    }
+                });
+                ui.add_space(2.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("camp_recalls")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if session.camp.recalls.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("camp_recall_none"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            return;
+                        }
+                        for r in &session.camp.recalls {
+                            let who = match r.age {
+                                Some(a) => trn("camp_recall_who", &[&r.name, &a]),
+                                None => r.name.clone(),
+                            };
+                            let phone = if r.phone.trim().is_empty() {
+                                tr("camp_no_phone").to_owned()
+                            } else {
+                                r.phone.clone()
+                            };
+                            if motif::list_row_pair(ui, &who, &phone, false, 0.0)
+                                .on_hover_text(tr("camp_open_tooltip"))
+                                .clicked()
+                            {
+                                open = Some(r.patient_id);
+                            }
+                            let mut note = r.detail.clone();
+                            if let Some((day, outcome)) = &r.last_call {
+                                let what = Outcome::from_key(outcome)
+                                    .map(Self::campaign_outcome_label)
+                                    .unwrap_or(outcome.as_str());
+                                note = trn(
+                                    "camp_last_call",
+                                    &[&note, &db::format_french_date(day), &what],
+                                );
+                            }
+                            // Les quatre issues, puis la raison sur la même
+                            // rangée : une personne tient en deux lignes, et
+                            // la liste en montre deux fois plus.
+                            ui.horizontal_wrapped(|ui| {
+                                for o in Outcome::ALL {
+                                    if motif::button(ui, Self::campaign_outcome_label(o))
+                                        .on_hover_text(Self::campaign_outcome_tooltip(o))
+                                        .clicked()
+                                    {
+                                        call = Some((r.patient_id, o));
+                                    }
+                                }
+                                ui.label(
+                                    egui::RichText::new(note)
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_faint()),
+                                );
+                            });
+                            ui.add_space(4.0);
+                        }
+                    });
+            });
+        }
+
+        // --- Les doses de la saison --------------------------------------
+        if tally_rect.is_positive() {
+            motif::panel(ui, tally_rect, Some(tr("camp_tally_title")), |ui| {
+                let since = db::format_french_date(&season.start);
+                if session.camp.tally.is_empty() {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(trf("camp_tally_none", &since))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    return;
+                }
+                // Les vaccins de la saison, puis la courbe de celui qu'on lit :
+                // la liste prend ce qu'elle porte jusqu'à la moitié du
+                // panneau, la courbe le reste.
+                let inner = ui.available_rect_before_wrap();
+                let line = Self::row_height(ui) + ui.spacing().item_spacing.y;
+                let want = line * session.camp.tally.len() as f32;
+                let list_h = want.min(inner.height() * 0.5).max(line);
+                let parts = motif::split_rows(inner, &[list_h, 0.0], 6.0);
+                motif::inside(ui, parts[0], |ui| {
+                    egui::ScrollArea::vertical()
+                        .id_salt("camp_tally")
+                        .auto_shrink([false, false])
+                        .show(ui, |ui| {
+                            for t in &session.camp.tally {
+                                let name = if t.code.is_empty() || t.label.is_empty() {
+                                    t.code.clone()
+                                } else {
+                                    t.label.clone()
+                                };
+                                let side = trn("camp_tally_line", &[&t.today, &t.week, &t.season]);
+                                let on = t.code == session.camp.code;
+                                let row = motif::list_row_pair(ui, &name, &side, on, 0.0);
+                                if row.clicked() {
+                                    if let Some(code) =
+                                        CAMPAIGN_CODES.iter().find(|c| **c == t.code.as_str())
+                                    {
+                                        pick_code = Some(code);
+                                    }
+                                }
+                            }
+                        });
+                });
+                if parts[1].height() >= Self::row_height(ui) * 3.0
+                    && !session.camp.weekly.is_empty()
+                {
+                    let labels: Vec<String> = session
+                        .camp
+                        .weekly
+                        .iter()
+                        .map(|(monday, _)| {
+                            crate::date::iso_week(monday)
+                                .map(|(_, w)| trf("camp_week", w))
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                    let values: Vec<[f64; 1]> = session
+                        .camp
+                        .weekly
+                        .iter()
+                        .map(|(_, n)| [*n as f64])
+                        .collect();
+                    let groups: Vec<motif::chart::Group> = labels
+                        .iter()
+                        .zip(&values)
+                        .map(|(label, v)| motif::chart::Group { label, values: v })
+                        .collect();
+                    let colors = [motif::chart::series_color(0)];
+                    motif::inside(ui, parts[1], |ui| {
+                        motif::chart::bars(ui, parts[1], &groups, &colors, &|v| format!("{v:.0}"));
+                    });
+                }
+            });
+        }
+
+        // --- Les lots ------------------------------------------------------
+        let mut add_lot = false;
+        let mut delete_lot: Option<(i64, String)> = None;
+        let today = session.today.clone();
+        if lots_rect.is_positive() {
+            motif::panel(ui, lots_rect, Some(tr("camp_lots_title")), |ui| {
+                // Le formulaire d'abord : c'est à la réception d'un carton
+                // qu'on ouvre ce panneau, et la liste défile en dessous.
+                let h = Self::row_height(ui);
+                ui.horizontal_wrapped(|ui| {
+                    let codes: Vec<(String, String)> = CAMPAIGN_CODES
+                        .iter()
+                        .chain(["PNEUMO", "ZONA", "DTCAP"].iter())
+                        .map(|c| ((*c).to_owned(), Self::campaign_code_label(c).to_owned()))
+                        .collect();
+                    if session.camp.new_lot.code.is_empty() {
+                        session.camp.new_lot.code = session.camp.code.to_owned();
+                    }
+                    let w = motif::select_width(ui, codes.iter().map(|(_, l)| l.as_str()));
+                    motif::select(
+                        ui,
+                        "camp_lot_code",
+                        w,
+                        &mut session.camp.new_lot.code,
+                        &codes,
+                    );
+                    let fw = |hint: &str| Self::field_width(ui, [hint].into_iter());
+                    let (wp, wl, we, wq) = (
+                        fw(tr("camp_product_hint")),
+                        fw(tr("camp_lot_hint")),
+                        fw(tr("camp_expiry_hint")),
+                        fw(tr("camp_received_hint")),
+                    );
+                    let fields = [
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(wp, h),
+                            egui::TextEdit::singleline(&mut session.camp.new_lot.product)
+                                .hint_text(motif::hint(tr("camp_product_hint"))),
+                        ),
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(wl, h),
+                            egui::TextEdit::singleline(&mut session.camp.new_lot.lot)
+                                .hint_text(motif::hint(tr("camp_lot_hint"))),
+                        ),
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(we, h),
+                            egui::TextEdit::singleline(&mut session.camp.new_expiry)
+                                .hint_text(motif::hint(tr("camp_expiry_hint"))),
+                        ),
+                        motif::field_sized(
+                            ui,
+                            egui::vec2(wq, h),
+                            egui::TextEdit::singleline(&mut session.camp.new_received)
+                                .hint_text(motif::hint(tr("camp_received_hint"))),
+                        ),
+                    ];
+                    if motif::button(ui, tr("camp_lot_add")).clicked() || entered(ui, &fields) {
+                        add_lot = true;
+                    }
+                });
+                if let Some(err) = &session.camp.error {
+                    ui.colored_label(motif::alert(), err.as_str());
+                }
+                ui.add_space(4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("camp_lots")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        if session.camp.lots.is_empty() {
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(tr("camp_lots_none"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::text_dim()),
+                                )
+                                .wrap(),
+                            );
+                            return;
+                        }
+                        for (lot, used) in session.camp.lots.iter().zip(&session.camp.used) {
+                            let u = campagne::lot_use(lot, *used, &today);
+                            let primary = format!(
+                                "{} · {} · {}",
+                                Self::campaign_code_label(&lot.code),
+                                if lot.product.trim().is_empty() {
+                                    "—"
+                                } else {
+                                    lot.product.trim()
+                                },
+                                lot.lot
+                            );
+                            let expiry = if lot.expires_on.is_empty() {
+                                tr("camp_no_expiry").to_owned()
+                            } else {
+                                db::format_french_date(&lot.expires_on)
+                            };
+                            let side = trn(
+                                "camp_lot_line",
+                                &[&u.remaining, &lot.received, &u.used, &expiry],
+                            );
+                            motif::list_row_pair(ui, &primary, &side, false, 0.0);
+                            ui.horizontal_wrapped(|ui| {
+                                let (text, mark, fill) = match u.state {
+                                    LotState::Expired => (
+                                        tr("camp_state_expired").to_owned(),
+                                        motif::Pict::Stop,
+                                        motif::alert(),
+                                    ),
+                                    LotState::Exhausted => (
+                                        tr("camp_state_exhausted").to_owned(),
+                                        motif::Pict::Stop,
+                                        motif::text_dim(),
+                                    ),
+                                    LotState::ExpiresSoon(d) => (
+                                        trf("camp_state_soon", d),
+                                        motif::Pict::Warn,
+                                        motif::warn(),
+                                    ),
+                                    LotState::Low => (
+                                        tr("camp_state_low").to_owned(),
+                                        motif::Pict::Warn,
+                                        motif::warn(),
+                                    ),
+                                    LotState::Ok => (
+                                        tr("camp_state_ok").to_owned(),
+                                        motif::Pict::Check,
+                                        motif::accent(),
+                                    ),
+                                };
+                                motif::badge(ui, &text, Some(mark), fill, false);
+                                if u.remaining < 0 {
+                                    ui.label(
+                                        egui::RichText::new(tr("camp_lot_over"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::alert()),
+                                    );
+                                }
+                                let confirm = session.camp.confirm_delete == Some(lot.id);
+                                let label = if confirm {
+                                    tr("patient_delete_confirm")
+                                } else {
+                                    tr("camp_lot_remove")
+                                };
+                                if motif::button(ui, label).clicked() {
+                                    if confirm {
+                                        delete_lot = Some((lot.id, lot.lot.clone()));
+                                    } else {
+                                        session.camp.confirm_delete = Some(lot.id);
+                                    }
+                                }
+                            });
+                            ui.add_space(3.0);
+                        }
+                    });
+            });
+        }
+
+        // --- Les gestes ------------------------------------------------------
+        if let Some(code) = pick_code {
+            session.camp.code = code;
+            reload = true;
+        }
+        if let Some((patient_id, outcome)) = call {
+            let c = campagne::Call {
+                id: 0,
+                patient_id,
+                season: season.label.clone(),
+                code: session.camp.code.to_owned(),
+                called_on: session.today.clone(),
+                outcome: outcome.key().to_owned(),
+                operator: operator.to_owned(),
+            };
+            if let Err(e) = session.db.add_campaign_call(&c) {
+                session.error = Some(e);
+            }
+            reload = true;
+        }
+        if add_lot {
+            let year = session.year_now();
+            let camp = &mut session.camp;
+            camp.error = None;
+            let received: Result<i64, _> = camp.new_received.trim().parse();
+            let expiry = if camp.new_expiry.trim().is_empty() {
+                Ok(String::new())
+            } else {
+                campagne::parse_expiry(&camp.new_expiry, year)
+            };
+            match (received, expiry) {
+                _ if camp.new_lot.lot.trim().is_empty() => {
+                    camp.error = Some(tr("camp_lot_missing").to_owned());
+                }
+                (Ok(n), Ok(exp)) if n > 0 => {
+                    let mut lot = camp.new_lot.clone();
+                    lot.lot = lot.lot.trim().to_owned();
+                    lot.product = lot.product.trim().to_owned();
+                    lot.received = n;
+                    lot.expires_on = exp;
+                    lot.received_on = today.clone();
+                    match session.db.add_vaccine_lot(&lot) {
+                        Ok(_) => {
+                            let code = std::mem::take(&mut session.camp.new_lot.code);
+                            session.camp.new_lot = campagne::Lot {
+                                code,
+                                ..Default::default()
+                            };
+                            session.camp.new_received.clear();
+                            session.camp.new_expiry.clear();
+                            reload = true;
+                        }
+                        Err(e) => session.camp.error = Some(e),
+                    }
+                }
+                (_, Err(e)) => camp.error = Some(e),
+                _ => camp.error = Some(tr("camp_received_error").to_owned()),
+            }
+        }
+        if let Some((id, lot)) = delete_lot {
+            session.camp.confirm_delete = None;
+            match session.db.delete_vaccine_lot(id, &lot) {
+                Ok(true) => reload = true,
+                Ok(false) => {
+                    session.stale("camp_stale");
+                    reload = true;
+                }
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if reload {
+            session.reload_campagne();
+        }
+        if let Some(id) = open {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.open_patient(p);
+                session.patient_tab = PatientTab::Vaccins;
+                session.view = MainView::Search;
+            }
+        }
+    }
+
+    /// Le nom court d'un vaccin de la campagne, pour les boutons et les
+    /// lots ; un code inconnu se montre tel quel.
+    fn campaign_code_label(code: &str) -> &str {
+        match code {
+            "GRIPPE" => tr("camp_code_grippe"),
+            "COVID" => tr("camp_code_covid"),
+            "VRS" => tr("camp_code_vrs"),
+            "PNEUMO" => tr("camp_code_pneumo"),
+            "ZONA" => tr("camp_code_zona"),
+            "DTCAP" => tr("camp_code_dtcap"),
+            other => other,
+        }
+    }
+
+    fn campaign_outcome_label(o: crate::campagne::Outcome) -> &'static str {
+        use crate::campagne::Outcome;
+        match o {
+            Outcome::Prevenu => tr("camp_outcome_prevenu"),
+            Outcome::Message => tr("camp_outcome_message"),
+            Outcome::Ailleurs => tr("camp_outcome_ailleurs"),
+            Outcome::Refus => tr("camp_outcome_refus"),
+        }
+    }
+
+    fn campaign_outcome_tooltip(o: crate::campagne::Outcome) -> &'static str {
+        use crate::campagne::Outcome;
+        match o {
+            Outcome::Prevenu => tr("camp_outcome_prevenu_tooltip"),
+            Outcome::Message => tr("camp_outcome_message_tooltip"),
+            Outcome::Ailleurs => tr("camp_outcome_ailleurs_tooltip"),
+            Outcome::Refus => tr("camp_outcome_refus_tooltip"),
+        }
+    }
+
     fn dispositifs_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let band = Self::title_band_height(
@@ -72374,6 +73069,7 @@ impl eframe::App for App {
                     | MainView::Agenda
                     | MainView::Transmissions
                     | MainView::VaccineMap
+                    | MainView::Campagne
                     | MainView::Registres
                     | MainView::Explorer
                     | MainView::Classes

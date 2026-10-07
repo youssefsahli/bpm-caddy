@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.367.0] - 2026-10-08
+
+### Added
+- Onglet « Campagne » : la campagne de vaccination de l'hiver.
+  **À rappeler** liste, pour la grippe, le COVID-19 et le VRS, les
+  dossiers que le calendrier déclare dus (65 ans et plus, grossesse,
+  75 ans et plus pour le VRS) sans dose de la saison, les plus âgés
+  d'abord ; l'issue de l'appel se note d'un bouton (prévenu, message,
+  vacciné ailleurs, refus) et un message laissé garde la personne dans
+  la liste. **Doses de la saison** compte par vaccin le jour, les sept
+  derniers jours et la saison, avec la courbe hebdomadaire.
+  **Lots reçus** : chaque lot saisi à réception (péremption `06/2027`
+  acceptée) ; le stock restant se calcule à partir des doses inscrites
+  au carnet avec ce numéro, et le lot est signalé périmé, épuisé,
+  proche de la péremption ou en stock bas.
+- Carnet de vaccination : le choix d'un vaccin propose le lot en stock
+  qui périme le premier.
+- Calendrier vaccinal 2026 : le pneumocoque est dû à toute personne de
+  65 ans et plus (dose unique de Prevenar 20 ou Capvaxive) ; le
+  rattrapage HPV va jusqu'à 26 ans révolus ; une ligne pour l'ACWY de
+  l'adolescent (11-14 ans, rattrapage jusqu'à 24 ans) ; la ligne
+  COVID-19 donne la date à partir de laquelle une dose est possible
+  après la dernière (6 mois, 3 mois à 80 ans et plus) ; la grippe à
+  65 ans et plus rappelle la préférence pour Efluelda ou Fluad.
+- Table « Vaccination à l'officine » relue pour la campagne 2026-2027 :
+  vaccins grippaux sur liste I depuis le 10/07/2026, compétences du
+  pharmacien (COVID-19 dès 5 ans), VRS de la personne âgée et de la
+  grossesse, co-administration, traçabilité.
+
 ## [0.366.0] - 2026-09-29
 
 ### Added
