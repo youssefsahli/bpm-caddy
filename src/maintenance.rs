@@ -90,6 +90,10 @@ const CONTENT: &[Step] = &[
         run: Db::fill_starter_details,
     },
     Step {
+        key: "maint_step_refresh",
+        run: Db::refresh_starter_details,
+    },
+    Step {
         key: "maint_step_posologies",
         run: Db::seed_posologies,
     },
@@ -108,6 +112,10 @@ const CONTENT: &[Step] = &[
     Step {
         key: "maint_step_dispositifs",
         run: Db::seed_dispositifs,
+    },
+    Step {
+        key: "maint_step_cno",
+        run: Db::seed_cno,
     },
     Step {
         key: "maint_step_protocols",

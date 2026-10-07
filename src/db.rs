@@ -43978,6 +43978,116 @@ impl Db {
         Ok(inserted)
     }
 
+    /// Mettre à jour le texte livré des fiches **que l'équipe n'a jamais
+    /// touché** : un champ resté tel qu'une version précédente l'avait
+    /// semé reçoit le texte de cette version — une monographie relue
+    /// contre son RCP, une rédaction reprise.
+    ///
+    /// Ce qui l'interdit, champ par champ : un verrou (`drug_field_locks`,
+    /// écrit à chaque modification par l'équipe, y compris un champ vidé
+    /// exprès) ou une version (`card_edits`, ici ou reçue du réseau). Un
+    /// champ vide est laissé à [`Self::fill_starter_details`], qui ne
+    /// remplit que ce qui n'a jamais été écrit.
+    ///
+    /// Une lecture de la table, la comparaison en Rust, une écriture par
+    /// champ changé, sur sa clé primaire.
+    pub fn refresh_starter_details(&self) -> Result<usize, String> {
+        type Col = (&'static str, fn(&StarterDetail) -> &'static str);
+        const COLUMNS: [Col; 18] = [
+            ("indications", |d| d.indications),
+            ("mechanism", |d| d.mechanism),
+            ("dosage", |d| d.dosage),
+            ("contraindications", |d| d.contraindications),
+            ("ddi", |d| d.ddi),
+            ("adverse", |d| d.adverse),
+            ("monitoring", |d| d.monitoring),
+            ("iup", |d| d.iup),
+            ("half_life", |d| d.half_life),
+            ("elimination", |d| d.elimination),
+            ("renal", |d| d.renal),
+            ("pregnancy", |d| d.pregnancy),
+            ("sources", |d| d.sources),
+            ("status", |d| d.status),
+            ("smr", |d| d.smr),
+            ("tags", |d| d.tags),
+            ("toxicity", |d| d.toxicity),
+            ("forms", |d| d.forms),
+        ];
+        let locks: std::collections::HashSet<(i64, String)> = {
+            let mut st = self
+                .conn
+                .prepare("SELECT drug_id, column_name FROM drug_field_locks")
+                .map_err(|e| e.to_string())?;
+            let rows = st
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let edited: std::collections::HashSet<(String, String)> = {
+            let mut st = self
+                .conn
+                .prepare("SELECT card, field FROM card_edits WHERE kind = 'fiche'")
+                .map_err(|e| e.to_string())?;
+            let rows = st
+                .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let select = format!(
+            "SELECT id, name, {} FROM drugs",
+            COLUMNS
+                .iter()
+                .map(|(c, _)| *c)
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let cards: Vec<(i64, String, Vec<String>)> = {
+            let mut st = self.conn.prepare(&select).map_err(|e| e.to_string())?;
+            let rows = st
+                .query_map([], |r| {
+                    let mut values = Vec::with_capacity(COLUMNS.len());
+                    for i in 0..COLUMNS.len() {
+                        values.push(r.get::<_, String>(i + 2)?);
+                    }
+                    Ok((r.get(0)?, r.get(1)?, values))
+                })
+                .map_err(|e| e.to_string())?;
+            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+        };
+        let shipped: std::collections::HashMap<&str, &StarterDetail> =
+            STARTER_DETAILS.iter().map(|d| (d.name, d)).collect();
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let mut changed = 0;
+        for (id, name, values) in &cards {
+            let Some(d) = shipped.get(name.as_str()) else {
+                continue;
+            };
+            let card = crate::versions::key(name);
+            for (i, (column, get)) in COLUMNS.iter().enumerate() {
+                let new = get(d);
+                let old = values[i].as_str();
+                if new.is_empty() || old.is_empty() || old == new {
+                    continue;
+                }
+                if locks.contains(&(*id, (*column).to_owned()))
+                    || edited.contains(&(card.clone(), (*column).to_owned()))
+                {
+                    continue;
+                }
+                // Le nom de colonne vient de la table de littéraux
+                // ci-dessus, jamais d'une saisie.
+                changed += tx
+                    .execute(
+                        &format!("UPDATE drugs SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"),
+                        (new, id, old),
+                    )
+                    .map_err(|e| e.to_string())?;
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(changed)
+    }
+
     /// Fill the clinical fields of the detailed starter cards, without
     /// ever touching a field the team has already written: each column
     /// is only set where it is still empty. Returns how many fields
@@ -60219,6 +60329,58 @@ mod tests {
     /// team's afterwards. And every shipped fiche must answer the six
     /// questions the counter actually asks — a fiche that only names
     /// the box is a fiche nobody opens twice.
+    /// La mise à jour du texte livré ne touche que ce que l'équipe n'a
+    /// jamais écrit : un champ modifié garde ses mots, un champ resté tel
+    /// qu'une ancienne version l'avait semé reçoit le texte de celle-ci.
+    #[test]
+    fn the_shipped_text_refreshes_only_what_the_team_never_wrote() {
+        let dir = std::env::temp_dir().join(format!("bpm-refresh-details-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("t.db"), "pw").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        let d = STARTER_DETAILS
+            .iter()
+            .find(|d| !d.iup.is_empty() && !d.monitoring.is_empty())
+            .unwrap();
+        // Une ancienne version : deux champs semés avec un autre texte.
+        db.conn
+            .execute(
+                "UPDATE drugs SET iup = 'ancien texte', monitoring = 'ancienne surveillance' WHERE name = ?1",
+                [d.name],
+            )
+            .unwrap();
+        // L'équipe réécrit la surveillance : verrou posé par la mise à jour.
+        let card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == d.name)
+            .unwrap();
+        let mut mine = card.clone();
+        mine.monitoring = "surveillance de l'officine".to_owned();
+        assert!(db.update_drug(&mine, &card).unwrap());
+        let n = db.refresh_starter_details().unwrap();
+        assert!(n >= 1);
+        let after = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == d.name)
+            .unwrap();
+        assert_eq!(
+            after.iup, d.iup,
+            "champ jamais touché : texte de cette version"
+        );
+        assert_eq!(
+            after.monitoring, "surveillance de l'officine",
+            "champ de l'équipe : intact"
+        );
+        // Une seconde passe n'a plus rien à faire.
+        assert_eq!(db.refresh_starter_details().unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     #[test]
     fn the_dispositifs_seed_once_and_answer_the_counter() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-dispo-{}", std::process::id()));
