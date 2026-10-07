@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.370.0] - 2026-10-08
+
+### Added
+- Campagne : la liste « À rappeler » ajoute, après les dossiers dus, les
+  personnes de moins de 65 ans dont un traitement évoque un groupe visé
+  par le calendrier pour la grippe et le COVID-19 (diabète, maladie
+  respiratoire chronique, maladie coronaire, trouble du rythme,
+  insuffisance cardiaque, immunodépression, cancer, VIH), sous leur
+  propre intitulé et avec le médicament en cause ; l'indication est à
+  confirmer avec le patient. Les formes locales (spray nasal, pommade,
+  collyre), les analogues du GLP-1 de l'obésité et la prophylaxie
+  préexposition ne sont pas lus.
+- Campagne : « Imprimer la liste » sort la liste de rappel du vaccin
+  choisi (nom, âge, téléphone, motif, dernier appel, colonne pour
+  l'issue).
+- Carnet de vaccination : au moment de noter une dose, une remarque
+  signale l'âge minimal de la vaccination à l'officine (11 ans, 5 ans
+  pour le COVID-19), le délai depuis la dernière dose de COVID-19, la
+  préférence pour Efluelda ou Fluad à 65 ans et plus, Arexvy et le
+  COVID-19 le même jour, un vaccin vivant pendant la grossesse ou à
+  moins de 4 semaines d'un autre, la 2e dose de Shingrix trop proche, et
+  les 2 semaines entre dTcaP et VRS pendant la grossesse.
+- `scripts/frames.sh` : le coût moyen et maximal d'une image, vue par
+  vue, en version optimisée (`BPM_CADDY_FRAME_STATS=1`).
+
 ## [0.369.0] - 2026-10-08
 
 ### Changed

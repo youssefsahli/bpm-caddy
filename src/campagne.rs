@@ -411,6 +411,8 @@ pub struct Person<'a> {
     pub birth: &'a str,
     pub ddr: &'a str,
     pub doses: Vec<vaccines::Dose<'a>>,
+    /// Les groupes que ses traitements évoquent ([`evocations`]).
+    pub evoked: Vec<(&'static str, String)>,
 }
 
 /// Une ligne de la liste des rappels.
@@ -424,6 +426,9 @@ pub struct Recall {
     /// Le dernier appel de la saison pour ce vaccin, s'il y en a un :
     /// un message laissé reste dans la liste, avec sa date.
     pub last_call: Option<(String, String)>,
+    /// La ligne vient d'un traitement évocateur et non de l'âge ou d'une
+    /// grossesse : l'indication est à confirmer avec le patient.
+    pub evoked: bool,
 }
 
 /// Les dossiers à rappeler pour `code` : dus selon le calendrier, sans
@@ -435,12 +440,18 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
     let mut out: Vec<(String, Recall)> = Vec::new();
     for p in people {
         let lines = vaccines::due_lines_with(p.birth, today, &p.doses, p.ddr);
-        let Some(line) = lines
-            .iter()
-            .find(|l| l.code == code && l.level == DueLevel::Due)
-        else {
+        let Some(line) = lines.iter().find(|l| l.code == code) else {
             continue;
         };
+        // Dû par l'âge ou la grossesse ; sinon, pour la grippe et le
+        // COVID-19, évoqué par un traitement — une question ouverte que
+        // le calendrier laisse en « à demander ».
+        let evoked = line.level == DueLevel::Ask
+            && matches!(code, "GRIPPE" | "COVID")
+            && !p.evoked.is_empty();
+        if line.level != DueLevel::Due && !evoked {
+            continue;
+        }
         let mut mine: Vec<&Call> = calls
             .iter()
             .filter(|c| c.patient_id == p.id && c.code == code && c.season == s.label)
@@ -450,25 +461,241 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
         if last.is_some_and(|c| Outcome::from_key(&c.outcome).is_some_and(Outcome::closes)) {
             continue;
         }
+        let detail = if evoked {
+            let named: Vec<String> = p
+                .evoked
+                .iter()
+                .map(|(group, drug)| format!("{group} ({drug})"))
+                .collect();
+            crate::strings::trf("camp_evoked", named.join(" ; "))
+        } else {
+            line.detail.clone()
+        };
         out.push((
             p.birth.to_owned(),
             Recall {
                 patient_id: p.id,
                 code: line.code,
-                detail: line.detail.clone(),
+                detail,
                 last_call: last.map(|c| (c.called_on.clone(), c.outcome.clone())),
+                evoked,
             },
         ));
     }
-    // Naissance la plus ancienne d'abord ; sans date en dernier.
+    // Les dossiers dus d'abord, puis les traitements évocateurs ; dans
+    // chaque groupe, la naissance la plus ancienne d'abord, sans date en
+    // dernier.
     out.sort_by(|a, b| {
-        (a.0.is_empty(), a.0.as_str(), a.1.patient_id).cmp(&(
+        (a.1.evoked, a.0.is_empty(), a.0.as_str(), a.1.patient_id).cmp(&(
+            b.1.evoked,
             b.0.is_empty(),
             b.0.as_str(),
             b.1.patient_id,
         ))
     });
     out.into_iter().map(|(_, r)| r).collect()
+}
+
+// ---------------------------------------------------------------------
+// Les traitements évocateurs d'une indication
+// ---------------------------------------------------------------------
+
+/// Une molécule dont la présence dans les traitements d'un dossier
+/// évoque l'un des groupes que le calendrier vise pour la grippe et le
+/// COVID-19 avant 65 ans. **Une évocation, jamais un diagnostic** : la
+/// ligne de rappel la présente « à confirmer » avec le patient.
+pub struct Evocation {
+    /// Fragment de DCI, en minuscules sans accents.
+    pub dci: &'static str,
+    /// Le groupe du calendrier qu'elle évoque.
+    pub group: &'static str,
+    /// Si non vide : la classe de la fiche doit contenir ce fragment
+    /// (un corticoïde *inhalé*, et non nasal ou cutané).
+    pub class_needs: &'static str,
+}
+
+const DIAB: &str = "diabète";
+const RESP: &str = "maladie respiratoire chronique (asthme, BPCO)";
+const CORO: &str = "maladie coronaire ou antécédent d'AVC";
+const RYTHME: &str = "trouble du rythme traité au long cours";
+const IC: &str = "insuffisance cardiaque";
+const IMMUNO: &str = "immunodépression (traitement immunosuppresseur)";
+const CANCER: &str = "cancer ou hémopathie sous traitement";
+const VIH: &str = "infection par le VIH";
+
+const fn ev(dci: &'static str, group: &'static str) -> Evocation {
+    Evocation {
+        dci,
+        group,
+        class_needs: "",
+    }
+}
+
+/// Les molécules lues, groupe par groupe. Le fragment est une
+/// sous-chaîne de la DCI : la liste des fiches livrées que chacun
+/// attrape est tenue par le test `every_evocation_catches_what_it_says`.
+pub const EVOCATIONS: &[Evocation] = &[
+    // Diabète. Les analogues du GLP-1 de l'obésité sont lus à part.
+    ev("insuline", DIAB),
+    ev("metformine", DIAB),
+    ev("gliclazide", DIAB),
+    ev("glimepiride", DIAB),
+    ev("glibenclamide", DIAB),
+    ev("repaglinide", DIAB),
+    ev("gliptine", DIAB),
+    ev("acarbose", DIAB),
+    ev("dulaglutide", DIAB),
+    ev("exenatide", DIAB),
+    // Les gliflozines traitent aussi l'insuffisance cardiaque et la
+    // maladie rénale chronique : toutes sont des groupes visés.
+    ev(
+        "gliflozine",
+        "diabète, insuffisance cardiaque ou maladie rénale chronique",
+    ),
+    // Corticoïdes inhalés, bronchodilatateurs de longue durée, et le
+    // reste du traitement de fond de l'asthme et de la BPCO.
+    Evocation {
+        dci: "budesonide",
+        group: RESP,
+        class_needs: "inhal",
+    },
+    Evocation {
+        dci: "beclometasone",
+        group: RESP,
+        class_needs: "inhal",
+    },
+    Evocation {
+        dci: "fluticasone",
+        group: RESP,
+        class_needs: "inhal",
+    },
+    Evocation {
+        dci: "ciclesonide",
+        group: RESP,
+        class_needs: "inhal",
+    },
+    ev("formoterol", RESP),
+    ev("salmeterol", RESP),
+    ev("vilanterol", RESP),
+    ev("indacaterol", RESP),
+    ev("olodaterol", RESP),
+    ev("tiotropium", RESP),
+    ev("glycopyrronium", RESP),
+    ev("umeclidinium", RESP),
+    ev("aclidinium", RESP),
+    ev("montelukast", RESP),
+    ev("omalizumab", RESP),
+    ev("mepolizumab", RESP),
+    ev("benralizumab", RESP),
+    ev("tezepelumab", RESP),
+    ev("theophylline", RESP),
+    ev("roflumilast", RESP),
+    ev("salbutamol", RESP),
+    ev("terbutaline", RESP),
+    ev("ivacaftor", "mucoviscidose"),
+    // Cœur.
+    ev("sacubitril", IC),
+    ev("ivabradine", IC),
+    ev("vericiguat", IC),
+    ev("digoxine", "insuffisance cardiaque ou trouble du rythme"),
+    ev("clopidogrel", CORO),
+    ev("ticagrelor", CORO),
+    ev("prasugrel", CORO),
+    ev("isosorbide", CORO),
+    ev("trinitrine", CORO),
+    ev("nicorandil", CORO),
+    ev("ranolazine", CORO),
+    ev("amiodarone", RYTHME),
+    ev("flecainide", RYTHME),
+    ev("dronedarone", RYTHME),
+    // Un anticoagulant oral traite aussi une thrombose, sur quelques
+    // mois : le trouble du rythme est à confirmer.
+    ev("apixaban", RYTHME),
+    ev("rivaroxaban", RYTHME),
+    ev("dabigatran", RYTHME),
+    ev("edoxaban", RYTHME),
+    ev("warfarine", RYTHME),
+    ev("fluindione", RYTHME),
+    ev("acenocoumarol", RYTHME),
+    // Immunodépression.
+    ev("methotrexate", IMMUNO),
+    ev("azathioprine", IMMUNO),
+    ev("mycophenol", IMMUNO),
+    ev("ciclosporine", IMMUNO),
+    ev("tacrolimus", IMMUNO),
+    ev("everolimus", IMMUNO),
+    ev("sirolimus", IMMUNO),
+    ev("cyclophosphamide", IMMUNO),
+    ev("adalimumab", IMMUNO),
+    ev("etanercept", IMMUNO),
+    ev("infliximab", IMMUNO),
+    ev("certolizumab", IMMUNO),
+    ev("golimumab", IMMUNO),
+    ev("tocilizumab", IMMUNO),
+    ev("sarilumab", IMMUNO),
+    ev("abatacept", IMMUNO),
+    ev("rituximab", IMMUNO),
+    ev("ocrelizumab", IMMUNO),
+    ev("ofatumumab", IMMUNO),
+    ev("ustekinumab", IMMUNO),
+    ev("secukinumab", IMMUNO),
+    ev("ixekizumab", IMMUNO),
+    ev("guselkumab", IMMUNO),
+    ev("risankizumab", IMMUNO),
+    ev("tofacitinib", IMMUNO),
+    ev("baricitinib", IMMUNO),
+    ev("upadacitinib", IMMUNO),
+    ev("filgotinib", IMMUNO),
+    ev("fingolimod", IMMUNO),
+    ev("siponimod", IMMUNO),
+    ev("ozanimod", IMMUNO),
+    ev("natalizumab", IMMUNO),
+    ev("teriflunomide", IMMUNO),
+    ev("leflunomide", IMMUNO),
+    ev("capecitabine", CANCER),
+    ev("imatinib", CANCER),
+    ev("ibrutinib", CANCER),
+    ev("ruxolitinib", CANCER),
+    ev("lenalidomide", CANCER),
+    ev("hydroxycarbamide", "drépanocytose ou hémopathie"),
+    // VIH : les molécules qui ne servent qu'au traitement. L'association
+    // emtricitabine-ténofovir seule est aussi la prophylaxie
+    // préexposition, et le ténofovir seul traite l'hépatite B : ni l'une
+    // ni l'autre n'est lue.
+    ev("dolutegravir", VIH),
+    ev("bictegravir", VIH),
+    ev("raltegravir", VIH),
+    ev("elvitegravir", VIH),
+    ev("cabotegravir", VIH),
+    ev("darunavir", VIH),
+    ev("rilpivirine", VIH),
+    ev("doravirine", VIH),
+    ev("abacavir", VIH),
+];
+
+/// Les groupes évoqués par les traitements d'un dossier, chacun avec le
+/// premier médicament qui l'évoque. `treatments` : nom, DCI, classe.
+pub fn evocations(treatments: &[(&str, &str, &str)]) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    for (name, dci, class) in treatments {
+        if crate::classes::is_local_form(class) {
+            continue;
+        }
+        let d = crate::fuzzy::sort_key(dci);
+        let c = crate::fuzzy::sort_key(class);
+        for e in EVOCATIONS {
+            if !crate::fuzzy::contains_folded(&d, e.dci) {
+                continue;
+            }
+            if !e.class_needs.is_empty() && !crate::fuzzy::contains_folded(&c, e.class_needs) {
+                continue;
+            }
+            if !out.iter().any(|(g, _)| *g == e.group) {
+                out.push((e.group, (*name).to_owned()));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -629,6 +856,7 @@ mod tests {
                 birth: "1946-03-01",
                 ddr: "",
                 doses: vec![],
+                evoked: vec![],
             },
             // 70 ans, déjà vacciné cette saison : non.
             Person {
@@ -639,6 +867,7 @@ mod tests {
                     code: "GRIPPE",
                     date: "2026-10-02",
                 }],
+                evoked: vec![],
             },
             // 40 ans : la grippe est une question, pas un dû.
             Person {
@@ -646,6 +875,7 @@ mod tests {
                 birth: "1986-01-01",
                 ddr: "",
                 doses: vec![],
+                evoked: vec![],
             },
             // 68 ans, appelé, a refusé : sorti de la liste.
             Person {
@@ -653,6 +883,7 @@ mod tests {
                 birth: "1958-05-05",
                 ddr: "",
                 doses: vec![],
+                evoked: vec![],
             },
             // 90 ans, message laissé : reste, avec la date.
             Person {
@@ -660,6 +891,7 @@ mod tests {
                 birth: "1936-05-05",
                 ddr: "",
                 doses: vec![],
+                evoked: vec![],
             },
         ];
         let call = |id, pid, outcome: &str, season: &str| Call {
@@ -695,6 +927,7 @@ mod tests {
             birth: "1995-04-04",
             ddr: "2026-06-01",
             doses: vec![],
+            evoked: vec![],
         }];
         let r = recalls(&people, &[], "GRIPPE", today);
         assert_eq!(r.len(), 1);
@@ -710,6 +943,97 @@ mod tests {
         );
         assert!(parse_expiry("13/2027", 2026).is_err());
         assert!(parse_expiry("demain", 2026).is_err());
+    }
+
+    /// **Chaque fragment attrape ce qu'il dit, et rien d'autre** : la
+    /// liste des fiches livrées que chaque groupe évoque, relue une fois
+    /// et tenue ici. Un fragment qui n'attrape plus rien, ou une fiche
+    /// locale (spray nasal, pommade, collyre) qui se met à évoquer un
+    /// groupe, fait échouer le test.
+    #[test]
+    fn every_evocation_catches_what_it_says() {
+        let cards: Vec<(&str, &str, &str)> = crate::db::STARTER_DRUGS
+            .iter()
+            .map(|(n, d, c, _)| (*n, *d, *c))
+            .collect();
+        for e in EVOCATIONS {
+            let caught = cards
+                .iter()
+                .filter(|(n, d, c)| {
+                    !evocations(&[(n, d, c)]).is_empty()
+                        && crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(d), e.dci)
+                })
+                .count();
+            assert!(caught > 0, "« {} » n'attrape aucune fiche livrée", e.dci);
+        }
+        let group_of = |name: &str| -> Vec<&'static str> {
+            let c = cards.iter().find(|x| x.0 == name).expect(name);
+            evocations(&[*c]).into_iter().map(|(g, _)| g).collect()
+        };
+        // Locales, ou hors des groupes visés : rien.
+        for name in [
+            "Avamys", "Nasonex", "Protopic", "Saxenda", "Wegovy", "Truvada", "Viread",
+        ] {
+            assert!(group_of(name).is_empty(), "{name} : {:?}", group_of(name));
+        }
+        assert_eq!(group_of("Lantus"), [DIAB]);
+        assert_eq!(group_of("Pulmicort"), [RESP]);
+        assert_eq!(group_of("Seretide"), [RESP]);
+        assert_eq!(group_of("Humira"), [IMMUNO]);
+        assert_eq!(group_of("Biktarvy"), [VIH]);
+    }
+
+    #[test]
+    fn a_treatment_list_names_each_group_once_with_its_first_drug() {
+        let t = [
+            ("Glucophage", "metformine", "biguanide"),
+            ("Januvia", "sitagliptine", "inhibiteur de la DPP-4"),
+            (
+                "Symbicort",
+                "budésonide, formotérol",
+                "corticoïde inhalé et bêta-2 de longue durée",
+            ),
+        ];
+        let e = evocations(&t);
+        assert_eq!(e[0], (DIAB, "Glucophage".to_owned()));
+        assert_eq!(e[1].0, RESP);
+        assert_eq!(e.len(), 2);
+    }
+
+    #[test]
+    fn a_younger_patient_on_insulin_is_listed_after_those_owed() {
+        let today = "2026-10-20";
+        let people = vec![
+            Person {
+                id: 1,
+                birth: "1980-01-01",
+                ddr: "",
+                doses: vec![],
+                evoked: vec![(DIAB, "Lantus".to_owned())],
+            },
+            Person {
+                id: 2,
+                birth: "1950-01-01",
+                ddr: "",
+                doses: vec![],
+                evoked: vec![],
+            },
+            // 46 ans sans traitement évocateur : pas dans la liste.
+            Person {
+                id: 3,
+                birth: "1980-01-01",
+                ddr: "",
+                doses: vec![],
+                evoked: vec![],
+            },
+        ];
+        let r = recalls(&people, &[], "GRIPPE", today);
+        assert_eq!(r.iter().map(|x| x.patient_id).collect::<Vec<_>>(), [2, 1]);
+        assert!(r[1].evoked && r[1].detail.contains("Lantus"));
+        // Le VRS ne se lit pas sur un traitement.
+        assert!(recalls(&people, &[], "VRS", today)
+            .iter()
+            .all(|x| x.patient_id != 1));
     }
 
     #[test]

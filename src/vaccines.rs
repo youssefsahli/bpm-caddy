@@ -1051,6 +1051,160 @@ pub fn flu_season_start(today: &str) -> String {
 }
 
 // ---------------------------------------------------------------------
+// Ce que le carnet vérifie au moment de noter une dose
+// ---------------------------------------------------------------------
+
+/// Les vaccins vivants du catalogue : contre-indiqués pendant la
+/// grossesse et chez l'immunodéprimé, et espacés de 4 semaines entre eux
+/// quand ils ne sont pas faits le même jour.
+pub const LIVE: [&str; 4] = ["ROR", "VARICELLE", "FJ", "BCG"];
+
+/// Une dose déjà au carnet, pour la vérification : code, libellé, date ISO.
+pub type CarnetLine<'a> = (&'a str, &'a str, &'a str);
+
+/// Les avertissements que la dose en cours de saisie appelle, d'après le
+/// calendrier des vaccinations 2026 et les règles de la vaccination à
+/// l'officine. **Des avertissements, jamais un refus** : le pharmacien
+/// décide, et le carnet note ce qu'il a fait.
+///
+/// `given` est la date de la dose (ISO) ; vide, c'est `today`.
+pub fn entry_warnings(
+    birth: &str,
+    today: &str,
+    ddr: &str,
+    code: &str,
+    label: &str,
+    given: &str,
+    carnet: &[CarnetLine],
+) -> Vec<String> {
+    let given = if given.trim().is_empty() {
+        today
+    } else {
+        given.trim()
+    };
+    let age = crate::db::age_on(birth, given);
+    let label_folded = crate::fuzzy::sort_key(label);
+    let has = |needle: &str| crate::fuzzy::contains_folded(&label_folded, needle);
+    let mut out = Vec::new();
+
+    // L'âge de la vaccination à l'officine : la grippe à partir de
+    // 11 ans, le COVID-19 à partir de 5 ans, les autres vaccins du
+    // calendrier à partir de 11 ans.
+    if let Some(a) = age {
+        let floor = if code == "COVID" { 5 } else { 11 };
+        if a < floor && !code.is_empty() {
+            out.push(format!(
+                "Vaccination par le pharmacien à partir de {floor} ans ; à {a} ans, prescription et administration par un médecin, une sage-femme ou un infirmier."
+            ));
+        }
+    }
+
+    // La grossesse : les vaccins vivants sont contre-indiqués.
+    if LIVE.contains(&code) && weeks_of_amenorrhea(ddr, given).is_some() {
+        out.push("Vaccin vivant contre-indiqué pendant la grossesse.".to_owned());
+    }
+
+    // Le COVID-19 : 6 mois depuis la dernière dose, 3 mois à 80 ans et plus.
+    if code == "COVID" {
+        let last = carnet
+            .iter()
+            .filter(|(c, _, d)| *c == "COVID" && !d.is_empty() && *d < given)
+            .map(|(_, _, d)| *d)
+            .max();
+        if let Some(prev) = last {
+            let months = if age.is_some_and(|a| a >= 80) { 3 } else { 6 };
+            if crate::date::add_months(prev, months).is_some_and(|from| from.as_str() > given) {
+                out.push(format!(
+                    "Dernière dose de COVID-19 le {} : délai minimal de {months} mois non atteint{}.",
+                    crate::db::format_french_date(prev),
+                    if months == 6 {
+                        " (3 mois en cas d'immunodépression ou de très haut risque)"
+                    } else {
+                        ""
+                    }
+                ));
+            }
+        }
+    }
+
+    // La grippe à 65 ans et plus : haute dose ou adjuvanté de préférence.
+    if code == "GRIPPE"
+        && age.is_some_and(|a| a >= 65)
+        && (has("vaxigrip") || has("influvac") || has("flucelvax"))
+    {
+        out.push(
+            "À 65 ans et plus, Efluelda ou Fluad de préférence ; la dose standard reste possible."
+                .to_owned(),
+        );
+    }
+
+    // Le même jour : Arexvy ne se co-administre qu'avec la grippe.
+    let same_day: Vec<&CarnetLine> = carnet.iter().filter(|(_, _, d)| *d == given).collect();
+    let arexvy_today = same_day.iter().any(|(c, l, _)| {
+        *c == "VRS" && crate::fuzzy::contains_folded(&crate::fuzzy::sort_key(l), "arexvy")
+    });
+    if (code == "VRS" && has("arexvy") && same_day.iter().any(|(c, _, _)| *c == "COVID"))
+        || (code == "COVID" && arexvy_today)
+    {
+        out.push(
+            "Arexvy ne se co-administre pas avec le vaccin COVID-19 (avis HAS 2025) ; avec la grippe seulement."
+                .to_owned(),
+        );
+    }
+
+    // Deux vaccins vivants : le même jour, ou à 4 semaines d'intervalle.
+    if LIVE.contains(&code) {
+        let close = carnet.iter().any(|(c, _, d)| {
+            LIVE.contains(c)
+                && !d.is_empty()
+                && *d != given
+                && crate::date::days_between(d, given).is_some_and(|n| n.abs() < 28)
+        });
+        if close {
+            out.push(
+                "Un autre vaccin vivant date de moins de 4 semaines : le même jour ou à 4 semaines d'intervalle."
+                    .to_owned(),
+            );
+        }
+    }
+
+    // Le zona : la 2e dose de 2 à 6 mois après la première, 1 mois au plus tôt.
+    if code == "ZONA" {
+        if let Some(first) = carnet
+            .iter()
+            .filter(|(c, _, d)| *c == "ZONA" && !d.is_empty() && *d < given)
+            .map(|(_, _, d)| *d)
+            .min()
+        {
+            if crate::date::add_months(first, 1).is_some_and(|m| m.as_str() > given) {
+                out.push(
+                    "2e dose de Shingrix moins d'un mois après la première : l'intervalle est de 2 à 6 mois, 1 mois au minimum."
+                        .to_owned(),
+                );
+            }
+        }
+    }
+
+    // La grossesse : 2 semaines au moins entre le dTcaP et le VRS.
+    if weeks_of_amenorrhea(ddr, given).is_some() && (code == "VRS" || code == "DTCAP") {
+        let other = if code == "VRS" { "DTCAP" } else { "VRS" };
+        let close = carnet.iter().any(|(c, _, d)| {
+            *c == other
+                && !d.is_empty()
+                && *d >= ddr.trim()
+                && crate::date::days_between(d, given).is_some_and(|n| n.abs() < 14)
+        });
+        if close {
+            out.push(
+                "Pendant la grossesse, au moins 2 semaines entre le dTcaP et le vaccin contre le VRS."
+                    .to_owned(),
+            );
+        }
+    }
+    out
+}
+
+// ---------------------------------------------------------------------
 // Les pays
 // ---------------------------------------------------------------------
 
@@ -3007,5 +3161,40 @@ mod tests {
         // À 80 ans et plus, trois mois suffisent : rien à attendre.
         let (_, detail) = find(&due_lines("1940-01-01", today, &spring), "COVID");
         assert!(!detail.contains("délai"), "{detail}");
+    }
+    /// Ce que le carnet signale au moment de noter une dose.
+    #[test]
+    fn the_carnet_warns_before_a_dose_it_would_question() {
+        let today = "2026-10-20";
+        let w = |birth, ddr, code, label, carnet: &[CarnetLine]| {
+            entry_warnings(birth, today, ddr, code, label, "", carnet)
+        };
+        // Grippe à 9 ans : pas en officine.
+        assert!(w("2017-03-01", "", "GRIPPE", "Vaxigrip", &[])[0].contains("11 ans"));
+        // COVID-19 à 7 ans : possible en officine.
+        assert!(w("2019-03-01", "", "COVID", "Comirnaty", &[]).is_empty());
+        // COVID-19, dose de mai : trop tôt à 70 ans, pas à 82.
+        let may = [("COVID", "Comirnaty", "2026-06-01")];
+        assert!(w("1956-01-01", "", "COVID", "Comirnaty", &may)[0].contains("6 mois"));
+        assert!(w("1944-01-01", "", "COVID", "Comirnaty", &may).is_empty());
+        // Vaxigrip à 70 ans : la préférence rappelée ; Efluelda : rien.
+        assert!(w("1956-01-01", "", "GRIPPE", "Vaxigrip Tetra", &[])[0].contains("Efluelda"));
+        assert!(w("1956-01-01", "", "GRIPPE", "Efluelda", &[]).is_empty());
+        // Arexvy et COVID-19 le même jour.
+        let covid_today = [("COVID", "Comirnaty", today)];
+        assert!(w("1946-01-01", "", "VRS", "Arexvy", &covid_today)[0].contains("Arexvy"));
+        assert!(w("1946-01-01", "", "VRS", "Abrysvo", &covid_today).is_empty());
+        // ROR pendant une grossesse.
+        assert!(w("1995-01-01", "2026-08-01", "ROR", "ROR", &[])
+            .iter()
+            .any(|x| x.contains("grossesse")));
+        // VRS dix jours après le dTcaP de la grossesse.
+        let dtcap = [("DTCAP", "Repevax", "2026-10-10")];
+        assert!(w("1995-01-01", "2026-03-01", "VRS", "Abrysvo", &dtcap)
+            .iter()
+            .any(|x| x.contains("2 semaines")));
+        // Shingrix trois semaines après la première dose.
+        let zona = [("ZONA", "Shingrix", "2026-10-01")];
+        assert!(w("1950-01-01", "", "ZONA", "Shingrix", &zona)[0].contains("2 à 6 mois"));
     }
 }

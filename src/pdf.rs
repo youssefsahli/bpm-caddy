@@ -3407,6 +3407,71 @@ const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
+/// La liste des rappels de la campagne, à imprimer pour appeler : une
+/// ligne par dossier, et une colonne laissée vide pour noter l'issue.
+pub struct RecallPaper {
+    /// « Grippe — campagne 2026-2027 ».
+    pub title: String,
+    pub date: String,
+    /// Nom, âge, téléphone, raison, dernier appel.
+    pub rows: Vec<[String; 5]>,
+}
+
+pub fn open_recalls(
+    paper: &RecallPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("rappels", template_path),
+            &recall_values(paper, pharmacy),
+        ),
+        "rappels",
+    )
+}
+
+fn recall_values(paper: &RecallPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(14pt, weight: \"bold\")[#{}]\n#v(1mm)\n#text(9pt, style: \"italic\")[#{}]\n#v(3mm)\n",
+        typst_str(&paper.title),
+        typst_str(&format!("{} — {} dossier(s)", paper.date, paper.rows.len()))
+    ));
+    src.push_str(
+        "#table(columns: (auto, auto, auto, 1fr, auto, 3.2cm), stroke: 0.4pt, inset: 3.5pt,\n",
+    );
+    for h in ["Nom", "Âge", "Téléphone", "Motif", "Dernier appel", "Issue"] {
+        src.push_str(&format!(
+            "  [#text(weight: \"bold\")[#{}]],\n",
+            typst_str(h)
+        ));
+    }
+    for row in &paper.rows {
+        for cell in row {
+            src.push_str(&format!("  [#text(8.5pt)[#{}]],\n", typst_str(cell)));
+        }
+        src.push_str("  [],\n");
+    }
+    src.push_str(")\n");
+    vec![("{{BODY}}", src)]
+}
+
+const MARKERS_RAPPELS: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_RAPPELS_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.4cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+
+{{BODY}}
+"##;
+
 /// Une feuille « Mesures et conseils », prête à imprimer : ce que la vue
 /// a relevé pour la personne, puis les conseils de la feuille.
 pub struct ConseilPaper {
@@ -4634,6 +4699,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_DISPOSITIF_TEMPLATE,
     },
     Doc {
+        key: "rappels",
+        label: "tpl_target_rappels",
+        markers: MARKERS_RAPPELS,
+        default: DEFAULT_RAPPELS_TEMPLATE,
+    },
+    Doc {
         key: "conseil",
         label: "tpl_target_conseil",
         markers: MARKERS_CONSEIL,
@@ -5478,6 +5549,29 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // des sections. Elles sont toutes remplies, brièvement.
         // La feuille de compression, la plus fournie des trois : des
         // relevés, le tableau des mesures et tous ses conseils.
+        "rappels" => recall_values(
+            &RecallPaper {
+                title: "Grippe saisonnière — campagne 2026-2027".to_owned(),
+                date: "13/10/2026".to_owned(),
+                rows: vec![
+                    [
+                        "BERNARD Paul".to_owned(),
+                        "79 ans".to_owned(),
+                        "07 98 76 54 32".to_owned(),
+                        "Campagne en cours, aucune dose enregistrée.".to_owned(),
+                        String::new(),
+                    ],
+                    [
+                        "MOREAU Lucie #[x]".to_owned(),
+                        "52 ans".to_owned(),
+                        String::new(),
+                        "Traitement évocateur : diabète (Lantus).".to_owned(),
+                        "12/10/2026 : message".to_owned(),
+                    ],
+                ],
+            },
+            &sample_pharmacy(),
+        ),
         "conseil" => conseil_values(
             &ConseilPaper {
                 title: crate::conseils::SHEETS[0].title.to_owned(),

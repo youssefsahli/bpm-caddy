@@ -4091,6 +4091,8 @@ struct CampagneState {
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
 /// dossier.
 struct RecallRow {
+    /// Listé pour un traitement évocateur, et non pour l'âge.
+    evoked: bool,
     patient_id: i64,
     name: String,
     age: Option<u32>,
@@ -9884,6 +9886,16 @@ impl Session {
                 .or_default()
                 .push(vaccines::Dose { code, date });
         }
+        let treatments = self.db.all_patient_drug_details().unwrap_or_default();
+        let mut evoked: std::collections::HashMap<i64, Vec<(&'static str, String)>> =
+            std::collections::HashMap::new();
+        for chunk in treatments.chunk_by(|a, b| a.0 == b.0) {
+            let list: Vec<(&str, &str, &str)> = chunk
+                .iter()
+                .map(|(_, n, d, c)| (n.as_str(), d.as_str(), c.as_str()))
+                .collect();
+            evoked.insert(chunk[0].0, campagne::evocations(&list));
+        }
         let people: Vec<campagne::Person> = self
             .patients
             .iter()
@@ -9892,6 +9904,7 @@ impl Session {
                 birth: &p.birth_date,
                 ddr: &p.pregnancy_ddr,
                 doses: by_patient.remove(&p.id).unwrap_or_default(),
+                evoked: evoked.remove(&p.id).unwrap_or_default(),
             })
             .collect();
         let mut counts = [0usize; 3];
@@ -9910,6 +9923,7 @@ impl Session {
             .filter_map(|r| {
                 let p = self.patients.iter().find(|p| p.id == r.patient_id)?;
                 Some(RecallRow {
+                    evoked: r.evoked,
                     patient_id: p.id,
                     name: format!("{} {}", p.last_name.to_uppercase(), p.first_name),
                     age: db::age_on(&p.birth_date, &today),
@@ -9935,6 +9949,40 @@ impl Session {
         crate::campagne::usable_lots(&lots, &used, code, &self.today)
             .first()
             .map(|l| l.lot.clone())
+    }
+
+    /// Les remarques du calendrier sur la dose en cours de saisie au
+    /// carnet (`vaccines::entry_warnings`). Rien tant qu'aucun vaccin n'est
+    /// nommé. Quelques lignes de carnet lues : le calcul tient dans une
+    /// image.
+    fn carnet_entry_warnings(&self) -> Vec<String> {
+        let Some(p) = self.viewing.as_ref() else {
+            return Vec::new();
+        };
+        let new = &self.vacc_new;
+        if new.code.trim().is_empty() && new.label.trim().is_empty() {
+            return Vec::new();
+        }
+        let given = if self.vacc_new_date.trim().is_empty() {
+            self.today.clone()
+        } else {
+            App::parse_carnet_date(&self.vacc_new_date, self.year_now(), &self.today)
+                .unwrap_or_else(|_| self.today.clone())
+        };
+        let carnet: Vec<vaccines::CarnetLine> = self
+            .vaccinations
+            .iter()
+            .map(|v| (v.code.as_str(), v.label.as_str(), v.given_on.as_str()))
+            .collect();
+        vaccines::entry_warnings(
+            &p.birth_date,
+            &self.today,
+            &p.pregnancy_ddr,
+            new.code.trim(),
+            &new.label,
+            &given,
+            &carnet,
+        )
     }
 
     fn reload_dispositifs(&mut self) {
@@ -19441,7 +19489,7 @@ impl App {
                 return;
             }
             if session.view == MainView::Campagne {
-                Self::campagne_view(ui, session, &operator);
+                Self::campagne_view(ui, session, &operator, &config);
                 return;
             }
             if session.view == MainView::Registres {
@@ -21643,6 +21691,25 @@ impl App {
                                     bill = true;
                                 }
                             });
+                        }
+                        // Ce que la dose en cours de saisie appelle : la
+                        // première remarque sur une ligne, toutes au survol.
+                        let warnings = session.carnet_entry_warnings();
+                        if let Some(first) = warnings.first() {
+                            let more = if warnings.len() > 1 {
+                                trf("vacc_warn_more", warnings.len() - 1)
+                            } else {
+                                String::new()
+                            };
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("{first}{more}"))
+                                        .size(motif::pt(ui, 11.0))
+                                        .color(motif::warn()),
+                                )
+                                .truncate(),
+                            )
+                            .on_hover_text(warnings.join("\n"));
                         }
                         if !config.disclaimers.vaccins.trim().is_empty() {
                             ui.label(
@@ -26955,6 +27022,10 @@ impl App {
         }
         if !config.disclaimers.vaccins.trim().is_empty() {
             h += ui.text_style_height(&egui::TextStyle::Body);
+        }
+        // La remarque sur la dose en cours de saisie : une ligne, tronquée.
+        if !session.carnet_entry_warnings().is_empty() {
+            h += Self::label_line(ui) + ui.spacing().item_spacing.y;
         }
         h
     }
@@ -51366,7 +51437,7 @@ impl App {
     /// de la saison** (par vaccin, et la courbe de la semaine), **les
     /// lots** (reçus, utilisés d'après le carnet, restants). Tout ce qui
     /// est affiché est calculé par `reload_campagne`, jamais par image.
-    fn campagne_view(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
+    fn campagne_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
         use crate::campagne::{self, LotState, Outcome, CAMPAIGN_CODES};
         let body = motif::visible_rect(ui);
         let season = campagne::season(&session.today);
@@ -51377,12 +51448,14 @@ impl App {
             [
                 Self::heading_width(ui, &title),
                 Self::button_width(ui, tr("camp_reload")),
+                Self::button_width(ui, tr("camp_print")),
             ]
             .into_iter(),
             tr("camp_subtitle"),
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         let mut reload = false;
+        let mut print = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&title);
@@ -51391,6 +51464,12 @@ impl App {
                     .clicked()
                 {
                     reload = true;
+                }
+                if motif::button(ui, tr("camp_print"))
+                    .on_hover_text(tr("camp_print_tooltip"))
+                    .clicked()
+                {
+                    print = true;
                 }
             });
             ui.add(
@@ -51475,7 +51554,14 @@ impl App {
                             );
                             return;
                         }
+                        let mut heading_drawn = false;
                         for r in &session.camp.recalls {
+                            // Les dossiers dus d'abord ; ceux d'un traitement
+                            // évocateur sous leur propre intitulé.
+                            if r.evoked && !heading_drawn {
+                                heading_drawn = true;
+                                motif::section(ui, tr("camp_evoked_heading"));
+                            }
                             let who = match r.age {
                                 Some(a) => trn("camp_recall_who", &[&r.name, &a]),
                                 None => r.name.clone(),
@@ -51833,6 +51919,45 @@ impl App {
                     reload = true;
                 }
                 Err(e) => session.error = Some(e),
+            }
+        }
+        if print {
+            let rows: Vec<[String; 5]> = session
+                .camp
+                .recalls
+                .iter()
+                .map(|r| {
+                    [
+                        r.name.clone(),
+                        r.age.map(|a| trf("camp_age", a)).unwrap_or_default(),
+                        r.phone.clone(),
+                        r.detail.clone(),
+                        r.last_call
+                            .as_ref()
+                            .map(|(d, o)| {
+                                let what = Outcome::from_key(o)
+                                    .map(Self::campaign_outcome_label)
+                                    .unwrap_or(o.as_str());
+                                format!("{} : {}", db::format_french_date(d), what)
+                            })
+                            .unwrap_or_default(),
+                    ]
+                })
+                .collect();
+            let paper = crate::pdf::RecallPaper {
+                title: trn(
+                    "camp_print_title",
+                    &[&Self::campaign_code_label(session.camp.code), &season.label],
+                ),
+                date: db::format_french_date(&session.today),
+                rows,
+            };
+            if let Err(e) = crate::pdf::open_recalls(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("rappels"),
+            ) {
+                session.error = Some(e);
             }
         }
         if reload {
@@ -74112,6 +74237,39 @@ fn fuzz_input(raw: &mut egui::RawInput) -> bool {
     true
 }
 
+/// Le temps de chaque image, cumulé et écrit sur la sortie d'erreur
+/// toutes les 60 images quand `BPM_CADDY_FRAME_STATS` est posé : de quoi
+/// comparer le coût des vues (`scripts/frames.sh`) sans profileur. Sans
+/// la variable, le garde ne lit pas l'horloge.
+struct FrameStopwatch(Option<Instant>);
+
+impl FrameStopwatch {
+    fn start() -> Self {
+        static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+        let on = *ON.get_or_init(|| std::env::var_os("BPM_CADDY_FRAME_STATS").is_some());
+        FrameStopwatch(on.then(Instant::now))
+    }
+}
+
+impl Drop for FrameStopwatch {
+    fn drop(&mut self) {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static FRAMES: AtomicU64 = AtomicU64::new(0);
+        static TOTAL_US: AtomicU64 = AtomicU64::new(0);
+        static MAX_US: AtomicU64 = AtomicU64::new(0);
+        let Some(t0) = self.0 else {
+            return;
+        };
+        let us = t0.elapsed().as_micros() as u64;
+        let n = FRAMES.fetch_add(1, Ordering::Relaxed) + 1;
+        let total = TOTAL_US.fetch_add(us, Ordering::Relaxed) + us;
+        let max = MAX_US.fetch_max(us, Ordering::Relaxed).max(us);
+        if n.is_multiple_of(60) {
+            eprintln!("frame-stats frames={n} avg_us={} max_us={max}", total / n);
+        }
+    }
+}
+
 impl eframe::App for App {
     fn raw_input_hook(&mut self, ctx: &egui::Context, raw_input: &mut egui::RawInput) {
         // Sans vraie saisie, rien ne redessine : le hasard demande
@@ -74122,6 +74280,13 @@ impl eframe::App for App {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Le chronomètre des images, pour qui le demande
+        // (`BPM_CADDY_FRAME_STATS=1`) : rien n'est mesuré sinon.
+        let _stopwatch = FrameStopwatch::start();
+        // Mesurer demande des images : sans saisie, egui n'en dessine pas.
+        if _stopwatch.0.is_some() {
+            ctx.request_repaint();
+        }
         // **Ouvert par sa clé, le compagnon prend sa taille.** C'était
         // un drapeau et rien d'autre : la fenêtre gardait celle qu'on
         // lui avait demandée, si bien que `smoke.sh` et `eyeball.sh`

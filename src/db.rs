@@ -51694,6 +51694,24 @@ impl Db {
     /// Une requête pour tout, parce que la console en a besoin pour tous
     /// les dossiers à la fois : une par dossier serait mille requêtes
     /// avant qu'un script n'ait commencé.
+    /// Chaque traitement de chaque dossier avec la DCI et la classe de sa
+    /// fiche : ce que la liste des rappels de la campagne lit pour les
+    /// traitements évocateurs (`campagne::evocations`).
+    pub fn all_patient_drug_details(&self) -> Result<Vec<(i64, String, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT pd.patient_id, d.name, d.dci, d.class
+                 FROM patient_drugs pd JOIN drugs d ON d.id = pd.drug_id
+                 ORDER BY pd.patient_id, d.name COLLATE NOCASE",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     pub fn all_patient_drugs(&self) -> Result<Vec<(i64, String)>, String> {
         let mut stmt = self
             .conn
