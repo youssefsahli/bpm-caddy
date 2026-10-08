@@ -55,7 +55,8 @@ dans docs/CONTENU.md) :
   contre-indication après myocardite vient de la liste française de
   juillet 2021 (le RCP la traite en mise en garde, rubrique 4.4) ; la
   fiche le dit maintenant, et les bases existantes reçoivent la phrase
-  par l'empreinte de `DETAILS_REWORDED`.
+  par l'empreinte de `DETAILS_REWORDED`, au déverrouillage du poste de
+  référence, une fois par version.
 - Kerendia : **complété** — la remarque donne maintenant les paliers du
   RCP (instauration sous 5, passage à 20 mg à 4,8 ou moins, suspension
   au-dessus de 5,5, reprise à 10 mg à 5 ou moins) ; les bases existantes

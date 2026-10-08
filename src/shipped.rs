@@ -495,6 +495,11 @@ pub const DISPOSITIFS_REWORDED: &[(&str, &str, u64)] = &[
         "caution",
         0xdcd779294753be6b,
     ),
+    (
+        "Bas de contention anti-thrombose",
+        "application",
+        0xe741b588b090732c,
+    ),
 ];
 // StarterPreparation: 131 champs, 80 fiches anciennes, 80 nouvelles
 pub const PREPARATIONS_REWORDED: &[(&str, &str, u64)] = &[
@@ -2020,6 +2025,14 @@ pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
 /// champ que s'il porte encore ce texte.
 pub const DETAILS_REWORDED: &[(&str, &str, u64)] = &[
     ("Comirnaty", "contraindications", 0x389cb6dbc9747b99),
+    ("Vaxigrip", "iup", 0xf5d5ca60ec719ea8),
+    ("Influvac", "iup", 0x4b875115f6cc80b6),
+    ("Flucelvax", "iup", 0x52186685fb77e3b1),
+    ("Fluad", "mechanism", 0x646a1ce21ba68675),
+    ("Fluad", "pregnancy", 0xe89f3df9d93e0642),
+    ("mResvia", "pregnancy", 0x30d4a07ee4a34cc3),
+    ("Enflonsia", "iup", 0x89a192b628978611),
+    ("Enflonsia", "half_life", 0xda9dcb26ce29303d),
     ("Eliquis", "iup", 0x4401bd89b3b5bad2),
     ("Eliquis", "toxicity", 0xfac61eb8ec280f4e),
     ("Xarelto", "mechanism", 0x8e6e262b58dca0f5),
