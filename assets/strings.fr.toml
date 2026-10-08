@@ -3741,3 +3741,4 @@ couv_sync_line = "{} : {} unité(s) en plus, soit {} boîte(s) de {}, pour tenir
 couv_sync_none = "{} : déjà couvert jusqu'au jour d'alignement."
 couv_page_entry = "Saisie"
 couv_stale = "Les unités par boîte de ce traitement ont été modifiées sur un autre poste ; le dossier a été relu."
+couv_patient_tooltip = "Couverture des délivrances de ce dossier : jours couverts par chaque traitement, délivrance suivante, alignement des renouvellements"

@@ -918,8 +918,9 @@ remarque n'empêche pas l'enregistrement.
 
 # Couverture des délivrances
 
-Bouton **Couverture** de la barre des médicaments, ou « Aller à… »
-(couverture, QSP, boîte). Une ligne par délivrance : unités par boîte,
+Bouton **Couverture** de la barre des médicaments ou des actions d'un
+dossier (la couverture s'ouvre alors sur ses traitements), ou « Aller
+à… » (couverture, QSP, boîte). Une ligne par délivrance : unités par boîte,
 nombre de boîtes, posologie, jour de délivrance et, si elle est
 prescrite, la durée de traitement en jours. La ligne peut aussi se saisir
 en une fois : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`

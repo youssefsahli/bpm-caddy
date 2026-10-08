@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Dossier : bouton « Couverture » parmi les actions du dossier, qui ouvre
+  la couverture des délivrances sur ses traitements.
+
 ## [0.380.0] - 2026-10-08
 
 ### Added

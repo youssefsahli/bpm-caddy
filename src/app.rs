@@ -14168,6 +14168,8 @@ enum PatientAction {
     Fiche,
     Labels,
     Crush,
+    /// La couverture des délivrances, reprise des traitements du dossier.
+    Couverture,
 }
 
 /// The days the agenda is showing, whichever mode it is in.
@@ -25883,6 +25885,13 @@ impl App {
         {
             hit = Some(PatientAction::Crush);
         }
+        if !session.patient_treats.is_empty()
+            && motif::button(ui, tr("couv_button"))
+                .on_hover_text(tr("couv_patient_tooltip"))
+                .clicked()
+        {
+            hit = Some(PatientAction::Couverture);
+        }
         hit
     }
 
@@ -26527,8 +26536,9 @@ impl App {
     /// les met à droite du nom, et leur nombre de rangées décide de la
     /// hauteur de la bande quand elles passent dessous. Deux listes
     /// auraient divergé, et c'est la hauteur qui aurait perdu.
-    fn patient_action_labels(confirm: bool) -> [&'static str; 7] {
+    fn patient_action_labels(confirm: bool) -> [&'static str; 8] {
         [
+            tr("couv_button"),
             tr("plan_print"),
             tr("fiche_print"),
             tr("labels_print"),
@@ -28153,6 +28163,7 @@ impl App {
                     Self::print_fiche(session, patient, config, operator);
                 }
                 Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
+                Some(PatientAction::Couverture) => Self::open_couverture_from_file(session),
                 Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
                 Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
                 Some(PatientAction::Delete) => Self::patient_delete_clicked(session, patient),
@@ -29317,6 +29328,7 @@ impl App {
             Some(PatientAction::Plan) => Self::print_plan(session, patient, config, operator),
             Some(PatientAction::Fiche) => Self::print_fiche(session, patient, config, operator),
             Some(PatientAction::Crush) => Self::print_crush(session, patient, config),
+            Some(PatientAction::Couverture) => Self::open_couverture_from_file(session),
             Some(PatientAction::Labels) => Self::print_labels(session, patient, config),
             Some(PatientAction::Edit) => Self::patient_edit_started(session, patient),
             Some(PatientAction::Delete) => Self::patient_delete_clicked(session, patient),
@@ -39665,6 +39677,73 @@ impl App {
         }
     }
 
+    /// Les lignes de la couverture reprises du dossier ouvert : nom et
+    /// dosage, posologie, dernière délivrance, durée, unités par boîte.
+    fn couverture_rows_from_file(session: &mut Session) {
+        let today_fr = db::format_french_date(&session.today);
+        // Le dossier donne le nom, le dosage, la posologie, le jour de
+        // la dernière délivrance et la durée ; la quantité de la boîte
+        // reste à taper.
+        let rows: Vec<CouvRow> = session
+            .patient_treats
+            .iter()
+            .map(|d| {
+                let strength = session.strength_of(d.id).trim();
+                let label = if strength.is_empty() {
+                    d.name.clone()
+                } else {
+                    format!("{} {strength}", d.name)
+                };
+                let script = session
+                    .patient_scripts
+                    .iter()
+                    .find(|(id, _)| *id == d.id)
+                    .map(|(_, s)| s.clone())
+                    .unwrap_or_default();
+                let date = if script.dispensed_on.trim().is_empty() {
+                    today_fr.clone()
+                } else {
+                    db::format_french_date(&script.dispensed_on)
+                };
+                let stored = session
+                    .patient_box_units
+                    .iter()
+                    .find(|(id, _)| *id == d.id)
+                    .map_or(0, |(_, u)| *u);
+                CouvRow {
+                    label,
+                    units: if stored > 0 {
+                        stored.to_string()
+                    } else {
+                        String::new()
+                    },
+                    boxes: String::new(),
+                    drug_id: Some(d.id),
+                    units_shown: stored,
+                    posology: session.dose_of(d.id).to_owned(),
+                    date,
+                    qsp: if script.duration_days > 0 {
+                        script.duration_days.to_string()
+                    } else {
+                        String::new()
+                    },
+                }
+            })
+            .collect();
+        session.couv_rows = rows;
+        session.couv_error = None;
+    }
+
+    /// Depuis le dossier : la couverture s'ouvre sur ses traitements.
+    fn open_couverture_from_file(session: &mut Session) {
+        Self::couverture_rows_from_file(session);
+        session.couv_view = None;
+        session.couv_pin = None;
+        session.couv_page = 1;
+        session.enter_drug_panel();
+        session.show_couverture = true;
+    }
+
     /// Une quantité en unités, au quart près : « 28 », « 13,5 »,
     /// « 6,25 » — jamais « 28,0 ».
     fn couverture_units(v: f64) -> String {
@@ -39759,57 +39838,7 @@ impl App {
             }
         }
         if from_file {
-            // Le dossier donne le nom, le dosage, la posologie, le jour de
-            // la dernière délivrance et la durée ; la quantité de la boîte
-            // reste à taper.
-            let rows: Vec<CouvRow> = session
-                .patient_treats
-                .iter()
-                .map(|d| {
-                    let strength = session.strength_of(d.id).trim();
-                    let label = if strength.is_empty() {
-                        d.name.clone()
-                    } else {
-                        format!("{} {strength}", d.name)
-                    };
-                    let script = session
-                        .patient_scripts
-                        .iter()
-                        .find(|(id, _)| *id == d.id)
-                        .map(|(_, s)| s.clone())
-                        .unwrap_or_default();
-                    let date = if script.dispensed_on.trim().is_empty() {
-                        today_fr.clone()
-                    } else {
-                        db::format_french_date(&script.dispensed_on)
-                    };
-                    let stored = session
-                        .patient_box_units
-                        .iter()
-                        .find(|(id, _)| *id == d.id)
-                        .map_or(0, |(_, u)| *u);
-                    CouvRow {
-                        label,
-                        units: if stored > 0 {
-                            stored.to_string()
-                        } else {
-                            String::new()
-                        },
-                        boxes: String::new(),
-                        drug_id: Some(d.id),
-                        units_shown: stored,
-                        posology: session.dose_of(d.id).to_owned(),
-                        date,
-                        qsp: if script.duration_days > 0 {
-                            script.duration_days.to_string()
-                        } else {
-                            String::new()
-                        },
-                    }
-                })
-                .collect();
-            session.couv_rows = rows;
-            session.couv_error = None;
+            Self::couverture_rows_from_file(session);
         }
         if let Some(e) = &session.couv_error {
             ui.label(
