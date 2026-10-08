@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.377.0] - 2026-10-08
+
 ### Changed
 - Feuille de vaccination : deux questions de plus avant l'injection (vaccin
   contre la grippe ou le COVID-19 déjà reçu cette saison ; dose de COVID-19
