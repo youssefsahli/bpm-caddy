@@ -4067,6 +4067,10 @@ struct ConseilState {
     prot_c2s: bool,
     prot_age: String,
     prot_size: String,
+    /// Tour de bassin et stature (cm) : ce sur quoi chaque fabricant
+    /// fonde sa grille de tailles de culottes.
+    prot_hips: String,
+    prot_height: String,
     /// Le panneau montré quand la vue est trop étroite pour les deux.
     pane: usize,
 }
@@ -9892,6 +9896,8 @@ impl Session {
             self.conseil.prot_age.clear();
             self.conseil.prot_c2s = false;
             self.conseil.prot_size.clear();
+            self.conseil.prot_hips.clear();
+            self.conseil.prot_height.clear();
             self.conseil.confirm_delete = None;
             self.conseil.error = None;
         }
@@ -53942,6 +53948,22 @@ impl App {
                                 .hint_text(motif::hint(tr("conseil_prot_size_hint"))),
                         );
                     });
+                    // Les mesures d'une culotte : tour de bassin et stature,
+                    // que la grille du fabricant convertit en taille.
+                    if kind == Kind::Culotte {
+                        ui.horizontal_wrapped(|ui| {
+                            for (hint, value) in [
+                                (tr("conseil_prot_hips_hint"), &mut state.prot_hips),
+                                (tr("conseil_prot_height_hint"), &mut state.prot_height),
+                            ] {
+                                motif::field_sized(
+                                    ui,
+                                    egui::vec2(Self::field_width(ui, [hint].into_iter()), h),
+                                    egui::TextEdit::singleline(value).hint_text(motif::hint(hint)),
+                                );
+                            }
+                        });
+                    }
                     if pid.is_some() && state.prot_qty > period.remaining {
                         Self::conseil_line(ui, tr("conseil_prot_over"), true);
                     }
@@ -53977,6 +53999,15 @@ impl App {
                             let size = r.field("taille");
                             if !size.is_empty() {
                                 line.push_str(&format!(" · {}", trf("conseil_size_of", size)));
+                            }
+                            for (key, label) in [
+                                ("bassin", "conseil_fact_hips"),
+                                ("stature", "conseil_fact_height"),
+                            ] {
+                                let v = r.field(key);
+                                if !v.is_empty() {
+                                    line.push_str(&format!(" · {} {v} cm", tr(label)));
+                                }
                             }
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(egui::RichText::new(line).size(motif::pt(ui, 11.0)));
@@ -54045,6 +54076,8 @@ impl App {
                     ("code", &state.prot_code),
                     ("quantite", &qty),
                     ("taille", state.prot_size.trim()),
+                    ("bassin", state.prot_hips.trim()),
+                    ("stature", state.prot_height.trim()),
                     ("c2s", if state.prot_c2s { "oui" } else { "" }),
                 ]);
                 let rec = db::CounselRecord {
@@ -54181,11 +54214,19 @@ impl App {
                 if let Some(k) = crate::protections::Kind::from_key(&state.prot_kind) {
                     facts.push((tr("conseil_fact_product").to_owned(), k.label().to_owned()));
                 }
-                if !state.prot_size.trim().is_empty() {
-                    facts.push((
-                        tr("conseil_fact_size").to_owned(),
-                        state.prot_size.trim().to_owned(),
-                    ));
+                for (key, value) in [
+                    ("conseil_fact_size", state.prot_size.trim()),
+                    ("conseil_fact_hips", state.prot_hips.trim()),
+                    ("conseil_fact_height", state.prot_height.trim()),
+                ] {
+                    if !value.is_empty() {
+                        let shown = if key == "conseil_fact_size" {
+                            value.to_owned()
+                        } else {
+                            format!("{value} cm")
+                        };
+                        facts.push((tr(key).to_owned(), shown));
+                    }
                 }
                 facts.push((
                     tr("conseil_fact_rights").to_owned(),

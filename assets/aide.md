@@ -944,7 +944,10 @@ droit.
 
 **Protections périodiques.** Les droits (moins de 26 ans, ou C2S), la
 période annuelle ouverte par la première délivrance, les codes
-individuels des fabricants et les règles de facturation.
+individuels des fabricants et les règles de facturation. Pour une
+culotte, le tour de bassin et la stature sont notés à la délivrance :
+la grille de tailles du fabricant s'y réfère, et la fiche remise les
+reprend.
 
 # Carnets de suivi du patient
 

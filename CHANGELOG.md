@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Protections périodiques : tour de bassin et stature notés à la
+  délivrance d'une culotte, repris à l'historique et sur la fiche remise.
+
 ### Changed
 - Compression : l'écart entre les jambes est signalé à partir d'un
   centimètre (deux fois la précision de la mesure), en une seule ligne.
