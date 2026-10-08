@@ -51985,7 +51985,12 @@ impl App {
                 // saisir que le site, une fois l'injection faite.
                 session.reload_vacc_catalogue();
                 let code = session.camp.code;
-                if let Some(v) = session.vacc_catalogue.iter().find(|v| v.code == code).cloned() {
+                if let Some(v) = session
+                    .vacc_catalogue
+                    .iter()
+                    .find(|v| v.code == code)
+                    .cloned()
+                {
                     session.vacc_new = db::Vaccination {
                         code: v.code.clone(),
                         label: v.label.clone(),

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Campagne : ouvrir un dossier depuis la liste des rappels prépare le
+  carnet, avec le vaccin de la campagne et le lot en stock qui périme le
+  premier.
+- Mode d'emploi et README : la campagne de vaccination et « Mesures et
+  conseils ».
+
 ## [0.373.0] - 2026-10-08
 
 ### Added
