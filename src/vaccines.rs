@@ -435,7 +435,7 @@ pub const CATALOGUE: &[VaccineRef] = &[
     VaccineRef {
         code: "PNEUMO",
         label: "Pneumocoque",
-        schedule: "Dose unique de Prevenar 20 ou Capvaxive : 65 ans et plus, adultes à risque",
+        schedule: "Dose unique, Capvaxive de préférence (HAS, juillet 2026), sinon Prevenar 20 : 65 ans et plus, adultes à risque",
     },
     VaccineRef {
         code: "ZONA",
@@ -534,6 +534,10 @@ pub const SCHEDULE_UPDATES: &[(&str, &str)] = &[
     (
         "PNEUMO",
         "Selon les facteurs de risque et les doses déjà reçues",
+    ),
+    (
+        "PNEUMO",
+        "Dose unique de Prevenar 20 ou Capvaxive : 65 ans et plus, adultes à risque",
     ),
     ("ZONA", "2 doses ; à partir de 65 ans"),
     ("VRS", "Dose unique à partir de 75 ans"),
@@ -951,10 +955,10 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             label: "Pneumocoque",
             level: if n >= 1 { DueLevel::Ok } else { DueLevel::Due },
             detail: if n >= 1 {
-                "Dose enregistrée ; après un VPC13 ou un VPP23 seul, une dose de Prevenar 20 ou Capvaxive si plus d'un an ; après la séquence VPC13 puis VPP23, 5 ans après le VPP23."
+                "Dose enregistrée ; après un VPC13 ou un VPP23 seul, une dose de Capvaxive (de préférence) ou de Prevenar 20 si plus d'un an ; après la séquence VPC13 puis VPP23, 5 ans après le VPP23."
                     .to_owned()
             } else {
-                "Dose unique de Prevenar 20 ou Capvaxive recommandée à partir de 65 ans.".to_owned()
+                "Dose unique recommandée à partir de 65 ans, Capvaxive de préférence (HAS, juillet 2026), sinon Prevenar 20.".to_owned()
             },
         });
     }

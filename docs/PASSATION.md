@@ -48,9 +48,12 @@ dans docs/CONTENU.md) :
   maigreur constitutionnelle) ; l'albuminémie (< 35 g/L), l'IMC ≤ 21 et
   le MNA ≤ 17 ne valent qu'à partir de 70 ans. `nutrition::assess` lit
   exactement ces critères.
-- Capvaxive : la fiche dit une préférence HAS de juillet 2026 qui n'a pas
-  été vérifiée ; Comirnaty : la contre-indication après myocardite n'est
-  pas au 4.3 du RCP. Les deux phrases sont restées.
+- Capvaxive : **vérifié** — avis de la HAS du 30 juillet 2026 (révision
+  de la stratégie contre les pneumocoques) : Capvaxive préférentiellement
+  au VPC20 chez l'adulte à risque et à partir de 65 ans. Le catalogue, le
+  calendrier et la table le disent maintenant. Comirnaty : la
+  contre-indication après myocardite n'est pas au 4.3 du RCP ; la phrase
+  est restée, à relire par l'officine.
 - Kerendia : la remarque dit « pas d'instauration au-dessus de 5 ;
   suspension au-dessus de 5,5 » (RCP) ; l'augmentation de dose demande
   une kaliémie ≤ 4,8, non écrite.

@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Pneumocoque : Capvaxive de préférence (avis HAS du 30 juillet 2026),
+  sinon Prevenar 20, au catalogue, au calendrier et dans la table de
+  vaccination ; le texte livré précédent est remplacé là où il est intact.
+
 ## [0.382.0] - 2026-10-08
 
 ### Changed
