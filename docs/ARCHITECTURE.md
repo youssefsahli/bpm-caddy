@@ -2225,7 +2225,7 @@ add clicking and typing; it is not the price of entry.
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
   vaccine_map|campagne|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
-  codex_open|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
+  codex_open|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
   stup_catalogue|saisie|ordonnancier|vigilance|destruction|scans|

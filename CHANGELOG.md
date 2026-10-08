@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Couverture des délivrances : une ligne par boîte (« mirtazapine 15 (28)
+  1-0-1 ») ou les traitements du dossier ouvert ; jours couverts,
+  délivrance suivante, délivrances restantes sur la durée prescrite, et
+  toutes les boîtes sur une même échelle de temps.
+
 ### Fixed
 - Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
   initiales de qui vaccine ; un jour tapé sans année (« 05/01 ») et déjà

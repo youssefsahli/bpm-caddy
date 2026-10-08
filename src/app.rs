@@ -3003,6 +3003,7 @@ enum Tool {
     Codex,
     Dispositifs,
     Conseil,
+    Couverture,
     Ordonnancier,
     Vigilance,
     Destruction,
@@ -3034,6 +3035,7 @@ impl Tool {
             Tool::Codex => "codex",
             Tool::Dispositifs => "dispositifs",
             Tool::Conseil => "conseil",
+            Tool::Couverture => "couverture",
             Tool::Ordonnancier => "ordonnancier",
             Tool::Vigilance => "vigilance",
             Tool::Destruction => "destruction",
@@ -3057,7 +3059,7 @@ impl Tool {
         Tool::ALL.into_iter().find(|t| t.key() == key)
     }
 
-    const ALL: [Tool; 23] = [
+    const ALL: [Tool; 24] = [
         Tool::Trame,
         Tool::Planning,
         Tool::Reseau,
@@ -3065,6 +3067,7 @@ impl Tool {
         Tool::Codex,
         Tool::Dispositifs,
         Tool::Conseil,
+        Tool::Couverture,
         Tool::Ordonnancier,
         Tool::Vigilance,
         Tool::Destruction,
@@ -3092,6 +3095,7 @@ impl Tool {
             Tool::Codex => tr("tool_codex"),
             Tool::Dispositifs => tr("tool_dispositifs"),
             Tool::Conseil => tr("tool_conseil"),
+            Tool::Couverture => tr("couv_title"),
             Tool::Ordonnancier => tr("tool_ordonnancier"),
             Tool::Vigilance => tr("tool_vigilance"),
             Tool::Destruction => tr("tool_destruction"),
@@ -3122,6 +3126,7 @@ impl Tool {
             Tool::Codex => tr("tool_codex_purpose"),
             Tool::Dispositifs => tr("tool_dispositifs_purpose"),
             Tool::Conseil => tr("tool_conseil_purpose"),
+            Tool::Couverture => tr("calc_purpose_couv"),
             Tool::Ordonnancier => tr("tool_ordonnancier_purpose"),
             Tool::Vigilance => tr("tool_vigilance_purpose"),
             Tool::Destruction => tr("tool_destruction_purpose"),
@@ -4073,6 +4078,19 @@ struct ConseilState {
     prot_height: String,
     /// Le panneau montré quand la vue est trop étroite pour les deux.
     pane: usize,
+}
+
+/// Une ligne de la couverture des délivrances, telle qu'elle se tape :
+/// du texte, lu à chaque image par `couverture::read`.
+#[derive(Clone, Debug, Default)]
+struct CouvRow {
+    label: String,
+    units: String,
+    boxes: String,
+    posology: String,
+    /// JJ/MM/AAAA, comme ailleurs au comptoir.
+    date: String,
+    qsp: String,
 }
 
 /// La campagne de vaccination, telle que la vue la lit : tout est
@@ -5405,6 +5423,8 @@ struct Session {
     /// « Mesures et conseils » : compression, nutrition orale,
     /// protections périodiques.
     show_conseil: bool,
+    /// « Couverture des délivrances » : ce que chaque boîte couvre.
+    show_couverture: bool,
     conseil: ConseilState,
     dispositifs: Vec<db::Dispositif>,
     dispo_query: String,
@@ -5485,6 +5505,11 @@ struct Session {
     calc_per_kg: f64,
     calc_takes: u32,
     calc_half_life: f64,
+    /// La couverture des délivrances : une ligne par boîte délivrée.
+    couv_rows: Vec<CouvRow>,
+    /// La ligne tapée d'un trait (« mirtazapine (28) 1-0-1 »).
+    couv_quick: String,
+    couv_error: Option<String>,
     calc_interval: f64,
     table_selected: usize,
     /// The vaccination map: what colours the tiles, the country the
@@ -6024,6 +6049,7 @@ impl Session {
             camp: CampagneState::default(),
             vacc_today: 0,
             show_conseil: false,
+            show_couverture: false,
             conseil: ConseilState::default(),
             dispositifs: Vec::new(),
             dispo_query: String::new(),
@@ -6070,6 +6096,9 @@ impl Session {
             calc_per_kg: 15.0,
             calc_takes: 3,
             calc_half_life: 12.0,
+            couv_rows: Vec::new(),
+            couv_quick: String::new(),
+            couv_error: None,
             calc_interval: 12.0,
             table_selected: 0,
             map_lens: MapLens::default(),
@@ -7073,6 +7102,10 @@ impl Session {
                 self.show_conseil = true;
                 self.reload_conseil();
             }
+            Tool::Couverture => {
+                self.enter_drug_panel();
+                self.show_couverture = true;
+            }
             Tool::Ordonnancier => self.open_registres(RegistreTab::Ordonnancier),
             Tool::Vigilance => self.open_registres(RegistreTab::Vigilance),
             Tool::Destruction => self.open_registres(RegistreTab::Destruction),
@@ -7146,6 +7179,7 @@ impl Session {
         self.show_protocols = false;
         self.show_dispositifs = false;
         self.show_conseil = false;
+        self.show_couverture = false;
         self.show_mono = false;
         self.show_graph = false;
         self.show_scans = None;
@@ -16750,6 +16784,31 @@ impl App {
                             session.concil_sheet = sheet;
                             session.patient_tab = PatientTab::Conciliation;
                             session.view = MainView::Search;
+                        }
+                        Ok("couverture") => {
+                            session.enter_drug_panel();
+                            session.show_couverture = true;
+                            // La couverture, avec l'exemple du comptoir :
+                            // deux boîtes du jour qui ne finissent pas
+                            // ensemble, et une durée prescrite de trois mois.
+                            let today = db::format_french_date(&session.today);
+                            session.couv_rows = vec![
+                                CouvRow {
+                                    label: "Mirtazapine 15 mg".into(),
+                                    units: "28".into(),
+                                    posology: "1-0-1".into(),
+                                    date: today.clone(),
+                                    ..Default::default()
+                                },
+                                CouvRow {
+                                    label: "Metformine 500 mg".into(),
+                                    units: "90".into(),
+                                    posology: "1-0-1".into(),
+                                    date: today,
+                                    qsp: "90".into(),
+                                    ..Default::default()
+                                },
+                            ];
                         }
                         Ok("calc") => {
                             session.show_tables = true;
@@ -39269,6 +39328,349 @@ impl App {
         });
     }
 
+    /// La vue « Couverture des délivrances » : le titre, puis la saisie
+    /// et l'échelle, dans un défilement.
+    fn couverture_view(ui: &mut egui::Ui, session: &mut Session) {
+        let body = motif::visible_rect(ui);
+        let who = match &session.viewing {
+            Some(p) => trf("conseil_patient", p.full_name()),
+            None => tr("couv_no_patient").to_owned(),
+        };
+        let band = Self::title_band_height(
+            ui,
+            body.width(),
+            [
+                Self::heading_width(ui, tr("couv_title")),
+                Self::button_width(ui, tr("patient_back")),
+            ]
+            .into_iter(),
+            &who,
+        );
+        let rows = motif::split_rows(body, &[band, 0.0], 6.0);
+        motif::inside(ui, rows[0], |ui| {
+            ui.horizontal_wrapped(|ui| {
+                ui.heading(tr("couv_title"));
+                if motif::button(ui, tr("patient_back")).clicked() {
+                    session.show_couverture = false;
+                }
+            });
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(&who)
+                        .size(motif::pt(ui, 11.5))
+                        .color(motif::text_dim()),
+                )
+                .wrap(),
+            );
+        });
+        motif::inside(ui, rows[1], |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("couverture")
+                .auto_shrink([false, false])
+                .show(ui, |ui| Self::couverture_panel(ui, session));
+        });
+    }
+
+    /// Ce que couvre chaque boîte délivrée, sur une même échelle de
+    /// temps : la boîte qui finit la première, le jour où la suivante se
+    /// délivre, et les délivrances qui complètent la durée prescrite.
+    fn couverture_panel(ui: &mut egui::Ui, session: &mut Session) {
+        Self::conseil_note(ui, tr("couv_intro"));
+        let h = Self::button_height(ui);
+        let today = session.today.clone();
+        let today_fr = db::format_french_date(&today);
+        // La saisie d'un trait, puis la reprise du dossier ouvert.
+        let mut add_quick = false;
+        let mut from_file = false;
+        ui.horizontal_wrapped(|ui| {
+            let w = chars_wide(ui, 34.0);
+            let resp = motif::field_sized(
+                ui,
+                egui::vec2(w, h),
+                egui::TextEdit::singleline(&mut session.couv_quick).hint_text(motif::hint(
+                    Self::hint_that_fits(ui, w, tr("couv_quick_hint")),
+                )),
+            );
+            if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                add_quick = true;
+            }
+            if motif::button(ui, tr("couv_add")).clicked() {
+                add_quick = true;
+            }
+            if session.viewing.is_some()
+                && !session.patient_treats.is_empty()
+                && motif::button(ui, tr("couv_from_file"))
+                    .on_hover_text(tr("couv_from_file_tooltip"))
+                    .clicked()
+            {
+                from_file = true;
+            }
+            if !session.couv_rows.is_empty() && motif::button(ui, tr("couv_clear")).clicked() {
+                session.couv_rows.clear();
+            }
+        });
+        if add_quick && !session.couv_quick.trim().is_empty() {
+            match crate::couverture::parse_quick(&session.couv_quick) {
+                Some(l) => {
+                    session.couv_rows.push(CouvRow {
+                        label: l.label,
+                        units: l.units.to_string(),
+                        boxes: if l.boxes > 1 {
+                            l.boxes.to_string()
+                        } else {
+                            String::new()
+                        },
+                        posology: l.posology,
+                        date: today_fr.clone(),
+                        qsp: String::new(),
+                    });
+                    session.couv_quick.clear();
+                    session.couv_error = None;
+                }
+                None => session.couv_error = Some(tr("couv_quick_error").to_owned()),
+            }
+        }
+        if from_file {
+            // Le dossier donne le nom, le dosage, la posologie, le jour de
+            // la dernière délivrance et la durée ; la quantité de la boîte
+            // reste à taper.
+            let rows: Vec<CouvRow> = session
+                .patient_treats
+                .iter()
+                .map(|d| {
+                    let strength = session.strength_of(d.id).trim();
+                    let label = if strength.is_empty() {
+                        d.name.clone()
+                    } else {
+                        format!("{} {strength}", d.name)
+                    };
+                    let script = session
+                        .patient_scripts
+                        .iter()
+                        .find(|(id, _)| *id == d.id)
+                        .map(|(_, s)| s.clone())
+                        .unwrap_or_default();
+                    let date = if script.dispensed_on.trim().is_empty() {
+                        today_fr.clone()
+                    } else {
+                        db::format_french_date(&script.dispensed_on)
+                    };
+                    CouvRow {
+                        label,
+                        units: String::new(),
+                        boxes: String::new(),
+                        posology: session.dose_of(d.id).to_owned(),
+                        date,
+                        qsp: if script.duration_days > 0 {
+                            script.duration_days.to_string()
+                        } else {
+                            String::new()
+                        },
+                    }
+                })
+                .collect();
+            session.couv_rows = rows;
+            session.couv_error = None;
+        }
+        if let Some(e) = &session.couv_error {
+            ui.label(
+                egui::RichText::new(e)
+                    .size(motif::pt(ui, 11.0))
+                    .color(motif::alert()),
+            );
+        }
+        if session.couv_rows.is_empty() {
+            return;
+        }
+
+        // Les lignes, en champs : ce qui est tapé se relit à chaque image.
+        let year = session.year_now();
+        let mut remove: Option<usize> = None;
+        // Le libellé prend ce que les colonnes fixes laissent : la grille
+        // tient dans le volet, et les lectures dessous s'enveloppent à sa
+        // largeur au lieu d'être coupées.
+        let fixed = [5.0, 4.0, 10.0, 12.0, 5.0];
+        let gap = 6.0;
+        let others = fixed.iter().map(|c| chars_wide(ui, *c)).sum::<f32>()
+            + Self::button_width(ui, tr("couv_remove"))
+            + gap * 7.0;
+        let label_w = (ui.available_width() - others)
+            .min(chars_wide(ui, 24.0))
+            .max(chars_wide(ui, 8.0));
+        egui::Grid::new("couv_rows")
+            .num_columns(7)
+            .spacing(egui::vec2(gap, 4.0))
+            .show(ui, |ui| {
+                for head in [
+                    tr("couv_col_label"),
+                    tr("couv_col_units"),
+                    tr("couv_col_boxes"),
+                    tr("couv_col_posology"),
+                    tr("couv_col_date"),
+                    tr("couv_col_qsp"),
+                ] {
+                    ui.label(
+                        egui::RichText::new(head)
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::text_dim()),
+                    );
+                }
+                ui.end_row();
+                for (i, row) in session.couv_rows.iter_mut().enumerate() {
+                    let widths: Vec<f32> = std::iter::once(label_w)
+                        .chain(fixed.iter().map(|c| chars_wide(ui, *c)))
+                        .collect();
+                    for (value, w) in [
+                        &mut row.label,
+                        &mut row.units,
+                        &mut row.boxes,
+                        &mut row.posology,
+                        &mut row.date,
+                        &mut row.qsp,
+                    ]
+                    .into_iter()
+                    .zip(widths)
+                    {
+                        motif::field_sized(ui, egui::vec2(w, h), egui::TextEdit::singleline(value));
+                    }
+                    if motif::button(ui, tr("couv_remove")).clicked() {
+                        remove = Some(i);
+                    }
+                    ui.end_row();
+                }
+            });
+        if let Some(i) = remove {
+            session.couv_rows.remove(i);
+        }
+
+        // La lecture de chaque ligne, puis l'échelle commune.
+        let read: Vec<(
+            String,
+            Result<crate::couverture::Coverage, Vec<crate::couverture::Missing>>,
+        )> = session
+            .couv_rows
+            .iter()
+            .map(|r| {
+                let line = crate::couverture::Line {
+                    label: r.label.trim().to_owned(),
+                    units: r.units.trim().parse().unwrap_or(0),
+                    boxes: r.boxes.trim().parse().unwrap_or(1),
+                    posology: r.posology.clone(),
+                    delivered_on: db::parse_french_date(&r.date, year, db::YearHint::Past)
+                        .unwrap_or_default(),
+                    qsp_days: r.qsp.trim().parse().unwrap_or(0),
+                };
+                (line.label.clone(), crate::couverture::read(&line, &today))
+            })
+            .collect();
+        ui.add_space(4.0);
+        for (label, r) in &read {
+            let text = match r {
+                Ok(c) if c.days == 0 => trf("couv_under_a_day", label),
+                Ok(c) => {
+                    let mut t = trn(
+                        "couv_line",
+                        &[
+                            label,
+                            &c.days,
+                            &db::format_french_date(&c.until),
+                            &db::format_french_date(&c.next_from),
+                        ],
+                    );
+                    if !c.qsp_end.is_empty() {
+                        t.push(' ');
+                        t.push_str(&if c.deliveries_left > 0 {
+                            trn(
+                                "couv_qsp_more",
+                                &[&c.deliveries_left, &db::format_french_date(&c.qsp_end)],
+                            )
+                        } else {
+                            trf("couv_qsp_done", db::format_french_date(&c.qsp_end))
+                        });
+                    }
+                    if c.next_from > today {
+                        t.push(' ');
+                        // En quarts : « 28 », « 13,5 », « 6,25 » — jamais « 28,0 ».
+                        let left = crate::strings::decimal(c.left_today, 2);
+                        let left = left.trim_end_matches('0').trim_end_matches(',');
+                        t.push_str(&trf("couv_left", left));
+                    }
+                    t
+                }
+                Err(missing) => {
+                    let what: Vec<&str> = missing
+                        .iter()
+                        .map(|m| match m {
+                            crate::couverture::Missing::Units => tr("couv_missing_units"),
+                            crate::couverture::Missing::Posology => tr("couv_missing_posology"),
+                            crate::couverture::Missing::Date => tr("couv_missing_date"),
+                        })
+                        .collect();
+                    trn("couv_missing", &[label, &what.join(", ")])
+                }
+            };
+            ui.add(egui::Label::new(egui::RichText::new(text).size(motif::pt(ui, 11.0))).wrap());
+        }
+        let ok: Vec<(&str, &crate::couverture::Coverage)> = read
+            .iter()
+            .filter_map(|(l, r)| {
+                r.as_ref()
+                    .ok()
+                    .filter(|c| !c.spans.is_empty())
+                    .map(|c| (l.as_str(), c))
+            })
+            .collect();
+        if ok.is_empty() {
+            return;
+        }
+        let (from, to) = crate::couverture::window(ok.iter().map(|(_, c)| *c), &today);
+        let total = (crate::date::days_between(&from, &to).unwrap_or(0) + 1).max(1) as f32;
+        let frac = |d: &str| crate::date::days_between(&from, d).unwrap_or(0) as f32 / total;
+        let spans: Vec<Vec<(f32, f32, bool)>> = ok
+            .iter()
+            .map(|(_, c)| {
+                c.spans
+                    .iter()
+                    .map(|s| (frac(&s.from), frac(&s.to) + 1.0 / total, s.delivered))
+                    .collect()
+            })
+            .collect();
+        let rows: Vec<motif::chart::SpanRow> = ok
+            .iter()
+            .zip(&spans)
+            .enumerate()
+            .map(|(i, ((label, c), s))| motif::chart::SpanRow {
+                label,
+                spans: s,
+                color: motif::chart::series_color(i),
+                tick: Some(frac(&c.next_from)),
+            })
+            .collect();
+        // Cinq repères au plus, en JJ/MM.
+        let step = (total / 5.0).ceil().max(1.0) as i64;
+        let ticks: Vec<(f32, String)> = (0..)
+            .map(|k| k * step)
+            .take_while(|d| (*d as f32) < total)
+            .filter_map(|d| {
+                let day = crate::date::add_days(&from, d)?;
+                Some((
+                    d as f32 / total,
+                    db::format_french_date(&day).chars().take(5).collect(),
+                ))
+            })
+            .collect();
+        ui.add_space(4.0);
+        let room = (ui.clip_rect().right() - ui.cursor().left() - 8.0)
+            .min(ui.available_width())
+            .max(chars_wide(ui, 30.0));
+        let height = rows.len() as f32 * Self::row_height(ui) * 1.5
+            + ui.text_style_height(&egui::TextStyle::Small)
+            + 2.0;
+        let (rect, _) = ui.allocate_exact_size(egui::vec2(room, height), egui::Sense::hover());
+        motif::chart::spans(ui, rect, &rows, Some(frac(&today)), &ticks);
+        Self::conseil_note(ui, tr("couv_legend"));
+    }
+
     /// The insulins: what each one does over the day, drawn one on top
     /// of another, and the three numbers a functional schema runs on.
     ///
@@ -58782,6 +59184,8 @@ impl App {
                 }
             } else if session.show_conseil {
                 session.show_conseil = false;
+            } else if session.show_couverture {
+                session.show_couverture = false;
             } else if session.show_dispositifs {
                 if session.dispo_edit.is_some() {
                     session.dispo_edit = None;
@@ -58847,6 +59251,10 @@ impl App {
         }
         if session.show_conseil {
             Self::conseil_view(ui, session, config, operator);
+            return;
+        }
+        if session.show_couverture {
+            Self::couverture_view(ui, session);
             return;
         }
         if session.show_tables {
@@ -58981,6 +59389,12 @@ impl App {
                     {
                         session.show_conseil = true;
                         session.reload_conseil();
+                    }
+                    if motif::button(ui, tr("couv_button"))
+                        .on_hover_text(tr("couv_button_tooltip"))
+                        .clicked()
+                    {
+                        session.show_couverture = true;
                     }
                     if motif::button(ui, tr("cascades_button"))
                         .on_hover_text(tr("cascades_button_tooltip"))

@@ -27,6 +27,7 @@ pub mod conciliation;
 pub mod config;
 pub mod conseils;
 pub mod content;
+pub mod couverture;
 pub mod crush;
 pub mod cyp;
 pub mod date;

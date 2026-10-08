@@ -916,6 +916,27 @@ vaccin vivant pendant la grossesse, intervalle entre deux doses,
 seconde dose de grippe dans la même saison. La
 remarque n'empêche pas l'enregistrement.
 
+# Couverture des délivrances
+
+Bouton **Couverture** de la barre des médicaments, ou « Aller à… »
+(couverture, QSP, boîte). Une ligne par boîte délivrée : unités par
+boîte, nombre de boîtes, posologie, jour de délivrance et, si elle est
+prescrite, la durée de traitement en jours. La ligne se tape aussi d'un
+trait : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`
+pour deux boîtes. Avec un dossier ouvert, « Reprendre les traitements
+du dossier » remplit le nom, le dosage, la posologie, la dernière
+délivrance et la durée ; le nombre d'unités par boîte reste à saisir.
+
+Chaque ligne donne le nombre de jours couverts, le dernier jour
+couvert, le jour à partir duquel la délivrance suivante est nécessaire
+et, avec une durée prescrite, le nombre de délivrances qui restent.
+Les boîtes se placent sur une même échelle de temps : période couverte
+en plein, délivrances à venir en teinte claire, délivrance suivante
+marquée d'un trait. La posologie doit dire la quantité de chaque prise
+(1-0-1, ½-0-½) : « 2 fois par jour » ne donne pas de durée. Une
+journée entamée n'est pas comptée. Le reste estimé suppose la posologie
+suivie depuis la délivrance.
+
 # Mesures et conseils
 
 Ouvert par le bouton **Mesures et conseils** de la page des médicaments,

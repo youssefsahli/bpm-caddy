@@ -461,6 +461,157 @@ pub fn hbars(
     hovered
 }
 
+/// A row of a [`spans`] timeline: a caption, periods as fractions of
+/// the window, and an optional tick.
+pub struct SpanRow<'a> {
+    pub label: &'a str,
+    /// `(from, to, filled)`: `to` is exclusive, both in `0.0..=1.0`. A
+    /// filled period is one that happened; a hollow one is planned.
+    pub spans: &'a [(f32, f32, bool)],
+    pub color: Color32,
+    /// A day to point at on the row — the next delivery, a deadline.
+    pub tick: Option<f32>,
+}
+
+/// Periods on one shared time axis — a Gantt chart, the shape « which
+/// box runs out first » wants. Rows take [`hbar_metrics`] heights and
+/// the caption column measures itself as in [`hbars`]; what does not
+/// fit is counted on the last row. `now` draws a vertical rule across
+/// every row, and `ticks` are axis captions written under the rows, in
+/// a band one caption tall that the caller leaves at the bottom of
+/// `rect`. Returns the hovered row.
+pub fn spans(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    rows: &[SpanRow],
+    now: Option<f32>,
+    ticks: &[(f32, String)],
+) -> Option<usize> {
+    if rows.is_empty() || rect.width() < 8.0 {
+        return None;
+    }
+    let band = if ticks.is_empty() {
+        0.0
+    } else {
+        ui.text_style_height(&egui::TextStyle::Small) + 2.0
+    };
+    let body = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.bottom() - band));
+    let (row_h, size) = hbar_metrics(ui, body, rows.len());
+    let font = egui::FontId::proportional(size);
+    let text_w = |t: &str| {
+        ui.fonts(|f| {
+            f.layout_no_wrap(t.to_owned(), font.clone(), crate::text())
+                .size()
+                .x
+        })
+    };
+    let label_w = rows.iter().map(|r| text_w(r.label)).fold(0.0_f32, f32::max) + 8.0;
+    let label_w = label_w.clamp(
+        text_w("0000").min(rect.width() * 0.4),
+        (rect.width() * 0.4).max(1.0),
+    );
+    let (shown, hidden) = hbar_fit(body.height(), row_h, rows.len());
+    let used_h = row_h * (shown + usize::from(hidden > 0)) as f32;
+    let plot = egui::Rect::from_min_max(
+        egui::pos2(rect.left() + label_w, body.top()),
+        egui::pos2(rect.right() - 4.0, body.top() + used_h),
+    );
+    if plot.width() < 8.0 {
+        return None;
+    }
+    ui.painter().rect_filled(plot, 0.0, crate::trough());
+    bevel(ui.painter(), plot, false);
+    let inner = plot.shrink(3.0);
+    let x_at = |f: f32| inner.left() + inner.width() * f.clamp(0.0, 1.0);
+    for (f, _) in ticks {
+        let x = x_at(*f);
+        ui.painter().line_segment(
+            [egui::pos2(x, inner.top()), egui::pos2(x, inner.bottom())],
+            Stroke::new(1.0_f32, grid_color()),
+        );
+    }
+    let pointer = ui
+        .interact(rect, ui.id().with("motif_spans"), egui::Sense::hover())
+        .hover_pos();
+    let mut hovered = None;
+    for (i, r) in rows.iter().take(shown).enumerate() {
+        let top = body.top() + i as f32 * row_h;
+        let line =
+            egui::Rect::from_min_size(egui::pos2(rect.left(), top), Vec2::new(rect.width(), row_h));
+        if pointer.is_some_and(|p| line.contains(p)) {
+            hovered = Some(i);
+            ui.painter().rect_filled(line, 0.0, veil());
+        }
+        ui.painter()
+            .with_clip_rect(egui::Rect::from_min_size(
+                egui::pos2(rect.left(), top),
+                Vec2::new(label_w - 4.0, row_h),
+            ))
+            .text(
+                egui::pos2(rect.left() + 2.0, line.center().y),
+                egui::Align2::LEFT_CENTER,
+                r.label,
+                font.clone(),
+                crate::text(),
+            );
+        let pad = (row_h * 0.22).max(2.0);
+        for (from, to, filled) in r.spans {
+            let seg = egui::Rect::from_min_max(
+                egui::pos2(x_at(*from), top + pad),
+                egui::pos2(x_at(*to).max(x_at(*from) + 1.0), top + row_h - pad),
+            );
+            if *filled {
+                ui.painter().rect_filled(seg, 0.0, r.color);
+            } else {
+                // Une teinte et un contour : un contour seul, dans une
+                // couleur proche du creux, ne se voyait pas.
+                ui.painter()
+                    .rect_filled(seg, 0.0, r.color.gamma_multiply(0.35));
+                ui.painter().rect_stroke(
+                    seg.shrink(0.5),
+                    0.0,
+                    Stroke::new(1.5_f32, crate::text_dim()),
+                );
+            }
+        }
+        if let Some(t) = r.tick {
+            let x = x_at(t);
+            ui.painter().line_segment(
+                [egui::pos2(x, top + 1.0), egui::pos2(x, top + row_h - 1.0)],
+                Stroke::new(2.0_f32, crate::text()),
+            );
+        }
+    }
+    if hidden > 0 {
+        let y = body.top() + shown as f32 * row_h + row_h * 0.5;
+        ui.painter().text(
+            egui::pos2(rect.left() + 2.0, y),
+            egui::Align2::LEFT_CENTER,
+            format!("… +{hidden}"),
+            font.clone(),
+            crate::text_dim(),
+        );
+    }
+    if let Some(n) = now {
+        let x = x_at(n);
+        ui.painter().line_segment(
+            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+            Stroke::new(1.5_f32, crate::accent()),
+        );
+    }
+    let small = egui::TextStyle::Small.resolve(ui.style());
+    for (f, label) in ticks {
+        ui.painter().text(
+            egui::pos2(x_at(*f), plot.bottom() + 1.0),
+            egui::Align2::CENTER_TOP,
+            label,
+            small.clone(),
+            crate::text_dim(),
+        );
+    }
+    hovered
+}
+
 /// A single 100 %-stacked bar: composition at a glance, in one row of
 /// pixels the eye reads as a whole. Segments under 2 % are still drawn
 /// (one pixel) so nothing silently disappears.

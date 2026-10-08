@@ -32,7 +32,8 @@ line in that test.
   `surveillance`, `revue`, `conciliation`, `dosing`, `intake`,
   `renewal`, `facets`, `classes`, `vaccines`, `insulin`, `codex`,
   `ordonnance`, `entretien`, `selfcheck`, `compression`, `nutrition`,
-  `protections`, `conseils`), officine tools (`campagne` = the winter
+  `protections`, `conseils`, `couverture` = what a delivered box
+  covers), officine tools (`campagne` = the winter
   vaccination campaign, `shipped` = fingerprints of reworded shipped
   text),
   (`ordonnancier` + `vigilance` = stupéfiants register, `caisse`,
