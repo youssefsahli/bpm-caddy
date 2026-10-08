@@ -1025,6 +1025,7 @@ pub const PREPARATIONS_REWORDED: &[(&str, &str, u64)] = &[
 
 // Posologies : 474 champs reformulés.
 pub const POSOLOGIES_REWORDED: &[(&str, usize, u64, usize)] = &[
+    ("Kerendia", 3, 0x06460105f575b99e, 1425),
     ("Xarelto", 3, 0xe4c5def16e4fdd9b, 5),
     ("Xarelto", 3, 0xee3675a3489cd5ac, 9),
     ("Coumadine", 3, 0x2da545bac3927d64, 22),

@@ -54,9 +54,10 @@ dans docs/CONTENU.md) :
   calendrier et la table le disent maintenant. Comirnaty : la
   contre-indication après myocardite n'est pas au 4.3 du RCP ; la phrase
   est restée, à relire par l'officine.
-- Kerendia : la remarque dit « pas d'instauration au-dessus de 5 ;
-  suspension au-dessus de 5,5 » (RCP) ; l'augmentation de dose demande
-  une kaliémie ≤ 4,8, non écrite.
+- Kerendia : **complété** — la remarque donne maintenant les paliers du
+  RCP (instauration sous 5, passage à 20 mg à 4,8 ou moins, suspension
+  au-dessus de 5,5, reprise à 10 mg à 5 ou moins) ; les bases existantes
+  la reçoivent par l'empreinte de `POSOLOGIES_REWORDED`.
 - Les anciennes fiches Vaxigrip Tetra et Prevenar 13 portent un statut
   (retrait, n'est plus recommandé chez l'adulte) mais restent : les
   retirer ou non.

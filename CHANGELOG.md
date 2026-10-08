@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Kerendia : la remarque de posologie donne les paliers de kaliémie du
+  RCP (passage à 20 mg, suspension, reprise à 10 mg).
 - Pneumocoque : Capvaxive de préférence (avis HAS du 30 juillet 2026),
   sinon Prevenar 20, au catalogue, au calendrier et dans la table de
   vaccination ; le texte livré précédent est remplacé là où il est intact.
