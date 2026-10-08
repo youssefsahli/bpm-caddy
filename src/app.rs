@@ -39886,6 +39886,7 @@ impl App {
         // Les lignes, en champs : ce qui est tapé se relit à chaque image.
         let mut remove: Option<usize> = None;
         let mut commit: Option<usize> = None;
+        let mut again: Option<usize> = None;
         // Le libellé prend ce que les colonnes fixes laissent : la grille
         // tient dans le volet, et les lectures dessous s'enveloppent à sa
         // largeur au lieu d'être coupées.
@@ -39893,12 +39894,13 @@ impl App {
         let gap = 6.0;
         let others = fixed.iter().map(|c| chars_wide(ui, *c)).sum::<f32>()
             + Self::button_width(ui, tr("couv_remove"))
+            + Self::button_width(ui, tr("couv_again"))
             + gap * 7.0;
         let label_w = (ui.available_width() - others)
             .min(chars_wide(ui, 24.0))
             .max(chars_wide(ui, 8.0));
         egui::Grid::new("couv_rows")
-            .num_columns(7)
+            .num_columns(8)
             .spacing(egui::vec2(gap, 4.0))
             .show(ui, |ui| {
                 for head in [
@@ -39944,6 +39946,12 @@ impl App {
                             commit = Some(i);
                         }
                     }
+                    if motif::button(ui, tr("couv_again"))
+                        .on_hover_text(tr("couv_again_tooltip"))
+                        .clicked()
+                    {
+                        again = Some(i);
+                    }
                     if motif::button(ui, tr("couv_remove")).clicked() {
                         remove = Some(i);
                     }
@@ -39952,6 +39960,18 @@ impl App {
             });
         if let Some(i) = remove {
             session.couv_rows.remove(i);
+        }
+        // Une nouvelle délivrance de la même ligne, datée d'aujourd'hui,
+        // posée juste dessous : elle rejoint la rangée du médicament.
+        if let Some(row) = again.and_then(|i| session.couv_rows.get(i).cloned()) {
+            let i = again.unwrap_or(0);
+            let next = CouvRow {
+                date: db::format_french_date(&session.today),
+                ..row
+            };
+            session
+                .couv_rows
+                .insert((i + 1).min(session.couv_rows.len()), next);
         }
         // Retenir au dossier les unités par boîte, contre ce qu'il portait
         // quand la ligne a été reprise.

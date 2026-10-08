@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Couverture : « Renouveler » ajoute la même délivrance datée
+  d'aujourd'hui, rangée après la précédente.
+
 ### Changed
 - Protocoles : dix titres reformulés au registre professionnel (« Dyslipidémie
   — objectif lipidique selon le risque cardiovasculaire », « Fibrillation

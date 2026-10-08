@@ -935,7 +935,8 @@ ligne reprise du dossier, le nombre d'unités par boîte y est enregistré
 à la sortie du champ et sert aux reprises suivantes.
 
 **Plusieurs délivrances d'un même médicament** (même libellé) se
-rangent sur une seule rangée. Une délivrance faite avant la fin de la
+rangent sur une seule rangée ; « Renouveler » ajoute sous une ligne la
+même délivrance, datée d'aujourd'hui. Une délivrance faite avant la fin de la
 précédente attend son tour : sa période commence quand la précédente
 finit. Une délivrance faite après laisse des jours sans traitement,
 en rouge, comptés sous la saisie avec la part des jours couverts depuis
