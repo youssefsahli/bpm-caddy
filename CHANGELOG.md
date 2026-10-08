@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.374.0] - 2026-10-08
+
+### Added
+- Six fiches de vaccins et d'anticorps de la saison 2026-2027 (1133
+  fiches), rédigées d'après leur RCP : Vaxigrip et Influvac (trivalents),
+  Flucelvax, Fluad, mResvia et Enflonsia (clesrovimab), avec leurs
+  posologies ; une ligne grossesse pour les vaccins grippaux inactivés à
+  dose standard et pour Fluad.
+
+### Changed
+- Fiches relues contre leur RCP et le calendrier 2026 : Efluelda
+  (trivalent, 0,5 mL), Comirnaty (XFG, intervalles de la campagne),
+  Beyfortus (dose selon le poids, deuxième saison, campagne, demi-vie),
+  Abrysvo, Arexvy (co-administration avec la grippe seulement en
+  France), Shingrix, Prevenar 13 (n'est plus le vaccin de l'adulte) et
+  Prevenar 20 ; Vaxigrip Tetra marqué retiré du marché.
+
 ### Added
 - Campagne : ouvrir un dossier depuis la liste des rappels prépare le
   carnet, avec le vaccin de la campagne et le lot en stock qui périme le

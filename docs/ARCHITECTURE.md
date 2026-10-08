@@ -135,7 +135,7 @@ are read verbatim by tests in `src/strings.rs`.
   table's *order*, since the first row that matches wins: it earned its
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
-  `src/gravidity.rs` (pregnancy and breastfeeding as a level: seventy-eight
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: eighty
   molecules, each with a `never` — the same veto as `renal.rs`, for the
   same reason: a collyre, a pommade or a gel of a systemic molecule
   falls into its row and wears a level written for the general route.
@@ -416,7 +416,7 @@ The one that was missing — « combien de fois un autre poste avait
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1643 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1647 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),
@@ -455,7 +455,7 @@ The one that was missing — « combien de fois un autre poste avait
   not a tablet** (« 5 mg matin et soir » carries two takings, not five —
   the shape every demo posology has), and **a taking with no quantity is
   still a taking** (the cell gets a mark, never an invented « 1 »).
-  Four traps found by confronting the 2 369 shipped posology lines
+  Four traps found by confronting the 2 385 shipped posology lines
   rather than the six written in the test, and the module would have
   been perfectly consistent with itself without them. Two are one word
   inside another: « petit déjeuner » contains « déjeuner », which is the
@@ -645,7 +645,7 @@ The one that was missing — « combien de fois un autre poste avait
   compare on » — and the one view whose whole subject is
   « qu'est-ce qu'il y a autour » was comparing raw strings. Confronted
   with the shipped base it cost
-  **1022 pairs of neighbours over 409 of the 1127 cards**: Fosamax was
+  **1104 pairs of neighbours over 414 of the 1133 cards**: Fosamax was
   not of Actonel's ring for a letter
   (« bisphosphonate » / « biphosphonate »), Cimzia not of Amgevita's for
   a word (« anti-TNF » / « anti-TNF alpha »), and nothing looked broken
@@ -727,7 +727,7 @@ The one that was missing — « combien de fois un autre poste avait
   never in the draw loop),
   `src/classes.rs` (the therapeutic classes: what they are and which of
   sixteen families they sit under. The `class` field of a card is free
-  text and it drifted — **563 distinct labels over 1127 cards, 330 of
+  text and it drifted — **563 distinct labels over 1133 cards, 330 of
   them on a single card** — and the drift was not cosmetic: `anti-TNF`
   and `anti-TNF alpha` were two classes, so Humira's chip said seven
   neighbours instead of ten and Remicade was nowhere, with nothing

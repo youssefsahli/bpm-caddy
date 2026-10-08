@@ -1319,6 +1319,28 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Passage important : l'enfant reçoit jusqu'à 19 % de la dose maternelle, et une anémie hémolytique a été décrite chez un nourrisson allaité. Préférable d'éviter l'allaitement.",
         source: "CRAT (dapsone, grossesse et allaitement, mise à jour 28.01.2025) ; Disulone : « Le RCP déconseille en théorie la grossesse, faute de données, tout en admettant l'usage si nécessaire ».",
     },
+    Advice {
+        needs: &["vaxigrip", "influvac", "flucelvax"],
+        never: &[],
+        label: "Vaccin grippal inactivé",
+        pregnancy: Level::Compatible,
+        term: "",
+        pregnancy_note: "Recommandé à tout stade de la grossesse : la grippe y est plus grave, et les anticorps maternels protègent le nourrisson jusqu'à près de 6 mois. Données plus nombreuses aux deuxième et troisième trimestres, sans issue anormale attribuable au vaccin.",
+        breastfeeding: Level::Compatible,
+        breastfeeding_note: "Vaccin non vivant, utilisable pendant l'allaitement selon les RCP ; aucun effet attendu chez l'enfant allaité.",
+        source: "CRAT (vaccins grippaux inactivés) ; RCP Vaxigrip, Influvac et Flucelvax ; calendrier des vaccinations 2026",
+    },
+    Advice {
+        needs: &["fluad"],
+        never: &[],
+        label: "Vaccin grippal adjuvanté",
+        pregnancy: Level::Eviter,
+        term: "",
+        pregnancy_note: "Non indiqué : réservé aux 50 ans et plus, et le RCP exclut la femme enceinte, faute de données. Pour la femme enceinte, un vaccin grippal inactivé à dose standard, sans adjuvant, recommandé à tout terme.",
+        breastfeeding: Level::Eviter,
+        breastfeeding_note: "Le RCP l'exclut chez la femme qui allaite ; un vaccin grippal inactivé sans adjuvant convient.",
+        source: "CRAT (vaccins grippaux inactivés) ; RCP Fluad",
+    },
 ];
 
 #[cfg(test)]

@@ -243,7 +243,7 @@ Deux règles valent partout :
   canoniques, et pour chacune les libellés qu'on rencontre réellement
   dans le champ `class` des fiches.
 - **Pourquoi un référentiel plutôt qu'une réécriture** : le champ d'une
-  fiche est du texte libre et il a dérivé — 563 libellés pour 1127
+  fiche est du texte libre et il a dérivé — 563 libellés pour 1133
   fiches, dont 330 sur une seule. Réécrire les 862 fiches écraserait ce
   que l'équipe a écrit ; un référentiel les *lit*. Une classe qu'il ne
   connaît pas reste lisible et se range sous « hors référentiel », où

@@ -1074,6 +1074,7 @@ const HALF_LIVES: &[(&str, f32, f32)] = &[
     ("Nplate", 24.0, 816.0),
     ("Sunosi", 7.1, 7.1),
     ("Vumerity", 1.0, 1.0),
+    ("Enflonsia", 1056.0, 1056.0),
 ];
 
 /// Fiches sans demi-vie plasmatique exploitable, et pourquoi.
@@ -1361,6 +1362,11 @@ const NO_HALF_LIFE: &[(&str, Unknown)] = &[
     ("Akineton LP", Unknown::NonChiffree),
     ("Dicodin LP", Unknown::NonChiffree),
     ("Sulfarlem", Unknown::NonChiffree),
+    ("Vaxigrip", Unknown::SansObjet),
+    ("Influvac", Unknown::SansObjet),
+    ("Flucelvax", Unknown::SansObjet),
+    ("Fluad", Unknown::SansObjet),
+    ("mResvia", Unknown::SansObjet),
 ];
 
 /// Ce qui dure au-delà de la demi-vie plasmatique.
@@ -4430,6 +4436,14 @@ const IMPACTS: &[(&str, Organ, Effect, Grade, &str)] = &[
     ("Vumerity", Organ::Moelle, Effect::Altere, Grade::Notable, "lymphopénie parfois sévère et prolongée, leucopénie"),
     ("Vumerity", Organ::Foie, Effect::Altere, Grade::Mineur, "élévation des transaminases, atteinte hépatique médicamenteuse rare"),
     ("Vumerity", Organ::Rein, Effect::Altere, Grade::Mineur, "protéinurie, syndrome de Fanconi rare"),
+    ("Vaxigrip", Organ::Moelle, Effect::Altere, Grade::Mineur, "thrombopénie transitoire rapportée après commercialisation"),
+    ("Influvac", Organ::Moelle, Effect::Altere, Grade::Mineur, "thrombopénie transitoire, fréquence inconnue"),
+    ("Flucelvax", Organ::Neuro, Effect::Altere, Grade::Mineur, "convulsion fébrile et Guillain-Barré rapportés après commercialisation"),
+    ("Fluad", Organ::Moelle, Effect::Altere, Grade::Mineur, "thrombopénie de fréquence indéterminée, parfois sévère"),
+    ("Fluad", Organ::Neuro, Effect::Altere, Grade::Mineur, "convulsions, Guillain-Barré, encéphalomyélite : fréquence indéterminée"),
+    ("mResvia", Organ::Poumon, Effect::Traite, Grade::Notable, "prévention des infections respiratoires basses à VRS chez le sujet âgé"),
+    ("mResvia", Organ::Neuro, Effect::Altere, Grade::Mineur, "paralysie faciale périphérique, rare"),
+    ("Enflonsia", Organ::Poumon, Effect::Traite, Grade::Notable, "prévention des infections respiratoires basses à VRS chez le nourrisson"),
 ];
 
 /// Le référentiel indexé, construit une seule fois.
