@@ -4094,6 +4094,8 @@ struct CampagneState {
     page: usize,
     /// La ligne de la liste des rappels que le clavier désigne.
     cursor: usize,
+    /// Le formulaire de réception d'un lot est déplié.
+    form_open: bool,
     new_received: String,
     new_expiry: String,
     confirm_delete: Option<i64>,
@@ -51803,60 +51805,75 @@ impl App {
                 // Le formulaire d'abord : c'est à la réception d'un carton
                 // qu'on ouvre ce panneau, et la liste défile en dessous.
                 let h = Self::row_height(ui);
-                ui.horizontal_wrapped(|ui| {
-                    let codes: Vec<(String, String)> = CAMPAIGN_CODES
-                        .iter()
-                        .chain(["PNEUMO", "ZONA", "DTCAP"].iter())
-                        .map(|c| ((*c).to_owned(), Self::campaign_code_label(c).to_owned()))
-                        .collect();
-                    if session.camp.new_lot.code.is_empty() {
-                        session.camp.new_lot.code = session.camp.code.to_owned();
+                // Le formulaire de réception : replié tant que des lots existent,
+                // ouvert par son bouton — la liste des lots est ce qu'on lit le
+                // reste du temps.
+                let form_open = session.camp.form_open || session.camp.lots.is_empty();
+                if !form_open {
+                    if motif::button(ui, tr("camp_lot_receive")).clicked() {
+                        session.camp.form_open = true;
                     }
-                    let w = motif::select_width(ui, codes.iter().map(|(_, l)| l.as_str()));
-                    motif::select(
-                        ui,
-                        "camp_lot_code",
-                        w,
-                        &mut session.camp.new_lot.code,
-                        &codes,
-                    );
-                    let fw = |hint: &str| Self::field_width(ui, [hint].into_iter());
-                    let (wp, wl, we, wq) = (
-                        fw(tr("camp_product_hint")),
-                        fw(tr("camp_lot_hint")),
-                        fw(tr("camp_expiry_hint")),
-                        fw(tr("camp_received_hint")),
-                    );
-                    let fields = [
-                        motif::field_sized(
+                } else {
+                    ui.horizontal_wrapped(|ui| {
+                        let codes: Vec<(String, String)> = CAMPAIGN_CODES
+                            .iter()
+                            .chain(["PNEUMO", "ZONA", "DTCAP"].iter())
+                            .map(|c| ((*c).to_owned(), Self::campaign_code_label(c).to_owned()))
+                            .collect();
+                        if session.camp.new_lot.code.is_empty() {
+                            session.camp.new_lot.code = session.camp.code.to_owned();
+                        }
+                        let w = motif::select_width(ui, codes.iter().map(|(_, l)| l.as_str()));
+                        motif::select(
                             ui,
-                            egui::vec2(wp, h),
-                            egui::TextEdit::singleline(&mut session.camp.new_lot.product)
-                                .hint_text(motif::hint(tr("camp_product_hint"))),
-                        ),
-                        motif::field_sized(
-                            ui,
-                            egui::vec2(wl, h),
-                            egui::TextEdit::singleline(&mut session.camp.new_lot.lot)
-                                .hint_text(motif::hint(tr("camp_lot_hint"))),
-                        ),
-                        motif::field_sized(
-                            ui,
-                            egui::vec2(we, h),
-                            egui::TextEdit::singleline(&mut session.camp.new_expiry)
-                                .hint_text(motif::hint(tr("camp_expiry_hint"))),
-                        ),
-                        motif::field_sized(
-                            ui,
-                            egui::vec2(wq, h),
-                            egui::TextEdit::singleline(&mut session.camp.new_received)
-                                .hint_text(motif::hint(tr("camp_received_hint"))),
-                        ),
-                    ];
-                    if motif::button(ui, tr("camp_lot_add")).clicked() || entered(ui, &fields) {
-                        add_lot = true;
-                    }
-                });
+                            "camp_lot_code",
+                            w,
+                            &mut session.camp.new_lot.code,
+                            &codes,
+                        );
+                        let fw = |hint: &str| Self::field_width(ui, [hint].into_iter());
+                        let (wp, wl, we, wq) = (
+                            fw(tr("camp_product_hint")),
+                            fw(tr("camp_lot_hint")),
+                            fw(tr("camp_expiry_hint")),
+                            fw(tr("camp_received_hint")),
+                        );
+                        let fields = [
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(wp, h),
+                                egui::TextEdit::singleline(&mut session.camp.new_lot.product)
+                                    .hint_text(motif::hint(tr("camp_product_hint"))),
+                            ),
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(wl, h),
+                                egui::TextEdit::singleline(&mut session.camp.new_lot.lot)
+                                    .hint_text(motif::hint(tr("camp_lot_hint"))),
+                            ),
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(we, h),
+                                egui::TextEdit::singleline(&mut session.camp.new_expiry)
+                                    .hint_text(motif::hint(tr("camp_expiry_hint"))),
+                            ),
+                            motif::field_sized(
+                                ui,
+                                egui::vec2(wq, h),
+                                egui::TextEdit::singleline(&mut session.camp.new_received)
+                                    .hint_text(motif::hint(tr("camp_received_hint"))),
+                            ),
+                        ];
+                        if motif::button(ui, tr("camp_lot_add")).clicked() || entered(ui, &fields) {
+                            add_lot = true;
+                        }
+                        if !session.camp.lots.is_empty()
+                            && motif::button(ui, tr("tpl_close")).clicked()
+                        {
+                            session.camp.form_open = false;
+                        }
+                    });
+                }
                 if let Some(err) = &session.camp.error {
                     ui.colored_label(motif::alert(), err.as_str());
                 }
@@ -52067,6 +52084,7 @@ impl App {
                             session.camp.new_received.clear();
                             session.camp.new_expiry.clear();
                             reload = true;
+                            session.camp.form_open = false;
                         }
                         Err(e) => session.camp.error = Some(e),
                     }

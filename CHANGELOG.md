@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Campagne : le formulaire de réception d'un lot est replié derrière
+  « Recevoir un lot » dès qu'un lot existe ; la liste des lots garde la
+  place.
+
 ### Added
 - Campagne : « Flacon ouvert » sur un lot de vaccin contre le COVID-19
   note la première ponction ; la ligne donne l'heure limite d'utilisation
