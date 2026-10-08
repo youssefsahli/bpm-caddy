@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Campagne : la liste des rappels ne répond au clavier qu'une fois
+  activée par une flèche et tant qu'aucun champ n'a la main (l'Entrée de
+  la recherche du volet de gauche ouvrait le carnet de la ligne choisie),
+  seulement quand elle est à l'écran, et sans touche de modification.
+- Campagne : le minuteur de flacon n'est proposé que sur les lots de
+  Comirnaty ; le registre du jour garde une dose dont le dossier manque
+  et signale une erreur de lecture.
+- Campagne : la lecture des traitements évocateurs est gardée par DCI et
+  classe, et non par nom de fiche.
+- Nutrition orale : le calendrier du plan disparaît après quatre mois ou
+  sur une date illisible.
+
 ### Changed
 - Campagne : le formulaire de réception d'un lot est replié derrière
   « Recevoir un lot » dès qu'un lot existe ; la liste des lots garde la

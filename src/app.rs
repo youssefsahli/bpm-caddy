@@ -4094,6 +4094,10 @@ struct CampagneState {
     page: usize,
     /// La ligne de la liste des rappels que le clavier désigne.
     cursor: usize,
+    /// Le clavier parle à la liste : armé par une flèche, désarmé dès
+    /// qu'un champ prend le foyer. Sans lui, l'Entrée qui valide la
+    /// recherche du volet de gauche ouvrait le carnet de la ligne choisie.
+    keys_armed: bool,
     /// Le formulaire de réception d'un lot est déplié.
     form_open: bool,
     new_received: String,
@@ -51587,24 +51591,17 @@ impl App {
         // qu'aucun champ n'a le foyer (le formulaire des lots en a).
         let n = session.camp.recalls.len();
         let mut keyed = false;
-        if n > 0 && !ui.ctx().wants_keyboard_input() {
+        if ui.ctx().wants_keyboard_input() {
+            session.camp.keys_armed = false;
+        } else if n > 0 && recall_rect.is_positive() {
             if session.camp.cursor >= n {
                 session.camp.cursor = n - 1;
             }
-            let (down, up, enter, digit) = ui.input(|i| {
-                let digit = [
-                    egui::Key::Num1,
-                    egui::Key::Num2,
-                    egui::Key::Num3,
-                    egui::Key::Num4,
-                ]
-                .iter()
-                .position(|k| i.key_pressed(*k));
+            let none = egui::Modifiers::NONE;
+            let (down, up) = ui.input_mut(|i| {
                 (
-                    i.key_pressed(egui::Key::ArrowDown),
-                    i.key_pressed(egui::Key::ArrowUp),
-                    i.key_pressed(egui::Key::Enter),
-                    digit,
+                    i.consume_key(none, egui::Key::ArrowDown),
+                    i.consume_key(none, egui::Key::ArrowUp),
                 )
             });
             if down {
@@ -51615,12 +51612,28 @@ impl App {
                 session.camp.cursor = session.camp.cursor.saturating_sub(1);
                 keyed = true;
             }
-            let row = &session.camp.recalls[session.camp.cursor];
-            if enter {
-                open = Some(row.patient_id);
+            if keyed {
+                session.camp.keys_armed = true;
             }
-            if let Some(d) = digit {
-                call = Some((row.patient_id, Outcome::ALL[d]));
+            if session.camp.keys_armed {
+                let (enter, digit) = ui.input_mut(|i| {
+                    let digit = [
+                        egui::Key::Num1,
+                        egui::Key::Num2,
+                        egui::Key::Num3,
+                        egui::Key::Num4,
+                    ]
+                    .iter()
+                    .position(|k| i.consume_key(none, *k));
+                    (i.consume_key(none, egui::Key::Enter), digit)
+                });
+                let row = &session.camp.recalls[session.camp.cursor];
+                if enter {
+                    open = Some(row.patient_id);
+                }
+                if let Some(d) = digit {
+                    call = Some((row.patient_id, Outcome::ALL[d]));
+                }
             }
         }
         let caption = trf("camp_recall_title", session.camp.recalls.len());
@@ -51968,7 +51981,12 @@ impl App {
                             });
                             // Le flacon multidose ouvert : l'heure limite après la
                             // première ponction, et ce qu'il en reste.
-                            if lot.code == "COVID" {
+                            if lot.code == "COVID"
+                                && crate::fuzzy::contains_folded(
+                                    &crate::fuzzy::sort_key(&lot.product),
+                                    "comirnaty",
+                                )
+                            {
                                 let open = session.camp.vials.iter().find(|v| {
                                     campagne::norm_lot(&v.lot) == campagne::norm_lot(&lot.lot)
                                 });
@@ -52167,9 +52185,11 @@ impl App {
             }
         }
         if print_register {
-            let rows: Vec<[String; 7]> = session
-                .db
-                .vaccinations_register(&session.today)
+            let read = session.db.vaccinations_register(&session.today);
+            if let Err(e) = &read {
+                session.error = Some(e.clone());
+            }
+            let rows: Vec<[String; 7]> = read
                 .unwrap_or_default()
                 .into_iter()
                 .map(|[last, first, birth, label, dose, lot, site, op]| {
@@ -53439,20 +53459,30 @@ impl App {
                         if let Some(last) =
                             state.records.iter().find(|r| !r.field("plan").is_empty())
                         {
-                            let d10 = crate::date::add_days(&last.on_date, 10).unwrap_or_default();
-                            let m1 = crate::date::add_months(&last.on_date, 1).unwrap_or_default();
-                            Self::conseil_line(
-                                ui,
-                                &trn(
-                                    "conseil_nut_followup",
-                                    &[
-                                        &db::format_french_date(&last.on_date),
-                                        &db::format_french_date(&d10),
-                                        &db::format_french_date(&m1),
-                                    ],
-                                ),
-                                today.as_str() >= d10.as_str(),
+                            // Un plan de plus de quatre mois (un mois puis trois
+                            // de renouvellement au plus) n'a plus d'échéance à
+                            // annoncer ; une date illisible non plus.
+                            let dates = (
+                                crate::date::add_days(&last.on_date, 10),
+                                crate::date::add_months(&last.on_date, 1),
+                                crate::date::add_months(&last.on_date, 4),
                             );
+                            if let (Some(d10), Some(m1), Some(m4)) = dates {
+                                if today.as_str() <= m4.as_str() {
+                                    Self::conseil_line(
+                                        ui,
+                                        &trn(
+                                            "conseil_nut_followup",
+                                            &[
+                                                &db::format_french_date(&last.on_date),
+                                                &db::format_french_date(&d10),
+                                                &db::format_french_date(&m1),
+                                            ],
+                                        ),
+                                        today.as_str() >= d10.as_str(),
+                                    );
+                                }
+                            }
                         }
                         // L'évolution du poids, du premier relevé au dernier :
                         // c'est ce que la réévaluation demande d'abord.

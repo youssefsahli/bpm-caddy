@@ -880,8 +880,10 @@ patient. Ouvrir un dossier depuis la liste prépare le carnet : le vaccin
 de la campagne et le lot en stock sont déjà renseignés. « Imprimer la
 liste » sort la liste du vaccin choisi, avec une colonne pour noter
 l'issue de chaque appel.
-Au clavier, les flèches parcourent la liste, Entrée ouvre le carnet et
-les touches 1 à 4 notent l'issue de l'appel, dans l'ordre des boutons.
+Au clavier, une flèche active la liste et la parcourt ; Entrée ouvre
+alors le carnet et les touches 1 à 4 notent l'issue de l'appel, dans
+l'ordre des boutons. Un champ de saisie qui prend la main désactive la
+liste.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
@@ -898,8 +900,8 @@ numéro. Une dose corrigée ou supprimée au carnet se retrouve donc dans
 le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 (moins de 30 jours) ou en stock bas (moins de 5 doses).
 
-Sur un lot de vaccin contre le COVID-19, « Flacon ouvert » note la
-première ponction d'un flacon multidose : la ligne donne l'heure limite
+Sur un lot de Comirnaty, « Flacon ouvert » note la première ponction
+d'un flacon multidose : la ligne donne l'heure limite
 d'utilisation, 12 heures plus tard, et le temps restant.
 
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en

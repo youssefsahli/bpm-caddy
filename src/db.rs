@@ -49631,8 +49631,9 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT p.last_name, p.first_name, p.birth_date, v.label, v.dose, v.lot, v.site, v.operator
-                 FROM vaccinations v JOIN patients p ON p.id = v.patient_id
+                "SELECT COALESCE(p.last_name, ''), COALESCE(p.first_name, ''),
+                        COALESCE(p.birth_date, ''), v.label, v.dose, v.lot, v.site, v.operator
+                 FROM vaccinations v LEFT JOIN patients p ON p.id = v.patient_id
                  WHERE v.given_on = ?1 ORDER BY v.id",
             )
             .map_err(|e| e.to_string())?;

@@ -791,12 +791,14 @@ pub const EVOCATIONS: &[Evocation] = &[
 /// chaque appel noté.
 pub fn evocations_memo(
     treatments: &[(&str, &str, &str)],
-    memo: &mut std::collections::HashMap<String, Vec<&'static str>>,
+    memo: &mut std::collections::HashMap<(String, String), Vec<&'static str>>,
 ) -> Vec<(&'static str, String)> {
     let mut out: Vec<(&'static str, String)> = Vec::new();
     for t in treatments {
+        // La lecture ne dépend que de la DCI et de la classe : deux fiches
+        // du même nom peuvent différer, deux noms d'une même molécule non.
         let groups = memo
-            .entry(t.0.to_owned())
+            .entry((t.1.to_owned(), t.2.to_owned()))
             .or_insert_with(|| evocations(&[*t]).into_iter().map(|(g, _)| g).collect());
         for g in groups.iter() {
             if !out.iter().any(|(x, _)| x == g) {
