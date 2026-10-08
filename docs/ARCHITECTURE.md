@@ -2746,6 +2746,37 @@ shipped cascade under the same keys, its first molecule given — every
 figure can be captured, not only the β one. `BPM_CADDY_CASCADE_FOCUS=<part of a node
 name>` follows that node's lineage, as a click would.
 
+## La campagne et « Mesures et conseils » (0.367 à 0.375)
+
+- **`src/campagne.rs`** lit la saison (1er septembre au 31 août) et ne
+  stocke rien qu'elle puisse recalculer : le stock d'un lot est ce qui a
+  été reçu moins les lignes du carnet qui portent son numéro (comparé
+  sans espaces ni tirets), si bien qu'une dose corrigée ou supprimée au
+  carnet se retrouve dans le stock. Deux tables seulement : `vaccine_lots`
+  (flux Officine) et `campaign_calls` (flux Dossiers, une ligne par appel,
+  la liste lit le dernier). La vue ne lit la base qu'à l'ouverture et
+  après un geste (`reload_campagne`).
+- **« Mesures et conseils »** (`compression`, `nutrition`, `protections`,
+  `conseils`) garde ce qu'il note d'un dossier dans une seule table,
+  `counsel_records`, dont `data` porte des `clé=valeur` séparés par des
+  points-virgules ; les mesures de compression y voyagent en un seul
+  champ (`cB.D:22,5 cC.G:35`). Les grilles de tailles (`compression_grids`)
+  et les compléments (`cno_products`) sont du contenu de l'officine (flux
+  Fiches). Aucune grille de tailles n'est livrée.
+- **Le texte livré suit la version sans toucher celui de l'équipe** :
+  `refresh_starter_details` (monographies : ni verrou ni version),
+  `refresh_reworded_fiches` (dispositifs, préparations, posologies,
+  conduites, étapes de protocole : seulement un champ dont l'empreinte
+  FNV-1a est celle de l'ancien texte livré, `src/shipped.rs`) et
+  `refresh_vaccine_schedules` (catalogue des vaccins, ancien texte mot
+  pour mot). Les deux derniers passent au déverrouillage du poste de
+  référence ; tous trois sont dans « Synchroniser le contenu de
+  référence ».
+- **Le déverrouillage** ouvre le fichier des pièces et le registre sur
+  deux fils pendant le schéma de la base, une fois le mot de passe
+  vérifié sur celle-ci : un fichier absent n'est jamais créé avec une
+  clé fausse (`a_wrong_password_creates_no_side_file`).
+
 ## Every printable document has an editable template
 
 `pdf::DOCS` is the register: one entry per printable document, carrying

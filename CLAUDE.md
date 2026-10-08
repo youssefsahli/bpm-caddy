@@ -31,7 +31,10 @@ line in that test.
   `hepatic`, `gravidity`, `elderly`, `crush`, `cyp`, `biology`,
   `surveillance`, `revue`, `conciliation`, `dosing`, `intake`,
   `renewal`, `facets`, `classes`, `vaccines`, `insulin`, `codex`,
-  `ordonnance`, `entretien`, `selfcheck`), officine tools
+  `ordonnance`, `entretien`, `selfcheck`, `compression`, `nutrition`,
+  `protections`, `conseils`), officine tools (`campagne` = the winter
+  vaccination campaign, `shipped` = fingerprints of reworded shipped
+  text),
   (`ordonnancier` + `vigilance` = stupéfiants register, `caisse`,
   `planning`, `agenda`, `location`, `prescribers`, `annuaire`,
   `timeline`, `graph`, `scans`, `codebar`, `vitale`/`winscard`,
