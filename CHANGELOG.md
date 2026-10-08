@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Cytochromes et transporteurs : Odefsey et Genvoya ont chacun leur ligne,
+  qui garde le rôle de substrat de la P-gp du ténofovir alafénamide
+  (perdu quand la ligne de la rilpivirine ou de l'elvitégravir les
+  prenait).
+
 ## [0.384.0] - 2026-10-08
 
 ### Added

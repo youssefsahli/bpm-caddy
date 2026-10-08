@@ -115,9 +115,9 @@ d'une désensibilisation (agonistes de la GnRH) ni une atrophie
 de facteur qui n'agit qu'en présence d'un autre (bradycardie et QT).
 
 **Pistes laissées ouvertes.**
-- Odefsey et Genvoya perdent le rôle de substrat de la P-gp du ténofovir
-  alafénamide (la ligne de la rilpivirine ou du cobicistat parle
-  d'abord) : une ligne par spécialité réglerait cela.
+- Odefsey et Genvoya : **fait** — une ligne par spécialité dans `cyp.rs`,
+  avant celles de leurs composants, qui garde le rôle de substrat de la
+  P-gp du ténofovir alafénamide.
 - La carte pharmacologique n'a pas de raison « même cascade » : ses
   raisons n'annotent que les nœuds qu'elle trace déjà.
 - OAT1/OAT3 (méthotrexate sous AINS) : les fiches ne nomment pas le

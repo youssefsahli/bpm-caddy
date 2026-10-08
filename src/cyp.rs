@@ -1785,6 +1785,20 @@ pub const TABLE: &[Profile] = &[
         actions: &[Action::new(Cyp3a4, Substrate, None)],
         source: "Visanne : « Le diénogest est métabolisé principalement par le CYP3A4 » ; « le kétoconazole multiplie l'exposition par 2,9 et l'érythromycine par 1,6 ».",
     },
+    // Les associations à dose fixe : une ligne par spécialité, avant celles
+    // de leurs composants. La première ligne qui prend une fiche décide
+    // seule ; sans celle-ci, la rilpivirine prenait Odefsey et le rôle du
+    // ténofovir alafénamide (substrat de la P-gp) disparaissait.
+    Profile {
+        needs: &["odefsey"],
+        label: "Odefsey (rilpivirine + ténofovir alafénamide)",
+        actions: &[
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Pgp, Substrate, None),
+        ],
+        source: "Edurant : « Métabolisée principalement par le CYP3A4 » ; les inducteurs du CYP3A sont contre-indiqués par perte d'efficacité ; « Dabigatran : prudence, par inhibition de la P-gp intestinale ». Vemlidy (ténofovir alafénamide) : « Inducteurs puissants de la glycoprotéine P : association contre-indiquée ou déconseillée du fait de la perte d'efficacité ».",
+    },
     Profile {
         needs: &["rilpivirine", "edurant"],
         label: "Rilpivirine",
@@ -1919,7 +1933,22 @@ pub const TABLE: &[Profile] = &[
         source: "Eurartesim : « La pipéraquine est métabolisée essentiellement par le CYP3A4 » ; « elle est inhibitrice faible du CYP3A4 » ; les inhibiteurs puissants « augmentent jusqu'à deux fois son exposition ».",
     },
     Profile {
-        needs: &["elvitégravir", "cobicistat", "genvoya"],
+        needs: &["genvoya"],
+        label: "Genvoya (elvitégravir + cobicistat + ténofovir alafénamide)",
+        actions: &[
+            Action::new(Cyp3a4, Inhibitor, Some(Strong)),
+            Action::new(Cyp3a4, Substrate, Some(Strong)),
+            Action::new(Cyp2d6, Inhibitor, Some(Weak)),
+            Action::new(Cyp2c9, Inducer, None),
+            Action::new(Pgp, Inhibitor, None),
+            Action::new(Pgp, Substrate, None),
+            Action::new(Bcrp, Inhibitor, None),
+            Action::new(Oatp1b1, Inhibitor, None),
+        ],
+        source: "Genvoya : « puissant inhibiteur du CYP3A4 » ; « Il inhibe aussi faiblement le CYP2D6 » ; « L'elvitégravir peut induire le CYP2C9 et les UGT » ; « Elvitégravir métabolisé principalement par le CYP3A4 » ; « Il inhibe la P-gp, la BCRP et les OATP1B1/1B3 ». Vemlidy (ténofovir alafénamide) : « Inducteurs puissants de la glycoprotéine P : association contre-indiquée ou déconseillée du fait de la perte d'efficacité ».",
+    },
+    Profile {
+        needs: &["elvitégravir", "cobicistat"],
         label: "Elvitégravir + cobicistat",
         actions: &[
             Action::new(Cyp3a4, Inhibitor, Some(Strong)),
