@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.379.0] - 2026-10-08
+
 ### Added
 - Protections périodiques : tour de bassin et stature notés à la
   délivrance d'une culotte, repris à l'historique et sur la fiche remise.
