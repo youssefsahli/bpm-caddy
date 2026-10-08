@@ -30,7 +30,7 @@ parle de l'écran en cours — l'agenda, un dossier, la caisse… — puis
 toutes les autres. Une recherche remplace cet ordre.
 
 Le bouton « ? » de la barre du haut, ou `F12`, liste tous les raccourcis
-clavier. Cette liste est tenue par l'application et toujours à jour.
+clavier. Cette liste est générée par l'application et reste à jour.
 
 Après une mise à jour, la fenêtre **« Nouveautés »** s'ouvre une fois
 sur ce poste : ce que la version apporte, modifie et corrige — toutes
@@ -112,9 +112,9 @@ La lecture du sujet âgé est la seule dont la donnée est **déjà au
 dossier** : la date de naissance, saisie à la création. La fonction rénale
 conduit à adapter la dose ; l'âge, à reconsidérer le choix de la molécule. Les lignes viennent de la liste
 française de Laroche, des critères STOPP/START et des critères de Beers ;
-chacune indique le risque et l'alternative. Aucun arrêt brutal : l'arrêt
-d'un psychotrope chez le sujet âgé expose davantage que sa poursuite, et
-le remplacement se prépare avec le prescripteur.
+chacune indique le risque et l'alternative. Aucun arrêt brutal n'est proposé :
+l'arrêt d'un psychotrope chez le sujet âgé expose à davantage de risques
+que sa poursuite, et le remplacement se prépare avec le prescripteur.
 
 **Une forme locale n'est pas traitée comme la voie générale.** Collyres,
 pommades, gels et pulvérisations nasales ne reçoivent ni palier rénal,
@@ -129,15 +129,15 @@ et par transporteur. Elle **ne connaît que sept cytochromes et cinq
 transporteurs** — la glycoprotéine P, l'OATP1B1, la BCRP, et l'OCT2 et
 le MATE1 du rein, qui portent les interactions qu'aucun cytochrome
 n'explique : le dabigatran sous amiodarone, la digoxine sous vérapamil,
-la rosuvastatine sous ciclosporine, la metformine sous dolutégravir. Ni les autres transporteurs, ni les glucuronoconjugaisons,
-ni les effets additifs — deux sédatifs n'interagissent sur aucune enzyme
-et leurs effets s'additionnent. Une absence d'interaction enzymatique
+la rosuvastatine sous ciclosporine, la metformine sous dolutégravir. Les autres transporteurs, les glucuronoconjugaisons
+et les effets additifs ne sont pas couverts : deux sédatifs n'interagissent
+sur aucune enzyme, mais leurs effets s'additionnent. Une absence d'interaction enzymatique
 n'est pas une absence d'interaction ; les lignes absentes de la table
 sont **listées**. Deux lignes qui se rencontrent sur plusieurs voies —
 la colchicine sous clarithromycine, par le CYP3A4 et la P-gp — tiennent
 en une seule entrée qui les nomme toutes. Deux anti-interleukine 6, le
 tocilizumab et le sarilumab, y figurent aussi : l'inflammation freine les
-cytochromes, les bloquer leur rend leur activité, et la simvastatine ou
+cytochromes, bloquer cette interleukine rétablit leur activité, et la simvastatine ou
 la ciclosporine voient leur exposition baisser à l'instauration.
 
 Une prodrogue s'y lit à l'envers, et la ligne le précise : inhiber
@@ -198,9 +198,9 @@ Le bouton « Écrasement » du dossier imprime une fiche pour l'EHPAD ou
 l'infirmier : toute l'ordonnance, ligne par ligne, la conduite pour
 chaque forme et l'alternative lorsqu'elle existe.
 
-**L'absence de donnée n'est pas une autorisation.** Un produit absent de
-la table reçoit « à vérifier », jamais une ligne vide : une fiche qui ne
-listerait que les interdictions se lirait « tout le reste est permis ».
+**Produit absent de la table.** Il reçoit « à vérifier », jamais une
+ligne vide : une fiche limitée aux interdictions se lirait « tout le
+reste est permis ».
 
 Trois réponses pour les produits connus : oui, non, et « oui, gélule
 ouverte » — les microgranules s'avalent sans être croqués. C'est le cas
@@ -251,7 +251,7 @@ l'**écrasement des formes orales**.
 **Un sommaire en tête** : une ligne de liens, un par chapitre, avec le
 compte de ce que portent les cinq lectures qui croisent — interactions
 citées, voies, demi-vies touchées, points de revue, paires sur une
-cascade. Un clic pose l'écran sur le chapitre. Les tables du terrain
+cascade. Un clic fait défiler l'écran jusqu'au chapitre. Les tables du terrain
 (rein, foie, âge, grossesse, écrasement) n'ont pas de compte : leurs
 lignes portent aussi « aucune adaptation », qu'un compte présenterait
 comme des alertes.
@@ -263,9 +263,9 @@ Le panneau propose donc trois boutons et non un champ numérique.
 
 Trois réponses, comme pour les cytochromes. « Non documenté » est en
 gris ; « aucune adaptation » est écrit en toutes lettres. Exemple :
-l'oxazépam ne demande aucune adaptation en insuffisance hépatique légère
-à modérée, et c'est la benzodiazépine de choix chez le cirrhotique ; le
-passer sous silence le confondrait avec un produit non documenté.
+l'oxazépam, benzodiazépine de choix chez le cirrhotique, ne demande aucune
+adaptation en insuffisance hépatique légère à modérée ; ne rien afficher le
+confondrait avec un produit non documenté.
 
 Une hépatopathie évolutive n'est pas un stade : les statines y sont
 contre-indiquées quel que soit le score de Child-Pugh. Cette
@@ -277,7 +277,7 @@ plaquettaire, le nitré et le sildénafil sur le GMPc, l'oxybutynine et
 le donépézil sur l'acétylcholine — et indique ce que la figure montre des
 deux ensemble : elles **s'additionnent** sur un effet, ou elles
 **s'opposent**. Ce chapitre complète celui des cytochromes : deux molécules
-qui ne se croisent sur aucune enzyme se rencontrent sur un récepteur.
+qui ne se croisent sur aucune enzyme peuvent se rencontrer sur un récepteur.
 Le modèle est qualitatif : un sens de variation, jamais une gravité. Le
 titre de la cascade l'ouvre, les deux molécules déjà données.
 
@@ -285,13 +285,13 @@ La carte trace un arc par interaction, du produit en cause vers le
 produit affecté. La couleur indique l'ordre de lecture, non une gravité
 clinique : dose, durée et terrain ne sont pas connus du logiciel. Deux
 lignes qui se rencontrent sur une même cascade sont reliées **en
-tirets**, sans pointe : ni enzyme ni sens, une rencontre sur un
-récepteur ; la clé « même cascade » ne paraît que si un tel trait est
+tirets**, sans pointe : la rencontre a lieu sur un récepteur, sans
+enzyme ni sens ; la clé « même cascade » ne paraît que si un tel trait est
 tracé.
 
 **La durée compte autant que le sens.** « Exposition augmentée » n'a pas
 la même portée pour une demi-vie de deux heures que pour une demi-vie de
-cinquante jours, et un effet peut survivre au produit : l'effet
+cinquante jours, et un effet peut persister après l'élimination du produit : l'effet
 antiagrégant du clopidogrel dure sept à dix jours pour une demi-vie de
 six heures.
 
@@ -439,7 +439,7 @@ sélectionnée, Échap efface la saisie puis, sur une saisie vide, rétablit
 la fenêtre. Le champ garde le focus : une douchette, qui émule un
 clavier, y saisit directement. **Alt et 1 à 5** déclenchent les cinq
 actions du bas, dans l'ordre : la barre s'utilise entièrement au
-clavier, une boîte dans l'autre main.
+clavier, d'une seule main.
 
 **Pastilles à forme et couleur** : cercle barré pour une
 contre-indication, triangle pour une précaution, coche pour une
@@ -468,8 +468,9 @@ exposés à une toxicité, du plus grave au moins grave, en couleur. Pour
 la Cordarone : thyroïde et poumon en rouge, puis cœur, œil, foie, peau,
 système nerveux. Degré et
 source au survol. La rangée ne retient que la **toxicité** :
-l'amiodarone traite le cœur et l'altère, et mêler indication et
-toxicité afficherait deux fois « Cœur ». Un organe absent ne signifie
+le cœur est à la fois l'indication et un organe cible de la toxicité de
+l'amiodarone, et mêler indication et toxicité afficherait deux fois
+« Cœur ». Un organe absent ne signifie
 pas une innocuité : le texte complet suit.
 
 Viennent ensuite les contre-indications, effets indésirables et
@@ -740,11 +741,11 @@ source est inactive ne transmet plus rien.
 molécule est donnée à partir du temps affiché ; décochée, elle s'arrête.
 La figure montre aussitôt ce qui monte (triangle pointe en haut) et ce
 qui baisse (pointe en bas), étage par étage. Le survol d'un nœud donne sa
-nature, sa note et son état ; un clic suit sa lignée — ce qui le nourrit
-et ce qu'il nourrit restent en clair, le reste pâlit — et un second clic
-rend toute la figure.
+nature, sa note et son état ; un clic isole sa lignée — les nœuds en amont
+et en aval restent en clair, le reste pâlit — et un second clic
+rétablit toute la figure.
 
-**Les scénarios**, sous les molécules, sont des histoires toutes prêtes
+**Les scénarios**, sous les molécules, sont des séquences prédéfinies
 — « Arrêt brutal du bisoprolol », « Cascade de prescription » : un clic
 donne les molécules à leurs pas, remet le temps à zéro et lance la
 lecture.
@@ -784,11 +785,12 @@ mesure qu'on écrit. Une instruction par ligne :
   inhibiteur, activateur et potentialisateur, séparées par `;` ;
 - `adaptation Bêta-1` : le nœud s'adapte avec le temps ;
 - `scénario Arrêt brutal : bisoprolol 10-70 ; propranolol 60-` : une
-  histoire à jouer — chaque molécule avec son premier pas et son dernier
+  séquence à jouer — chaque molécule avec son premier pas et son dernier
   (rien après le tiret : jusqu'au bout) ;
 - `tonus faible Récepteur mu central` : le nœud est presque au repos
-  sans molécule — le bloquer ne retire presque rien, le stimuler ajoute
-  tout (la naloxone seule ne fait rien, sur la morphine elle la renverse) ;
+  sans molécule — le bloquer ne modifie presque rien, le stimuler produit
+  tout l'effet (la naloxone seule est sans effet ; sous morphine, elle en
+  antagonise l'effet) ;
 - `#` commente la fin de la ligne.
 
 « Dupliquer » en fait une copie à retravailler : une cascade livrée
@@ -802,7 +804,7 @@ ressemble à une erreur : une molécule dont aucune fiche ne porte le nom
 relie. Le rappel de la syntaxe s'affiche au survol de sa ligne ; Ctrl+S
 enregistre.
 
-**Les marques des nœuds** disent leur nature avant le nom : un disque
+**Les marques des nœuds** indiquent leur nature avant le nom : un disque
 plein pour un ligand, un Y pour un récepteur, un cercle pour un relais,
 un losange pour un enzyme, deux points pour un messager, deux barres
 pour un canal, un carré traversé pour un transporteur, un carré plein
@@ -1020,13 +1022,13 @@ interprétables. Chaque feuille comporte donc quatre parties : technique de
 mesure, objectif, signes justifiant un appel immédiat, et grille de
 relevés.
 
-**Aucun chiffre inventé.** Lorsque l'objectif est individuel —
+**Objectifs.** Lorsque l'objectif est individuel —
 glycémie, zone d'INR, meilleure valeur personnelle de DEP —, la feuille
 l'indique et laisse la ligne à remplir. Seule l'automesure tensionnelle
 porte une cible chiffrée, issue d'une recommandation publique.
 
-**Aucune adaptation de dose.** Chaque feuille indique qui contacter et
-quand.
+**Adaptation de dose.** La feuille n'en propose aucune ; elle indique
+qui contacter et quand.
 
 Le texte de chaque feuille est modifiable, comme tout document imprimé
 au nom de l'officine.
@@ -1104,7 +1106,7 @@ pic plasmatique, liaison aux protéines, volume de distribution, fraction
 éliminée inchangée, demi-vie, cible, délai et durée d'action, marge
 thérapeutique étroite.
 
-**Aucun chiffre inventé.** Une valeur provient de la fiche — extraite du
+**Origine des valeurs.** Une valeur provient de la fiche — extraite du
 texte, phrase source au survol — ou de l'officine, qui la saisit avec
 « Compléter… » et **sa source** (RCP, section 5.1 ou 5.2) : une valeur
 sans source est refusée. Une valeur non documentée s'affiche « non
@@ -1193,8 +1195,8 @@ officine** (l'invitation apparaît sur sa carte), **Créer un réseau et
 l'inviter** quand l'officine n'en a pas encore, ou **Rejoindre son
 réseau** quand elle invite. Nom déclaré, non vérifié : ces invitations
 n'ont pas de code d'invitation, et les deux officines comparent par
-téléphone un code de cinq groupes. Code identique des deux côtés :
-aucun intermédiaire.
+téléphone un code de cinq groupes. Un code identique des deux côtés
+garantit l'absence d'intermédiaire.
 
 La **synchronisation** se fait par un bouton, et à la fermeture si le
 poste est configuré ainsi (Options › Base). Deux modes : connexion
@@ -1351,9 +1353,9 @@ téléphone.
 **Sans rien de joignable** (pas d'IPv6, adresse partagée par
 l'opérateur) : « Se faire relayer par le réseau » sur un poste, et une
 officine amie du réseau qui coche « Relayer les téléphones des officines
-du réseau ». Le poste attend chez elle ; le téléphone l'y demande. Elle
-ne lit ni ne conserve rien : la conversation, chiffrée de bout en bout, ne
-fait que transiter.
+du réseau ». Le poste s'y tient en attente ; le téléphone le joint par son
+intermédiaire. L'officine relais ne lit ni ne conserve rien : la
+conversation, chiffrée de bout en bout, ne fait que transiter.
 
 # Messagerie
 
@@ -1525,7 +1527,7 @@ se saisit librement.
 adresse — export de son logiciel, fichier sur son serveur, jeu public
 décompressé — dans `[prescribers] source_url` de `config.toml` ; un
 second bouton apparaît alors : « Mettre à jour depuis l'adresse… ». Sans
-adresse, **le bouton n'existe pas** et aucune connexion n'est ouverte.
+adresse, **le bouton n'apparaît pas** et aucune connexion n'est ouverte.
 
 Aucune requête sans action de l'utilisateur, aucune donnée envoyée, et
 adresse obligatoirement en `https`. Une archive est détectée et refusée,
@@ -1543,7 +1545,8 @@ imprimés, lignes au registre, nombre de journées. Consultables dans
 
 Le compteur « écritures concurrentes signalées » indique le nombre de
 rechargements provoqués par l'écriture préalable d'un autre poste. Il
-révèle deux personnes travaillant sur la même donnée au même moment.
+signale les cas où deux personnes travaillent sur la même donnée au même
+moment.
 
 Aucun envoi : les compteurs restent dans la base chiffrée de l'officine
 et se consultent dans bpm-audit.

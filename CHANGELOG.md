@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Relecture de la rédaction de l'ensemble des libellés et du mode
+  d'emploi : incises, métaphores, personnifications et formules
+  remplacées par une rédaction factuelle (75 libellés, 24 passages de
+  l'aide) ; lecture des cytochromes en « Concentration augmentée /
+  diminuée par » et « Augmente / Diminue la concentration de ».
+
 ### Added
 - Campagne : « Exporter la saison » écrit les doses de la saison en CSV
   (date, patient, vaccin, dose, lot, site, opérateur), export tracé.
