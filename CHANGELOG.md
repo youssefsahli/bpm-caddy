@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.385.0] - 2026-10-08
+
 ### Added
 - Carte pharmacologique : une quatrième raison de lien, la cascade —
   deux molécules sur une même cascade, avec les effets qui vont dans le
