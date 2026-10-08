@@ -4,10 +4,10 @@
 dans le dépôt, rien n'est resté en local.
 
 **Versions.** Publiées (étiquette poussée, smoke passé dans les quatre
-formes) : 0.367.0, 0.369.0, 0.372.0 et 0.376.0. Les versions
+formes) : 0.367.0, 0.369.0, 0.372.0, 0.376.0 et 0.377.0. Les versions
 intermédiaires (0.368, 0.370, 0.371, 0.373 à 0.375) ne sont pas
 étiquetées : leur contenu est dans la 0.376.0. Ce qui a suivi sur `main`
-(F8, documentation) attend la prochaine version.
+(0.378.0 : clavier de la liste des rappels, minuteur des flacons, Vacciné ailleurs vers le carnet) attend son smoke.
 
 **Ce qui a été fait le 08/10** (détail au CHANGELOG, raisons dans
 docs/ARCHITECTURE.md § « La campagne et Mesures et conseils », contenu
