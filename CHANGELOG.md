@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Carte pharmacologique : une cascade modifiée (ici ou sur un autre poste)
+  met à jour la raison « même cascade » sans attendre un changement de
+  fiche.
+- Campagne : le formulaire de réception d'un lot ne propose plus le
+  pneumocoque et le zona deux fois.
+
 ## [0.386.0] - 2026-10-08
 
 ### Changed

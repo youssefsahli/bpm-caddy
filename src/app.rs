@@ -9016,7 +9016,7 @@ impl Session {
             self.graph_key = None;
             return;
         };
-        let key = (centre, self.drugs_rev, caps);
+        let key = (centre, self.graph_rev(), caps);
         // The key alone, and not « the key and there is a map ». A
         // centre the base no longer holds — a fiche deleted on the other
         // post — answers `None`, and asking again for it would be a pass
@@ -9035,7 +9035,7 @@ impl Session {
             self.cascades_read = true;
             self.reload_cascades();
         }
-        let want = (centre, self.drugs_rev);
+        let want = (centre, self.graph_rev());
         if self.graph_reasons.as_ref().map(|(k, _)| *k) != Some(want) {
             if self.graph_worker.is_some() {
                 // **Au fil de la carte**, une fois par centre : l'image
@@ -9103,7 +9103,7 @@ impl Session {
         // au fil de la carte quand il tourne.
         let file_key = (
             self.patient_treats.iter().map(|d| d.id).collect::<Vec<_>>(),
-            self.drugs_rev,
+            self.graph_rev(),
         );
         if self.graph_file_meet.as_ref().map(|(k, _)| k) == Some(&file_key) {
             return;
@@ -9152,6 +9152,14 @@ impl Session {
 
     /// The index for the base on screen, built here when there is no
     /// thread to build it — the tests' path.
+    /// La révision de ce que la carte lit : les fiches **et** les
+    /// cascades. Une cascade modifiée (ici ou sur un autre poste) change
+    /// la raison « même cascade » ; sans elle dans la clé, la carte
+    /// gardait l'ancienne jusqu'au prochain changement de fiche.
+    fn graph_rev(&self) -> u64 {
+        self.drugs_rev.wrapping_mul(0x9E37_79B9_7F4A_7C15) ^ self.cascades_rev
+    }
+
     fn graph_index_now(&mut self) -> &GraphIndex {
         let stale = self.graph_index.as_ref().is_none_or(|i| {
             i.rev != self.drugs_rev || !std::sync::Arc::ptr_eq(&i.cascades, &self.cascade_set)
@@ -9183,7 +9191,7 @@ impl Session {
         for a in answers {
             match a {
                 GraphDone::Reasons(r) => {
-                    if Some(r.0) == self.graph_centre.map(|c| (c, self.drugs_rev)) {
+                    if Some(r.0) == self.graph_centre.map(|c| (c, self.graph_rev())) {
                         self.graph_reasons = Some(r);
                         // The map is laid out again, with its reasons.
                         self.graph_key = None;
@@ -53400,7 +53408,7 @@ impl App {
                     ui.horizontal_wrapped(|ui| {
                         let codes: Vec<(String, String)> = CAMPAIGN_CODES
                             .iter()
-                            .chain(["PNEUMO", "ZONA", "DTCAP"].iter())
+                            .chain(["DTCAP"].iter())
                             .map(|c| ((*c).to_owned(), Self::campaign_code_label(c).to_owned()))
                             .collect();
                         if session.camp.new_lot.code.is_empty() {
