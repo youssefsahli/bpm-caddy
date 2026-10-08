@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.380.0] - 2026-10-08
+
 ### Added
 - Couverture des délivrances : une ligne par délivrance (« mirtazapine 15
   (28) 1-0-1 ») ou les traitements du dossier ouvert. Échelle de temps
