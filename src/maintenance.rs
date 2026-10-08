@@ -118,6 +118,10 @@ const CONTENT: &[Step] = &[
         run: Db::seed_cno,
     },
     Step {
+        key: "maint_step_reworded",
+        run: Db::refresh_reworded_fiches,
+    },
+    Step {
         key: "maint_step_protocols",
         run: Db::seed_protocols,
     },

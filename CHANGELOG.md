@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- La rédaction reprise des dispositifs et des préparations atteint les
+  bases existantes : au déverrouillage du poste de référence et par
+  « Synchroniser le contenu de référence », un champ n'est remplacé que
+  s'il porte encore exactement le texte livré avant (empreinte FNV-1a,
+  `src/shipped.rs`) ; un champ réécrit par l'équipe reste le sien.
+
 ### Added
 - Deux protocoles de comptoir pour l'hiver : « Syndrome grippal de
   l'adulte » (signes de gravité, personnes à risque, conseils) et

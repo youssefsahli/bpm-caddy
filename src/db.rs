@@ -48192,6 +48192,88 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Faire suivre aux dispositifs et aux préparations la rédaction de
+    /// cette version, **champ par champ, là seulement où la base porte
+    /// encore mot pour mot le texte livré avant** (`shipped`) : un champ
+    /// que l'équipe a réécrit n'a plus l'empreinte de l'ancien texte et
+    /// reste le sien. Idempotent.
+    pub fn refresh_reworded_fiches(&self) -> Result<usize, String> {
+        let mut changed = 0;
+        let dispo_field = |d: &StarterDispositif, f: &str| -> Option<&'static str> {
+            Some(match f {
+                "family" => d.family,
+                "indication" => d.indication,
+                "sizes" => d.sizes,
+                "application" => d.application,
+                "renewal" => d.renewal,
+                "lpp" => d.lpp,
+                "caution" => d.caution,
+                "tags" => d.tags,
+                "sources" => d.sources,
+                _ => return None,
+            })
+        };
+        let prep_field = |d: &StarterPreparation, f: &str| -> Option<&'static str> {
+            Some(match f {
+                "form" => d.form,
+                "indication" => d.indication,
+                "formula" => d.formula,
+                "yield_amount" => d.yield_amount,
+                "method" => d.method,
+                "conservation" => d.conservation,
+                "caution" => d.caution,
+                "tags" => d.tags,
+                "sources" => d.sources,
+                _ => return None,
+            })
+        };
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        for (table, rows) in [
+            ("dispositifs", crate::shipped::DISPOSITIFS_REWORDED),
+            ("preparations", crate::shipped::PREPARATIONS_REWORDED),
+        ] {
+            for (name, field, old) in rows {
+                let new = if table == "dispositifs" {
+                    STARTER_DISPOSITIFS
+                        .iter()
+                        .find(|d| d.name == *name)
+                        .and_then(|d| dispo_field(d, field))
+                } else {
+                    STARTER_PREPARATIONS
+                        .iter()
+                        .find(|d| d.name == *name)
+                        .and_then(|d| prep_field(d, field))
+                };
+                let Some(new) = new else {
+                    continue;
+                };
+                // Le nom de table et de colonne viennent des tables
+                // livrées ci-dessus, jamais d'une saisie.
+                let current: Vec<(i64, String)> = {
+                    let mut st = tx
+                        .prepare(&format!("SELECT id, {field} FROM {table} WHERE name = ?1"))
+                        .map_err(|e| e.to_string())?;
+                    let rows = st
+                        .query_map([name], |r| Ok((r.get(0)?, r.get(1)?)))
+                        .map_err(|e| e.to_string())?;
+                    rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+                };
+                for (id, text) in current {
+                    if text != new && crate::shipped::fingerprint(&text) == *old {
+                        changed += tx
+                            .execute(
+                                &format!("UPDATE {table} SET {field} = ?1 WHERE id = ?2 AND {field} = ?3"),
+                                (new, id, &text),
+                            )
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(changed)
+    }
+
     /// Seed the dispositifs, once, by name. Same discipline as the
     /// codex: a fiche the team rewrote or renamed is never touched, and
     /// one it deleted does not come back.
@@ -60637,6 +60719,67 @@ mod tests {
     /// team's afterwards. And every shipped fiche must answer the six
     /// questions the counter actually asks — a fiche that only names
     /// the box is a fiche nobody opens twice.
+    /// La rédaction d'une version atteint les dispositifs d'une base
+    /// existante là où l'ancien texte est intact, et nulle part ailleurs.
+    #[test]
+    fn a_reworded_dispositif_reaches_an_untouched_field_only() {
+        let dir = std::env::temp_dir().join(format!("bpm-reworded-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("t.db"), "pw").unwrap();
+        db.seed_dispositifs().unwrap();
+        // Deux champs reformulés depuis : l'un remis à l'ancien texte
+        // (une base semée avant), l'autre réécrit par l'équipe.
+        let (name, field, _) = crate::shipped::DISPOSITIFS_REWORDED[0];
+        let old = "texte livré avant";
+        let fake = crate::shipped::fingerprint(old);
+        // L'empreinte de la table ne correspond pas à ce faux texte : on
+        // vérifie d'abord qu'un texte quelconque n'est jamais remplacé.
+        db.conn
+            .execute(
+                &format!("UPDATE dispositifs SET {field} = ?1 WHERE name = ?2"),
+                (old, name),
+            )
+            .unwrap();
+        assert_ne!(fake, crate::shipped::DISPOSITIFS_REWORDED[0].2);
+        assert_eq!(db.refresh_reworded_fiches().unwrap(), 0);
+        let still: String = db
+            .conn
+            .query_row(
+                &format!("SELECT {field} FROM dispositifs WHERE name = ?1"),
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(still, old, "un texte de l'équipe n'est jamais remplacé");
+        // Le vrai texte d'avant, tel que la 0.366.0 le livrait, l'est.
+        assert_eq!((name, field), ("Hydrocolloïde", "indication"));
+        let shipped_before = "Plaie propre peu à moyennement exsudative, en phase de bourgeonnement ou d'épidermisation : escarre au stade de la rougeur ou de la désépidermisation, brûlure superficielle, plaie de greffe, dermabrasion. C'est le pansement d'entretien d'une plaie qui va bien.";
+        db.conn
+            .execute(
+                "UPDATE dispositifs SET indication = ?1 WHERE name = ?2",
+                (shipped_before, name),
+            )
+            .unwrap();
+        assert_eq!(db.refresh_reworded_fiches().unwrap(), 1);
+        let now: String = db
+            .conn
+            .query_row(
+                "SELECT indication FROM dispositifs WHERE name = ?1",
+                [name],
+                |r| r.get(0),
+            )
+            .unwrap();
+        let shipped = STARTER_DISPOSITIFS
+            .iter()
+            .find(|d| d.name == name)
+            .unwrap()
+            .indication;
+        assert_eq!(now, shipped);
+        assert_eq!(db.refresh_reworded_fiches().unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// Le calendrier 2026 atteint le catalogue d'une base existante, sans
     /// toucher à une indication que l'équipe a réécrite.
     #[test]

@@ -73,6 +73,7 @@ pub mod ruptures;
 pub mod scans;
 pub mod script;
 pub mod selfcheck;
+pub mod shipped;
 pub mod strings;
 pub mod surveillance;
 pub mod tables;
