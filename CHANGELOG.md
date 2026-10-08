@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.381.0] - 2026-10-08
+
 ### Added
 - F10 : la couverture des délivrances, sur les traitements du dossier
   ouvert quand elle est vide.
