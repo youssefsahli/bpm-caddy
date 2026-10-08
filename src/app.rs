@@ -51980,6 +51980,20 @@ impl App {
                 session.open_patient(p);
                 session.patient_tab = PatientTab::Vaccins;
                 session.view = MainView::Search;
+                // La dose de la campagne déjà nommée dans le carnet, avec
+                // le lot en stock qui périme le premier : il ne reste à
+                // saisir que le site, une fois l'injection faite.
+                session.reload_vacc_catalogue();
+                let code = session.camp.code;
+                if let Some(v) = session.vacc_catalogue.iter().find(|v| v.code == code).cloned() {
+                    session.vacc_new = db::Vaccination {
+                        code: v.code.clone(),
+                        label: v.label.clone(),
+                        lot: session.first_usable_lot(&v.code).unwrap_or_default(),
+                        ..Default::default()
+                    };
+                    session.vacc_new_date.clear();
+                }
             }
         }
     }

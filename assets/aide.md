@@ -870,9 +870,16 @@ et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
 âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
 **Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la
 liste pour la saison ; **Message** le laisse, avec la date de l'appel.
-Les facteurs de risque (diabète, BPCO, insuffisance cardiaque…) ne sont
-pas connus du logiciel : ces patients ne figurent pas dans la liste et
-relèvent de l'entretien au comptoir.
+Les facteurs de risque ne sont pas connus du logiciel ; la liste ajoute
+cependant, sous leur propre intitulé, les personnes de moins de 65 ans
+dont un traitement évoque un groupe visé pour la grippe et le COVID-19
+(insuline ou antidiabétique, traitement de fond de l'asthme ou de la
+BPCO, antiagrégant ou anticoagulant, immunosuppresseur, antirétroviral),
+avec le médicament en cause. L'indication est à confirmer avec le
+patient. Ouvrir un dossier depuis la liste prépare le carnet : le vaccin
+de la campagne et le lot en stock sont déjà renseignés. « Imprimer la
+liste » sort la liste du vaccin choisi, avec une colonne pour noter
+l'issue de chaque appel.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
@@ -887,7 +894,12 @@ le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 (moins de 30 jours) ou en stock bas (moins de 5 doses).
 
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
-stock qui périme le premier.
+stock qui périme le premier. Une remarque s'affiche sous la saisie quand
+la dose appelle une vérification : âge minimal de la vaccination à
+l'officine, délai depuis la dernière dose de COVID-19, préférence pour
+Efluelda ou Fluad à 65 ans et plus, Arexvy et COVID-19 le même jour,
+vaccin vivant pendant la grossesse, intervalle entre deux doses. La
+remarque n'empêche pas l'enregistrement.
 
 # Mesures et conseils
 
