@@ -4143,6 +4143,9 @@ struct CampagneState {
     /// Le dossier dont le rendez-vous se prend, au téléphone : jour et
     /// heure tapés sous sa ligne.
     rdv_for: Option<i64>,
+    /// La liste des rendez-vous de vaccination à la place des rappels.
+    show_rdv: bool,
+    appointments: Vec<db::Appointment>,
     rdv_date: String,
     rdv_time: String,
     rdv_error: Option<String>,
@@ -9998,6 +10001,15 @@ impl Session {
         self.camp.used = campagne::usage(&lots, &refs);
         self.camp.vials = self.db.vial_openings().unwrap_or_default();
         self.camp.lots = lots;
+        // Les rendez-vous de vaccination planifiés : ceux d'aujourd'hui et
+        // après, et ceux dont le jour est passé sans que l'acte soit fait.
+        self.camp.appointments = self
+            .db
+            .upcoming_appointments()
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|a| a.kind == InterviewKind::Vaccination)
+            .collect();
         let rows = self
             .db
             .vaccinations_since(&season.start)
@@ -16947,6 +16959,22 @@ impl App {
                         }
                         Ok("campagne") => {
                             session.view = MainView::Campagne;
+                            session.reload_campagne();
+                        }
+                        // La liste des rendez-vous, avec trois rendez-vous
+                        // pris sur la base de démonstration : deux à venir,
+                        // un d'hier resté sans acte.
+                        Ok("campagne_rdv") => {
+                            let ids: Vec<i64> =
+                                session.patients.iter().map(|p| p.id).take(3).collect();
+                            for (k, pid) in ids.iter().enumerate() {
+                                let day = crate::date::add_days(&session.today, [1, 1, -1][k])
+                                    .unwrap_or_default();
+                                let time = ["09:30", "10:00", ""][k];
+                                let _ = session.db.plan_vaccination(*pid, &day, time, "");
+                            }
+                            session.view = MainView::Campagne;
+                            session.camp.show_rdv = true;
                             session.reload_campagne();
                         }
                         // The carnet de vaccination is the patient
@@ -52838,7 +52866,7 @@ impl App {
         let mut keyed = false;
         if ui.ctx().wants_keyboard_input() {
             session.camp.keys_armed = false;
-        } else if n > 0 && recall_rect.is_positive() {
+        } else if n > 0 && recall_rect.is_positive() && !session.camp.show_rdv {
             if session.camp.cursor >= n {
                 session.camp.cursor = n - 1;
             }
@@ -52881,7 +52909,11 @@ impl App {
                 }
             }
         }
-        let caption = trf("camp_recall_title", session.camp.recalls.len());
+        let caption = if session.camp.show_rdv {
+            trf("camp_rdv_title", session.camp.appointments.len())
+        } else {
+            trf("camp_recall_title", session.camp.recalls.len())
+        };
         if recall_rect.is_positive() {
             motif::panel(ui, recall_rect, Some(&caption), |ui| {
                 ui.horizontal_wrapped(|ui| {
@@ -52890,13 +52922,32 @@ impl App {
                             "camp_code_count",
                             &[&Self::campaign_code_label(code), &session.camp.counts[i]],
                         );
-                        if motif::toggle(ui, &label, session.camp.code == *code).clicked() {
+                        if motif::toggle(
+                            ui,
+                            &label,
+                            !session.camp.show_rdv && session.camp.code == *code,
+                        )
+                        .clicked()
+                        {
                             pick_code = Some(code);
                         }
+                    }
+                    let rdv_label = trf("camp_rdv_list", session.camp.appointments.len());
+                    if motif::toggle(ui, &rdv_label, session.camp.show_rdv)
+                        .on_hover_text(tr("camp_rdv_list_tooltip"))
+                        .clicked()
+                    {
+                        session.camp.show_rdv = !session.camp.show_rdv;
                     }
                 });
                 ui.add_space(2.0);
                 ui.spacing_mut().scroll.floating = false;
+                if session.camp.show_rdv {
+                    if let Some(pid) = Self::campaign_appointments(ui, session) {
+                        open = Some(pid);
+                    }
+                    return;
+                }
                 egui::ScrollArea::vertical()
                     .id_salt("camp_recalls")
                     .auto_shrink([false, false])
@@ -53342,6 +53393,7 @@ impl App {
         // --- Les gestes ------------------------------------------------------
         if let Some(code) = pick_code {
             session.camp.code = code;
+            session.camp.show_rdv = false;
             reload = true;
         }
         if let Some(pid) = rdv_toggle {
@@ -53699,6 +53751,71 @@ impl App {
             Outcome::Ailleurs => tr("camp_outcome_ailleurs"),
             Outcome::Refus => tr("camp_outcome_refus"),
         }
+    }
+
+    /// Les rendez-vous de vaccination, jour par jour : ceux dont le jour
+    /// est passé sans acte réalisé d'abord, puis aujourd'hui et la suite,
+    /// avec le nombre de rendez-vous du jour — ce qui règle les flacons à
+    /// ouvrir. Rend le dossier cliqué.
+    fn campaign_appointments(ui: &mut egui::Ui, session: &Session) -> Option<i64> {
+        let mut open = None;
+        let today = session.today.as_str();
+        egui::ScrollArea::vertical()
+            .id_salt("camp_rdv")
+            .auto_shrink([false, false])
+            .show(ui, |ui| {
+                let list = &session.camp.appointments;
+                if list.is_empty() {
+                    ui.add(
+                        egui::Label::new(
+                            egui::RichText::new(tr("camp_rdv_none"))
+                                .size(motif::pt(ui, 11.0))
+                                .color(motif::text_dim()),
+                        )
+                        .wrap(),
+                    );
+                    return;
+                }
+                let late = list.iter().filter(|a| a.date.as_str() < today).count();
+                if late > 0 {
+                    motif::section(ui, &trf("camp_rdv_late", late));
+                }
+                let mut day = String::new();
+                for a in list {
+                    if a.date.as_str() >= today && a.date != day {
+                        day = a.date.clone();
+                        let n = list.iter().filter(|b| b.date == day).count();
+                        let weekday = db::weekday_fr(&day).unwrap_or("");
+                        motif::section(
+                            ui,
+                            &trn(
+                                "camp_rdv_day",
+                                &[&weekday, &db::format_french_date(&day), &n],
+                            ),
+                        );
+                    }
+                    let when = if a.date.as_str() < today {
+                        db::format_french_date(&a.date)
+                    } else if a.time.is_empty() {
+                        tr("camp_rdv_no_time").to_owned()
+                    } else {
+                        a.time.clone()
+                    };
+                    let phone = if a.phone.trim().is_empty() {
+                        tr("camp_no_phone").to_owned()
+                    } else {
+                        a.phone.clone()
+                    };
+                    let who = format!("{when} · {}", a.patient_name);
+                    if motif::list_row_pair(ui, &who, &phone, false, 0.0)
+                        .on_hover_text(tr("camp_open_tooltip"))
+                        .clicked()
+                    {
+                        open = Some(a.patient_id);
+                    }
+                }
+            });
+        open
     }
 
     fn campaign_outcome_tooltip(o: crate::campagne::Outcome) -> &'static str {

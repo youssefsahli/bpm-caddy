@@ -874,6 +874,10 @@ liste pour la saison ; **Message** le laisse, avec la date de l'appel.
 s'inscrit à l'agenda comme acte de vaccination planifié, et l'appel est
 noté « Prévenu ». Le jour venu, quand la dose est inscrite au carnet,
 « Créer l'acte » réalise ce rendez-vous au lieu d'en créer un second.
+« Rendez-vous (n) », à côté des vaccins, remplace la liste par les
+rendez-vous de vaccination planifiés, jour par jour avec leur nombre,
+précédés de ceux dont le jour est passé sans acte réalisé ; un clic
+ouvre le carnet.
 Les facteurs de risque ne sont pas connus du logiciel ; la liste ajoute
 cependant, sous leur propre intitulé, les personnes de moins de 65 ans
 dont un traitement évoque un groupe visé pour la grippe et le COVID-19

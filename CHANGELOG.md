@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Dossier : bouton « Couverture » parmi les actions du dossier, qui ouvre
   la couverture des délivrances sur ses traitements.
+- Campagne : « Rendez-vous (n) » liste les rendez-vous de vaccination
+  planifiés jour par jour, avec leur nombre, et ceux restés sans acte.
 
 ## [0.380.0] - 2026-10-08
 
