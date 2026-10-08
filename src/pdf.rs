@@ -10600,11 +10600,16 @@ mod tests {
             );
             assert!(src.contains("Cheville"));
             let world = PdfWorld::new(src);
-            assert!(
-                typst::compile::<PagedDocument>(&world).output.is_ok(),
-                "{} ne compile pas",
-                sheet.doc
-            );
+            let document = typst::compile::<PagedDocument>(&world).output;
+            assert!(document.is_ok(), "{} ne compile pas", sheet.doc);
+            if let (Ok(dir), Ok(document)) = (std::env::var("BPM_CADDY_TEST_PDF_OUT"), document) {
+                if let Ok(pdf) = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()) {
+                    let _ = std::fs::write(
+                        std::path::Path::new(&dir).join(format!("{}.pdf", sheet.doc)),
+                        &pdf,
+                    );
+                }
+            }
         }
     }
 
