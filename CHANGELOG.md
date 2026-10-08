@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Campagne : le pneumocoque parmi les vaccins à rappeler (65 ans et plus
+  sans dose au carnet).
 - Campagne : le zona (Shingrix) parmi les vaccins à rappeler — 65 ans et
   plus sans dose, ou première dose faite depuis deux mois au moins ; sur
   un volet étroit, le vaccin se choisit dans un menu.

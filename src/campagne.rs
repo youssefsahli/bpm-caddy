@@ -355,7 +355,7 @@ pub fn weekly(doses: &[DoseRow], code: &str, today: &str) -> Vec<(String, usize)
 
 /// Les vaccins de la campagne que la liste des rappels sait lire. Le
 /// calendrier a d'autres lignes, mais celles-ci sont celles de l'hiver.
-pub const CAMPAIGN_CODES: [&str; 4] = ["GRIPPE", "COVID", "VRS", "ZONA"];
+pub const CAMPAIGN_CODES: [&str; 5] = ["GRIPPE", "COVID", "VRS", "PNEUMO", "ZONA"];
 
 /// Ce que l'équipe a noté après un appel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -898,6 +898,35 @@ pub fn season_csv(rows: &[[String; 10]]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// Le pneumocoque : 65 ans et plus sans dose au carnet.
+    #[test]
+    fn the_pneumococcal_recall_lists_those_without_a_dose_from_65() {
+        let p = |id: i64, birth: &'static str, doses: Vec<vaccines::Dose<'static>>| Person {
+            id,
+            birth,
+            ddr: "",
+            doses,
+            evoked: vec![],
+        };
+        let people = vec![
+            p(1, "1955-01-01", vec![]),
+            p(
+                2,
+                "1955-01-01",
+                vec![vaccines::Dose {
+                    code: "PNEUMO",
+                    date: "2026-01-10",
+                }],
+            ),
+            p(3, "1975-01-01", vec![]),
+        ];
+        let ids: Vec<i64> = recalls(&people, &[], "PNEUMO", "2026-10-20")
+            .iter()
+            .map(|r| r.patient_id)
+            .collect();
+        assert_eq!(ids, vec![1]);
+    }
 
     /// Le zona : à 65 ans et plus sans dose, ou une première dose faite
     /// depuis deux mois au moins ; pas avant.
