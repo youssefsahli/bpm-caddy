@@ -2090,6 +2090,11 @@ pub const REMOTE_CODE: &str = "TPH";
 
 /// The classic entretien thematics, offered as a quick pick on each
 /// interview row (free choice — any kind can use any theme).
+/// Plafond des unités par boîte : la lecture et l'écriture le partagent,
+/// sans quoi une valeur au-delà se lirait plafonnée et ne se comparerait
+/// plus jamais à ce que la base porte.
+pub const MAX_BOX_UNITS: u32 = 100_000;
+
 pub const THEMES: &[&str] = &[
     "Initiation / bon usage",
     "Observance",
@@ -43811,7 +43816,10 @@ impl Db {
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([patient_id], |r| {
-                Ok((r.get(0)?, r.get::<_, i64>(1)?.clamp(0, 100_000) as u32))
+                Ok((
+                    r.get(0)?,
+                    r.get::<_, i64>(1)?.clamp(0, i64::from(MAX_BOX_UNITS)) as u32,
+                ))
             })
             .map_err(|e| e.to_string())?;
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
@@ -43831,7 +43839,12 @@ impl Db {
             .execute(
                 "UPDATE patient_drugs SET box_units = ?3
                  WHERE patient_id = ?1 AND drug_id = ?2 AND box_units = ?4",
-                (patient_id, drug_id, i64::from(units), i64::from(expected)),
+                (
+                    patient_id,
+                    drug_id,
+                    i64::from(units.min(MAX_BOX_UNITS)),
+                    i64::from(expected),
+                ),
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -62547,6 +62560,15 @@ mod tests {
         // Un poste qui croyait encore lire 0 est refusé.
         assert!(!db.set_patient_box_units(pid, drug, 30, 0).unwrap());
         assert_eq!(db.patient_box_units(pid).unwrap(), vec![(drug, 28)]);
+        // Au-delà du plafond : écrit plafonné, relu égal, comparable ensuite.
+        assert!(db.set_patient_box_units(pid, drug, 150_000, 28).unwrap());
+        assert_eq!(
+            db.patient_box_units(pid).unwrap(),
+            vec![(drug, MAX_BOX_UNITS)]
+        );
+        assert!(db
+            .set_patient_box_units(pid, drug, 30, MAX_BOX_UNITS)
+            .unwrap());
     }
 
     /// Un rendez-vous de vaccination pris pendant la campagne : à

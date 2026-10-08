@@ -406,10 +406,16 @@ fn track(label: String, items: &[(&Line, Coverage)], today: &str) -> Track {
     let ended = !qsp_end.is_empty() && qsp_end < next_from;
     let mut planned_from = next_from.clone();
     if !ended && !next_from.is_empty() && next_from.as_str() < today {
-        // Jusqu'à aujourd'hui compris : ce matin, la boîte manque encore.
+        // Jusqu'à aujourd'hui compris : ce matin, la boîte manque encore —
+        // mais pas au-delà de la fin de la durée prescrite.
+        let to = if !qsp_end.is_empty() && qsp_end.as_str() < today {
+            qsp_end.clone()
+        } else {
+            today.to_owned()
+        };
         segments.push(Segment {
             from: next_from.clone(),
-            to: today.to_owned(),
+            to,
             kind: SegKind::Overdue,
             delivered_on: String::new(),
             per_day: 0.0,
@@ -528,16 +534,31 @@ pub struct Bridge {
     pub boxes: u32,
 }
 
-pub fn bridge(track: &Track, target: &str) -> Option<Bridge> {
-    let from = track.next_from.as_str();
-    if from.is_empty() || target <= from {
+///
+/// Le pont part d'aujourd'hui au plus tôt — les jours déjà passés sans
+/// boîte ne se délivrent pas — et s'arrête à la fin de la durée prescrite :
+/// l'alignement ne prolonge pas un traitement.
+pub fn bridge(track: &Track, target: &str, today: &str) -> Option<Bridge> {
+    if track.next_from.is_empty() || track.per_day <= 0.0 {
         return None;
     }
-    let days = days_between(from, target)?;
+    let from = if track.next_from.as_str() < today {
+        today
+    } else {
+        track.next_from.as_str()
+    };
+    let mut to = add_days(target, -1)?;
+    if !track.qsp_end.is_empty() && track.qsp_end < to {
+        to = track.qsp_end.clone();
+    }
+    if to.as_str() < from {
+        return None;
+    }
+    let days = days_between(from, &to)? + 1;
     let units = (track.per_day * days as f64 - 1e-9).ceil().max(1.0) as u32;
     Some(Bridge {
         from: from.to_owned(),
-        to: add_days(target, -1)?,
+        to,
         units,
         boxes: units.div_ceil(track.units_per_box.max(1)),
     })
@@ -545,12 +566,21 @@ pub fn bridge(track: &Track, target: &str) -> Option<Bridge> {
 
 /// Le jour proposé pour aligner les renouvellements : le plus tardif des
 /// jours de délivrance suivante, pour que chaque rangée soit complétée
-/// et qu'aucune ne soit délivrée en avance.
-pub fn sync_target(tracks: &[Track]) -> Option<String> {
+/// et qu'aucune ne soit délivrée en avance — aujourd'hui au plus tôt, et
+/// sans les traitements dont la durée prescrite finit avant leur
+/// délivrance suivante.
+pub fn sync_target(tracks: &[Track], today: &str) -> Option<String> {
     tracks
         .iter()
-        .map(|t| t.next_from.clone())
-        .filter(|d| !d.is_empty())
+        .filter(|t| !t.next_from.is_empty())
+        .filter(|t| t.qsp_end.is_empty() || t.qsp_end >= t.next_from)
+        .map(|t| {
+            if t.next_from.as_str() < today {
+                today.to_owned()
+            } else {
+                t.next_from.clone()
+            }
+        })
         .max()
 }
 
@@ -797,6 +827,39 @@ mod tests {
         assert_eq!(t.deliveries_left, 6);
     }
 
+    /// La relecture : le retard s'arrête à la fin de la durée prescrite ;
+    /// le pont part d'aujourd'hui et ne prolonge pas un traitement fini.
+    #[test]
+    fn the_bridge_and_the_delay_stay_inside_the_prescription() {
+        // 30 j délivrés le 01/09, QSP 35 : fin le 05/10, attendue le 01/10.
+        let (t, _) = tracks(&[on("Amlodipine", 60, "2026-09-01", 35)], "2026-10-08");
+        let late = t[0]
+            .segments
+            .iter()
+            .find(|s| s.kind == SegKind::Overdue)
+            .unwrap();
+        assert_eq!(late.to, "2026-10-05");
+        // En retard depuis le 20/09 (14 j au 06/09), cible le 20/10 :
+        // le pont couvre du 08/10 au 19/10, 12 jours à 2 par jour.
+        let (t, _) = tracks(
+            &[on("A", 28, "2026-09-06", 0), on("B", 28, "2026-10-06", 0)],
+            "2026-10-08",
+        );
+        assert_eq!(t[0].next_from, "2026-09-20");
+        let target = sync_target(&t, "2026-10-08").unwrap();
+        assert_eq!(target, "2026-10-20");
+        let b = bridge(&t[0], &target, "2026-10-08").unwrap();
+        assert_eq!((b.from.as_str(), b.units), ("2026-10-08", 24));
+        // Une durée prescrite qui finit le 15/10 : le pont s'y arrête.
+        let (t, _) = tracks(&[on("C", 28, "2026-09-26", 20)], "2026-10-08");
+        assert_eq!(t[0].qsp_end, "2026-10-15");
+        let b = bridge(&t[0], "2026-10-30", "2026-10-08").unwrap();
+        assert_eq!(b.to, "2026-10-15");
+        // Tout en retard : la cible n'est pas dans le passé.
+        let (t, _) = tracks(&[on("D", 28, "2026-08-01", 0)], "2026-10-08");
+        assert_eq!(sync_target(&t, "2026-10-08").unwrap(), "2026-10-08");
+    }
+
     /// Un traitement fini n'est pas en retard.
     #[test]
     fn a_finished_treatment_is_not_overdue() {
@@ -814,12 +877,12 @@ mod tests {
             ],
             "2026-10-08",
         );
-        let target = sync_target(&t).unwrap();
+        let target = sync_target(&t, "2026-10-08").unwrap();
         assert_eq!(target, "2026-11-22");
-        let b = bridge(&t[0], &target).unwrap();
+        let b = bridge(&t[0], &target, "2026-10-08").unwrap();
         // Du 22/10 au 21/11 : 31 jours à 2 par jour.
         assert_eq!((b.units, b.boxes), (62, 3));
-        assert!(bridge(&t[1], &target).is_none());
+        assert!(bridge(&t[1], &target, "2026-10-08").is_none());
     }
 
     #[test]

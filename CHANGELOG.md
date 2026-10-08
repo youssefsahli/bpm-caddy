@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Couverture : les unités par boîte ne s'écrivent que dans le dossier
+  dont la ligne a été reprise ; le retard s'arrête à la fin de la durée
+  prescrite ; l'alignement part d'aujourd'hui, ne prolonge pas un
+  traitement fini et ne propose pas un jour passé ; les unités par boîte
+  sont plafonnées à l'écriture comme à la lecture.
+
 ### Added
 - Dossier : bouton « Couverture » parmi les actions du dossier, qui ouvre
   la couverture des délivrances sur ses traitements.

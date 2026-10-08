@@ -4103,6 +4103,9 @@ struct CouvRow {
     /// quoi l'écriture se compare.
     drug_id: Option<i64>,
     units_shown: u32,
+    /// Le dossier dont la ligne a été reprise : les unités ne s'écrivent
+    /// que dans celui-là, même si un autre dossier est ouvert depuis.
+    patient_id: Option<i64>,
 }
 
 /// La campagne de vaccination, telle que la vue la lit : tout est
@@ -39611,7 +39614,7 @@ impl App {
         let year = session.year_now();
         let target: Option<String> = if session.couv_sync {
             if session.couv_sync_date.trim().is_empty() {
-                crate::couverture::sync_target(tracks)
+                crate::couverture::sync_target(tracks, &session.today)
             } else {
                 db::parse_french_date(&session.couv_sync_date, year, db::YearHint::Future).ok()
             }
@@ -39650,7 +39653,7 @@ impl App {
                     .collect();
                 if let Some(b) = target
                     .as_deref()
-                    .and_then(|tg| crate::couverture::bridge(t, tg))
+                    .and_then(|tg| crate::couverture::bridge(t, tg, &session.today))
                 {
                     bars.push((
                         at(&b.from),
@@ -39673,7 +39676,7 @@ impl App {
         if let Some(tg) = &target {
             notes.push(trf("couv_sync_title", db::format_french_date(tg)));
             for t in tracks {
-                notes.push(match crate::couverture::bridge(t, tg) {
+                notes.push(match crate::couverture::bridge(t, tg, &session.today) {
                     Some(b) => trn(
                         "couv_sync_line",
                         &[
@@ -39748,6 +39751,7 @@ impl App {
                     boxes: String::new(),
                     drug_id: Some(d.id),
                     units_shown: stored,
+                    patient_id: session.viewing.as_ref().map(|p| p.id),
                     posology: session.dose_of(d.id).to_owned(),
                     date,
                     qsp: if script.duration_days > 0 {
@@ -39951,9 +39955,22 @@ impl App {
         }
         // Retenir au dossier les unités par boîte, contre ce qu'il portait
         // quand la ligne a été reprise.
+        // Rien ne s'écrit dans une image où une ligne a été retirée : les
+        // rangs ont bougé, et l'écriture viserait la ligne d'à côté.
+        let commit = commit.filter(|_| remove.is_none());
         if let (Some(i), Some(pid)) = (commit, session.viewing.as_ref().map(|p| p.id)) {
-            if let Some(row) = session.couv_rows.get(i).cloned() {
-                let units: u32 = row.units.trim().parse().unwrap_or(0);
+            if let Some(row) = session
+                .couv_rows
+                .get(i)
+                .filter(|r| r.patient_id == Some(pid))
+                .cloned()
+            {
+                let units: u32 = row
+                    .units
+                    .trim()
+                    .parse::<u32>()
+                    .unwrap_or(0)
+                    .min(crate::db::MAX_BOX_UNITS);
                 if let (Some(drug), true) = (row.drug_id, units != row.units_shown) {
                     match session
                         .db
@@ -40019,7 +40036,7 @@ impl App {
         use motif::chart::{TimeSeg, TimeStyle, TimeView};
         let today = session.today.clone();
         let year = session.year_now();
-        let proposed = crate::couverture::sync_target(tracks);
+        let proposed = crate::couverture::sync_target(tracks, &session.today);
         let h = Self::button_height(ui);
 
         // --- La barre d'outils ----------------------------------------------
@@ -40176,7 +40193,7 @@ impl App {
                     .collect();
                 if let Some(b) = target
                     .as_deref()
-                    .and_then(|tg| crate::couverture::bridge(t, tg))
+                    .and_then(|tg| crate::couverture::bridge(t, tg, &session.today))
                 {
                     segs.push(TimeSeg {
                         from: off(&b.from),
@@ -40372,7 +40389,7 @@ impl App {
         if let Some(tg) = &target {
             read.push((trf("couv_sync_title", db::format_french_date(tg)), true));
             for t in tracks {
-                let text = match crate::couverture::bridge(t, tg) {
+                let text = match crate::couverture::bridge(t, tg, &session.today) {
                     Some(b) => trn(
                         "couv_sync_line",
                         &[
