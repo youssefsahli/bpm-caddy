@@ -82,7 +82,7 @@ Deux règles valent partout :
   (la clairance, le poids, l'INR, la kaliémie), l'association qui tue,
   la voie ou le geste à ne pas se tromper, ce qui arrive à l'arrêt, et
   ce que le patient ne dira jamais de lui-même. Le compte est un
-  cliquet (`TOXIC_FLOOR`) : 630 fiches sur 1127.
+  cliquet (`TOXIC_FLOOR`) : 630 fiches sur 1133.
 - **Remplir la colonne « antidote » oblige à écrire la section.** Nommer
   un antidote, c'est affirmer qu'il existe une dose à partir de laquelle
   il faut le donner ; la fiche doit alors dire laquelle et à quoi on la
@@ -126,7 +126,7 @@ Deux règles valent partout :
   ne chiffre pas la demi-vie — « courte », « de l'ordre de quelques
   heures », ou seulement une demi-vie osseuse —, la facette dit
   `NonChiffree` et n'invente pas un nombre que personne ne pourrait
-  relire. 279 fiches sur 1127 sont dans ce cas — 201 parce que la notion
+  relire. 284 fiches sur 1133 sont dans ce cas — 206 parce que la notion
   n'a pas de sens (produit non absorbé, ion, vaccin), 78 parce que la
   monographie reste qualitative — et elles se corrigent en corrigeant la
   fiche, pas la facette.
