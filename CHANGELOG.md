@@ -5,7 +5,10 @@ All notable changes to BPM-Caddy will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+
 ## [Unreleased]
+
+## [0.380.0] - 2026-10-08
 
 ### Fixed
 - Couverture : les unités par boîte ne s'écrivent que dans le dossier
@@ -13,16 +16,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   prescrite ; l'alignement part d'aujourd'hui, ne prolonge pas un
   traitement fini et ne propose pas un jour passé ; les unités par boîte
   sont plafonnées à l'écriture comme à la lecture.
+- Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
+  initiales de qui vaccine ; un jour tapé sans année (« 05/01 ») et déjà
+  passé tombe l'année suivante ; l'acte planifié compte comme un acte.
+- Protections périodiques : tour de bassin et stature ne sont enregistrés
+  et imprimés que pour une culotte.
 
 ### Added
 - Dossier : bouton « Couverture » parmi les actions du dossier, qui ouvre
   la couverture des délivrances sur ses traitements.
 - Campagne : « Rendez-vous (n) » liste les rendez-vous de vaccination
   planifiés jour par jour, avec leur nombre, et ceux restés sans acte.
-
-## [0.380.0] - 2026-10-08
-
-### Added
 - Couverture des délivrances : une ligne par délivrance (« mirtazapine 15
   (28) 1-0-1 ») ou les traitements du dossier ouvert. Échelle de temps
   avec calendrier (mois, lundis, week-ends), zoom à la molette, glisser,
@@ -34,13 +38,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   feuille imprimable.
 - Dossier : les unités par boîte de chaque traitement sont enregistrées
   depuis la couverture des délivrances et reprises ensuite.
-
-### Fixed
-- Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
-  initiales de qui vaccine ; un jour tapé sans année (« 05/01 ») et déjà
-  passé tombe l'année suivante ; l'acte planifié compte comme un acte.
-- Protections périodiques : tour de bassin et stature ne sont enregistrés
-  et imprimés que pour une culotte.
 
 ## [0.379.0] - 2026-10-08
 
