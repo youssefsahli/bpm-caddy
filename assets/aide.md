@@ -919,23 +919,47 @@ remarque n'empêche pas l'enregistrement.
 # Couverture des délivrances
 
 Bouton **Couverture** de la barre des médicaments, ou « Aller à… »
-(couverture, QSP, boîte). Une ligne par boîte délivrée : unités par
-boîte, nombre de boîtes, posologie, jour de délivrance et, si elle est
+(couverture, QSP, boîte). Une ligne par délivrance : unités par boîte,
+nombre de boîtes, posologie, jour de délivrance et, si elle est
 prescrite, la durée de traitement en jours. La ligne se tape aussi d'un
 trait : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`
 pour deux boîtes. Avec un dossier ouvert, « Reprendre les traitements
 du dossier » remplit le nom, le dosage, la posologie, la dernière
 délivrance et la durée ; le nombre d'unités par boîte reste à saisir.
 
-Chaque ligne donne le nombre de jours couverts, le dernier jour
-couvert, le jour à partir duquel la délivrance suivante est nécessaire
-et, avec une durée prescrite, le nombre de délivrances qui restent.
-Les boîtes se placent sur une même échelle de temps : période couverte
-en plein, délivrances à venir en teinte claire, délivrance suivante
-marquée d'un trait. La posologie doit dire la quantité de chaque prise
-(1-0-1, ½-0-½) : « 2 fois par jour » ne donne pas de durée. Une
-journée entamée n'est pas comptée. Le reste estimé suppose la posologie
-suivie depuis la délivrance.
+**Plusieurs délivrances d'un même médicament** (même libellé) se
+rangent sur une seule rangée. Une délivrance faite avant la fin de la
+précédente attend son tour : sa période commence quand la précédente
+finit. Une délivrance faite après laisse des jours sans traitement,
+en rouge, comptés sous la saisie avec la part des jours couverts depuis
+la première délivrance. Une boîte attendue et non venue est marquée en
+rouge jusqu'à aujourd'hui, sauf si la durée prescrite était finie.
+
+**L'échelle de temps.** Mois en haut, lundis et week-ends dans le fond,
+jours ou semaines en bas selon le zoom. Plein : période couverte.
+Teinte claire : délivrances qui complètent la durée prescrite.
+Triangle : jour de délivrance. Trait noir : délivrance suivante. La
+molette zoome autour du pointeur, un glisser déplace, un double clic
+montre toute la période ; le menu « Période » propose 1, 3 ou 6 mois.
+Sous l'échelle, la lecture du jour pointé : rang du jour dans sa
+délivrance et unités en main ce matin-là, ou jours sans traitement.
+Un clic épingle un jour, que les flèches gauche et droite font
+avancer ; un second clic le libère.
+
+**Aligner les renouvellements.** Le bouton « Aligner » propose le plus
+tardif des jours de délivrance suivante (un autre jour peut être
+saisi) et indique, pour chaque médicament, la quantité à délivrer en
+plus pour tenir jusqu'à ce jour, en unités et en boîtes de la dernière
+délivrance : en pointillé sur l'échelle. La décision de délivrer
+revient au pharmacien, dans le cadre de la prescription.
+
+« Imprimer » sort l'échelle sur toute la période, avec la lecture de
+chaque médicament et l'alignement s'il est demandé. La posologie doit
+dire la quantité de chaque prise (1-0-1, ½-0-½) : « 2 fois par jour »
+ne donne pas de durée. Une journée entamée n'est pas comptée. Les
+quantités en main supposent la posologie suivie depuis la délivrance.
+Sur un écran court, « Saisie » et « Échelle de temps » se montrent
+l'une après l'autre.
 
 # Mesures et conseils
 

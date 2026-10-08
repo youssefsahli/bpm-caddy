@@ -3645,6 +3645,166 @@ const DEFAULT_RAPPELS_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
+/// La couverture des délivrances, prête à imprimer : la même échelle
+/// que l'écran, sur toute la période, et ce que chaque rangée dit.
+pub struct CouverturePaper {
+    pub title: String,
+    /// Le nom de la personne, ou vide.
+    pub patient: String,
+    pub date: String,
+    /// Les mois au-dessus de l'échelle : (part de la largeur, nom).
+    pub months: Vec<(f32, String)>,
+    /// Aujourd'hui et le jour d'alignement, en part de la largeur.
+    pub today: Option<f32>,
+    pub sync: Option<f32>,
+    pub rows: Vec<CouvertureRow>,
+    /// Une phrase par rangée, puis l'alignement s'il est demandé.
+    pub notes: Vec<String>,
+    pub legend: String,
+}
+
+/// Une rangée de la feuille : le libellé, ses périodes (parts de la
+/// largeur, de la première à la seconde) et la délivrance suivante.
+pub struct CouvertureRow {
+    pub label: String,
+    pub bars: Vec<(f32, f32, CouvertureBar, String)>,
+    pub next: Option<f32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CouvertureBar {
+    Covered,
+    Planned,
+    Missing,
+    Bridge,
+}
+
+pub fn open_couverture(
+    paper: &CouverturePaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("couverture", template_path),
+            &couverture_values(paper, pharmacy),
+        ),
+        "couverture",
+    )
+}
+
+fn couverture_values(
+    paper: &CouverturePaper,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    // Les parts de la largeur, bornées : une saisie hors cadre ne doit
+    // pas peindre hors de la feuille.
+    let pct = |f: f32| format!("{:.2}%", (f.clamp(0.0, 1.0) * 100.0));
+    let mut src = String::new();
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(15pt, weight: \"bold\")[#{}]\n",
+        typst_str(&paper.title)
+    ));
+    let who = if paper.patient.trim().is_empty() {
+        paper.date.clone()
+    } else {
+        format!("{} — {}", paper.patient.trim(), paper.date)
+    };
+    src.push_str(&format!(
+        "#v(1mm)\n#text(10pt, style: \"italic\")[#{}]\n#v(3mm)\n",
+        typst_str(&who)
+    ));
+    // L'échelle : une colonne de libellés, une colonne de périodes.
+    src.push_str("#grid(columns: (4.6cm, 1fr), row-gutter: 1.6mm, column-gutter: 2mm,\n");
+    src.push_str("  [], box(width: 100%, height: 4mm)[");
+    for (f, name) in &paper.months {
+        src.push_str(&format!(
+            "#place(dx: {}, line(length: 4mm, angle: 90deg, stroke: 0.4pt + luma(120)))#place(dx: {}, dy: 0.2mm, text(7.5pt, fill: luma(80))[#h(1mm)#{}])",
+            pct(*f),
+            pct(*f),
+            typst_str(name)
+        ));
+    }
+    src.push_str("],\n");
+    for row in &paper.rows {
+        src.push_str(&format!(
+            "  align(horizon)[#text(9pt)[#{}]], box(width: 100%, height: 6mm, fill: luma(246), stroke: 0.4pt + luma(170))[",
+            typst_str(&row.label)
+        ));
+        for (from, to, kind, text) in &row.bars {
+            let w = (to.clamp(0.0, 1.0) - from.clamp(0.0, 1.0)).max(0.002);
+            let (fill, stroke, ink) = match kind {
+                CouvertureBar::Covered => ("rgb(\"#3b6ea8\")", "none", "white"),
+                CouvertureBar::Planned => (
+                    "rgb(\"#3b6ea8\").lighten(75%)",
+                    "0.5pt + rgb(\"#3b6ea8\")",
+                    "black",
+                ),
+                CouvertureBar::Missing => ("rgb(\"#c0392b\")", "none", "white"),
+                CouvertureBar::Bridge => (
+                    "none",
+                    "(paint: rgb(\"#3b6ea8\"), thickness: 0.8pt, dash: \"dashed\")",
+                    "black",
+                ),
+            };
+            src.push_str(&format!(
+                "#place(dx: {}, box(width: {}, height: 100%, fill: {fill}, stroke: {stroke}, clip: true, align(center + horizon, text(7pt, fill: {ink})[#{}])))",
+                pct(*from),
+                pct(w),
+                typst_str(text)
+            ));
+        }
+        if let Some(n) = row.next {
+            src.push_str(&format!(
+                "#place(dx: {}, line(length: 6mm, angle: 90deg, stroke: 1.4pt + black))",
+                pct(n)
+            ));
+        }
+        // Aujourd'hui et le jour d'alignement, sur chaque rangée.
+        for (f, color) in [
+            (paper.today, "rgb(\"#d35400\")"),
+            (paper.sync, "rgb(\"#7d3c98\")"),
+        ] {
+            if let Some(f) = f {
+                src.push_str(&format!(
+                    "#place(dx: {}, line(length: 6mm, angle: 90deg, stroke: 0.9pt + {color}))",
+                    pct(f)
+                ));
+            }
+        }
+        src.push_str("],\n");
+    }
+    src.push_str(")\n");
+    if !paper.notes.is_empty() {
+        src.push_str("#v(4mm)\n");
+        for n in &paper.notes {
+            src.push_str(&format!("- #{}\n", typst_str(n)));
+        }
+    }
+    if !paper.legend.trim().is_empty() {
+        src.push_str(&format!(
+            "#v(3mm)\n#text(8pt, style: \"italic\")[#{}]\n",
+            typst_str(&paper.legend)
+        ));
+    }
+    vec![("{{BODY}}", src)]
+}
+
+const MARKERS_COUVERTURE: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_COUVERTURE_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.4cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+
+{{BODY}}
+"##;
+
 /// Une feuille « Mesures et conseils », prête à imprimer : ce que la vue
 /// a relevé pour la personne, puis les conseils de la feuille.
 pub struct ConseilPaper {
@@ -4896,6 +5056,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_CONSEIL_TEMPLATE,
     },
     Doc {
+        key: "couverture",
+        label: "tpl_target_couverture",
+        markers: MARKERS_COUVERTURE,
+        default: DEFAULT_COUVERTURE_TEMPLATE,
+    },
+    Doc {
         key: "dispositifs",
         label: "tpl_target_dispositifs",
         markers: MARKERS_DISPOSITIFS,
@@ -5102,6 +5268,43 @@ pub fn preview_doc(key: &str, template: &str) -> Result<PathBuf, String> {
 ///
 /// Elles ne sont pas vides : un modèle validé sur des chaînes vides
 /// compile toujours, et se casse à la première vraie impression.
+/// Une feuille de couverture d'exemple : une boîte délivrée, une rupture,
+/// une délivrance prévue, un alignement, et un libellé hostile.
+fn sample_couverture() -> CouverturePaper {
+    CouverturePaper {
+        title: "Couverture des délivrances".to_owned(),
+        patient: "Jean #[Dupont] \"x\"".to_owned(),
+        date: "08/10/2026".to_owned(),
+        months: vec![
+            (0.0, "octobre 2026".to_owned()),
+            (0.26, "novembre 2026".to_owned()),
+        ],
+        today: Some(0.02),
+        sync: Some(0.5),
+        rows: vec![
+            CouvertureRow {
+                label: "Mirtazapine 15 mg".to_owned(),
+                bars: vec![
+                    (0.0, 0.15, CouvertureBar::Covered, "14 j".to_owned()),
+                    (0.15, 0.2, CouvertureBar::Missing, "rupture 5 j".to_owned()),
+                    (0.2, 0.5, CouvertureBar::Bridge, "+62".to_owned()),
+                ],
+                next: Some(0.15),
+            },
+            CouvertureRow {
+                label: "Metformine 500 mg".to_owned(),
+                bars: vec![
+                    (0.0, 0.5, CouvertureBar::Covered, "45 j".to_owned()),
+                    (0.5, 1.2, CouvertureBar::Planned, String::new()),
+                ],
+                next: Some(0.5),
+            },
+        ],
+        notes: vec!["Mirtazapine 15 mg : couvert jusqu'au 21/10/2026.".to_owned()],
+        legend: "Plein : période couverte.".to_owned(),
+    }
+}
+
 fn sample_values(key: &str) -> Vec<(&'static str, String)> {
     let patient = sample_patient();
     let pharmacy = sample_pharmacy();
@@ -5789,6 +5992,7 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             },
             &sample_pharmacy(),
         ),
+        "couverture" => couverture_values(&sample_couverture(), &sample_pharmacy()),
         "conseil" => conseil_values(
             &ConseilPaper {
                 title: crate::conseils::SHEETS[0].title.to_owned(),
@@ -10670,6 +10874,27 @@ mod tests {
             &dispositifs_values(&[], &sample_pharmacy()),
         ));
         assert!(typst::compile::<PagedDocument>(&world).output.is_ok());
+    }
+
+    /// La feuille de couverture compile, ses barres bornées à la largeur,
+    /// avec un libellé hostile.
+    #[test]
+    fn the_coverage_sheet_compiles_with_its_bars() {
+        let src = fill(
+            DEFAULT_COUVERTURE_TEMPLATE,
+            &couverture_values(&sample_couverture(), &sample_pharmacy()),
+        );
+        assert!(src.contains("Mirtazapine"));
+        // Une barre qui déborde est ramenée à la largeur de la feuille.
+        assert!(!src.contains("120.00%"));
+        let world = PdfWorld::new(src);
+        let document = typst::compile::<PagedDocument>(&world).output;
+        assert!(document.is_ok(), "{:?}", document.err());
+        if let (Ok(dir), Ok(document)) = (std::env::var("BPM_CADDY_TEST_PDF_OUT"), document) {
+            if let Ok(pdf) = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default()) {
+                let _ = std::fs::write(std::path::Path::new(&dir).join("couverture.pdf"), &pdf);
+            }
+        }
     }
 
     /// La feuille « Mesures et conseils » compile, avec ses relevés, son

@@ -4080,6 +4080,13 @@ struct ConseilState {
     pane: usize,
 }
 
+/// Les lignes de la couverture, lues : les rangées et les lignes à
+/// compléter (leur rang, ce qui leur manque).
+type CouvModel = (
+    Vec<crate::couverture::Track>,
+    Vec<(usize, Vec<crate::couverture::Missing>)>,
+);
+
 /// Une ligne de la couverture des délivrances, telle qu'elle se tape :
 /// du texte, lu à chaque image par `couverture::read`.
 #[derive(Clone, Debug, Default)]
@@ -5510,6 +5517,21 @@ struct Session {
     /// La ligne tapée d'un trait (« mirtazapine (28) 1-0-1 »).
     couv_quick: String,
     couv_error: Option<String>,
+    /// La fenêtre visible de l'échelle, en jours depuis `couv_origin` ;
+    /// `None` = tout montrer au prochain dessin.
+    couv_view: Option<motif::chart::TimeView>,
+    couv_origin: String,
+    /// Le jour épinglé d'un clic, lu sous l'échelle quand le pointeur
+    /// n'y est pas.
+    couv_pin: Option<String>,
+    /// Aligner les renouvellements, et sur quel jour (vide = le jour
+    /// proposé).
+    couv_sync: bool,
+    couv_sync_date: String,
+    couv_memo: Option<(u64, CouvModel)>,
+    /// Le volet montré quand la vue est trop courte pour les deux :
+    /// 0 la saisie, 1 l'échelle.
+    couv_page: usize,
     calc_interval: f64,
     table_selected: usize,
     /// The vaccination map: what colours the tiles, the country the
@@ -6099,6 +6121,13 @@ impl Session {
             couv_rows: Vec::new(),
             couv_quick: String::new(),
             couv_error: None,
+            couv_view: None,
+            couv_origin: String::new(),
+            couv_pin: None,
+            couv_sync: false,
+            couv_sync_date: String::new(),
+            couv_memo: None,
+            couv_page: 1,
             calc_interval: 12.0,
             table_selected: 0,
             map_lens: MapLens::default(),
@@ -16788,27 +16817,35 @@ impl App {
                         Ok("couverture") => {
                             session.enter_drug_panel();
                             session.show_couverture = true;
-                            // La couverture, avec l'exemple du comptoir :
-                            // deux boîtes du jour qui ne finissent pas
-                            // ensemble, et une durée prescrite de trois mois.
-                            let today = db::format_french_date(&session.today);
+                            // Un comptoir réel : une rupture passée, une
+                            // boîte venue en avance, une boîte en retard,
+                            // une durée prescrite, et l'alignement demandé.
+                            let ago = |n: i64| {
+                                db::format_french_date(
+                                    &crate::date::add_days(&session.today, -n).unwrap_or_default(),
+                                )
+                            };
+                            let row = |label: &str,
+                                       units: &str,
+                                       posology: &str,
+                                       date: String,
+                                       qsp: &str| CouvRow {
+                                label: label.into(),
+                                units: units.into(),
+                                posology: posology.into(),
+                                date,
+                                qsp: qsp.into(),
+                                ..Default::default()
+                            };
                             session.couv_rows = vec![
-                                CouvRow {
-                                    label: "Mirtazapine 15 mg".into(),
-                                    units: "28".into(),
-                                    posology: "1-0-1".into(),
-                                    date: today.clone(),
-                                    ..Default::default()
-                                },
-                                CouvRow {
-                                    label: "Metformine 500 mg".into(),
-                                    units: "90".into(),
-                                    posology: "1-0-1".into(),
-                                    date: today,
-                                    qsp: "90".into(),
-                                    ..Default::default()
-                                },
+                                row("Mirtazapine 15 mg", "28", "1-0-1", ago(30), ""),
+                                row("Mirtazapine 15 mg", "28", "1-0-1", ago(12), ""),
+                                row("Metformine 500 mg", "90", "1-0-1", ago(0), "90"),
+                                row("Amlodipine 5 mg", "30", "1-0-0", ago(35), "90"),
+                                row("Lévothyroxine 75 µg", "30", "1-0-0", ago(25), ""),
+                                row("Lévothyroxine 75 µg", "30", "1-0-0", ago(3), ""),
                             ];
+                            session.couv_sync = true;
                         }
                         Ok("calc") => {
                             session.show_tables = true;
@@ -39328,14 +39365,21 @@ impl App {
         });
     }
 
-    /// La vue « Couverture des délivrances » : le titre, puis la saisie
-    /// et l'échelle, dans un défilement.
-    fn couverture_view(ui: &mut egui::Ui, session: &mut Session) {
+    /// La vue « Couverture des délivrances » : la saisie en haut, dans un
+    /// défilement ; l'échelle de temps et la lecture du jour en bas.
+    fn couverture_view(ui: &mut egui::Ui, session: &mut Session, config: &Config) {
         let body = motif::visible_rect(ui);
         let who = match &session.viewing {
             Some(p) => trf("conseil_patient", p.full_name()),
             None => tr("couv_no_patient").to_owned(),
         };
+        let model = Self::couverture_model(session);
+        // Court (1024x700 en texte 1,6), **un volet à la fois** : la barre
+        // d'outils prenait toute la hauteur de l'échelle, qui ne montrait
+        // plus une rangée. Les pages se posent dans la bande du titre, qui
+        // est là de toute façon.
+        let short = !model.0.is_empty() && body.height() < Self::row_height(ui) * 20.0;
+        let pages = [tr("couv_page_entry"), tr("couv_chart_title")];
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -39343,7 +39387,13 @@ impl App {
                 Self::heading_width(ui, tr("couv_title")),
                 Self::button_width(ui, tr("patient_back")),
             ]
-            .into_iter(),
+            .into_iter()
+            .chain(
+                pages
+                    .iter()
+                    .filter(|_| short)
+                    .map(|p| Self::button_width(ui, p)),
+            ),
             &who,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
@@ -39352,6 +39402,13 @@ impl App {
                 ui.heading(tr("couv_title"));
                 if motif::button(ui, tr("patient_back")).clicked() {
                     session.show_couverture = false;
+                }
+                if short {
+                    for (i, label) in pages.iter().enumerate() {
+                        if motif::toggle(ui, label, session.couv_page == i).clicked() {
+                            session.couv_page = i;
+                        }
+                    }
                 }
             });
             ui.add(
@@ -39363,18 +39420,278 @@ impl App {
                 .wrap(),
             );
         });
-        motif::inside(ui, rows[1], |ui| {
-            egui::ScrollArea::vertical()
-                .id_salt("couverture")
-                .auto_shrink([false, false])
-                .show(ui, |ui| Self::couverture_panel(ui, session));
-        });
+        let rest = rows[1];
+        let (entry, chart) = if model.0.is_empty() {
+            (rest, egui::Rect::NOTHING)
+        } else if short {
+            if session.couv_page == 0 {
+                (rest, egui::Rect::NOTHING)
+            } else {
+                (egui::Rect::NOTHING, rest)
+            }
+        } else {
+            // La saisie : trois dixièmes, au moins de quoi voir le champ
+            // d'un trait et une ligne ; l'échelle a le reste.
+            let entry_h = (rest.height() * 0.3)
+                .max(Self::row_height(ui) * 4.0)
+                .min(rest.height() * 0.45);
+            let parts = motif::split_rows(rest, &[entry_h, 0.0], 6.0);
+            (parts[0], parts[1])
+        };
+        if entry.is_positive() {
+            motif::inside(ui, entry, |ui| {
+                egui::ScrollArea::vertical()
+                    .id_salt("couverture")
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| Self::couverture_entry(ui, session, &model));
+            });
+        }
+        let mut print = false;
+        if chart.is_positive() {
+            motif::panel(ui, chart, Some(tr("couv_chart_title")), |ui| {
+                print = Self::couverture_chart(ui, session, &model.0);
+            });
+        }
+        if print {
+            let paper = Self::couverture_paper(session, &model.0);
+            if let Err(e) = crate::pdf::open_couverture(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("couverture"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+    }
+
+    /// Les lignes tapées, lues : une rangée par médicament et les lignes
+    /// qui n'ont pas pu se lire. Mémorisé contre le texte des lignes et le
+    /// jour, comme tout ce qui se calcule ici : la vue est redessinée à
+    /// chaque mouvement du pointeur sur l'échelle.
+    fn couverture_model(session: &mut Session) -> CouvModel {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        session.today.hash(&mut h);
+        for r in &session.couv_rows {
+            (&r.label, &r.units, &r.boxes, &r.posology, &r.date, &r.qsp).hash(&mut h);
+        }
+        let key = h.finish();
+        if let Some((k, m)) = &session.couv_memo {
+            if *k == key {
+                return m.clone();
+            }
+        }
+        let year = session.year_now();
+        let lines: Vec<crate::couverture::Line> = session
+            .couv_rows
+            .iter()
+            .map(|r| crate::couverture::Line {
+                label: r.label.trim().to_owned(),
+                units: r.units.trim().parse().unwrap_or(0),
+                boxes: r.boxes.trim().parse().unwrap_or(1),
+                posology: r.posology.clone(),
+                delivered_on: db::parse_french_date(&r.date, year, db::YearHint::Past)
+                    .unwrap_or_default(),
+                qsp_days: r.qsp.trim().parse().unwrap_or(0),
+            })
+            .collect();
+        let model = crate::couverture::tracks(&lines, &session.today);
+        session.couv_memo = Some((key, model.clone()));
+        model
+    }
+
+    /// Ce qu'une rangée dit, en une phrase : à l'écran sous la saisie,
+    /// et sur la feuille imprimée.
+    fn couverture_track_text(t: &crate::couverture::Track, today: &str) -> String {
+        let fr = |d: &str| db::format_french_date(d);
+        let mut text = if t.step_days == 0 {
+            trf("couv_under_a_day", &t.label)
+        } else {
+            trn(
+                "couv_track",
+                &[&t.label, &fr(&t.covered_until), &fr(&t.next_from)],
+            )
+        };
+        if !t.qsp_end.is_empty() {
+            text.push(' ');
+            text.push_str(&if t.deliveries_left > 0 {
+                trn("couv_qsp_more", &[&t.deliveries_left, &fr(&t.qsp_end)])
+            } else {
+                trf("couv_qsp_done", fr(&t.qsp_end))
+            });
+        }
+        if t.deliveries.len() > 1 {
+            text.push(' ');
+            text.push_str(&trf("couv_track_deliveries", t.deliveries.len()));
+        }
+        if let Some(share) = t
+            .covered_share
+            .filter(|_| t.deliveries.len() > 1 || t.gap_days > 0)
+        {
+            text.push(' ');
+            text.push_str(&trf("couv_track_share", format!("{:.0}", share * 100.0)));
+        }
+        if t.gap_days > 0 {
+            text.push(' ');
+            text.push_str(&trf("couv_track_gaps", t.gap_days));
+        }
+        match crate::couverture::at(t, today) {
+            crate::couverture::DayState::Covered { in_hand, .. } => {
+                text.push(' ');
+                text.push_str(&trf("couv_left", Self::couverture_units(in_hand)));
+            }
+            crate::couverture::DayState::Overdue { since } => {
+                text.push(' ');
+                text.push_str(&trf("couv_track_overdue", fr(&since)));
+            }
+            _ => {}
+        }
+        text
+    }
+
+    /// La feuille imprimée : toute la période, de la première délivrance
+    /// au dernier jour à montrer, quelle que soit la fenêtre à l'écran.
+    fn couverture_paper(
+        session: &Session,
+        tracks: &[crate::couverture::Track],
+    ) -> crate::pdf::CouverturePaper {
+        use crate::couverture::SegKind;
+        use crate::pdf::{CouvertureBar, CouvertureRow};
+        let today = &session.today;
+        let year = session.year_now();
+        let target: Option<String> = if session.couv_sync {
+            if session.couv_sync_date.trim().is_empty() {
+                crate::couverture::sync_target(tracks)
+            } else {
+                db::parse_french_date(&session.couv_sync_date, year, db::YearHint::Future).ok()
+            }
+        } else {
+            None
+        };
+        let (origin, end) = crate::couverture::frame(tracks, today, target.as_deref());
+        let total = (end + 1).max(1) as f32;
+        let at = |d: &str| crate::date::days_between(&origin, d).unwrap_or(0) as f32 / total;
+        let cal = crate::couverture::calendar(&origin, 0, end);
+        let months = cal
+            .months
+            .iter()
+            .map(|(o, ym)| (*o as f32 / total, Self::couverture_month(ym, total < 200.0)))
+            .collect();
+        let rows = tracks
+            .iter()
+            .map(|t| {
+                let mut bars: Vec<(f32, f32, CouvertureBar, String)> = t
+                    .segments
+                    .iter()
+                    .map(|s| {
+                        let (kind, text) = match s.kind {
+                            SegKind::Covered | SegKind::Carried => {
+                                (CouvertureBar::Covered, trf("couv_seg_days", s.days()))
+                            }
+                            SegKind::Gap => (CouvertureBar::Missing, trf("couv_seg_gap", s.days())),
+                            SegKind::Overdue => {
+                                (CouvertureBar::Missing, trf("couv_seg_late", s.days()))
+                            }
+                            SegKind::Planned => (CouvertureBar::Planned, String::new()),
+                            SegKind::Bridge => (CouvertureBar::Bridge, String::new()),
+                        };
+                        (at(&s.from), at(&s.to) + 1.0 / total, kind, text)
+                    })
+                    .collect();
+                if let Some(b) = target
+                    .as_deref()
+                    .and_then(|tg| crate::couverture::bridge(t, tg))
+                {
+                    bars.push((
+                        at(&b.from),
+                        at(&b.to) + 1.0 / total,
+                        CouvertureBar::Bridge,
+                        trf("couv_seg_bridge", b.units),
+                    ));
+                }
+                CouvertureRow {
+                    label: t.label.clone(),
+                    bars,
+                    next: (!t.next_from.is_empty()).then(|| at(&t.next_from)),
+                }
+            })
+            .collect();
+        let mut notes: Vec<String> = tracks
+            .iter()
+            .map(|t| Self::couverture_track_text(t, today))
+            .collect();
+        if let Some(tg) = &target {
+            notes.push(trf("couv_sync_title", db::format_french_date(tg)));
+            for t in tracks {
+                notes.push(match crate::couverture::bridge(t, tg) {
+                    Some(b) => trn(
+                        "couv_sync_line",
+                        &[
+                            &t.label,
+                            &b.units,
+                            &b.boxes,
+                            &t.units_per_box,
+                            &db::format_french_date(&b.to),
+                        ],
+                    ),
+                    None => trf("couv_sync_none", &t.label),
+                });
+            }
+        }
+        crate::pdf::CouverturePaper {
+            title: tr("couv_title").to_owned(),
+            patient: session
+                .viewing
+                .as_ref()
+                .map(|p| p.full_name())
+                .unwrap_or_default(),
+            date: db::format_french_date(today),
+            months,
+            today: Some(at(today) + 0.5 / total),
+            sync: target.as_deref().map(at),
+            rows,
+            notes,
+            legend: tr("couv_print_legend").to_owned(),
+        }
+    }
+
+    /// Une quantité en unités, au quart près : « 28 », « 13,5 »,
+    /// « 6,25 » — jamais « 28,0 ».
+    fn couverture_units(v: f64) -> String {
+        let s = crate::strings::decimal(v, 2);
+        s.trim_end_matches('0').trim_end_matches(',').to_owned()
+    }
+
+    /// Le mois d'un repère, court quand la place manque : « oct. 26 ».
+    fn couverture_month(ym: &str, full: bool) -> String {
+        if full {
+            return db::month_name_fr(ym);
+        }
+        let m: usize = ym.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+        let short = tr("couv_months_short")
+            .split_whitespace()
+            .nth(m.wrapping_sub(1));
+        match (short, ym.get(2..4)) {
+            (Some(s), Some(y)) => format!("{s} {y}"),
+            _ => ym.to_owned(),
+        }
+    }
+
+    /// « lun. 12/10 » : le jour d'un repère ou du pointeur.
+    fn couverture_day(iso: &str) -> String {
+        let wd: String = db::weekday_fr(iso).unwrap_or("").chars().take(3).collect();
+        let date: String = db::format_french_date(iso).chars().take(5).collect();
+        if wd.is_empty() {
+            date
+        } else {
+            format!("{wd}. {date}")
+        }
     }
 
     /// Ce que couvre chaque boîte délivrée, sur une même échelle de
     /// temps : la boîte qui finit la première, le jour où la suivante se
     /// délivre, et les délivrances qui complètent la durée prescrite.
-    fn couverture_panel(ui: &mut egui::Ui, session: &mut Session) {
+    fn couverture_entry(ui: &mut egui::Ui, session: &mut Session, model: &CouvModel) {
         Self::conseil_note(ui, tr("couv_intro"));
         let h = Self::button_height(ui);
         let today = session.today.clone();
@@ -39484,7 +39801,6 @@ impl App {
         }
 
         // Les lignes, en champs : ce qui est tapé se relit à chaque image.
-        let year = session.year_now();
         let mut remove: Option<usize> = None;
         // Le libellé prend ce que les colonnes fixes laissent : la grille
         // tient dans le volet, et les lectures dessous s'enveloppent à sa
@@ -39543,132 +39859,436 @@ impl App {
             session.couv_rows.remove(i);
         }
 
-        // La lecture de chaque ligne, puis l'échelle commune.
-        let read: Vec<(
-            String,
-            Result<crate::couverture::Coverage, Vec<crate::couverture::Missing>>,
-        )> = session
-            .couv_rows
-            .iter()
-            .map(|r| {
-                let line = crate::couverture::Line {
-                    label: r.label.trim().to_owned(),
-                    units: r.units.trim().parse().unwrap_or(0),
-                    boxes: r.boxes.trim().parse().unwrap_or(1),
-                    posology: r.posology.clone(),
-                    delivered_on: db::parse_french_date(&r.date, year, db::YearHint::Past)
-                        .unwrap_or_default(),
-                    qsp_days: r.qsp.trim().parse().unwrap_or(0),
-                };
-                (line.label.clone(), crate::couverture::read(&line, &today))
-            })
-            .collect();
+        // La lecture de chaque rangée, puis les lignes à compléter.
         ui.add_space(4.0);
-        for (label, r) in &read {
-            let text = match r {
-                Ok(c) if c.days == 0 => trf("couv_under_a_day", label),
-                Ok(c) => {
-                    let mut t = trn(
-                        "couv_line",
-                        &[
-                            label,
-                            &c.days,
-                            &db::format_french_date(&c.until),
-                            &db::format_french_date(&c.next_from),
-                        ],
-                    );
-                    if !c.qsp_end.is_empty() {
-                        t.push(' ');
-                        t.push_str(&if c.deliveries_left > 0 {
-                            trn(
-                                "couv_qsp_more",
-                                &[&c.deliveries_left, &db::format_french_date(&c.qsp_end)],
-                            )
-                        } else {
-                            trf("couv_qsp_done", db::format_french_date(&c.qsp_end))
-                        });
-                    }
-                    if c.next_from > today {
-                        t.push(' ');
-                        // En quarts : « 28 », « 13,5 », « 6,25 » — jamais « 28,0 ».
-                        let left = crate::strings::decimal(c.left_today, 2);
-                        let left = left.trim_end_matches('0').trim_end_matches(',');
-                        t.push_str(&trf("couv_left", left));
-                    }
-                    t
-                }
-                Err(missing) => {
-                    let what: Vec<&str> = missing
-                        .iter()
-                        .map(|m| match m {
-                            crate::couverture::Missing::Units => tr("couv_missing_units"),
-                            crate::couverture::Missing::Posology => tr("couv_missing_posology"),
-                            crate::couverture::Missing::Date => tr("couv_missing_date"),
-                        })
-                        .collect();
-                    trn("couv_missing", &[label, &what.join(", ")])
-                }
-            };
+        let (tracks, invalid) = model;
+        for t in tracks {
+            let text = Self::couverture_track_text(t, &session.today);
             ui.add(egui::Label::new(egui::RichText::new(text).size(motif::pt(ui, 11.0))).wrap());
         }
-        let ok: Vec<(&str, &crate::couverture::Coverage)> = read
-            .iter()
-            .filter_map(|(l, r)| {
-                r.as_ref()
-                    .ok()
-                    .filter(|c| !c.spans.is_empty())
-                    .map(|c| (l.as_str(), c))
-            })
-            .collect();
-        if ok.is_empty() {
-            return;
+        for (i, missing) in invalid {
+            let label = session
+                .couv_rows
+                .get(*i)
+                .map(|r| r.label.trim().to_owned())
+                .filter(|l| !l.is_empty())
+                .unwrap_or_else(|| trf("couv_line_n", i + 1));
+            let what: Vec<&str> = missing
+                .iter()
+                .map(|m| match m {
+                    crate::couverture::Missing::Units => tr("couv_missing_units"),
+                    crate::couverture::Missing::Posology => tr("couv_missing_posology"),
+                    crate::couverture::Missing::Date => tr("couv_missing_date"),
+                })
+                .collect();
+            ui.add(
+                egui::Label::new(
+                    egui::RichText::new(trn("couv_missing", &[&label, &what.join(", ")]))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::warn()),
+                )
+                .wrap(),
+            );
         }
-        let (from, to) = crate::couverture::window(ok.iter().map(|(_, c)| *c), &today);
-        let total = (crate::date::days_between(&from, &to).unwrap_or(0) + 1).max(1) as f32;
-        let frac = |d: &str| crate::date::days_between(&from, d).unwrap_or(0) as f32 / total;
-        let spans: Vec<Vec<(f32, f32, bool)>> = ok
-            .iter()
-            .map(|(_, c)| {
-                c.spans
-                    .iter()
-                    .map(|s| (frac(&s.from), frac(&s.to) + 1.0 / total, s.delivered))
-                    .collect()
-            })
-            .collect();
-        let rows: Vec<motif::chart::SpanRow> = ok
-            .iter()
-            .zip(&spans)
-            .enumerate()
-            .map(|(i, ((label, c), s))| motif::chart::SpanRow {
-                label,
-                spans: s,
-                color: motif::chart::series_color(i),
-                tick: Some(frac(&c.next_from)),
-            })
-            .collect();
-        // Cinq repères au plus, en JJ/MM.
-        let step = (total / 5.0).ceil().max(1.0) as i64;
-        let ticks: Vec<(f32, String)> = (0..)
-            .map(|k| k * step)
-            .take_while(|d| (*d as f32) < total)
-            .filter_map(|d| {
-                let day = crate::date::add_days(&from, d)?;
-                Some((
-                    d as f32 / total,
-                    db::format_french_date(&day).chars().take(5).collect(),
-                ))
-            })
-            .collect();
-        ui.add_space(4.0);
-        let room = (ui.clip_rect().right() - ui.cursor().left() - 8.0)
-            .min(ui.available_width())
-            .max(chars_wide(ui, 30.0));
-        let height = rows.len() as f32 * Self::row_height(ui) * 1.5
-            + ui.text_style_height(&egui::TextStyle::Small)
-            + 2.0;
-        let (rect, _) = ui.allocate_exact_size(egui::vec2(room, height), egui::Sense::hover());
-        motif::chart::spans(ui, rect, &rows, Some(frac(&today)), &ticks);
         Self::conseil_note(ui, tr("couv_legend"));
+    }
+
+    /// L'échelle de temps : une rangée par médicament, le calendrier, le
+    /// jour pointé ou épinglé, et l'alignement des renouvellements.
+    /// Rend `true` quand « Imprimer » a été cliqué.
+    fn couverture_chart(
+        ui: &mut egui::Ui,
+        session: &mut Session,
+        tracks: &[crate::couverture::Track],
+    ) -> bool {
+        use crate::couverture::{DayState, SegKind};
+        use motif::chart::{TimeSeg, TimeStyle, TimeView};
+        let today = session.today.clone();
+        let year = session.year_now();
+        let proposed = crate::couverture::sync_target(tracks);
+        let h = Self::button_height(ui);
+
+        // --- La barre d'outils ----------------------------------------------
+        let mut fit = false;
+        let mut horizon: Option<f64> = None;
+        let mut to_today = false;
+        let mut print = false;
+        ui.horizontal_wrapped(|ui| {
+            if motif::button(ui, tr("couv_print"))
+                .on_hover_text(tr("couv_print_tooltip"))
+                .clicked()
+            {
+                print = true;
+            }
+            // La période, en un menu : quatre boutons faisaient à eux
+            // seuls une ligne de plus sur un volet court.
+            let periods: Vec<(f64, String)> = vec![
+                (0.0, tr("couv_fit").to_owned()),
+                (31.0, tr("couv_h_month").to_owned()),
+                (92.0, tr("couv_h_quarter").to_owned()),
+                (183.0, tr("couv_h_half").to_owned()),
+            ];
+            let w = Self::field_width(ui, periods.iter().map(|(_, l)| l.as_str()))
+                .max(Self::field_width(ui, [tr("couv_period")].into_iter()));
+            if let Some(days) = motif::menu(ui, "couv_period", w, tr("couv_period"), &periods).inner
+            {
+                if days == 0.0 {
+                    fit = true;
+                } else {
+                    horizon = Some(days);
+                }
+            }
+            if motif::button(ui, tr("couv_today")).clicked() {
+                to_today = true;
+            }
+            if motif::toggle(ui, tr("couv_sync"), session.couv_sync)
+                .on_hover_text(tr("couv_sync_tooltip"))
+                .clicked()
+            {
+                session.couv_sync = !session.couv_sync;
+            }
+            if session.couv_sync {
+                let hint = proposed
+                    .as_deref()
+                    .map(db::format_french_date)
+                    .unwrap_or_else(|| tr("couv_sync_hint").to_owned());
+                motif::field_sized(
+                    ui,
+                    egui::vec2(Self::field_width(ui, [hint.as_str()].into_iter()), h),
+                    egui::TextEdit::singleline(&mut session.couv_sync_date)
+                        .hint_text(motif::hint(hint.clone())),
+                )
+                .on_hover_text(tr("couv_sync_date_tooltip"));
+            }
+            if session.couv_pin.is_some() && motif::button(ui, tr("couv_unpin")).clicked() {
+                session.couv_pin = None;
+            }
+        });
+        let target: Option<String> = if session.couv_sync {
+            if session.couv_sync_date.trim().is_empty() {
+                proposed.clone()
+            } else {
+                db::parse_french_date(&session.couv_sync_date, year, db::YearHint::Future).ok()
+            }
+        } else {
+            None
+        };
+
+        // --- L'origine, les bornes, la fenêtre --------------------------------
+        let (origin, end) = crate::couverture::frame(tracks, &today, target.as_deref());
+        let off = |d: &str| crate::date::days_between(&origin, d).unwrap_or(0) as f64;
+        let end = end as f64 + 1.0;
+        let bounds = (-1.0, end + 2.0);
+        if session.couv_origin != origin {
+            session.couv_origin = origin.clone();
+            session.couv_view = None;
+        }
+        let whole = TimeView {
+            from: bounds.0,
+            to: bounds.1,
+        };
+        let mut view = session.couv_view.unwrap_or(whole).clamped(bounds);
+        let t0 = off(&today);
+        if fit {
+            view = whole.clamped(bounds);
+        }
+        if let Some(span) = horizon {
+            let from = t0 - span * 0.1;
+            view = TimeView {
+                from,
+                to: from + span,
+            }
+            .clamped(bounds);
+        }
+        if to_today {
+            let s = view.span();
+            view = TimeView {
+                from: t0 - s * 0.25,
+                to: t0 + s * 0.75,
+            }
+            .clamped(bounds);
+        }
+
+        // --- Le partage : l'échelle, puis la lecture du jour -------------------
+        let inner = ui.available_rect_before_wrap();
+        let line = Self::label_line(ui);
+        let lines = 1
+            + tracks.len()
+            + if target.is_some() {
+                1 + tracks.len()
+            } else {
+                0
+            };
+        // L'échelle d'abord : la lecture du jour cède sa hauteur avant
+        // que l'échelle ne perde ses rangées, et disparaît sous une ligne
+        // (la légende du pointeur au-dessus de l'échelle dit alors le jour).
+        let chart_floor = Self::row_height(ui) * 5.0;
+        let readout_h = (lines as f32 * line)
+            .min(inner.height() * 0.3)
+            .min((inner.height() - chart_floor).max(0.0));
+        let readout_h = if readout_h < line { 0.0 } else { readout_h };
+        // `split_rows` lit 0 comme « une part du reste » : sans lecture,
+        // l'échelle prend tout le rectangle au lieu de sa moitié.
+        let parts = if readout_h > 0.0 {
+            motif::split_rows(inner, &[0.0, readout_h], 6.0)
+        } else {
+            vec![inner, egui::Rect::NOTHING]
+        };
+
+        // --- Les rangées -----------------------------------------------------
+        let rows_data: Vec<(Vec<TimeSeg>, Vec<f64>, Vec<f64>)> = tracks
+            .iter()
+            .map(|t| {
+                let mut segs: Vec<TimeSeg> = t
+                    .segments
+                    .iter()
+                    .map(|s| {
+                        let (style, text) = match s.kind {
+                            SegKind::Covered | SegKind::Carried => {
+                                (TimeStyle::Solid, trf("couv_seg_days", s.days()))
+                            }
+                            SegKind::Gap => (TimeStyle::Alert, trf("couv_seg_gap", s.days())),
+                            SegKind::Overdue => (TimeStyle::Alert, trf("couv_seg_late", s.days())),
+                            SegKind::Planned => (TimeStyle::Light, String::new()),
+                            SegKind::Bridge => (TimeStyle::Dashed, String::new()),
+                        };
+                        TimeSeg {
+                            from: off(&s.from),
+                            to: off(&s.to) + 1.0,
+                            style,
+                            text,
+                        }
+                    })
+                    .collect();
+                if let Some(b) = target
+                    .as_deref()
+                    .and_then(|tg| crate::couverture::bridge(t, tg))
+                {
+                    segs.push(TimeSeg {
+                        from: off(&b.from),
+                        to: off(&b.to) + 1.0,
+                        style: TimeStyle::Dashed,
+                        text: trf("couv_seg_bridge", b.units),
+                    });
+                }
+                let ticks = if t.next_from.is_empty() {
+                    Vec::new()
+                } else {
+                    vec![off(&t.next_from)]
+                };
+                let dots = t.deliveries.iter().map(|d| off(d)).collect();
+                (segs, ticks, dots)
+            })
+            .collect();
+        // Les couleurs des rangées, à distance de celle des jours sans
+        // traitement : une rangée rouge se lirait comme une rupture.
+        let alert = motif::alert();
+        let far = |c: &egui::Color32| {
+            let d = |x: u8, y: u8| (f32::from(x) - f32::from(y)).powi(2);
+            (d(c.r(), alert.r()) + d(c.g(), alert.g()) + d(c.b(), alert.b())).sqrt() > 110.0
+        };
+        let mut palette: Vec<egui::Color32> =
+            motif::chart::series().into_iter().filter(far).collect();
+        if palette.is_empty() {
+            palette.push(motif::accent());
+        }
+        let rows: Vec<motif::chart::TimeRow> = tracks
+            .iter()
+            .zip(&rows_data)
+            .enumerate()
+            .map(|(i, (t, (segs, ticks, dots)))| motif::chart::TimeRow {
+                label: &t.label,
+                color: palette[i % palette.len()],
+                segs,
+                ticks,
+                dots,
+            })
+            .collect();
+
+        // --- Le calendrier, à la densité que la largeur permet ------------------
+        let labels: Vec<&str> = tracks.iter().map(|t| t.label.as_str()).collect();
+        let lay = motif::chart::timeline_layout(ui, parts[0], &labels);
+        let ppd = lay.px_per_day(&view);
+        let cal = crate::couverture::calendar(
+            &origin,
+            view.from.floor() as i64 - 1,
+            view.to.ceil() as i64 + 1,
+        );
+        let day_of = |o: i64| crate::date::add_days(&origin, o).unwrap_or_default();
+        let full_month = ppd * 30.0 >= chars_wide(ui, 16.0);
+        let top: Vec<(f64, String)> = cal
+            .months
+            .iter()
+            .map(|(o, ym)| (*o as f64, Self::couverture_month(ym, full_month)))
+            .collect();
+        let strong: Vec<f64> = cal
+            .months
+            .iter()
+            .filter(|(o, _)| day_of(*o).ends_with("-01"))
+            .map(|(o, _)| *o as f64)
+            .collect();
+        let mondays: Vec<f64> = if ppd >= 2.5 {
+            cal.mondays.iter().map(|o| *o as f64).collect()
+        } else {
+            Vec::new()
+        };
+        let shade: Vec<(f64, f64)> = if ppd >= 5.0 {
+            cal.saturdays
+                .iter()
+                .map(|o| (*o as f64, *o as f64 + 2.0))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let bottom: Vec<(f64, String)> = if ppd >= chars_wide(ui, 2.6) {
+            (view.from.floor() as i64..=view.to.ceil() as i64)
+                .map(|o| {
+                    let d = day_of(o);
+                    (
+                        o as f64 + 0.5,
+                        d.get(8..10)
+                            .unwrap_or("")
+                            .trim_start_matches('0')
+                            .to_owned(),
+                    )
+                })
+                .collect()
+        } else if ppd * 7.0 >= chars_wide(ui, 6.5) {
+            cal.mondays
+                .iter()
+                .map(|o| {
+                    (
+                        *o as f64,
+                        db::format_french_date(&day_of(*o))
+                            .chars()
+                            .take(5)
+                            .collect(),
+                    )
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let axis = motif::chart::TimeAxis {
+            top: &top,
+            bottom: &bottom,
+            strong: &strong,
+            lines: &mondays,
+            shade: &shade,
+        };
+        let pin_label = session
+            .couv_pin
+            .as_deref()
+            .map(Self::couverture_day)
+            .unwrap_or_default();
+        let mut marks: Vec<(f64, egui::Color32, &str)> =
+            vec![(t0 + 0.5, motif::accent(), tr("couv_mark_today"))];
+        if let Some(tg) = &target {
+            marks.push((off(tg), motif::warn(), tr("couv_mark_sync")));
+        }
+        if let Some(p) = &session.couv_pin {
+            marks.push((off(p) + 0.5, motif::text(), pin_label.as_str()));
+        }
+        let hit = motif::chart::timeline(
+            ui,
+            parts[0],
+            &rows,
+            &axis,
+            &marks,
+            &mut view,
+            bounds,
+            &|d| Self::couverture_day(&day_of(d.floor() as i64)),
+        );
+        session.couv_view = Some(view);
+        // Un clic épingle le jour ; un second clic sur le même le libère.
+        if let Some(d) = hit.clicked {
+            let day = day_of(d.floor() as i64);
+            session.couv_pin = if session.couv_pin.as_deref() == Some(day.as_str()) {
+                None
+            } else {
+                Some(day)
+            };
+        }
+        // Les flèches avancent le jour épinglé, tant que le pointeur est
+        // sur l'échelle et qu'aucun champ n'écoute le clavier.
+        if hit.day.is_some() && !ui.ctx().wants_keyboard_input() {
+            let none = egui::Modifiers::NONE;
+            let (left, right) = ui.input_mut(|i| {
+                (
+                    i.consume_key(none, egui::Key::ArrowLeft),
+                    i.consume_key(none, egui::Key::ArrowRight),
+                )
+            });
+            if left || right {
+                let base = session.couv_pin.clone().unwrap_or_else(|| today.clone());
+                session.couv_pin = crate::date::add_days(&base, if right { 1 } else { -1 });
+            }
+        }
+
+        // --- La lecture du jour ------------------------------------------------
+        let (day, why) = match (hit.day, &session.couv_pin) {
+            (Some(d), _) => (day_of(d.floor() as i64), ""),
+            (None, Some(p)) => (p.clone(), tr("couv_read_pinned")),
+            (None, None) => (today.clone(), tr("couv_read_today")),
+        };
+        let mut read: Vec<(String, bool)> = Vec::new();
+        let weekday = db::weekday_fr(&day).unwrap_or("");
+        read.push((
+            trn(
+                "couv_read_day",
+                &[&weekday, &db::format_french_date(&day), &why],
+            ),
+            true,
+        ));
+        for t in tracks {
+            let fr = |d: &str| db::format_french_date(d);
+            let text = match crate::couverture::at(t, &day) {
+                DayState::Before => trf("couv_read_before", &t.label),
+                DayState::Covered { day, of, in_hand } => trn(
+                    "couv_read_covered",
+                    &[&t.label, &day, &of, &Self::couverture_units(in_hand)],
+                ),
+                DayState::Gap { since } => trn("couv_read_gap", &[&t.label, &fr(&since)]),
+                DayState::Overdue { since } => trn("couv_read_overdue", &[&t.label, &fr(&since)]),
+                DayState::Planned => trf("couv_read_planned", &t.label),
+                DayState::After => trf("couv_read_after", &t.label),
+            };
+            read.push((text, false));
+        }
+        if let Some(tg) = &target {
+            read.push((trf("couv_sync_title", db::format_french_date(tg)), true));
+            for t in tracks {
+                let text = match crate::couverture::bridge(t, tg) {
+                    Some(b) => trn(
+                        "couv_sync_line",
+                        &[
+                            &t.label,
+                            &b.units,
+                            &b.boxes,
+                            &t.units_per_box,
+                            &db::format_french_date(&b.to),
+                        ],
+                    ),
+                    None => trf("couv_sync_none", &t.label),
+                };
+                read.push((text, false));
+            }
+        }
+        if readout_h <= 0.0 {
+            return print;
+        }
+        motif::inside(ui, parts[1], |ui| {
+            egui::ScrollArea::vertical()
+                .id_salt("couv_readout")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    for (text, strong) in &read {
+                        let rich = egui::RichText::new(text).size(motif::pt(ui, 11.0));
+                        ui.add(egui::Label::new(if *strong { rich.strong() } else { rich }).wrap());
+                    }
+                });
+        });
+        print
     }
 
     /// The insulins: what each one does over the day, drawn one on top
@@ -59254,7 +59874,7 @@ impl App {
             return;
         }
         if session.show_couverture {
-            Self::couverture_view(ui, session);
+            Self::couverture_view(ui, session, config);
             return;
         }
         if session.show_tables {

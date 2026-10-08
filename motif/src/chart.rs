@@ -461,91 +461,333 @@ pub fn hbars(
     hovered
 }
 
-/// A row of a [`spans`] timeline: a caption, periods as fractions of
-/// the window, and an optional tick.
-pub struct SpanRow<'a> {
-    pub label: &'a str,
-    /// `(from, to, filled)`: `to` is exclusive, both in `0.0..=1.0`. A
-    /// filled period is one that happened; a hollow one is planned.
-    pub spans: &'a [(f32, f32, bool)],
-    pub color: Color32,
-    /// A day to point at on the row — the next delivery, a deadline.
-    pub tick: Option<f32>,
+/// How a period of a [`timeline`] row is painted.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TimeStyle {
+    /// Something that happened: the row's colour, full.
+    Solid,
+    /// Something planned: a tint of the row's colour, outlined.
+    Light,
+    /// Something missing: the alert colour.
+    Alert,
+    /// A suggestion: a dashed outline in the row's colour.
+    Dashed,
 }
 
-/// Periods on one shared time axis — a Gantt chart, the shape « which
-/// box runs out first » wants. Rows take [`hbar_metrics`] heights and
-/// the caption column measures itself as in [`hbars`]; what does not
-/// fit is counted on the last row. `now` draws a vertical rule across
-/// every row, and `ticks` are axis captions written under the rows, in
-/// a band one caption tall that the caller leaves at the bottom of
-/// `rect`. Returns the hovered row.
-pub fn spans(
-    ui: &mut egui::Ui,
-    rect: egui::Rect,
-    rows: &[SpanRow],
-    now: Option<f32>,
-    ticks: &[(f32, String)],
-) -> Option<usize> {
-    if rows.is_empty() || rect.width() < 8.0 {
-        return None;
+/// A period on a [`timeline`] row, in days from the caller's origin;
+/// `to` is exclusive. `text` is written inside when it fits.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TimeSeg {
+    pub from: f64,
+    pub to: f64,
+    pub style: TimeStyle,
+    pub text: String,
+}
+
+/// A row of a [`timeline`]: caption, colour, periods, and two kinds of
+/// marks — `ticks` (a strong rule: a deadline) and `dots` (a small
+/// triangle on top: an event).
+pub struct TimeRow<'a> {
+    pub label: &'a str,
+    pub color: Color32,
+    pub segs: &'a [TimeSeg],
+    pub ticks: &'a [f64],
+    pub dots: &'a [f64],
+}
+
+/// The calendar the caller lays over the plot: captions above (months)
+/// and below (days or weeks), rules, and shaded bands (weekends).
+#[derive(Default)]
+pub struct TimeAxis<'a> {
+    pub top: &'a [(f64, String)],
+    pub bottom: &'a [(f64, String)],
+    pub strong: &'a [f64],
+    pub lines: &'a [f64],
+    pub shade: &'a [(f64, f64)],
+}
+
+/// The visible window, in days from the caller's origin. Kept by the
+/// caller between frames: the chart zooms and pans it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct TimeView {
+    pub from: f64,
+    pub to: f64,
+}
+
+impl TimeView {
+    pub fn span(&self) -> f64 {
+        (self.to - self.from).max(1e-6)
     }
-    let band = if ticks.is_empty() {
-        0.0
-    } else {
-        ui.text_style_height(&egui::TextStyle::Small) + 2.0
-    };
-    let body = egui::Rect::from_min_max(rect.min, egui::pos2(rect.right(), rect.bottom() - band));
-    let (row_h, size) = hbar_metrics(ui, body, rows.len());
-    let font = egui::FontId::proportional(size);
+
+    /// Keep the window readable and near the data: never narrower than a
+    /// week, never wider than twice the data, never more than half a
+    /// window away from it. A window narrower than its floor is widened
+    /// around its centre rather than shifted.
+    pub fn clamped(self, bounds: (f64, f64)) -> TimeView {
+        let data = (bounds.1 - bounds.0).max(7.0);
+        let span = self.span().clamp(7.0, (data * 2.0).max(14.0));
+        let centre = (self.from + self.to) / 2.0;
+        let mut from = centre - span / 2.0;
+        let lo = bounds.0 - span / 2.0;
+        let hi = bounds.1 + span / 2.0 - span;
+        // `lo <= hi` always: span >= 7 > 0 and bounds are ordered by the
+        // caller; `max` then `min` so an inverted pair cannot panic.
+        from = from.max(lo).min(hi.max(lo));
+        TimeView {
+            from,
+            to: from + span,
+        }
+    }
+
+    /// Zoom by `factor` (> 1 = closer) keeping the day `at` under the
+    /// pointer.
+    pub fn zoomed(self, factor: f64, at: f64) -> TimeView {
+        let f = if factor.is_finite() && factor > 0.0 {
+            factor
+        } else {
+            1.0
+        };
+        TimeView {
+            from: at - (at - self.from) / f,
+            to: at + (self.to - at) / f,
+        }
+    }
+}
+
+/// What the pointer did on a [`timeline`].
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct TimeHit {
+    pub row: Option<usize>,
+    /// The day under the pointer.
+    pub day: Option<f64>,
+    /// A plain click, and the day it fell on.
+    pub clicked: Option<f64>,
+    /// A double click: the view went back to `bounds`.
+    pub reset: bool,
+}
+
+/// The geometry of a [`timeline`], measured once and shared by whoever
+/// needs it before drawing (the caller picks its calendar density from
+/// `px_per_day`).
+#[derive(Clone, Copy, Debug)]
+pub struct TimeLayout {
+    pub plot: egui::Rect,
+    pub label_w: f32,
+    pub row_h: f32,
+    pub font: f32,
+    pub band: f32,
+    pub shown: usize,
+    pub hidden: usize,
+}
+
+impl TimeLayout {
+    pub fn px_per_day(&self, view: &TimeView) -> f32 {
+        self.plot.width() / view.span() as f32
+    }
+}
+
+pub fn timeline_layout(ui: &egui::Ui, rect: egui::Rect, labels: &[&str]) -> TimeLayout {
+    let band = ui.text_style_height(&egui::TextStyle::Small) + 3.0;
+    // Deux bandes au-dessus : les légendes des traits (aujourd'hui, le
+    // pointeur), puis les mois — sur une seule, elles se chevauchaient.
+    let body = egui::Rect::from_min_max(
+        egui::pos2(rect.left(), rect.top() + band * 2.0),
+        egui::pos2(rect.right(), (rect.bottom() - band).max(rect.top() + band)),
+    );
+    let (row_h, font) = hbar_metrics(ui, body, labels.len());
+    let face = egui::FontId::proportional(font);
     let text_w = |t: &str| {
         ui.fonts(|f| {
-            f.layout_no_wrap(t.to_owned(), font.clone(), crate::text())
+            f.layout_no_wrap(t.to_owned(), face.clone(), crate::text())
                 .size()
                 .x
         })
     };
-    let label_w = rows.iter().map(|r| text_w(r.label)).fold(0.0_f32, f32::max) + 8.0;
+    let label_w = labels.iter().map(|l| text_w(l)).fold(0.0_f32, f32::max) + 8.0;
     let label_w = label_w.clamp(
-        text_w("0000").min(rect.width() * 0.4),
-        (rect.width() * 0.4).max(1.0),
+        text_w("0000").min(rect.width() * 0.35),
+        (rect.width() * 0.35).max(1.0),
     );
-    let (shown, hidden) = hbar_fit(body.height(), row_h, rows.len());
-    let used_h = row_h * (shown + usize::from(hidden > 0)) as f32;
+    let (shown, hidden) = hbar_fit(body.height(), row_h, labels.len());
+    let rows_h = row_h * (shown + usize::from(hidden > 0)) as f32;
     let plot = egui::Rect::from_min_max(
         egui::pos2(rect.left() + label_w, body.top()),
-        egui::pos2(rect.right() - 4.0, body.top() + used_h),
+        egui::pos2(
+            (rect.right() - 4.0).max(rect.left() + label_w + 1.0),
+            body.top() + rows_h,
+        ),
     );
-    if plot.width() < 8.0 {
-        return None;
+    TimeLayout {
+        plot,
+        label_w,
+        row_h,
+        font,
+        band,
+        shown,
+        hidden,
     }
-    ui.painter().rect_filled(plot, 0.0, crate::trough());
-    bevel(ui.painter(), plot, false);
-    let inner = plot.shrink(3.0);
-    let x_at = |f: f32| inner.left() + inner.width() * f.clamp(0.0, 1.0);
-    for (f, _) in ticks {
-        let x = x_at(*f);
-        ui.painter().line_segment(
-            [egui::pos2(x, inner.top()), egui::pos2(x, inner.bottom())],
+}
+
+/// Periods on a calendar — a Gantt chart that can be read by the day.
+///
+/// The wheel zooms around the pointer (and Ctrl+wheel or a pinch),
+/// a drag pans, a double click returns to `bounds`; the window lives in
+/// `view` so it survives the frame. `marks` are full-height rules with a
+/// caption above the plot (today, a pinned day); the pointer draws a
+/// dashed rule captioned by `cursor_label`. Rows that do not fit are
+/// counted on the last line, as in [`hbars`].
+#[allow(clippy::too_many_arguments)]
+pub fn timeline(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    rows: &[TimeRow],
+    axis: &TimeAxis,
+    marks: &[(f64, Color32, &str)],
+    view: &mut TimeView,
+    bounds: (f64, f64),
+    cursor_label: &dyn Fn(f64) -> String,
+) -> TimeHit {
+    let mut hit = TimeHit::default();
+    let labels: Vec<&str> = rows.iter().map(|r| r.label).collect();
+    let lay = timeline_layout(ui, rect, &labels);
+    let plot = lay.plot;
+    if rows.is_empty() || plot.width() < 16.0 || plot.height() < 4.0 {
+        return hit;
+    }
+    // --- Gestures -------------------------------------------------------
+    let resp = ui.interact(
+        plot,
+        ui.id().with("motif_timeline"),
+        egui::Sense::click_and_drag(),
+    );
+    let day_at =
+        |x: f32, v: &TimeView| v.from + f64::from((x - plot.left()) / plot.width()) * v.span();
+    if let Some(p) = resp.hover_pos() {
+        let (scroll, pinch) = ui.input(|i| (i.smooth_scroll_delta.y, i.zoom_delta()));
+        let factor = f64::from(pinch) * f64::from(scroll * 0.003).exp();
+        if (factor - 1.0).abs() > 1e-4 {
+            let at = day_at(p.x, view);
+            *view = view.zoomed(factor, at).clamped(bounds);
+            ui.input_mut(|i| {
+                i.smooth_scroll_delta = Vec2::ZERO;
+                i.raw_scroll_delta = Vec2::ZERO;
+            });
+        }
+    }
+    if resp.dragged() {
+        let dx = f64::from(resp.drag_delta().x / plot.width()) * view.span();
+        *view = TimeView {
+            from: view.from - dx,
+            to: view.to - dx,
+        }
+        .clamped(bounds);
+    }
+    if resp.double_clicked() {
+        *view = TimeView {
+            from: bounds.0,
+            to: bounds.1.max(bounds.0 + 7.0),
+        }
+        .clamped(bounds);
+        hit.reset = true;
+    } else if resp.clicked() {
+        hit.clicked = resp.interact_pointer_pos().map(|p| day_at(p.x, view));
+    }
+    let v = *view;
+    let x_of = |d: f64| plot.left() + ((d - v.from) / v.span()) as f32 * plot.width();
+    let painter = ui.painter();
+    let clip = painter.with_clip_rect(plot);
+    let full = egui::Rect::from_min_max(
+        egui::pos2(plot.left(), rect.top()),
+        egui::pos2(plot.right(), plot.bottom() + lay.band),
+    );
+    let small = egui::TextStyle::Small.resolve(ui.style());
+
+    // --- The trough and its calendar -------------------------------------
+    painter.rect_filled(plot, 0.0, crate::trough());
+    for (from, to) in axis.shade {
+        let r = egui::Rect::from_min_max(
+            egui::pos2(x_of(*from), plot.top()),
+            egui::pos2(x_of(*to), plot.bottom()),
+        );
+        clip.rect_filled(r, 0.0, veil());
+    }
+    for d in axis.lines {
+        let x = x_of(*d);
+        clip.line_segment(
+            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
             Stroke::new(1.0_f32, grid_color()),
         );
     }
-    let pointer = ui
-        .interact(rect, ui.id().with("motif_spans"), egui::Sense::hover())
-        .hover_pos();
-    let mut hovered = None;
-    for (i, r) in rows.iter().take(shown).enumerate() {
-        let top = body.top() + i as f32 * row_h;
-        let line =
-            egui::Rect::from_min_size(egui::pos2(rect.left(), top), Vec2::new(rect.width(), row_h));
-        if pointer.is_some_and(|p| line.contains(p)) {
-            hovered = Some(i);
-            ui.painter().rect_filled(line, 0.0, veil());
+    for d in axis.strong {
+        let x = x_of(*d);
+        clip.line_segment(
+            [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+            Stroke::new(1.0_f32, axis_color()),
+        );
+    }
+    bevel(painter, plot, false);
+    // Captions above: a month whose first day is off to the left keeps
+    // its name at the left edge until the next one pushes it out.
+    let top_clip = painter.with_clip_rect(egui::Rect::from_min_max(
+        egui::pos2(plot.left(), plot.top() - lay.band),
+        egui::pos2(plot.right(), plot.top()),
+    ));
+    for (k, (d, text)) in axis.top.iter().enumerate() {
+        let next = axis.top.get(k + 1).map_or(f32::INFINITY, |(n, _)| x_of(*n));
+        let x = x_of(*d).max(plot.left()) + 2.0;
+        let w = ui.fonts(|f| {
+            f.layout_no_wrap(text.clone(), small.clone(), crate::text())
+                .size()
+                .x
+        });
+        if x + w + 4.0 <= next || k + 1 == axis.top.len() {
+            top_clip.text(
+                egui::pos2(x, plot.top() - 1.0),
+                egui::Align2::LEFT_BOTTOM,
+                text,
+                small.clone(),
+                crate::text_dim(),
+            );
         }
-        ui.painter()
+    }
+    let bottom_clip = painter.with_clip_rect(egui::Rect::from_min_max(
+        egui::pos2(plot.left() - lay.label_w, plot.bottom()),
+        egui::pos2(rect.right(), plot.bottom() + lay.band),
+    ));
+    for (d, text) in axis.bottom {
+        let x = x_of(*d);
+        if x >= plot.left() - 1.0 && x <= plot.right() + 1.0 {
+            bottom_clip.text(
+                egui::pos2(x, plot.bottom() + 1.0),
+                egui::Align2::CENTER_TOP,
+                text,
+                small.clone(),
+                crate::text_dim(),
+            );
+        }
+    }
+
+    // --- The rows ---------------------------------------------------------
+    let font = egui::FontId::proportional(lay.font);
+    let pointer = resp.hover_pos().or_else(|| ui.ctx().pointer_hover_pos());
+    for (i, r) in rows.iter().take(lay.shown).enumerate() {
+        let top = plot.top() + i as f32 * lay.row_h;
+        let line = egui::Rect::from_min_size(
+            egui::pos2(rect.left(), top),
+            Vec2::new(plot.right() - rect.left(), lay.row_h),
+        );
+        if pointer.is_some_and(|p| line.contains(p)) {
+            hit.row = Some(i);
+            painter.rect_filled(
+                egui::Rect::from_min_max(line.min, egui::pos2(plot.left(), line.bottom())),
+                0.0,
+                crate::bg_hover(),
+            );
+        }
+        painter
             .with_clip_rect(egui::Rect::from_min_size(
                 egui::pos2(rect.left(), top),
-                Vec2::new(label_w - 4.0, row_h),
+                Vec2::new(lay.label_w - 4.0, lay.row_h),
             ))
             .text(
                 egui::pos2(rect.left() + 2.0, line.center().y),
@@ -554,62 +796,150 @@ pub fn spans(
                 font.clone(),
                 crate::text(),
             );
-        let pad = (row_h * 0.22).max(2.0);
-        for (from, to, filled) in r.spans {
+        let pad = (lay.row_h * 0.18).max(2.0);
+        for s in r.segs {
+            let x0 = x_of(s.from);
+            let x1 = x_of(s.to).max(x0 + 1.0);
+            if x1 < plot.left() || x0 > plot.right() {
+                continue;
+            }
             let seg = egui::Rect::from_min_max(
-                egui::pos2(x_at(*from), top + pad),
-                egui::pos2(x_at(*to).max(x_at(*from) + 1.0), top + row_h - pad),
+                egui::pos2(x0, top + pad),
+                egui::pos2(x1, top + lay.row_h - pad),
             );
-            if *filled {
-                ui.painter().rect_filled(seg, 0.0, r.color);
-            } else {
-                // Une teinte et un contour : un contour seul, dans une
-                // couleur proche du creux, ne se voyait pas.
-                ui.painter()
-                    .rect_filled(seg, 0.0, r.color.gamma_multiply(0.35));
-                ui.painter().rect_stroke(
-                    seg.shrink(0.5),
-                    0.0,
-                    Stroke::new(1.5_f32, crate::text_dim()),
+            let ink = match s.style {
+                TimeStyle::Solid => {
+                    clip.rect_filled(seg, 0.0, r.color);
+                    crate::on_fill(r.color)
+                }
+                TimeStyle::Light => {
+                    let tint = r.color.gamma_multiply(0.35);
+                    clip.rect_filled(seg, 0.0, tint);
+                    clip.rect_stroke(
+                        seg.shrink(0.5),
+                        0.0,
+                        Stroke::new(1.0_f32, crate::text_dim()),
+                    );
+                    crate::text()
+                }
+                TimeStyle::Alert => {
+                    clip.rect_filled(seg, 0.0, crate::alert());
+                    crate::on_fill(crate::alert())
+                }
+                TimeStyle::Dashed => {
+                    let s = seg.shrink(1.0);
+                    let pts = [
+                        s.left_top(),
+                        s.right_top(),
+                        s.right_bottom(),
+                        s.left_bottom(),
+                        s.left_top(),
+                    ];
+                    clip.extend(egui::Shape::dashed_line(
+                        &pts,
+                        Stroke::new(1.5_f32, r.color),
+                        4.0,
+                        3.0,
+                    ));
+                    crate::text()
+                }
+            };
+            if !s.text.is_empty() {
+                let galley = ui.fonts(|f| f.layout_no_wrap(s.text.clone(), small.clone(), ink));
+                let visible = egui::Rect::from_min_max(
+                    egui::pos2(seg.left().max(plot.left()), seg.top()),
+                    egui::pos2(seg.right().min(plot.right()), seg.bottom()),
                 );
+                if galley.size().x + 6.0 <= visible.width() {
+                    clip.galley(
+                        egui::pos2(
+                            visible.center().x - galley.size().x / 2.0,
+                            visible.center().y - galley.size().y / 2.0,
+                        ),
+                        galley,
+                        ink,
+                    );
+                }
             }
         }
-        if let Some(t) = r.tick {
-            let x = x_at(t);
-            ui.painter().line_segment(
-                [egui::pos2(x, top + 1.0), egui::pos2(x, top + row_h - 1.0)],
+        for d in r.ticks {
+            let x = x_of(*d);
+            clip.line_segment(
+                [
+                    egui::pos2(x, top + 1.0),
+                    egui::pos2(x, top + lay.row_h - 1.0),
+                ],
                 Stroke::new(2.0_f32, crate::text()),
             );
         }
+        for d in r.dots {
+            let x = x_of(*d);
+            let s = (lay.row_h * 0.18).max(3.0);
+            clip.add(egui::Shape::convex_polygon(
+                vec![
+                    egui::pos2(x - s, top + 1.0),
+                    egui::pos2(x + s, top + 1.0),
+                    egui::pos2(x, top + 1.0 + s * 1.4),
+                ],
+                crate::text(),
+                Stroke::NONE,
+            ));
+        }
     }
-    if hidden > 0 {
-        let y = body.top() + shown as f32 * row_h + row_h * 0.5;
-        ui.painter().text(
+    if lay.hidden > 0 {
+        let y = plot.top() + lay.shown as f32 * lay.row_h + lay.row_h * 0.5;
+        painter.text(
             egui::pos2(rect.left() + 2.0, y),
             egui::Align2::LEFT_CENTER,
-            format!("… +{hidden}"),
+            format!("… +{}", lay.hidden),
             font.clone(),
             crate::text_dim(),
         );
     }
-    if let Some(n) = now {
-        let x = x_at(n);
-        ui.painter().line_segment(
+
+    // --- Rules across the whole height, then their captions ---------------
+    let rule_clip = painter.with_clip_rect(full);
+    let caption = |x: f32, text: &str, color: Color32| {
+        if text.is_empty() {
+            return;
+        }
+        let galley = ui.fonts(|f| f.layout_no_wrap(text.to_owned(), small.clone(), color));
+        let w = galley.size().x + 6.0;
+        let left = (x - w / 2.0).clamp(plot.left(), (plot.right() - w).max(plot.left()));
+        let r =
+            egui::Rect::from_min_size(egui::pos2(left, rect.top()), Vec2::new(w, lay.band - 1.0));
+        rule_clip.rect_filled(r, 0.0, crate::bg());
+        rule_clip.rect_stroke(r, 0.0, Stroke::new(1.0_f32, color));
+        rule_clip.galley(
+            egui::pos2(left + 3.0, r.center().y - galley.size().y / 2.0),
+            galley,
+            color,
+        );
+    };
+    for (d, color, text) in marks {
+        let x = x_of(*d);
+        if x < plot.left() || x > plot.right() {
+            continue;
+        }
+        rule_clip.line_segment(
             [egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
-            Stroke::new(1.5_f32, crate::accent()),
+            Stroke::new(1.5_f32, *color),
         );
+        caption(x, text, *color);
     }
-    let small = egui::TextStyle::Small.resolve(ui.style());
-    for (f, label) in ticks {
-        ui.painter().text(
-            egui::pos2(x_at(*f), plot.bottom() + 1.0),
-            egui::Align2::CENTER_TOP,
-            label,
-            small.clone(),
-            crate::text_dim(),
-        );
+    if let Some(p) = resp.hover_pos() {
+        let d = day_at(p.x, &v);
+        hit.day = Some(d);
+        let x = x_of(d.floor() + 0.5);
+        rule_clip.extend(egui::Shape::dashed_line(
+            &[egui::pos2(x, plot.top()), egui::pos2(x, plot.bottom())],
+            Stroke::new(1.0_f32, crate::text_dim()),
+            3.0,
+            3.0,
+        ));
+        caption(x, &cursor_label(d), crate::text());
     }
-    hovered
+    hit
 }
 
 /// A single 100 %-stacked bar: composition at a glance, in one row of
@@ -1055,6 +1385,133 @@ fn legend_impl(
 #[cfg(test)]
 mod tests {
     use super::nice_max;
+
+    /// La fenêtre d'une échelle de temps reste lisible et près des
+    /// données, et le zoom garde le jour sous le pointeur.
+    #[test]
+    fn a_time_window_stays_readable_and_near_its_data() {
+        use super::TimeView;
+        let bounds = (0.0, 90.0);
+        // Trop étroite : élargie à une semaine autour de son centre.
+        let v = TimeView {
+            from: 10.0,
+            to: 11.0,
+        }
+        .clamped(bounds);
+        assert!(
+            (v.span() - 7.0).abs() < 1e-9 && (v.from - 7.0).abs() < 1e-9,
+            "{v:?}"
+        );
+        // Trop large : deux fois les données au plus.
+        assert!(
+            (TimeView {
+                from: -500.0,
+                to: 900.0
+            }
+            .clamped(bounds)
+            .span()
+                - 180.0)
+                .abs()
+                < 1e-9
+        );
+        // Partie loin à droite : ramenée à une demi-fenêtre des données.
+        let far = TimeView {
+            from: 400.0,
+            to: 430.0,
+        }
+        .clamped(bounds);
+        assert!(far.from <= 90.0 && far.to > 90.0, "{far:?}");
+        // Le zoom garde le jour 30 sous le pointeur.
+        let z = TimeView {
+            from: 0.0,
+            to: 90.0,
+        }
+        .zoomed(3.0, 30.0);
+        assert!((z.from - 20.0).abs() < 1e-9 && (z.to - 50.0).abs() < 1e-9);
+        // Un facteur absurde ne casse rien.
+        assert_eq!(
+            TimeView { from: 0.0, to: 9.0 }.zoomed(f64::NAN, 3.0),
+            TimeView { from: 0.0, to: 9.0 }
+        );
+    }
+
+    /// L'échelle se dessine sans écran, à toutes les échelles de texte,
+    /// et ses rangées tiennent dans le rectangle donné.
+    #[test]
+    fn a_timeline_draws_headless_inside_its_rectangle() {
+        use super::{egui, TimeAxis, TimeRow, TimeSeg, TimeStyle, TimeView};
+        for scale in [1.0_f32, 1.25, 1.6] {
+            let ctx = egui::Context::default();
+            crate::apply_scale(&ctx, scale, crate::Density::Comfortable);
+            let _ = ctx.run(Default::default(), |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    let segs = [
+                        TimeSeg {
+                            from: 0.0,
+                            to: 14.0,
+                            style: TimeStyle::Solid,
+                            text: "14 j".into(),
+                        },
+                        TimeSeg {
+                            from: 14.0,
+                            to: 20.0,
+                            style: TimeStyle::Alert,
+                            text: String::new(),
+                        },
+                        TimeSeg {
+                            from: 20.0,
+                            to: 45.0,
+                            style: TimeStyle::Light,
+                            text: String::new(),
+                        },
+                        TimeSeg {
+                            from: 45.0,
+                            to: 60.0,
+                            style: TimeStyle::Dashed,
+                            text: String::new(),
+                        },
+                    ];
+                    let rows: Vec<TimeRow> = (0..12)
+                        .map(|_| TimeRow {
+                            label: "Metformine 500 mg",
+                            color: egui::Color32::BLUE,
+                            segs: &segs,
+                            ticks: &[14.0],
+                            dots: &[0.0],
+                        })
+                        .collect();
+                    let rect =
+                        egui::Rect::from_min_size(egui::pos2(10.0, 10.0), egui::vec2(500.0, 160.0));
+                    let lay = super::timeline_layout(ui, rect, &["Metformine 500 mg"; 12]);
+                    assert!(
+                        lay.plot.bottom() + lay.band <= rect.bottom() + 0.5,
+                        "{lay:?}"
+                    );
+                    assert!(lay.hidden > 0);
+                    let mut view = TimeView {
+                        from: 0.0,
+                        to: 60.0,
+                    };
+                    let top = [(0.0, "octobre 2026".to_owned())];
+                    let axis = TimeAxis {
+                        top: &top,
+                        ..Default::default()
+                    };
+                    let hit = super::timeline(
+                        ui,
+                        rect,
+                        &rows,
+                        &axis,
+                        &[(3.0, egui::Color32::RED, "auj.")],
+                        &mut view,
+                        (0.0, 60.0),
+                        &|d| format!("{d:.0}"),
+                    );
+                    assert_eq!(hit.day, None);
+                });
+            });
+        }
+    }
 
     /// **Ce qu'une légende annonce est ce que son dessin prend.**
     ///

@@ -8,10 +8,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Couverture des délivrances : une ligne par boîte (« mirtazapine 15 (28)
-  1-0-1 ») ou les traitements du dossier ouvert ; jours couverts,
-  délivrance suivante, délivrances restantes sur la durée prescrite, et
-  toutes les boîtes sur une même échelle de temps.
+- Couverture des délivrances : une ligne par délivrance (« mirtazapine 15
+  (28) 1-0-1 ») ou les traitements du dossier ouvert. Échelle de temps
+  avec calendrier (mois, lundis, week-ends), zoom à la molette, glisser,
+  jour pointé ou épinglé et sa lecture (rang du jour, unités en main) ;
+  plusieurs délivrances d'un même médicament sur une rangée, avec
+  report d'une délivrance anticipée, jours sans traitement et boîte en
+  retard ; délivrances restantes sur la durée prescrite ; alignement des
+  renouvellements sur un même jour (quantité en unités et en boîtes) ;
+  feuille imprimable.
 
 ### Fixed
 - Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
