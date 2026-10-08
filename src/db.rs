@@ -44229,9 +44229,12 @@ impl Db {
     }
 
     /// Mettre à jour le texte livré des fiches **que l'équipe n'a jamais
-    /// touché** : un champ resté tel qu'une version précédente l'avait
-    /// semé reçoit le texte de cette version — une monographie relue
-    /// contre son RCP, une rédaction reprise.
+    /// touché** : un champ qui porte encore, mot pour mot, le texte livré
+    /// par la 0.366.0 (son empreinte est dans `shipped::DETAILS_REWORDED`)
+    /// reçoit le texte de cette version — une monographie relue contre
+    /// son RCP, une rédaction reprise. Un champ au texte inconnu n'est
+    /// jamais remplacé : il peut avoir été écrit par l'équipe avant que
+    /// les verrous existent (0.56.1).
     ///
     /// Ce qui l'interdit, champ par champ : un verrou (`drug_field_locks`,
     /// écrit à chaque modification par l'équipe, y compris un champ vidé
@@ -44306,6 +44309,11 @@ impl Db {
         };
         let shipped: std::collections::HashMap<&str, &StarterDetail> =
             STARTER_DETAILS.iter().map(|d| (d.name, d)).collect();
+        let reworded: std::collections::HashMap<(&str, &str), u64> =
+            crate::shipped::DETAILS_REWORDED
+                .iter()
+                .map(|(n, c, h)| ((*n, *c), *h))
+                .collect();
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let mut changed = 0;
         for (id, name, values) in &cards {
@@ -44317,6 +44325,11 @@ impl Db {
                 let new = get(d);
                 let old = values[i].as_str();
                 if new.is_empty() || old.is_empty() || old == new {
+                    continue;
+                }
+                if reworded.get(&(name.as_str(), *column))
+                    != Some(&crate::shipped::fingerprint(old))
+                {
                     continue;
                 }
                 if locks.contains(&(*id, (*column).to_owned()))
@@ -61033,44 +61046,42 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let db = Db::open(&dir.join("t.db"), "pw").unwrap();
         db.seed_drugs_if_empty().unwrap();
-        let d = STARTER_DETAILS
-            .iter()
-            .find(|d| !d.iup.is_empty() && !d.monitoring.is_empty())
-            .unwrap();
-        // Une ancienne version : deux champs semés avec un autre texte.
+        let name = "Eliquis";
+        let d = STARTER_DETAILS.iter().find(|d| d.name == name).unwrap();
+        // Une base semée par la 0.366.0 : l'ancien texte livré, et un
+        // texte inconnu, qui peut être de l'équipe d'avant les verrous.
+        let shipped_before = "Ce médicament empêche votre sang de faire des caillots. Il ne se sent pas, il ne soulage rien, et c'est pour cela qu'on l'oublie ou qu'on l'arrête — alors qu'il protège d'un accident vasculaire cérébral ou d'une embolie. Deux prises par jour, matin et soir à heure fixe, avec ou sans aliments. En cas d'oubli, prenez le comprimé dès que vous y pensez le jour même, puis reprenez le rythme habituel : jamais deux comprimés à la fois pour rattraper. Si vous avalez difficilement, le comprimé peut être écrasé et dispersé dans de l'eau ou du jus de pomme, à boire aussitôt. N'arrêtez jamais le traitement de votre propre initiative, même quelques jours et même pour une petite intervention : la protection disparaît en un à deux jours. C'est le médecin qui décide d'une éventuelle pause, et lui seul. Prévenez tout médecin, dentiste, infirmier, kinésithérapeute ou chirurgien que vous prenez un anticoagulant, et gardez sur vous la carte qui le mentionne. N'achetez ni aspirine ni anti-inflammatoire sans demander : ils augmentent le risque de saignement. Pas de millepertuis, qui rend le traitement inefficace. Signalez sans attendre un saignement qui ne s'arrête pas, des selles noires, des urines rouges, des hématomes inhabituels, une fatigue ou un essoufflement nouveaux. Après une chute avec choc à la tête, consultez même si vous vous sentez bien : le saignement peut apparaître plusieurs heures après.";
         db.conn
             .execute(
-                "UPDATE drugs SET iup = 'ancien texte', monitoring = 'ancienne surveillance' WHERE name = ?1",
-                [d.name],
+                "UPDATE drugs SET iup = ?1, monitoring = 'texte inconnu' WHERE name = ?2",
+                (shipped_before, name),
             )
             .unwrap();
-        // L'équipe réécrit la surveillance : verrou posé par la mise à jour.
-        let card = db
-            .drugs()
-            .unwrap()
-            .into_iter()
-            .find(|x| x.name == d.name)
-            .unwrap();
-        let mut mine = card.clone();
-        mine.monitoring = "surveillance de l'officine".to_owned();
-        assert!(db.update_drug(&mine, &card).unwrap());
-        let n = db.refresh_starter_details().unwrap();
-        assert!(n >= 1);
+        assert!(db.refresh_starter_details().unwrap() >= 1);
         let after = db
             .drugs()
             .unwrap()
             .into_iter()
-            .find(|x| x.name == d.name)
+            .find(|x| x.name == name)
             .unwrap();
         assert_eq!(
             after.iup, d.iup,
-            "champ jamais touché : texte de cette version"
+            "ancien texte livré : texte de cette version"
         );
         assert_eq!(
-            after.monitoring, "surveillance de l'officine",
-            "champ de l'équipe : intact"
+            after.monitoring, "texte inconnu",
+            "texte inconnu : jamais remplacé"
         );
-        // Une seconde passe n'a plus rien à faire.
+        // Un champ que l'équipe réécrit ensuite est verrouillé et reste.
+        let mut mine = after.clone();
+        mine.iup = "conseil de l'officine".to_owned();
+        assert!(db.update_drug(&mine, &after).unwrap());
+        db.conn
+            .execute(
+                "UPDATE drugs SET iup = ?1 WHERE name = ?2",
+                (shipped_before, name),
+            )
+            .unwrap();
         assert_eq!(db.refresh_starter_details().unwrap(), 0);
         let _ = std::fs::remove_dir_all(&dir);
     }

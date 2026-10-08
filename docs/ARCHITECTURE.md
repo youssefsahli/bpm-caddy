@@ -2764,7 +2764,9 @@ name>` follows that node's lineage, as a click would.
   et les compléments (`cno_products`) sont du contenu de l'officine (flux
   Fiches). Aucune grille de tailles n'est livrée.
 - **Le texte livré suit la version sans toucher celui de l'équipe** :
-  `refresh_starter_details` (monographies : ni verrou ni version),
+  `refresh_starter_details` (monographies : ni verrou ni version, et
+  l'empreinte du texte livré par la 0.366.0 — un texte inconnu peut être
+  de l'équipe d'avant les verrous),
   `refresh_reworded_fiches` (dispositifs, préparations, posologies,
   conduites, étapes de protocole : seulement un champ dont l'empreinte
   FNV-1a est celle de l'ancien texte livré, `src/shipped.rs`) et

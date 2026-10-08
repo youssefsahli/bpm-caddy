@@ -188,6 +188,12 @@ pub fn parse_expiry(input: &str, current_year: u32) -> Result<String, String> {
         .filter(|p| !p.is_empty())
         .collect();
     if parts.len() == 2 && parts.iter().all(|p| p.chars().all(|c| c.is_ascii_digit())) {
+        // « 2027-06 » : l'année d'abord.
+        let parts = if parts[0].len() == 4 && parts[1].len() <= 2 {
+            vec![parts[1], parts[0]]
+        } else {
+            parts
+        };
         let m: i64 = parts[0].parse().map_err(|_| expiry_error())?;
         let y: i64 = match parts[1].len() {
             2 => 2000 + parts[1].parse::<i64>().map_err(|_| expiry_error())?,

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.376.0] - 2026-10-08
+
+### Fixed
+- « Synchroniser le contenu de référence » ne remplace plus un champ de
+  monographie que s'il porte encore le texte livré par la 0.366.0 : un
+  texte inconnu, qui peut avoir été écrit par l'équipe avant les verrous
+  de champ, reste tel quel.
+- Compression : la date de la prochaine prise en charge tient compte des
+  fins de mois et des délivrances au-delà du plafond.
+- Nutrition orale : les teneurs d'un produit acceptent une décimale à la
+  saisie ; le plan enregistré au dossier se relit.
+- Campagne : une péremption écrite « 2027-06 » est lue.
+- Carnet : un vaccin dont le libellé a été retapé ne garde pas le code du
+  vaccin choisi avant pour les remarques.
+
 ## [0.375.0] - 2026-10-08
 
 ### Changed

@@ -500,6 +500,23 @@ pub struct Renewal {
     pub next: Option<String>,
 }
 
+/// Les paires accordées le jour `day`, sans chercher la date suivante.
+fn renewal_allowed(history: &[Delivery], class: &str, size: &str, day: &str) -> u32 {
+    let six = crate::date::add_months(day, -6).unwrap_or_default();
+    let twelve = crate::date::add_months(day, -12).unwrap_or_default();
+    let within = |from: &str| -> u32 {
+        history
+            .iter()
+            .filter(|d| d.class == class && d.size == size && d.on.as_str() <= day)
+            .filter(|d| d.on.as_str() > from)
+            .map(|d| d.pairs)
+            .sum()
+    };
+    PAIRS_PER_HALF_YEAR
+        .saturating_sub(within(&six))
+        .min(PAIRS_PER_YEAR.saturating_sub(within(&twelve)))
+}
+
 /// Lire les délivrances contre la règle : 2 paires par 6 mois, 4 par an,
 /// pour une même classe et une même taille.
 pub fn renewal(history: &[Delivery], class: &str, size: &str, today: &str) -> Renewal {
@@ -522,30 +539,27 @@ pub fn renewal(history: &[Delivery], class: &str, size: &str, today: &str) -> Re
     let allowed = PAIRS_PER_HALF_YEAR
         .saturating_sub(half_year)
         .min(PAIRS_PER_YEAR.saturating_sub(year));
-    // Le jour où une paire se libère : celui où la plus ancienne des
-    // délivrances qui bloquent sort de sa fenêtre.
+    // Le jour où une paire se libère : le premier jour, après
+    // aujourd'hui, où la règle en accorde une. Les candidats sont les
+    // sorties de fenêtre de chaque délivrance — et les quelques jours qui
+    // suivent, parce qu'un ajout de mois en fin de mois (31 août plus six
+    // mois) ne retombe pas exactement là où la fenêtre se referme. Lire la
+    // règle à chaque candidat traite aussi le cas où la plus ancienne
+    // sortie ne libère pas assez de paires.
     let next = (allowed == 0)
         .then(|| {
-            let mut candidates: Vec<String> = Vec::new();
-            if half_year >= PAIRS_PER_HALF_YEAR {
-                if let Some(d) = same
-                    .iter()
-                    .filter(|d| d.on.as_str() > six.as_str())
-                    .min_by(|a, b| a.on.cmp(&b.on))
-                {
-                    candidates.extend(crate::date::add_months(&d.on, 6));
-                }
-            }
-            if year >= PAIRS_PER_YEAR {
-                if let Some(d) = same
-                    .iter()
-                    .filter(|d| d.on.as_str() > twelve.as_str())
-                    .min_by(|a, b| a.on.cmp(&b.on))
-                {
-                    candidates.extend(crate::date::add_months(&d.on, 12));
-                }
-            }
-            candidates.into_iter().max()
+            let mut candidates: Vec<String> = same
+                .iter()
+                .flat_map(|d| [6, 12].map(|m| crate::date::add_months(&d.on, m)))
+                .flatten()
+                .flat_map(|c| (0..4).filter_map(move |k| crate::date::add_days(&c, k)))
+                .filter(|c| c.as_str() > today)
+                .collect();
+            candidates.sort();
+            candidates.dedup();
+            candidates
+                .into_iter()
+                .find(|c| renewal_allowed(history, class, size, c) > 0)
         })
         .flatten();
     Renewal {
@@ -682,6 +696,18 @@ mod tests {
         assert_eq!(r.next.as_deref(), Some("2026-11-01"));
         // Un changement de taille ouvre un nouveau droit.
         assert_eq!(renewal(&h, "II", "3", today).allowed, 2);
+        // Fin de mois : deux paires le 31 août ne libèrent rien le
+        // 28 février, et la date annoncée est celle où la règle accorde
+        // vraiment une paire.
+        let r = renewal(&[d("2026-08-31", 2)], "II", "2", "2026-10-08");
+        let next = r.next.unwrap();
+        assert!(next.as_str() > "2027-02-28", "{next}");
+        assert!(renewal(&[d("2026-08-31", 2)], "II", "2", &next).allowed > 0);
+        // Plus de paires que le plafond : la plus ancienne sortie ne
+        // suffit pas.
+        let over = [d("2026-06-01", 1), d("2026-07-01", 2)];
+        let r = renewal(&over, "II", "2", "2026-10-08");
+        assert_eq!(r.next.as_deref(), Some("2027-01-01"));
     }
 
     #[test]

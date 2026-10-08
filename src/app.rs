@@ -4054,6 +4054,10 @@ struct ConseilState {
     plan: Vec<(i64, f64)>,
     product_edit: Option<crate::nutrition::Product>,
     product_base: Option<crate::nutrition::Product>,
+    /// Ce qui est tapé dans les trois champs numériques du produit
+    /// (contenu, kcal, protéines) : relu à l'enregistrement, et non à
+    /// chaque image — sinon « 8, » redevenait « 8 » avant la décimale.
+    product_numbers: [String; 3],
     // --- Protections
     prot_kind: String,
     prot_code: String,
@@ -9977,6 +9981,18 @@ impl Session {
         if new.code.trim().is_empty() && new.label.trim().is_empty() {
             return Vec::new();
         }
+        // Le code n'est celui du vaccin que tant que le libellé est celui
+        // du catalogue : un libellé retapé après le choix (« ROR » à la
+        // place de « Grippe ») ne garde pas le code d'avant.
+        let code = if self
+            .vacc_catalogue
+            .iter()
+            .any(|v| v.code == new.code && v.label.eq_ignore_ascii_case(new.label.trim()))
+        {
+            new.code.trim()
+        } else {
+            ""
+        };
         let given = if self.vacc_new_date.trim().is_empty() {
             self.today.clone()
         } else {
@@ -9992,7 +10008,7 @@ impl Session {
             &p.birth_date,
             &self.today,
             &p.pregnancy_ddr,
-            new.code.trim(),
+            code,
             &new.label,
             &given,
             &carnet,
@@ -52251,6 +52267,11 @@ impl App {
         }
     }
 
+    /// Les trois nombres d'un produit, écrits à la française pour l'édition.
+    fn product_number_texts(p: &crate::nutrition::Product) -> [String; 3] {
+        [p.portion, p.kcal, p.protein].map(|v| format!("{v}").replace('.', ","))
+    }
+
     /// Le texte d'une mesure de compression tapée dans le formulaire.
     fn conseil_measure_key(point: &str, side: crate::compression::Side) -> String {
         match side {
@@ -53100,9 +53121,7 @@ impl App {
                     });
                     if let Some(form) = state.product_edit.as_mut() {
                         let w = ui.available_width().min(chars_wide(ui, 60.0));
-                        let mut portion = format!("{}", form.portion);
-                        let mut kcal = format!("{}", form.kcal);
-                        let mut protein = format!("{}", form.protein);
+                        let [portion, kcal, protein] = &mut state.product_numbers;
                         egui::Grid::new("conseil_product_form")
                             .num_columns(2)
                             .spacing([10.0, 4.0])
@@ -53111,10 +53130,10 @@ impl App {
                                     (tr("conseil_product_name"), &mut form.name),
                                     (tr("conseil_product_maker"), &mut form.maker),
                                     (tr("conseil_product_form"), &mut form.form),
-                                    (tr("conseil_product_portion"), &mut portion),
+                                    (tr("conseil_product_portion"), portion),
                                     (tr("conseil_product_unit"), &mut form.unit),
-                                    (tr("conseil_product_kcal"), &mut kcal),
-                                    (tr("conseil_product_protein"), &mut protein),
+                                    (tr("conseil_product_kcal"), kcal),
+                                    (tr("conseil_product_protein"), protein),
                                     (tr("conseil_product_features"), &mut form.features),
                                     (tr("conseil_product_caution"), &mut form.caution),
                                     (tr("tables_sources"), &mut form.source),
@@ -53124,11 +53143,6 @@ impl App {
                                     ui.end_row();
                                 }
                             });
-                        let num =
-                            |s: &str, old: f64| s.trim().replace(',', ".").parse().unwrap_or(old);
-                        form.portion = num(&portion, form.portion);
-                        form.kcal = num(&kcal, form.kcal);
-                        form.protein = num(&protein, form.protein);
                         ui.horizontal_wrapped(|ui| {
                             if motif::button(ui, tr("form_save")).clicked() {
                                 save_product = true;
@@ -53210,6 +53224,7 @@ impl App {
                         }
                     }
                     if let Some(p) = edit {
+                        state.product_numbers = Self::product_number_texts(&p);
                         state.product_base = Some(p.clone());
                         state.product_edit = Some(p);
                     }
@@ -53374,6 +53389,9 @@ impl App {
                         .iter()
                         .find(|p| p.id == id)
                         .cloned();
+                    if let Some(p) = &p {
+                        session.conseil.product_numbers = Self::product_number_texts(p);
+                    }
                     session.conseil.product_base = p.clone();
                     session.conseil.product_edit = p;
                 }
@@ -53381,10 +53399,17 @@ impl App {
             }
         }
         if save_product {
-            if let (Some(form), Some(base)) = (
+            if let (Some(mut form), Some(base)) = (
                 session.conseil.product_edit.clone(),
                 session.conseil.product_base.clone(),
             ) {
+                // Les nombres tapés, relus une fois : une saisie illisible
+                // garde la valeur d'avant.
+                let num = |s: &str, old: f64| s.trim().replace(',', ".").parse().unwrap_or(old);
+                let [portion, kcal, protein] = &session.conseil.product_numbers;
+                form.portion = num(portion, form.portion);
+                form.kcal = num(kcal, form.kcal);
+                form.protein = num(protein, form.protein);
                 match session.db.update_cno_product(&form, &base) {
                     Ok(ok) => {
                         if !ok {

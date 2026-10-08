@@ -311,14 +311,16 @@ pub fn plan_totals(plan: &[PlanLine]) -> (f64, f64) {
 /// La forme écrite en base d'un plan : `id×unités` séparés par des
 /// points-virgules.
 pub fn encode_plan(plan: &[(i64, f64)]) -> String {
+    // Des espaces entre les lignes : le plan voyage dans un champ de
+    // `counsel_records`, dont les points-virgules séparent les champs.
     plan.iter()
         .map(|(id, u)| format!("{id}x{u}"))
         .collect::<Vec<_>>()
-        .join(";")
+        .join(" ")
 }
 
 pub fn decode_plan(text: &str) -> Vec<(i64, f64)> {
-    text.split(';')
+    text.split([';', ' '])
         .filter_map(|p| {
             let (id, u) = p.split_once('x')?;
             Some((id.trim().parse().ok()?, u.trim().parse().ok()?))
@@ -726,5 +728,12 @@ mod tests {
         assert_eq!(plan_totals(&plan), (1100.0, 48.0));
         let text = encode_plan(&[(3, 2.0), (7, 0.5)]);
         assert_eq!(decode_plan(&text), vec![(3, 2.0), (7, 0.5)]);
+        // Le plan passe tel quel par le format des fiches de dossier.
+        let data = crate::db::CounselRecord::encode(&[("plan", &text)]);
+        let rec = crate::db::CounselRecord {
+            data,
+            ..Default::default()
+        };
+        assert_eq!(decode_plan(rec.field("plan")), vec![(3, 2.0), (7, 0.5)]);
     }
 }
