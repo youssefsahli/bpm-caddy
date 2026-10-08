@@ -870,6 +870,10 @@ et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
 âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
 **Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la
 liste pour la saison ; **Message** le laisse, avec la date de l'appel.
+**Rendez-vous** ouvre sous la ligne le jour et l'heure : le rendez-vous
+s'inscrit à l'agenda comme acte de vaccination planifié, et l'appel est
+noté « Prévenu ». Le jour venu, quand la dose est inscrite au carnet,
+« Créer l'acte » réalise ce rendez-vous au lieu d'en créer un second.
 Les facteurs de risque ne sont pas connus du logiciel ; la liste ajoute
 cependant, sous leur propre intitulé, les personnes de moins de 65 ans
 dont un traitement évoque un groupe visé pour la grippe et le COVID-19

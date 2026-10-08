@@ -49758,6 +49758,39 @@ impl Db {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Fixer un rendez-vous de vaccination pris au téléphone : l'acte de
+    /// vaccination, planifié (`SCHEDULED`) au jour et à l'heure dits, que
+    /// l'agenda montre comme tout rendez-vous. Le jour venu, le carnet le
+    /// réalise au lieu d'en créer un second.
+    pub fn plan_vaccination(
+        &self,
+        patient_id: i64,
+        day: &str,
+        time: &str,
+        operator: &str,
+    ) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO interviews (id, patient_id, kind, state, scheduled_date,
+                         scheduled_time, operator, created_at, updated_at)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, datetime('now', 'localtime'),
+                         datetime('now', 'localtime'))",
+                    next = next_id("interviews")
+                ),
+                rusqlite::params![
+                    patient_id,
+                    InterviewKind::Vaccination.as_str(),
+                    InterviewState::Scheduled.as_str(),
+                    day,
+                    time,
+                    operator.trim(),
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
     /// The destinations recorded on a patient's file, soonest first.
     pub fn travels(&self, patient_id: i64) -> Result<Vec<Travel>, String> {
         let mut stmt = self
@@ -62452,6 +62485,33 @@ mod tests {
         assert_eq!(db.interviews_for(pid).unwrap()[0].duration_minutes, 45);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Un rendez-vous de vaccination pris pendant la campagne : à
+    /// l'agenda, planifié, avec son heure et l'opérateur qui l'a pris.
+    #[test]
+    fn a_planned_vaccination_shows_in_the_agenda() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-rdv-vacc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("rdv.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Durand", "Odile", "1950-02-11").unwrap();
+        let id = db
+            .plan_vaccination(pid, "2030-10-14", "09:30", " MB ")
+            .unwrap();
+        let rdv = db.upcoming_appointments().unwrap();
+        assert_eq!(rdv.len(), 1);
+        assert_eq!(rdv[0].id, id);
+        assert_eq!(rdv[0].kind, InterviewKind::Vaccination);
+        assert_eq!(
+            (rdv[0].date.as_str(), rdv[0].time.as_str()),
+            ("2030-10-14", "09:30")
+        );
+        let itv = db.interviews_for(pid).unwrap();
+        assert_eq!(itv[0].state, InterviewState::Scheduled);
+        assert_eq!(itv[0].operator, "MB");
     }
 
     #[test]

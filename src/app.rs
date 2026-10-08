@@ -4110,6 +4110,12 @@ struct CampagneState {
     new_expiry: String,
     confirm_delete: Option<i64>,
     error: Option<String>,
+    /// Le dossier dont le rendez-vous se prend, au téléphone : jour et
+    /// heure tapés sous sa ligne.
+    rdv_for: Option<i64>,
+    rdv_date: String,
+    rdv_time: String,
+    rdv_error: Option<String>,
 }
 
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
@@ -10008,6 +10014,32 @@ impl Session {
         crate::campagne::usable_lots(&lots, &used, code, &self.today)
             .first()
             .map(|l| l.lot.clone())
+    }
+
+    /// Un acte de vaccination tenu ce jour-là : créé ce jour et pas
+    /// seulement planifié — un rendez-vous pris aujourd'hui pour la semaine
+    /// prochaine n'est pas la dose d'aujourd'hui.
+    fn vaccination_act_on(acts: &[db::Interview], day: &str) -> bool {
+        acts.iter().any(|i| {
+            i.kind == InterviewKind::Vaccination
+                && i.state != InterviewState::Scheduled
+                && i.created_at.starts_with(day)
+        })
+    }
+
+    /// Le rendez-vous de vaccination arrivé à son jour (ou dépassé) et pas
+    /// encore réalisé : le plus ancien d'abord.
+    fn planned_vaccination<'a>(
+        acts: &'a [db::Interview],
+        today: &str,
+    ) -> Option<&'a db::Interview> {
+        acts.iter()
+            .filter(|i| {
+                i.kind == InterviewKind::Vaccination
+                    && i.state == InterviewState::Scheduled
+                    && i.scheduled_date.as_deref().is_some_and(|d| d <= today)
+            })
+            .min_by(|a, b| a.scheduled_date.cmp(&b.scheduled_date))
     }
 
     /// Les remarques du calendrier sur la dose en cours de saisie au
@@ -21789,9 +21821,8 @@ impl App {
                         // a dose recorded without its acte is money the
                         // team has already earned.
                         let given_today = lines.iter().any(|v| v.given_on == today);
-                        let billed_today = session.viewing_interviews.iter().any(|i| {
-                            i.kind == InterviewKind::Vaccination && i.created_at.starts_with(&today)
-                        });
+                        let billed_today =
+                            Session::vaccination_act_on(&session.viewing_interviews, &today);
                         if given_today && !billed_today {
                             ui.horizontal_wrapped(|ui| {
                                 ui.label(
@@ -21947,7 +21978,29 @@ impl App {
                 }
             }
         }
-        if bill {
+        // Un rendez-vous de vaccination arrivé à son jour est l'acte de
+        // cette dose : il se réalise, daté d'aujourd'hui, au lieu qu'un
+        // second acte s'ajoute et que l'agenda garde le premier en attente.
+        let planned = if bill {
+            Session::planned_vaccination(&session.viewing_interviews, &session.today)
+                .map(|i| (i.id, i.created_at.get(..10).unwrap_or("").to_owned()))
+        } else {
+            None
+        };
+        if let Some((id, made)) = planned {
+            let today = session.today.clone();
+            let dated = made == today
+                || session
+                    .db
+                    .set_created_date(id, &today, &made)
+                    .unwrap_or(false);
+            match session.db.advance_interview(id, InterviewState::Scheduled) {
+                Ok(true) if dated => session.error = None,
+                Ok(_) => session.stale("vacc_stale"),
+                Err(e) => session.error = Some(e),
+            }
+            session.reload_interviews(patient.id);
+        } else if bill {
             // The act carries the day the dose was given and the
             // initials of whoever gave it: it is the same event.
             match session
@@ -27131,9 +27184,7 @@ impl App {
             .vaccinations
             .iter()
             .any(|v| v.given_on == session.today);
-        let billed_today = session.viewing_interviews.iter().any(|i| {
-            i.kind == InterviewKind::Vaccination && i.created_at.starts_with(&session.today)
-        });
+        let billed_today = Session::vaccination_act_on(&session.viewing_interviews, &session.today);
         if given_today && !billed_today {
             h += Self::row_height(ui) + ui.spacing().item_spacing.y;
         }
@@ -51657,6 +51708,8 @@ impl App {
         let mut call: Option<(i64, Outcome)> = None;
         let mut open: Option<i64> = None;
         let mut elsewhere: Option<i64> = None;
+        let mut book: Option<i64> = None;
+        let mut rdv_toggle: Option<i64> = None;
         // Le clavier, pour une série d'appels : les flèches parcourent la
         // liste, Entrée ouvre le carnet, 1 à 4 notent l'issue — tant
         // qu'aucun champ n'a le foyer (le formulaire des lots en a).
@@ -51786,12 +51839,55 @@ impl App {
                                         call = Some((r.patient_id, o));
                                     }
                                 }
+                                let open_rdv = session.camp.rdv_for == Some(r.patient_id);
+                                if motif::toggle(ui, tr("camp_rdv"), open_rdv)
+                                    .on_hover_text(tr("camp_rdv_tooltip"))
+                                    .clicked()
+                                {
+                                    rdv_toggle = Some(r.patient_id);
+                                }
                                 ui.label(
                                     egui::RichText::new(note)
                                         .size(motif::pt(ui, 10.5))
                                         .color(motif::text_faint()),
                                 );
                             });
+                            // Le rendez-vous pris au téléphone : le jour,
+                            // l'heure, et l'agenda le porte.
+                            if session.camp.rdv_for == Some(r.patient_id) {
+                                let h = Self::button_height(ui);
+                                ui.horizontal_wrapped(|ui| {
+                                    for (hint, value) in [
+                                        (tr("camp_rdv_date_hint"), &mut session.camp.rdv_date),
+                                        (tr("camp_rdv_time_hint"), &mut session.camp.rdv_time),
+                                    ] {
+                                        let field = motif::field_sized(
+                                            ui,
+                                            egui::vec2(
+                                                Self::field_width(ui, [hint].into_iter()),
+                                                h,
+                                            ),
+                                            egui::TextEdit::singleline(value)
+                                                .hint_text(motif::hint(hint)),
+                                        );
+                                        if field.lost_focus()
+                                            && ui.input(|i| i.key_pressed(egui::Key::Enter))
+                                        {
+                                            book = Some(r.patient_id);
+                                        }
+                                    }
+                                    if motif::button(ui, tr("camp_rdv_book")).clicked() {
+                                        book = Some(r.patient_id);
+                                    }
+                                });
+                                if let Some(e) = &session.camp.rdv_error {
+                                    ui.label(
+                                        egui::RichText::new(e)
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::alert()),
+                                    );
+                                }
+                            }
                             ui.add_space(4.0);
                         }
                     });
@@ -52126,6 +52222,45 @@ impl App {
         if let Some(code) = pick_code {
             session.camp.code = code;
             reload = true;
+        }
+        if let Some(pid) = rdv_toggle {
+            let camp = &mut session.camp;
+            camp.rdv_for = if camp.rdv_for == Some(pid) {
+                None
+            } else {
+                Some(pid)
+            };
+            camp.rdv_date.clear();
+            camp.rdv_time.clear();
+            camp.rdv_error = None;
+        }
+        // Le rendez-vous : un acte de vaccination planifié, puis l'appel
+        // noté « Prévenu » — la personne quitte la liste de la saison.
+        if let Some(pid) = book {
+            let year = session.year_now();
+            let date = db::parse_french_date(&session.camp.rdv_date, year, db::YearHint::Future);
+            let time = if session.camp.rdv_time.trim().is_empty() {
+                Some(String::new())
+            } else {
+                db::parse_hour(&session.camp.rdv_time)
+            };
+            match (date, time) {
+                (Ok(day), _) if day < session.today => {
+                    session.camp.rdv_error = Some(tr("camp_rdv_past").to_owned());
+                }
+                (Ok(day), Some(time)) => {
+                    match session.db.plan_vaccination(pid, &day, &time, operator) {
+                        Ok(_) => {
+                            session.camp.rdv_for = None;
+                            session.camp.rdv_error = None;
+                            call = Some((pid, Outcome::Prevenu));
+                        }
+                        Err(e) => session.camp.rdv_error = Some(e),
+                    }
+                }
+                (Err(_), _) => session.camp.rdv_error = Some(tr("camp_rdv_date_error").to_owned()),
+                (_, None) => session.camp.rdv_error = Some(tr("camp_rdv_time_error").to_owned()),
+            }
         }
         if let Some((patient_id, outcome)) = call {
             let c = campagne::Call {
@@ -86530,6 +86665,38 @@ mod tests {
         // than showing five rows out of six.
         assert_eq!(out.len(), 6);
         assert_eq!(out[5].dest, Goto::Drug(4));
+    }
+
+    /// Un rendez-vous de vaccination pris aujourd'hui pour plus tard n'est
+    /// pas la dose du jour ; arrivé à son jour, c'est lui que le carnet
+    /// réalise.
+    #[test]
+    fn a_planned_vaccination_is_not_today_s_act_until_its_day() {
+        use crate::db::{Interview, InterviewState};
+        let itv = |id: i64, state: InterviewState, on: Option<&str>| Interview {
+            id,
+            kind: InterviewKind::Vaccination,
+            state,
+            duration_minutes: 0,
+            scheduled_date: on.map(str::to_owned),
+            scheduled_time: String::new(),
+            remote: false,
+            treatment_change: false,
+            theme: String::new(),
+            trod_result: String::new(),
+            operator: String::new(),
+            created_at: "2026-10-08 10:00:00".to_owned(),
+        };
+        let booked = [itv(1, InterviewState::Scheduled, Some("2026-10-15"))];
+        assert!(!Session::vaccination_act_on(&booked, "2026-10-08"));
+        assert!(Session::planned_vaccination(&booked, "2026-10-08").is_none());
+        assert_eq!(
+            Session::planned_vaccination(&booked, "2026-10-15").map(|i| i.id),
+            Some(1)
+        );
+        let done = [itv(2, InterviewState::Identified, None)];
+        assert!(Session::vaccination_act_on(&done, "2026-10-08"));
+        assert!(Session::planned_vaccination(&done, "2026-10-08").is_none());
     }
 
     #[test]

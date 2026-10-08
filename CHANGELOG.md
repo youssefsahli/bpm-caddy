@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   délivrance d'une culotte, repris à l'historique et sur la fiche remise.
 - Carnet : une seconde dose de vaccin contre la grippe dans la même
   saison est signalée à la saisie, avec la date de la première.
+- Campagne : « Rendez-vous » sur chaque ligne à rappeler. Le jour et
+  l'heure inscrivent un acte de vaccination planifié à l'agenda et notent
+  l'appel « Prévenu » ; le carnet réalise ce rendez-vous le jour venu au
+  lieu de créer un second acte.
 
 ### Changed
 - Compression : l'écart entre les jambes est signalé à partir d'un
