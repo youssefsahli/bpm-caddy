@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Protections périodiques : tour de bassin et stature notés à la
   délivrance d'une culotte, repris à l'historique et sur la fiche remise.
+- Carnet : une seconde dose de vaccin contre la grippe dans la même
+  saison est signalée à la saisie, avec la date de la première.
 
 ### Changed
 - Compression : l'écart entre les jambes est signalé à partir d'un

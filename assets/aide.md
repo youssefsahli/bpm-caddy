@@ -882,8 +882,7 @@ liste » sort la liste du vaccin choisi, avec une colonne pour noter
 l'issue de chaque appel.
 Au clavier, une flèche active la liste et la parcourt ; Entrée ouvre
 alors le carnet et les touches 1 à 4 notent l'issue de l'appel, dans
-l'ordre des boutons. Un champ de saisie qui prend la main désactive la
-liste.
+l'ordre des boutons. La saisie dans un champ désactive la liste.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
@@ -909,7 +908,8 @@ stock qui périme le premier. Une remarque s'affiche sous la saisie quand
 la dose appelle une vérification : âge minimal de la vaccination à
 l'officine, délai depuis la dernière dose de COVID-19, préférence pour
 Efluelda ou Fluad à 65 ans et plus, Arexvy et COVID-19 le même jour,
-vaccin vivant pendant la grossesse, intervalle entre deux doses. La
+vaccin vivant pendant la grossesse, intervalle entre deux doses,
+seconde dose de grippe dans la même saison. La
 remarque n'empêche pas l'enregistrement.
 
 # Mesures et conseils

@@ -1167,6 +1167,23 @@ pub fn entry_warnings(
         );
     }
 
+    // La grippe : une dose par saison à partir de 9 ans. Une dose déjà
+    // inscrite depuis le 1er septembre se signale avant la seconde.
+    if code == "GRIPPE" && age.is_some_and(|a| a >= 9) {
+        let season = flu_season_start(given);
+        if let Some(prev) = carnet
+            .iter()
+            .filter(|(c, _, d)| *c == "GRIPPE" && *d >= season.as_str() && *d <= given)
+            .map(|(_, _, d)| *d)
+            .max()
+        {
+            out.push(format!(
+                "Dose de vaccin contre la grippe déjà inscrite pour cette saison, le {} : une dose par saison.",
+                crate::db::format_french_date(prev)
+            ));
+        }
+    }
+
     // Le même jour : Arexvy ne se co-administre qu'avec la grippe.
     let same_day: Vec<&CarnetLine> = carnet.iter().filter(|(_, _, d)| *d == given).collect();
     let arexvy_today = same_day.iter().any(|(c, l, _)| {
@@ -3209,6 +3226,12 @@ mod tests {
         // Vaxigrip à 70 ans : la préférence rappelée ; Efluelda : rien.
         assert!(w("1956-01-01", "", "GRIPPE", "Vaxigrip Tetra", &[])[0].contains("Efluelda"));
         assert!(w("1956-01-01", "", "GRIPPE", "Efluelda", &[]).is_empty());
+        // Une seconde dose de grippe dans la saison ; celle d'avant
+        // septembre ne compte pas.
+        let flu = [("GRIPPE", "Efluelda", "2026-10-02")];
+        assert!(w("1956-01-01", "", "GRIPPE", "Efluelda", &flu)[0].contains("02/10/2026"));
+        let last_season = [("GRIPPE", "Efluelda", "2026-01-10")];
+        assert!(w("1956-01-01", "", "GRIPPE", "Efluelda", &last_season).is_empty());
         // Arexvy et COVID-19 le même jour.
         let covid_today = [("COVID", "Comirnaty", today)];
         assert!(w("1946-01-01", "", "VRS", "Arexvy", &covid_today)[0].contains("Arexvy"));
