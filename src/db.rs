@@ -47883,6 +47883,27 @@ impl Db {
     }
 
     /// Le catalogue, dans l'ordre où l'officine le range.
+    /// Remplacer les indications de schéma du catalogue que le calendrier
+    /// 2026 a changées, **là seulement où elles portent encore le texte
+    /// livré avant** (`vaccines::SCHEDULE_UPDATES`). Idempotent : une
+    /// seconde passe ne trouve plus l'ancien texte.
+    pub fn refresh_vaccine_schedules(&self) -> Result<usize, String> {
+        let mut changed = 0;
+        for (code, old) in crate::vaccines::SCHEDULE_UPDATES {
+            let Some(new) = crate::vaccines::shipped_schedule(code) else {
+                continue;
+            };
+            changed += self
+                .conn
+                .execute(
+                    "UPDATE vaccine_catalogue SET schedule = ?1 WHERE code = ?2 AND schedule = ?3",
+                    (new, code, old),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(changed)
+    }
+
     pub fn vaccine_catalogue(&self) -> Result<Vec<crate::vaccines::Vaccine>, String> {
         let mut stmt = self
             .conn
@@ -60382,6 +60403,37 @@ mod tests {
     /// team's afterwards. And every shipped fiche must answer the six
     /// questions the counter actually asks — a fiche that only names
     /// the box is a fiche nobody opens twice.
+    /// Le calendrier 2026 atteint le catalogue d'une base existante, sans
+    /// toucher à une indication que l'équipe a réécrite.
+    #[test]
+    fn the_2026_schedules_reach_an_existing_catalogue() {
+        let dir = std::env::temp_dir().join(format!("bpm-vacc-sched-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("t.db"), "pw").unwrap();
+        db.seed_vaccine_catalogue().unwrap();
+        // Une base semée par une version d'avant : l'ancien texte.
+        db.conn
+            .execute(
+                "UPDATE vaccine_catalogue SET schedule = 'Chaque automne' WHERE code = 'GRIPPE'",
+                [],
+            )
+            .unwrap();
+        db.conn
+            .execute(
+                "UPDATE vaccine_catalogue SET schedule = 'Notre texte' WHERE code = 'COVID'",
+                [],
+            )
+            .unwrap();
+        assert_eq!(db.refresh_vaccine_schedules().unwrap(), 1);
+        let cat = db.vaccine_catalogue().unwrap();
+        let of = |c: &str| cat.iter().find(|v| v.code == c).unwrap().schedule.clone();
+        assert!(of("GRIPPE").contains("Efluelda"));
+        assert_eq!(of("COVID"), "Notre texte");
+        assert_eq!(db.refresh_vaccine_schedules().unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// **Un mot de passe faux ne crée rien.** Les pièces et le registre
     /// s'ouvrent sur leurs fils une fois la clé vérifiée sur la base : un
     /// fichier des pièces absent ne doit pas renaître chiffré avec la

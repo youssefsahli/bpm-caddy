@@ -4059,6 +4059,8 @@ struct ConseilState {
     prot_c2s: bool,
     prot_age: String,
     prot_size: String,
+    /// Le panneau montré quand la vue est trop étroite pour les deux.
+    pane: usize,
 }
 
 /// La campagne de vaccination, telle que la vue la lit : tout est
@@ -5538,6 +5540,9 @@ impl Session {
             let _ = db.seed_trod_lines();
             // And the vaccine catalogue the carnet offers by name.
             let _ = db.seed_vaccine_catalogue();
+            // Its schedule hints follow the calendar where the team has
+            // not rewritten them.
+            let _ = db.refresh_vaccine_schedules();
             // And the thirteen « toxicité » sections that used to say the
             // same nothing: replaced once, only where the old sentence is
             // still there word for word.
@@ -52078,10 +52083,30 @@ impl App {
             );
         });
         let wide = rows[1].width() >= chars_wide(ui, 90.0);
+        // Étroit, **un panneau à la fois**, comme la campagne : deux
+        // panneaux empilés à 1024x700 en texte 1,6 ne laissaient voir que
+        // les listes de choix, sans un seul champ de mesure.
         let panes = if wide {
             motif::split_columns(rows[1], 2, 8.0)
         } else {
-            motif::split_rows(rows[1], &[0.0, 0.0], 8.0)
+            let titles = Self::conseil_pane_titles(session.conseil.page);
+            let strip = Self::wrapped_rows(ui, rows[1].width(), titles.iter().copied())
+                * (Self::row_height(ui) + ui.spacing().item_spacing.y);
+            let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
+            motif::inside(ui, r[0], |ui| {
+                ui.horizontal_wrapped(|ui| {
+                    for (i, t) in titles.iter().enumerate() {
+                        if motif::toggle(ui, t, session.conseil.pane == i).clicked() {
+                            session.conseil.pane = i;
+                        }
+                    }
+                });
+            });
+            if session.conseil.pane == 1 {
+                vec![egui::Rect::NOTHING, r[1]]
+            } else {
+                vec![r[1], egui::Rect::NOTHING]
+            }
         };
         match session.conseil.page {
             ConseilPage::Contention => Self::conseil_contention(ui, session, &panes, operator),
@@ -52097,6 +52122,29 @@ impl App {
             ) {
                 session.error = Some(e);
             }
+        }
+    }
+
+    /// Les titres des deux panneaux d'une page, pour le sélecteur de la
+    /// forme étroite : les mêmes clés que les panneaux eux-mêmes.
+    fn conseil_pane_titles(page: ConseilPage) -> [&'static str; 2] {
+        match page {
+            ConseilPage::Contention => [tr("conseil_measures_title"), tr("conseil_size_title")],
+            ConseilPage::Nutrition => [tr("conseil_nut_title"), tr("conseil_cno_title")],
+            ConseilPage::Protections => [tr("conseil_prot_title"), tr("conseil_prot_codes_title")],
+        }
+    }
+
+    /// Un panneau de « Mesures et conseils », ou rien quand la forme
+    /// étroite en montre un autre (rectangle vide).
+    fn conseil_panel(
+        ui: &mut egui::Ui,
+        rect: egui::Rect,
+        title: &str,
+        add: impl FnOnce(&mut egui::Ui),
+    ) {
+        if rect.is_positive() {
+            motif::panel(ui, rect, Some(title), add);
         }
     }
 
@@ -52191,7 +52239,7 @@ impl App {
         let measures = Self::conseil_measures(state);
         let findings = compression::check(article, &sides, &measures);
 
-        motif::panel(ui, panes[0], Some(tr("conseil_measures_title")), |ui| {
+        Self::conseil_panel(ui, panes[0], tr("conseil_measures_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_measures")
@@ -52343,7 +52391,7 @@ impl App {
                 });
         });
 
-        motif::panel(ui, panes[1], Some(tr("conseil_size_title")), |ui| {
+        Self::conseil_panel(ui, panes[1], tr("conseil_size_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_size")
@@ -52715,7 +52763,7 @@ impl App {
         let state = &mut session.conseil;
         let reading = state.nut.assessment().map(|a| (nutrition::assess(&a), a));
 
-        motif::panel(ui, panes[0], Some(tr("conseil_nut_title")), |ui| {
+        Self::conseil_panel(ui, panes[0], tr("conseil_nut_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_nut")
@@ -52847,7 +52895,7 @@ impl App {
                 });
         });
 
-        motif::panel(ui, panes[1], Some(tr("conseil_cno_title")), |ui| {
+        Self::conseil_panel(ui, panes[1], tr("conseil_cno_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_cno")
@@ -53069,6 +53117,41 @@ impl App {
                         if state.records.is_empty() {
                             Self::conseil_note(ui, tr("conseil_history_none"));
                         }
+                        // L'évolution du poids, du premier relevé au dernier :
+                        // c'est ce que la réévaluation demande d'abord.
+                        let weights: Vec<(&str, f64)> = state
+                            .records
+                            .iter()
+                            .filter_map(|r| {
+                                let w: f64 = r.field("poids").replace(',', ".").parse().ok()?;
+                                Some((r.on_date.as_str(), w))
+                            })
+                            .collect();
+                        if let (Some(last), Some(first)) = (weights.first(), weights.last()) {
+                            if weights.len() >= 2 && first.1 > 0.0 {
+                                let pct = (first.1 - last.1) / first.1 * 100.0;
+                                let kg = |w: f64| format!("{w:.1}").replace('.', ",");
+                                let key = if pct >= 0.0 {
+                                    "conseil_weight_loss"
+                                } else {
+                                    "conseil_weight_gain"
+                                };
+                                Self::conseil_line(
+                                    ui,
+                                    &trn(
+                                        key,
+                                        &[
+                                            &kg(first.1),
+                                            &db::format_french_date(first.0),
+                                            &kg(last.1),
+                                            &db::format_french_date(last.0),
+                                            &format!("{:.1}", pct.abs()).replace('.', ","),
+                                        ],
+                                    ),
+                                    pct >= 5.0,
+                                );
+                            }
+                        }
                         for r in &state.records {
                             let mut line = db::format_french_date(&r.on_date);
                             for (k, key) in [
@@ -53264,7 +53347,7 @@ impl App {
             .collect();
         let period = protections::period(&history, &today);
 
-        motif::panel(ui, panes[0], Some(tr("conseil_prot_title")), |ui| {
+        Self::conseil_panel(ui, panes[0], tr("conseil_prot_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_prot")
@@ -53419,7 +53502,7 @@ impl App {
                 });
         });
 
-        motif::panel(ui, panes[1], Some(tr("conseil_prot_codes_title")), |ui| {
+        Self::conseil_panel(ui, panes[1], tr("conseil_prot_codes_title"), |ui| {
             ui.spacing_mut().scroll.floating = false;
             egui::ScrollArea::vertical()
                 .id_salt("conseil_prot_codes")
@@ -74916,7 +74999,10 @@ impl eframe::App for App {
                             WorkTab::Dashboard,
                         );
                     }
-                    if vacc_today > 0 {
+                    // Le dernier compte venu, et le moins urgent : il cède
+                    // sa place quand la barre n'a plus de quoi le loger à
+                    // côté du nom de la base, au lieu de passer dessous.
+                    if vacc_today > 0 && ui.available_width() > chars_wide(ui, 48.0) {
                         flag(
                             ui,
                             trf("status_vaccinations", vacc_today),

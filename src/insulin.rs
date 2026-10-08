@@ -60,7 +60,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 5,
         peak_min: Some((30, 60)),
         duration_min: 240,
-        note: "Se pique au début du repas, ou jusqu'à vingt minutes après : c'est la seule qui rattrape une assiette déjà commencée.",
+        note: "Se pique au début du repas, ou jusqu'à vingt minutes après : c'est la seule qui permet une injection après le début du repas.",
     },
     Profile {
         name: "NovoRapid",
@@ -70,7 +70,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 15,
         peak_min: Some((60, 180)),
         duration_min: 300,
-        note: "Juste avant le repas. Sauter le repas après l'avoir piquée, c'est l'hypoglycémie une heure plus tard.",
+        note: "Juste avant le repas. Sauter le repas après l'injection expose à une hypoglycémie une heure plus tard.",
     },
     Profile {
         name: "Humalog",
@@ -80,7 +80,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 15,
         peak_min: Some((60, 180)),
         duration_min: 300,
-        note: "Même profil que l'asparte : le choix se fait sur le stylo et l'habitude, pas sur la cinétique.",
+        note: "Même profil que l'asparte : le choix repose sur le stylo et l'habitude, la cinétique étant équivalente.",
     },
     Profile {
         name: "Apidra",
@@ -100,7 +100,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 30,
         peak_min: Some((120, 240)),
         duration_min: 480,
-        note: "Trente minutes avant le repas, pas au moment de manger : c'est l'erreur qui fait monter la glycémie puis la fait tomber trop tard.",
+        note: "Trente minutes avant le repas. Injectée au moment de manger, elle laisse la glycémie monter puis la fait baisser trop tard.",
     },
     Profile {
         name: "Insulatard",
@@ -110,7 +110,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 90,
         peak_min: Some((240, 480)),
         duration_min: 1440,
-        note: "Suspension trouble : elle se remet en suspension par dix retournements lents avant chaque injection, sinon la dose n'est pas celle qu'on croit. Son pic de fin d'après-midi est la cause classique de l'hypoglycémie de 17 h.",
+        note: "Suspension trouble : elle se remet en suspension par dix retournements lents avant chaque injection, sinon la dose injectée est inexacte. Son pic de fin d'après-midi est la cause classique de l'hypoglycémie de 17 h.",
     },
     Profile {
         name: "Levemir",
@@ -140,7 +140,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 120,
         peak_min: None,
         duration_min: 1440,
-        note: "Biosimilaire de la glargine U100 : même profil, même dose. Le changement de marque se signale au patient — le stylo n'a pas le même aspect.",
+        note: "Biosimilaire de la glargine U100 : même profil, même dose. Signaler le changement de marque au patient : le stylo n'a pas le même aspect.",
     },
     Profile {
         name: "Toujeo",
@@ -160,7 +160,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 60,
         peak_min: None,
         duration_min: 2520,
-        note: "Plus de quarante-deux heures : c'est celle qui pardonne un horaire décalé, à condition de garder huit heures entre deux injections. L'équilibre s'établit en trois jours.",
+        note: "Plus de quarante-deux heures : elle tolère un horaire d'injection décalé, à condition de garder huit heures entre deux injections. L'équilibre s'établit en trois jours.",
     },
     Profile {
         name: "NovoMix 30",
@@ -170,7 +170,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 15,
         peak_min: Some((60, 240)),
         duration_min: 1440,
-        note: "Deux insulines dans un stylo : un pic de repas et un plateau derrière. Elle se remet en suspension avant chaque injection, et elle impose des repas à heures fixes — c'est son prix.",
+        note: "Deux insulines dans un stylo : un pic au moment du repas, puis un plateau. Elle se remet en suspension avant chaque injection et impose des repas à heures fixes.",
     },
 ];
 

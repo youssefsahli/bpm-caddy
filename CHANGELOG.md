@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.373.0] - 2026-10-08
+
+### Added
+- Nutrition orale : le suivi du dossier écrit l'évolution du poids entre
+  le premier et le dernier relevé, en pourcentage (signalée à partir de
+  5 % de perte).
+
+### Changed
+- Le catalogue des vaccins d'une base existante reçoit les indications
+  du calendrier 2026 (grippe, COVID-19, pneumocoque, zona, VRS, HPV,
+  méningocoque ACWY) là où l'équipe ne les a pas réécrites.
+- « Mesures et conseils » en fenêtre étroite : un panneau à la fois,
+  choisi par son titre, au lieu de deux panneaux trop courts.
+- Barre d'état : le compte des vaccinations du jour cède sa place quand
+  la barre est pleine.
+- Rédaction des notes des profils d'insuline reprise au même registre.
+
 ## [0.372.0] - 2026-10-08
 
 ### Changed

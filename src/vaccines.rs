@@ -523,6 +523,35 @@ pub const CATALOGUE: &[VaccineRef] = &[
     },
 ];
 
+/// Les indications de schéma livrées par les versions précédentes et
+/// remplacées depuis (calendrier des vaccinations 2026). Le catalogue est
+/// semé une fois puis appartient à l'équipe : une indication n'est
+/// remplacée que si elle porte encore, mot pour mot, le texte livré
+/// avant — une indication réécrite par l'officine reste la sienne.
+pub const SCHEDULE_UPDATES: &[(&str, &str)] = &[
+    ("GRIPPE", "Chaque automne"),
+    ("COVID", "Campagne annuelle"),
+    (
+        "PNEUMO",
+        "Selon les facteurs de risque et les doses déjà reçues",
+    ),
+    ("ZONA", "2 doses ; à partir de 65 ans"),
+    ("VRS", "Dose unique à partir de 75 ans"),
+    (
+        "HPV",
+        "2 doses avant 15 ans, 3 au-delà ; 11-14 ans, rattrapage jusqu'à 19 ans",
+    ),
+    ("MENACYW", "Calendrier du nourrisson ; voyage, pèlerinage"),
+];
+
+/// Le texte livré aujourd'hui pour un code du catalogue.
+pub fn shipped_schedule(code: &str) -> Option<&'static str> {
+    CATALOGUE
+        .iter()
+        .find(|v| v.code == code)
+        .map(|v| v.schedule)
+}
+
 // ---------------------------------------------------------------------
 // Le calendrier vaccinal
 // ---------------------------------------------------------------------
