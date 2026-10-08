@@ -380,6 +380,7 @@ pub const TABLES: &[ConvTable] = &[
         reviewed: "Octobre 2026 — calendrier des vaccinations 2026, campagne 2026-2027",
         sources: &[
             "Calendrier des vaccinations et recommandations vaccinales 2026 (ministère chargé de la Santé)",
+            "DGS-Urgent n° 2026-10 du 10/08/2026 — prévention de la bronchiolite du nourrisson 2026-2027",
             "DGS-Urgent n° 2026_12 du 22/09/2026 — campagne grippe et COVID-19 2026-2027",
             "ANSM — décision du 07/07/2026 : vaccins grippaux inscrits sur la liste I",
             "Décret n° 2023-736 du 8 août 2023 et arrêtés du 8 août 2023 — vaccination par le pharmacien",
@@ -396,6 +397,7 @@ pub const TABLES: &[ConvTable] = &[
             &["Zona (Shingrix)", "À partir de 65 ans ; immunodéprimés dès 18 ans", "2 doses à 2 mois d'intervalle (2e dose jusqu'à 6 mois)", "Oui, à partir de 11 ans", "Vaccin non vivant ; après un zona, attendre au moins un an ; réactions locales et générales fréquentes, à annoncer"],
             &["VRS (personne âgée)", "75 ans et plus ; dès 65 ans avec maladie respiratoire ou cardiaque chronique", "Dose unique, sans rappel établi", "Oui, à partir de 11 ans", "Non remboursé à ce jour chez la personne âgée. Arexvy : co-administration avec la grippe seulement"],
             &["VRS (grossesse, Abrysvo)", "Femmes enceintes", "Une dose entre 32 et 36 SA, de septembre à janvier", "Oui, à partir de 11 ans", "Naissance moins de 14 jours après l'injection : anticorps monoclonal pour le nourrisson"],
+            &["Anticorps contre le VRS (nourrisson)", "Nourrissons pendant leur première saison ; deuxième saison pour certains enfants à risque", "Beyfortus : 50 mg sous 5 kg, 100 mg à partir de 5 kg ; Enflonsia : 105 mg quel que soit le poids. Campagne en métropole du 14/09/2026 au 28/02/2027", "Non : dispensation seulement (anticorps monoclonal, hors compétences vaccinales)", "Remboursement à 65 % en officine ; alternative au vaccin de la grossesse, ou en complément si la naissance survient moins de 14 jours après celui-ci"],
             &["HPV", "Filles et garçons de 11 à 14 ans, rattrapage jusqu'à 26 ans révolus", "2 doses avant 15 ans, 3 doses au-delà", "Oui, à partir de 11 ans", "Campagne proposée en classe de 5e"],
             &["ROR", "Personnes nées depuis 1980, non ou incomplètement vaccinées", "2 doses au total au cours de la vie", "Oui, sauf chez l'immunodéprimé (vaccin vivant)", "Contre-indiqué pendant la grossesse"],
             &["Hépatite B", "Nourrissons, personnes exposées professionnellement ou par le mode de vie", "Schéma selon l'âge et le RCP", "Oui, à partir de 11 ans", "Contrôle sérologique chez les professionnels de santé exposés"],

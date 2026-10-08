@@ -2518,6 +2518,13 @@ add clicking and typing; it is not the price of entry.
   before) only showed once an organ was clicked and the table scrolled.
   The script stubs `xdg-open` and the other desktop launchers, so nothing
   it clicks leaves the sandbox
+- `BPM_CADDY_FRAME_STATS=1` — repaint continuously and write, every 60
+  frames, the mean and maximum time spent in `update` (the egui layout,
+  not the GPU paint) to standard error. `scripts/frames.sh [size]
+  [scale] [view…]` runs each view of `smoke.sh` in a release build for a
+  few seconds and sorts them slowest first. The 0.370.0 sweep at
+  1280x800: every view under 6 ms a frame on average, the Options and
+  Templates dialogs slowest; the maximum is the first frame (font atlas).
 
 The workspace's shape — window size, dock widths, whether each dock is
 open, the right pane's content, the view on screen — is remembered in

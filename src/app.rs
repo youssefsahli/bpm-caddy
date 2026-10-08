@@ -5369,6 +5369,9 @@ struct Session {
     show_dispositifs: bool,
     /// La campagne de vaccination.
     camp: CampagneState,
+    /// Doses inscrites aux carnets aujourd'hui, pour la barre d'état ;
+    /// relu par `refresh_dashboard` et après chaque dose notée.
+    vacc_today: usize,
     /// « Mesures et conseils » : compression, nutrition orale,
     /// protections périodiques.
     show_conseil: bool,
@@ -5983,6 +5986,7 @@ impl Session {
             insulin_target: 1.2,
             show_dispositifs: false,
             camp: CampagneState::default(),
+            vacc_today: 0,
             show_conseil: false,
             conseil: ConseilState::default(),
             dispositifs: Vec::new(),
@@ -10841,6 +10845,7 @@ impl Session {
         self.tomorrow = self.db.tomorrow_iso().unwrap_or_default();
         self.agenda_week = self.db.week_dates(self.agenda_offset).unwrap_or_default();
         self.recent = self.db.recent_patients(6).unwrap_or_default();
+        self.vacc_today = self.db.vaccinations_on(&self.today).unwrap_or(0);
         // Not the call list: it reads the whole base and runs three rule
         // engines over every file on it — the biology's eighty-seven,
         // the revue's fifty-five and the forty-six surveillances. That
@@ -21822,6 +21827,8 @@ impl App {
                                 session.vacc_cursor = 0;
                                 session.focus_vacc_name = true;
                                 session.load_carnet(patient.id);
+                                session.vacc_today =
+                                    session.db.vaccinations_on(&session.today).unwrap_or(0);
                             }
                             Err(e) => session.error = Some(e),
                         }
@@ -74811,6 +74818,7 @@ impl eframe::App for App {
                 .iter()
                 .filter(|a| !session.today.is_empty() && a.date == session.today)
                 .count();
+            let vacc_today = session.vacc_today;
             let unbilled = session
                 .summaries
                 .iter()
@@ -74906,6 +74914,15 @@ impl eframe::App for App {
                             motif::accent(),
                             tr("status_to_bill_tooltip"),
                             WorkTab::Dashboard,
+                        );
+                    }
+                    if vacc_today > 0 {
+                        flag(
+                            ui,
+                            trf("status_vaccinations", vacc_today),
+                            motif::accent(),
+                            tr("status_vaccinations_tooltip"),
+                            WorkTab::Campagne,
                         );
                     }
                     if unread_msgs > 0 {

@@ -469,7 +469,7 @@ pub const TABLE: &[Adaptation] = &[
             step(
                 Mild,
                 Reduce,
-                "Dose réduite et intervalle allongé : c'est l'opioïde qui décide, pas le paracétamol. Un laxatif s'envisage d'emblée.",
+                "Dose réduite et intervalle allongé, dictés par l'opioïde et non par le paracétamol. Un laxatif s'envisage d'emblée.",
             ),
             step(
                 Severe,
@@ -1056,7 +1056,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[step(
             Severe,
             Contraindicated,
-            "Insuffisance hépatique sévère : contre-indiqué — alors même qu'elle traite l'ascite du cirrhotique à un stade plus précoce.",
+            "Insuffisance hépatique sévère : contre-indiqué, bien qu'elle traite l'ascite du cirrhotique à un stade plus précoce.",
         )],
         source: "Aldactone : contre-indication en « insuffisance hépatique sévère » ; posologie : « Ascite cirrhotique : 100 mg par jour en moyenne » ; surveillance : « Natrémie, en particulier chez le cirrhotique ».",
     },
@@ -1713,7 +1713,7 @@ pub const TABLE: &[Adaptation] = &[
     Adaptation {
         needs: &["cloxacilline", "orbenine"],
         label: "Cloxacilline",
-        steps: &[step(Mild, Watch, "Seule, l'insuffisance hépatique ne change rien ; associée à une insuffisance rénale, quel qu'en soit le degré, la posologie journalière se réduit de moitié.")],
+        steps: &[step(Mild, Watch, "Isolée, l'insuffisance hépatique ne demande pas d'adaptation ; associée à une insuffisance rénale, quel qu'en soit le degré, la posologie journalière se réduit de moitié.")],
         source: "Cloxacilline : « Si une insuffisance hépatique s'associe à une insuffisance rénale, quel qu'en soit le degré, la posologie journalière est réduite de moitié ».",
     },
     Adaptation {
@@ -2351,7 +2351,7 @@ mod tests {
             Some(Stage::Mild),
         );
         assert_eq!(codo[0].label, "Paracétamol associé à un opioïde");
-        assert!(codo[0].conduct.contains("opioïde qui décide"));
+        assert!(codo[0].conduct.contains("dictés par l'opioïde"));
         // Le paracétamol seul garde la sienne.
         let doli = read(&[t("Doliprane", "paracétamol")], Some(Stage::Mild));
         assert_eq!(doli[0].label, "Paracétamol");

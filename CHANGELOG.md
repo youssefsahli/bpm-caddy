@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.371.0] - 2026-10-08
+
+### Added
+- Barre d'état : le nombre de vaccinations inscrites aux carnets dans la
+  journée ; un clic ouvre l'onglet « Campagne ».
+- Table « Vaccination à l'officine » : les anticorps contre le VRS du
+  nourrisson (Beyfortus, Enflonsia), leur dose selon le poids, la
+  campagne 2026-2027 et leur remboursement.
+
+### Changed
+- Relecture de la rédaction poursuivie dans les tables de la fonction
+  rénale, hépatique, du sujet âgé, de la grossesse, de l'écrasement, de
+  la biologie et des cytochromes (environ 190 phrases), au même registre
+  et avec la même règle : aucun chiffre ne change.
+
 ## [0.370.0] - 2026-10-08
 
 ### Added

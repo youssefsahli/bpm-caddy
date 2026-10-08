@@ -361,7 +361,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 30,
                 level: Level::Contraindicated,
-                conduct: "Au-dessous de 30 : contre-indication. C'est l'AOD le plus dépendant du rein — 80 % d'élimination rénale.",
+                conduct: "Au-dessous de 30 : contre-indication. C'est l'AOD le plus dépendant du rein : 80 % d'élimination rénale.",
             },
         ],
         source: "RCP dabigatran",
@@ -392,7 +392,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 30,
                 level: Level::Reduce,
-                conduct: "Entre 15 et 29 : dose réduite. Le critère de réduction habituel reste celui des trois facteurs — âge, poids, créatinine.",
+                conduct: "Entre 15 et 29 : dose réduite. Le critère de réduction habituel reste celui des trois facteurs : âge, poids, créatinine.",
             },
             Step {
                 below: 15,
@@ -453,7 +453,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Watch,
-                conduct: "Au-dessous de 60 : à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë. Jamais au long cours sans avis.",
+                conduct: "Au-dessous de 60 : à éviter, en particulier avec un IEC ou un sartan et un diurétique, triade exposant à l'insuffisance rénale aiguë. Pas de traitement au long cours sans avis.",
             },
             Step {
                 below: 30,
@@ -470,7 +470,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 45,
             level: Level::Contraindicated,
-            conduct: "Au-dessous de 45 : contre-indication. Elle n'atteint plus l'urine à concentration utile, et sa toxicité, elle, reste.",
+            conduct: "Au-dessous de 45 : contre-indication. Elle n'atteint plus l'urine à concentration utile, alors que sa toxicité persiste.",
         }],
         source: "RCP nitrofurantoïne",
     },
@@ -482,7 +482,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Reduce,
-                conduct: "Au-dessous de 60 : dose réduite. Marge thérapeutique étroite — la diarrhée est le premier signe de surdosage et impose l'arrêt.",
+                conduct: "Au-dessous de 60 : dose réduite. Marge thérapeutique étroite ; la diarrhée est le premier signe de surdosage et impose l'arrêt.",
             },
             Step {
                 below: 30,
@@ -543,7 +543,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 60,
             level: Level::Reduce,
-            conduct: "Au-dessous de 60 : dose adaptée à la clairance et titration lente. C'est une dose initiale trop forte qui fait les toxidermies graves.",
+            conduct: "Au-dessous de 60 : dose adaptée à la clairance et titration lente. Une dose initiale trop forte expose aux toxidermies graves.",
         }],
         source: "RCP allopurinol ; EULAR, goutte",
     },
@@ -565,7 +565,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 60,
             level: Level::Reduce,
-            conduct: "Au-dessous de 60 : dose adaptée à la clairance. L'élimination est rénale et pure ; l'accumulation donne somnolence, confusion et chutes.",
+            conduct: "Au-dessous de 60 : dose adaptée à la clairance. L'élimination est exclusivement rénale ; l'accumulation donne somnolence, confusion et chutes.",
         }],
         source: "RCP gabapentine et prégabaline",
     },
@@ -651,7 +651,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 30,
                 level: Level::Reduce,
-                conduct: "Entre 15 et 30 : dose réduite de moitié, et kaliémie — il fait monter le potassium et la créatinine.",
+                conduct: "Entre 15 et 30 : dose réduite de moitié, et kaliémie surveillée : il augmente la kaliémie et la créatininémie.",
             },
             Step {
                 below: 15,
@@ -678,7 +678,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Reduce,
-            conduct: "Au-dessous de 30 : dose réduite et intervalle allongé. Ce sont les métabolites actifs qui s'accumulent, pas la morphine — la sédation vient à retard.",
+            conduct: "Au-dessous de 30 : dose réduite et intervalle allongé. Ce sont les métabolites actifs qui s'accumulent, et non la morphine ; la sédation survient de façon retardée.",
         }],
         source: "RCP morphine ; SFAP, douleur et insuffisance rénale",
     },
@@ -700,7 +700,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 60,
             level: Level::Reduce,
-            conduct: "Au-dessous de 60 : dose réduite — ces deux bêtabloquants-là s'éliminent par le rein, au contraire du bisoprolol ou du métoprolol.",
+            conduct: "Au-dessous de 60 : dose réduite ; ces deux bêtabloquants s'éliminent par le rein, à la différence du bisoprolol ou du métoprolol.",
         }],
         source: "RCP aténolol et sotalol",
     },
@@ -726,7 +726,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 60,
             level: Level::Watch,
-            conduct: "Au-dessous de 60 : lithiémie rapprochée. Toute déshydratation, tout AINS et tout IEC fait monter la lithiémie — la marge est étroite.",
+            conduct: "Au-dessous de 60 : lithiémie rapprochée. Toute déshydratation, tout AINS et tout IEC élèvent la lithiémie ; la marge thérapeutique est étroite.",
         }],
         source: "RCP lithium",
     },
@@ -744,7 +744,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Watch,
-            conduct: "Au-dessous de 30 : espacer les prises d'au moins huit heures et réduire la dose journalière. Il reste l'antalgique de première intention — on l'espace, on ne le remplace pas.",
+            conduct: "Au-dessous de 30 : espacer les prises d'au moins huit heures et réduire la dose journalière. Il reste l'antalgique de première intention : les prises sont espacées, sans changement de molécule.",
         }],
         source: "Doliprane : « Clairance inférieure à 30 mL/min : espacer les prises d'au moins 8 heures et réduire la dose journalière ».",
     },
@@ -819,7 +819,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 50,
                 level: Level::Watch,
-                conduct: "Entre 20 et 50 : dose prophylactique réduite selon le RCP. La clairance se calcule avant d'instaurer et se recontrôle à chaque épisode intercurrent — fièvre, diarrhée, canicule.",
+                conduct: "Entre 20 et 50 : dose prophylactique réduite selon le RCP. La clairance se calcule avant d'instaurer et se recontrôle à chaque épisode intercurrent : fièvre, diarrhée, canicule.",
             },
             Step {
                 below: 30,
@@ -829,7 +829,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 20,
                 level: Level::Contraindicated,
-                conduct: "Au-dessous de 20 : contre-indication quelle que soit l'indication. La demi-vie est longue et l'effet anticoagulant persiste plusieurs jours en cas d'accumulation, sans antidote — la protamine est inefficace.",
+                conduct: "Au-dessous de 20 : contre-indication quelle que soit l'indication. La demi-vie est longue et l'effet anticoagulant persiste plusieurs jours en cas d'accumulation, sans antidote : la protamine est inefficace.",
             },
         ],
         source: "Arixtra : « Clairance entre 20 et 50 mL/min : dose prophylactique réduite selon le RCP et prudence en curatif, où le traitement n'est pas recommandé en dessous de 30 mL/min. Clairance inférieure à 20 mL/min : contre-indiqué quelle que soit l'indication ».",
@@ -841,7 +841,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Contraindicated,
-            conduct: "Au-dessous de 30 : ils perdent leur effet diurétique et deviennent délétères. C'est un diurétique de l'anse qui prend le relais — le remplacement est une décision du prescripteur, pas une équivalence.",
+            conduct: "Au-dessous de 30 : ils perdent leur effet diurétique et deviennent délétères. Un diurétique de l'anse prend le relais ; le remplacement relève du prescripteur et ne constitue pas une équivalence.",
         }],
         source: "Esidrex : « Perd son efficacité diurétique lorsque la clairance descend en dessous de 30 mL/min : à ce stade, un diurétique de l'anse doit lui être substitué » ; Fludex : « contre-indiqué ».",
     },
@@ -928,7 +928,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 50,
                 level: Level::Reduce,
-                conduct: "Entre 20 et 50 : dose de charge habituelle, puis entretien réduit de moitié. La première dose ne se réduit pas — c'est elle qui fait la concentration.",
+                conduct: "Entre 20 et 50 : dose de charge habituelle, puis entretien réduit de moitié. La première dose n'est pas réduite : elle conditionne la concentration atteinte.",
             },
             Step {
                 below: 20,
@@ -967,7 +967,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Contraindicated,
-            conduct: "Au-dessous de 30 : non recommandé, faute de données — les conjugués s'accumulent.",
+            conduct: "Au-dessous de 30 : non recommandé, faute de données ; les conjugués s'accumulent.",
         }],
         source: "RCP Palexia LP",
     },
@@ -1518,7 +1518,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Watch,
-            conduct: "Au-dessous de 30 et en dialyse : seulement si le bénéfice l'emporte — l'exposition au glycopyrronium, éliminé par le rein, augmente.",
+            conduct: "Au-dessous de 30 et en dialyse : seulement si le bénéfice l'emporte ; l'exposition au glycopyrronium, éliminé par le rein, augmente.",
         }],
         source: "RCP Trixeo Aerosphere",
     },
@@ -1638,7 +1638,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 50,
                 level: Level::Contraindicated,
-                conduct: "Au-dessous de 50 : non recommandé — la palipéridone s'accumule et la forme retard ne se retire pas.",
+                conduct: "Au-dessous de 50 : non recommandé : la palipéridone s'accumule et la forme retard ne peut être retirée.",
             },
         ],
         source: "RCP Trevicta",
@@ -1747,7 +1747,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 30,
                 level: Level::Contraindicated,
-                conduct: "Au-dessous de 30 : contre-indiqué, comme l'insuffisance rénale aiguë — la drospirénone retient le potassium.",
+                conduct: "Au-dessous de 30 : contre-indiqué, comme l'insuffisance rénale aiguë ; la drospirénone retient le potassium.",
             },
         ],
         source: "RCP Drovelis",
@@ -1890,7 +1890,7 @@ pub const TABLE: &[Adaptation] = &[
         steps: &[Step {
             below: 30,
             level: Level::Watch,
-            conduct: "Au-dessous de 30 : pas de fortes doses orales prolongées — la triméthylamine et la triméthylamine-N-oxyde s'accumulent. Dose ajustée avec le centre qui suit la maladie.",
+            conduct: "Au-dessous de 30 : pas de fortes doses orales prolongées ; la triméthylamine et la triméthylamine-N-oxyde s'accumulent. Dose ajustée avec le centre qui suit la maladie.",
         }],
         source: "RCP Levocarnil",
     },
@@ -1902,7 +1902,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Watch,
-                conduct: "Au-dessous de 60 : à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë. Diurèse et fonction rénale surveillées en début de traitement.",
+                conduct: "Au-dessous de 60 : à éviter, en particulier avec un IEC ou un sartan et un diurétique, triade exposant à l'insuffisance rénale aiguë. Diurèse et fonction rénale surveillées en début de traitement.",
             },
             Step {
                 below: 30,
@@ -1920,7 +1920,7 @@ pub const TABLE: &[Adaptation] = &[
             Step {
                 below: 60,
                 level: Level::Watch,
-                conduct: "Au-dessous de 60 : à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë. Fonction rénale et diurèse surveillées en début de traitement.",
+                conduct: "Au-dessous de 60 : à éviter, en particulier avec un IEC ou un sartan et un diurétique, triade exposant à l'insuffisance rénale aiguë. Fonction rénale et diurèse surveillées en début de traitement.",
             },
             Step {
                 below: 30,

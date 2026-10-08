@@ -185,6 +185,8 @@ Headless under Xvfb with `unset WAYLAND_DISPLAY`, a throwaway
 - `./scripts/fuzz.sh [vue] [secondes]` — every view *used* at random
   (`BPM_CADDY_FUZZ=<graine>`: clicks, wheel, keys), fails on a panic;
   smoke only opens views. Replay a failure with `FUZZ_SEED=`.
+- `./scripts/frames.sh [taille] [échelle] [vue…]` — mean and max time
+  per frame for each view, release build (`BPM_CADDY_FRAME_STATS=1`).
 - A new view key goes in the ARCHITECTURE.md list, `smoke.sh` and
   `eyeball.sh` (a test holds the three together).
 

@@ -49049,6 +49049,19 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Combien de doses sont inscrites aux carnets à la date `day` (ISO) :
+    /// le compte de la barre d'état pendant la campagne.
+    pub fn vaccinations_on(&self, day: &str) -> Result<usize, String> {
+        self.conn
+            .query_row(
+                "SELECT COUNT(*) FROM vaccinations WHERE given_on = ?1",
+                [day],
+                |r| r.get::<_, i64>(0),
+            )
+            .map(|n| n as usize)
+            .map_err(|e| e.to_string())
+    }
+
     /// Toutes les doses de tous les carnets depuis `since` (ISO), pour
     /// le décompte de la saison : code, libellé, date.
     pub fn vaccinations_since(&self, since: &str) -> Result<Vec<(String, String, String)>, String> {

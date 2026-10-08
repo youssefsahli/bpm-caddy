@@ -2214,13 +2214,13 @@ pub const TABLE: &[Profile] = &[
             Action::new(Cyp2c9, Inducer, None),
             Action::new(Cyp2c19, Inducer, None),
         ],
-        source: "RoActemra : « l'interleukine 6 réprimant les cytochromes, son blocage restaure leur activité et diminue les concentrations de ces médicaments » ; « Le CYP3A4 en fait partie : l'exposition à la simvastatine baisse d'environ 57 % une semaine après une dose » — une levée de répression, pas une induction ; « les CYP1A2, CYP2C9 et CYP2C19 aussi, d'où la warfarine et la théophylline à surveiller ».",
+        source: "RoActemra : « l'interleukine 6 réprimant les cytochromes, son blocage restaure leur activité et diminue les concentrations de ces médicaments » ; « Le CYP3A4 en fait partie : l'exposition à la simvastatine baisse d'environ 57 % une semaine après une dose » ; il s'agit d'une levée de répression et non d'une induction ; « les CYP1A2, CYP2C9 et CYP2C19 aussi, d'où la warfarine et la théophylline à surveiller ».",
     },
     Profile {
         needs: &["sarilumab"],
         label: "Sarilumab",
         actions: &[Action::new(Cyp3a4, Inducer, None)],
-        source: "Kevzara : « le blocage de l'interleukine 6 rétablit l'activité des CYP et fait baisser leurs concentrations » ; « Substrats du CYP3A4 comme les contraceptifs oraux ou les statines : exposition diminuée, la simvastatine perdant environ 45 % une semaine après une injection » — une levée de répression, pas une induction.",
+        source: "Kevzara : « le blocage de l'interleukine 6 rétablit l'activité des CYP et fait baisser leurs concentrations » ; « Substrats du CYP3A4 comme les contraceptifs oraux ou les statines : exposition diminuée, la simvastatine perdant environ 45 % une semaine après une injection » ; il s'agit d'une levée de répression et non d'une induction.",
     },
     // ---- Transporteurs du rein, ajoutés en 0.362.0 ----
     // L'OCT2 fait entrer les cations organiques dans la cellule du tubule,
@@ -2233,7 +2233,7 @@ pub const TABLE: &[Profile] = &[
             Action::new(Oct2, Substrate, None),
             Action::new(Mate1, Substrate, None),
         ],
-        source: "Glucophage : « La metformine est un substrat des transporteurs OCT1 et OCT2 : les inhibiteurs de l'OCT2 […] diminuent son élimination rénale et augmentent son exposition » ; « son excrétion urinaire passe aussi par les transporteurs MATE1 et MATE2-K » — et les associations fixes le disent de leur metformine.",
+        source: "Glucophage : « La metformine est un substrat des transporteurs OCT1 et OCT2 : les inhibiteurs de l'OCT2 […] diminuent son élimination rénale et augmentent son exposition » ; « son excrétion urinaire passe aussi par les transporteurs MATE1 et MATE2-K » ; les associations fixes l'écrivent aussi pour leur metformine.",
     },
     Profile {
         needs: &["fampridine"],

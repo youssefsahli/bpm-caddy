@@ -429,7 +429,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(110.0),
         critical_low: None,
         critical_high: Some(200.0),
-        note: "Chez la femme l'intervalle usuel est plus bas (45 à 90 µmol/L). Une créatinine normale chez une personne âgée et maigre peut cacher une clairance basse : c'est le DFG qui décide.",
+        note: "Chez la femme l'intervalle usuel est plus bas (45 à 90 µmol/L). Une créatinine normale chez une personne âgée et maigre peut cacher une clairance basse : le DFG fait référence.",
     },
     Analyte {
         code: "K",
@@ -449,7 +449,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(145.0),
         critical_low: Some(125.0),
         critical_high: Some(155.0),
-        note: "Une hyponatrémie d'apparition récente chez une personne âgée est médicamenteuse jusqu'à preuve du contraire : diurétiques, ISRS, carbamazépine.",
+        note: "Une hyponatrémie d'apparition récente chez une personne âgée est d'origine médicamenteuse tant qu'une autre cause n'est pas établie : diurétiques, ISRS, carbamazépine.",
     },
     Analyte {
         code: "INR",
@@ -469,7 +469,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(17.0),
         critical_low: Some(8.0),
         critical_high: None,
-        note: "Anémie au-dessous de 13 g/dL chez l'homme et de 12 chez la femme. Sous anticoagulant, une hémoglobine qui baisse est un saignement jusqu'à preuve du contraire.",
+        note: "Anémie au-dessous de 13 g/dL chez l'homme et de 12 chez la femme. Sous anticoagulant, une hémoglobine qui baisse fait rechercher d'abord un saignement.",
     },
     Analyte {
         code: "PLQ",
@@ -546,7 +546,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: None,
         critical_low: None,
         critical_high: Some(10.0),
-        note: "Une cible individuelle, pas une norme : 6,5 % pour un diabète récent, 7 % pour la plupart, 8 % en cas de comorbidité sévère ou de fragilité, 9 % chez le sujet âgé malade — où l'hypoglycémie coûte plus cher que l'hyperglycémie.",
+        note: "Une cible individuelle, pas une norme : 6,5 % pour un diabète récent, 7 % pour la plupart, 8 % en cas de comorbidité sévère ou de fragilité, 9 % chez le sujet âgé malade, chez qui l'hypoglycémie est plus dangereuse que l'hyperglycémie.",
     },
     Analyte {
         code: "GLY",
@@ -655,7 +655,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(50.0),
         critical_low: Some(25.0),
         critical_high: None,
-        note: "Elle change la fraction libre des médicaments fortement liés — AVK, phénytoïne — sans que le dosage total ne bouge.",
+        note: "Elle change la fraction libre des médicaments fortement liés (AVK, phénytoïne) sans que le dosage total ne bouge.",
     },
     Analyte {
         code: "DIGOX",
@@ -755,7 +755,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(1.45),
         critical_low: None,
         critical_high: Some(2.0),
-        note: "Elle monte quand le rein s'altère, et c'est elle qui fait prescrire un chélateur, à prendre au moment du repas pour servir à quelque chose.",
+        note: "Elle monte quand le rein s'altère, et c'est elle qui fait prescrire un chélateur, à prendre au moment du repas pour être efficace.",
     },
     Analyte {
         code: "RAC",
@@ -785,7 +785,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(29.0),
         critical_low: Some(15.0),
         critical_high: None,
-        note: "L'acidose se lit ici avant de se voir. Une réserve alcaline qui s'effondre chez un patient sous metformine, avec des vomissements ou une diarrhée, est l'alerte de l'acidose lactique.",
+        note: "L'acidose s'y lit avant d'être cliniquement visible. Une réserve alcaline qui s'effondre chez un patient sous metformine, avec des vomissements ou une diarrhée, est l'alerte de l'acidose lactique.",
     },
     Analyte {
         code: "BNP",
@@ -815,7 +815,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(40.0),
         critical_low: None,
         critical_high: Some(60.0),
-        note: "Il dit si le fer circulant est disponible, là où la ferritine dit la réserve. Bas avec une ferritine basse : carence vraie. Bas avec une ferritine haute : inflammation, et le fer oral n'y fera rien.",
+        note: "Il dit si le fer circulant est disponible, là où la ferritine dit la réserve. Bas avec une ferritine basse : carence vraie. Bas avec une ferritine haute : inflammation, et le fer oral est inefficace.",
     },
     Analyte {
         code: "T4L",
@@ -895,7 +895,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(10.0),
         critical_low: Some(2.0),
         critical_high: Some(30.0),
-        note: "Le total ne dit rien tout seul : c'est la formule qui parle, et surtout les polynucléaires neutrophiles. Une hyperleucocytose sous corticoïde est un effet du corticoïde et non une infection ; une leucopénie fébrile est une urgence.",
+        note: "Le total s'interprète avec la formule, surtout les polynucléaires neutrophiles. Une hyperleucocytose sous corticoïde est un effet du corticoïde et non une infection ; une leucopénie fébrile est une urgence.",
     },
     Analyte {
         code: "HTE",
@@ -905,7 +905,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(50.0),
         critical_low: Some(25.0),
         critical_high: Some(60.0),
-        note: "Il suit l'hémoglobine et se lit avec elle. Un hématocrite haut est le plus souvent une hémoconcentration — déshydratation, diurétique — avant d'être une polyglobulie, mais la testostérone et le tabac en fabriquent de vraies.",
+        note: "Il suit l'hémoglobine et se lit avec elle. Un hématocrite haut est le plus souvent une hémoconcentration (déshydratation, diurétique) avant d'être une polyglobulie, mais la testostérone et le tabac en donnent de vraies.",
     },
     Analyte {
         code: "PTH",
@@ -935,7 +935,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(120.0),
         critical_low: None,
         critical_high: None,
-        note: "Ils disent si la moelle répond. Une anémie avec des réticulocytes bas est une moelle qui ne fabrique pas — carence ou toxicité médicamenteuse ; avec des réticulocytes hauts, c'est une perte ou une destruction, et on cherche un saignement ou une hémolyse.",
+        note: "Ils disent si la moelle répond. Une anémie avec des réticulocytes bas traduit une moelle qui ne produit pas (carence ou toxicité médicamenteuse) ; avec des réticulocytes hauts, c'est une perte ou une destruction, et on cherche un saignement ou une hémolyse.",
     },
     Analyte {
         code: "LDH",
@@ -945,7 +945,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(250.0),
         critical_low: None,
         critical_high: None,
-        note: "Élevée partout où des cellules se cassent : hémolyse, infarctus, tumeur, muscle. Seule elle ne dit rien ; avec une haptoglobine effondrée et des réticulocytes hauts, c'est une hémolyse.",
+        note: "Élevée partout où des cellules se cassent : hémolyse, infarctus, tumeur, muscle. Isolée, elle n'est pas spécifique ; avec une haptoglobine effondrée et des réticulocytes hauts, c'est une hémolyse.",
     },
     Analyte {
         code: "HAPTO",
@@ -975,7 +975,7 @@ pub const CATALOGUE: &[Analyte] = &[
         high: Some(50.0),
         critical_low: None,
         critical_high: Some(100.0),
-        note: "Prélèvement délicat — tube sur glace, acheminé tout de suite — et un garrot serré la fait monter à lui seul. Élevée avec une confusion, elle oriente vers une encéphalopathie : hépatique le plus souvent, médicamenteuse sous valproate.",
+        note: "Prélèvement délicat (tube sur glace, acheminé tout de suite), et un garrot serré suffit à la faire monter. Élevée avec une confusion, elle oriente vers une encéphalopathie : hépatique le plus souvent, médicamenteuse sous valproate.",
     },
 ];
 
@@ -990,7 +990,7 @@ const RULES: &[Rule] = &[
         threshold: 3.0,
         needs: &["héparine", "héparine non fractionnée", "calciparine"],
         severity: Severity::Alert,
-        text: "TCA au-delà de 3 fois le témoin sous héparine non fractionnée : surdosage. Ne pas administrer l'injection suivante sans avis, chercher un saignement, et vérifier l'heure du prélèvement — un TCA fait trop tôt après l'injection surestime toujours.",
+        text: "TCA au-delà de 3 fois le témoin sous héparine non fractionnée : surdosage. Ne pas administrer l'injection suivante sans avis, chercher un saignement, et vérifier l'heure du prélèvement : un TCA fait trop tôt après l'injection surestime toujours.",
     },
     Rule {
         code: "TCA",
@@ -998,7 +998,7 @@ const RULES: &[Rule] = &[
         threshold: 1.5,
         needs: &["héparine", "héparine non fractionnée", "calciparine"],
         severity: Severity::Warn,
-        text: "TCA en dessous de la zone curative sous héparine non fractionnée : l'anticoagulation est insuffisante et le risque est celui de la thrombose qu'on traite. La dose se réajuste sur avis, jamais au comptoir.",
+        text: "TCA en dessous de la zone curative sous héparine non fractionnée : l'anticoagulation est insuffisante et le risque est celui de la thrombose qu'on traite. La dose se réajuste sur avis du prescripteur.",
     },
     Rule {
         code: "RETIC",
@@ -1006,7 +1006,7 @@ const RULES: &[Rule] = &[
         threshold: 25.0,
         needs: &["méthotrexate", "azathioprine", "mycophénolate", "hydroxyurée", "anticancéreux"],
         severity: Severity::Alert,
-        text: "Réticulocytes bas sous immunosuppresseur ou anticancéreux : la moelle ne répond plus. Numération complète en urgence et avis avant la prise suivante — et sous méthotrexate, vérifier que l'acide folique est bien pris à distance de la prise hebdomadaire.",
+        text: "Réticulocytes bas sous immunosuppresseur ou anticancéreux : la moelle ne répond plus. Numération complète en urgence et avis avant la prise suivante. Sous méthotrexate, vérifier que l'acide folique est bien pris à distance de la prise hebdomadaire.",
     },
     Rule {
         code: "LDH",
@@ -1035,7 +1035,7 @@ const RULES: &[Rule] = &[
         threshold: 0.3,
         needs: &[],
         severity: Severity::Warn,
-        text: "Haptoglobine effondrée : hémolyse jusqu'à preuve du contraire. Elle se lit avec les LDH, les réticulocytes et la bilirubine libre, et il faut chercher ce qui l'a déclenchée — un médicament oxydant, une valve, une infection.",
+        text: "Haptoglobine effondrée : évoquer d'abord une hémolyse. Elle se lit avec les LDH, les réticulocytes et la bilirubine libre, et il faut chercher ce qui l'a déclenchée : un médicament oxydant, une valve, une infection.",
     },
     Rule {
         code: "CORT",
@@ -1043,7 +1043,7 @@ const RULES: &[Rule] = &[
         threshold: 150.0,
         needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "hydrocortisone", "corticothérapie"],
         severity: Severity::Alert,
-        text: "Cortisol bas sous ou après corticothérapie prolongée : la surrénale ne s'est pas remise en route. Ne jamais arrêter d'un coup, et doubler la dose en cas de fièvre, de vomissements ou d'intervention — c'est la règle des jours de maladie, et elle s'explique au comptoir.",
+        text: "Cortisol bas sous ou après corticothérapie prolongée : la surrénale ne s'est pas remise en route. Ne jamais arrêter d'un coup, et doubler la dose en cas de fièvre, de vomissements ou d'intervention. C'est la règle des jours de maladie, à expliquer au patient.",
     },
     Rule {
         code: "NH3",
@@ -1059,7 +1059,7 @@ const RULES: &[Rule] = &[
         threshold: 80.0,
         needs: &["lactulose", "rifaximine"],
         severity: Severity::Warn,
-        text: "Ammoniémie élevée sous traitement de l'encéphalopathie hépatique : vérifier d'abord que le lactulose est pris à la dose qui donne deux à trois selles molles par jour — c'est l'effet recherché, et beaucoup de patients le réduisent d'eux-mêmes par gêne.",
+        text: "Ammoniémie élevée sous traitement de l'encéphalopathie hépatique : vérifier d'abord que le lactulose est pris à la dose qui donne deux à trois selles molles par jour ; c'est l'effet recherché, et beaucoup de patients le réduisent d'eux-mêmes par gêne.",
     },
     Rule {
         code: "K",
@@ -1091,7 +1091,7 @@ const RULES: &[Rule] = &[
         threshold: 30.0,
         needs: &["AOD", "apixaban", "rivaroxaban", "édoxaban", "dabigatran"],
         severity: Severity::Alert,
-        text: "DFG inférieur à 30 mL/min sous anticoagulant oral direct : la dose se réduit ou la molécule se change selon laquelle — le dabigatran est contre-indiqué au-dessous de 30.",
+        text: "DFG inférieur à 30 mL/min sous anticoagulant oral direct : la dose se réduit ou la molécule se change selon laquelle ; le dabigatran est contre-indiqué au-dessous de 30.",
     },
     Rule {
         code: "DFG",
@@ -1107,7 +1107,7 @@ const RULES: &[Rule] = &[
         threshold: 60.0,
         needs: &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène"],
         severity: Severity::Warn,
-        text: "AINS et DFG inférieur à 60 mL/min : association à éviter, surtout avec un IEC ou un sartan et un diurétique — c'est la triade qui fait l'insuffisance rénale aiguë.",
+        text: "AINS et DFG inférieur à 60 mL/min : association à éviter, surtout avec un IEC ou un sartan et un diurétique, triade à risque d'insuffisance rénale aiguë.",
     },
     Rule {
         code: "DFG",
@@ -1123,7 +1123,7 @@ const RULES: &[Rule] = &[
         threshold: 5.0,
         needs: &["AVK", "warfarine", "fluindione", "acénocoumarol"],
         severity: Severity::Alert,
-        text: "INR supérieur à 5 sous AVK : conduite à tenir immédiate selon le chiffre et le saignement, avis du prescripteur le jour même. Chercher l'interaction récente — antibiotique, antifongique, amiodarone.",
+        text: "INR supérieur à 5 sous AVK : conduite à tenir immédiate selon le chiffre et le saignement, avis du prescripteur le jour même. Chercher l'interaction récente : antibiotique, antifongique, amiodarone.",
     },
     Rule {
         code: "INR",
@@ -1152,7 +1152,7 @@ const RULES: &[Rule] = &[
         threshold: 100.0,
         needs: &["héparine", "énoxaparine", "tinzaparine", "fondaparinux"],
         severity: Severity::Alert,
-        text: "Thrombopénie sous héparine : entre le 5e et le 21e jour, suspicion de thrombopénie induite par l'héparine — arrêt immédiat et avis, sans attendre la confirmation biologique.",
+        text: "Thrombopénie sous héparine : entre le 5e et le 21e jour, suspicion de thrombopénie induite par l'héparine. Arrêt immédiat et avis, sans attendre la confirmation biologique.",
     },
     Rule {
         code: "PNN",
@@ -1171,7 +1171,7 @@ const RULES: &[Rule] = &[
         threshold: 4.0,
         needs: &["lévothyroxine", "Levothyrox", "L-Thyroxine"],
         severity: Severity::Warn,
-        text: "TSH élevée sous lévothyroxine : sous-dosage, mauvaise observance, ou prise trop rapprochée du calcium, du fer, d'un IPP ou du café — le comprimé se prend à jeun, à distance.",
+        text: "TSH élevée sous lévothyroxine : sous-dosage, mauvaise observance, ou prise trop rapprochée du calcium, du fer, d'un IPP ou du café. Le comprimé se prend à jeun, à distance.",
     },
     Rule {
         code: "TSH",
@@ -1246,7 +1246,7 @@ const RULES: &[Rule] = &[
         // phosphore, et l'écran leur disait « au milieu du repas ».
         needs: &["chélateur du phosphore", "sevelamer", "sévélamer", "lanthane"],
         severity: Severity::Info,
-        text: "Phosphorémie encore haute sous chélateur : le comprimé se prend au milieu du repas, pas avant ni après — pris à distance, il ne chélate rien.",
+        text: "Phosphorémie encore haute sous chélateur : le comprimé se prend au milieu du repas, pas avant ni après ; pris à distance, il est inefficace.",
     },
     Rule {
         code: "PHOS",
@@ -1297,7 +1297,7 @@ const RULES: &[Rule] = &[
         threshold: 110.0,
         needs: &["diurétique", "furosémide", "pril ", "IEC", "sartan", "AINS"],
         severity: Severity::Warn,
-        text: "Créatinine élevée sous diurétique, IEC, sartan ou AINS : demander le DFG, qui est le chiffre qui commande. Chercher ce qui a déshydraté — canicule, gastro-entérite, diurétique majoré : c'est la triade qui fait l'insuffisance rénale aiguë, et elle se prévient en suspendant quelques jours.",
+        text: "Créatinine élevée sous diurétique, IEC, sartan ou AINS : demander le DFG, qui est le chiffre qui commande. Chercher ce qui a déshydraté (canicule, gastro-entérite, diurétique majoré) : c'est la triade qui fait l'insuffisance rénale aiguë, et elle se prévient en suspendant quelques jours.",
     },
     Rule {
         code: "GLY",
@@ -1346,7 +1346,7 @@ const RULES: &[Rule] = &[
             "azathioprine",
         ],
         severity: Severity::Alert,
-        text: "CRP franchement élevée sous immunosuppresseur, biothérapie ou corticoïde : une infection se cherche le jour même, et le traitement de fond se suspend le temps de la trancher. Le corticoïde masque la fièvre — l'absence de température ne rassure pas.",
+        text: "CRP franchement élevée sous immunosuppresseur, biothérapie ou corticoïde : une infection se cherche le jour même, et le traitement de fond se suspend le temps de la trancher. Le corticoïde masque la fièvre : l'absence de température ne rassure pas.",
     },
     Rule {
         code: "CA",
@@ -1372,7 +1372,7 @@ const RULES: &[Rule] = &[
         threshold: 30.0,
         needs: &["AOD", "AVK", "antiagrégant", "aspirine", "AINS"],
         severity: Severity::Alert,
-        text: "Carence martiale sous antithrombotique ou AINS : c'est un saignement digestif occulte jusqu'à preuve du contraire. La supplémentation ne dispense pas de chercher la cause, et l'exploration se demande avant de renouveler.",
+        text: "Carence martiale sous antithrombotique ou AINS : rechercher d'abord un saignement digestif occulte. La supplémentation ne dispense pas de chercher la cause, et l'exploration se demande avant de renouveler.",
     },
     Rule {
         code: "FERR",
@@ -1388,7 +1388,7 @@ const RULES: &[Rule] = &[
         threshold: 120.0,
         needs: &["vastatine", "fibrate", "atorvastatine", "simvastatine"],
         severity: Severity::Warn,
-        text: "ASAT élevées sous statine ou fibrate : si elles dépassent les ALAT, penser au muscle avant le foie et demander les CPK. Une douleur musculaire diffuse avec des urines foncées ne s'explore pas au comptoir.",
+        text: "ASAT élevées sous statine ou fibrate : si elles dépassent les ALAT, penser au muscle avant le foie et demander les CPK. Une douleur musculaire diffuse avec des urines foncées impose un avis médical.",
     },
     Rule {
         code: "BILI",
@@ -1402,7 +1402,7 @@ const RULES: &[Rule] = &[
             "amoxicilline",
         ],
         severity: Severity::Alert,
-        text: "Hyperbilirubinémie sous un traitement hépatotoxique : suspendre et avis le jour même. Un ictère, des urines foncées ou des selles décolorées ne s'attendent pas — l'association amoxicilline-acide clavulanique est une cause classique et retardée.",
+        text: "Hyperbilirubinémie sous un traitement hépatotoxique : suspendre et avis le jour même. Un ictère, des urines foncées ou des selles décolorées imposent un avis sans délai ; l'association amoxicilline-acide clavulanique est une cause classique et retardée.",
     },
     Rule {
         code: "RAC",
@@ -1418,7 +1418,7 @@ const RULES: &[Rule] = &[
         threshold: 30.0,
         needs: &[],
         severity: Severity::Warn,
-        text: "Albuminurie franche : la néphroprotection se discute même sans diabète — bloqueur du système rénine-angiotensine, gliflozine, tension à la cible. Et l'ordonnance se relit du point de vue du rein, AINS en tête.",
+        text: "Albuminurie franche : la néphroprotection se discute même sans diabète (bloqueur du système rénine-angiotensine, gliflozine, tension à la cible). L'ordonnance se relit du point de vue du rein, AINS en tête.",
     },
     // Une règle GGT à 110 vivait ici. Elle rangeait les AVK et les
     // corticoïdes parmi les inducteurs enzymatiques — ils n'en sont pas —,
@@ -1447,7 +1447,7 @@ const RULES: &[Rule] = &[
         threshold: 22.0,
         needs: &[],
         severity: Severity::Warn,
-        text: "Acidose métabolique débutante : chercher une insuffisance rénale, une diarrhée prolongée, un diabète déséquilibré ou un médicament — acétazolamide, topiramate, metformine.",
+        text: "Acidose métabolique débutante : chercher une insuffisance rénale, une diarrhée prolongée, un diabète déséquilibré ou un médicament (acétazolamide, topiramate, metformine).",
     },
     Rule {
         code: "BNP",
@@ -1471,7 +1471,7 @@ const RULES: &[Rule] = &[
         threshold: 4.0,
         needs: &["finastéride", "dutastéride", "5-alpha-réductase"],
         severity: Severity::Alert,
-        text: "PSA au-dessus du seuil sous inhibiteur de la 5-alpha-réductase : ces molécules divisent le PSA par deux environ après six mois. Un chiffre déjà « normal » doit donc être doublé pour être interprété, et celui-ci, tel quel, est franchement anormal — le signaler.",
+        text: "PSA au-dessus du seuil sous inhibiteur de la 5-alpha-réductase : ces molécules divisent le PSA par deux environ après six mois. Un chiffre déjà « normal » doit donc être doublé pour être interprété, et celui-ci, tel quel, est franchement anormal ; le signaler.",
     },
     Rule {
         code: "CST",
@@ -1479,7 +1479,7 @@ const RULES: &[Rule] = &[
         threshold: 20.0,
         needs: &["ferreux", " ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux"],
         severity: Severity::Warn,
-        text: "Saturation de la transferrine encore basse sous fer oral : soit le traitement n'est pas pris, soit il est mal absorbé. Vérifier la prise à jeun, à distance du thé, du café, du calcium et des IPP — un IPP à côté d'un fer oral annule une bonne partie du traitement.",
+        text: "Saturation de la transferrine encore basse sous fer oral : soit le traitement n'est pas pris, soit il est mal absorbé. Vérifier la prise à jeun, à distance du thé, du café, du calcium et des IPP. Un IPP associé au fer oral annule une bonne partie du traitement.",
     },
     Rule {
         code: "CST",
@@ -1487,7 +1487,7 @@ const RULES: &[Rule] = &[
         threshold: 60.0,
         needs: &[],
         severity: Severity::Alert,
-        text: "Saturation au-delà de 60 % : surcharge en fer jusqu'à preuve du contraire — hémochromatose, transfusions répétées, supplémentation prolongée sans carence. Toute supplémentation martiale s'arrête et le bilan se fait.",
+        text: "Saturation au-delà de 60 % : rechercher une surcharge en fer (hémochromatose, transfusions répétées, supplémentation prolongée sans carence). Toute supplémentation martiale s'arrête et le bilan se fait.",
     },
     Rule {
         code: "T4L",
@@ -1503,7 +1503,7 @@ const RULES: &[Rule] = &[
         threshold: 9.0,
         needs: &["carbimazole", "thiamazole", "antithyroïdien", "propylthiouracile"],
         severity: Severity::Warn,
-        text: "T4 libre basse sous antithyroïdien : la dose dépasse la cible. La TSH ne suit qu'au bout de six semaines et ne sert à rien pour cet ajustement — c'est la T4 libre qui guide la baisse.",
+        text: "T4 libre basse sous antithyroïdien : la dose dépasse la cible. La TSH ne suit qu'au bout de six semaines et n'est pas utile pour cet ajustement ; c'est la T4 libre qui guide la baisse.",
     },
     Rule {
         code: "PNE",
@@ -1511,7 +1511,7 @@ const RULES: &[Rule] = &[
         threshold: 1.5,
         needs: &[],
         severity: Severity::Alert,
-        text: "Éosinophilie franche : chercher un médicament introduit dans les deux à six semaines précédentes. Avec une éruption, de la fièvre et des transaminases hautes, c'est un DRESS — le médicament s'arrête et le patient est vu le jour même.",
+        text: "Éosinophilie franche : chercher un médicament introduit dans les deux à six semaines précédentes. Avec une éruption, de la fièvre et des transaminases hautes, évoquer un DRESS : le médicament s'arrête et le patient est vu le jour même.",
     },
     Rule {
         code: "PNE",
@@ -1524,7 +1524,7 @@ const RULES: &[Rule] = &[
         // hypoglycémiants, qui ne sont pas de cette famille-là.
         needs: &["antibiotique", "allopurinol", "carbamazépine", "oxcarbazépine", "lamotrigine", "phénytoïne", "phénobarbital", "sulfaméthoxazole", "cotrimoxazole", "sulfasalazine", "sulfamide antibactérien", "dapsone", "minocycline", "vancomycine", "névirapine", "abacavir"],
         severity: Severity::Warn,
-        text: "Éosinophilie modérée sous une classe connue pour l'hypersensibilité retardée : la surveiller, et demander au patient s'il a une éruption, de la fièvre ou des ganglions. Ce sont les trois questions qui font la différence entre une anomalie et un DRESS qui commence.",
+        text: "Éosinophilie modérée sous une classe connue pour l'hypersensibilité retardée : la surveiller, et demander au patient s'il a une éruption, de la fièvre ou des ganglions. Ces trois questions distinguent une anomalie isolée d'un DRESS débutant.",
     },
     Rule {
         code: "LYMPHO",
@@ -1560,7 +1560,7 @@ const RULES: &[Rule] = &[
         threshold: 11.0,
         needs: &["AINS", "ibuprofène", "diclofénac", "kétoprofène", "naproxène", "aspirine", "antiagrégant", "anticoagulant"],
         severity: Severity::Alert,
-        text: "Anémie chez un patient qui prend un AINS, un antiagrégant ou un anticoagulant : c'est un saignement digestif jusqu'à preuve du contraire, et il est souvent indolore. Chercher les selles noires, et faire évaluer sans attendre le prochain bilan.",
+        text: "Anémie chez un patient qui prend un AINS, un antiagrégant ou un anticoagulant : rechercher d'abord un saignement digestif, souvent indolore. Chercher les selles noires, et faire évaluer sans attendre le prochain bilan.",
     },
     Rule {
         code: "HB",
@@ -1568,7 +1568,7 @@ const RULES: &[Rule] = &[
         threshold: 11.0,
         needs: &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "metformine"],
         severity: Severity::Warn,
-        text: "Anémie sous IPP ou metformine au long cours : les deux gênent l'absorption de la vitamine B12, et l'IPP celle du fer. Un VGM élevé oriente vers la B12, un VGM bas vers le fer — le bilan tranche, et la carence se corrige.",
+        text: "Anémie sous IPP ou metformine au long cours : les deux gênent l'absorption de la vitamine B12, et l'IPP celle du fer. Un VGM élevé oriente vers la B12, un VGM bas vers le fer ; le bilan tranche, et la carence se corrige.",
     },
     Rule {
         code: "PLQ",
@@ -1584,7 +1584,7 @@ const RULES: &[Rule] = &[
         threshold: 1.5,
         needs: &["carbimazole", "thiamazole", "antithyroïdien", "propylthiouracile"],
         severity: Severity::Alert,
-        text: "Neutropénie sous antithyroïdien : l'agranulocytose est l'accident de cette classe, et elle se manifeste par une fièvre avec angine. La consigne au patient est claire — toute fièvre fait arrêter le traitement et faire une NFS le jour même, sans attendre un rendez-vous.",
+        text: "Neutropénie sous antithyroïdien : l'agranulocytose est l'accident de cette classe, et elle se manifeste par une fièvre avec angine. Consigne au patient : toute fièvre fait arrêter le traitement et faire une NFS le jour même, sans attendre un rendez-vous.",
     },
     Rule {
         code: "ALAT",
@@ -1592,7 +1592,7 @@ const RULES: &[Rule] = &[
         threshold: 120.0,
         needs: &["vastatine", "amiodarone", "méthotrexate", "isoniazide", "kétoconazole", "amoxicilline", "clavulanique", "agomélatine", "vildagliptine", "tériflunomide", "terbinafine", "pazopanib"],
         severity: Severity::Alert,
-        text: "Transaminases au-delà de trois fois la normale sous un médicament hépatotoxique : arrêter et faire évaluer. Sous amoxicilline-clavulanate, l'atteinte est cholestatique et peut apparaître après la fin du traitement — elle contre-indique l'association à vie, mais pas l'amoxicilline seule.",
+        text: "Transaminases au-delà de trois fois la normale sous un médicament hépatotoxique : arrêter et faire évaluer. Sous amoxicilline-clavulanate, l'atteinte est cholestatique et peut apparaître après la fin du traitement ; elle contre-indique l'association à vie, mais pas l'amoxicilline seule.",
     },
     Rule {
         code: "GGT",
@@ -1600,7 +1600,7 @@ const RULES: &[Rule] = &[
         threshold: 150.0,
         needs: &["carbamazépine", "phénobarbital", "phénytoïne", "rifampicine", "millepertuis"],
         severity: Severity::Info,
-        text: "Gamma-GT élevées sous inducteur enzymatique : c'est l'induction elle-même, pas une souffrance du foie, tant que les transaminases restent normales. En revanche, cet inducteur abaisse la concentration de tout ce qui l'accompagne — l'ordonnance se relit entière.",
+        text: "Gamma-GT élevées sous inducteur enzymatique : c'est l'induction elle-même, pas une souffrance du foie, tant que les transaminases restent normales. En revanche, cet inducteur abaisse la concentration de tout ce qui l'accompagne ; l'ordonnance se relit entière.",
     },
     Rule {
         code: "CREAT",
@@ -1608,7 +1608,7 @@ const RULES: &[Rule] = &[
         threshold: 110.0,
         needs: &["triméthoprime", "cotrimoxazole", "bactrim", "dolutégravir", "cimétidine"],
         severity: Severity::Info,
-        text: "Créatinine en hausse sous triméthoprime, dolutégravir ou cimétidine : ces molécules bloquent la sécrétion tubulaire de la créatinine sans altérer le rein. La hausse est de 10 à 20 %, apparaît en quelques jours et se stabilise — ce n'est pas une insuffisance rénale, et l'arrêter serait une erreur.",
+        text: "Créatinine en hausse sous triméthoprime, dolutégravir ou cimétidine : ces molécules bloquent la sécrétion tubulaire de la créatinine sans altérer le rein. La hausse est de 10 à 20 %, apparaît en quelques jours et se stabilise. Ce n'est pas une insuffisance rénale, et la molécule n'a pas à être arrêtée.",
     },
     Rule {
         code: "NA",
@@ -1616,7 +1616,7 @@ const RULES: &[Rule] = &[
         threshold: 130.0,
         needs: &["ISRS", "IRSNa", "sertraline", "citalopram", "escitalopram", "paroxétine", "venlafaxine", "carbamazépine", "oxcarbazépine", "diurétique", "hydrochlorothiazide", "indapamide"],
         severity: Severity::Alert,
-        text: "Hyponatrémie sous ISRS, carbamazépine ou thiazidique : c'est un SIADH médicamenteux, fréquent chez la personne âgée dans les premières semaines. Confusion, chutes et nausées en sont les signes, et ils passent pour de la vieillesse. Ne pas renouveler sans avis.",
+        text: "Hyponatrémie sous ISRS, carbamazépine ou thiazidique : c'est un SIADH médicamenteux, fréquent chez la personne âgée dans les premières semaines. Confusion, chutes et nausées en sont les signes, et ils sont souvent attribués au vieillissement. Ne pas renouveler sans avis.",
     },
     Rule {
         code: "URIC",
@@ -1624,7 +1624,7 @@ const RULES: &[Rule] = &[
         threshold: 420.0,
         needs: &["diurétique", "hydrochlorothiazide", "indapamide", "furosémide", "aspirine"],
         severity: Severity::Warn,
-        text: "Hyperuricémie sous diurétique : le thiazidique et le diurétique de l'anse font monter l'acide urique et déclenchent des crises de goutte. Chez un patient goutteux, cela se discute avec le prescripteur — un autre antihypertenseur existe presque toujours.",
+        text: "Hyperuricémie sous diurétique : le thiazidique et le diurétique de l'anse font monter l'acide urique et déclenchent des crises de goutte. Chez un patient goutteux, cela se discute avec le prescripteur ; un autre antihypertenseur existe presque toujours.",
     },
     Rule {
         code: "CA",
@@ -1632,7 +1632,7 @@ const RULES: &[Rule] = &[
         threshold: 2.60,
         needs: &["vitamine D", "cholécalciférol", "calcifédiol", "calcium", "thiazidique", "hydrochlorothiazide"],
         severity: Severity::Alert,
-        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation, faire boire, et faire évaluer. Soif, nausées, urines abondantes, constipation et confusion sont les signes, et ils s'installent lentement — d'où le retard au diagnostic.",
+        text: "Hypercalcémie sous vitamine D, calcium ou thiazidique : suspendre la supplémentation, faire boire, et faire évaluer. Soif, nausées, urines abondantes, constipation et confusion sont les signes, et ils s'installent lentement, d'où le retard au diagnostic.",
     },
     Rule {
         code: "MG",
@@ -1648,7 +1648,7 @@ const RULES: &[Rule] = &[
         threshold: 10.0,
         needs: &["amiodarone", "lithium", "interféron"],
         severity: Severity::Warn,
-        text: "Hypothyroïdie sous amiodarone ou lithium : les deux la provoquent, et l'amiodarone peut aussi faire l'inverse. La molécule ne s'arrête pas pour autant — c'est la thyroïde qu'on substitue, et la TSH qui se surveille tous les six mois.",
+        text: "Hypothyroïdie sous amiodarone ou lithium : les deux la provoquent, et l'amiodarone peut aussi faire l'inverse. La molécule ne s'arrête pas pour autant : la thyroïde se substitue, et la TSH se surveille tous les six mois.",
     },
     Rule {
         code: "HBA1C",
@@ -1656,7 +1656,7 @@ const RULES: &[Rule] = &[
         threshold: 6.5,
         needs: &["insuline", "sulfamide hypoglycémiant", "gliclazide", "glimépiride", "répaglinide"],
         severity: Severity::Warn,
-        text: "HbA1c basse sous insuline ou sulfamide chez un patient âgé : ce n'est pas un bon résultat, c'est un risque d'hypoglycémie. La cible se relâche après 75 ans et davantage encore en cas de fragilité — le sur-traitement du diabète de la personne âgée est aussi dangereux que le sous-traitement.",
+        text: "HbA1c basse sous insuline ou sulfamide chez un patient âgé : risque d'hypoglycémie plutôt que bon équilibre. La cible se relâche après 75 ans et davantage encore en cas de fragilité ; le sur-traitement du diabète de la personne âgée est aussi dangereux que le sous-traitement.",
     },
     // L'analyte n'a plus de borne haute, parce qu'aucune ne vaut pour
     // tout le monde. Neuf pour cent, si : c'est au-dessus de l'objectif
@@ -1668,7 +1668,7 @@ const RULES: &[Rule] = &[
         threshold: 9.0,
         needs: &[],
         severity: Severity::Warn,
-        text: "HbA1c au-dessus de 9 % : au-delà de tous les objectifs, y compris le plus relâché — celui du sujet âgé malade, chez qui l'on vise seulement le confort. Entre 7 et 9 %, rien n'est dit ici : la cible se lit sur le dossier et non sur le compte rendu, et un même chiffre est un échec chez l'un et un bon résultat chez l'autre.",
+        text: "HbA1c au-dessus de 9 % : au-delà de tous les objectifs, y compris le plus relâché, celui du sujet âgé malade, chez qui l'on vise seulement le confort. Entre 7 et 9 %, rien n'est dit ici : la cible se lit sur le dossier et non sur le compte rendu, et un même chiffre est un échec chez l'un et un bon résultat chez l'autre.",
     },
     Rule {
         code: "LDL",
@@ -1676,7 +1676,7 @@ const RULES: &[Rule] = &[
         threshold: 1.0,
         needs: &["vastatine", "ézétimibe", "anti-PCSK9"],
         severity: Severity::Warn,
-        text: "LDL au-dessus de la cible sous hypolipémiant : la cible dépend du risque et non des bornes du laboratoire — 0,55 g/L à très haut risque, 0,70 à haut risque, 1,00 à risque modéré. Avant de monter la dose, vérifier que le traitement est pris, et à quelle heure : l'inobservance est la première cause d'échec, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent, souvent sans que personne en ait reparlé.",
+        text: "LDL au-dessus de la cible sous hypolipémiant : la cible dépend du risque et non des bornes du laboratoire (0,55 g/L à très haut risque, 0,70 à haut risque, 1,00 à risque modéré). Avant de monter la dose, vérifier que le traitement est pris, et à quelle heure : l'inobservance est la première cause d'échec, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent, souvent sans que personne en ait reparlé.",
     },
     Rule {
         code: "CRP",
@@ -1692,7 +1692,7 @@ const RULES: &[Rule] = &[
         threshold: 30.0,
         needs: &["AVK", "warfarine", "fluindione", "acénocoumarol", "phénytoïne", "furosémide"],
         severity: Severity::Warn,
-        text: "Hypoalbuminémie sous médicament fortement lié aux protéines : la fraction libre — celle qui agit — augmente à concentration totale inchangée. Sous AVK, l'INR devient instable à dose inchangée : contrôles rapprochés, et méfiance devant tout ajout qui déplace la liaison protéique. Un INR qui s'emballe chez un patient dénutri vient souvent de là, et la dose se revoit avec le prescripteur.",
+        text: "Hypoalbuminémie sous médicament fortement lié aux protéines : la fraction libre, active, augmente à concentration totale inchangée. Sous AVK, l'INR devient instable à dose inchangée : contrôles rapprochés, et méfiance devant tout ajout qui déplace la liaison protéique. Un INR qui s'emballe chez un patient dénutri vient souvent de là, et la dose se revoit avec le prescripteur.",
     },
     Rule {
         code: "UREE",
@@ -1700,7 +1700,7 @@ const RULES: &[Rule] = &[
         threshold: 10.0,
         needs: &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide", "pril ", "IEC", "sartan"],
         severity: Severity::Warn,
-        text: "Urée élevée sous diurétique ou bloqueur du système rénine-angiotensine, créatinine encore acceptable : c'est le rein qui manque d'eau, pas encore le rein qui se dégrade. Chercher ce qui a fait perdre du volume — chaleur, diarrhée, diurétique majoré — et faire réévaluer avant que la créatinine ne suive.",
+        text: "Urée élevée sous diurétique ou bloqueur du système rénine-angiotensine, créatinine encore acceptable : le rein manque d'eau sans être encore altéré. Chercher ce qui a fait perdre du volume (chaleur, diarrhée, diurétique majoré) et faire réévaluer avant que la créatinine ne suive.",
     },
     Rule {
         code: "UREE",
@@ -1716,7 +1716,7 @@ const RULES: &[Rule] = &[
         threshold: 60.0,
         needs: &["AVK", "warfarine", "fluindione", "acénocoumarol"],
         severity: Severity::Info,
-        text: "Sous AVK, le TP n'est pas le chiffre à lire : c'est l'INR, et lui seul, qui dit si l'anticoagulation est dans sa zone. Un TP bas est attendu et ne se corrige pas pour lui-même — vérifier l'INR de la même prise de sang avant toute conclusion.",
+        text: "Sous AVK, le TP n'est pas le chiffre à lire : c'est l'INR, et lui seul, qui dit si l'anticoagulation est dans sa zone. Un TP bas est attendu et ne se corrige pas pour lui-même ; vérifier l'INR de la même prise de sang avant toute conclusion.",
     },
     Rule {
         code: "TP",
@@ -1732,7 +1732,7 @@ const RULES: &[Rule] = &[
         threshold: 12.0,
         needs: &["prednisone", "prednisolone", "cortancyl", "solupred", "célestène", "médrol", "corticoïde substitutif", "méthylprednisolone"],
         severity: Severity::Info,
-        text: "Hyperleucocytose sous corticoïde : la molécule démargine les polynucléaires et fait monter le chiffre sans la moindre infection. C'est une cause classique d'antibiothérapie inutile. La formule, la CRP et surtout l'état du patient tranchent — et à l'inverse, le corticoïde masque la fièvre d'une vraie infection.",
+        text: "Hyperleucocytose sous corticoïde : la molécule démargine les polynucléaires et fait monter le chiffre sans la moindre infection. C'est une cause classique d'antibiothérapie inutile. La formule, la CRP et surtout l'état du patient tranchent. À l'inverse, le corticoïde masque la fièvre d'une vraie infection.",
     },
     Rule {
         code: "GB",
@@ -1740,7 +1740,7 @@ const RULES: &[Rule] = &[
         threshold: 3.0,
         needs: &["clozapine", "carbimazole", "thiamazole", "antithyroïdien", "méthotrexate", "sulfasalazine", "colchicine"],
         severity: Severity::Alert,
-        text: "Leucopénie sous une molécule qui donne des agranulocytoses : la consigne est la même pour toutes, et elle se donne au comptoir avant la première boîte — toute fièvre, toute angine, tout aphte fait arrêter le traitement et faire une numération le jour même, sans attendre un rendez-vous.",
+        text: "Leucopénie sous une molécule qui donne des agranulocytoses : la consigne est la même pour toutes, et elle se donne au comptoir avant la première boîte : toute fièvre, toute angine, tout aphte fait arrêter le traitement et faire une numération le jour même, sans attendre un rendez-vous.",
     },
     Rule {
         code: "HTE",
@@ -1748,7 +1748,7 @@ const RULES: &[Rule] = &[
         threshold: 52.0,
         needs: &["testostérone", "androgène", "érythropoïétine", "epoétine", "darbépoétine"],
         severity: Severity::Warn,
-        text: "Hématocrite élevé sous testostérone ou agent stimulant l'érythropoïèse : c'est l'effet indésirable qui compte pour ces deux classes, parce qu'il fait le risque thrombotique. Au-delà de 54 %, la dose se réduit ou le traitement se suspend — c'est une décision du prescripteur, et elle ne se reporte pas au prochain bilan.",
+        text: "Hématocrite élevé sous testostérone ou agent stimulant l'érythropoïèse : c'est l'effet indésirable qui compte pour ces deux classes, parce qu'il fait le risque thrombotique. Au-delà de 54 %, la dose se réduit ou le traitement se suspend ; c'est une décision du prescripteur, et elle ne se reporte pas au prochain bilan.",
     },
     Rule {
         code: "PTH",
@@ -1756,7 +1756,7 @@ const RULES: &[Rule] = &[
         threshold: 65.0,
         needs: &["chélateur du phosphore", "calcitriol", "alfacalcidol", "cinacalcet", "vitamine D"],
         severity: Severity::Info,
-        text: "Parathormone élevée dans l'insuffisance rénale chronique : c'est l'hyperparathyroïdie secondaire, et son traitement se lit à trois chiffres, jamais à un seul — phosphore, calcium et PTH ensemble. Rappeler que le chélateur du phosphore se prend au milieu du repas et pas à distance : pris à jeun, il ne chélate rien.",
+        text: "Parathormone élevée dans l'insuffisance rénale chronique : c'est l'hyperparathyroïdie secondaire, et son traitement se lit à trois chiffres, jamais à un seul : phosphore, calcium et PTH ensemble. Rappeler que le chélateur du phosphore se prend au milieu du repas et pas à distance : pris à jeun, il ne chélate rien.",
     },
     Rule {
         code: "CT",
@@ -1764,7 +1764,7 @@ const RULES: &[Rule] = &[
         threshold: 3.0,
         needs: &["vastatine", "ézétimibe", "anti-PCSK9", "fibrate", "acide bempédoïque"],
         severity: Severity::Warn,
-        text: "Cholestérol total au-delà de 3 g/L malgré un hypolipémiant : vérifier d'abord que le traitement est pris — l'inobservance explique la majorité des échecs, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent. Un chiffre aussi haut, surtout avant 40 ans ou avec un accident cardiovasculaire précoce dans la famille, fait évoquer une hypercholestérolémie familiale, qui se dépiste chez les apparentés au premier degré. C'est le LDL qui porte la cible : le total ne sert qu'à alerter.",
+        text: "Cholestérol total au-delà de 3 g/L malgré un hypolipémiant : vérifier d'abord que le traitement est pris : l'inobservance explique la majorité des échecs, et les douleurs musculaires attribuées à la statine en sont le motif le plus fréquent. Un chiffre aussi haut, surtout avant 40 ans ou avec un accident cardiovasculaire précoce dans la famille, fait évoquer une hypercholestérolémie familiale, qui se dépiste chez les apparentés au premier degré. C'est le LDL qui porte la cible : le total ne sert qu'à alerter.",
     },
     // Ce qui suit vient des sections « Toxicité » des fiches, comme les
     // règles de revue : ce qu'une monographie écrit comme « surveiller
@@ -1776,7 +1776,7 @@ const RULES: &[Rule] = &[
         threshold: 5.0,
         needs: &["cotrimoxazole", "bactrim", "triméthoprime", "amiloride"],
         severity: Severity::Alert,
-        text: "Kaliémie élevée sous cotrimoxazole ou amiloride : le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur, d'autant plus à dose forte et sur un rein diminué, et l'hyperkaliémie s'installe en quelques jours d'antibiothérapie. Ne pas délivrer la suite sans avis lorsqu'un IEC, un sartan, une spironolactone ou un AINS accompagne la cure, et proscrire les sels de régime — le patient les croit inoffensifs, ce sont des sels de potassium. Écueil : la créatininémie qui monte à côté peut n'être qu'une fausse hausse, le triméthoprime bloquant la sécrétion tubulaire de la créatinine sans toucher à la filtration. Ici le potassium est vrai, la créatinine ne l'est pas.",
+        text: "Kaliémie élevée sous cotrimoxazole ou amiloride : le triméthoprime bloque le canal sodium du tube distal comme un diurétique épargneur, d'autant plus à dose forte et sur un rein diminué, et l'hyperkaliémie s'installe en quelques jours d'antibiothérapie. Ne pas délivrer la suite sans avis lorsqu'un IEC, un sartan, une spironolactone ou un AINS accompagne la cure, et proscrire les sels de régime, que le patient croit inoffensifs et qui sont des sels de potassium. Écueil : la créatininémie qui monte à côté peut n'être qu'une fausse hausse, le triméthoprime bloquant la sécrétion tubulaire de la créatinine sans toucher à la filtration. L'hyperkaliémie, elle, est réelle.",
     },
     Rule {
         code: "K",
@@ -1784,7 +1784,7 @@ const RULES: &[Rule] = &[
         threshold: 3.5,
         needs: &["bisacodyl", "laxatif stimulant", "séné", "docusate"],
         severity: Severity::Warn,
-        text: "Hypokaliémie sous laxatif stimulant : elle vient de l'usage quotidien prolongé et non d'une prise ponctuelle, si bien que le potassium se corrige puis rechute tant que le laxatif continue. C'est donc l'usage réel qu'il faut reprendre avec le patient, et des achats répétés sont l'information à ne pas laisser passer — dépendance de l'intestin, qui ne répond plus sans stimulation, et mésusage dans les troubles du comportement alimentaire. Dangereuse sous digoxine et sous diurétique. Toute douleur abdominale non expliquée contre-indique de renouveler.",
+        text: "Hypokaliémie sous laxatif stimulant : elle vient de l'usage quotidien prolongé et non d'une prise ponctuelle, si bien que le potassium se corrige puis rechute tant que le laxatif continue. C'est donc l'usage réel qu'il faut reprendre avec le patient, et des achats répétés sont l'information à ne pas laisser passer : dépendance de l'intestin, qui ne répond plus sans stimulation, et mésusage dans les troubles du comportement alimentaire. Dangereuse sous digoxine et sous diurétique. Toute douleur abdominale non expliquée contre-indique de renouveler.",
     },
     Rule {
         code: "TSH",
@@ -1819,7 +1819,7 @@ const RULES: &[Rule] = &[
             "antithyroïdien",
         ],
         severity: Severity::Warn,
-        text: "TSH basse sous antithyroïdien : ce n'est pas un signe de surdosage. Elle reste freinée des mois après que les hormones sont redescendues, et une dose baissée sur ce chiffre relance l'hyperthyroïdie — c'est la T4 libre qui juge l'efficacité de la classe. Écueil : toute fièvre ou toute angine sous antithyroïdien fait faire une numération le jour même, l'agranulocytose étant le risque qui tue.",
+        text: "TSH basse sous antithyroïdien : ce n'est pas un signe de surdosage. Elle reste freinée des mois après que les hormones sont redescendues, et une dose baissée sur ce chiffre relance l'hyperthyroïdie ; c'est la T4 libre qui juge l'efficacité de la classe. Écueil : toute fièvre ou toute angine sous antithyroïdien fait faire une numération le jour même, l'agranulocytose étant le risque vital.",
     },
     Rule {
         code: "HCO3",
@@ -1827,7 +1827,7 @@ const RULES: &[Rule] = &[
         threshold: 20.0,
         needs: &["gliflozine", "dapagliflozine", "empagliflozine", "SGLT2"],
         severity: Severity::Alert,
-        text: "Réserve alcaline basse sous gliflozine : acidocétose à glycémie normale, où le patient contrôle son sucre, le trouve correct, et s'aggrave. Ce sont les corps cétoniques qu'il faut mesurer, jamais la seule glycémie. Nausées, vomissements, anorexie, douleurs abdominales, difficulté à respirer, confusion ou asthénie inhabituelle : arrêt du traitement et avis en urgence. Les circonstances déclenchantes sont la vraie prévention et se donnent d'avance — jeûne, régime très pauvre en glucides, infection aiguë, vomissements, diarrhée, déshydratation, alcool, réduction brutale de l'insuline, chirurgie lourde : dans toutes, la gliflozine se suspend.",
+        text: "Réserve alcaline basse sous gliflozine : acidocétose à glycémie normale, où le patient contrôle son sucre, le trouve correct, et s'aggrave. Ce sont les corps cétoniques qu'il faut mesurer, jamais la seule glycémie. Nausées, vomissements, anorexie, douleurs abdominales, difficulté à respirer, confusion ou asthénie inhabituelle : arrêt du traitement et avis en urgence. Les circonstances déclenchantes s'expliquent d'avance, leur connaissance étant la prévention : jeûne, régime très pauvre en glucides, infection aiguë, vomissements, diarrhée, déshydratation, alcool, réduction brutale de l'insuline, chirurgie lourde. Dans toutes, la gliflozine se suspend.",
     },
     Rule {
         code: "LDL",
@@ -1842,7 +1842,7 @@ const RULES: &[Rule] = &[
             "sirolimus",
         ],
         severity: Severity::Warn,
-        text: "LDL élevé sous inhibiteur de JAK ou sous inhibiteur mTOR : la dyslipidémie est un effet de classe attendu et le bilan lipidique fait partie de la surveillance prévue — huit semaines après l'instauration pour le tofacitinib, douze pour le baricitinib et l'upadacitinib, puis régulièrement. Elle ne fait pas arrêter le traitement, elle se traite. Sous JAK elle pèse double, la classe étant déjà restreinte après 65 ans, chez le fumeur et en cas de risque cardiovasculaire, pour excès d'événements cardiovasculaires et de thromboses. Sous mTOR, ce sont surtout les triglycérides qui montent, et la protéinurie se contrôle dans le même bilan.",
+        text: "LDL élevé sous inhibiteur de JAK ou sous inhibiteur mTOR : la dyslipidémie est un effet de classe attendu et le bilan lipidique fait partie de la surveillance prévue — huit semaines après l'instauration pour le tofacitinib, douze pour le baricitinib et l'upadacitinib, puis régulièrement. Elle ne fait pas arrêter le traitement, elle se traite. Sous JAK elle pèse davantage, la classe étant déjà restreinte après 65 ans, chez le fumeur et en cas de risque cardiovasculaire, pour excès d'événements cardiovasculaires et de thromboses. Sous mTOR, ce sont surtout les triglycérides qui montent, et la protéinurie se contrôle dans le même bilan.",
     },
     Rule {
         code: "CPK",
@@ -1850,7 +1850,7 @@ const RULES: &[Rule] = &[
         threshold: 1000.0,
         needs: &["antipsychotique", "neuroleptique", "lévodopa"],
         severity: Severity::Alert,
-        text: "Avec fièvre, rigidité, sueurs ou confusion, ce chiffre sous antipsychotique est un syndrome malin des neuroleptiques : urgence vitale, appel du 15, aucune nouvelle prise. Une forme retard injectable ne se retire pas — son effet se subit pendant des semaines, ce qui ne change rien à l'appel. Sans fièvre ni rigidité, une élévation isolée est fréquente sous antipsychotique — agitation, chute, injection intramusculaire — et se contrôle plutôt qu'elle n'alarme. Sous lévodopa, le même tableau signe l'arrêt brutal : syndrome akinéto-hyperthermique avec rhabdomyolyse, sur une rupture de délivrance, un jeûne préopératoire ou une hospitalisation, et la conduite est de rétablir la prise en urgence, jamais de la reporter.",
+        text: "Avec fièvre, rigidité, sueurs ou confusion, ce chiffre sous antipsychotique est un syndrome malin des neuroleptiques : urgence vitale, appel du 15, aucune nouvelle prise. Une forme retard injectable ne se retire pas : son effet persiste des semaines, et l'appel reste nécessaire. Sans fièvre ni rigidité, une élévation isolée est fréquente sous antipsychotique (agitation, chute, injection intramusculaire) et se contrôle plutôt qu'elle n'alarme. Sous lévodopa, le même tableau signe l'arrêt brutal : syndrome akinéto-hyperthermique avec rhabdomyolyse, sur une rupture de délivrance, un jeûne préopératoire ou une hospitalisation, et la conduite est de rétablir la prise en urgence, jamais de la reporter.",
     },
     Rule {
         code: "K",
@@ -1858,7 +1858,7 @@ const RULES: &[Rule] = &[
         threshold: 5.0,
         needs: &["tacrolimus", "ciclosporine", "anticalcineurine"],
         severity: Severity::Warn,
-        text: "Kaliémie élevée sous tacrolimus ou ciclosporine : hyperkaliémie et néphrotoxicité sont les signes du surdosage de la classe et se lisent ensemble — demander la concentration résiduelle, prélevée avant la prise, et la créatininémie. Chercher ce qui a fait monter la concentration : pamplemousse, macrolide, azolé, ou un changement de spécialité, à éviter sur ces molécules à marge thérapeutique étroite. La délivrance ne s'interrompt pas — une dose d'immunosuppresseur sautée expose au rejet du greffon — mais le résultat se signale à l'équipe de greffe le jour même, et rien ne se modifie sans elle.",
+        text: "Kaliémie élevée sous tacrolimus ou ciclosporine : hyperkaliémie et néphrotoxicité sont les signes du surdosage de la classe et se lisent ensemble : demander la concentration résiduelle, prélevée avant la prise, et la créatininémie. Chercher ce qui a fait monter la concentration : pamplemousse, macrolide, azolé, ou un changement de spécialité, à éviter sur ces molécules à marge thérapeutique étroite. La délivrance ne s'interrompt pas (une dose d'immunosuppresseur sautée expose au rejet du greffon), mais le résultat se signale à l'équipe de greffe le jour même, et rien ne se modifie sans elle.",
     },
     Rule {
         code: "PHOS",
@@ -1866,7 +1866,7 @@ const RULES: &[Rule] = &[
         threshold: 0.8,
         needs: &["ténofovir"],
         severity: Severity::Warn,
-        text: "Phosphorémie basse sous ténofovir : c'est le premier signe de la tubulopathie proximale du disoproxil, silencieuse, osseuse avant d'être bruyante. Demander avec elle la créatininémie, la protéinurie et la glycosurie — une glycosurie sans hyperglycémie oriente vers le syndrome de Fanconi. Sous disoproxil, le passage à l'alafénamide se discute avec le prescripteur ; sous alafénamide, l'exposition rénale est déjà moindre et c'est une autre cause qu'il faut chercher. Le traitement ne s'interrompt jamais de lui-même : chez un porteur du virus de l'hépatite B, l'arrêt de quelques jours expose à une réactivation sévère, et une délivrance sans rupture fait partie du traitement.",
+        text: "Phosphorémie basse sous ténofovir : c'est le premier signe de la tubulopathie proximale du disoproxil, silencieuse et osseuse avant d'être symptomatique. Demander avec elle la créatininémie, la protéinurie et la glycosurie ; une glycosurie sans hyperglycémie oriente vers le syndrome de Fanconi. Sous disoproxil, le passage à l'alafénamide se discute avec le prescripteur ; sous alafénamide, l'exposition rénale est déjà moindre et c'est une autre cause qu'il faut chercher. Le traitement ne s'interrompt jamais de lui-même : chez un porteur du virus de l'hépatite B, l'arrêt de quelques jours expose à une réactivation sévère, et une délivrance sans rupture fait partie du traitement.",
     },
     Rule {
         code: "LIP",
@@ -1874,7 +1874,7 @@ const RULES: &[Rule] = &[
         threshold: 180.0,
         needs: &["valproate", "valproïque", "divalproate", "valpromide"],
         severity: Severity::Alert,
-        text: "Lipase au-delà de trois fois la normale sous valproate : pancréatite aiguë jusqu'à preuve du contraire — douleur épigastrique transfixiante, vomissements. Arrêt immédiat, avis en urgence, pas de réintroduction. Écueil : elle ne suit pas la concentration, et une valproatémie dans la zone n'écarte rien — comme pour l'hépatite fulminante, et comme pour l'hyperammoniémie, qui survient à taux normal.",
+        text: "Lipase au-delà de trois fois la normale sous valproate : évoquer une pancréatite aiguë (douleur épigastrique transfixiante, vomissements). Arrêt immédiat, avis en urgence, pas de réintroduction. Écueil : elle ne suit pas la concentration, et une valproatémie dans la zone n'écarte rien, comme pour l'hépatite fulminante, et comme pour l'hyperammoniémie, qui survient à taux normal.",
     },
 ];
 

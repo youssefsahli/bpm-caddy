@@ -3631,3 +3631,5 @@ camp_print_tooltip = "Liste des dossiers à rappeler pour le vaccin choisi, avec
 camp_print_title = "{} — campagne {} : dossiers à rappeler"
 camp_age = "{} ans"
 tpl_target_rappels = "Liste de rappel de la campagne"
+status_vaccinations = "· {} vaccination(s) aujourd'hui"
+status_vaccinations_tooltip = "Doses inscrites aux carnets aujourd'hui ; ouvrir la campagne"
