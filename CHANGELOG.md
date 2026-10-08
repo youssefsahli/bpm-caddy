@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.383.0] - 2026-10-08
+
 ### Changed
 - Kerendia : la remarque de posologie donne les paliers de kaliémie du
   RCP (passage à 20 mg, suspension, reprise à 10 mg).
