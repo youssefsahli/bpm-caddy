@@ -49265,6 +49265,28 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Les doses de tous les carnets depuis `since`, avec la date de
+    /// naissance du dossier : le bilan de la saison par tranche d'âge.
+    pub fn vaccinations_with_birth_since(
+        &self,
+        since: &str,
+    ) -> Result<Vec<(String, String, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.birth_date, v.code, v.label, v.given_on
+                 FROM vaccinations v JOIN patients p ON p.id = v.patient_id
+                 WHERE v.given_on >= ?1 ORDER BY v.given_on, v.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([since], |r| {
+                Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Combien de doses sont inscrites aux carnets à la date `day` (ISO) :
     /// le compte de la barre d'état pendant la campagne.
     pub fn vaccinations_on(&self, day: &str) -> Result<usize, String> {

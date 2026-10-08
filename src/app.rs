@@ -51464,6 +51464,7 @@ impl App {
                 Self::heading_width(ui, &title),
                 Self::button_width(ui, tr("camp_reload")),
                 Self::button_width(ui, tr("camp_print")),
+                Self::button_width(ui, tr("camp_summary")),
             ]
             .into_iter(),
             tr("camp_subtitle"),
@@ -51471,6 +51472,7 @@ impl App {
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         let mut reload = false;
         let mut print = false;
+        let mut print_summary = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&title);
@@ -51485,6 +51487,12 @@ impl App {
                     .clicked()
                 {
                     print = true;
+                }
+                if motif::button(ui, tr("camp_summary"))
+                    .on_hover_text(tr("camp_summary_tooltip"))
+                    .clicked()
+                {
+                    print_summary = true;
                 }
             });
             ui.add(
@@ -51971,6 +51979,76 @@ impl App {
                 &paper,
                 &config.pharmacy,
                 &config.doc_template_path("rappels"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+        if print_summary {
+            let rows = session
+                .db
+                .vaccinations_with_birth_since(&season.start)
+                .unwrap_or_default();
+            let refs: Vec<(&str, &str, &str, &str)> = rows
+                .iter()
+                .map(|(b, c, l, d)| (b.as_str(), c.as_str(), l.as_str(), d.as_str()))
+                .collect();
+            let by_age: Vec<[String; 6]> = campagne::summary(&refs, &session.today)
+                .iter()
+                .map(|s| {
+                    [
+                        if s.label.is_empty() {
+                            s.code.clone()
+                        } else {
+                            s.label.clone()
+                        },
+                        s.under_65.to_string(),
+                        s.from_65.to_string(),
+                        s.from_75.to_string(),
+                        s.unknown.to_string(),
+                        s.total().to_string(),
+                    ]
+                })
+                .collect();
+            let doses: Vec<campagne::DoseRow> = rows
+                .iter()
+                .map(|(_, code, label, date)| campagne::DoseRow {
+                    code,
+                    label,
+                    given_on: date,
+                })
+                .collect();
+            let mut weeks: Vec<String> = Vec::new();
+            let mut by_week: Vec<(String, Vec<usize>)> = Vec::new();
+            for code in CAMPAIGN_CODES {
+                let series = campagne::weekly(&doses, code, &session.today);
+                if weeks.is_empty() {
+                    weeks = series
+                        .iter()
+                        .map(|(m, _)| {
+                            crate::date::iso_week(m)
+                                .map(|(_, w)| trf("camp_week", w))
+                                .unwrap_or_default()
+                        })
+                        .collect();
+                }
+                if series.iter().any(|(_, n)| *n > 0) {
+                    by_week.push((
+                        Self::campaign_code_label(code).to_owned(),
+                        series.iter().map(|(_, n)| *n).collect(),
+                    ));
+                }
+            }
+            let paper = crate::pdf::CampaignSummaryPaper {
+                title: trf("camp_summary_title", &season.label),
+                date: trf("camp_summary_date", db::format_french_date(&session.today)),
+                by_age,
+                weeks,
+                by_week,
+            };
+            if let Err(e) = crate::pdf::open_campaign_summary(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("bilan_campagne"),
             ) {
                 session.error = Some(e);
             }

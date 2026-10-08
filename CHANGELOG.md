@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Campagne : « Bilan de la saison » imprime les doses par vaccin et par
+  tranche d'âge à la date de l'injection (moins de 65 ans, 65 à 74 ans,
+  75 ans et plus), puis semaine par semaine pour la grippe, le COVID-19
+  et le VRS.
+
 ## [0.374.0] - 2026-10-08
 
 ### Added

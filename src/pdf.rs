@@ -3407,6 +3407,105 @@ const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
+/// Le bilan de la saison : les doses par vaccin et par tranche d'âge,
+/// puis semaine par semaine pour les vaccins de la campagne.
+pub struct CampaignSummaryPaper {
+    pub title: String,
+    pub date: String,
+    /// Vaccin, moins de 65 ans, 65-74, 75 et plus, âge inconnu, total.
+    pub by_age: Vec<[String; 6]>,
+    /// En-têtes des semaines (« S42 ») puis, par vaccin, le compte de
+    /// chaque semaine.
+    pub weeks: Vec<String>,
+    pub by_week: Vec<(String, Vec<usize>)>,
+}
+
+pub fn open_campaign_summary(
+    paper: &CampaignSummaryPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("bilan_campagne", template_path),
+            &campaign_summary_values(paper, pharmacy),
+        ),
+        "bilan_campagne",
+    )
+}
+
+fn campaign_summary_values(
+    paper: &CampaignSummaryPaper,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(14pt, weight: \"bold\")[#{}]\n#v(1mm)\n#text(9pt, style: \"italic\")[#{}]\n#v(3mm)\n",
+        typst_str(&paper.title),
+        typst_str(&paper.date)
+    ));
+    src.push_str(
+        "#table(columns: (1fr, auto, auto, auto, auto, auto), stroke: 0.4pt, inset: 4pt,\n",
+    );
+    for h in [
+        "Vaccin",
+        "Moins de 65 ans",
+        "65 à 74 ans",
+        "75 ans et plus",
+        "Âge inconnu",
+        "Total",
+    ] {
+        src.push_str(&format!(
+            "  [#text(weight: \"bold\")[#{}]],\n",
+            typst_str(h)
+        ));
+    }
+    for row in &paper.by_age {
+        for cell in row {
+            src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+        }
+    }
+    src.push_str(")\n");
+    if !paper.weeks.is_empty() && !paper.by_week.is_empty() {
+        src.push_str("#v(5mm)\n#text(10.5pt, weight: \"bold\")[Doses par semaine]\n#v(2mm)\n");
+        src.push_str(&format!(
+            "#table(columns: {}, stroke: 0.4pt, inset: 3pt,\n",
+            paper.weeks.len() + 1
+        ));
+        src.push_str("  [],\n");
+        for w in &paper.weeks {
+            src.push_str(&format!(
+                "  [#text(7.5pt, weight: \"bold\")[#{}]],\n",
+                typst_str(w)
+            ));
+        }
+        for (name, counts) in &paper.by_week {
+            src.push_str(&format!("  [#text(8pt)[#{}]],\n", typst_str(name)));
+            for i in 0..paper.weeks.len() {
+                let n = counts.get(i).copied().unwrap_or(0);
+                src.push_str(&format!("  [#text(8pt)[{n}]],\n"));
+            }
+        }
+        src.push_str(")\n");
+    }
+    vec![("{{BODY}}", src)]
+}
+
+const MARKERS_BILAN_CAMPAGNE: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_BILAN_CAMPAGNE_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.4cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+
+{{BODY}}
+"##;
+
 /// La liste des rappels de la campagne, à imprimer pour appeler : une
 /// ligne par dossier, et une colonne laissée vide pour noter l'issue.
 pub struct RecallPaper {
@@ -4699,6 +4798,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_DISPOSITIF_TEMPLATE,
     },
     Doc {
+        key: "bilan_campagne",
+        label: "tpl_target_bilan_campagne",
+        markers: MARKERS_BILAN_CAMPAGNE,
+        default: DEFAULT_BILAN_CAMPAGNE_TEMPLATE,
+    },
+    Doc {
         key: "rappels",
         label: "tpl_target_rappels",
         markers: MARKERS_RAPPELS,
@@ -5549,6 +5654,23 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // des sections. Elles sont toutes remplies, brièvement.
         // La feuille de compression, la plus fournie des trois : des
         // relevés, le tableau des mesures et tous ses conseils.
+        "bilan_campagne" => campaign_summary_values(
+            &CampaignSummaryPaper {
+                title: "Campagne de vaccination 2026-2027 : bilan".to_owned(),
+                date: "20/10/2026".to_owned(),
+                by_age: vec![[
+                    "Grippe saisonnière".to_owned(),
+                    "12".to_owned(),
+                    "40".to_owned(),
+                    "55".to_owned(),
+                    "1".to_owned(),
+                    "108".to_owned(),
+                ]],
+                weeks: vec!["S41".to_owned(), "S42".to_owned(), "S43".to_owned()],
+                by_week: vec![("Grippe".to_owned(), vec![0, 60, 48])],
+            },
+            &sample_pharmacy(),
+        ),
         "rappels" => recall_values(
             &RecallPaper {
                 title: "Grippe saisonnière — campagne 2026-2027".to_owned(),

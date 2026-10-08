@@ -497,6 +497,73 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
 }
 
 // ---------------------------------------------------------------------
+// Le bilan de la saison
+// ---------------------------------------------------------------------
+
+/// Les doses d'un vaccin sur la saison, par tranche d'âge à la date de
+/// l'injection : moins de 65 ans, 65 à 74 ans, 75 ans et plus, âge
+/// inconnu (pas de date de naissance au dossier).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Summary {
+    pub code: String,
+    pub label: String,
+    pub under_65: usize,
+    pub from_65: usize,
+    pub from_75: usize,
+    pub unknown: usize,
+}
+
+impl Summary {
+    pub fn total(&self) -> usize {
+        self.under_65 + self.from_65 + self.from_75 + self.unknown
+    }
+}
+
+/// Le bilan de la saison en cours. `rows` : naissance (ISO, vide si
+/// inconnue), code, libellé, date de la dose.
+pub fn summary(rows: &[(&str, &str, &str, &str)], today: &str) -> Vec<Summary> {
+    let s = season(today);
+    let mut out: Vec<Summary> = Vec::new();
+    for (birth, code, label, given) in rows {
+        let date = given.trim();
+        if date.is_empty() || date < s.start.as_str() || date > today {
+            continue;
+        }
+        let key = if code.trim().is_empty() {
+            label.trim()
+        } else {
+            code.trim()
+        };
+        if key.is_empty() {
+            continue;
+        }
+        let i = match out.iter().position(|x| x.code == key) {
+            Some(i) => i,
+            None => {
+                out.push(Summary {
+                    code: key.to_owned(),
+                    label: label.trim().to_owned(),
+                    under_65: 0,
+                    from_65: 0,
+                    from_75: 0,
+                    unknown: 0,
+                });
+                out.len() - 1
+            }
+        };
+        let row = &mut out[i];
+        match crate::db::age_on(birth, date) {
+            Some(a) if a >= 75 => row.from_75 += 1,
+            Some(a) if a >= 65 => row.from_65 += 1,
+            Some(_) => row.under_65 += 1,
+            None => row.unknown += 1,
+        }
+    }
+    out.sort_by(|a, b| b.total().cmp(&a.total()).then(a.code.cmp(&b.code)));
+    out
+}
+
+// ---------------------------------------------------------------------
 // Les traitements évocateurs d'une indication
 // ---------------------------------------------------------------------
 
@@ -1034,6 +1101,27 @@ mod tests {
         assert!(recalls(&people, &[], "VRS", today)
             .iter()
             .all(|x| x.patient_id != 1));
+    }
+
+    #[test]
+    fn the_season_summary_counts_by_age_at_the_injection() {
+        let rows = [
+            ("1955-01-01", "GRIPPE", "Grippe", "2026-10-14"),
+            ("1945-01-01", "GRIPPE", "Grippe", "2026-10-14"),
+            ("1990-01-01", "GRIPPE", "Grippe", "2026-10-15"),
+            ("", "GRIPPE", "Grippe", "2026-10-15"),
+            ("1950-01-01", "COVID", "COVID-19", "2026-10-14"),
+            // Saison passée : hors bilan.
+            ("1950-01-01", "GRIPPE", "Grippe", "2026-01-10"),
+        ];
+        let s = summary(&rows, "2026-10-20");
+        assert_eq!(s[0].code, "GRIPPE");
+        assert_eq!(
+            (s[0].under_65, s[0].from_65, s[0].from_75, s[0].unknown),
+            (1, 1, 1, 1)
+        );
+        assert_eq!(s[0].total(), 4);
+        assert_eq!(s[1].total(), 1);
     }
 
     #[test]
