@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.388.0] - 2026-10-08
+
 ### Changed
 - Relecture de la rédaction des fiches de la saison (Vaxigrip, Influvac,
   Flucelvax, Fluad, mResvia, Enflonsia, bas anti-thrombose) ; les
