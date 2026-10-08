@@ -4126,7 +4126,7 @@ struct CampagneState {
     recalls: Vec<RecallRow>,
     /// Combien de dossiers à rappeler, par vaccin de
     /// `campagne::CAMPAIGN_CODES`.
-    counts: [usize; 3],
+    counts: [usize; crate::campagne::CAMPAIGN_CODES.len()],
     new_lot: crate::campagne::Lot,
     /// La page montrée quand la vue est trop étroite pour les trois
     /// panneaux : 0 rappels, 1 doses, 2 lots.
@@ -10062,7 +10062,7 @@ impl Session {
                 evoked: evoked.remove(&p.id).unwrap_or_default(),
             })
             .collect();
-        let mut counts = [0usize; 3];
+        let mut counts = [0usize; campagne::CAMPAIGN_CODES.len()];
         let mut chosen = Vec::new();
         for (i, code) in campagne::CAMPAIGN_CODES.iter().enumerate() {
             let list = campagne::recalls(&people, &calls, code, &today);
@@ -52999,14 +52999,42 @@ impl App {
                 let codes_row = wide || !session.camp.show_rdv;
                 if codes_row {
                     ui.horizontal_wrapped(|ui| {
-                        for (i, code) in CAMPAIGN_CODES.iter().enumerate() {
-                            let label = trn(
-                                "camp_code_count",
-                                &[&Self::campaign_code_label(code), &session.camp.counts[i]],
-                            );
+                        let labels: Vec<(&'static str, String)> = CAMPAIGN_CODES
+                            .iter()
+                            .enumerate()
+                            .map(|(i, code)| {
+                                (
+                                    *code,
+                                    trn(
+                                        "camp_code_count",
+                                        &[
+                                            &Self::campaign_code_label(code),
+                                            &session.camp.counts[i],
+                                        ],
+                                    ),
+                                )
+                            })
+                            .collect();
+                        // Étroit, les vaccins tiennent dans un menu : quatre
+                        // bascules prenaient deux rangées et la liste n'en
+                        // gardait aucune.
+                        if !wide {
+                            let current = labels
+                                .iter()
+                                .find(|(c, _)| *c == session.camp.code)
+                                .map(|(_, l)| l.clone())
+                                .unwrap_or_default();
+                            let w = Self::field_width(ui, labels.iter().map(|(_, l)| l.as_str()));
+                            if let Some(code) =
+                                motif::menu(ui, "camp_code_menu", w, &current, &labels).inner
+                            {
+                                pick_code = Some(code);
+                            }
+                        }
+                        for (code, label) in labels.iter().filter(|_| wide) {
                             if motif::toggle(
                                 ui,
-                                &label,
+                                label,
                                 !session.camp.show_rdv && session.camp.code == *code,
                             )
                             .clicked()

@@ -355,7 +355,7 @@ pub fn weekly(doses: &[DoseRow], code: &str, today: &str) -> Vec<(String, usize)
 
 /// Les vaccins de la campagne que la liste des rappels sait lire. Le
 /// calendrier a d'autres lignes, mais celles-ci sont celles de l'hiver.
-pub const CAMPAIGN_CODES: [&str; 3] = ["GRIPPE", "COVID", "VRS"];
+pub const CAMPAIGN_CODES: [&str; 4] = ["GRIPPE", "COVID", "VRS", "ZONA"];
 
 /// Ce que l'équipe a noté après un appel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -457,6 +457,22 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
             && !p.evoked.is_empty();
         if line.level != DueLevel::Due && !evoked {
             continue;
+        }
+        // Le zona : une première dose faite, la seconde ne se propose
+        // qu'à partir de deux mois après elle.
+        if code == "ZONA" {
+            let mut zona: Vec<&str> = p
+                .doses
+                .iter()
+                .filter(|d| d.code == "ZONA" && !d.date.is_empty())
+                .map(|d| d.date)
+                .collect();
+            zona.sort_unstable();
+            if let [first] = zona.as_slice() {
+                if crate::date::add_months(first, 2).is_some_and(|from| from.as_str() > today) {
+                    continue;
+                }
+            }
         }
         let mut mine: Vec<&Call> = calls
             .iter()
@@ -882,6 +898,59 @@ pub fn season_csv(rows: &[[String; 10]]) -> String {
 
 #[cfg(test)]
 mod tests {
+
+    /// Le zona : à 65 ans et plus sans dose, ou une première dose faite
+    /// depuis deux mois au moins ; pas avant.
+    #[test]
+    fn a_second_shingrix_dose_is_recalled_from_two_months() {
+        let today = "2026-10-20";
+        let person = |id: i64, birth: &'static str, doses: Vec<vaccines::Dose<'static>>| Person {
+            id,
+            birth,
+            ddr: "",
+            doses,
+            evoked: vec![],
+        };
+        let people = vec![
+            person(1, "1950-01-01", vec![]),
+            person(
+                2,
+                "1950-01-01",
+                vec![vaccines::Dose {
+                    code: "ZONA",
+                    date: "2026-09-30",
+                }],
+            ),
+            person(
+                3,
+                "1950-01-01",
+                vec![vaccines::Dose {
+                    code: "ZONA",
+                    date: "2026-07-01",
+                }],
+            ),
+            person(4, "1970-01-01", vec![]),
+            person(
+                5,
+                "1950-01-01",
+                vec![
+                    vaccines::Dose {
+                        code: "ZONA",
+                        date: "2026-03-01",
+                    },
+                    vaccines::Dose {
+                        code: "ZONA",
+                        date: "2026-05-01",
+                    },
+                ],
+            ),
+        ];
+        let ids: Vec<i64> = recalls(&people, &[], "ZONA", today)
+            .iter()
+            .map(|r| r.patient_id)
+            .collect();
+        assert_eq!(ids, vec![1, 3]);
+    }
 
     /// L'export de la saison se lit dans un tableur français : dates à la
     /// française, champ à point-virgule entre guillemets.
@@ -1358,8 +1427,9 @@ mod perf {
             .map(|c| super::recalls(&people, &[], c, "2026-10-20").len())
             .sum();
         eprintln!(
-            "évocations : {:?} ; rappels (3 vaccins) : {:?} ; {n} lignes",
+            "évocations : {:?} ; rappels ({} vaccins) : {:?} ; {n} lignes",
             t_evoc,
+            super::CAMPAIGN_CODES.len(),
             t1.elapsed()
         );
         assert!(n > 0);

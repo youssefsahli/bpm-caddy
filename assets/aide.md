@@ -866,8 +866,10 @@ L'onglet **Campagne** regroupe ce que l'équipe consulte chaque jour
 d'octobre à février. La saison court du 1er septembre au 31 août.
 
 **À rappeler.** Les dossiers que le calendrier vaccinal déclare dus
-pour la grippe, le COVID-19 ou le VRS (65 ans et plus, grossesse en
-cours selon la date des dernières règles, 75 ans et plus pour le VRS)
+pour la grippe, le COVID-19, le VRS ou le zona (65 ans et plus,
+grossesse en cours selon la date des dernières règles, 75 ans et plus
+pour le VRS ; pour le zona, la seconde dose à partir de deux mois après
+la première)
 et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
 âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
 **Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la

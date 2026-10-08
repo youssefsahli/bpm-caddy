@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Campagne : le zona (Shingrix) parmi les vaccins à rappeler — 65 ans et
+  plus sans dose, ou première dose faite depuis deux mois au moins ; sur
+  un volet étroit, le vaccin se choisit dans un menu.
+
 ### Changed
 - Comirnaty : la contre-indication après myocardite ou péricardite
   post-vaccinale est rapportée à sa source (liste française de juillet
