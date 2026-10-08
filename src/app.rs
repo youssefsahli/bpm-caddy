@@ -1636,6 +1636,7 @@ fn help_title_for(
     patient_open: bool,
     graph: bool,
     calc: bool,
+    conseil: bool,
 ) -> Option<&'static str> {
     Some(match view {
         MainView::Search if patient_open => "Dossier patient",
@@ -1646,6 +1647,7 @@ fn help_title_for(
         MainView::Ruptures => "Ruptures",
         MainView::Drugs if graph => "La carte pharmacologique",
         MainView::Drugs if calc => "Calculs",
+        MainView::Drugs if conseil => "Mesures et conseils",
         MainView::Drugs => "Recherche",
         MainView::Agenda => "Agenda et planning",
         MainView::VaccineMap => "Carte vaccinale",
@@ -17415,6 +17417,7 @@ impl App {
                 session.viewing.is_some(),
                 session.show_graph,
                 session.calc_open,
+                session.show_conseil,
             ),
             _ => None,
         };
@@ -87412,13 +87415,14 @@ mod tests {
             .collect();
         let mut checked = 0;
         for view in views {
-            for (patient, graph, calc) in [
-                (false, false, false),
-                (true, false, false),
-                (false, true, false),
-                (false, false, true),
+            for (patient, graph, calc, conseil) in [
+                (false, false, false, false),
+                (true, false, false, false),
+                (false, true, false, false),
+                (false, false, true, false),
+                (false, false, false, true),
             ] {
-                if let Some(t) = super::help_title_for(view, patient, graph, calc) {
+                if let Some(t) = super::help_title_for(view, patient, graph, calc, conseil) {
                     assert!(
                         titles.contains(&t),
                         "« {t} » n'est pas une section de aide.md"
