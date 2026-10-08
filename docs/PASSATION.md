@@ -121,8 +121,11 @@ de facteur qui n'agit qu'en présence d'un autre (bradycardie et QT).
 - La carte pharmacologique : **fait** — la raison « même cascade »
   (`graph::Why::Cascade`) fait entrer un voisin dans l'anneau des
   interactions ; l'index de la carte sait les cascades de chaque fiche.
-- OAT1/OAT3 (méthotrexate sous AINS) : les fiches ne nomment pas le
-  transporteur ; les compléter d'après le RCP d'abord, la table ensuite.
+- OAT1/OAT3 (méthotrexate sous AINS) : recherché le 08/10 — ni l'ANSM,
+  ni les synthèses consultées ne nomment le transporteur ; elles parlent
+  de sécrétion tubulaire diminuée (probénécide, pénicillines, IPP) et,
+  pour les AINS, d'une baisse du débit de filtration. La table reste sans
+  ligne OAT tant que la rubrique 4.5 d'un RCP ne le nomme pas.
 
 **Méthode de contenu qui a marché** (outils dans `scripts/contenu/`) :
 des agents rédigent chaque fiche ou cascade dans un fichier à sections
