@@ -49735,6 +49735,39 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Les doses inscrites aux carnets depuis `from` (ISO), dans l'ordre
+    /// des jours : jour, nom, prénom, naissance, vaccin, code, dose, lot,
+    /// site, opérateur — l'export de la saison.
+    pub fn vaccinations_season(&self, from: &str) -> Result<Vec<[String; 10]>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT v.given_on, COALESCE(p.last_name, ''), COALESCE(p.first_name, ''),
+                        COALESCE(p.birth_date, ''), v.label, v.code, v.dose, v.lot, v.site,
+                        v.operator
+                 FROM vaccinations v LEFT JOIN patients p ON p.id = v.patient_id
+                 WHERE v.given_on >= ?1 ORDER BY v.given_on, v.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([from], |r| {
+                Ok([
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                    r.get(8)?,
+                    r.get(9)?,
+                ])
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Combien de doses sont inscrites aux carnets à la date `day` (ISO) :
     /// le compte de la barre d'état pendant la campagne.
     pub fn vaccinations_on(&self, day: &str) -> Result<usize, String> {

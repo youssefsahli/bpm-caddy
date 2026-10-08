@@ -4149,6 +4149,8 @@ struct CampagneState {
     /// La liste des rendez-vous de vaccination à la place des rappels.
     show_rdv: bool,
     appointments: Vec<db::Appointment>,
+    /// L'avis du dernier export, jusqu'à la prochaine relecture.
+    notice: Option<String>,
     rdv_date: String,
     rdv_time: String,
     rdv_error: Option<String>,
@@ -9993,6 +9995,7 @@ impl Session {
     /// des rappels. Appelé à l'ouverture de la vue et après un geste.
     fn reload_campagne(&mut self) {
         use crate::campagne;
+        self.camp.notice = None;
         let today = self.today.clone();
         let season = campagne::season(&today);
         if self.camp.code.is_empty() {
@@ -52800,7 +52803,11 @@ impl App {
         // Sur un volet court, le sous-titre se réduit à la saison : ses
         // trois lignes d'explication prenaient la place de la liste.
         let short = body.height() < Self::row_height(ui) * 20.0;
-        let subtitle = if short {
+        // L'avis d'un export prend la place du sous-titre : la bande garde
+        // sa hauteur, et l'avis se lit là où l'on regarde.
+        let subtitle = if let Some(n) = &session.camp.notice {
+            n.clone()
+        } else if short {
             trn(
                 "camp_subtitle_short",
                 &[
@@ -52820,6 +52827,7 @@ impl App {
                 Self::button_width(ui, tr("camp_print")),
                 Self::button_width(ui, tr("camp_summary")),
                 Self::button_width(ui, tr("camp_register")),
+                Self::button_width(ui, tr("camp_export")),
             ]
             .into_iter(),
             &subtitle,
@@ -52829,6 +52837,7 @@ impl App {
         let mut print = false;
         let mut print_summary = false;
         let mut print_register = false;
+        let mut export = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&title);
@@ -52855,6 +52864,12 @@ impl App {
                     .clicked()
                 {
                     print_register = true;
+                }
+                if motif::button(ui, tr("camp_export"))
+                    .on_hover_text(tr("camp_export_tooltip"))
+                    .clicked()
+                {
+                    export = true;
                 }
             });
             ui.add(
@@ -53637,6 +53652,38 @@ impl App {
                 &config.doc_template_path("rappels"),
             ) {
                 session.error = Some(e);
+            }
+        }
+        // L'export de la saison : des données sortent de la base, tracé
+        // comme l'export des entretiens.
+        if export {
+            session
+                .db
+                .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+            match session.db.vaccinations_season(&season.start) {
+                Ok(rows) => {
+                    let csv = campagne::season_csv(&rows);
+                    let dir = config
+                        .db_path()
+                        .parent()
+                        .map(|p| p.join("exports"))
+                        .unwrap_or_else(|| std::path::PathBuf::from("exports"));
+                    let file = dir.join(format!(
+                        "vaccinations-{}-{}.csv",
+                        season.label.replace('/', "-"),
+                        session.today
+                    ));
+                    match std::fs::create_dir_all(&dir)
+                        .and_then(|()| std::fs::write(&file, csv.as_bytes()))
+                    {
+                        Ok(()) => {
+                            let _ = open::that_detached(&file);
+                            session.camp.notice = Some(trf("dash_exported", file.display()));
+                        }
+                        Err(e) => session.error = Some(trf("dash_export_error", e)),
+                    }
+                }
+                Err(e) => session.error = Some(e),
             }
         }
         if print_register {

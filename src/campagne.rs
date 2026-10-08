@@ -851,8 +851,62 @@ pub fn rdv_day(parsed: &str, typed: &str, today: &str) -> String {
     }
 }
 
+/// L'export de la saison, en CSV pour un tableur français : point-virgule,
+/// marque d'ordre des octets, dates en JJ/MM/AAAA, champs entre guillemets
+/// quand ils portent un séparateur. Une ligne par dose, dans l'ordre de
+/// [`crate::db::Db::vaccinations_season`].
+pub fn season_csv(rows: &[[String; 10]]) -> String {
+    fn field(s: &str) -> String {
+        if s.contains([';', '"', '\n', '\r']) {
+            format!("\"{}\"", s.replace('"', "\"\""))
+        } else {
+            s.to_owned()
+        }
+    }
+    let mut out =
+        String::from("\u{feff}Date;Nom;Prénom;Naissance;Vaccin;Code;Dose;Lot;Site;Par\r\n");
+    for r in rows {
+        let cells: Vec<String> = r
+            .iter()
+            .enumerate()
+            .map(|(i, v)| match i {
+                0 | 3 => crate::db::format_french_date(v),
+                _ => field(v),
+            })
+            .collect();
+        out.push_str(&cells.join(";"));
+        out.push_str("\r\n");
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
+
+    /// L'export de la saison se lit dans un tableur français : dates à la
+    /// française, champ à point-virgule entre guillemets.
+    #[test]
+    fn the_season_export_reads_in_a_french_spreadsheet() {
+        let row = |label: &str| {
+            [
+                "2026-10-08".to_owned(),
+                "DUPONT".to_owned(),
+                "Jean".to_owned(),
+                "1950-02-11".to_owned(),
+                label.to_owned(),
+                "GRIPPE".to_owned(),
+                "1".to_owned(),
+                "VX26".to_owned(),
+                "Deltoïde G".to_owned(),
+                "MB".to_owned(),
+            ]
+        };
+        let csv = super::season_csv(&[row("Efluelda"), row("Vaxigrip; tétra")]);
+        assert!(csv.starts_with('\u{feff}'));
+        assert!(csv.contains("08/10/2026;DUPONT;Jean;11/02/1950;Efluelda;GRIPPE"));
+        assert!(csv.contains("\"Vaxigrip; tétra\""));
+        assert_eq!(csv.matches("\r\n").count(), 3);
+    }
     #[test]
     fn a_yearless_rdv_after_new_year_falls_next_year() {
         assert_eq!(rdv_day("2026-01-05", "05/01", "2026-12-20"), "2027-01-05");

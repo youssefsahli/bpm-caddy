@@ -898,6 +898,9 @@ vaccin choisi. « Bilan de la saison » imprime les doses par vaccin et
 par tranche d'âge à la date de l'injection, puis semaine par semaine.
 « Registre du jour » imprime les doses inscrites aux carnets dans la
 journée, avec le patient, le lot, le site et l'opérateur.
+« Exporter la saison » écrit les doses de la saison dans un fichier CSV
+(dossier `exports` à côté de la base) : date, patient, vaccin, dose,
+lot, site et opérateur. L'export est tracé dans le journal d'accès.
 
 **Lots reçus.** Chaque lot est saisi à réception : vaccin, spécialité,
 numéro, péremption (`06/2027` suffit, le dernier jour du mois est
