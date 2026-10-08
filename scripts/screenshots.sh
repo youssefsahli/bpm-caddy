@@ -92,6 +92,7 @@ shot conciliation docs/screenshot_conciliation.png
 # « Nutrition orale » de « Mesures et conseils ».
 shot campagne docs/screenshot_campagne.png
 shot conseil_nutrition docs/screenshot_conseil.png
+shot couverture docs/screenshot_couverture.png
 
 # The same application after dark. A skin is a palette and nothing else,
 # so this is the *same* view under `[ui] theme` — which is the point,
