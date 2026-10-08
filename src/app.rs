@@ -21919,7 +21919,7 @@ impl App {
             if let Err(e) = crate::pdf::open_vaccination_carnet(
                 patient,
                 &lines,
-                &config.disclaimers.carnet,
+                &Self::carnet_footer(config),
                 &config.doc_template_path("vaccination"),
             ) {
                 session.error = Some(e);
@@ -30239,7 +30239,7 @@ impl App {
             let carnet = crate::pdf::vaccination_carnet_source(
                 patient,
                 &session.vaccinations,
-                &config.disclaimers.carnet,
+                &Self::carnet_footer(config),
                 &config.doc_template_path("vaccination"),
             );
             return crate::pdf::open_bundle(&[sheet, carnet], &format!("liasse_{}", patient.id));
@@ -52540,6 +52540,28 @@ impl App {
     /// Les trois nombres d'un produit, écrits à la française pour l'édition.
     fn product_number_texts(p: &crate::nutrition::Product) -> [String; 3] {
         [p.portion, p.kcal, p.protein].map(|v| format!("{v}").replace('.', ","))
+    }
+
+    /// Le pied du carnet de vaccination imprimé : l'officine qui a
+    /// vacciné (le carnet tient lieu d'attestation quand le DMP ne reçoit
+    /// pas la dose), puis la mention que l'équipe a écrite.
+    fn carnet_footer(config: &Config) -> String {
+        let p = &config.pharmacy;
+        let who: Vec<&str> = [
+            p.name.trim(),
+            p.address.trim(),
+            p.phone.trim(),
+            p.pharmacist.trim(),
+        ]
+        .into_iter()
+        .filter(|s| !s.is_empty())
+        .collect();
+        let mention = config.disclaimers.carnet.trim();
+        match (who.is_empty(), mention.is_empty()) {
+            (true, _) => mention.to_owned(),
+            (false, true) => who.join(" · "),
+            (false, false) => format!("{} — {mention}", who.join(" · ")),
+        }
     }
 
     /// Le texte d'une mesure de compression tapée dans le formulaire.

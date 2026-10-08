@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Carnet de vaccination imprimé : l'officine qui a vacciné (nom,
+  adresse, téléphone, pharmacien) en pied de page, avant la mention de
+  l'équipe ; le carnet tient lieu d'attestation quand la dose n'est pas
+  versée au DMP.
 - « Aller à… » trouve les compléments nutritionnels par leur nom ou leur
   fabricant et ouvre la page « Nutrition orale » sur le produit.
 
