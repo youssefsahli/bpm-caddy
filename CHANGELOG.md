@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Deux protocoles de comptoir pour l'hiver : « Syndrome grippal de
+  l'adulte » (signes de gravité, personnes à risque, conseils) et
+  « Bronchiolite du nourrisson » (signes de gravité d'après la HAS 2019,
+  terrain, lavage de nez, ni antitussif ni mucolytique avant 2 ans,
+  prévention par anticorps ou vaccination de la mère).
 - Campagne : « Bilan de la saison » imprime les doses par vaccin et par
   tranche d'âge à la date de l'injection (moins de 65 ans, 65 à 74 ans,
   75 ans et plus), puis semaine par semaine pour la grippe, le COVID-19

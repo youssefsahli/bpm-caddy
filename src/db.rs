@@ -31008,6 +31008,44 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
+        title: "Syndrome grippal de l'adulte",
+        subject: "Fièvre, courbatures et toux en période épidémique",
+        steps: &[q(
+            "Y a-t-il une gêne respiratoire, une douleur thoracique, une confusion, des vomissements empêchant de boire, ou une fièvre au-delà de trois jours ?",
+            &[act(
+                "Signes de gravité : appel au 15 en cas de détresse respiratoire, de douleur thoracique ou de confusion ; sinon consultation médicale le jour même.",
+            )],
+            &[q(
+                "La personne a-t-elle 65 ans ou plus, est-elle enceinte, immunodéprimée, ou porteuse d'une maladie chronique (respiratoire, cardiaque, rénale, diabète, obésité sévère) ?",
+                &[act(
+                    "Personne à risque de forme grave : consultation médicale rapide, un traitement antiviral pouvant être prescrit lorsqu'il est débuté précocement. Paracétamol pour la fièvre et les douleurs, sans dépasser la dose maximale ; éviter les anti-inflammatoires non stéroïdiens.",
+                )],
+                &[act(
+                    "Paracétamol pour la fièvre et les douleurs, sans dépasser la dose maximale et sans l'associer à un autre médicament qui en contient ; repos et hydratation. Port du masque, lavage des mains et aération pour protéger l'entourage, en particulier les personnes fragiles. Consulter si la fièvre dure plus de trois jours ou si des signes de gravité apparaissent ; proposer la vaccination antigrippale la saison suivante si elle n'a pas été faite.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
+        title: "Bronchiolite du nourrisson",
+        subject: "Toux et gêne respiratoire chez l'enfant de moins de 2 ans",
+        steps: &[q(
+            "L'enfant a-t-il des pauses respiratoires, une coloration bleutée des lèvres, une respiration très rapide ou un creusement marqué du thorax, ou est-il anormalement somnolent ?",
+            &[act(
+                "Signes de gravité : appel au 15 sans délai, en décrivant la respiration, la coloration et la prise des biberons ; ne pas attendre l'évolution.",
+            )],
+            &[q(
+                "L'enfant a-t-il moins de 2 mois, est-il né prématuré ou porteur d'une maladie chronique, ou boit-il moins de la moitié de ses biberons sur 24 heures ?",
+                &[act(
+                    "Consultation médicale le jour même : l'âge, le terrain ou la baisse de l'alimentation exposent à une forme sévère.",
+                )],
+                &[act(
+                    "Lavage du nez au sérum physiologique avant les repas et le coucher ; fractionner les repas ; couchage sur le dos, sans tabac dans le logement, en aérant la chambre. Ni antitussif ni mucolytique chez l'enfant de moins de 2 ans ; la kinésithérapie respiratoire n'est pas recommandée en routine. Reconsulter si l'enfant boit moins, si la respiration s'accélère ou si la fièvre persiste. Prévention : anticorps monoclonal pour le nourrisson ou vaccination de la mère pendant la grossesse.",
+                )],
+            )],
+        )],
+    },
+    StarterProtocol {
         title: "Demande de vaccination au comptoir",
         subject: "Acte vaccinal du pharmacien — 11 ans et plus, calendrier vaccinal en vigueur",
         steps: &[q(
