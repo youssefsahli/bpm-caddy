@@ -52776,6 +52776,20 @@ impl App {
         let body = motif::visible_rect(ui);
         let season = campagne::season(&session.today);
         let title = trf("camp_title", &season.label);
+        // Sur un volet court, le sous-titre se réduit à la saison : ses
+        // trois lignes d'explication prenaient la place de la liste.
+        let short = body.height() < Self::row_height(ui) * 20.0;
+        let subtitle = if short {
+            trn(
+                "camp_subtitle_short",
+                &[
+                    &db::format_french_date(&season.start),
+                    &db::format_french_date(&season.end),
+                ],
+            )
+        } else {
+            tr("camp_subtitle").to_owned()
+        };
         let band = Self::title_band_height(
             ui,
             body.width(),
@@ -52787,7 +52801,7 @@ impl App {
                 Self::button_width(ui, tr("camp_register")),
             ]
             .into_iter(),
-            tr("camp_subtitle"),
+            &subtitle,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
         let mut reload = false;
@@ -52824,7 +52838,7 @@ impl App {
             });
             ui.add(
                 egui::Label::new(
-                    egui::RichText::new(tr("camp_subtitle"))
+                    egui::RichText::new(&subtitle)
                         .size(motif::pt(ui, 11.5))
                         .color(motif::text_dim()),
                 )
@@ -52845,19 +52859,30 @@ impl App {
             let right = motif::split_rows(cols[1], &[0.0, 0.0], 8.0);
             (cols[0], right[0], right[1])
         } else {
+            // Les rendez-vous sont une page de plus (rang 3), à côté des
+            // rappels : la bascule du panneau prendrait une rangée.
             let pages = [
-                tr("camp_page_recalls"),
-                tr("camp_page_tally"),
-                tr("camp_page_lots"),
+                (0, tr("camp_page_recalls")),
+                (3, tr("camp_page_rdv")),
+                (1, tr("camp_page_tally")),
+                (2, tr("camp_page_lots")),
             ];
-            let strip = Self::wrapped_rows(ui, rows[1].width(), pages.iter().copied())
+            let strip = Self::wrapped_rows(ui, rows[1].width(), pages.iter().map(|(_, l)| *l))
                 * (Self::row_height(ui) + ui.spacing().item_spacing.y);
             let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
             motif::inside(ui, r[0], |ui| {
                 ui.horizontal_wrapped(|ui| {
-                    for (i, label) in pages.iter().enumerate() {
-                        if motif::toggle(ui, label, session.camp.page == i).clicked() {
-                            session.camp.page = i;
+                    for (i, label) in pages {
+                        let on = if i == 3 {
+                            session.camp.page == 0 && session.camp.show_rdv
+                        } else if i == 0 {
+                            session.camp.page == 0 && !session.camp.show_rdv
+                        } else {
+                            session.camp.page == i
+                        };
+                        if motif::toggle(ui, label, on).clicked() {
+                            session.camp.page = if i == 3 { 0 } else { i };
+                            session.camp.show_rdv = i == 3;
                         }
                     }
                 });
@@ -52933,30 +52958,36 @@ impl App {
         };
         if recall_rect.is_positive() {
             motif::panel(ui, recall_rect, Some(&caption), |ui| {
-                ui.horizontal_wrapped(|ui| {
-                    for (i, code) in CAMPAIGN_CODES.iter().enumerate() {
-                        let label = trn(
-                            "camp_code_count",
-                            &[&Self::campaign_code_label(code), &session.camp.counts[i]],
-                        );
-                        if motif::toggle(
-                            ui,
-                            &label,
-                            !session.camp.show_rdv && session.camp.code == *code,
-                        )
-                        .clicked()
-                        {
-                            pick_code = Some(code);
+                // Étroit, la page des rendez-vous n'a pas à choisir un
+                // vaccin : la rangée des vaccins laisse sa place à la liste.
+                let codes_row = wide || !session.camp.show_rdv;
+                if codes_row {
+                    ui.horizontal_wrapped(|ui| {
+                        for (i, code) in CAMPAIGN_CODES.iter().enumerate() {
+                            let label = trn(
+                                "camp_code_count",
+                                &[&Self::campaign_code_label(code), &session.camp.counts[i]],
+                            );
+                            if motif::toggle(
+                                ui,
+                                &label,
+                                !session.camp.show_rdv && session.camp.code == *code,
+                            )
+                            .clicked()
+                            {
+                                pick_code = Some(code);
+                            }
                         }
-                    }
-                    let rdv_label = trf("camp_rdv_list", session.camp.appointments.len());
-                    if motif::toggle(ui, &rdv_label, session.camp.show_rdv)
-                        .on_hover_text(tr("camp_rdv_list_tooltip"))
-                        .clicked()
-                    {
-                        session.camp.show_rdv = !session.camp.show_rdv;
-                    }
-                });
+                        let rdv_label = trf("camp_rdv_list", session.camp.appointments.len());
+                        if wide
+                            && motif::toggle(ui, &rdv_label, session.camp.show_rdv)
+                                .on_hover_text(tr("camp_rdv_list_tooltip"))
+                                .clicked()
+                        {
+                            session.camp.show_rdv = !session.camp.show_rdv;
+                        }
+                    });
+                }
                 ui.add_space(2.0);
                 ui.spacing_mut().scroll.floating = false;
                 if session.camp.show_rdv {

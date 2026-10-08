@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Campagne, volet court : le sous-titre se réduit à la saison, les
+  rendez-vous sont une page à côté des rappels, et la liste garde sa
+  hauteur.
+
 ## [0.380.0] - 2026-10-08
 
 ### Fixed
