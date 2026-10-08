@@ -9907,12 +9907,13 @@ impl Session {
         let treatments = self.db.all_patient_drug_details().unwrap_or_default();
         let mut evoked: std::collections::HashMap<i64, Vec<(&'static str, String)>> =
             std::collections::HashMap::new();
+        let mut memo = std::collections::HashMap::new();
         for chunk in treatments.chunk_by(|a, b| a.0 == b.0) {
             let list: Vec<(&str, &str, &str)> = chunk
                 .iter()
                 .map(|(_, n, d, c)| (n.as_str(), d.as_str(), c.as_str()))
                 .collect();
-            evoked.insert(chunk[0].0, campagne::evocations(&list));
+            evoked.insert(chunk[0].0, campagne::evocations_memo(&list, &mut memo));
         }
         let people: Vec<campagne::Person> = self
             .patients

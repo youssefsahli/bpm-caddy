@@ -746,6 +746,28 @@ pub const EVOCATIONS: &[Evocation] = &[
     ev("abacavir", VIH),
 ];
 
+/// [`evocations`], avec la lecture de chaque médicament gardée d'un
+/// dossier à l'autre : une officine a des milliers de dossiers et
+/// quelques centaines de médicaments, et la liste des rappels se relit à
+/// chaque appel noté.
+pub fn evocations_memo(
+    treatments: &[(&str, &str, &str)],
+    memo: &mut std::collections::HashMap<String, Vec<&'static str>>,
+) -> Vec<(&'static str, String)> {
+    let mut out: Vec<(&'static str, String)> = Vec::new();
+    for t in treatments {
+        let groups = memo
+            .entry(t.0.to_owned())
+            .or_insert_with(|| evocations(&[*t]).into_iter().map(|(g, _)| g).collect());
+        for g in groups.iter() {
+            if !out.iter().any(|(x, _)| x == g) {
+                out.push((g, t.0.to_owned()));
+            }
+        }
+    }
+    out
+}
+
 /// Les groupes évoqués par les traitements d'un dossier, chacun avec le
 /// premier médicament qui l'évoque. `treatments` : nom, DCI, classe.
 pub fn evocations(treatments: &[(&str, &str, &str)]) -> Vec<(&'static str, String)> {
@@ -1137,5 +1159,60 @@ mod tests {
         }
         assert!(!Outcome::Message.closes());
         assert!(Outcome::Refus.closes());
+    }
+}
+
+#[cfg(test)]
+mod perf {
+    /// Le coût des évocations et des rappels sur une grosse officine
+    /// (5 000 dossiers, 5 traitements chacun), en version optimisée :
+    /// `cargo test --release --lib campagne::perf -- --nocapture`.
+    #[test]
+    fn the_recall_list_stays_cheap_on_a_large_officine() {
+        let cards: Vec<(&str, &str, &str)> = crate::db::STARTER_DRUGS
+            .iter()
+            .map(|(n, d, c, _)| (*n, *d, *c))
+            .collect();
+        let t0 = std::time::Instant::now();
+        let mut evoked = Vec::new();
+        let mut memo = std::collections::HashMap::new();
+        for i in 0..5000 {
+            let list: Vec<(&str, &str, &str)> = (0..5)
+                .map(|k| cards[(i * 7 + k * 131) % cards.len()])
+                .collect();
+            let e = super::evocations_memo(&list, &mut memo);
+            // La mémoire ne change pas la réponse.
+            if i < 50 {
+                assert_eq!(e, super::evocations(&list));
+            }
+            evoked.push(e);
+        }
+        let t_evoc = t0.elapsed();
+        let births: Vec<String> = (0..5000)
+            .map(|i| format!("{}-03-01", 1930 + i % 70))
+            .collect();
+        let people: Vec<super::Person> = births
+            .iter()
+            .zip(evoked)
+            .enumerate()
+            .map(|(i, (b, e))| super::Person {
+                id: i as i64,
+                birth: b,
+                ddr: "",
+                doses: vec![],
+                evoked: e,
+            })
+            .collect();
+        let t1 = std::time::Instant::now();
+        let n: usize = super::CAMPAIGN_CODES
+            .iter()
+            .map(|c| super::recalls(&people, &[], c, "2026-10-20").len())
+            .sum();
+        eprintln!(
+            "évocations : {:?} ; rappels (3 vaccins) : {:?} ; {n} lignes",
+            t_evoc,
+            t1.elapsed()
+        );
+        assert!(n > 0);
     }
 }
