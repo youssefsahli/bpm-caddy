@@ -51586,6 +51586,7 @@ impl App {
         let mut pick_code: Option<&'static str> = None;
         let mut call: Option<(i64, Outcome)> = None;
         let mut open: Option<i64> = None;
+        let mut elsewhere: Option<i64> = None;
         // Le clavier, pour une série d'appels : les flèches parcourent la
         // liste, Entrée ouvre le carnet, 1 à 4 notent l'issue — tant
         // qu'aucun champ n'a le foyer (le formulaire des lots en a).
@@ -52070,6 +52071,12 @@ impl App {
                 session.error = Some(e);
             }
             reload = true;
+            // Vacciné ailleurs : la dose a sa place au carnet, pour que le
+            // calendrier ne la demande plus. Le carnet s'ouvre avec le
+            // vaccin et la remarque ; la date reste à écrire.
+            if outcome == Outcome::Ailleurs {
+                elsewhere = Some(patient_id);
+            }
         }
         if add_lot {
             let year = session.year_now();
@@ -52312,6 +52319,29 @@ impl App {
                         code: v.code.clone(),
                         label: v.label.clone(),
                         lot: session.first_usable_lot(&v.code).unwrap_or_default(),
+                        ..Default::default()
+                    };
+                    session.vacc_new_date.clear();
+                }
+            }
+        }
+        if let Some(id) = elsewhere {
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.open_patient(p);
+                session.patient_tab = PatientTab::Vaccins;
+                session.view = MainView::Search;
+                session.reload_vacc_catalogue();
+                let code = session.camp.code;
+                if let Some(v) = session
+                    .vacc_catalogue
+                    .iter()
+                    .find(|v| v.code == code)
+                    .cloned()
+                {
+                    session.vacc_new = db::Vaccination {
+                        code: v.code.clone(),
+                        label: v.label.clone(),
+                        remark: tr("camp_elsewhere_remark").to_owned(),
                         ..Default::default()
                     };
                     session.vacc_new_date.clear();

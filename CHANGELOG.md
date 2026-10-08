@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Campagne : « Vacciné ailleurs » ouvre aussi le carnet avec le vaccin et
+  la remarque, pour noter la dose à la date donnée par le patient.
+
 ### Fixed
 - Campagne : la liste des rappels ne répond au clavier qu'une fois
   activée par une flèche et tant qu'aucun champ n'a la main (l'Entrée de
