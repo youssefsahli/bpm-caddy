@@ -1,6 +1,6 @@
 [package]
 name = "bpm-caddy-mobile"
-version = "0.374.0"
+version = "0.375.0"
 edition = "2021"
 description = "BPM-Caddy's Android companion: the Rust core behind the Kotlin app."
 license-file = "../LICENSE"

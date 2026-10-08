@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.375.0] - 2026-10-08
+
 ### Changed
 - La rédaction reprise des dispositifs, des préparations, des
   posologies, des conduites en cas d'oubli et des étapes de protocole
