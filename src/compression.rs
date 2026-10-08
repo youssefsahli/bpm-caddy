@@ -338,7 +338,9 @@ pub fn check(article: Article, sides: &[Side], m: &Measures) -> Vec<Finding> {
         for &p in article.points().iter().filter(|p| article.per_leg(p)) {
             if let (Some(d), Some(g)) = (m.get(p, Side::Droite), m.get(p, Side::Gauche)) {
                 let diff = (d - g).abs();
-                if diff >= 0.5 {
+                // Au-delà de la précision de la mesure (le
+                // demi-centimètre) : un écart d'un centimètre au moins.
+                if diff >= 1.0 {
                     out.push(Finding::Asymmetry {
                         point: point(p).map(|x| x.key).unwrap_or(""),
                         diff,
@@ -625,6 +627,13 @@ mod tests {
             m.set(p, Side::Gauche, Some(g));
         }
         let f = check(Article::Chaussette, &[Side::Droite, Side::Gauche], &m);
+        // 0,5 cm est la précision de la mesure : pas un écart.
+        m.set("cD", Side::Gauche, Some(34.5));
+        assert!(
+            !check(Article::Chaussette, &[Side::Droite, Side::Gauche], &m)
+                .iter()
+                .any(|x| matches!(x, Finding::Asymmetry { point: "cD", .. }))
+        );
         assert!(f.contains(&Finding::Missing("lD", Side::Droite)));
         assert!(f.contains(&Finding::Missing("lD", Side::Gauche)));
         assert!(f.contains(&Finding::Asymmetry {

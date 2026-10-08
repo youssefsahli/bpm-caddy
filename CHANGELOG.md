@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Compression : l'écart entre les jambes est signalé à partir d'un
+  centimètre (deux fois la précision de la mesure), en une seule ligne.
 - Nutrition orale : la lecture range les critères en trois lignes
   (phénotypiques, étiologiques, de sévérité).
 - README : captures de la campagne et de « Mesures et conseils ».

@@ -52792,6 +52792,18 @@ impl App {
                             );
                         }
                     }
+                    let uneven: Vec<String> = findings
+                        .iter()
+                        .filter_map(|f| match f {
+                            Finding::Asymmetry { point, diff } => {
+                                Some(format!("{point} {} cm", compression::fmt_cm(*diff)))
+                            }
+                            _ => None,
+                        })
+                        .collect();
+                    if !uneven.is_empty() {
+                        Self::conseil_line(ui, &trf("conseil_asymmetry", uneven.join(" ; ")), true);
+                    }
                     for f in &findings {
                         let text = match f {
                             Finding::Missing(..) => continue,
@@ -52799,9 +52811,7 @@ impl App {
                                 "conseil_inverted",
                                 &[upper, lower, &Self::conseil_side_label(*side)],
                             ),
-                            Finding::Asymmetry { point, diff } => {
-                                trn("conseil_asymmetry", &[&compression::fmt_cm(*diff), point])
-                            }
+                            Finding::Asymmetry { .. } => continue,
                         };
                         Self::conseil_line(ui, &text, !matches!(f, Finding::Missing(..)));
                     }
