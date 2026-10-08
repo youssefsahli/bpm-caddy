@@ -35,7 +35,7 @@ const CONTENTION: &[Section] = &[
             "Enfiler les bas le matin, dès le lever et après la toilette, sur des jambes sèches et sans crème.",
             "Retirer bagues et bracelets ; des gants de ménage fins facilitent la pose et protègent le tissu.",
             "Retourner le bas sur l'envers jusqu'au talon, enfiler le pied, placer le talon, puis dérouler le tissu vers le haut sans tirer et sans former de plis.",
-            "En cas de difficulté à se pencher ou de manque de force dans les mains, un enfile-bas ou l'aide d'un tiers facilite la pose.",
+            "En cas de difficulté à se pencher ou de manque de force dans les mains, utiliser un enfile-bas ou se faire aider par un tiers.",
             "Retirer les bas le soir au coucher, sauf indication contraire du prescripteur.",
         ],
     },
@@ -55,7 +55,7 @@ const CONTENTION: &[Section] = &[
             "Laver à la main à l'eau tiède avec un savon neutre, ou en machine selon la notice du fabricant, sans adoucissant.",
             "Essorer sans tordre et sécher à plat, à l'abri d'une source de chaleur ; ni sèche-linge, ni repassage.",
             "Hydrater la peau le soir, après le retrait des bas.",
-            "En port quotidien, les bas se renouvellent tous les 4 à 6 mois, ou plus tôt si la bande de maintien frise ou si la cheville devient lâche.",
+            "En port quotidien, renouveler les bas tous les 4 à 6 mois, ou plus tôt si la bande de maintien frise ou si la cheville devient lâche.",
         ],
     },
     Section {
