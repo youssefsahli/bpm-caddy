@@ -14775,7 +14775,7 @@ pub const STARTER_DETAILS: &[StarterDetail] = &[
         status: "",
         smr: "",
         tags: "anticorps monoclonal, sep",
-        toxicity: "Une seule complication commande toute la conduite : la leucoencéphalopathie multifocale progressive, infection cérébrale par le virus JC, souvent mortelle ou lourdement séquellaire. Le risque se stratifie sur trois éléments — sérologie JC et indice, durée de traitement au-delà de deux ans, immunosuppression antérieure — et cette stratification décide de la poursuite. La surveillance repose sur des IRM régulières et sur la sérologie répétée. Tout signe neurologique nouveau, en particulier cognitif, visuel ou comportemental, est une LEMP jusqu'à preuve du contraire et non une poussée : la distinction se fait en urgence. À l'arrêt, un rebond sévère de la maladie est possible et impose d'organiser le relais.",
+        toxicity: "Une seule complication commande toute la conduite : la leucoencéphalopathie multifocale progressive, infection cérébrale par le virus JC, souvent mortelle ou lourdement séquellaire. Le risque se stratifie sur trois éléments — sérologie JC et indice, durée de traitement au-delà de deux ans, immunosuppression antérieure — et cette stratification décide de la poursuite. La surveillance repose sur des IRM régulières et sur la sérologie répétée. Tout signe neurologique nouveau, en particulier cognitif, visuel ou comportemental, doit faire évoquer une LEMP avant une poussée : la distinction se fait en urgence. À l'arrêt, un rebond sévère de la maladie est possible et impose d'organiser le relais.",
         forms: "",
     },
     StarterDetail {
