@@ -5,8 +5,7 @@ dans le dépôt, rien n'est resté en local.
 
 **Versions.** Publiées (étiquette poussée, smoke passé dans les quatre
 formes) : 0.367.0, 0.369.0, 0.372.0, 0.376.0, 0.377.0, 0.378.0,
-0.379.0 et 0.380.0. Ce qui a suivi sur `main` (section Unreleased du
-CHANGELOG) attend la prochaine version. Les versions
+0.379.0 et 0.380.0. Les versions
 intermédiaires (0.368, 0.370, 0.371, 0.373 à 0.375) ne sont pas
 étiquetées : leur contenu est dans la 0.376.0. Ce qui a suivi sur `main`
 (section Unreleased du CHANGELOG) attend la prochaine version.
