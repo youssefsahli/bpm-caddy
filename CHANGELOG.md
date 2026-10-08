@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - F10 : la couverture des délivrances, sur les traitements du dossier
   ouvert quand elle est vide.
+- Nutrition orale : la fiche d'un produit, au survol, donne le fabricant
+  et les teneurs pour 100 ml ou 100 g.
 - Couverture : « Renouveler » ajoute la même délivrance datée
   d'aujourd'hui, rangée après la précédente.
 

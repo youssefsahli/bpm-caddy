@@ -54973,7 +54973,26 @@ impl App {
                                 &p.form,
                             ],
                         );
+                        // La fiche du produit, au survol : fabricant, teneurs
+                        // pour 100 ml ou 100 g (celles de l'étiquette),
+                        // catégorie LPP, particularités, précautions, source.
                         let mut hover = String::new();
+                        if !p.maker.trim().is_empty() {
+                            hover.push_str(p.maker.trim());
+                            hover.push('\n');
+                        }
+                        if p.portion > 0.0 {
+                            let per = 100.0 / p.portion;
+                            hover.push_str(&trn(
+                                "conseil_product_per100",
+                                &[
+                                    &p.unit,
+                                    &format!("{:.0}", p.kcal * per),
+                                    &crate::strings::decimal(p.protein * per, 1),
+                                ],
+                            ));
+                            hover.push('\n');
+                        }
                         if let Some(c) = nutrition::category(p) {
                             hover.push_str(&trf("conseil_product_category", c));
                         }
