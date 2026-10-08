@@ -864,8 +864,8 @@ L'onglet **Campagne** regroupe ce que l'équipe consulte chaque jour
 d'octobre à février. La saison court du 1er septembre au 31 août.
 
 **À rappeler.** Les dossiers que le calendrier vaccinal déclare dus
-pour la grippe, le COVID-19 ou le VRS — 65 ans et plus, grossesse en
-cours selon la date des dernières règles, 75 ans et plus pour le VRS —
+pour la grippe, le COVID-19 ou le VRS (65 ans et plus, grossesse en
+cours selon la date des dernières règles, 75 ans et plus pour le VRS)
 et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
 âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
 **Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la
@@ -921,19 +921,21 @@ remarque n'empêche pas l'enregistrement.
 Bouton **Couverture** de la barre des médicaments, ou « Aller à… »
 (couverture, QSP, boîte). Une ligne par délivrance : unités par boîte,
 nombre de boîtes, posologie, jour de délivrance et, si elle est
-prescrite, la durée de traitement en jours. La ligne se tape aussi d'un
-trait : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`
+prescrite, la durée de traitement en jours. La ligne peut aussi se saisir
+en une fois : `mirtazapine 15 (28) 1-0-1`, ou `metformine 500 (2x90) 1-0-1`
 pour deux boîtes. Avec un dossier ouvert, « Reprendre les traitements
 du dossier » remplit le nom, le dosage, la posologie, la dernière
-délivrance et la durée ; le nombre d'unités par boîte reste à saisir.
+délivrance, la durée et les unités par boîte s'il est noté. Saisi sur une
+ligne reprise du dossier, le nombre d'unités par boîte y est enregistré
+à la sortie du champ et sert aux reprises suivantes.
 
 **Plusieurs délivrances d'un même médicament** (même libellé) se
 rangent sur une seule rangée. Une délivrance faite avant la fin de la
 précédente attend son tour : sa période commence quand la précédente
 finit. Une délivrance faite après laisse des jours sans traitement,
 en rouge, comptés sous la saisie avec la part des jours couverts depuis
-la première délivrance. Une boîte attendue et non venue est marquée en
-rouge jusqu'à aujourd'hui, sauf si la durée prescrite était finie.
+la première délivrance. Une délivrance attendue et non faite est marquée
+en rouge jusqu'à aujourd'hui, sauf si la durée prescrite était écoulée.
 
 **L'échelle de temps.** Mois en haut, lundis et week-ends dans le fond,
 jours ou semaines en bas selon le zoom. Plein : période couverte.
@@ -943,8 +945,8 @@ molette zoome autour du pointeur, un glisser déplace, un double clic
 montre toute la période ; le menu « Période » propose 1, 3 ou 6 mois.
 Sous l'échelle, la lecture du jour pointé : rang du jour dans sa
 délivrance et unités en main ce matin-là, ou jours sans traitement.
-Un clic épingle un jour, que les flèches gauche et droite font
-avancer ; un second clic le libère.
+Un clic épingle un jour, que les touches fléchées gauche et droite
+déplacent ; un second clic le libère.
 
 **Aligner les renouvellements.** Le bouton « Aligner » propose le plus
 tardif des jours de délivrance suivante (un autre jour peut être
@@ -956,7 +958,7 @@ revient au pharmacien, dans le cadre de la prescription.
 « Imprimer » sort l'échelle sur toute la période, avec la lecture de
 chaque médicament et l'alignement s'il est demandé. La posologie doit
 dire la quantité de chaque prise (1-0-1, ½-0-½) : « 2 fois par jour »
-ne donne pas de durée. Une journée entamée n'est pas comptée. Les
+ne permet pas de calculer une durée. Une journée entamée n'est pas comptée. Les
 quantités en main supposent la posologie suivie depuis la délivrance.
 Sur un écran court, « Saisie » et « Échelle de temps » se montrent
 l'une après l'autre.

@@ -4098,6 +4098,11 @@ struct CouvRow {
     /// JJ/MM/AAAA, comme ailleurs au comptoir.
     date: String,
     qsp: String,
+    /// Le traitement du dossier dont la ligne vient, et les unités par
+    /// boîte que le dossier portait quand elle a été reprise : ce contre
+    /// quoi l'écriture se compare.
+    drug_id: Option<i64>,
+    units_shown: u32,
 }
 
 /// La campagne de vaccination, telle que la vue la lit : tout est
@@ -4535,6 +4540,9 @@ struct Session {
     /// « ½ de 0,25 mg ». Séparé de la posologie parce que ce n'est pas
     /// la même question : l'une dit quand et combien, l'autre de quoi.
     patient_strengths: Vec<(i64, String)>,
+    /// Les unités par boîte de chaque traitement du dossier (0 = non noté),
+    /// lues par la couverture des délivrances.
+    patient_box_units: Vec<(i64, u32)>,
     /// Où en est l'ordonnance de chaque traitement — voir
     /// [`crate::renewal`]. Lue d'un coup pour tout le dossier, comme la
     /// posologie et le dosage, et pour la même raison : une requête par
@@ -5762,6 +5770,7 @@ impl Session {
             patient_doses: Vec::new(),
             patient_doses_base: Vec::new(),
             patient_strengths: Vec::new(),
+            patient_box_units: Vec::new(),
             patient_scripts: Vec::new(),
             script_date_edit: None,
             stats: Stats::default(),
@@ -10569,6 +10578,7 @@ impl Session {
         // posologie : une requête par traitement serait huit requêtes
         // sur le chemin d'une fiche qu'on ouvre entre deux clients.
         self.patient_strengths = self.db.patient_dosages(patient_id).unwrap_or_default();
+        self.patient_box_units = self.db.patient_box_units(patient_id).unwrap_or_default();
         self.patient_scripts = self
             .db
             .patient_prescriptions(patient_id)
@@ -39740,6 +39750,7 @@ impl App {
                         posology: l.posology,
                         date: today_fr.clone(),
                         qsp: String::new(),
+                        ..Default::default()
                     });
                     session.couv_quick.clear();
                     session.couv_error = None;
@@ -39772,10 +39783,21 @@ impl App {
                     } else {
                         db::format_french_date(&script.dispensed_on)
                     };
+                    let stored = session
+                        .patient_box_units
+                        .iter()
+                        .find(|(id, _)| *id == d.id)
+                        .map_or(0, |(_, u)| *u);
                     CouvRow {
                         label,
-                        units: String::new(),
+                        units: if stored > 0 {
+                            stored.to_string()
+                        } else {
+                            String::new()
+                        },
                         boxes: String::new(),
+                        drug_id: Some(d.id),
+                        units_shown: stored,
                         posology: session.dose_of(d.id).to_owned(),
                         date,
                         qsp: if script.duration_days > 0 {
@@ -39802,6 +39824,7 @@ impl App {
 
         // Les lignes, en champs : ce qui est tapé se relit à chaque image.
         let mut remove: Option<usize> = None;
+        let mut commit: Option<usize> = None;
         // Le libellé prend ce que les colonnes fixes laissent : la grille
         // tient dans le volet, et les lectures dessous s'enveloppent à sa
         // largeur au lieu d'être coupées.
@@ -39833,10 +39856,11 @@ impl App {
                 }
                 ui.end_row();
                 for (i, row) in session.couv_rows.iter_mut().enumerate() {
+                    let row_drug = row.drug_id;
                     let widths: Vec<f32> = std::iter::once(label_w)
                         .chain(fixed.iter().map(|c| chars_wide(ui, *c)))
                         .collect();
-                    for (value, w) in [
+                    for (col, (value, w)) in [
                         &mut row.label,
                         &mut row.units,
                         &mut row.boxes,
@@ -39846,8 +39870,18 @@ impl App {
                     ]
                     .into_iter()
                     .zip(widths)
+                    .enumerate()
                     {
-                        motif::field_sized(ui, egui::vec2(w, h), egui::TextEdit::singleline(value));
+                        let resp = motif::field_sized(
+                            ui,
+                            egui::vec2(w, h),
+                            egui::TextEdit::singleline(value),
+                        );
+                        // Les unités d'une ligne du dossier s'y retiennent
+                        // à la sortie du champ.
+                        if col == 1 && row_drug.is_some() && resp.lost_focus() {
+                            commit = Some(i);
+                        }
                     }
                     if motif::button(ui, tr("couv_remove")).clicked() {
                         remove = Some(i);
@@ -39857,6 +39891,29 @@ impl App {
             });
         if let Some(i) = remove {
             session.couv_rows.remove(i);
+        }
+        // Retenir au dossier les unités par boîte, contre ce qu'il portait
+        // quand la ligne a été reprise.
+        if let (Some(i), Some(pid)) = (commit, session.viewing.as_ref().map(|p| p.id)) {
+            if let Some(row) = session.couv_rows.get(i).cloned() {
+                let units: u32 = row.units.trim().parse().unwrap_or(0);
+                if let (Some(drug), true) = (row.drug_id, units != row.units_shown) {
+                    match session
+                        .db
+                        .set_patient_box_units(pid, drug, units, row.units_shown)
+                    {
+                        Ok(true) => {
+                            session.couv_rows[i].units_shown = units;
+                            session.reload_treatments(pid);
+                        }
+                        Ok(false) => {
+                            session.reload_treatments(pid);
+                            session.stale("couv_stale");
+                        }
+                        Err(e) => session.error = Some(e),
+                    }
+                }
+            }
         }
 
         // La lecture de chaque rangée, puis les lignes à compléter.

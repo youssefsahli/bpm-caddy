@@ -677,6 +677,10 @@ CREATE TABLE IF NOT EXISTS patient_drugs (
     -- Le jour de la dernière délivrance notée : c'est de lui que part
     -- « couvre jusqu'au », et non du jour où la feuille s'imprime.
     dispensed_on  TEXT NOT NULL DEFAULT '',
+    -- Unités par boîte délivrée (comprimés, gélules, sachets) : ce que
+    -- la couverture des délivrances lit pour compter les jours — voir
+    -- `src/couverture.rs`. 0 = non noté.
+    box_units     INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY (patient_id, drug_id)
 );
 CREATE TABLE IF NOT EXISTS notes (
@@ -1235,6 +1239,7 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE patient_drugs ADD COLUMN renewals INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE patient_drugs ADD COLUMN dispensed INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE patient_drugs ADD COLUMN dispensed_on TEXT NOT NULL DEFAULT ''",
+    "ALTER TABLE patient_drugs ADD COLUMN box_units INTEGER NOT NULL DEFAULT 0",
     // Les postes de l'équipe — voir le commentaire au-dessus de la
     // table dans `SCHEMA`. Une base d'avant 0.175.0 n'en a pas, et un
     // `CREATE TABLE IF NOT EXISTS` ici est ce qui l'y met sans rien
@@ -43797,6 +43802,41 @@ impl Db {
         Ok(changed == 1)
     }
 
+    /// Les unités par boîte de chaque traitement du dossier, 0 = non noté.
+    /// Une requête pour tout le dossier, comme les posologies.
+    pub fn patient_box_units(&self, patient_id: i64) -> Result<Vec<(i64, u32)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT drug_id, box_units FROM patient_drugs WHERE patient_id = ?1")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([patient_id], |r| {
+                Ok((r.get(0)?, r.get::<_, i64>(1)?.clamp(0, 100_000) as u32))
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Écrire les unités par boîte, compare-and-set contre ce que l'écran
+    /// montrait. `false` quand un autre poste a écrit entre-temps.
+    pub fn set_patient_box_units(
+        &self,
+        patient_id: i64,
+        drug_id: i64,
+        units: u32,
+        expected: u32,
+    ) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE patient_drugs SET box_units = ?3
+                 WHERE patient_id = ?1 AND drug_id = ?2 AND box_units = ?4",
+                (patient_id, drug_id, i64::from(units), i64::from(expected)),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
     /// Écrire le dosage, compare-and-set comme la posologie.
     pub fn set_patient_dosage(
         &self,
@@ -62487,6 +62527,26 @@ mod tests {
         assert_eq!(db.interviews_for(pid).unwrap()[0].duration_minutes, 45);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Les unités par boîte d'un traitement : écrites contre ce que
+    /// l'écran montrait, refusées quand un autre poste a écrit avant.
+    #[test]
+    fn box_units_are_written_compare_and_set() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-box-units-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("box.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let pid = db.add_patient("Durand", "Odile", "1950-02-11").unwrap();
+        let drug = db.add_drug("Norset").unwrap();
+        db.add_patient_drug(pid, drug).unwrap();
+        assert_eq!(db.patient_box_units(pid).unwrap(), vec![(drug, 0)]);
+        assert!(db.set_patient_box_units(pid, drug, 28, 0).unwrap());
+        // Un poste qui croyait encore lire 0 est refusé.
+        assert!(!db.set_patient_box_units(pid, drug, 30, 0).unwrap());
+        assert_eq!(db.patient_box_units(pid).unwrap(), vec![(drug, 28)]);
     }
 
     /// Un rendez-vous de vaccination pris pendant la campagne : à

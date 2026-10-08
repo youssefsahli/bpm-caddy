@@ -17,6 +17,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retard ; délivrances restantes sur la durée prescrite ; alignement des
   renouvellements sur un même jour (quantité en unités et en boîtes) ;
   feuille imprimable.
+- Dossier : les unités par boîte de chaque traitement sont enregistrées
+  depuis la couverture des délivrances et reprises ensuite.
 
 ### Fixed
 - Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
