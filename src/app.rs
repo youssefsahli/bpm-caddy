@@ -53278,6 +53278,28 @@ impl App {
                         if state.records.is_empty() {
                             Self::conseil_note(ui, tr("conseil_history_none"));
                         }
+                        // Le calendrier du dernier plan : la première
+                        // délivrance couvre 10 jours, l'observance se
+                        // vérifie à la suivante, et la réévaluation médicale
+                        // précède le renouvellement, un mois après.
+                        if let Some(last) =
+                            state.records.iter().find(|r| !r.field("plan").is_empty())
+                        {
+                            let d10 = crate::date::add_days(&last.on_date, 10).unwrap_or_default();
+                            let m1 = crate::date::add_months(&last.on_date, 1).unwrap_or_default();
+                            Self::conseil_line(
+                                ui,
+                                &trn(
+                                    "conseil_nut_followup",
+                                    &[
+                                        &db::format_french_date(&last.on_date),
+                                        &db::format_french_date(&d10),
+                                        &db::format_french_date(&m1),
+                                    ],
+                                ),
+                                today.as_str() >= d10.as_str(),
+                            );
+                        }
                         // L'évolution du poids, du premier relevé au dernier :
                         // c'est ce que la réévaluation demande d'abord.
                         let weights: Vec<(&str, f64)> = state

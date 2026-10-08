@@ -8,6 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Nutrition orale : le suivi du dossier donne, pour le dernier plan, la
+  date de vérification de l'observance (10 jours) et celle de la
+  réévaluation médicale avant renouvellement (un mois).
 - Campagne : la lecture des traitements évocateurs est gardée par
   médicament d'un dossier à l'autre ; sur 5 000 dossiers, le calcul
   passe de 65 à 6 ms à chaque appel noté (version optimisée).
