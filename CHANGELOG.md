@@ -214,8 +214,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   posologies, des conduites en cas d'oubli et des étapes de protocole
   atteint les bases existantes : au déverrouillage du poste de référence et par
   « Synchroniser le contenu de référence », un champ n'est remplacé que
-  s'il porte encore exactement le texte livré avant (empreinte FNV-1a,
-  `src/shipped.rs`) ; un champ réécrit par l'équipe reste le sien.
+  s'il porte encore exactement le texte livré avant ; un champ réécrit
+  par l'équipe reste le sien.
 
 ### Added
 - Deux protocoles de comptoir pour l'hiver : « Syndrome grippal de
@@ -316,8 +316,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   COVID-19 le même jour, un vaccin vivant pendant la grossesse ou à
   moins de 4 semaines d'un autre, la 2e dose de Shingrix trop proche, et
   les 2 semaines entre dTcaP et VRS pendant la grossesse.
-- `scripts/frames.sh` : le coût moyen et maximal d'une image, vue par
-  vue, en version optimisée (`BPM_CADDY_FRAME_STATS=1`).
 
 ## [0.369.0] - 2026-10-08
 
