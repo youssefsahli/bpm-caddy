@@ -4090,6 +4090,8 @@ struct CampagneState {
     /// La page montrée quand la vue est trop étroite pour les trois
     /// panneaux : 0 rappels, 1 doses, 2 lots.
     page: usize,
+    /// La ligne de la liste des rappels que le clavier désigne.
+    cursor: usize,
     new_received: String,
     new_expiry: String,
     confirm_delete: Option<i64>,
@@ -51575,6 +51577,47 @@ impl App {
         let mut pick_code: Option<&'static str> = None;
         let mut call: Option<(i64, Outcome)> = None;
         let mut open: Option<i64> = None;
+        // Le clavier, pour une série d'appels : les flèches parcourent la
+        // liste, Entrée ouvre le carnet, 1 à 4 notent l'issue — tant
+        // qu'aucun champ n'a le foyer (le formulaire des lots en a).
+        let n = session.camp.recalls.len();
+        let mut keyed = false;
+        if n > 0 && !ui.ctx().wants_keyboard_input() {
+            if session.camp.cursor >= n {
+                session.camp.cursor = n - 1;
+            }
+            let (down, up, enter, digit) = ui.input(|i| {
+                let digit = [
+                    egui::Key::Num1,
+                    egui::Key::Num2,
+                    egui::Key::Num3,
+                    egui::Key::Num4,
+                ]
+                .iter()
+                .position(|k| i.key_pressed(*k));
+                (
+                    i.key_pressed(egui::Key::ArrowDown),
+                    i.key_pressed(egui::Key::ArrowUp),
+                    i.key_pressed(egui::Key::Enter),
+                    digit,
+                )
+            });
+            if down {
+                session.camp.cursor = (session.camp.cursor + 1).min(n - 1);
+                keyed = true;
+            }
+            if up {
+                session.camp.cursor = session.camp.cursor.saturating_sub(1);
+                keyed = true;
+            }
+            let row = &session.camp.recalls[session.camp.cursor];
+            if enter {
+                open = Some(row.patient_id);
+            }
+            if let Some(d) = digit {
+                call = Some((row.patient_id, Outcome::ALL[d]));
+            }
+        }
         let caption = trf("camp_recall_title", session.camp.recalls.len());
         if recall_rect.is_positive() {
             motif::panel(ui, recall_rect, Some(&caption), |ui| {
@@ -51607,7 +51650,8 @@ impl App {
                             return;
                         }
                         let mut heading_drawn = false;
-                        for r in &session.camp.recalls {
+                        let cursor = session.camp.cursor;
+                        for (index, r) in session.camp.recalls.iter().enumerate() {
                             // Les dossiers dus d'abord ; ceux d'un traitement
                             // évocateur sous leur propre intitulé.
                             if r.evoked && !heading_drawn {
@@ -51623,10 +51667,12 @@ impl App {
                             } else {
                                 r.phone.clone()
                             };
-                            if motif::list_row_pair(ui, &who, &phone, false, 0.0)
-                                .on_hover_text(tr("camp_open_tooltip"))
-                                .clicked()
-                            {
+                            let row = motif::list_row_pair(ui, &who, &phone, index == cursor, 0.0)
+                                .on_hover_text(tr("camp_open_tooltip"));
+                            if keyed && index == cursor {
+                                row.scroll_to_me(None);
+                            }
+                            if row.clicked() {
                                 open = Some(r.patient_id);
                             }
                             let mut note = r.detail.clone();

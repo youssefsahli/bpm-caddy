@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Campagne : la liste des rappels se parcourt au clavier (flèches, Entrée
+  pour ouvrir le carnet, 1 à 4 pour noter l'issue de l'appel).
+
 ## [0.377.0] - 2026-10-08
 
 ### Changed

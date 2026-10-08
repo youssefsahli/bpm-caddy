@@ -880,6 +880,8 @@ patient. Ouvrir un dossier depuis la liste prépare le carnet : le vaccin
 de la campagne et le lot en stock sont déjà renseignés. « Imprimer la
 liste » sort la liste du vaccin choisi, avec une colonne pour noter
 l'issue de chaque appel.
+Au clavier, les flèches parcourent la liste, Entrée ouvre le carnet et
+les touches 1 à 4 notent l'issue de l'appel, dans l'ordre des boutons.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
