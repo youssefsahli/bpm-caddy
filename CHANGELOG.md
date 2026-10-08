@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.378.0] - 2026-10-08
+
 ### Added
 - Campagne : « Vacciné ailleurs » ouvre aussi le carnet avec le vaccin et
   la remarque, pour noter la dose à la date donnée par le patient.
