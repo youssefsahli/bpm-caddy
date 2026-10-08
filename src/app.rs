@@ -5630,7 +5630,7 @@ impl Session {
             let _ = db.seed_cno();
             // The dispositifs and préparations follow this version's
             // wording where the base still holds the old shipped text.
-            let _ = db.refresh_reworded_fiches();
+            let _ = db.refresh_reworded_fiches_once();
             // And the TROD ordonnance lines, by the same rule: the shipped
             // protocols once, the team's rows after that.
             let _ = db.seed_trod_lines();

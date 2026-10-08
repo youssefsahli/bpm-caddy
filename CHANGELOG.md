@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Déverrouillage deux fois plus rapide (mesuré de 207 à 108 ms en
+  version optimisée) : le fichier des pièces et le registre s'ouvrent en
+  même temps que la base quand ils existent, et la passe des textes
+  reformulés ne tourne qu'une fois par version.
+
 ## [0.385.0] - 2026-10-08
 
 ### Added

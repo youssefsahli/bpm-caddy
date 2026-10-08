@@ -42005,6 +42005,24 @@ impl Db {
         // failing immediately with "database is locked".
         conn.busy_timeout(std::time::Duration::from_secs(5))
             .map_err(|e| format!("configuration impossible : {e}"))?;
+        let spawn_side = || {
+            let (scan_path, stup_path, pw) =
+                (path.to_owned(), path.to_owned(), password.to_owned());
+            let pw2 = pw.clone();
+            (
+                std::thread::spawn(move || Self::open_scan_store(&scan_path, &pw)),
+                std::thread::spawn(move || Self::open_stup_store(&stup_path, &pw2)),
+            )
+        };
+        // **Les deux fichiers annexes déjà là partent en même temps que la
+        // base** : chacun paie sa dérivation de clé, et les attendre après
+        // la vérification du mot de passe doublait le déverrouillage. Un
+        // fichier existant et non vide ouvert avec une clé fausse échoue à
+        // la lecture sans rien écrire. Absent ou vide, il serait créé avec
+        // la clé tapée : il attend alors que la base ait vérifié le mot de
+        // passe, comme avant.
+        let present = |p: PathBuf| std::fs::metadata(p).is_ok_and(|m| m.len() > 0);
+        let mut side = (present(scans_path(path)) && present(stups_path(path))).then(spawn_side);
         conn.pragma_update(None, "key", password)
             .map_err(|e| format!("configuration du chiffrement impossible : {e}"))?;
         // Probing the schema is how SQLCipher reports a wrong key.
@@ -42021,15 +42039,7 @@ impl Db {
         // chacun sur un fil pendant que la base passe son schéma et ses
         // migrations. `Connection` est `Send` : le fil la rend telle
         // quelle.
-        let side = {
-            let (scan_path, stup_path, pw) =
-                (path.to_owned(), path.to_owned(), password.to_owned());
-            let pw2 = pw.clone();
-            (
-                std::thread::spawn(move || Self::open_scan_store(&scan_path, &pw)),
-                std::thread::spawn(move || Self::open_stup_store(&stup_path, &pw2)),
-            )
-        };
+        let side = side.take().unwrap_or_else(spawn_side);
         conn.execute_batch(SCHEMA)
             .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
         // Muted, in one transaction: every post runs the same migrations
@@ -48327,6 +48337,21 @@ impl Db {
     /// encore mot pour mot le texte livré avant** (`shipped`) : un champ
     /// que l'équipe a réécrit n'a plus l'empreinte de l'ancien texte et
     /// reste le sien. Idempotent.
+    /// [`Self::refresh_reworded_fiches`], **une fois par version** sur une
+    /// base : ce qu'elle cherche (le texte livré par une version précédente)
+    /// ne change qu'avec le logiciel, et la passe coûtait un quart du
+    /// déverrouillage à chaque ouverture. L'étape de maintenance appelle
+    /// la passe entière, quand on veut la refaire.
+    pub fn refresh_reworded_fiches_once(&self) -> Result<usize, String> {
+        let version = env!("CARGO_PKG_VERSION");
+        if self.seeded_names("relecture")?.contains(version) {
+            return Ok(0);
+        }
+        let n = self.refresh_reworded_fiches()?;
+        self.mark_seeded_name("relecture", version)?;
+        Ok(n)
+    }
+
     pub fn refresh_reworded_fiches(&self) -> Result<usize, String> {
         let mut changed = 0;
         let dispo_field = |d: &StarterDispositif, f: &str| -> Option<&'static str> {
@@ -62635,6 +62660,48 @@ mod tests {
             !titles.iter().any(|t| t == new2),
             "supprimé, il ne revient pas"
         );
+    }
+
+    /// La passe des textes reformulés ne tourne qu'une fois par version :
+    /// la seconde ouverture ne la refait pas.
+    #[test]
+    fn the_reworded_pass_runs_once_per_version() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-reworded-once-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("r.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        db.refresh_reworded_fiches_once().unwrap();
+        assert!(db
+            .seeded_names("relecture")
+            .unwrap()
+            .contains(env!("CARGO_PKG_VERSION")));
+        assert_eq!(db.refresh_reworded_fiches_once().unwrap(), 0);
+    }
+
+    /// Les fichiers annexes s'ouvrent en même temps que la base quand ils
+    /// existent : un mot de passe faux échoue sans rien abîmer, et le bon
+    /// rouvre ensuite les trois fichiers.
+    #[test]
+    fn a_wrong_password_leaves_the_side_files_readable() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-side-early-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("b.db");
+        let _ = std::fs::remove_file(&path);
+        {
+            let db = Db::open(&path, "secret").unwrap();
+            db.add_patient("Durand", "Odile", "1950-02-11").unwrap();
+        }
+        let size = |p: PathBuf| std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
+        let before = (size(scans_path(&path)), size(stups_path(&path)));
+        assert!(before.0 > 0 && before.1 > 0);
+        assert!(Db::open(&path, "faux").is_err());
+        assert_eq!((size(scans_path(&path)), size(stups_path(&path))), before);
+        let db = Db::open(&path, "secret").unwrap();
+        assert_eq!(db.patients().unwrap().len(), 1);
     }
 
     /// Les unités par boîte d'un traitement : écrites contre ce que
