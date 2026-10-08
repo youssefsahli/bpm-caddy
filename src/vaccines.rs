@@ -1193,7 +1193,7 @@ pub fn entry_warnings(
         || (code == "COVID" && arexvy_today)
     {
         out.push(
-            "Arexvy ne se co-administre pas avec le vaccin COVID-19 (avis HAS 2025) ; avec la grippe seulement."
+            "Arexvy ne se co-administre pas avec le vaccin COVID-19 (avis HAS 2025) ; co-administration possible avec le vaccin contre la grippe uniquement."
                 .to_owned(),
         );
     }
