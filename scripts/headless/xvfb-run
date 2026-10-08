@@ -1,0 +1,33 @@
+#!/bin/bash
+# Remplace xvfb-run sur un poste sans Xvfb : un KWin sans écran
+# (`kwin_wayland --virtual`) et un Xwayland en mode racine dessus, dont la
+# fenêtre racine se capture comme celle d'Xvfb. Usage :
+#   PATH="$PWD/scripts/headless:$PATH" ./scripts/shot.sh <vue>
+geom=1280x800
+while [ $# -gt 0 ]; do
+  case "$1" in
+    -a) shift;;
+    -s) geom=$(echo "$2" | sed -E 's/.*-screen [0-9]+ ([0-9]+x[0-9]+).*/\1/'); shift 2;;
+    *) break;;
+  esac
+done
+w=${geom%x*}; h=${geom#*x}
+disp=$((100 + RANDOM % 400))
+sock=wl-shim-$disp
+inner=$(mktemp)
+printf '%q ' "$@" > "$inner.cmd"
+cat > "$inner" <<EOS
+#!/bin/bash
+Xwayland :$disp -geometry ${w}x${h} -noreset 2>/dev/null &
+for i in \$(seq 50); do [ -e /tmp/.X11-unix/X$disp ] && break; sleep 0.1; done
+sleep 0.5
+export DISPLAY=:$disp
+unset WAYLAND_DISPLAY
+eval "\$(cat $inner.cmd)"
+echo \$? > $inner.rc
+EOS
+chmod +x "$inner"
+kwin_wayland --virtual --width $((w+50)) --height $((h+50)) --socket $sock --exit-with-session "$inner" >/dev/null 2>&1
+rc=$(cat "$inner.rc" 2>/dev/null || echo 1)
+rm -f "$inner" "$inner.cmd" "$inner.rc"
+exit $rc

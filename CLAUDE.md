@@ -180,6 +180,9 @@ Headless under Xvfb with `unset WAYLAND_DISPLAY`, a throwaway
 `BPM_CADDY_NO_KEYRING=1`, `BPM_CADDY_START_VIEW=<key>`,
 `BPM_CADDY_WINDOW=WxH`; full list and per-view notes in ARCHITECTURE.md).
 
+- No Xvfb on the machine (no sudo)? `PATH="$PWD/scripts/headless:$PATH"`
+  puts a `xvfb-run` built on a headless KWin and a rootful Xwayland in
+  front; every script below works with it.
 - `./scripts/shot.sh <vue> [fichier] [taille] [échelle] [clé=valeur…]` —
   one view (`theme=`, `mono=` go to config.toml, the rest to layout.toml).
 - `./scripts/eyeball.sh [dir] 1024x700 1.6` — every view; **look at the

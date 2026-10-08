@@ -48,9 +48,8 @@ dans docs/CONTENU.md) :
   retirer ou non.
 
 **Pièges de la machine.** Pas de Xvfb ni de sudo sur ce poste : les
-scripts de capture tournent avec un `xvfb-run` de remplacement (KWin
-sans écran et Xwayland en mode racine), à remettre en tête du `PATH` ;
-voir l'historique de la session. CI : chaque poussée lance un smoke de
+scripts de capture tournent avec `scripts/headless/xvfb-run` (KWin
+sans écran et Xwayland en mode racine) : `PATH="$PWD/scripts/headless:$PATH"`. CI : chaque poussée lance un smoke de
 quarante-cinq minutes ; annuler les exécutions dépassées quand plusieurs
 s'empilent.
 
