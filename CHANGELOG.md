@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- F8 ouvre et referme l'onglet « Campagne », comme F7 la carte vaccinale.
+
 ## [0.376.0] - 2026-10-08
 
 ### Fixed

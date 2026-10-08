@@ -15181,7 +15181,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 27] {
+pub fn key_rows() -> [(&'static str, &'static str); 28] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -15198,6 +15198,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 27] {
         ("F4", tr("tab_agenda")),
         ("F5", tr("tab_carnet")),
         ("F7", tr("tab_map")),
+        ("F8", tr("tab_campagne")),
         ("F9", tr("keys_companion")),
         ("Ctrl+K", tr("keys_goto")),
         ("Ctrl+F", tr("keys_search")),
@@ -74827,6 +74828,7 @@ impl eframe::App for App {
         let toggle_agenda = ctx.input(|i| i.key_pressed(egui::Key::F4));
         let toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
         let toggle_map = ctx.input(|i| i.key_pressed(egui::Key::F7));
+        let toggle_campagne = ctx.input(|i| i.key_pressed(egui::Key::F8));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -75359,6 +75361,20 @@ impl eframe::App for App {
                         session.trans_day = String::new();
                         session.load_transmissions();
                         MainView::Transmissions
+                    }
+                };
+            }
+        }
+        // F8 : la campagne de vaccination, dans la même bascule que F7.
+        if toggle_campagne {
+            if let State::Unlocked(session) = &mut self.state {
+                session.view = match session.view {
+                    MainView::Campagne => MainView::Search,
+                    _ => {
+                        session.flush_date_edits();
+                        session.show_amounts = false;
+                        session.reload_campagne();
+                        MainView::Campagne
                     }
                 };
             }
