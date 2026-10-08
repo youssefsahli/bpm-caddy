@@ -51485,6 +51485,7 @@ impl App {
                 Self::button_width(ui, tr("camp_reload")),
                 Self::button_width(ui, tr("camp_print")),
                 Self::button_width(ui, tr("camp_summary")),
+                Self::button_width(ui, tr("camp_register")),
             ]
             .into_iter(),
             tr("camp_subtitle"),
@@ -51493,6 +51494,7 @@ impl App {
         let mut reload = false;
         let mut print = false;
         let mut print_summary = false;
+        let mut print_register = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&title);
@@ -51513,6 +51515,12 @@ impl App {
                     .clicked()
                 {
                     print_summary = true;
+                }
+                if motif::button(ui, tr("camp_register"))
+                    .on_hover_text(tr("camp_register_tooltip"))
+                    .clicked()
+                {
+                    print_register = true;
                 }
             });
             ui.add(
@@ -51999,6 +52007,39 @@ impl App {
                 &paper,
                 &config.pharmacy,
                 &config.doc_template_path("rappels"),
+            ) {
+                session.error = Some(e);
+            }
+        }
+        if print_register {
+            let rows: Vec<[String; 7]> = session
+                .db
+                .vaccinations_register(&session.today)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|[last, first, birth, label, dose, lot, site, op]| {
+                    [
+                        format!("{} {}", last.to_uppercase(), first),
+                        db::format_french_date(&birth),
+                        label,
+                        dose,
+                        lot,
+                        site,
+                        op,
+                    ]
+                })
+                .collect();
+            let paper = crate::pdf::VaccinationRegisterPaper {
+                title: trf(
+                    "camp_register_title",
+                    db::format_french_date(&session.today),
+                ),
+                rows,
+            };
+            if let Err(e) = crate::pdf::open_vaccination_register(
+                &paper,
+                &config.pharmacy,
+                &config.doc_template_path("registre_vaccins"),
             ) {
                 session.error = Some(e);
             }

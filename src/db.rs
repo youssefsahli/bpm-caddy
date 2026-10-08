@@ -49555,6 +49555,35 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Les doses inscrites aux carnets à la date `day`, avec le dossier :
+    /// nom, prénom, naissance, vaccin, dose, lot, site, opérateur. Le
+    /// registre du jour de la campagne.
+    pub fn vaccinations_register(&self, day: &str) -> Result<Vec<[String; 8]>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT p.last_name, p.first_name, p.birth_date, v.label, v.dose, v.lot, v.site, v.operator
+                 FROM vaccinations v JOIN patients p ON p.id = v.patient_id
+                 WHERE v.given_on = ?1 ORDER BY v.id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([day], |r| {
+                Ok([
+                    r.get(0)?,
+                    r.get(1)?,
+                    r.get(2)?,
+                    r.get(3)?,
+                    r.get(4)?,
+                    r.get(5)?,
+                    r.get(6)?,
+                    r.get(7)?,
+                ])
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Combien de doses sont inscrites aux carnets à la date `day` (ISO) :
     /// le compte de la barre d'état pendant la campagne.
     pub fn vaccinations_on(&self, day: &str) -> Result<usize, String> {

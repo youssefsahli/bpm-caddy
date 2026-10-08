@@ -3407,6 +3407,80 @@ const DEFAULT_DISPOSITIF_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
+/// Le registre des vaccinations d'une journée : une ligne par dose, avec
+/// le dossier, le vaccin, le lot, le site et qui l'a faite — ce que la
+/// traçabilité demande et ce que le rapprochement avec la facturation lit.
+pub struct VaccinationRegisterPaper {
+    pub title: String,
+    /// Patient, naissance, vaccin, dose, lot, site, opérateur.
+    pub rows: Vec<[String; 7]>,
+}
+
+pub fn open_vaccination_register(
+    paper: &VaccinationRegisterPaper,
+    pharmacy: &PharmacyConfig,
+    template_path: &std::path::Path,
+) -> Result<PathBuf, String> {
+    compile_and_open(
+        fill(
+            &template_source("registre_vaccins", template_path),
+            &vaccination_register_values(paper, pharmacy),
+        ),
+        "registre_vaccins",
+    )
+}
+
+fn vaccination_register_values(
+    paper: &VaccinationRegisterPaper,
+    pharmacy: &PharmacyConfig,
+) -> Vec<(&'static str, String)> {
+    let mut src = String::new();
+    if !pharmacy.name.trim().is_empty() {
+        src.push_str(&format!(
+            "#align(right)[#text(8.5pt, style: \"italic\")[#{}]]\n",
+            typst_str(pharmacy.name.trim())
+        ));
+    }
+    src.push_str(&format!(
+        "#text(14pt, weight: \"bold\")[#{}]\n#v(1mm)\n#text(9pt, style: \"italic\")[#{}]\n#v(3mm)\n",
+        typst_str(&paper.title),
+        typst_str(&format!("{} dose(s)", paper.rows.len()))
+    ));
+    src.push_str(
+        "#table(columns: (1fr, auto, 1fr, auto, auto, auto, auto), stroke: 0.4pt, inset: 3.5pt,\n",
+    );
+    for h in [
+        "Patient",
+        "Naissance",
+        "Vaccin",
+        "Dose",
+        "Lot",
+        "Site",
+        "Par",
+    ] {
+        src.push_str(&format!(
+            "  [#text(weight: \"bold\")[#{}]],\n",
+            typst_str(h)
+        ));
+    }
+    for row in &paper.rows {
+        for cell in row {
+            src.push_str(&format!("  [#text(8.5pt)[#{}]],\n", typst_str(cell)));
+        }
+    }
+    src.push_str(")\n#v(4mm)\n#text(8pt, style: \"italic\")[Chaque dose est également inscrite au carnet de vaccination du patient ou au DMP, ou remise sur attestation.]\n");
+    vec![("{{BODY}}", src)]
+}
+
+const MARKERS_REGISTRE_VACCINS: &[&str] = &["{{BODY}}"];
+
+const DEFAULT_REGISTRE_VACCINS_TEMPLATE: &str = r##"
+#set page(paper: "a4", flipped: true, margin: 1.4cm)
+#set text(size: 9.5pt, lang: "fr", hyphenate: true)
+
+{{BODY}}
+"##;
+
 /// Le bilan de la saison : les doses par vaccin et par tranche d'âge,
 /// puis semaine par semaine pour les vaccins de la campagne.
 pub struct CampaignSummaryPaper {
@@ -4798,6 +4872,12 @@ pub const DOCS: &[Doc] = &[
         default: DEFAULT_DISPOSITIF_TEMPLATE,
     },
     Doc {
+        key: "registre_vaccins",
+        label: "tpl_target_registre_vaccins",
+        markers: MARKERS_REGISTRE_VACCINS,
+        default: DEFAULT_REGISTRE_VACCINS_TEMPLATE,
+    },
+    Doc {
         key: "bilan_campagne",
         label: "tpl_target_bilan_campagne",
         markers: MARKERS_BILAN_CAMPAGNE,
@@ -5654,6 +5734,21 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
         // des sections. Elles sont toutes remplies, brièvement.
         // La feuille de compression, la plus fournie des trois : des
         // relevés, le tableau des mesures et tous ses conseils.
+        "registre_vaccins" => vaccination_register_values(
+            &VaccinationRegisterPaper {
+                title: "Vaccinations du 14/10/2026".to_owned(),
+                rows: vec![[
+                    "DUPONT Jean #[x]".to_owned(),
+                    "03/07/1958".to_owned(),
+                    "Grippe saisonnière".to_owned(),
+                    String::new(),
+                    "DEMO-EF26A".to_owned(),
+                    "Deltoïde G".to_owned(),
+                    "CL".to_owned(),
+                ]],
+            },
+            &sample_pharmacy(),
+        ),
         "bilan_campagne" => campaign_summary_values(
             &CampaignSummaryPaper {
                 title: "Campagne de vaccination 2026-2027 : bilan".to_owned(),

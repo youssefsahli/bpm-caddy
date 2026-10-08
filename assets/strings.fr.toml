@@ -3641,3 +3641,7 @@ camp_summary_tooltip = "Doses de la saison par vaccin et par tranche d'âge, pui
 camp_summary_title = "Campagne de vaccination {} : bilan"
 camp_summary_date = "Arrêté au {}"
 tpl_target_bilan_campagne = "Bilan de la campagne de vaccination"
+camp_register = "Registre du jour"
+camp_register_tooltip = "Les doses inscrites aux carnets aujourd'hui : patient, vaccin, lot, site et opérateur, à imprimer"
+camp_register_title = "Vaccinations du {}"
+tpl_target_registre_vaccins = "Registre des vaccinations du jour"

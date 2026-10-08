@@ -885,6 +885,8 @@ l'issue de chaque appel.
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
 vaccin choisi. « Bilan de la saison » imprime les doses par vaccin et
 par tranche d'âge à la date de l'injection, puis semaine par semaine.
+« Registre du jour » imprime les doses inscrites aux carnets dans la
+journée, avec le patient, le lot, le site et l'opérateur.
 
 **Lots reçus.** Chaque lot est saisi à réception : vaccin, spécialité,
 numéro, péremption (`06/2027` suffit, le dernier jour du mois est

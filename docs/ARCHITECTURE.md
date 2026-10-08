@@ -282,7 +282,7 @@ are read verbatim by tests in `src/strings.rs`.
   `pdf::compile_and_open`, every act through `Db::add_interview_by`,
   every register line through `Db::add_stup_moves` — via a process
   tally the session reads the *difference* of; counting at the twenty-one
-  `pdf::open_*` call sites would be 43 chances to forget one.
+  `pdf::open_*` call sites would be 44 chances to forget one.
 The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
