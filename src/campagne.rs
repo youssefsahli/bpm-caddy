@@ -503,6 +503,45 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
 }
 
 // ---------------------------------------------------------------------
+// Les flacons multidoses ouverts
+// ---------------------------------------------------------------------
+
+/// Le délai d'utilisation d'un flacon multidose de vaccin contre le
+/// COVID-19 après la première ponction (Comirnaty XFG, campagne
+/// 2026-2027).
+pub const VIAL_HOURS: i64 = 12;
+
+/// Un flacon ouvert : le lot, le jour et la minute de la première
+/// ponction.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Vial {
+    pub id: i64,
+    pub lot: String,
+    /// ISO.
+    pub opened_on: String,
+    /// Minutes depuis minuit.
+    pub opened_min: i64,
+    pub operator: String,
+}
+
+/// Ce qu'il reste d'un flacon : l'heure limite (jour ISO et minute) et
+/// les minutes restantes à `today`/`now_min`, négatives une fois le délai
+/// dépassé.
+pub fn vial_left(v: &Vial, today: &str, now_min: i64) -> Option<(String, i64, i64)> {
+    let opened = crate::date::to_days(&v.opened_on)? * 1440 + v.opened_min;
+    let now = crate::date::to_days(today)? * 1440 + now_min;
+    let end = opened + VIAL_HOURS * 60;
+    let day = crate::date::from_days(end.div_euclid(1440));
+    Some((day, end.rem_euclid(1440), end - now))
+}
+
+/// Une heure du jour écrite à la française : « 9 h 05 ».
+pub fn hm(minutes: i64) -> String {
+    let m = minutes.rem_euclid(1440);
+    format!("{} h {:02}", m / 60, m % 60)
+}
+
+// ---------------------------------------------------------------------
 // Le bilan de la saison
 // ---------------------------------------------------------------------
 
@@ -1150,6 +1189,31 @@ mod tests {
         );
         assert_eq!(s[0].total(), 4);
         assert_eq!(s[1].total(), 1);
+    }
+
+    #[test]
+    fn an_open_vial_is_used_within_twelve_hours_even_across_midnight() {
+        let v = Vial {
+            id: 1,
+            lot: "CX".to_owned(),
+            opened_on: "2026-10-20".to_owned(),
+            opened_min: 9 * 60 + 12,
+            operator: String::new(),
+        };
+        let (day, at, left) = vial_left(&v, "2026-10-20", 18 * 60).unwrap();
+        assert_eq!(
+            (day.as_str(), hm(at).as_str(), left),
+            ("2026-10-20", "21 h 12", 192)
+        );
+        // Ouvert le soir : la limite tombe le lendemain matin.
+        let late = Vial {
+            opened_min: 19 * 60,
+            ..v.clone()
+        };
+        let (day, at, _) = vial_left(&late, "2026-10-20", 19 * 60).unwrap();
+        assert_eq!((day.as_str(), hm(at).as_str()), ("2026-10-21", "7 h 00"));
+        // Délai dépassé : négatif.
+        assert!(vial_left(&v, "2026-10-20", 22 * 60).unwrap().2 < 0);
     }
 
     #[test]

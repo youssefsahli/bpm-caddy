@@ -898,6 +898,10 @@ numéro. Une dose corrigée ou supprimée au carnet se retrouve donc dans
 le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 (moins de 30 jours) ou en stock bas (moins de 5 doses).
 
+Sur un lot de vaccin contre le COVID-19, « Flacon ouvert » note la
+première ponction d'un flacon multidose : la ligne donne l'heure limite
+d'utilisation, 12 heures plus tard, et le temps restant.
+
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
 stock qui périme le premier. Une remarque s'affiche sous la saisie quand
 la dose appelle une vérification : âge minimal de la vaccination à

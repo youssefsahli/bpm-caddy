@@ -714,6 +714,16 @@ CREATE TABLE IF NOT EXISTS vaccine_lots (
     received_on TEXT NOT NULL DEFAULT '',
     remark      TEXT NOT NULL DEFAULT ''
 );
+-- Les flacons multidoses ouverts (COVID-19) : la première ponction, pour
+-- l'heure limite d'utilisation (`campagne::vial_left`). Une ligne retirée
+-- quand le flacon est terminé ou jeté.
+CREATE TABLE IF NOT EXISTS vial_openings (
+    id          INTEGER PRIMARY KEY,
+    lot         TEXT NOT NULL,
+    opened_on   TEXT NOT NULL,
+    opened_min  INTEGER NOT NULL DEFAULT 0,
+    operator    TEXT NOT NULL DEFAULT ''
+);
 -- Les appels de la campagne : qui a été appelé, pour quel vaccin, quelle
 -- saison (« 2026-2027 ») et avec quelle issue (`campagne::Outcome`). Une
 -- ligne par appel, jamais réécrite : la liste lit le dernier.
@@ -1538,7 +1548,15 @@ const MIGRATIONS: &[&str] = &[
     "CREATE TABLE IF NOT EXISTS sync_mute (mute INTEGER NOT NULL)",
     // Un poste de bureau ou un compagnon — voir `SCHEMA`.
     "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
-    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''", // La campagne de vaccination — voir `SCHEMA`.
+    "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''",
+    // La campagne de vaccination — voir `SCHEMA`.
+    "CREATE TABLE IF NOT EXISTS vial_openings (
+        id          INTEGER PRIMARY KEY,
+        lot         TEXT NOT NULL,
+        opened_on   TEXT NOT NULL,
+        opened_min  INTEGER NOT NULL DEFAULT 0,
+        operator    TEXT NOT NULL DEFAULT ''
+    )",
     "CREATE TABLE IF NOT EXISTS vaccine_lots (
         id          INTEGER PRIMARY KEY,
         code        TEXT NOT NULL DEFAULT '',
@@ -44490,6 +44508,7 @@ impl Db {
             "DELETE FROM compression_grids",
             "DELETE FROM cno_products",
             "DELETE FROM vaccine_lots",
+            "DELETE FROM vial_openings",
             "DELETE FROM patient_travel",
             "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
         ] {
@@ -49433,6 +49452,56 @@ impl Db {
     }
 
     // --- La campagne de vaccination --------------------------------
+
+    /// Les flacons ouverts, le plus récent d'abord.
+    pub fn vial_openings(&self) -> Result<Vec<crate::campagne::Vial>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, lot, opened_on, opened_min, operator FROM vial_openings
+                 ORDER BY opened_on DESC, opened_min DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(crate::campagne::Vial {
+                    id: r.get(0)?,
+                    lot: r.get(1)?,
+                    opened_on: r.get(2)?,
+                    opened_min: r.get(3)?,
+                    operator: r.get(4)?,
+                })
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    pub fn open_vial(&self, v: &crate::campagne::Vial) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO vial_openings (id, lot, opened_on, opened_min, operator)
+                     VALUES ({next}, ?1, ?2, ?3, ?4)",
+                    next = next_id("vial_openings")
+                ),
+                rusqlite::params![&v.lot, &v.opened_on, v.opened_min, &v.operator],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Retirer un flacon terminé ou jeté, compare-and-set sur le lot et
+    /// l'heure d'ouverture affichés.
+    pub fn close_vial(&self, v: &crate::campagne::Vial) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM vial_openings WHERE id = ?1 AND lot = ?2 AND opened_on = ?3 AND opened_min = ?4",
+                rusqlite::params![v.id, &v.lot, &v.opened_on, v.opened_min],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
 
     /// Les lots reçus, le plus récemment reçu d'abord.
     pub fn vaccine_lots(&self) -> Result<Vec<crate::campagne::Lot>, String> {

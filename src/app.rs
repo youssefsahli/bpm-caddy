@@ -4080,6 +4080,8 @@ struct CampagneState {
     lots: Vec<crate::campagne::Lot>,
     /// Les doses du carnet sur chaque lot, dans l'ordre de `lots`.
     used: Vec<i64>,
+    /// Les flacons multidoses ouverts.
+    vials: Vec<crate::campagne::Vial>,
     tally: Vec<crate::campagne::Tally>,
     weekly: Vec<(String, usize)>,
     recalls: Vec<RecallRow>,
@@ -9881,6 +9883,7 @@ impl Session {
         let dose_lots = self.db.vaccination_lots().unwrap_or_default();
         let refs: Vec<&str> = dose_lots.iter().map(String::as_str).collect();
         self.camp.used = campagne::usage(&lots, &refs);
+        self.camp.vials = self.db.vial_openings().unwrap_or_default();
         self.camp.lots = lots;
         let rows = self
             .db
@@ -51791,6 +51794,9 @@ impl App {
         // --- Les lots ------------------------------------------------------
         let mut add_lot = false;
         let mut delete_lot: Option<(i64, String)> = None;
+        let mut open_vial: Option<String> = None;
+        let mut close_vial: Option<crate::campagne::Vial> = None;
+        let now_min = i64::from(session.now_minutes);
         let today = session.today.clone();
         if lots_rect.is_positive() {
             motif::panel(ui, lots_rect, Some(tr("camp_lots_title")), |ui| {
@@ -51943,6 +51949,67 @@ impl App {
                                     }
                                 }
                             });
+                            // Le flacon multidose ouvert : l'heure limite après la
+                            // première ponction, et ce qu'il en reste.
+                            if lot.code == "COVID" {
+                                let open = session.camp.vials.iter().find(|v| {
+                                    campagne::norm_lot(&v.lot) == campagne::norm_lot(&lot.lot)
+                                });
+                                let state = open.and_then(|v| {
+                                    campagne::vial_left(v, &today, now_min).map(|x| (v, x))
+                                });
+                                ui.horizontal_wrapped(|ui| match state {
+                                    Some((v, (day, at, left))) => {
+                                        let until = if day == today {
+                                            campagne::hm(at)
+                                        } else {
+                                            format!(
+                                                "{} {}",
+                                                db::format_french_date(&day),
+                                                campagne::hm(at)
+                                            )
+                                        };
+                                        let (text, color) = if left < 0 {
+                                            (trf("camp_vial_expired", &until), motif::alert())
+                                        } else {
+                                            (
+                                                trn(
+                                                    "camp_vial_open",
+                                                    &[
+                                                        &campagne::hm(v.opened_min),
+                                                        &until,
+                                                        &campagne::hm(left),
+                                                    ],
+                                                ),
+                                                if left < 60 {
+                                                    motif::warn()
+                                                } else {
+                                                    motif::text()
+                                                },
+                                            )
+                                        };
+                                        ui.label(
+                                            egui::RichText::new(text)
+                                                .size(motif::pt(ui, 11.0))
+                                                .color(color),
+                                        );
+                                        if motif::button(ui, tr("camp_vial_close"))
+                                            .on_hover_text(tr("camp_vial_close_tooltip"))
+                                            .clicked()
+                                        {
+                                            close_vial = Some(v.clone());
+                                        }
+                                    }
+                                    None => {
+                                        if motif::button(ui, tr("camp_vial_opened"))
+                                            .on_hover_text(tr("camp_vial_opened_tooltip"))
+                                            .clicked()
+                                        {
+                                            open_vial = Some(lot.lot.clone());
+                                        }
+                                    }
+                                });
+                            }
                             ui.add_space(3.0);
                         }
                     });
@@ -52006,6 +52073,29 @@ impl App {
                 }
                 (_, Err(e)) => camp.error = Some(e),
                 _ => camp.error = Some(tr("camp_received_error").to_owned()),
+            }
+        }
+        if let Some(lot) = open_vial {
+            let v = campagne::Vial {
+                id: 0,
+                lot,
+                opened_on: session.today.clone(),
+                opened_min: i64::from(session.now_minutes),
+                operator: operator.to_owned(),
+            };
+            match session.db.open_vial(&v) {
+                Ok(_) => reload = true,
+                Err(e) => session.error = Some(e),
+            }
+        }
+        if let Some(v) = close_vial {
+            match session.db.close_vial(&v) {
+                Ok(true) => reload = true,
+                Ok(false) => {
+                    session.stale("camp_stale");
+                    reload = true;
+                }
+                Err(e) => session.error = Some(e),
             }
         }
         if let Some((id, lot)) = delete_lot {

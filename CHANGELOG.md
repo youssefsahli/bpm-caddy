@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Campagne : « Flacon ouvert » sur un lot de vaccin contre le COVID-19
+  note la première ponction ; la ligne donne l'heure limite d'utilisation
+  (12 heures, Comirnaty XFG) et le temps restant, signalé dans la
+  dernière heure et une fois le délai dépassé.
 - Campagne : la liste des rappels se parcourt au clavier (flèches, Entrée
   pour ouvrir le carnet, 1 à 4 pour noter l'issue de l'appel).
 
