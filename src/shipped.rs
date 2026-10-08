@@ -1584,6 +1584,53 @@ pub const CONDUITE_REWORDED: &[(usize, usize, u64)] = &[
     (252, 1, 0x1b3e06a5c8591781),
 ];
 
+/// Les titres de protocoles livrés reformulés : (ancien, nouveau). Une
+/// base qui porte encore l'ancien titre, mot pour mot, prend le nouveau ;
+/// un protocole que l'équipe a renommé ou supprimé n'est pas touché.
+/// Appliqué avant le semis, qui se fait par titre.
+pub const PROTOCOL_TITLES_RENAMED: &[(&str, &str)] = &[
+    (
+        "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        "Insuffisance cardiaque à FEVG altérée — traitement de fond",
+    ),
+    (
+        "Hypertension artérielle — la marche du traitement",
+        "Hypertension artérielle — stratégie thérapeutique",
+    ),
+    (
+        "Diabète de type 2 — l'escalade thérapeutique",
+        "Diabète de type 2 — stratégie thérapeutique",
+    ),
+    (
+        "Dyslipidémie — la cible dépend du risque, pas du chiffre",
+        "Dyslipidémie — objectif lipidique selon le risque cardiovasculaire",
+    ),
+    (
+        "Fibrillation atriale — faut-il anticoaguler ?",
+        "Fibrillation atriale — indication de l'anticoagulation",
+    ),
+    (
+        "Asthme — le palier, et les vérifications avant de le monter",
+        "Asthme — vérifications avant de majorer le palier",
+    ),
+    (
+        "Méthotrexate oral — la dose est hebdomadaire",
+        "Méthotrexate oral — prise hebdomadaire",
+    ),
+    (
+        "IPP au long cours — faut-il le poursuivre ?",
+        "IPP au long cours — réévaluation de l'indication",
+    ),
+    (
+        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
+    ),
+    (
+        "Demande de test de grossesse ou d'inquiétude de grossesse",
+        "Test ou suspicion de grossesse au comptoir",
+    ),
+];
+
 // Protocoles : 115 étapes reformulées.
 pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
     (
@@ -1777,67 +1824,67 @@ pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
         0x93e261b46b0192d3,
     ),
     (
-        "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        "Insuffisance cardiaque à FEVG altérée — traitement de fond",
         3,
         0x450fb939e2b1ac92,
     ),
     (
-        "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        "Insuffisance cardiaque à FEVG altérée — traitement de fond",
         5,
         0x2d738a28497b931f,
     ),
     (
-        "Hypertension artérielle — la marche du traitement",
+        "Hypertension artérielle — stratégie thérapeutique",
         8,
         0x2d10674b6865cd76,
     ),
     (
-        "Diabète de type 2 — l'escalade thérapeutique",
+        "Diabète de type 2 — stratégie thérapeutique",
         1,
         0x843ddd92f19d837f,
     ),
     (
-        "Diabète de type 2 — l'escalade thérapeutique",
+        "Diabète de type 2 — stratégie thérapeutique",
         5,
         0xd11659dd24d97638,
     ),
     (
-        "Dyslipidémie — la cible dépend du risque, pas du chiffre",
+        "Dyslipidémie — objectif lipidique selon le risque cardiovasculaire",
         2,
         0x33cc1bf490612a36,
     ),
     (
-        "Fibrillation atriale — faut-il anticoaguler ?",
+        "Fibrillation atriale — indication de l'anticoagulation",
         3,
         0x8cb06aa821415a99,
     ),
     (
-        "Fibrillation atriale — faut-il anticoaguler ?",
+        "Fibrillation atriale — indication de l'anticoagulation",
         5,
         0x00dc2c80fb9c88f8,
     ),
     (
-        "Fibrillation atriale — faut-il anticoaguler ?",
+        "Fibrillation atriale — indication de l'anticoagulation",
         6,
         0x83f48729ca83d152,
     ),
     (
-        "Asthme — le palier, et les vérifications avant de le monter",
+        "Asthme — vérifications avant de majorer le palier",
         1,
         0x654861aa1ab288f5,
     ),
     (
-        "Asthme — le palier, et les vérifications avant de le monter",
+        "Asthme — vérifications avant de majorer le palier",
         4,
         0x8fe7c73da58d05ec,
     ),
     (
-        "Asthme — le palier, et les vérifications avant de le monter",
+        "Asthme — vérifications avant de majorer le palier",
         5,
         0xa7c348a1843205e8,
     ),
     (
-        "Asthme — le palier, et les vérifications avant de le monter",
+        "Asthme — vérifications avant de majorer le palier",
         6,
         0x3d885828d698541d,
     ),
@@ -1872,17 +1919,17 @@ pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
         0x62c209f23c44ece5,
     ),
     (
-        "Méthotrexate oral — la dose est hebdomadaire",
+        "Méthotrexate oral — prise hebdomadaire",
         5,
         0x3b89b5d6af02619d,
     ),
     (
-        "Méthotrexate oral — la dose est hebdomadaire",
+        "Méthotrexate oral — prise hebdomadaire",
         9,
         0xd2bbae7c2b5d82bb,
     ),
     (
-        "Méthotrexate oral — la dose est hebdomadaire",
+        "Méthotrexate oral — prise hebdomadaire",
         10,
         0x8b80407c695b002b,
     ),
@@ -1922,42 +1969,42 @@ pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
         0x916d73236ceb257d,
     ),
     (
-        "IPP au long cours — faut-il le poursuivre ?",
+        "IPP au long cours — réévaluation de l'indication",
         4,
         0x794253e191a7bf8c,
     ),
     (
-        "IPP au long cours — faut-il le poursuivre ?",
+        "IPP au long cours — réévaluation de l'indication",
         6,
         0x851522e50461950f,
     ),
     (
-        "IPP au long cours — faut-il le poursuivre ?",
+        "IPP au long cours — réévaluation de l'indication",
         8,
         0x7b2be61703432381,
     ),
     (
-        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
         2,
         0x16875b46f100b15c,
     ),
     (
-        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
         5,
         0xbf948e5d9e0ce10f,
     ),
     (
-        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
         6,
         0x1593ef91e976aa20,
     ),
     (
-        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
         7,
         0x6526590a855a0af0,
     ),
     (
-        "Arrêt d'une benzodiazépine — le plan de décroissance",
+        "Arrêt d'une benzodiazépine — plan de décroissance",
         8,
         0xec99019c1d00756c,
     ),

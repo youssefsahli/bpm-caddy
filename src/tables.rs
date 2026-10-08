@@ -1027,7 +1027,7 @@ pub const TABLES: &[ConvTable] = &[
     ConvTable {
         short: "IC — piliers",
         family: "Posologies",
-        title: "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        title: "Insuffisance cardiaque à FEVG altérée — traitement de fond",
         reviewed: "Août 2026 — recommandations ESC sur l'insuffisance cardiaque, RCP",
         sources: &[
             "ESC — insuffisance cardiaque aiguë et chronique",

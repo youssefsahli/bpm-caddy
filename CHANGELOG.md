@@ -9,6 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Protocoles : dix titres reformulés au registre professionnel (« Dyslipidémie
+  — objectif lipidique selon le risque cardiovasculaire », « Fibrillation
+  atriale — indication de l'anticoagulation »…) ; une base existante les
+  reçoit là où l'ancien titre est intact, sans doublon.
 - Campagne, volet court : le sous-titre se réduit à la saison, les
   rendez-vous sont une page à côté des rappels, et la liste garde sa
   hauteur.

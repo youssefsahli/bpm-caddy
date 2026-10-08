@@ -30480,7 +30480,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Demande de test de grossesse ou d'inquiétude de grossesse",
+        title: "Test ou suspicion de grossesse au comptoir",
         subject: "Retard de règles, rapport non protégé",
         steps: &[q(
             "Le rapport non protégé date-t-il de moins de cinq jours ?",
@@ -30666,7 +30666,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
     // recommandations, pas des ordres, et un prescripteur qui s'en écarte
     // a le plus souvent une raison qui n'est pas sur l'ordonnance.
     StarterProtocol {
-        title: "Insuffisance cardiaque à FEVG altérée — les quatre piliers",
+        title: "Insuffisance cardiaque à FEVG altérée — traitement de fond",
         subject: "IC à fraction d'éjection altérée (≤ 40 %) — ESC 2021/2023, HAS",
         steps: &[q(
             "Les quatre classes sont-elles toutes sur l'ordonnance — bloqueur du SRAA, bêtabloquant, antialdostérone, gliflozine ?",
@@ -30703,7 +30703,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Hypertension artérielle — la marche du traitement",
+        title: "Hypertension artérielle — stratégie thérapeutique",
         subject: "HTA de l'adulte — SFHTA/HAS, stratégie par paliers",
         steps: &[q(
             "Le diagnostic repose-t-il sur des mesures hors du cabinet — automesure ou MAPA ?",
@@ -30734,7 +30734,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Diabète de type 2 — l'escalade thérapeutique",
+        title: "Diabète de type 2 — stratégie thérapeutique",
         subject: "DT2 de l'adulte — HAS/SFD, stratégie médicamenteuse",
         steps: &[q(
             "Le patient a-t-il une maladie cardiovasculaire avérée, une insuffisance cardiaque ou une atteinte rénale ?",
@@ -30759,7 +30759,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Dyslipidémie — la cible dépend du risque, pas du chiffre",
+        title: "Dyslipidémie — objectif lipidique selon le risque cardiovasculaire",
         subject: "Prévention cardiovasculaire — HAS/ESC, objectifs de LDL",
         steps: &[q(
             "Le patient a-t-il une maladie cardiovasculaire avérée, un diabète avec atteinte d'organe, une IRC sévère ou une hypercholestérolémie familiale ?",
@@ -30778,7 +30778,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Fibrillation atriale — faut-il anticoaguler ?",
+        title: "Fibrillation atriale — indication de l'anticoagulation",
         subject: "FA non valvulaire — score CHA₂DS₂-VASc, HAS/ESC",
         steps: &[q(
             "S'agit-il d'un rétrécissement mitral serré ou d'une prothèse valvulaire mécanique ?",
@@ -30803,7 +30803,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Asthme — le palier, et les vérifications avant de le monter",
+        title: "Asthme — vérifications avant de majorer le palier",
         subject: "Asthme de l'adulte — GINA/HAS, traitement de fond",
         steps: &[q(
             "Le patient utilise-t-il un bronchodilatateur de courte durée seul, sans corticoïde inhalé ?",
@@ -30898,7 +30898,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Méthotrexate oral — la dose est hebdomadaire",
+        title: "Méthotrexate oral — prise hebdomadaire",
         subject: "Méthotrexate à faible dose — rhumatologie, dermatologie, MICI (ANSM, mesures de réduction du risque)",
         steps: &[q(
             "L'ordonnance porte-t-elle une dose hebdomadaire et le jour de la semaine où elle se prend ?",
@@ -30991,7 +30991,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "IPP au long cours — faut-il le poursuivre ?",
+        title: "IPP au long cours — réévaluation de l'indication",
         subject: "Inhibiteurs de la pompe à protons — HAS : indications du traitement prolongé et déprescription",
         steps: &[q(
             "L'IPP est-il pris depuis plus de huit semaines ?",
@@ -31022,7 +31022,7 @@ pub const STARTER_PROTOCOLS: &[StarterProtocol] = &[
         )],
     },
     StarterProtocol {
-        title: "Arrêt d'une benzodiazépine — le plan de décroissance",
+        title: "Arrêt d'une benzodiazépine — plan de décroissance",
         subject: "Benzodiazépines et apparentés — HAS, arrêt en ambulatoire chez l'adulte",
         steps: &[q(
             "Le traitement dure-t-il depuis plus de quatre semaines pour un hypnotique, ou plus de douze semaines pour un anxiolytique ?",
@@ -47635,6 +47635,9 @@ impl Db {
     /// alone: the tool is the team's, and a tree they have rewritten
     /// never comes back to what it shipped as.
     pub fn seed_protocols(&self) -> Result<usize, String> {
+        // Les titres reformulés d'abord : le semis se fait par titre, et un
+        // titre livré renommé serait semé une seconde fois.
+        self.rename_shipped_protocols()?;
         // Rien à semer — le cas de chaque lancement : pas de verrou
         // d'écriture pris pour rien, au moment où la sauvegarde et les
         // synchronisations démarrent.
@@ -47667,6 +47670,31 @@ impl Db {
         }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(added)
+    }
+
+    /// Les protocoles livrés dont le titre a été reformulé
+    /// ([`crate::shipped::PROTOCOL_TITLES_RENAMED`]) : renommés là où la
+    /// base porte encore l'ancien titre mot pour mot, et le nouveau titre
+    /// noté semé là où l'ancien l'était — un protocole que l'équipe a
+    /// supprimé ne revient pas sous son nouveau nom.
+    pub fn rename_shipped_protocols(&self) -> Result<usize, String> {
+        let seeded = self.seeded_names("protocole")?;
+        let mut renamed = 0;
+        for (old, new) in crate::shipped::PROTOCOL_TITLES_RENAMED {
+            if !seeded.contains(*old) || seeded.contains(*new) {
+                continue;
+            }
+            renamed += self
+                .conn
+                .execute(
+                    "UPDATE protocols SET title = ?2 WHERE title = ?1
+                       AND NOT EXISTS (SELECT 1 FROM protocols WHERE title = ?2)",
+                    (old, new),
+                )
+                .map_err(|e| e.to_string())?;
+            self.mark_seeded_name("protocole", new)?;
+        }
+        Ok(renamed)
     }
 
     /// Semer les cascades, une fois, **par titre** — la règle des
@@ -62540,6 +62568,40 @@ mod tests {
         assert_eq!(db.interviews_for(pid).unwrap()[0].duration_minutes, 45);
 
         let _ = std::fs::remove_file(&path);
+    }
+
+    /// Un titre de protocole reformulé atteint une base existante sans
+    /// semer de doublon, et un protocole supprimé par l'équipe ne revient
+    /// pas sous son nouveau nom.
+    #[test]
+    fn a_reworded_protocol_title_renames_without_a_duplicate() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-proto-rename-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("p.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let (old, new) = crate::shipped::PROTOCOL_TITLES_RENAMED[0];
+        let (old2, new2) = crate::shipped::PROTOCOL_TITLES_RENAMED[1];
+        // Une base d'avant : les anciens titres semés, le second supprimé.
+        db.add_protocol(old, "").unwrap();
+        db.mark_seeded_name("protocole", old).unwrap();
+        db.mark_seeded_name("protocole", old2).unwrap();
+        db.seed_protocols().unwrap();
+        let titles: Vec<String> = db
+            .protocols()
+            .unwrap()
+            .into_iter()
+            .map(|p| p.title)
+            .collect();
+        assert!(titles.iter().any(|t| t == new), "{titles:?}");
+        assert!(!titles.iter().any(|t| t == old));
+        assert_eq!(titles.iter().filter(|t| *t == new).count(), 1);
+        assert!(
+            !titles.iter().any(|t| t == new2),
+            "supprimé, il ne revient pas"
+        );
     }
 
     /// Les unités par boîte d'un traitement : écrites contre ce que
