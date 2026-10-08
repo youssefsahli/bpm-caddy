@@ -29613,6 +29613,23 @@ pub struct StarterProtocol {
     pub steps: &'static [StarterNode],
 }
 
+/// Les étapes d'un protocole livré, dans l'ordre où le source les
+/// écrit : la question, puis la branche « oui », puis la branche « non ».
+/// C'est l'ordre des empreintes de `shipped::PROTOCOLS_REWORDED`.
+pub fn protocol_steps(title: &str) -> Option<Vec<&'static str>> {
+    fn walk(nodes: &'static [StarterNode], out: &mut Vec<&'static str>) {
+        for n in nodes {
+            out.push(n.text);
+            walk(n.yes, out);
+            walk(n.no, out);
+        }
+    }
+    let p = STARTER_PROTOCOLS.iter().find(|p| p.title == title)?;
+    let mut out = Vec::new();
+    walk(p.steps, &mut out);
+    Some(out)
+}
+
 /// One step of a shipped protocol, with the two branches under it.
 pub struct StarterNode {
     pub kind: NodeKind,
@@ -48270,6 +48287,124 @@ impl Db {
                 }
             }
         }
+        // Les posologies : ligne par ligne, sous le nom de la fiche.
+        {
+            let rows: Vec<(i64, String, [String; 3])> = {
+                let mut st = tx
+                    .prepare(
+                        "SELECT p.id, d.name, p.indication, p.posologie, p.remarque
+                         FROM posologies p JOIN drugs d ON d.id = p.drug_id",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = st
+                    .query_map([], |r| {
+                        Ok((r.get(0)?, r.get(1)?, [r.get(2)?, r.get(3)?, r.get(4)?]))
+                    })
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            for (id, drug, fields) in rows {
+                for (name, field, old, k) in crate::shipped::POSOLOGIES_REWORDED {
+                    if *name != drug {
+                        continue;
+                    }
+                    let current = &fields[field - 1];
+                    if crate::shipped::fingerprint(current) != *old {
+                        continue;
+                    }
+                    let row = STARTER_POSOLOGIES[*k];
+                    let (column, new) = match field {
+                        1 => ("indication", row.1),
+                        2 => ("posologie", row.2),
+                        _ => ("remarque", row.3),
+                    };
+                    changed += tx
+                        .execute(
+                            &format!("UPDATE posologies SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"),
+                            (new, id, current),
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        // Les conduites « en cas d'oubli » et « signes d'alerte » des
+        // fiches : un champ verrouillé est celui de l'équipe.
+        {
+            let by_print: std::collections::HashMap<(usize, u64), usize> =
+                crate::shipped::CONDUITE_REWORDED
+                    .iter()
+                    .map(|(k, f, h)| ((*f, *h), *k))
+                    .collect();
+            let locked: std::collections::HashSet<(i64, String)> = {
+                let mut st = tx
+                    .prepare("SELECT drug_id, column_name FROM drug_field_locks")
+                    .map_err(|e| e.to_string())?;
+                let rows = st
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            let rows: Vec<(i64, String, String)> = {
+                let mut st = tx
+                    .prepare("SELECT id, missed_dose, red_flags FROM drugs")
+                    .map_err(|e| e.to_string())?;
+                let rows = st
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            for (id, missed, red) in rows {
+                for (field, column, current) in
+                    [(1, "missed_dose", &missed), (2, "red_flags", &red)]
+                {
+                    if current.is_empty() || locked.contains(&(id, column.to_owned())) {
+                        continue;
+                    }
+                    let Some(k) = by_print.get(&(field, crate::shipped::fingerprint(current)))
+                    else {
+                        continue;
+                    };
+                    let row = STARTER_CONDUITE[*k];
+                    let new = if field == 1 { row.1 } else { row.2 };
+                    changed += tx
+                        .execute(
+                            &format!(
+                                "UPDATE drugs SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"
+                            ),
+                            (new, id, current),
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        // Les étapes des protocoles, sous leur titre.
+        for (title, i, old) in crate::shipped::PROTOCOLS_REWORDED {
+            let Some(new) = protocol_steps(title).and_then(|s| s.get(*i).copied()) else {
+                continue;
+            };
+            let nodes: Vec<(i64, String)> = {
+                let mut st = tx
+                    .prepare(
+                        "SELECT n.id, n.text FROM protocol_nodes n
+                         JOIN protocols p ON p.id = n.protocol_id WHERE p.title = ?1",
+                    )
+                    .map_err(|e| e.to_string())?;
+                let rows = st
+                    .query_map([title], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            for (id, text) in nodes {
+                if crate::shipped::fingerprint(&text) == *old {
+                    changed += tx
+                        .execute(
+                            "UPDATE protocol_nodes SET text = ?1 WHERE id = ?2 AND text = ?3",
+                            (new, id, &text),
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
         tx.commit().map_err(|e| e.to_string())?;
         Ok(changed)
     }
@@ -60719,6 +60854,59 @@ mod tests {
     /// team's afterwards. And every shipped fiche must answer the six
     /// questions the counter actually asks — a fiche that only names
     /// the box is a fiche nobody opens twice.
+    /// La rédaction reprise atteint aussi les posologies, les conduites des
+    /// fiches et les étapes des protocoles d'une base semée avant.
+    #[test]
+    fn reworded_posologies_conduites_and_steps_reach_an_existing_base() {
+        let dir = std::env::temp_dir().join(format!("bpm-reworded2-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = Db::open(&dir.join("t.db"), "pw").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        // Les trois textes tels que la 0.366.0 les livrait.
+        db.conn
+            .execute(
+                "UPDATE posologies SET remarque = ?1 WHERE id = (SELECT p.id FROM posologies p JOIN drugs d ON d.id = p.drug_id WHERE d.name = ?2 ORDER BY p.position, p.id LIMIT 1 OFFSET ?3)",
+                rusqlite::params!["15 mg par jour si clairance de la créatinine entre 15 et 49 mL/min. La prise pendant le repas conditionne l'absorption : insister au comptoir.", "Xarelto", 0],
+            )
+            .unwrap();
+        let shipped_conduite = STARTER_CONDUITE[6].1;
+        db.conn
+            .execute("UPDATE drugs SET missed_dose = ?1 WHERE missed_dose = ?2", ("Prendre l'oubli dans la journée ; sinon reprendre à la prise suivante, sans doubler. Un comprimé oublié de temps en temps ne compromet pas le traitement — l'arrêt, si.", shipped_conduite))
+            .unwrap();
+        let step = protocol_steps("Anticoagulant oral direct indisponible").unwrap()[4];
+        db.conn
+            .execute("UPDATE protocol_nodes SET text = ?1 WHERE text = ?2", ("Ne jamais remplacer un AOD par un autre de sa propre initiative : appeler le prescripteur. Le relais, par un autre AOD ou par une héparine, se décide par lui, et l'interruption pure et simple est le seul choix à écarter.", step))
+            .unwrap();
+        let n = db.refresh_reworded_fiches().unwrap();
+        assert!(n >= 3, "{n} champs remis à jour");
+        let poso: String = db
+            .conn
+            .query_row(
+                "SELECT p.remarque FROM posologies p JOIN drugs d ON d.id = p.drug_id WHERE d.name = ?1 ORDER BY p.position, p.id LIMIT 1 OFFSET ?2",
+                rusqlite::params!["Xarelto", 0],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(poso, STARTER_POSOLOGIES[5].3);
+        let left: i64 = db
+            .conn
+            .query_row("SELECT COUNT(*) FROM drugs WHERE missed_dose = ?1", ["Prendre l'oubli dans la journée ; sinon reprendre à la prise suivante, sans doubler. Un comprimé oublié de temps en temps ne compromet pas le traitement — l'arrêt, si."], |r| r.get(0))
+            .unwrap();
+        assert_eq!(left, 0);
+        let steps: i64 = db
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM protocol_nodes WHERE text = ?1",
+                [step],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert!(steps >= 1);
+        assert_eq!(db.refresh_reworded_fiches().unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// La rédaction d'une version atteint les dispositifs d'une base
     /// existante là où l'ancien texte est intact, et nulle part ailleurs.
     #[test]

@@ -8,8 +8,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
-- La rédaction reprise des dispositifs et des préparations atteint les
-  bases existantes : au déverrouillage du poste de référence et par
+- La rédaction reprise des dispositifs, des préparations, des
+  posologies, des conduites en cas d'oubli et des étapes de protocole
+  atteint les bases existantes : au déverrouillage du poste de référence et par
   « Synchroniser le contenu de référence », un champ n'est remplacé que
   s'il porte encore exactement le texte livré avant (empreinte FNV-1a,
   `src/shipped.rs`) ; un champ réécrit par l'équipe reste le sien.
