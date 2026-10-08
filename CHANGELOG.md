@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- F10 : la couverture des délivrances, sur les traitements du dossier
+  ouvert quand elle est vide.
 - Couverture : « Renouveler » ajoute la même délivrance datée
   d'aujourd'hui, rangée après la précédente.
 

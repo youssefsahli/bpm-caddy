@@ -922,7 +922,7 @@ remarque n'empêche pas l'enregistrement.
 
 # Couverture des délivrances
 
-Bouton **Couverture** de la barre des médicaments ou des actions d'un
+Touche **F10**, bouton **Couverture** de la barre des médicaments ou des actions d'un
 dossier (la couverture s'ouvre alors sur ses traitements), ou « Aller
 à… » (couverture, QSP, boîte). Une ligne par délivrance : unités par boîte,
 nombre de boîtes, posologie, jour de délivrance et, si elle est

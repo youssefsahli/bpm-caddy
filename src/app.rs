@@ -15344,7 +15344,7 @@ fn restore_view(session: &mut Session, key: &str, caisse_expected: bool) {
 /// aussi.
 ///
 /// Une clé vide ouvre un groupe.
-pub fn key_rows() -> [(&'static str, &'static str); 28] {
+pub fn key_rows() -> [(&'static str, &'static str); 29] {
     [
         ("", tr("keys_group_workspace")),
         // Pas l'infobulle du bouton : elle dit sa touche entre
@@ -15363,6 +15363,7 @@ pub fn key_rows() -> [(&'static str, &'static str); 28] {
         ("F7", tr("tab_map")),
         ("F8", tr("tab_campagne")),
         ("F9", tr("keys_companion")),
+        ("F10", tr("couv_title")),
         ("Ctrl+K", tr("keys_goto")),
         ("Ctrl+F", tr("keys_search")),
         ("Échap", tr("keys_back")),
@@ -76718,6 +76719,7 @@ impl eframe::App for App {
         let toggle_trans = ctx.input(|i| i.key_pressed(egui::Key::F5));
         let toggle_map = ctx.input(|i| i.key_pressed(egui::Key::F7));
         let toggle_campagne = ctx.input(|i| i.key_pressed(egui::Key::F8));
+        let toggle_couverture = ctx.input(|i| i.key_pressed(egui::Key::F10));
 
         egui::TopBottomPanel::top("toolbar").show(ctx, |ui| {
             ui.add_space(4.0);
@@ -77252,6 +77254,22 @@ impl eframe::App for App {
                         MainView::Transmissions
                     }
                 };
+            }
+        }
+        // F10 : la couverture des délivrances — sur les traitements du
+        // dossier ouvert s'il y en a un et que la couverture est vide.
+        if toggle_couverture {
+            if let State::Unlocked(session) = &mut self.state {
+                if session.show_couverture {
+                    session.show_couverture = false;
+                } else if session.couv_rows.is_empty()
+                    && session.viewing.is_some()
+                    && !session.patient_treats.is_empty()
+                {
+                    Self::open_couverture_from_file(session);
+                } else {
+                    session.open_tool(Tool::Couverture);
+                }
             }
         }
         // F8 : la campagne de vaccination, dans la même bascule que F7.
