@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Comirnaty : la contre-indication après myocardite ou péricardite
+  post-vaccinale est rapportée à sa source (liste française de juillet
+  2021 ; mise en garde à la rubrique 4.4 du RCP).
+
 ## [0.383.0] - 2026-10-08
 
 ### Changed

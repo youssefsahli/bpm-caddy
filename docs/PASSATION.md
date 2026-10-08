@@ -52,8 +52,10 @@ dans docs/CONTENU.md) :
   de la stratégie contre les pneumocoques) : Capvaxive préférentiellement
   au VPC20 chez l'adulte à risque et à partir de 65 ans. Le catalogue, le
   calendrier et la table le disent maintenant. Comirnaty : la
-  contre-indication après myocardite n'est pas au 4.3 du RCP ; la phrase
-  est restée, à relire par l'officine.
+  contre-indication après myocardite vient de la liste française de
+  juillet 2021 (le RCP la traite en mise en garde, rubrique 4.4) ; la
+  fiche le dit maintenant, et les bases existantes reçoivent la phrase
+  par l'empreinte de `DETAILS_REWORDED`.
 - Kerendia : **complété** — la remarque donne maintenant les paliers du
   RCP (instauration sous 5, passage à 20 mg à 4,8 ou moins, suspension
   au-dessus de 5,5, reprise à 10 mg à 5 ou moins) ; les bases existantes

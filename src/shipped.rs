@@ -2019,6 +2019,7 @@ pub const PROTOCOLS_REWORDED: &[(&str, usize, u64)] = &[
 /// champ reformulé depuis. `Db::refresh_starter_details` ne remplace un
 /// champ que s'il porte encore ce texte.
 pub const DETAILS_REWORDED: &[(&str, &str, u64)] = &[
+    ("Comirnaty", "contraindications", 0x389cb6dbc9747b99),
     ("Eliquis", "iup", 0x4401bd89b3b5bad2),
     ("Eliquis", "toxicity", 0xfac61eb8ec280f4e),
     ("Xarelto", "mechanism", 0x8e6e262b58dca0f5),
