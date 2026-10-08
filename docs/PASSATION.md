@@ -4,7 +4,9 @@
 dans le dépôt, rien n'est resté en local.
 
 **Versions.** Publiées (étiquette poussée, smoke passé dans les quatre
-formes) : 0.367.0, 0.369.0, 0.372.0, 0.376.0, 0.377.0 et 0.378.0. Les versions
+formes) : 0.367.0, 0.369.0, 0.372.0, 0.376.0, 0.377.0, 0.378.0 et
+0.379.0. La 0.380.0 est poussée sur `main`, son smoke en cours au
+moment d'écrire : l'étiqueter s'il passe (`git tag v0.380.0 7a32818`). Les versions
 intermédiaires (0.368, 0.370, 0.371, 0.373 à 0.375) ne sont pas
 étiquetées : leur contenu est dans la 0.376.0. Ce qui a suivi sur `main`
 (section Unreleased du CHANGELOG) attend la prochaine version.
@@ -27,6 +29,16 @@ dans docs/CONTENU.md) :
   phrases) au registre professionnel de santé, refusée dès qu'un nombre
   change ; elle atteint les bases existantes par les empreintes de
   `src/shipped.rs`.
+- Campagne, suite : « Rendez-vous » sur une ligne à rappeler (acte de
+  vaccination planifié, que le carnet réalise le jour venu), liste des
+  rendez-vous jour par jour ; seconde dose de grippe signalée au carnet.
+- « Couverture des délivrances » (outil, et action du dossier) : jours
+  couverts par boîte, historique des délivrances sur une rangée (report
+  d'une délivrance anticipée, jours sans traitement, boîte en retard),
+  échelle de temps zoomable avec jour pointé ou épinglé, alignement des
+  renouvellements (quantité en unités et en boîtes), feuille imprimée ;
+  unités par boîte retenues au dossier (`patient_drugs.box_units`).
+- Culottes menstruelles : tour de bassin et stature à la délivrance.
 - Déverrouillage plus rapide (fichiers annexes ouverts en parallèle),
   `scripts/frames.sh` pour le coût des images.
 
