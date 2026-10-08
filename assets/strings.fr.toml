@@ -3463,7 +3463,7 @@ conseil_side_g = "Gauche"
 conseil_cm_hint = "cm"
 # Compression
 conseil_measures_title = "Prise de mesures"
-conseil_measures_how = "Mesurer le matin, au lever ou après un repos jambes surélevées, debout, jambes nues, au mètre ruban non élastique et au demi-centimètre près ; à chaque renouvellement. Survoler un point pour son repère."
+conseil_measures_how = "Mesurer le matin, au lever ou après un repos jambes surélevées, debout, jambes nues, au mètre ruban non élastique et au demi-centimètre près ; à chaque renouvellement. Le repère anatomique de chaque point s'affiche au survol."
 conseil_legs_both = "Deux jambes"
 conseil_legs_d = "Jambe droite"
 conseil_legs_g = "Jambe gauche"
