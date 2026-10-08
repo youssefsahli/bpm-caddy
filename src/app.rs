@@ -3171,6 +3171,8 @@ enum Goto {
     Table(usize),
     Preparation(i64),
     Dispositif(i64),
+    /// Un complément nutritionnel oral, par son identifiant.
+    Cno(i64),
     Protocol(i64),
     /// A followed narcotic, by its id in the register.
     Stupefiant(i64),
@@ -6097,6 +6099,9 @@ impl Session {
         // Une ouverture, comptée une fois, ici : c'est le seul endroit
         // par où passent les deux chemins de déverrouillage.
         session.prescribers = session.db.prescribers().unwrap_or_default();
+        // Les compléments nutritionnels, pour que « Aller à… » les trouve
+        // sans lire la base à chaque lettre.
+        session.conseil.products = session.db.cno_products().unwrap_or_default();
         session.note(crate::telemetry::Signal::Opened);
         session.set_patients(patients);
         // The jump box searches the codex and the dispositifs too, so
@@ -6528,6 +6533,14 @@ impl Session {
                 );
             }
         }
+        // Les compléments nutritionnels : « Clinutren », « Fortimel »…
+        // ouvrent la page de la nutrition orale, le produit filtré.
+        for p in &self.conseil.products {
+            let sc = fuzzy::score(q, &p.name).max(fuzzy::score(q, &p.maker));
+            if let Some(sc) = sc {
+                push(sc, Goto::Cno(p.id), p.name.clone(), tr("goto_kind_cno"));
+            }
+        }
         for proto in &self.protocols {
             let sc = fuzzy::score(q, &proto.title).max(if proto.subject.is_empty() {
                 None
@@ -6929,6 +6942,16 @@ impl Session {
                 self.dispo_open = Some(id);
                 self.dispo_edit = None;
                 self.dispo_base = None;
+            }
+            Goto::Cno(id) => {
+                self.enter_drug_panel();
+                self.show_conseil = true;
+                self.conseil.page = ConseilPage::Nutrition;
+                self.conseil.pane = 1;
+                self.reload_conseil();
+                if let Some(p) = self.conseil.products.iter().find(|p| p.id == id) {
+                    self.conseil.product_query = p.name.clone();
+                }
             }
             // Les trois destinations que la boîte ignorait. Chacune
             // fait exactement ce que le chemin long ferait : la même

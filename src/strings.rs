@@ -1176,6 +1176,7 @@ livre = "Une phrase qui n'est plus livrée"
             ("goto_kind_prep", "les préparations"),
             ("goto_kind_protocol", "les protocoles"),
             ("goto_kind_dispositif", "les dispositifs"),
+            ("goto_kind_cno", "les compléments nutritionnels"),
             ("goto_kind_stup", "le registre"),
             ("goto_kind_carnet", "les carnets de suivi"),
             ("goto_kind_script", "les scripts"),

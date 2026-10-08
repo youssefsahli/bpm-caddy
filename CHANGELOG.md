@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- « Aller à… » trouve les compléments nutritionnels par leur nom ou leur
+  fabricant et ouvre la page « Nutrition orale » sur le produit.
+
 ## [0.378.0] - 2026-10-08
 
 ### Added

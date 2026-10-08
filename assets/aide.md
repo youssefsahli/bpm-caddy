@@ -47,8 +47,8 @@ disparaît au premier dossier.
 
 « Aller à… » cherche partout d'un seul champ : les vues elles-mêmes, les
 dossiers, les fiches, les tables de conversion, les préparations, les
-protocoles, les dispositifs, le registre, les carnets de suivi, les
-scripts, les outils de calcul et les textes imprimés. Saisir le nom, un
+protocoles, les dispositifs, les compléments nutritionnels, le registre,
+les carnets de suivi, les scripts, les outils de calcul et les textes imprimés. Saisir le nom, un
 fragment du nom ou les initiales.
 
 Les outils se trouvent **par leur usage** et non par le nom de leur
