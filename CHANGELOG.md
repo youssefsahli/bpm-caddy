@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Rendez-vous de la campagne : réalisé au carnet, l'acte porte les
+  initiales de qui vaccine ; un jour tapé sans année (« 05/01 ») et déjà
+  passé tombe l'année suivante ; l'acte planifié compte comme un acte.
+- Protections périodiques : tour de bassin et stature ne sont enregistrés
+  et imprimés que pour une culotte.
+
 ## [0.379.0] - 2026-10-08
 
 ### Added

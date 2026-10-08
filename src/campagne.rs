@@ -834,8 +834,37 @@ pub fn evocations(treatments: &[(&str, &str, &str)]) -> Vec<(&'static str, Strin
     out
 }
 
+/// Le jour d'un rendez-vous tapé sans année (« 05/01 ») et déjà passé
+/// cette année tombe l'année suivante : le 20 décembre, « 05/01 » est le
+/// 5 janvier qui vient. Une année tapée est gardée telle quelle.
+pub fn rdv_day(parsed: &str, typed: &str, today: &str) -> String {
+    let digits = typed.chars().filter(char::is_ascii_digit).count();
+    if digits > 4 || parsed >= today {
+        return parsed.to_owned();
+    }
+    match (
+        parsed.get(..4).and_then(|y| y.parse::<u32>().ok()),
+        parsed.get(4..),
+    ) {
+        (Some(y), Some(rest)) => format!("{:04}{rest}", y + 1),
+        _ => parsed.to_owned(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_yearless_rdv_after_new_year_falls_next_year() {
+        assert_eq!(rdv_day("2026-01-05", "05/01", "2026-12-20"), "2027-01-05");
+        assert_eq!(rdv_day("2026-01-05", "0501", "2026-12-20"), "2027-01-05");
+        // Une année tapée reste : le passé est alors refusé plus loin.
+        assert_eq!(
+            rdv_day("2026-01-05", "05/01/2026", "2026-12-20"),
+            "2026-01-05"
+        );
+        assert_eq!(rdv_day("2026-12-22", "22/12", "2026-12-20"), "2026-12-22");
+    }
+
     use super::*;
 
     fn lot(id: i64, code: &str, n: &str, exp: &str, received: i64, on: &str) -> Lot {

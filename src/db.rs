@@ -49788,6 +49788,8 @@ impl Db {
                 ],
             )
             .map_err(|e| e.to_string())?;
+        // Un acte comme un autre pour le compte de `src/telemetry.rs`.
+        crate::telemetry::tally(crate::telemetry::Signal::Act);
         Ok(self.conn.last_insert_rowid())
     }
 

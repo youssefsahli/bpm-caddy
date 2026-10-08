@@ -21982,18 +21982,31 @@ impl App {
         // cette dose : il se réalise, daté d'aujourd'hui, au lieu qu'un
         // second acte s'ajoute et que l'agenda garde le premier en attente.
         let planned = if bill {
-            Session::planned_vaccination(&session.viewing_interviews, &session.today)
-                .map(|i| (i.id, i.created_at.get(..10).unwrap_or("").to_owned()))
+            Session::planned_vaccination(&session.viewing_interviews, &session.today).map(|i| {
+                (
+                    i.id,
+                    i.created_at.get(..10).unwrap_or("").to_owned(),
+                    i.operator.clone(),
+                )
+            })
         } else {
             None
         };
-        if let Some((id, made)) = planned {
+        if let Some((id, made, booked_by)) = planned {
             let today = session.today.clone();
             let dated = made == today
                 || session
                     .db
                     .set_created_date(id, &today, &made)
                     .unwrap_or(false);
+            // L'acte signe des initiales de qui vaccine, pas de qui a pris
+            // le rendez-vous au téléphone.
+            let signed = booked_by == operator.trim()
+                || session
+                    .db
+                    .set_interview_operator(id, operator, &booked_by)
+                    .unwrap_or(false);
+            let dated = dated && signed;
             match session.db.advance_interview(id, InterviewState::Scheduled) {
                 Ok(true) if dated => session.error = None,
                 Ok(_) => session.stale("vacc_stale"),
@@ -52244,6 +52257,7 @@ impl App {
             } else {
                 db::parse_hour(&session.camp.rdv_time)
             };
+            let date = date.map(|d| campagne::rdv_day(&d, &session.camp.rdv_date, &session.today));
             match (date, time) {
                 (Ok(day), _) if day < session.today => {
                     session.camp.rdv_error = Some(tr("camp_rdv_past").to_owned());
@@ -54206,13 +54220,25 @@ impl App {
             if let Some(pid) = pid {
                 let state = &session.conseil;
                 let qty = state.prot_qty.to_string();
+                // Les mesures ne valent que pour une culotte : celles tapées
+                // avant un changement de produit ne suivent pas.
+                let culotte = crate::protections::Kind::from_key(&state.prot_kind)
+                    == Some(crate::protections::Kind::Culotte);
+                let measure = |v: &str| {
+                    if culotte {
+                        v.trim().to_owned()
+                    } else {
+                        String::new()
+                    }
+                };
+                let (hips, height) = (measure(&state.prot_hips), measure(&state.prot_height));
                 let data = db::CounselRecord::encode(&[
                     ("produit", &state.prot_kind),
                     ("code", &state.prot_code),
                     ("quantite", &qty),
                     ("taille", state.prot_size.trim()),
-                    ("bassin", state.prot_hips.trim()),
-                    ("stature", state.prot_height.trim()),
+                    ("bassin", &hips),
+                    ("stature", &height),
                     ("c2s", if state.prot_c2s { "oui" } else { "" }),
                 ]);
                 let rec = db::CounselRecord {
@@ -54346,13 +54372,20 @@ impl App {
                 sources.push(tr("conseil_src_nutrition").to_owned());
             }
             ConseilPage::Protections => {
-                if let Some(k) = crate::protections::Kind::from_key(&state.prot_kind) {
+                let kind = crate::protections::Kind::from_key(&state.prot_kind);
+                if let Some(k) = kind {
                     facts.push((tr("conseil_fact_product").to_owned(), k.label().to_owned()));
                 }
+                let culotte = kind == Some(crate::protections::Kind::Culotte);
+                let (hips, height) = if culotte {
+                    (state.prot_hips.trim(), state.prot_height.trim())
+                } else {
+                    ("", "")
+                };
                 for (key, value) in [
                     ("conseil_fact_size", state.prot_size.trim()),
-                    ("conseil_fact_hips", state.prot_hips.trim()),
-                    ("conseil_fact_height", state.prot_height.trim()),
+                    ("conseil_fact_hips", hips),
+                    ("conseil_fact_height", height),
                 ] {
                     if !value.is_empty() {
                         let shown = if key == "conseil_fact_size" {
