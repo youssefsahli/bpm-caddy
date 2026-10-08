@@ -346,11 +346,13 @@ produits de même principe actif. **Classe** : une autre molécule du même
 groupe, en cas de rupture ou d'intolérance ; le groupe est celui du
 référentiel et non le libellé de la fiche (« bisphosphonate » et
 « biphosphonate » forment un seul anneau). **Interaction** : une fiche
-qui interagit avec le centre, dans toute la base. Trois sources : les
+qui interagit avec le centre, dans toute la base. Quatre sources : les
 interactions citées par les deux monographies, la table des cytochromes,
-et la revue d'ordonnance — deux médicaments allongeant le QT, deux
+la revue d'ordonnance — deux médicaments allongeant le QT, deux
 sédatifs, un anticoagulant et un AINS interagissent même lorsque les
-fiches ne se citent pas.
+fiches ne se citent pas — et les cascades, quand les deux molécules
+agissent sur une même cascade (Ventoline et Avlocardyl : la
+bronchodilatation en sens opposé).
 
 **Épaisseur et couleur du trait selon la gravité.** Trait épais et rouge
 pour une association « contre-indiquée » dans la fiche ou une règle

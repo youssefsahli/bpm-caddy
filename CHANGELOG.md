@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Carte pharmacologique : une quatrième raison de lien, la cascade —
+  deux molécules sur une même cascade, avec les effets qui vont dans le
+  même sens ou en sens opposé.
+
 ### Fixed
 - Cytochromes et transporteurs : Odefsey et Genvoya ont chacun leur ligne,
   qui garde le rôle de substrat de la P-gp du ténofovir alafénamide

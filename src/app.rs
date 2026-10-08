@@ -4468,6 +4468,8 @@ struct Session {
     /// Les récepteurs et cascades : la liste, lue au rechargement.
     cascades: Vec<db::CascadeText>,
     cascade_index: Vec<CascadeEntry>,
+    /// Les cascades lues, en un `Arc` que le fil de la carte reçoit.
+    cascade_set: CascadeSet,
     /// Ce que le filtre de la liste des cascades cherche : un titre, un
     /// sujet ou une molécule.
     cascade_filter: String,
@@ -5744,6 +5746,7 @@ impl Session {
             checklist_edit: None,
             cascades: Vec::new(),
             cascade_index: Vec::new(),
+            cascade_set: std::sync::Arc::new(Vec::new()),
             cascades_rev: 0,
             cascade_filter: String::new(),
             file_meetings: Vec::new(),
@@ -9025,6 +9028,13 @@ impl Session {
         // Ce que les tables savent de chaque paire — lu **une fois par
         // centre**, pas par grossissement : les plafonds changent avec la
         // place, les raisons non.
+        // Les cascades se lisent à la première question de la carte, comme
+        // à la première ouverture d'un dossier : sans elles, la raison
+        // « même cascade » manquerait à une carte ouverte avant tout dossier.
+        if !self.cascades_read {
+            self.cascades_read = true;
+            self.reload_cascades();
+        }
         let want = (centre, self.drugs_rev);
         if self.graph_reasons.as_ref().map(|(k, _)| *k) != Some(want) {
             if self.graph_worker.is_some() {
@@ -9034,7 +9044,8 @@ impl Session {
                 if self.graph_asked != Some(want) {
                     let base = self.graph_snapshot();
                     if let Some(w) = &self.graph_worker {
-                        let _ = w.asks.send((want.1, base, GraphAsk::Reasons(centre)));
+                        let set = std::sync::Arc::clone(&self.cascade_set);
+                        let _ = w.asks.send((want.1, base, set, GraphAsk::Reasons(centre)));
                     }
                     self.graph_asked = Some(want);
                 }
@@ -9106,7 +9117,8 @@ impl Session {
                 let base = self.graph_snapshot();
                 let lines = self.patient_treats.clone();
                 if let Some(w) = &self.graph_worker {
-                    let _ = w.asks.send((file_key.1, base, GraphAsk::Meet(lines)));
+                    let set = std::sync::Arc::clone(&self.cascade_set);
+                    let _ = w.asks.send((file_key.1, base, set, GraphAsk::Meet(lines)));
                 }
                 self.graph_meet_asked = Some(file_key.clone());
             }
@@ -9141,12 +9153,23 @@ impl Session {
     /// The index for the base on screen, built here when there is no
     /// thread to build it — the tests' path.
     fn graph_index_now(&mut self) -> &GraphIndex {
-        if self.graph_index.as_ref().map(|i| i.rev) != Some(self.drugs_rev) {
+        let stale = self.graph_index.as_ref().is_none_or(|i| {
+            i.rev != self.drugs_rev || !std::sync::Arc::ptr_eq(&i.cascades, &self.cascade_set)
+        });
+        if stale {
             let base = self.graph_snapshot();
-            self.graph_index = Some(GraphIndex::build(self.drugs_rev, base));
+            self.graph_index = Some(GraphIndex::build(
+                self.drugs_rev,
+                base,
+                std::sync::Arc::clone(&self.cascade_set),
+            ));
         }
         self.graph_index.get_or_insert_with(|| {
-            GraphIndex::build(self.drugs_rev, std::sync::Arc::new(Vec::new()))
+            GraphIndex::build(
+                self.drugs_rev,
+                std::sync::Arc::new(Vec::new()),
+                std::sync::Arc::new(Vec::new()),
+            )
         })
     }
 
@@ -9452,6 +9475,12 @@ impl Session {
                 }
             })
             .collect();
+        self.cascade_set = std::sync::Arc::new(
+            self.cascade_index
+                .iter()
+                .map(|e| std::sync::Arc::clone(&e.parsed))
+                .collect(),
+        );
         // Ce qui a été lu des cascades a changé : le croisement, qui les
         // joue, se refait à la prochaine question, et le dossier tout de
         // suite.
@@ -11779,6 +11808,15 @@ fn graph_why_line(w: &crate::graph::Why) -> String {
             ..
         } => trn("graph_why_enzyme", &[enzyme, actor, shift]),
         Why::Effect { title, detail, .. } => trn("graph_why_effect", &[title, detail]),
+        Why::Cascade {
+            title,
+            molecules,
+            effects,
+            ..
+        } => trn(
+            "graph_why_cascade",
+            &[title, &molecules.0, &molecules.1, effects],
+        ),
     }
 }
 
@@ -11847,6 +11885,45 @@ fn graph_reasons(
                 });
             }
         }
+        // Les cascades : seulement quand les deux fiches en partagent une,
+        // ce que l'index sait déjà.
+        let shared: Vec<&crate::cascade::Cascade> = ix.in_cascades[ci]
+            .iter()
+            .filter(|c| ix.in_cascades[i].contains(c))
+            .map(|&c| &*ix.cascades[c])
+            .collect();
+        if !shared.is_empty() {
+            let lines = [
+                crate::cascade::Line {
+                    name: centre.name.trim(),
+                    dci: centre.dci.trim(),
+                },
+                crate::cascade::Line {
+                    name: d.name.trim(),
+                    dci: d.dci.trim(),
+                },
+            ];
+            for m in crate::cascade::meetings(&shared, &lines) {
+                let opposes = m
+                    .effects
+                    .iter()
+                    .any(|(_, t)| *t == crate::cascade::Together::Opposes);
+                let effects: Vec<String> = m
+                    .effects
+                    .iter()
+                    .map(|(e, t)| match t {
+                        crate::cascade::Together::Opposes => trf("graph_cascade_opposes", e),
+                        _ => trf("graph_cascade_adds", e),
+                    })
+                    .collect();
+                why.push(Why::Cascade {
+                    title: shared[m.cascade].title.clone(),
+                    molecules: m.molecules.clone(),
+                    effects: effects.join(", "),
+                    opposes,
+                });
+            }
+        }
         let other = d.name.trim().to_owned();
         for p in crate::revue::review_folded(&[&ix.folded[ci], &ix.folded[i]]) {
             if p.drugs.contains(&me) && p.drugs.contains(&other) {
@@ -11889,9 +11966,17 @@ fn graph_meet(
 /// replié, le nom et la DCI repliés, et si les cytochromes la
 /// connaissent. `graph_reasons` refaisait ces replis pour chaque paire —
 /// huit cent soixante fois par centre, et autant par ligne du dossier.
+/// Les cascades lues, partagées telles quelles avec le fil de la carte :
+/// un même `Arc` tant qu'elles n'ont pas été relues, ce qui suffit à dire
+/// à l'index s'il doit se refaire.
+type CascadeSet = std::sync::Arc<Vec<std::sync::Arc<crate::cascade::Cascade>>>;
+
 struct GraphIndex {
     rev: u64,
     drugs: std::sync::Arc<Vec<Drug>>,
+    cascades: CascadeSet,
+    /// Pour chaque fiche, les cascades dont elle porte une molécule.
+    in_cascades: Vec<Vec<usize>>,
     folded: Vec<crate::revue::Folded>,
     ddi: Vec<String>,
     keys: Vec<Vec<String>>,
@@ -11899,7 +11984,35 @@ struct GraphIndex {
 }
 
 impl GraphIndex {
-    fn build(rev: u64, drugs: std::sync::Arc<Vec<Drug>>) -> Self {
+    fn build(rev: u64, drugs: std::sync::Arc<Vec<Drug>>, cascades: CascadeSet) -> Self {
+        // Les molécules de chaque cascade, repliées une fois : la règle de
+        // `cascade::carries` (DCI entière ou composant d'une association,
+        // jamais une sous-chaîne), sans replier mille fois les mêmes noms.
+        let fold = |s: &str| -> String { s.trim().chars().map(crate::fuzzy::fold).collect() };
+        let mut by_molecule: std::collections::HashMap<String, Vec<usize>> = Default::default();
+        for (i, c) in cascades.iter().enumerate() {
+            for m in &c.molecules {
+                let slot = by_molecule.entry(fold(&m.name)).or_default();
+                if !slot.contains(&i) {
+                    slot.push(i);
+                }
+            }
+        }
+        let in_cascades = drugs
+            .iter()
+            .map(|d| {
+                let dci = d.dci.trim();
+                let mut found: Vec<usize> = std::iter::once(dci)
+                    .chain(dci.split(" + ").filter(|p| p.len() < dci.len()))
+                    .filter_map(|p| by_molecule.get(&fold(p)))
+                    .flatten()
+                    .copied()
+                    .collect();
+                found.sort_unstable();
+                found.dedup();
+                found
+            })
+            .collect();
         let folded = ordonnance_terms(&drugs)
             .iter()
             .map(crate::revue::Folded::of)
@@ -11928,6 +12041,8 @@ impl GraphIndex {
         Self {
             rev,
             drugs,
+            cascades,
+            in_cascades,
             folded,
             ddi,
             keys,
@@ -11961,7 +12076,7 @@ enum GraphDone {
 /// celle du dernier centre. Le fil garde l'index de la révision qu'il a
 /// lue et ne le refait qu'à la suivante.
 struct GraphWorker {
-    asks: std::sync::mpsc::Sender<(u64, std::sync::Arc<Vec<Drug>>, GraphAsk)>,
+    asks: std::sync::mpsc::Sender<(u64, std::sync::Arc<Vec<Drug>>, CascadeSet, GraphAsk)>,
     done: std::sync::mpsc::Receiver<GraphDone>,
 }
 
@@ -11970,22 +12085,26 @@ impl GraphWorker {
     /// un test.
     fn spawn(ctx: Option<egui::Context>) -> Self {
         let (asks, inbox) =
-            std::sync::mpsc::channel::<(u64, std::sync::Arc<Vec<Drug>>, GraphAsk)>();
+            std::sync::mpsc::channel::<(u64, std::sync::Arc<Vec<Drug>>, CascadeSet, GraphAsk)>();
         let (tell, done) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut ix: Option<GraphIndex> = None;
             while let Ok(first) = inbox.recv() {
                 let (mut reasons, mut meet) = (None, None);
-                for (rev, base, ask) in std::iter::once(first).chain(inbox.try_iter()) {
+                for (rev, base, set, ask) in std::iter::once(first).chain(inbox.try_iter()) {
                     match ask {
-                        GraphAsk::Reasons(centre) => reasons = Some((rev, base, centre)),
-                        GraphAsk::Meet(lines) => meet = Some((rev, base, lines)),
+                        GraphAsk::Reasons(centre) => reasons = Some((rev, base, set, centre)),
+                        GraphAsk::Meet(lines) => meet = Some((rev, base, set, lines)),
                     }
                 }
+                let fresh = |ix: &Option<GraphIndex>, rev: u64, set: &CascadeSet| {
+                    ix.as_ref()
+                        .is_some_and(|i| i.rev == rev && std::sync::Arc::ptr_eq(&i.cascades, set))
+                };
                 let mut said = Vec::new();
-                if let Some((rev, base, centre)) = reasons {
-                    if ix.as_ref().map(|i| i.rev) != Some(rev) {
-                        ix = Some(GraphIndex::build(rev, base));
+                if let Some((rev, base, set, centre)) = reasons {
+                    if !fresh(&ix, rev, &set) {
+                        ix = Some(GraphIndex::build(rev, base, set));
                     }
                     if let Some(ix) = &ix {
                         let found = ix
@@ -11997,9 +12116,9 @@ impl GraphWorker {
                         said.push(GraphDone::Reasons(((centre, rev), found)));
                     }
                 }
-                if let Some((rev, base, lines)) = meet {
-                    if ix.as_ref().map(|i| i.rev) != Some(rev) {
-                        ix = Some(GraphIndex::build(rev, base));
+                if let Some((rev, base, set, lines)) = meet {
+                    if !fresh(&ix, rev, &set) {
+                        ix = Some(GraphIndex::build(rev, base, set));
                     }
                     if let Some(ix) = &ix {
                         let ids = lines.iter().map(|d| d.id).collect();
@@ -88989,7 +89108,11 @@ mod tests {
             .find(|d| d.name.trim() == "Voltarène")
             .expect("Voltarène livré")
             .clone();
-        let ix = super::GraphIndex::build(0, std::sync::Arc::new(s.drugs.clone()));
+        let ix = super::GraphIndex::build(
+            0,
+            std::sync::Arc::new(s.drugs.clone()),
+            std::sync::Arc::clone(&s.cascade_set),
+        );
         let t = std::time::Instant::now();
         let reasons = super::graph_reasons(&volta, &ix);
         let spent = t.elapsed();
@@ -91195,6 +91318,33 @@ mod tests {
         }
     }
 
+    /// **La carte lit aussi les cascades** : Ventoline et Avlocardyl se
+    /// rencontrent sur les récepteurs bêta, la bronchodilatation en sens
+    /// opposé — une raison que ni les fiches, ni les cytochromes ne
+    /// donnent.
+    #[test]
+    fn the_map_reads_a_shared_cascade_as_a_reason() {
+        let (mut s, _swept) = scratch_session("graph-cascade");
+        s.reload_cascades();
+        let pick = |n: &str| s.drugs.iter().find(|d| d.name.trim() == n).cloned();
+        let vento = pick("Ventoline").expect("Ventoline livrée");
+        let avlo = pick("Avlocardyl").expect("Avlocardyl livré");
+        let ix = super::GraphIndex::build(
+            1,
+            std::sync::Arc::new(s.drugs.clone()),
+            std::sync::Arc::clone(&s.cascade_set),
+        );
+        let reasons = super::graph_reasons(&vento, &ix);
+        let why = reasons.get(&avlo.id).expect("une raison pour Avlocardyl");
+        assert!(
+            why.iter().any(|w| matches!(
+                w,
+                crate::graph::Why::Cascade { opposes: true, title, .. } if title.contains("bêta")
+            )),
+            "{why:?}"
+        );
+    }
+
     /// **Le fil de la carte répond ce que la lecture directe répond** —
     /// les mêmes raisons pour un centre, les mêmes rencontres pour une
     /// ordonnance —, et la dernière question gagne : dix centres demandés
@@ -91203,7 +91353,9 @@ mod tests {
     fn the_map_thread_answers_what_the_direct_reading_answers() {
         let (s, _swept) = scratch_session("graph-thread");
         let base = std::sync::Arc::new(s.drugs.clone());
-        let ix = super::GraphIndex::build(7, std::sync::Arc::clone(&base));
+        let set = std::sync::Arc::clone(&s.cascade_set);
+        let ix =
+            super::GraphIndex::build(7, std::sync::Arc::clone(&base), std::sync::Arc::clone(&set));
         let pick = |n: &str| {
             s.drugs
                 .iter()
@@ -91218,6 +91370,7 @@ mod tests {
                 .send((
                     7,
                     std::sync::Arc::clone(&base),
+                    std::sync::Arc::clone(&set),
                     super::GraphAsk::Reasons(d.id),
                 ))
                 .unwrap();
@@ -91226,6 +91379,7 @@ mod tests {
             .send((
                 7,
                 std::sync::Arc::clone(&base),
+                std::sync::Arc::clone(&set),
                 super::GraphAsk::Reasons(volta.id),
             ))
             .unwrap();
@@ -91234,6 +91388,7 @@ mod tests {
             .send((
                 7,
                 std::sync::Arc::clone(&base),
+                std::sync::Arc::clone(&set),
                 super::GraphAsk::Meet(lines.clone()),
             ))
             .unwrap();

@@ -3756,3 +3756,6 @@ couv_again_tooltip = "Ajouter la même délivrance, datée d'aujourd'hui : elle 
 conseil_product_per100 = "Pour 100 {} : {} kcal, {} g de protéines."
 camp_export = "Exporter la saison"
 camp_export_tooltip = "Les doses de la saison en fichier CSV (tableur) : date, patient, vaccin, dose, lot, site et opérateur"
+graph_why_cascade = "Cascade « {} » : {} et {} ; {}."
+graph_cascade_opposes = "{} en sens opposé"
+graph_cascade_adds = "{} dans le même sens"

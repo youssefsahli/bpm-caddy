@@ -2,7 +2,7 @@
 //! "Jean Dupont".
 
 /// Lowercase and strip the accents used in French names.
-fn fold(c: char) -> char {
+pub fn fold(c: char) -> char {
     // Full Unicode lowercasing: 'É' → 'é' ('to_ascii_lowercase' would
     // leave uppercase accented letters untouched).
     let c = c.to_lowercase().next().unwrap_or(c);

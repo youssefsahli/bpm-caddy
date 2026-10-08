@@ -1554,6 +1554,14 @@ fn carried(c: &Cascade, dci: &str) -> Vec<usize> {
         .collect()
 }
 
+/// Si une ligne porte une molécule de la cascade — la même règle que
+/// [`meetings`] : la DCI entière ou l'un des composants d'une
+/// association, jamais une sous-chaîne. Pour trier vite les paires qui
+/// peuvent se rencontrer avant de les lire.
+pub fn carries(c: &Cascade, dci: &str) -> bool {
+    !carried(c, dci).is_empty()
+}
+
 /// Ce que les cascades disent des paires d'une ordonnance.
 ///
 /// Une paire n'est retenue que si la cascade montre **au moins un

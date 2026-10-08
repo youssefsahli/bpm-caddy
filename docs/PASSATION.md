@@ -118,8 +118,9 @@ de facteur qui n'agit qu'en présence d'un autre (bradycardie et QT).
 - Odefsey et Genvoya : **fait** — une ligne par spécialité dans `cyp.rs`,
   avant celles de leurs composants, qui garde le rôle de substrat de la
   P-gp du ténofovir alafénamide.
-- La carte pharmacologique n'a pas de raison « même cascade » : ses
-  raisons n'annotent que les nœuds qu'elle trace déjà.
+- La carte pharmacologique : **fait** — la raison « même cascade »
+  (`graph::Why::Cascade`) fait entrer un voisin dans l'anneau des
+  interactions ; l'index de la carte sait les cascades de chaque fiche.
 - OAT1/OAT3 (méthotrexate sous AINS) : les fiches ne nomment pas le
   transporteur ; les compléter d'après le RCP d'abord, la table ensuite.
 

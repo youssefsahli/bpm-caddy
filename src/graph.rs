@@ -264,6 +264,15 @@ pub enum Why {
         detail: String,
         alert: bool,
     },
+    /// Les cascades : les deux molécules sur une même cascade, et ce que
+    /// la figure montre d'elles ensemble — un effet qui s'additionne ou
+    /// que l'une défait.
+    Cascade {
+        title: String,
+        molecules: (String, String),
+        effects: String,
+        opposes: bool,
+    },
 }
 
 impl Why {
@@ -309,6 +318,15 @@ impl Why {
                     2
                 }
             }
+            // Une figure, non une règle : ce qui s'oppose se regarde, ce
+            // qui s'additionne se note.
+            Why::Cascade { opposes, .. } => {
+                if *opposes {
+                    2
+                } else {
+                    1
+                }
+            }
         }
     }
 }
@@ -321,6 +339,7 @@ impl Why {
             Why::Cited { .. } => 0,
             Why::Effect { .. } => 1,
             Why::Enzyme { .. } => 2,
+            Why::Cascade { .. } => 3,
         }
     }
 
@@ -331,6 +350,7 @@ impl Why {
             Why::Cited { by, sentence } => format!("c:{by}:{sentence}"),
             Why::Effect { title, .. } => format!("e:{title}"),
             Why::Enzyme { enzyme, shift, .. } => format!("z:{enzyme}:{shift}"),
+            Why::Cascade { title, .. } => format!("k:{title}"),
         }
     }
 }
