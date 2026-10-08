@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- Feuille de vaccination : deux questions de plus avant l'injection (vaccin
+  contre la grippe ou le COVID-19 déjà reçu cette saison ; dose de COVID-19
+  ou infection dans les six derniers mois).
+- Seconde relecture de la rédaction du mode d'emploi et des libellés.
 - Nutrition orale : le suivi du dossier donne, pour le dernier plan, la
   date de vérification de l'observance (10 jours) et celle de la
   réévaluation médicale avant renouvellement (un mois).

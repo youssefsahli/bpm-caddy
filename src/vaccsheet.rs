@@ -26,6 +26,8 @@ const QUESTIONS: &[&str] = &[
     "Traitement anticoagulant ou trouble de la coagulation (voie intramusculaire)",
     "Malaise lors d'une injection précédente",
     "Autre vaccin reçu dans les quatre dernières semaines",
+    "Vaccin contre la grippe ou le COVID-19 déjà reçu cette saison",
+    "Dose de vaccin contre le COVID-19 ou infection dans les six derniers mois",
 ];
 
 /// Ce qui se fait après l'injection.

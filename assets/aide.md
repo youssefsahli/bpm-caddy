@@ -253,7 +253,7 @@ compte de ce que portent les cinq lectures qui croisent — interactions
 citées, voies, demi-vies touchées, points de revue, paires sur une
 cascade. Un clic pose l'écran sur le chapitre. Les tables du terrain
 (rein, foie, âge, grossesse, écrasement) n'ont pas de compte : leurs
-lignes disent aussi « aucune adaptation », et un compte les lirait
+lignes portent aussi « aucune adaptation », qu'un compte présenterait
 comme des alertes.
 
 **Le foie ne s'évalue pas par un DFG.** La fonction rénale s'exprime par un chiffre
@@ -274,9 +274,9 @@ contre-indication figure sur leur fiche, et non sous un palier.
 **Sur une même cascade** nomme deux lignes qui agissent sur une même
 cascade livrée — l'aspirine et le clopidogrel sur l'activation
 plaquettaire, le nitré et le sildénafil sur le GMPc, l'oxybutynine et
-le donépézil sur l'acétylcholine — et dit ce que la figure montre des
+le donépézil sur l'acétylcholine — et indique ce que la figure montre des
 deux ensemble : elles **s'additionnent** sur un effet, ou elles
-**s'opposent**. C'est l'autre moitié des cytochromes : deux molécules
+**s'opposent**. Ce chapitre complète celui des cytochromes : deux molécules
 qui ne se croisent sur aucune enzyme se rencontrent sur un récepteur.
 Le modèle est qualitatif : un sens de variation, jamais une gravité. Le
 titre de la cascade l'ouvre, les deux molécules déjà données.
@@ -573,8 +573,8 @@ courrier au médecin sous la synthèse. Titres, colonnes et lignes se réécrive
 « Textes imprimés », sous « Fiche d'entretien ».
 
 Le bilan partagé de médication comporte une section consacrée au sujet
-âgé : il concerne le patient polymédiqué, le plus souvent âgé, et c'est
-le document transmis au prescripteur. Chaque ligne indique le risque et
+âgé : il concerne le patient polymédiqué, le plus souvent âgé, et il est
+transmis au prescripteur. Chaque ligne indique le risque et
 l'alternative ; aucune ne prescrit un arrêt.
 
 ## Fiche de vaccination
@@ -1014,14 +1014,14 @@ base : « valproate » ouvre la fiche du valproate de sodium,
 « olmésartan » celle de l'olmésartan médoxomil. « Ténofovir », qui
 désigne deux molécules, reste en texte simple, comme un nom de forme
 locale : le « fluorouracil » d'une fiche de cancérologie est la
-perfusion, pas la crème.
+perfusion, et non la crème.
 
 Sous les interactions, **« Cytochromes et transporteurs »** écrit ce que
 la table des cytochromes sait de la fiche, voie par voie — « CYP3A4 —
 substrat, voie principale » — avec les fiches de la base qu'elle y
 rencontre, cliquables : ce qui la freine et ce qui l'accélère pour un
 substrat, ce qu'elle fait monter ou baisser pour un inhibiteur ou un
-inducteur. Une prodrogue dit ce qui diminue ou augmente son effet. Les
+inducteur. Pour une prodrogue, la section indique ce qui diminue ou augmente son effet. Les
 plus puissants d'abord, douze noms au plus et le compte des autres ;
 une molécule vendue sous plusieurs noms n'est citée qu'une fois. Une
 fiche absente de la table, ou une forme locale, n'a pas cette section.
@@ -1325,7 +1325,7 @@ conversations.
 **Fichiers.** « Joindre un fichier… » ajoute un fichier au message
 (5 Mo au plus), chiffré comme lui. Il voyage en morceaux ; dans le fil,
 il s'enregistre d'un clic une fois entier, après vérification de son
-empreinte — un fichier incomplet ou altéré ne s'enregistre pas. Le nom
+empreinte ; un fichier incomplet ou altéré ne s'enregistre pas. Le nom
 reçu ne détermine pas l'emplacement d'enregistrement. Un fichier pour une autre
 officine demande la même confirmation qu'un patient nommé.
 
@@ -1486,7 +1486,7 @@ l'effacement est un bouton distinct, avec double confirmation.
 
 # Journal des accès
 
-Qui a ouvert quel dossier, et quand — consultable dans bpm-audit.
+Le journal indique qui a ouvert quel dossier, et quand ; il se consulte dans bpm-audit.
 Contrairement aux compteurs, le journal nomme la personne : il répond
 à « qui a consulté ce dossier, le 12 mars ».
 
