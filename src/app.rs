@@ -87574,6 +87574,132 @@ mod tests {
         }
     }
 
+    /// **La campagne et « Mesures et conseils » se dessinent à toutes les
+    /// tailles, remplies, sans tomber** : un lot, des doses de la saison,
+    /// un appel, une prise de mesures avec une grille, une évaluation
+    /// nutritionnelle avec un plan, une délivrance de protections — à
+    /// quatre formes de fenêtre dont une minuscule, et dans les deux
+    /// panneaux de la forme étroite.
+    #[test]
+    fn the_campaign_and_the_counsel_pages_draw_at_every_shape() {
+        let (mut session, _swept) = scratch_session("conseil");
+        session.db.seed_vaccine_catalogue().unwrap();
+        session.db.seed_cno().unwrap();
+        let today = session.today.clone();
+        let pid = session.patients[0].id;
+        session
+            .db
+            .add_vaccine_lot(&crate::campagne::Lot {
+                code: "GRIPPE".to_owned(),
+                product: "Efluelda".to_owned(),
+                lot: "T1".to_owned(),
+                expires_on: crate::date::add_days(&today, 10).unwrap(),
+                received: 3,
+                received_on: today.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        session
+            .db
+            .add_vaccination(
+                pid,
+                &crate::db::Vaccination {
+                    code: "GRIPPE".to_owned(),
+                    label: "Grippe saisonnière".to_owned(),
+                    given_on: today.clone(),
+                    lot: "T1".to_owned(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let g = session
+            .db
+            .add_compression_grid("Modèle", "chaussette")
+            .unwrap();
+        let grid = session
+            .db
+            .compression_grids()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == g)
+            .unwrap();
+        let mut filled = grid.clone();
+        filled.grid = "1 : cB 18-22 ; cC 28-36\nillisible".to_owned();
+        assert!(session.db.update_compression_grid(&filled, &grid).unwrap());
+        session.reload_campagne();
+        let p = session.patients[0].clone();
+        session.open_patient(p);
+        let config = crate::config::Config::default();
+        for (w, h, scale) in [
+            (1400.0, 900.0, 1.0),
+            (1024.0, 700.0, 1.6),
+            (640.0, 420.0, 1.25),
+            (180.0, 120.0, 1.0),
+        ] {
+            let ctx = egui::Context::default();
+            motif::apply_scale(&ctx, scale, motif::Density::Comfortable);
+            let input = || egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(w, h),
+                )),
+                ..Default::default()
+            };
+            for page in 0..3 {
+                session.camp.page = page;
+                let _ = ctx.run(input(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        super::App::campagne_view(ui, &mut session, "CL", &config);
+                    });
+                });
+            }
+            for page in super::ConseilPage::ALL {
+                session.conseil.page = page;
+                for pane in 0..2 {
+                    session.conseil.pane = pane;
+                    session.conseil.grid = Some(g);
+                    session
+                        .conseil
+                        .measures
+                        .insert("cB.D".to_owned(), "20".to_owned());
+                    session
+                        .conseil
+                        .measures
+                        .insert("cC.D".to_owned(), "40".to_owned());
+                    session
+                        .conseil
+                        .measures
+                        .insert("cB.G".to_owned(), "45".to_owned());
+                    session.conseil.nut = super::NutritionForm {
+                        age: "80".to_owned(),
+                        weight: "50".to_owned(),
+                        height: "165".to_owned(),
+                        w6m: "58".to_owned(),
+                        albumin: "28".to_owned(),
+                        intake: true,
+                        ..Default::default()
+                    };
+                    if let Some(first) = session.conseil.products.first() {
+                        session.conseil.plan = vec![(first.id, 2.0)];
+                    }
+                    let _ = ctx.run(input(), |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            super::App::conseil_view(ui, &mut session, &config, "CL");
+                        });
+                    });
+                }
+            }
+        }
+        // La lecture que la vue montre : le lot compté au carnet.
+        assert_eq!(session.camp.used, vec![1]);
+        // La feuille imprimée de chaque page se construit.
+        for page in super::ConseilPage::ALL {
+            session.conseil.page = page;
+            let paper = super::App::conseil_paper(&session, "Jean Dupont");
+            assert!(!paper.sections.is_empty());
+        }
+    }
+
     /// Sans aucune cascade — un poste qui ne sème pas, une officine qui a
     /// tout supprimé — la vue se dessine et le dit.
     #[test]
