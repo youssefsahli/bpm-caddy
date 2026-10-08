@@ -42,10 +42,12 @@ dans docs/CONTENU.md) :
   `scripts/frames.sh` pour le coût des images.
 
 **Décisions qui reviennent à l'officine.**
-- Prise en charge des CNO avant 70 ans : le logiciel lit les critères du
-  mémo de l'Assurance Maladie (perte de poids, IMC ≤ 18,5) ; une relecture
-  a évoqué une albuminémie < 30 g/L, non retrouvée dans le mémo. À
-  trancher sur le texte de l'arrêté du 7 mai 2019.
+- Prise en charge des CNO avant 70 ans : **tranché**. L'arrêté du 7 mai
+  2019 (JORF, article JORFARTI000038456511) retient avant 70 ans la perte
+  de poids (≥ 5 % en 1 mois ou ≥ 10 % en 6 mois) ou l'IMC ≤ 18,5 (hors
+  maigreur constitutionnelle) ; l'albuminémie (< 35 g/L), l'IMC ≤ 21 et
+  le MNA ≤ 17 ne valent qu'à partir de 70 ans. `nutrition::assess` lit
+  exactement ces critères.
 - Capvaxive : la fiche dit une préférence HAS de juillet 2026 qui n'a pas
   été vérifiée ; Comirnaty : la contre-indication après myocardite n'est
   pas au 4.3 du RCP. Les deux phrases sont restées.
