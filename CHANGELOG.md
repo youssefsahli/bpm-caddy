@@ -10,34 +10,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.378.0] - 2026-10-08
 
 ### Added
+- Campagne : la liste des rappels se parcourt au clavier. Une flèche
+  l'active et la parcourt ; Entrée ouvre alors le carnet et 1 à 4 notent
+  l'issue de l'appel. Un champ qui prend la main la désactive.
+- Campagne : « Flacon ouvert » sur un lot de Comirnaty note la première
+  ponction ; la ligne donne l'heure limite d'utilisation (12 heures) et
+  le temps restant, signalé dans la dernière heure et une fois le délai
+  dépassé.
 - Campagne : « Vacciné ailleurs » ouvre aussi le carnet avec le vaccin et
   la remarque, pour noter la dose à la date donnée par le patient.
-
-### Fixed
-- Campagne : la liste des rappels ne répond au clavier qu'une fois
-  activée par une flèche et tant qu'aucun champ n'a la main (l'Entrée de
-  la recherche du volet de gauche ouvrait le carnet de la ligne choisie),
-  seulement quand elle est à l'écran, et sans touche de modification.
-- Campagne : le minuteur de flacon n'est proposé que sur les lots de
-  Comirnaty ; le registre du jour garde une dose dont le dossier manque
-  et signale une erreur de lecture.
-- Campagne : la lecture des traitements évocateurs est gardée par DCI et
-  classe, et non par nom de fiche.
-- Nutrition orale : le calendrier du plan disparaît après quatre mois ou
-  sur une date illisible.
 
 ### Changed
 - Campagne : le formulaire de réception d'un lot est replié derrière
   « Recevoir un lot » dès qu'un lot existe ; la liste des lots garde la
-  place.
-
-### Added
-- Campagne : « Flacon ouvert » sur un lot de vaccin contre le COVID-19
-  note la première ponction ; la ligne donne l'heure limite d'utilisation
-  (12 heures, Comirnaty XFG) et le temps restant, signalé dans la
-  dernière heure et une fois le délai dépassé.
-- Campagne : la liste des rappels se parcourt au clavier (flèches, Entrée
-  pour ouvrir le carnet, 1 à 4 pour noter l'issue de l'appel).
+  place. Le registre du jour garde une dose dont le dossier manque et
+  signale une erreur de lecture.
+- Campagne : la lecture des traitements évocateurs est gardée par DCI et
+  classe, et non par nom de fiche.
+- Nutrition orale : le calendrier du plan disparaît après quatre mois ou
+  sur une date illisible.
 
 ## [0.377.0] - 2026-10-08
 
