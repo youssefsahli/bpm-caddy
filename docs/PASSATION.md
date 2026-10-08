@@ -4,12 +4,10 @@
 dans le dépôt, rien n'est resté en local.
 
 **Versions.** Publiées (étiquette poussée, smoke passé dans les quatre
-formes) : 0.367.0, 0.369.0, 0.372.0. La 0.376.0 est sur `main`, toutes
-les portes passées (fmt, clippy avec Rust 1.99, tests, deux `cargo
-check`, couverture), smoke en cours au moment d'écrire : quand il passe,
-`git tag v0.376.0 <commit> && git push origin v0.376.0`. Les versions
+formes) : 0.367.0, 0.369.0, 0.372.0 et 0.376.0. Les versions
 intermédiaires (0.368, 0.370, 0.371, 0.373 à 0.375) ne sont pas
-étiquetées : leur contenu est dans la 0.376.0.
+étiquetées : leur contenu est dans la 0.376.0. Ce qui a suivi sur `main`
+(F8, documentation) attend la prochaine version.
 
 **Ce qui a été fait le 08/10** (détail au CHANGELOG, raisons dans
 docs/ARCHITECTURE.md § « La campagne et Mesures et conseils », contenu
