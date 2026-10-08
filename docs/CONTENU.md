@@ -531,6 +531,28 @@ conseils à tenir à jour deux fois.
   déjà utilisée, et les neuf champs. Ou, ce qui est mieux, directement
   dans l'application — c'est le contenu de l'équipe.
 
+## La campagne de vaccination
+
+- **Où** : `src/campagne.rs` — la saison (1er septembre au 31 août), le
+  compte des lots contre les numéros du carnet, le décompte des doses,
+  la liste des rappels, et `EVOCATIONS`, les molécules dont la présence
+  dans les traitements évoque un groupe visé par le calendrier pour la
+  grippe et le COVID-19 avant 65 ans.
+- **Une évocation n'est pas un diagnostic** : la ligne dit « indication à
+  confirmer avec le patient ». Un fragment de DCI est une sous-chaîne :
+  `every_evocation_catches_what_it_says` tient la liste de ce que chaque
+  groupe attrape parmi les fiches livrées, et refuse qu'un spray nasal,
+  une pommade, un analogue du GLP-1 de l'obésité ou la prophylaxie
+  préexposition évoquent un groupe. Les corticoïdes inhalés exigent une
+  classe « inhalé » ; les formes locales sont écartées par
+  `classes::is_local_form`.
+- **Les remarques du carnet** (`vaccines::entry_warnings`) suivent le
+  calendrier des vaccinations 2026 et les compétences du pharmacien ;
+  elles n'empêchent jamais l'enregistrement.
+- **Le catalogue d'une base existante** reçoit les indications de schéma
+  du calendrier 2026 par `vaccines::SCHEDULE_UPDATES`, seulement là où
+  l'ancien texte livré est encore mot pour mot.
+
 ## Mesures et conseils : compression, nutrition orale, protections périodiques
 
 - **Où** : `src/compression.rs` (classes françaises et LPP, points de
