@@ -16564,6 +16564,47 @@ impl App {
                                 _ => ConseilPage::Contention,
                             };
                             session.reload_conseil();
+                            // Une page remplie, comme au comptoir : une
+                            // évaluation et un plan, une prise de mesures.
+                            if v == "conseil_nutrition" {
+                                session.conseil.nut = NutritionForm {
+                                    age: session.conseil.nut.age.clone(),
+                                    weight: "52".to_owned(),
+                                    height: "165".to_owned(),
+                                    w6m: "58".to_owned(),
+                                    albumin: "31".to_owned(),
+                                    intake: true,
+                                    aggression: true,
+                                    ..Default::default()
+                                };
+                                session.conseil.plan = session
+                                    .conseil
+                                    .products
+                                    .iter()
+                                    .filter(|p| p.name.starts_with("Clinutren"))
+                                    .take(2)
+                                    .map(|p| (p.id, 1.0))
+                                    .collect();
+                            }
+                            if v == "conseil_contention" {
+                                for (k, val) in [
+                                    ("cB.D", "22"),
+                                    ("cB1.D", "27"),
+                                    ("cC.D", "36,5"),
+                                    ("cD.D", "34"),
+                                    ("lD.D", "41"),
+                                    ("cB.G", "22,5"),
+                                    ("cB1.G", "27"),
+                                    ("cC.G", "38"),
+                                    ("cD.G", "34,5"),
+                                    ("lD.G", "41"),
+                                ] {
+                                    session
+                                        .conseil
+                                        .measures
+                                        .insert(k.to_owned(), val.to_owned());
+                                }
+                            }
                             session.view = MainView::Drugs;
                         }
                         Ok(v @ ("dispositifs" | "dispositif_open")) => {
@@ -53282,13 +53323,14 @@ impl App {
                         )
                         .wrap(),
                     );
-                    for c in r
-                        .phenotypic
-                        .iter()
-                        .chain(&r.etiologic)
-                        .chain(&r.severe_because)
-                    {
-                        Self::conseil_note(ui, &format!("· {c}"));
+                    for (key, list) in [
+                        ("conseil_nut_phenotypic", &r.phenotypic),
+                        ("conseil_nut_etiologic", &r.etiologic),
+                        ("conseil_nut_severity", &r.severe_because),
+                    ] {
+                        if !list.is_empty() {
+                            Self::conseil_note(ui, &trf(key, list.join(" ; ")));
+                        }
                     }
                     if r.severity.is_none() && !r.phenotypic.is_empty() && r.etiologic.is_empty() {
                         Self::conseil_note(ui, tr("conseil_nut_need_etio"));

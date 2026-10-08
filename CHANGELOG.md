@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Nutrition orale : la lecture range les critères en trois lignes
+  (phénotypiques, étiologiques, de sévérité).
+- README : captures de la campagne et de « Mesures et conseils ».
+
 ### Added
 - Carnet de vaccination imprimé : l'officine qui a vacciné (nom,
   adresse, téléphone, pharmacien) en pied de page, avant la mention de

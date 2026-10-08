@@ -42,6 +42,10 @@ BPM-Caddy is a desktop application that streamlines pharmaceutical consultations
 
 ![Conciliation médicamenteuse — ordonnance de sortie, divergences : arrêts, modifications, remplacements](docs/screenshot_conciliation.png)
 
+![Campagne de vaccination — dossiers à rappeler, doses de la saison, lots reçus et stock](docs/screenshot_campagne.png)
+
+![Mesures et conseils — évaluation nutritionnelle (HAS), plan de compléments nutritionnels oraux](docs/screenshot_conseil.png)
+
 ![Carte vaccinale — groupes de pays, fièvre jaune, paludisme](docs/screenshot_map.png)
 
 ![Tableau de bord, palette « Nuit »](docs/screenshot_nuit.png)

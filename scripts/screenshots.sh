@@ -88,6 +88,10 @@ shot cascades docs/screenshot_cascades.png
 shot dispositif_open docs/screenshot_dispositifs.png
 shot locations docs/screenshot_locations.png
 shot conciliation docs/screenshot_conciliation.png
+# L'hiver : la campagne de vaccination (rappels, doses, lots) et la page
+# « Nutrition orale » de « Mesures et conseils ».
+shot campagne docs/screenshot_campagne.png
+shot conseil_nutrition docs/screenshot_conseil.png
 
 # The same application after dark. A skin is a palette and nothing else,
 # so this is the *same* view under `[ui] theme` — which is the point,
