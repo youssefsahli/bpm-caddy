@@ -41,8 +41,8 @@ set -uo pipefail
 # Mesuré le 25/09/2026, après la connexion au lancement et les tests de
 # vues sans tête : 56,0 % le workspace, 90,5 % la logique. Le workspace
 # monte de 49 à 53 — trois points de marge. La logique reste à 89.
-TOTAL_FLOOR=53
-LOGIC_FLOOR=89
+TOTAL_FLOOR=58
+LOGIC_FLOOR=90
 
 # The modules that carry the decisions: pure, or nearly so, and the ones
 # a wrong answer would reach a patient through.

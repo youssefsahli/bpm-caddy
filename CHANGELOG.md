@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.372.0] - 2026-10-08
+
+### Changed
+- Déverrouillage plus rapide : le fichier des pièces et le registre des
+  stupéfiants s'ouvrent en parallèle de la base, une fois le mot de
+  passe vérifié sur celle-ci (ouverture mesurée de 236 à 91 ms en
+  version optimisée). Un mot de passe faux ne crée aucun fichier.
+- Couverture : planchers relevés à 58 % (dépôt) et 90 % (logique
+  métier).
+
 ## [0.371.0] - 2026-10-08
 
 ### Added

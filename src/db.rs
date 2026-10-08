@@ -41756,6 +41756,24 @@ impl Db {
             r.get::<_, i64>(0)
         })
         .map_err(|_| "Mot de passe incorrect (ou fichier illisible).".to_owned())?;
+        // **Les deux autres fichiers s'ouvrent pendant ce temps.** Chaque
+        // ouverture paie la dérivation de clé de SQLCipher, et les trois
+        // se suivaient : le déverrouillage attendait trois fois la même
+        // chose. Le mot de passe vient d'être vérifié sur la base — un
+        // fichier des pièces absent serait sinon créé avec une clé
+        // fausse —, si bien que les pièces et le registre s'ouvrent
+        // chacun sur un fil pendant que la base passe son schéma et ses
+        // migrations. `Connection` est `Send` : le fil la rend telle
+        // quelle.
+        let side = {
+            let (scan_path, stup_path, pw) =
+                (path.to_owned(), path.to_owned(), password.to_owned());
+            let pw2 = pw.clone();
+            (
+                std::thread::spawn(move || Self::open_scan_store(&scan_path, &pw)),
+                std::thread::spawn(move || Self::open_stup_store(&stup_path, &pw2)),
+            )
+        };
         conn.execute_batch(SCHEMA)
             .map_err(|e| format!("initialisation du schéma impossible : {e}"))?;
         // Muted, in one transaction: every post runs the same migrations
@@ -41791,8 +41809,12 @@ impl Db {
             conn.execute(index, [])
                 .map_err(|e| format!("index impossible : {e}"))?;
         }
-        let scans = Self::open_scan_store(path, password)?;
-        let stups = Self::open_stup_store(path, password)?;
+        let joined = |h: std::thread::JoinHandle<Result<Connection, String>>| {
+            h.join()
+                .unwrap_or_else(|_| Err("ouverture interrompue".to_owned()))
+        };
+        let scans = joined(side.0)?;
+        let stups = joined(side.1)?;
         let db = Self { conn, scans, stups };
         db.move_register_beside_the_base()?;
         // A post of a group: its capture follows the schema, which a
@@ -60360,6 +60382,30 @@ mod tests {
     /// team's afterwards. And every shipped fiche must answer the six
     /// questions the counter actually asks — a fiche that only names
     /// the box is a fiche nobody opens twice.
+    /// **Un mot de passe faux ne crée rien.** Les pièces et le registre
+    /// s'ouvrent sur leurs fils une fois la clé vérifiée sur la base : un
+    /// fichier des pièces absent ne doit pas renaître chiffré avec la
+    /// mauvaise clé.
+    #[test]
+    fn a_wrong_password_creates_no_side_file() {
+        let dir = std::env::temp_dir().join(format!("bpm-wrong-pw-side-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("t.db");
+        drop(Db::open(&path, "juste").unwrap());
+        let scans = scans_path(&path);
+        std::fs::remove_file(&scans).unwrap();
+        assert!(Db::open(&path, "faux").is_err());
+        assert!(
+            !scans.exists(),
+            "le fichier des pièces a été recréé avec une clé fausse"
+        );
+        // Le bon mot de passe le recrée, et tout s'ouvre.
+        assert!(Db::open(&path, "juste").is_ok());
+        assert!(scans.exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// La mise à jour du texte livré ne touche que ce que l'équipe n'a
     /// jamais écrit : un champ modifié garde ses mots, un champ resté tel
     /// qu'une ancienne version l'avait semé reçoit le texte de celle-ci.
