@@ -50592,9 +50592,15 @@ impl Db {
                 .map_err(|e| e.to_string())?;
             rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
         };
+        // **Au-dessus de la dernière fiche, rien ne part.** Des octets plus
+        // récents que toute fiche ne sont pas les restes d'une pièce
+        // supprimée : ce sont ceux de pièces rangées après la copie dont
+        // la base a été remise en place, et compacter les effaçait pour
+        // de bon. Ils restent ; une base plus récente les retrouvera.
+        let highest = kept.iter().copied().max().unwrap_or(0);
         let mut gone = 0;
         for id in all {
-            if !kept.contains(&id) {
+            if !kept.contains(&id) && id < highest {
                 self.scans
                     .execute("DELETE FROM scan_blobs WHERE scan_id = ?1", [id])
                     .map_err(|e| e.to_string())?;
