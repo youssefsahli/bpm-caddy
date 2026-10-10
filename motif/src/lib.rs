@@ -1030,7 +1030,13 @@ pub fn apply_scale(ctx: &egui::Context, scale: f32, density: Density) {
     // écrit à la main dans `config.toml` entrait dans cette zone-là sans
     // que rien ne le dise ; il y entre encore, mais ramené à ce que la
     // glissière montre — et la glissière, elle, dit où l'on est.
-    let scale = scale.clamp(0.8, 1.6);
+    // `clamp` laisse passer NaN (`text_scale = nan` est du TOML valide) :
+    // les marges et les hauteurs de ligne devenaient NaN.
+    let scale = if scale.is_finite() {
+        scale.clamp(0.8, 1.6)
+    } else {
+        1.0
+    };
     let mut style = (*ctx.style()).clone();
     // Rebuild the ladder from the base sizes. Multiplying whatever is
     // already there compounds on every call, so two visits to the

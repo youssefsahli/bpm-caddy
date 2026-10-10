@@ -55,6 +55,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer overflows the stack and aborts the whole application; it stops
   with an error. The script runs on a thread with a large stack and a
   lower call depth.
+- Biology trend: the reference bounds are drawn on the curve's own scale,
+  and the range includes them; a potassium inside the interval was drawn
+  as if outside it (the curve started at zero, the lines did not).
+- Charts: the wash under a curve that dips no longer covers the area
+  above the dip.
+- A `text_scale = nan` written by hand in config.toml falls back to 1.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

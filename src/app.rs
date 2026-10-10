@@ -26080,25 +26080,31 @@ impl App {
                 body.min,
                 egui::vec2(body.width(), (body.height() - 34.0).clamp(40.0, 160.0)),
             );
-            motif::chart::sparkline(ui, plot.shrink(3.0), &values, motif::accent());
-            // The reference interval as a band behind the curve: the
+            // **One scale for the curve and its bounds**: the values and
+            // the reference interval together, with a margin. The bounds
+            // were drawn on a scale of their own while the curve started
+            // at zero — a potassium inside the interval looked outside.
+            let bounds: Vec<f64> = analyte
+                .map(|a| [a.low, a.high].into_iter().flatten().collect())
+                .unwrap_or_default();
+            let (lo, hi) = values
+                .iter()
+                .chain(bounds.iter())
+                .filter(|v| v.is_finite())
+                .fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
+            let margin = ((hi - lo) * 0.1).max(f64::EPSILON);
+            let range = (lo - margin, hi + margin);
+            let strip = plot.shrink(3.0);
+            motif::chart::sparkline_in(ui, strip, &values, motif::accent(), range);
+            // The reference interval as lines behind the curve: the
             // question is not the value, it is whether it is inside.
-            if let Some(a) = analyte {
-                let (min, max) = values
-                    .iter()
-                    .fold((f64::MAX, f64::MIN), |(lo, hi), v| (lo.min(*v), hi.max(*v)));
-                let span = (max - min).max(f64::EPSILON);
-                let y_of = |v: f64| {
-                    plot.bottom() - ((v - min) / span) as f32 * (plot.height() - 6.0) - 3.0
-                };
-                for bound in [a.low, a.high].into_iter().flatten() {
-                    if bound >= min && bound <= max {
-                        ui.painter().hline(
-                            plot.left()..=plot.right(),
-                            y_of(bound),
-                            egui::Stroke::new(0.8_f32, motif::alert()),
-                        );
-                    }
+            if analyte.is_some() {
+                for bound in &bounds {
+                    ui.painter().hline(
+                        plot.left()..=plot.right(),
+                        motif::chart::sparkline_y(strip, range, *bound),
+                        egui::Stroke::new(0.8_f32, motif::alert()),
+                    );
                 }
                 ui.painter().rect_stroke(
                     plot,

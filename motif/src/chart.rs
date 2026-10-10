@@ -971,36 +971,40 @@ pub fn stacked(ui: &egui::Ui, rect: egui::Rect, parts: &[(f64, Color32)]) {
 /// A sparkline: the shape of a series, no axes, no labels. `rect` is
 /// usually a strip 24-40 px tall beside a number.
 pub fn sparkline(ui: &egui::Ui, rect: egui::Rect, values: &[f64], color: Color32) {
+    let max = values.iter().copied().fold(0.0_f64, f64::max).max(1e-9);
+    let min = values.iter().copied().fold(max, f64::min).min(0.0);
+    sparkline_in(ui, rect, values, color, (min, max));
+}
+
+/// A sparkline on a range the caller gives, `(floor, ceiling)`, and the
+/// height of any value on it — [`sparkline_y`] — so that what is drawn
+/// beside the curve (a reference interval, a threshold) sits on **the
+/// curve's own scale**. Drawn on a scale of its own, a bound line put a
+/// potassium of 3,5 at the bottom of the strip while the curve put it
+/// two-thirds of the way up: inside read as outside.
+pub fn sparkline_in(
+    ui: &egui::Ui,
+    rect: egui::Rect,
+    values: &[f64],
+    color: Color32,
+    range: (f64, f64),
+) {
     if values.len() < 2 {
         return;
     }
-    let max = values.iter().copied().fold(0.0_f64, f64::max).max(1e-9);
-    let min = values.iter().copied().fold(max, f64::min).min(0.0);
-    let span = (max - min).max(1e-9);
     let step = rect.width() / (values.len() - 1) as f32;
-    let pt = |i: usize, v: f64| {
-        egui::pos2(
-            rect.left() + i as f32 * step,
-            rect.bottom() - ((v - min) / span) as f32 * rect.height(),
-        )
-    };
+    let pt =
+        |i: usize, v: f64| egui::pos2(rect.left() + i as f32 * step, sparkline_y(rect, range, v));
+    let poly: Vec<egui::Pos2> = values.iter().enumerate().map(|(i, v)| pt(i, *v)).collect();
     // Fill under the line first, in a washed-out tint of the stroke.
-    let mut poly: Vec<egui::Pos2> = values.iter().enumerate().map(|(i, v)| pt(i, *v)).collect();
-    let area = {
-        let mut p = poly.clone();
-        p.push(egui::pos2(rect.right(), rect.bottom()));
-        p.push(egui::pos2(rect.left(), rect.bottom()));
-        p
-    };
-    ui.painter().add(egui::Shape::convex_polygon(
-        area,
+    fill_under(
+        ui.painter(),
+        &poly,
+        rect.bottom(),
         color.gamma_multiply(0.28),
-        Stroke::NONE,
-    ));
-    ui.painter().add(egui::Shape::line(
-        std::mem::take(&mut poly),
-        Stroke::new(1.6_f32, color),
-    ));
+    );
+    ui.painter()
+        .add(egui::Shape::line(poly, Stroke::new(1.6_f32, color)));
     // The last point is the one that matters: mark it.
     let last = pt(values.len() - 1, values[values.len() - 1]);
     ui.painter().rect_filled(
@@ -1008,6 +1012,45 @@ pub fn sparkline(ui: &egui::Ui, rect: egui::Rect, values: &[f64], color: Color32
         0.0,
         color,
     );
+}
+
+/// The height of `v` in a [`sparkline_in`] drawn in `rect` on `range`,
+/// held inside the strip.
+pub fn sparkline_y(rect: egui::Rect, range: (f64, f64), v: f64) -> f32 {
+    let (min, max) = range;
+    let span = (max - min).max(1e-9);
+    let share = if v.is_finite() {
+        ((v - min) / span).clamp(0.0, 1.0)
+    } else {
+        0.0
+    };
+    rect.bottom() - share as f32 * rect.height()
+}
+
+/// The area between a curve and a floor, **one trapezoid per segment**.
+/// A single polygon of every point plus the two floor corners is not
+/// convex once the curve dips, and egui fills a convex polygon as a fan
+/// from its first vertex: the wash covered the ground above each dip.
+fn fill_under(painter: &egui::Painter, points: &[egui::Pos2], floor: f32, color: Color32) {
+    let mesh = under_mesh(points, floor, color);
+    if !mesh.is_empty() {
+        painter.add(egui::Shape::mesh(mesh));
+    }
+}
+
+fn under_mesh(points: &[egui::Pos2], floor: f32, color: Color32) -> egui::Mesh {
+    let mut mesh = egui::Mesh::default();
+    for pair in points.windows(2) {
+        let (a, b) = (pair[0], pair[1]);
+        let base = mesh.vertices.len() as u32;
+        mesh.colored_vertex(a, color);
+        mesh.colored_vertex(b, color);
+        mesh.colored_vertex(egui::pos2(b.x, floor), color);
+        mesh.colored_vertex(egui::pos2(a.x, floor), color);
+        mesh.add_triangle(base, base + 1, base + 2);
+        mesh.add_triangle(base, base + 2, base + 3);
+    }
+    mesh
 }
 
 /// Several series in one plot, on **one shared scale**.
@@ -1030,14 +1073,12 @@ pub fn lines(ui: &egui::Ui, rect: egui::Rect, series: &[(&[f64], Color32)], max:
         }
         let poly = line_points(rect, values, max);
         if n == 0 {
-            let mut area = poly.clone();
-            area.push(egui::pos2(rect.right(), rect.bottom()));
-            area.push(egui::pos2(rect.left(), rect.bottom()));
-            ui.painter().add(egui::Shape::convex_polygon(
-                area,
+            fill_under(
+                ui.painter(),
+                &poly,
+                rect.bottom(),
                 color.gamma_multiply(0.22),
-                Stroke::NONE,
-            ));
+            );
         }
         ui.painter()
             .add(egui::Shape::line(poly, Stroke::new(1.6_f32, *color)));
@@ -1385,6 +1426,44 @@ fn legend_impl(
 #[cfg(test)]
 mod tests {
     use super::nice_max;
+    use eframe::egui;
+
+    /// Le lavis sous une courbe qui plonge ne monte pas au-dessus du
+    /// creux : chaque triangle reste sous la ligne de son segment.
+    #[test]
+    fn the_wash_under_a_dip_stays_under_the_line() {
+        let pts = [
+            egui::pos2(0.0, 0.0),
+            egui::pos2(10.0, 90.0),
+            egui::pos2(20.0, 0.0),
+        ];
+        let mesh = super::under_mesh(&pts, 100.0, egui::Color32::WHITE);
+        // At the dip, nothing is painted higher (smaller y) than the dip.
+        for v in &mesh.vertices {
+            if (v.pos.x - 10.0).abs() < 1e-3 {
+                assert!(v.pos.y >= 90.0 - 1e-3, "{:?}", v.pos);
+            }
+        }
+        // And every triangle has a vertex on the floor or is a segment's
+        // own trapezoid: none spans from the first point to the third.
+        for t in mesh.indices.chunks(3) {
+            let xs: Vec<f32> = t.iter().map(|i| mesh.vertices[*i as usize].pos.x).collect();
+            let span = xs.iter().copied().fold(f32::MIN, f32::max)
+                - xs.iter().copied().fold(f32::MAX, f32::min);
+            assert!(span <= 10.0 + 1e-3);
+        }
+    }
+
+    /// Une borne et la courbe se lisent sur la même échelle.
+    #[test]
+    fn a_bound_sits_on_the_curve_scale() {
+        let r = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(100.0, 100.0));
+        let range = (3.0, 6.0);
+        assert!((super::sparkline_y(r, range, 3.0) - 100.0).abs() < 1e-3);
+        assert!((super::sparkline_y(r, range, 4.5) - 50.0).abs() < 1e-3);
+        assert!((super::sparkline_y(r, range, f64::NAN) - 100.0).abs() < 1e-3);
+        assert!((super::sparkline_y(r, range, 99.0) - 0.0).abs() < 1e-3);
+    }
 
     /// La fenêtre d'une échelle de temps reste lisible et près des
     /// données, et le zoom garde le jour sous le pointeur.
