@@ -192,9 +192,9 @@ ensuite. Le téléphone ne vérifie pas, dans `messages()` et `save_file`,
 qu'une conversation demandée est visible — il ne demande que celles
 qu'il a listées, mais l'API le permettrait.
 
-**Feuilles remises (relevé).** Le plan de prise et la fiche de
-traitement impriment la posologie en cours de saisie (le champ), pas
-celle que la base garde.
+**Feuilles remises (corrigé le 11/10).** Le plan de prise, la fiche et
+les étiquettes impriment la posologie que la base garde, et non le champ
+en cours de saisie.
 
 **Petits restes.** Bulletins : un champ trop long déborde sans prévenir
 (5 pt au minimum, pas de découpe). Console : `patients()` reconstruit

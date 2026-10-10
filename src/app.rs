@@ -26628,7 +26628,11 @@ impl App {
                 // line is only the molecule's usual one. Printing the
                 // usual one on a sheet that goes home is how a patient
                 // ends up reading a schema that is not theirs.
-                let own = session.dose_of(d.id).trim().to_owned();
+                //
+                // **Ce que la base garde, pas le champ** : une posologie à
+                // moitié tapée, ou abandonnée sans être enregistrée,
+                // partait à la maison sur le plan de prise et la fiche.
+                let own = session.dose_base_of(d.id).trim().to_owned();
                 let when = if own.is_empty() {
                     first
                         .map(|p| p.posologie.clone())
@@ -92221,6 +92225,22 @@ mod tests {
         super::App::cascade_give_file(&mut session, &in_file, 0.0);
         let again = crate::cascade::given_at(&read.parsed, &session.cascade_doses, 0);
         assert_eq!(again, in_file);
+    }
+
+    /// La feuille qui part à la maison porte la posologie enregistrée,
+    /// pas celle qu'on est en train de taper.
+    #[test]
+    fn a_take_home_sheet_prints_the_saved_posology() {
+        let (mut session, _swept) = scratch_session("take-home");
+        session.patient_treats = vec![crate::db::Drug {
+            id: 7,
+            name: "Amlor".to_owned(),
+            ..Default::default()
+        }];
+        session.patient_doses_base = vec![(7, "1 cp le matin".to_owned())];
+        session.patient_doses = vec![(7, "2 cp le m".to_owned())];
+        let lines = super::App::treatment_take_home(&session);
+        assert_eq!(lines[0].when, "1 cp le matin");
     }
 
     /// Le sens de la figure suit la forme du creux, et le haut en bas

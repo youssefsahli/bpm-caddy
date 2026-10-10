@@ -31,6 +31,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Codex: « 1.000 mL » in a formula, its yield or the target amount is a
   thousand (French thousands dot); read as 1, it scaled everything else
   a thousand times.
+- Take-home plan, treatment sheet and labels print the posology the file
+  has saved, not the one still being typed in the field.
 
 ## [0.395.0] - 2026-10-11
 
