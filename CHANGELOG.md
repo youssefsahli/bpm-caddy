@@ -83,6 +83,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gastro-resistant or non-oral form is no longer answered « Peut être
   écrasé » by the row of its molecule (« Lasilix Retard 60 mg » was);
   it reads « Ne pas écraser ». No shipped card changes answer.
+- Campaigns: a campaign recalling dTcaP by the calendar now lists a
+  pregnant woman owed her pregnancy dose; the adult booster line, read
+  first under the same code, said she was up to date.
 
 ## [0.389.0] - 2026-10-10
 

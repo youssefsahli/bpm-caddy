@@ -1443,7 +1443,18 @@ pub fn recalls(
         let (listed, evoked, mut detail) = match s.rule {
             Rule::Calendar => {
                 let lines = vaccines::due_lines_with(p.birth, today, &p.doses, p.ddr);
-                let Some(line) = lines.iter().find(|l| l.code == code) else {
+                // **La ligne la plus pressante du code**, pas la première :
+                // pendant une grossesse, le calendrier garde la ligne du
+                // rappel de l'adulte et ajoute « dTcaP — grossesse » sous
+                // le même code. La première disait « à jour » ou « à
+                // demander », et une femme enceinte de 31 semaines sans
+                // dose depuis le début de sa grossesse n'était pas listée.
+                let urgency = |l: &&vaccines::DueLine| match l.level {
+                    DueLevel::Due => 0,
+                    DueLevel::Ask => 1,
+                    DueLevel::Ok => 2,
+                };
+                let Some(line) = lines.iter().filter(|l| l.code == code).min_by_key(urgency) else {
                     continue;
                 };
                 // Dû par l'âge ou la grossesse ; sinon, si le sujet lit les
@@ -1967,6 +1978,41 @@ mod tests {
 
     fn ids(r: &[Recall]) -> Vec<i64> {
         r.iter().map(|x| x.patient_id).collect()
+    }
+
+    /// **Une femme enceinte est rappelée pour le dTcaP de la grossesse**,
+    /// même quand son rappel d'adulte est à jour : le calendrier porte les
+    /// deux lignes sous le même code, et la première lue disait « à jour ».
+    #[test]
+    fn a_pregnancy_dtcap_is_recalled_even_with_the_adult_booster_done() {
+        let today = "2026-10-10";
+        let mut c = default_campaign(today);
+        c.subjects.push(Subject {
+            code: "DTCAP".into(),
+            label: "dTcaP".into(),
+            means: Means::Vaccine,
+            rule: Rule::Calendar,
+            ..Subject::default()
+        });
+        let pregnant = Person {
+            id: 1,
+            birth: "1996-01-01",
+            sex: "F",
+            ddr: "2026-03-01",
+            doses: vec![dose("DTCAP", "2021-06-01")],
+            ..Person::default()
+        };
+        let not = Person {
+            id: 2,
+            birth: "1996-01-01",
+            sex: "F",
+            doses: vec![dose("DTCAP", "2021-06-01")],
+            ..Person::default()
+        };
+        assert_eq!(
+            ids(&recalls(&[pregnant, not], &[], &c, "DTCAP", today)),
+            vec![1]
+        );
     }
 
     /// Le pneumocoque : 65 ans et plus sans dose au carnet.
