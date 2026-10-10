@@ -7931,6 +7931,7 @@ impl Session {
         // arriver sur l'autre.
         if let Ok(list) = self.db.prescribers() {
             self.prescribers = list;
+            self.prescribers_rev += 1;
         }
         // **L'officine elle-même**, pour la même raison, et c'est la
         // lecture partagée qui manquait ici : son identité, son équipe
@@ -25223,13 +25224,11 @@ impl App {
         // écrite en entier est refusée.
         let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
         let yearless = typed.chars().filter(char::is_ascii_digit).count() <= 4;
-        // `Past` refuse une date sans année (pensé pour la naissance) ;
-        // ici, sans année, c'est l'année qu'on essaie qui la donne.
-        let hint = if yearless {
-            db::YearHint::Future
-        } else {
-            db::YearHint::Past
-        };
+        // `Future` : sans année, c'est l'année qu'on essaie qui la donne
+        // (`Past` refuse une date sans année, pensé pour la naissance) ;
+        // et « 27 » se lit 2027, refusé ensuite parce qu'à venir — `Past`
+        // le lisait 1927, accepté sans un mot.
+        let hint = db::YearHint::Future;
         let past = |y: u32| {
             db::parse_french_date(typed, y, hint)
                 .ok()
@@ -82179,6 +82178,8 @@ mod tests {
             Some("2026-12-15")
         );
         assert_eq!(App::read_loc_date("15/12/2027", "2027-01-04"), None);
+        // « 27 » est 2027, pas 1927 : une date à venir, refusée.
+        assert_eq!(App::read_loc_date("010127", "2026-10-11"), None);
         assert_eq!(
             App::read_loc_date("", "2027-01-04").as_deref(),
             Some("2027-01-04")

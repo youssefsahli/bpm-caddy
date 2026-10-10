@@ -559,11 +559,21 @@ fn same_dose(before: &str, after: &str) -> bool {
 /// Un mot qui dit **une prise** : un moment, une liaison, une fréquence
 /// ou une grille (« 1-0-1 »).
 fn takes(word: &str) -> bool {
-    const WORDS: [&str; 22] = [
+    const WORDS: [&str; 37] = [
         "matin", "midi", "soir", "coucher", "nuit", "et", "le", "la", "les", "au", "puis", "fois",
-        "jour", "jours", "par", "x", "j", "semaine", "heures", "h", "a", "ou",
+        "jour", "jours", "par", "x", "j", "semaine", "semaines", "mois", "heures", "h", "a", "ou",
+        "dejeuner", "diner", "souper", "gouter", "reveil", "lever", "repas", "jeun", "prise",
+        "prises", "tous", "toutes", "avant",
     ];
-    WORDS.contains(&word) || word.contains(['-', '/'])
+    // Une heure (« 8h », « 20h30 », « 8:00 ») dit une prise comme un
+    // moment : « 1 cp 20h » contre « 1 cp 8h 1 cp 20h » est une dose
+    // doublée.
+    let hour = word.starts_with(|c: char| c.is_ascii_digit())
+        && (word.contains(':')
+            || word
+                .trim_start_matches(|c: char| c.is_ascii_digit())
+                .starts_with('h'));
+    WORDS.contains(&word) || word.contains(['-', '/']) || hour
 }
 
 /// Un mot de dosage : un nombre, une unité, ou les deux collés (« 75mg »,
@@ -797,6 +807,8 @@ Vogalène lyoc si nausées
             "Tramadol 100 mg LP 1 cp matin et soir"
         ));
         assert!(!same_dose("1-0-0", "1-0-1 1-0-0"));
+        assert!(!same_dose("1 cp 20h", "1 cp 8h 1 cp 20h"));
+        assert!(!same_dose("1 cp diner", "1 cp dejeuner 1 cp diner"));
     }
 
     #[test]

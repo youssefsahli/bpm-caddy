@@ -408,7 +408,8 @@ pub fn read(posology: &str) -> Reading {
     // imprimé —, et « 2 cp le matin pendant 3 jours puis 1 » perdait sa
     // dose de charge. Une grille ne dit pas une suite : la ligne en sort,
     // avec la posologie écrite en note, comme un rythme.
-    let phased = phased(folded.as_str());
+    // Sur le texte tel qu'écrit : le repli retire les parenthèses.
+    let phased = phased(&raw.to_lowercase());
     if let Some(m) = CYCLIC
         .iter()
         .copied()
@@ -515,55 +516,63 @@ fn condition(raw: &str, marker: &str) -> String {
         .to_owned()
 }
 
-/// Un « puis » qui **ouvre une seconde phase**, et non tout « puis ».
+/// Un « puis » qui **ouvre une seconde phase** — presque tous : dose de
+/// charge (« 180 mg en une prise, puis 90 mg »), titration (« pendant 2
+/// semaines, puis doublement »), « 2 cp à J1 puis 1 cp/j ». La ligne
+/// sort alors de la grille du jour, et c'est le sens qui ne coûte
+/// qu'une question.
 ///
-/// Le mot seul sortait de la grille « 2 inhalations matin et soir puis
-/// se rincer la bouche » (la consigne de tout corticoïde inhalé), la
-/// Coversyl livrée (« soit 4 mg puis 8 mg », une équivalence de sel) et
-/// le relais d'un collyre. Une phase a **une durée avant** (« pendant
-/// 7 jours », « 3 jours », « la première semaine ») et **une dose
-/// après** (« puis 1 cp », « puis passer à », « puis augmenter »).
+/// Deux exceptions seulement, celles que le mot seul attrapait à tort :
+/// un « puis » **entre parenthèses** (la Coversyl livrée : « soit 4 mg
+/// puis 8 mg pour la forme tert-butylamine », une équivalence de sel),
+/// et un « puis » suivi d'**un geste** et non d'une dose (« matin et
+/// soir puis se rincer la bouche », la consigne de tout corticoïde
+/// inhalé). Une première version exigeait une durée avant et une dose
+/// après : la dose de charge du Brilique, la titration du Kredex et le
+/// J1 de l'azithromycine s'y perdaient.
 fn phased(folded: &str) -> bool {
-    let words: Vec<&str> = folded
-        .split(|c: char| !c.is_alphanumeric())
-        .filter(|w| !w.is_empty())
-        .collect();
-    words.iter().enumerate().any(|(at, w)| {
-        if *w != "puis" {
-            return false;
+    const GESTURES: [&str; 14] = [
+        "se",
+        "rincer",
+        "recracher",
+        "cracher",
+        "attendre",
+        "laver",
+        "essuyer",
+        "agiter",
+        "secouer",
+        "refermer",
+        "jeter",
+        "nettoyer",
+        "masser",
+        "boire",
+    ];
+    let mut depth = 0_i32;
+    let mut words: Vec<(&str, bool)> = Vec::new();
+    let mut start = None;
+    for (i, c) in folded.char_indices() {
+        if c.is_alphanumeric() {
+            start.get_or_insert(i);
+            continue;
         }
-        let before = &words[..at];
-        let lasting = before.iter().enumerate().any(|(i, w)| {
-            matches!(
-                *w,
-                "pendant"
-                    | "durant"
-                    | "premier"
-                    | "premiers"
-                    | "premiere"
-                    | "premieres"
-                    | "1re"
-                    | "1ere"
-            ) || (matches!(*w, "j" | "jour" | "jours" | "semaine" | "semaines" | "mois")
-                && i > 0
-                && before[i - 1].starts_with(|c: char| c.is_ascii_digit()))
-        });
-        let dosed = words[at + 1..].iter().take(3).any(|w| {
-            w.starts_with(|c: char| c.is_ascii_digit())
-                || matches!(
-                    *w,
-                    "un" | "une"
-                        | "deux"
-                        | "trois"
-                        | "quatre"
-                        | "demi"
-                        | "passer"
-                        | "augmenter"
-                        | "diminuer"
-                        | "reduire"
-                )
-        });
-        lasting && dosed
+        if let Some(st) = start.take() {
+            words.push((&folded[st..i], depth > 0));
+        }
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = (depth - 1).max(0),
+            _ => {}
+        }
+    }
+    if let Some(st) = start {
+        words.push((&folded[st..], depth > 0));
+    }
+    words.iter().enumerate().any(|(at, (w, inside))| {
+        *w == "puis"
+            && !inside
+            && !words
+                .get(at + 1)
+                .is_some_and(|(next, _)| GESTURES.contains(next))
     })
 }
 
@@ -677,10 +686,26 @@ fn notation(folded: &str) -> Option<[Option<Take>; 4]> {
     // de 1 à 12** et une année de deux ou quatre chiffres ; « 20/0/20
     // gouttes » ou « 14/0/10 » d'une insuline n'en ont pas — refuser
     // toute case au-delà de 12 les perdait.
+    //
+    // Et seulement **une date qui en a l'air** : une année à quatre
+    // chiffres, ou une date introduite (« le », « du », « dès »,
+    // « depuis »…). « 10/10/10 gouttes » ou « 6/8/10 » d'une insuline
+    // ont un jour, un mois et une année plausibles, et sont des grilles.
     if sep == '/' && parts.len() == 3 {
         let int = |p: &str| p.parse::<u32>().ok();
-        let year = parts[2].len() == 2 || parts[2].len() == 4;
-        if matches!(int(parts[0]), Some(1..=31)) && matches!(int(parts[1]), Some(1..=12)) && year {
+        let plausible = matches!(int(parts[0]), Some(1..=31))
+            && matches!(int(parts[1]), Some(1..=12))
+            && (parts[2].len() == 2 || parts[2].len() == 4);
+        let introduced = at
+            .checked_sub(1)
+            .and_then(|i| words.get(i))
+            .is_some_and(|w| {
+                matches!(
+                    *w,
+                    "le" | "du" | "au" | "des" | "depuis" | "avant" | "apres"
+                ) || w.starts_with("jusqu")
+            });
+        if plausible && (parts[2].len() == 4 || introduced) {
             return None;
         }
     }
@@ -1461,6 +1486,14 @@ mod tests {
             assert_eq!(read(text).kind, Kind::Cyclic, "{text}");
         }
         assert_eq!(read("1 cp matin et soir").kind, Kind::Placed);
+        // Une dose de charge, une titration, un J1 : des phases.
+        for text in [
+            "Dose de charge de 180 mg en une prise, puis 90 mg deux fois par jour",
+            "1,25 mg deux fois par jour pendant 2 semaines, puis doublement toutes les 2 semaines",
+            "2 cp à J1 puis 1 cp/j de J2 à J5",
+        ] {
+            assert_eq!(read(text).kind, Kind::Cyclic, "{text}");
+        }
         // Un « puis » qui n'ouvre pas de phase laisse la ligne en grille.
         for text in [
             "2 inhalations matin et soir puis se rincer la bouche",
@@ -1477,6 +1510,9 @@ mod tests {
         assert_eq!(read("20/0/20 gouttes").kind, Kind::Placed);
         assert_eq!(read("15/15/15 gouttes").kind, Kind::Placed);
         assert_eq!(read("14/0/10").kind, Kind::Placed);
+        assert_eq!(read("10/10/10 gouttes").kind, Kind::Placed);
+        assert_eq!(read("6/8/10").kind, Kind::Placed);
+        assert_ne!(read("1 cp le 1/3/2026").kind, Kind::Placed);
         assert_eq!(read("10-0-10 UI").kind, Kind::Placed);
         assert_ne!(read("1 cp dès le 1/3/26").kind, Kind::Placed);
         assert_ne!(read("5-0-5 mg").kind, Kind::Placed);

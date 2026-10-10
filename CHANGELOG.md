@@ -38,6 +38,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pharmacokinetic values window: every value is read before anything is
   written, and all are written together or none; a refusal in the middle
   left half the window saved.
+- Posology reader (correcting 0.395.0): every « puis » opens a phase
+  again — loading doses (Brilique, Plavix), titrations (Kredex,
+  Cardensiel) and « J1 puis » lost their first phase — except inside
+  parentheses or before a gesture (« puis se rincer la bouche »).
+- Posology reader (correcting 0.395.0): « 10/10/10 gouttes » or « 6/8/10 »
+  are grids again; only a date with a four-digit year or introduced by
+  « le », « du », « dès »… is refused.
+- Reconciliation (correcting 0.395.0): an hour or a meal before the
+  matching part is a take (« 1 cp 8h 1 cp 20h » against « 1 cp 20h » is a
+  doubled dose, not a kept one).
+- Rentals: a two-digit year is read 20xx (then refused if in the future),
+  not 19xx.
+- Narcotics register: the prescriber suggestions follow a directory
+  re-read from another post.
 - Messages: a colleague group is rewritten or deleted against what the
   screen showed; changed on another post in between, it was overwritten
   without notice.
