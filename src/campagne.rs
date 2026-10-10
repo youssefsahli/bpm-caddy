@@ -1438,11 +1438,23 @@ pub fn recalls(
         return Vec::new();
     };
     let last = last_calls(calls, &campaign.key, code);
+    // **Une campagne préparée d'avance se lit à son premier jour.** Lu
+    // au 20 août, le calendrier comptait la grippe de l'hiver passé pour
+    // celle de la saison (elle commence au 1er septembre d'après la date
+    // donnée), et une personne vaccinée en octobre dernier n'était pas
+    // listée pour la campagne d'octobre prochain. Les âges et les critères
+    // se lisent au même jour ; ce qui règle le sujet, lui, se lit à
+    // aujourd'hui — aucune dose n'est encore faite dans l'avenir.
+    let at = if campaign.starts_on.as_str() > today {
+        campaign.starts_on.as_str()
+    } else {
+        today
+    };
     let mut out: Vec<(String, Recall)> = Vec::new();
     for p in people {
         let (listed, evoked, mut detail) = match s.rule {
             Rule::Calendar => {
-                let lines = vaccines::due_lines_with(p.birth, today, &p.doses, p.ddr);
+                let lines = vaccines::due_lines_with(p.birth, at, &p.doses, p.ddr);
                 // **La ligne la plus pressante du code**, pas la première :
                 // pendant une grossesse, le calendrier garde la ligne du
                 // rappel de l'adulte et ajoute « dTcaP — grossesse » sous
@@ -1467,7 +1479,7 @@ pub fn recalls(
                     line.detail.clone(),
                 )
             }
-            Rule::Criteria => match criteria(p, s, today) {
+            Rule::Criteria => match criteria(p, s, at) {
                 (Some(why), _) => (true, false, why.join(" ; ")),
                 (None, true) if s.evoked && !p.evoked.is_empty() => (true, true, String::new()),
                 _ => (false, false, String::new()),
@@ -2013,6 +2025,22 @@ mod tests {
             ids(&recalls(&[pregnant, not], &[], &c, "DTCAP", today)),
             vec![1]
         );
+    }
+
+    /// **Une campagne préparée d'avance se lit à son premier jour** : la
+    /// grippe d'octobre dernier n'est pas celle de la saison qui vient.
+    #[test]
+    fn an_upcoming_campaign_reads_the_calendar_at_its_start() {
+        let mut c = default_campaign("2026-10-20");
+        c.starts_on = "2026-10-13".into();
+        let people = vec![person(1, "1956-01-01", vec![dose("GRIPPE", "2025-10-20")])];
+        assert_eq!(
+            ids(&recalls(&people, &[], &c, "GRIPPE", "2026-08-20")),
+            vec![1]
+        );
+        // Vaccinée cette saison-ci : plus rien à rappeler.
+        let done = vec![person(1, "1956-01-01", vec![dose("GRIPPE", "2026-10-15")])];
+        assert!(recalls(&done, &[], &c, "GRIPPE", "2026-10-20").is_empty());
     }
 
     /// Le pneumocoque : 65 ans et plus sans dose au carnet.

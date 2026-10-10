@@ -86,6 +86,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Campaigns: a campaign recalling dTcaP by the calendar now lists a
   pregnant woman owed her pregnancy dose; the adult booster line, read
   first under the same code, said she was up to date.
+- Campaigns prepared ahead of their season are read as of their first
+  day: in August, last winter's flu dose counted as this season's and
+  the person was not listed for the coming campaign.
 
 ## [0.389.0] - 2026-10-10
 
