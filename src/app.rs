@@ -64098,6 +64098,43 @@ impl App {
     /// jamais d'ajuster le comptage pour tomber sur l'attendu. L'écart
     /// s'affiche, se signe et s'explique dans la remarque. Voir
     /// [`crate::caisse`].
+    /// Le premier champ illisible du comptage, nommé, ou rien : ce que
+    /// l'enregistrement refuse (« Une saisie illisible n'est pas un
+    /// zéro »). Séparé de la vue pour qu'un test le lise sans écran.
+    fn caisse_unreadable(session: &Session) -> Option<String> {
+        session
+            .caisse_qty
+            .iter()
+            .zip(crate::caisse::DENOMINATIONS.iter())
+            .find(|(t, _)| {
+                let t = t.trim();
+                !t.is_empty() && !t.parse::<i64>().is_ok_and(|n| (0..=1_000_000).contains(&n))
+            })
+            .map(|(t, d)| format!("{} : « {} »", d.label, t.trim()))
+            .or_else(|| {
+                // Le fond laissé et l'attendu aussi : « 15O » laissé valait
+                // zéro, la recette remontait de cent cinquante euros et le
+                // fond du lendemain partait de rien ; un attendu illisible
+                // effaçait l'écart du soir sans un mot.
+                [
+                    (&session.caisse_opening, "caisse_opening"),
+                    (&session.caisse_float, "caisse_float"),
+                    (&session.caisse_expected, "caisse_expected"),
+                ]
+                .into_iter()
+                .map(|(t, label)| (t.trim(), label))
+                .find(|(t, _)| !t.is_empty() && crate::caisse::parse_euros(t).is_none())
+                .map(|(t, label)| format!("{} : « {t} »", tr(label)))
+            })
+            .or_else(|| {
+                session
+                    .caisse_others
+                    .iter()
+                    .find(|(_, v)| !v.trim().is_empty() && crate::caisse::parse_euros(v).is_none())
+                    .map(|(l, v)| format!("{} : « {} »", l.trim(), v.trim()))
+            })
+    }
+
     fn caisse_view(ui: &mut egui::Ui, session: &mut Session, config: &Config, operator: &str) {
         use crate::caisse::{euros, DENOMINATIONS};
         // La vue se répare elle-même plutôt que de dépendre du chemin
@@ -64755,27 +64792,7 @@ impl App {
         // zéro sans rien dire, et s'enregistraient comme un manque. Le
         // champ garde ce qui est tapé (voir `caisse_reading`) ; c'est
         // l'enregistrement qui refuse, et il nomme la ligne.
-        let refused: Option<String> = session
-            .caisse_qty
-            .iter()
-            .zip(crate::caisse::DENOMINATIONS.iter())
-            .find(|(t, _)| {
-                let t = t.trim();
-                !t.is_empty() && !t.parse::<i64>().is_ok_and(|n| (0..=1_000_000).contains(&n))
-            })
-            .map(|(t, d)| format!("{} : « {} »", d.label, t.trim()))
-            .or_else(|| {
-                let t = session.caisse_opening.trim();
-                (!t.is_empty() && crate::caisse::parse_euros(t).is_none())
-                    .then(|| format!("{} : « {t} »", tr("caisse_opening")))
-            })
-            .or_else(|| {
-                session
-                    .caisse_others
-                    .iter()
-                    .find(|(_, v)| !v.trim().is_empty() && crate::caisse::parse_euros(v).is_none())
-                    .map(|(l, v)| format!("{} : « {} »", l.trim(), v.trim()))
-            });
+        let refused = Self::caisse_unreadable(session);
         if let Some(what) = refused.filter(|_| save) {
             session.caisse_note = Some((true, trf("caisse_unreadable", what)));
         } else if save {
@@ -90339,6 +90356,27 @@ mod tests {
             vec![id],
             "aucune seconde trame"
         );
+    }
+
+    /// **Une saisie illisible n'est pas un zéro**, au fond laissé et à
+    /// l'attendu comme ailleurs : « 15O » enregistré valait zéro, et la
+    /// recette du soir comme le fond du lendemain partaient faux.
+    #[test]
+    fn an_unreadable_float_or_expected_amount_is_refused() {
+        let (mut s, _swept) = scratch_session("caisse_unreadable");
+        assert_eq!(super::App::caisse_unreadable(&s), None);
+        s.caisse_float = "15O".to_owned();
+        let said = super::App::caisse_unreadable(&s).unwrap();
+        assert!(
+            said.contains("15O") && said.contains(tr("caisse_float")),
+            "{said}"
+        );
+        s.caisse_float = "150".to_owned();
+        s.caisse_expected = "1 2OO".to_owned();
+        let said = super::App::caisse_unreadable(&s).unwrap();
+        assert!(said.contains(tr("caisse_expected")), "{said}");
+        s.caisse_expected = "1 200,50".to_owned();
+        assert_eq!(super::App::caisse_unreadable(&s), None);
     }
 
     /// **« Remplacer » remplace à partir du jour de la nouvelle trame.**

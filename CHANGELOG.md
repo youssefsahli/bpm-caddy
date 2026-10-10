@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the count from the higher-numbered post always won, even when the
   other post recounted later. The last count written now wins, as on a
   single post.
+- Cash register: an unreadable float kept (« 15O ») or expected takings
+  were saved as zero or as nothing, without a word; saving now refuses
+  and names the field, as it already did for the other amounts.
 
 ## [0.389.0] - 2026-10-10
 
