@@ -1245,6 +1245,7 @@ telem_collision = "Écritures concurrentes signalées"
 # Une ligne par étape de `maintenance::steps`. Une clé sans libellé
 # s'afficherait telle quelle au comptoir : un test le refuse.
 maint_step_wipe = "Effacement des données"
+maint_err_not_reference = "Le contenu de référence se sème sur le poste de référence ; il arrivera ici avec la synchronisation."
 maint_step_drugs = "Médicaments"
 maint_step_details = "Fiches de référence"
 maint_step_refresh = "Texte livré des champs non modifiés"

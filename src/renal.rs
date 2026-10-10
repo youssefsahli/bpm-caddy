@@ -255,13 +255,14 @@ pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<
         .into_iter()
         .map(|f| {
             let id = crate::content::slug(f.label);
-            // Le palier retenu est retrouvé par sa conduite **livrée** :
-            // une conduite déjà réécrite se retrouve donc quand même,
-            // puisque c'est le tableau qu'on interroge.
+            // Le palier retenu est retrouvé par **son seuil**, celui que
+            // la lecture a gardé, et non par sa conduite : deux paliers
+            // de même texte auraient donné l'adresse du premier (c'est
+            // arrivé dans `hepatic.rs`).
             let key = TABLE
                 .iter()
                 .find(|a| a.label == f.label)
-                .and_then(|a| a.steps.iter().find(|s| s.conduct == f.conduct))
+                .and_then(|a| a.steps.iter().find(|s| Some(s.below) == f.below))
                 .map(|s| crate::content::key(DOC, &id, &format!("dfg{}", s.below)));
             Resolved {
                 conduct: match &key {

@@ -61134,6 +61134,9 @@ impl App {
             // Un autre poste est passé : ce qu'il a écrit est maintenant
             // à l'écran, et la réécriture se reprend dessus.
             session.text_edit = None;
+            // Compté comme toute collision (le compteur n'a qu'un
+            // chemin) ; la phrase, elle, dit combien.
+            session.note(crate::telemetry::Signal::Collision);
             session.error = Some(trf("carnets_edit_stale", refused));
         } else {
             session.error = Some(trf("carnets_edit_saved", written));

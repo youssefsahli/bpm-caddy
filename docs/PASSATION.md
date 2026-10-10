@@ -216,6 +216,17 @@ une heure avant la limite d'opérations (le bouton d'arrêt marche).
 - *Pièces* : sans aucune fiche en base, les octets restés dans
   `_scans.db` ne sont jamais compactés — le choix prudent face à une base
   remise en place.
+- *Contenu de référence* : « Synchroniser le contenu de référence »
+  (À propos) passe par `insert_missing_drugs` et `seed_posologies`, qui
+  remettent une fiche livrée ou ses posologies que l'équipe a
+  supprimées (aucune marque « semé », contrairement aux protocoles et
+  aux préparations). Voulu pour « Compléter les médicaments de départ »
+  (un test le dit), probablement pas pour « Synchroniser », dont l'aide
+  promet « vos textes sont conservés ». À trancher : une marque par
+  fiche semée, et « Synchroniser » qui la respecte.
+- *Textes réécrits* : « Revenir au texte livré » sur tout un document
+  (`reset_content`) efface aussi une réécriture qu'un autre poste a faite
+  après l'ouverture de l'écran, sans avis.
 - *Posologies* : un jour nommé n'importe où dans la ligne (« contrôle INR
   jeudi ») la sort de la grille ; dans le doute c'est le sens qui ne
   coûte qu'une question.

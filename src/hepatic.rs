@@ -400,13 +400,16 @@ pub fn resolve(findings: Vec<Finding>, over: &crate::content::Overrides) -> Vec<
         .into_iter()
         .map(|f| {
             let id = crate::content::slug(f.label);
-            // Le palier retenu est retrouvé par sa conduite **livrée** :
-            // une conduite déjà réécrite se retrouve donc quand même,
-            // puisque c'est le tableau qu'on interroge.
+            // Le palier retenu est retrouvé par **son stade**, celui que
+            // la lecture a gardé. Retrouvé par sa conduite livrée, il
+            // tombait sur le premier palier de même texte : huit lignes
+            // en ont deux (Halopéridol retard…), et la réécriture du
+            // stade modéré ne s'imprimait jamais, celle du stade léger
+            // s'imprimait aux deux.
             let key = TABLE
                 .iter()
                 .find(|a| a.label == f.label)
-                .and_then(|a| a.steps.iter().find(|s| s.conduct == f.conduct))
+                .and_then(|a| a.steps.iter().find(|s| Some(s.from) == f.from))
                 .map(|s| crate::content::key(DOC, &id, s.from.slug()));
             Resolved {
                 conduct: match &key {
@@ -2274,6 +2277,29 @@ mod tests {
             class: "",
             tags: "",
         }
+    }
+
+    /// Une réécriture vaut pour son stade, même quand deux stades ont
+    /// la même conduite livrée.
+    #[test]
+    fn a_rewrite_lands_on_its_own_stage() {
+        let key = crate::content::key(DOC, &crate::content::slug("Halopéridol retard"), "b");
+        let shipped = "Insuffisance hépatique : dose initiale réduite de moitié, paliers plus petits et plus espacés.";
+        let over = crate::content::Overrides::from_rows([(
+            key,
+            "Réécrite pour le stade modéré.".to_owned(),
+            shipped.to_owned(),
+        )]);
+        let at = |stage| {
+            resolve(
+                read(&[t("Haldol Decanoas", "haldol decanoas")], Some(stage)),
+                &over,
+            )
+            .remove(0)
+            .conduct
+        };
+        assert_eq!(at(Stage::Moderate), "Réécrite pour le stade modéré.");
+        assert_eq!(at(Stage::Mild), shipped);
     }
 
     /// Les associations que leurs fiches contre-indiquent ne prennent

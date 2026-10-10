@@ -274,6 +274,20 @@ pub fn spawn(path: PathBuf, password: String, job: Job) -> Receiver<Progress> {
 /// window has gone stops at the next step instead of finishing a wipe
 /// and a reseed into a base nobody will read.
 fn run(db: &Db, job: Job, report: &mut dyn FnMut(Progress) -> bool) -> Outcome {
+    // **Seul le poste de référence sème**, ici comme au démarrage. Un
+    // autre poste mis à jour le premier, sur un clic de « Synchroniser »,
+    // semait un protocole ou une fiche nouvelle ; le poste de référence,
+    // lancé avant d'avoir reçu ce semis, semait le sien : deux copies,
+    // sous deux numéros.
+    if matches!(job, Job::Sync | Job::SeedMissing) && !db.seeds_here() {
+        let outcome = Outcome {
+            job,
+            counts: Vec::new(),
+            error: Some(crate::strings::tr("maint_err_not_reference").to_owned()),
+        };
+        report(Progress::Done(outcome.clone()));
+        return outcome;
+    }
     let steps = steps(job);
     let total = steps.len();
     let mut counts = Vec::with_capacity(total);

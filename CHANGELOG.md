@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   A join cut while the journal was being read (the app killed, an error)
   left a post that looked joined, synchronised, and never sent anything
   again, and could not join again.
+- Liver and kidney tables: a rewritten conduct is found by its stage or
+  threshold, not by its shipped text. Eight liver rows have two stages
+  with the same text; the rewrite of the moderate stage never printed,
+  and the mild one's printed at both.
+- « Synchroniser le contenu de référence » and « Compléter les médicaments
+  de départ » seed only on the reference post, as start-up does; run on
+  another post first, they made two copies of each new shipped item.
 
 ## [0.395.0] - 2026-10-11
 

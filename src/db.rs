@@ -62988,6 +62988,20 @@ mod tests {
         assert!(completed.error.is_none(), "{:?}", completed.error);
         assert_eq!(completed.first(), 1, "la fiche supprimée est remise");
 
+        // Hors du poste de référence, rien ne se sème : le semis de la
+        // référence arrive par la synchronisation.
+        db.set_sync_local("post", "1").unwrap();
+        assert!(!db.seeds_here());
+        for job in [
+            crate::maintenance::Job::Sync,
+            crate::maintenance::Job::SeedMissing,
+        ] {
+            let refused = crate::maintenance::run_all(&db, job);
+            assert!(refused.error.is_some());
+            assert_eq!(refused.total(), 0);
+        }
+        db.set_sync_local("post", "0").unwrap();
+
         let reset = crate::maintenance::run_all(&db, crate::maintenance::Job::Reset);
         assert!(reset.error.is_none(), "{:?}", reset.error);
         assert!(db.patients().unwrap().is_empty());
