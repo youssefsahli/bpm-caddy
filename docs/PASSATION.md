@@ -57,6 +57,42 @@ de bureau) à son arrivée ; un téléphone retiré garde sa clé, faute de
 renouvellement des clés. Les trois demandent que le poste qui invite
 écrive lui-même ce qu'il a invité.
 
+**À trancher aussi — l'ordonnancier et l'article R. 5132-10.** Le
+registre des stupéfiants (R. 5132-36) tient : ajout seul, annulations
+barrées, solde, écarts motivés. L'ordonnancier imprimé, lui, ne porte
+pas ce que l'article demande :
+- **le nom et l'adresse du patient** : la ligne porte « dossier N »
+  par choix (le fichier du registre se remet seul à une inspection) et
+  aucune impression ne résout le numéro en nom et adresse ; il faut au
+  moins une impression « pour l'inspection » qui le fasse, et décider
+  si l'identité du jour de la délivrance doit être figée (le dossier
+  reste modifiable après coup) ;
+- **le prescripteur** est un texte libre, sans adresse, et n'est pas
+  exigé ; **le porteur** (quand ce n'est pas le patient) n'a pas de
+  colonne ;
+- **listes I et II** : l'« Ordonnancier » ne tient que les stupéfiants
+  et assimilés, alors que la recherche promet « liste I, liste II » —
+  dire qu'un autre logiciel tient celui-là, ou l'ajouter ;
+- les numéros suivent l'ordre d'écriture, pas celui des dates (une
+  saisie antidatée, ou numérotée plus tard depuis un autre poste, prend
+  un numéro plus haut) ; et un premier numéro déclaré après coup saute
+  des numéros sans en garder la raison sur le papier (voulu pour la
+  reprise d'un registre de papier ; une ligne qui le consigne
+  manque).
+Corrigé : une remise à zéro garde les dossiers que le registre cite.
+
+**Application Android (relevé, Kotlin non construit ici).** Joindre un
+fichier échoue sous Android 8 à 12 (`readNBytes` n'existe qu'à partir
+de l'API 33) ; une clé du Keystore perdue (verrouillage retiré) laisse
+le téléphone bloqué à l'écran de déverrouillage, la suppression du
+coffre n'étant offerte qu'une fois la base ouverte ; la reconnaissance
+faciale « faible » réussit à l'invite puis échoue à la clé (Android
+9-10) ; une pièce ouverte reste déchiffrée dans le cache après
+verrouillage ou effacement ; deux appels au pont hors `runCatching`
+peuvent planter si la base se ferme pendant. Corrigés côté pont :
+pas de suppression d'une série d'agenda d'un appui, initiales en
+majuscules, conversations privées filtrées.
+
 **Réseau d'officines (relevé, non corrigé).** Les identifiants
 `<base>:<numéro>` ne sont pas liés au signataire : un membre peut
 prendre d'avance l'identifiant d'un autre (ses événements sont alors
