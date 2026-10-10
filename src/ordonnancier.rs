@@ -826,19 +826,35 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             // empêchait l'ancien de s'annuler. Un comptage venu depuis et
             // qui tient, lui, dit toujours ce qu'il y a au coffre : la
             // relecture le rencontre et s'y arrête d'elle-même.
-            if target.kind == Kind::Inventaire {
-                b.stock = stock_without_cancelled_counts(all, m);
-            } else {
+            //
+            // **Et de même pour toute ligne.** Une sortie saisie deux
+            // fois, qu'un comptage a constatée depuis (l'écart expliqué),
+            // puis annulée : défaire ses quatorze unités par-dessus le
+            // comptage donnait quarante-quatre boîtes pour trente au
+            // coffre. Le stock délivrable se relit donc sans les lignes
+            // annulées ; les deux autres comptes, qu'aucun comptage ne
+            // pose, se défont simplement.
+            //
+            // **Sauf la péremption**, qui ne fait sortir aucune boîte du
+            // coffre : elle les range de l'étagère du délivrable à celle
+            // des périmés, que le comptage du délivrable ne voit pas.
+            // L'annuler les y remet, comptage ou pas.
+            if target.kind == Kind::Peremption {
+                shift(b, target.kind, target.quantity, -1.0);
+                return;
+            }
+            if target.kind != Kind::Inventaire {
                 shift(b, target.kind, target.quantity, -1.0);
             }
+            b.stock = stock_without_cancelled(all, m);
         }
         kind => shift(b, kind, m.quantity, 1.0),
     }
 }
 
-/// Le stock délivrable juste après `upto`, relu sans aucun des comptages
-/// que les annulations écrites jusque-là désignent.
-fn stock_without_cancelled_counts(all: &[&Move], upto: &Move) -> f64 {
+/// Le stock délivrable juste après `upto`, relu sans aucune des lignes
+/// que les annulations écrites jusque-là désignent — comptages compris.
+fn stock_without_cancelled(all: &[&Move], upto: &Move) -> f64 {
     fn key<'a>(m: &Move<'a>) -> (&'a str, i64) {
         (m.day, m.seq)
     }
@@ -852,15 +868,17 @@ fn stock_without_cancelled_counts(all: &[&Move], upto: &Move) -> f64 {
         .filter(|m| m.kind == Kind::Annulation)
         .filter_map(|m| {
             all.iter()
-                .find(|t| t.seq == m.cancels && t.kind == Kind::Inventaire)
+                .find(|t| {
+                    t.seq == m.cancels && !matches!(t.kind, Kind::Annulation | Kind::Peremption)
+                })
                 .map(|t| t.seq)
         })
         .collect();
     let mut b = Balance::default();
     for m in before.iter().filter(|m| key(m) < key(upto)) {
         match m.kind {
-            Kind::Inventaire if dropped.contains(&m.seq) => {}
             Kind::Annulation if dropped.contains(&m.cancels) => {}
+            _ if dropped.contains(&m.seq) => {}
             _ => apply(&mut b, m, all),
         }
     }
@@ -1778,6 +1796,53 @@ mod tests {
             cancels: target,
             ..mv(Kind::Annulation, 0.0, day, seq)
         }
+    }
+
+    /// Annuler une ligne qu'un comptage a constatée depuis ne rend pas
+    /// ses unités par-dessus le comptage : celui-ci dit ce qu'il y a au
+    /// coffre. Une sortie saisie deux fois, comptée, puis annulée.
+    #[test]
+    fn cancelling_a_line_a_count_has_seen_leaves_the_count_standing() {
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-09-01", 1),
+            mv(Kind::Sortie, 14.0, "2026-09-02", 2),
+            // La même sortie, saisie deux fois : aucune boîte n'est sortie.
+            mv(Kind::Sortie, 14.0, "2026-09-02", 3),
+            count(30.0, 2.0, "2026-09-03", 4),
+            cancel(3, "2026-09-04", 5),
+        ];
+        assert_eq!(balance(&moves).stock, 30.0, "trente au coffre, comptées");
+        // Sans comptage entre les deux, l'annulation rend bien la sortie.
+        let plain = [
+            mv(Kind::Entree, 30.0, "2026-09-01", 1),
+            mv(Kind::Sortie, 14.0, "2026-09-02", 2),
+            mv(Kind::Sortie, 14.0, "2026-09-02", 3),
+            cancel(3, "2026-09-04", 5),
+        ];
+        assert_eq!(balance(&plain).stock, 16.0);
+        // Une péremption annulée après un comptage : les boîtes rangées
+        // aux périmés, que le comptage du délivrable n'a pas vues,
+        // reviennent au délivrable.
+        let expired = [
+            mv(Kind::Entree, 10.0, "2026-09-01", 1),
+            mv(Kind::Peremption, 2.0, "2026-09-02", 2),
+            count(8.0, 8.0, "2026-09-03", 3),
+            cancel(2, "2026-09-04", 4),
+        ];
+        let b = balance(&expired);
+        assert_eq!((b.stock, b.expired), (10.0, 0.0));
+        // Et une annulation plus tardive, qui relit le registre, ne les
+        // perd pas.
+        let later = [
+            mv(Kind::Entree, 10.0, "2026-09-01", 1),
+            mv(Kind::Peremption, 2.0, "2026-09-02", 2),
+            count(8.0, 8.0, "2026-09-03", 3),
+            cancel(2, "2026-09-04", 4),
+            mv(Kind::Sortie, 1.0, "2026-09-05", 5),
+            mv(Kind::Sortie, 1.0, "2026-09-05", 6),
+            cancel(6, "2026-09-06", 7),
+        ];
+        assert_eq!(balance(&later).stock, 9.0);
     }
 
     /// La balance n'est pas une somme : un inventaire **pose** le solde.

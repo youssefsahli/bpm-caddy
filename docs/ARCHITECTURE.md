@@ -2092,7 +2092,15 @@ add clicking and typing; it is not the price of entry.
   giving back the stored `expected − quantity` lost a forgotten line
   entered afterwards at its true date, and a later count that was
   itself cancelled stopped the earlier one from cancelling. `expected`
-  is still written — it is the gap the count explained. An
+  is still written — it is the gap the count explained. **Every other
+  cancellation replays the deliverable stock the same way** (0.390):
+  undoing a line's quantity on top of a count that still stands counted
+  it twice — a duplicated Sortie, explained by the next count, then
+  cancelled, read 44 boxes for the 30 counted. A count says what is in
+  the safe; a line it has seen cannot move that. The péremption alone
+  keeps the plain reversal: it moves boxes to the expired shelf, which a
+  count of the deliverable stock does not see, and cancelling it moves
+  them back. An
   annulation cannot itself be cancelled, cannot be written twice
   (checked inside the transaction — two PCs would double the stock),
   cannot name a line of another product, and never takes a dispensing

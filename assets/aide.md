@@ -1072,7 +1072,9 @@ au nom de l'officine.
 
 Fichier dédié, chiffré comme la base, **sans suppression possible**. Une
 ligne erronée reste écrite ; une ligne d'annulation la désigne et en
-annule exactement l'effet.
+annule exactement l'effet. Un comptage posé depuis reste vrai : annuler
+une sortie saisie deux fois, que le comptage a déjà constatée, ne
+rajoute rien au stock compté.
 
 Le solde comporte deux valeurs : le stock délivrable, et les retours
 patients en attente de destruction.

@@ -14,6 +14,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   register and batch entry, scanned documents and the last menstrual
   period; they now read as the most recent such day (« 2312 » typed in
   January is the December just gone). Birth dates still require a year.
+- Narcotics register: cancelling a line that a later count had already
+  taken into account no longer adds its quantity on top of the count (a
+  duplicated delivery, counted, then cancelled, read 44 boxes for the 30
+  in the safe). Cancelling an expiry still returns its boxes to the
+  deliverable stock.
 
 ## [0.389.0] - 2026-10-10
 
