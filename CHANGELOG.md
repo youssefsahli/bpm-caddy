@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Joining the posts' group: the key is written once the join is complete.
+  A join cut while the journal was being read (the app killed, an error)
+  left a post that looked joined, synchronised, and never sent anything
+  again, and could not join again.
+
 ## [0.395.0] - 2026-10-11
 
 ### Fixed

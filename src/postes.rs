@@ -987,12 +987,21 @@ pub fn join(
     }
     // Only now, with the key and the journal in hand, is what this
     // post held replaced.
+    //
+    // **The key is written last**, once the post has its number and its
+    // capture back. Written first, a join cut during the long reading of
+    // the journal — the app killed, an error — left a key and no post:
+    // the base said « joined », synchronised, and never sent anything
+    // again (no capture without a post), and joining again was refused
+    // because the key was there. Cut before the key, the join is simply
+    // not done, and can be started again.
     db.prepare_join()?;
-    db.set_sync_local("trousseau", &hex(&joined.encode()))?;
+    let sealed = hex(&joined.encode());
     posts.trousseau = Some(joined);
     posts.keep(db)?;
     let report = posts.absorb(db, today)?;
     let post = db.finish_join(&posts.device_hex(), name, today, companion)?;
+    db.set_sync_local("trousseau", &sealed)?;
     posts.publish(db, today)?;
     // Tell the inviting post at once who joined, so it hears this
     // post's next records without waiting for anybody.

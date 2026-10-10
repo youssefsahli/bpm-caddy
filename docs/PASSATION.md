@@ -52,7 +52,13 @@ déjà voyagé — et les téléphones déjà servis gardent ce qu'ils ont reçu
 Liés : un téléphone modifié peut changer une conversation d'équipe en
 conversation entre officines (`channel`, `peers`), et le poste de bureau
 publie alors l'historique de l'équipe au réseau, sans la confirmation ni
-le journal des accès ; un téléphone se déclare lui-même `kind=''` (poste
+le journal des accès — il peut aussi, plus simplement, écrire un message
+dans une conversation entre officines existante, que le bureau publie
+sous le nom de l'officine (`admissible` ne regarde que le flux, et
+`outgoing_net_messages` ne regarde pas quel poste a écrit) ; un
+téléphone modifié peut encore écrire `left_on` ou `reach` sur les lignes
+des postes de bureau telles que les autres téléphones les voient (les
+bureaux le refusent, pas les téléphones) ; un téléphone se déclare lui-même `kind=''` (poste
 de bureau) à son arrivée ; un téléphone retiré garde sa clé, faute de
 renouvellement des clés. Les trois demandent que le poste qui invite
 écrive lui-même ce qu'il a invité.
