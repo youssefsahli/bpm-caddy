@@ -241,6 +241,11 @@ une heure avant la limite d'opérations (le bouton d'arrêt marche).
 - *Textes réécrits* : « Revenir au texte livré » sur tout un document
   (`reset_content`) efface aussi une réécriture qu'un autre poste a faite
   après l'ouverture de l'écran, sans avis.
+- *Annuaire des prescripteurs* : choisir une ligne écrit « Dr Nom »
+  seulement ; deux homonymes deviennent le même prescripteur, et la
+  vigilance « plusieurs prescripteurs ? » du registre compare ces
+  chaînes. Garder le RPPS avec la ligne (colonne et migration) et
+  comparer sur lui.
 - *Ordonnances protocolisées* : l'amoxicilline de l'enfant (50 mg/kg/j)
   s'imprime sans dose maximale par jour — à vérifier contre le texte du
   protocole (non consultable ici), rien n'a été inventé. Pour la
