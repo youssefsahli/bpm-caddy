@@ -628,7 +628,18 @@ impl Caddy {
     /// que le téléphone montrait : une entrée qu'un collègue vient de
     /// changer n'est pas détruite. `false` : l'agenda a changé, à relire.
     pub fn delete_event(&self, id: i64, shown_title: String) -> Result<bool> {
-        Ok(self.db().delete_event(id, &shown_title)?)
+        // **Pas une série depuis le téléphone.** L'agenda y montre chaque
+        // jour d'une entrée répétée sous le même identifiant, et l'appui
+        // long sur « ce mardi » supprimait toutes les réunions, passées
+        // et à venir, chez tous les postes — sans l'avertissement que le
+        // poste de bureau donne.
+        let db = self.db();
+        if db.event_repeats(id)? {
+            return Err(CaddyError::Failed {
+                reason: bpm_caddy::strings::tr("mobile_event_series").to_owned(),
+            });
+        }
+        Ok(db.delete_event(id, &shown_title)?)
     }
 
     /// Le planning de `from` à `to` : qui travaille quand. En lecture.

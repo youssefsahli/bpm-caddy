@@ -52327,6 +52327,21 @@ impl Db {
 
     /// Remove an agenda entry. Compare-and-set on the title this PC
     /// displayed, so a colleague's edited entry is never destroyed.
+    /// L'entrée d'agenda se répète-t-elle ? Un téléphone qui supprime
+    /// « ce mardi » d'une réunion hebdomadaire supprimerait la série :
+    /// il le demande d'abord.
+    pub fn event_repeats(&self, id: i64) -> Result<bool, String> {
+        use rusqlite::OptionalExtension;
+        Ok(self
+            .conn
+            .query_row("SELECT repeat_days FROM events WHERE id = ?1", [id], |r| {
+                r.get::<_, i64>(0)
+            })
+            .optional()
+            .map_err(|e| e.to_string())?
+            .is_some_and(|d| d > 0))
+    }
+
     pub fn delete_event(&self, id: i64, expected_title: &str) -> Result<bool, String> {
         let changed = self
             .conn
@@ -57422,6 +57437,42 @@ mod tests {
         db.wipe_all_data().unwrap();
         let left: Vec<i64> = db.patients().unwrap().into_iter().map(|p| p.id).collect();
         assert_eq!(left, vec![cited], "seul le dossier cité reste");
+    }
+
+    /// Une entrée répétée se reconnaît, pour qu'un téléphone ne supprime
+    /// pas la série en croyant supprimer un jour.
+    #[test]
+    fn a_repeated_event_says_it_repeats() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-evrep-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("e.db"), "secret").unwrap();
+        let weekly = db
+            .add_event_span(
+                "2026-10-06",
+                "09:00",
+                "10:00",
+                "Réunion",
+                EventCategory::Reunion,
+                "HEBDO",
+                "",
+            )
+            .unwrap();
+        let once = db
+            .add_event_span(
+                "2026-10-07",
+                "09:00",
+                "10:00",
+                "Formation",
+                EventCategory::Formation,
+                "",
+                "",
+            )
+            .unwrap();
+        assert!(db.event_repeats(weekly).unwrap());
+        assert!(!db.event_repeats(once).unwrap());
+        assert!(!db.event_repeats(9999).unwrap());
     }
 
     #[test]

@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reset of the base (« effacer toutes les données ») keeps the patient
   files the narcotics register cites, as deleting one file already did;
   every « dossier N » of the ten-year register pointed at nobody.
+- Phone companion: deleting a repeated agenda entry is refused with an
+  explanation; a long press on one day of a weekly meeting deleted the
+  whole series, past and future, on every post, without the warning the
+  desktop gives.
 
 ## [0.393.0] - 2026-10-10
 
