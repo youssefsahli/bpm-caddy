@@ -38,6 +38,60 @@ besoin de sa propre étiquette, son contenu est dans la 0.390.0).
   (« Renouveler » recopiait la QSP), carte (noms collés), libellés
   (champ sous le pli).
 
+**À trancher d'abord — un patient atteint les téléphones.** Les
+conversations entre officines vivent dans la même table que celles de
+l'équipe (`messages`, flux de l'équipe), et ce flux est l'un des quatre
+du compagnon. Un message envoyé à une officine avec un patient lié porte
+« Patient : NOM Prénom, né(e) le … » dans son texte ; ce qu'une officine
+partenaire envoie aussi. Tout cela est copié sur chaque téléphone de
+l'équipe — l'application mobile ne fait que le cacher. C'est contraire à
+« jamais un patient » (SYNC.md § 7.8). La correction est d'architecture :
+router les conversations entre officines sur un flux que le téléphone ne
+tient pas (par ligne, ou une table à part), avec une reprise de ce qui a
+déjà voyagé — et les téléphones déjà servis gardent ce qu'ils ont reçu.
+Liés : un téléphone modifié peut changer une conversation d'équipe en
+conversation entre officines (`channel`, `peers`), et le poste de bureau
+publie alors l'historique de l'équipe au réseau, sans la confirmation ni
+le journal des accès ; un téléphone se déclare lui-même `kind=''` (poste
+de bureau) à son arrivée ; un téléphone retiré garde sa clé, faute de
+renouvellement des clés. Les trois demandent que le poste qui invite
+écrive lui-même ce qu'il a invité.
+
+**Réseau d'officines (relevé, non corrigé).** Les identifiants
+`<base>:<numéro>` ne sont pas liés au signataire : un membre peut
+prendre d'avance l'identifiant d'un autre (ses événements sont alors
+ignorés ailleurs, et ses propres écritures échouent sur l'unicité), et
+une version reçue peut créer une fiche portant le nom d'une fiche réelle
+sans historique (`versions::decode` ne vérifie pas `card == key(nom)`).
+Corriger, c'est préfixer à la réception par l'auteur signé, avec une
+reprise des événements déjà rangés. Le retrait d'une rupture, lui, est
+corrigé (un retrait ne vaut que de son auteur). Rien ne borne non plus
+ce qu'un membre écrit avec le temps, et un fichier `.bpmnet` déposé dans
+le dossier d'échange est lu entier.
+
+**Postes joignables (relevé, non corrigé).** Une connexion lente tient
+le fil des postes jusqu'à 180 s (le délai de 8 s vaut par lecture) et
+une invitation jusqu'à sa fin : un délai court sur la phase non
+authentifiée suffirait. Le limiteur de coups compte par adresse et non
+par /64. Une erreur dans `auto()` saute le nettoyage (relais, adresse
+publiée, UPnP restent ouverts) : un garde à la destruction. Le relais
+rend parfois un attendant abandonné au téléphone. Corrigé : le journal
+n'est plus réécrit en entier à chaque coup frappé.
+
+**Lanceur (relevé).** Aucune vérification cryptographique du binaire
+téléchargé (la confiance est celle du compte GitHub et de TLS) ;
+signer les versions (minisign/ed25519, clé publique dans le lanceur)
+demande une paire de clés que l'officine éditrice garde. Les actions du
+workflow de publication sont citées par étiquette et non par empreinte ;
+une version est publiée dès le premier binaire envoyé, avant les autres
+plates-formes et sans attendre les tests (passer par un brouillon). Pas
+de retour à la version précédente si la nouvelle ne démarre pas.
+
+**Petits restes.** Bulletins : un champ trop long déborde sans prévenir
+(5 pt au minimum, pas de découpe). Console : `patients()` reconstruit
+toutes les cartes à chaque appel, si bien qu'une boucle d'appels tourne
+une heure avant la limite d'opérations (le bouton d'arrêt marche).
+
 **Décisions qui reviennent à l'officine (relevées, non tranchées).**
 - *Changement de poste de référence* : deux postes peuvent numéroter le
   même numéro d'ordonnancier pendant la bascule, et une ligne reçue dont
