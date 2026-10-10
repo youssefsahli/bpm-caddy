@@ -132,6 +132,27 @@ enceinte » (aucune ligne ne le rappelle) ; aucune barrière d'allergie
 **Codex (relevé).** « 1.000 mL » (point des milliers) se lit 1 mL et
 multiplie tout par mille ; les formules livrées écrivent « 1000 ».
 
+**Classes à relire (relevé).** Des alias regroupent des molécules que
+l'anneau « même classe » de la carte présente alors comme substituts :
+« IEC + diurétique » avec Tarka, Coveram et Triplixam (IEC + inhibiteur
+calcique) ; CoAprovel et Hyzaar (sartan + diurétique) avec Exforge et
+Twynsta (sartan + inhibiteur calcique) ; Iressa (EGFR) avec Sprycel,
+Tasigna et Sutent ; Temodal (alkylant) avec Xeloda, Hydréa et Lonsurf.
+L'hépatite B et les gliflozines + metformine ont été séparées ; le reste
+est un choix de granularité à faire avec la source.
+
+**Messagerie (relevé).** Le non-lu se lit à l'heure du poste qui a
+écrit : un message écrit hors ligne et synchronisé plus tard n'est
+jamais « non lu », et une horloge en avance fige le compte d'une
+conversation. Un brouillon tapé sous un nom part sous le nom choisi
+ensuite. Le téléphone ne vérifie pas, dans `messages()` et `save_file`,
+qu'une conversation demandée est visible — il ne demande que celles
+qu'il a listées, mais l'API le permettrait.
+
+**Feuilles remises (relevé).** Le plan de prise et la fiche de
+traitement impriment la posologie en cours de saisie (le champ), pas
+celle que la base garde.
+
 **Petits restes.** Bulletins : un champ trop long déborde sans prévenir
 (5 pt au minimum, pas de découpe). Console : `patients()` reconstruit
 toutes les cartes à chaque appel, si bien qu'une boucle d'appels tourne
