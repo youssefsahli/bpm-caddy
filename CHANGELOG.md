@@ -58,6 +58,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   displayed (29.6 showed « 30 mL/min » next to the « below 30 » stage).
 - Planning: a night duty on Sunday now covers Monday morning even when
   Monday is the first day shown; the morning was flagged as uncovered.
+- Weekly template: an every-other-week (or every third or fourth week)
+  template posted again from a week out of its phase was taken as
+  unchanged and nothing was written; it now moves to the weeks asked.
 
 ## [0.389.0] - 2026-10-10
 

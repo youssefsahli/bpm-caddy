@@ -38784,8 +38784,25 @@ impl App {
         // Ce que la grille décrit encore à l'identique reste en place :
         // voir `FrameForm::loaded`. Même jour de la semaine, mêmes
         // heures, même nature, même rythme, même fin.
+        //
+        // **Et même semaine de départ**, pour une semaine sur deux, trois
+        // ou quatre : c'est le jour posé qui dit quelles semaines en sont.
+        // Reposée une semaine plus tard, la trame tombait sur les autres
+        // semaines — et passait pour inchangée, si bien que rien ne
+        // s'écrivait. Les semaines paires et impaires suivent le numéro de
+        // la semaine, pas le jour posé.
         let same = |a: &db::NewShift, b: &db::NewShift| {
+            let every = match planning::Cadence::parse(&a.cadence) {
+                Some(planning::Cadence::UneSurDeux) => 2,
+                Some(planning::Cadence::UneSurTrois) => 3,
+                Some(planning::Cadence::UneSurQuatre) => 4,
+                _ => 1,
+            };
+            let in_phase = every == 1
+                || crate::date::days_between(&a.day, &b.day)
+                    .is_some_and(|d| d.rem_euclid(7 * every) == 0);
             crate::date::weekday(&a.day) == crate::date::weekday(&b.day)
+                && in_phase
                 && a.start_time == b.start_time
                 && a.end_time == b.end_time
                 && a.pause_minutes == b.pause_minutes
@@ -90410,6 +90427,44 @@ mod tests {
         assert!(covered(&s), "la garde de la veille tient le matin");
         s.shifts_eve.clear();
         assert!(!covered(&s), "sans la veille, ce test ne garderait rien");
+    }
+
+    /// **Une semaine sur deux reposée sur l'autre semaine s'écrit.** Le
+    /// jour posé dit quelles semaines en sont ; la comparaison ne le
+    /// regardait pas, la trame passait pour inchangée et rien ne
+    /// s'écrivait.
+    #[test]
+    fn a_fortnight_reposed_on_the_other_week_is_written() {
+        let (mut s, _swept) = scratch_session("trame_phase");
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "ZZ".to_owned(),
+            day: "2026-01-07".to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "19:00".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            repeat_days: 14,
+            cadence: "SUR2".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        let on = |s: &Session, day: &str| {
+            s.db.shifts_between(day, day)
+                .unwrap()
+                .iter()
+                .any(|p| p.operator == "ZZ")
+        };
+        // Quarante et une semaines après le 7 janvier : l'autre semaine.
+        assert!(!on(&s, "2026-10-21"));
+        assert!(on(&s, "2026-10-28"));
+        s.today = "2026-10-14".to_owned();
+        s.frame.operator = "ZZ".to_owned();
+        s.frame.from = "2026-10-19".to_owned();
+        super::App::frame_load(&mut s);
+        s.frame.replace = true;
+        super::App::frame_apply(&mut s);
+        assert!(on(&s, "2026-10-21"), "la semaine demandée");
+        assert!(!on(&s, "2026-10-28"), "et plus l'autre");
+        assert!(on(&s, "2026-01-07"), "les semaines d'avant restent");
     }
 
     /// **Une saisie illisible n'est pas un zéro**, au fond laissé et à
