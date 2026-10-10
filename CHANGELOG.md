@@ -51,6 +51,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CYP table: Valdoxan is read as agomelatine, not as melatonin.
 - Free period products for under-26s: a yearly period started on 29 February
   no longer opens a day early four years later.
+- Console: a short recursive script nested inside an expression no
+  longer overflows the stack and aborts the whole application; it stops
+  with an error. The script runs on a thread with a large stack and a
+  lower call depth.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

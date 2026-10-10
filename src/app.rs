@@ -8905,7 +8905,12 @@ impl Session {
     /// boucles la lirait mille fois, et rien ne garantirait que la
     /// moitié de sa réponse parle du même instant que l'autre.
     fn script_snapshot(&self) -> crate::script::Snapshot {
-        let treats = self.db.all_patient_drugs().unwrap_or_default();
+        // Groupés une fois par dossier : filtrés pour chaque patient, la
+        // copie coûtait patients × traitements au clic.
+        let mut treats: std::collections::HashMap<i64, Vec<String>> = Default::default();
+        for (id, name) in self.db.all_patient_drugs().unwrap_or_default() {
+            treats.entry(id).or_default().push(name);
+        }
         crate::script::Snapshot {
             patients: self
                 .patients
@@ -8915,11 +8920,7 @@ impl Session {
                     nom: p.last_name.clone(),
                     prenom: p.first_name.clone(),
                     naissance: p.birth_date.clone(),
-                    traitements: treats
-                        .iter()
-                        .filter(|(id, _)| *id == p.id)
-                        .map(|(_, n)| n.clone())
-                        .collect(),
+                    traitements: treats.remove(&p.id).unwrap_or_default(),
                 })
                 .collect(),
             drugs: self

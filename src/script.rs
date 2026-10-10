@@ -163,6 +163,33 @@ pub fn run_until(
     data: &Snapshot,
     stop: Arc<std::sync::atomic::AtomicBool>,
 ) -> Outcome {
+    // **Sur un fil à la pile large.** Rhai descend par récursion : une
+    // fonction qui s'appelle elle-même au fond d'une expression imbriquée
+    // passait sous ses deux bornes (profondeur d'appel, profondeur
+    // d'expression) et débordait la pile de 2 Mo d'un fil ordinaire —
+    // un débordement de pile n'est pas une panique, c'est l'application
+    // entière qui s'arrête, saisie en cours comprise. La pile est large
+    // et la profondeur d'appel basse ; l'une couvre l'autre.
+    std::thread::scope(|scope| {
+        std::thread::Builder::new()
+            .name("console".to_owned())
+            .stack_size(SCRIPT_STACK)
+            .spawn_scoped(scope, || engine_run(source, data, stop))
+            .ok()
+            .and_then(|h| h.join().ok())
+            .unwrap_or_else(|| Outcome {
+                printed: Vec::new(),
+                value: String::new(),
+                error: Some("le script s'est interrompu".to_owned()),
+                read_patients: false,
+            })
+    })
+}
+
+/// La pile du fil de la console.
+const SCRIPT_STACK: usize = 64 << 20;
+
+fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::AtomicBool>) -> Outcome {
     let stop_seen = stop;
     let printed: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let mut engine = rhai::Engine::new();
@@ -195,6 +222,7 @@ pub fn run_until(
     // façon de bloquer une application avec trois caractères.
     engine.set_max_operations(MAX_OPERATIONS);
     engine.set_max_expr_depths(64, 64);
+    engine.set_max_call_levels(16);
     engine.set_max_string_size(1_000_000);
     engine.set_max_array_size(1_000_000);
     engine.set_max_map_size(1_000_000);
@@ -768,6 +796,22 @@ pub fn insertion(candidate: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// **Une récursion au fond d'une expression ne tue pas
+    /// l'application** : elle débordait la pile d'un fil ordinaire, ce
+    /// qui arrête le processus entier. Lancée ici depuis un fil de 2 Mo,
+    /// comme le fait l'interface.
+    #[test]
+    fn a_deep_recursion_is_an_error_not_an_abort() {
+        let source = "fn f(n) { if n == 0 { 0 } else { 1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(1+(f(n-1))))))))))))))))))))) } } f(1000)";
+        let out = std::thread::Builder::new()
+            .stack_size(2 << 20)
+            .spawn(move || run(source, &Snapshot::default()))
+            .unwrap()
+            .join()
+            .unwrap();
+        assert!(out.error.is_some());
+    }
 
     fn sample() -> Snapshot {
         Snapshot {
