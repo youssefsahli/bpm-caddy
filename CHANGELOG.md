@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - TROD sheet: each protocol line now prints all its posologies and its
   caution (« contre-indiqué en cas d'allergie aux pénicillines »); only
   the first posology was printed, and never the caution.
+- Printed vaccination carnet: doses without a date are listed last, not
+  first.
 
 ## [0.392.0] - 2026-10-10
 

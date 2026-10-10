@@ -4612,7 +4612,12 @@ fn vaccination_carnet_values(
     // Oldest first on paper: a carnet is read forwards, unlike the
     // screen's table, where the dose just given belongs on top.
     let mut ordered: Vec<&crate::db::Vaccination> = lines.iter().collect();
-    ordered.sort_by(|a, b| a.given_on.cmp(&b.given_on));
+    // Les doses sans date à la fin : une chaîne vide se triait en tête
+    // d'une liste qui se lit de la plus ancienne à la plus récente.
+    ordered.sort_by(|a, b| {
+        (a.given_on.trim().is_empty(), &a.given_on)
+            .cmp(&(b.given_on.trim().is_empty(), &b.given_on))
+    });
     for line in ordered {
         let remark = if line.next_due.is_empty() {
             line.remark.clone()
