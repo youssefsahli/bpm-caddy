@@ -13256,7 +13256,8 @@ fn demo_messages(db: &Db) {
             }
         }
     }
-    if let Ok(g) = db.save_colleague_group(None, "Préparateurs", &["YS".into(), "MB".into()]) {
+    if let Ok(Some(g)) = db.save_colleague_group(None, "Préparateurs", &["YS".into(), "MB".into()])
+    {
         if let Ok(c) = db.create_conversation("", Channel::Equipe, "", &[], Some(g), &[], "CL") {
             let _ = db.post_message(
                 c,
@@ -66918,23 +66919,41 @@ impl App {
                 .map(|g| g.members.into_iter().collect())
                 .unwrap_or_default();
         }
+        // Ce que l'écran montrait du groupe choisi : l'écriture compare.
+        let shown = session
+            .msg
+            .group_pick
+            .and_then(|id| session.msg.groups.iter().find(|g| g.id == id).cloned());
         if save {
             let members: Vec<String> = session.msg.group_members.iter().cloned().collect();
-            match session.db.save_colleague_group(
-                session.msg.group_pick,
-                &session.msg.group_name,
-                &members,
-            ) {
-                Ok(id) => {
+            match session
+                .db
+                .save_colleague_group(shown.as_ref(), &session.msg.group_name, &members)
+            {
+                Ok(Some(id)) => {
                     session.msg.group_pick = Some(id);
+                    session.reload_messages(&me);
+                }
+                Ok(None) => {
+                    let said = session.stale_note("msg_group_stale");
+                    session.msg.note = Some((true, said));
+                    session.msg.group_pick = None;
                     session.reload_messages(&me);
                 }
                 Err(e) => session.msg.note = Some((true, e)),
             }
         }
         if delete {
-            if let Some(id) = session.msg.group_pick.take() {
-                let _ = session.db.delete_colleague_group(id);
+            if let Some(g) = shown {
+                session.msg.group_pick = None;
+                match session.db.delete_colleague_group(&g) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        let said = session.stale_note("msg_group_stale");
+                        session.msg.note = Some((true, said));
+                    }
+                    Err(e) => session.msg.note = Some((true, e)),
+                }
                 session.msg.group_name.clear();
                 session.msg.group_members.clear();
                 session.reload_messages(&me);
@@ -91200,6 +91219,7 @@ mod tests {
         // Un groupe : ses membres voient, les autres non.
         let g =
             s.db.save_colleague_group(None, "Préparateurs", &["MB".to_owned()])
+                .unwrap()
                 .unwrap();
         s.db.create_conversation(
             "",

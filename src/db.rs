@@ -42969,23 +42969,32 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
-    /// Créer (`id` absent) ou réécrire un groupe. Rend son identifiant.
+    /// Créer (`shown` absent) ou réécrire un groupe, **contre le groupe
+    /// que l'écran montrait**. Rend son identifiant, ou `None` quand un
+    /// autre poste l'a changé ou retiré entre-temps : écrit sans comparer,
+    /// un groupe réécrit ailleurs perdait ses membres sans que personne
+    /// ne le sache.
     pub fn save_colleague_group(
         &self,
-        id: Option<i64>,
+        shown: Option<&crate::messages::Group>,
         name: &str,
         members: &[String],
-    ) -> Result<i64, String> {
+    ) -> Result<Option<i64>, String> {
         let members = crate::messages::normalize(members).join(",");
-        match id {
-            Some(id) => {
-                self.conn
+        match shown {
+            Some(g) => {
+                let Some((raw_name, raw_members)) = self.colleague_group_raw(g)? else {
+                    return Ok(None);
+                };
+                let changed = self
+                    .conn
                     .execute(
-                        "UPDATE colleague_groups SET name = ?1, members = ?2 WHERE id = ?3",
-                        (name.trim(), members, id),
+                        "UPDATE colleague_groups SET name = ?1, members = ?2
+                         WHERE id = ?3 AND name = ?4 AND members = ?5",
+                        (name.trim(), members, g.id, raw_name, raw_members),
                     )
                     .map_err(|e| e.to_string())?;
-                Ok(id)
+                Ok((changed == 1).then_some(g.id))
             }
             None => {
                 self.conn
@@ -42998,16 +43007,50 @@ impl Db {
                         (name.trim(), members),
                     )
                     .map_err(|e| e.to_string())?;
-                Ok(self.conn.last_insert_rowid())
+                Ok(Some(self.conn.last_insert_rowid()))
             }
         }
     }
 
-    pub fn delete_colleague_group(&self, id: i64) -> Result<(), String> {
-        self.conn
-            .execute("DELETE FROM colleague_groups WHERE id = ?1", [id])
+    /// Retirer un groupe, tel que l'écran le montrait. `false` : changé
+    /// ou déjà retiré ailleurs.
+    pub fn delete_colleague_group(&self, shown: &crate::messages::Group) -> Result<bool, String> {
+        let Some((raw_name, raw_members)) = self.colleague_group_raw(shown)? else {
+            return Ok(false);
+        };
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM colleague_groups WHERE id = ?1 AND name = ?2 AND members = ?3",
+                (shown.id, raw_name, raw_members),
+            )
             .map_err(|e| e.to_string())?;
-        Ok(())
+        Ok(changed == 1)
+    }
+
+    /// La ligne d'un groupe telle que la base la tient, si elle dit
+    /// encore ce que l'écran montrait — comparée **lue**, membres
+    /// normalisés des deux côtés : une ligne écrite par une version
+    /// d'avant, sans normalisation, se compare quand même.
+    fn colleague_group_raw(
+        &self,
+        shown: &crate::messages::Group,
+    ) -> Result<Option<(String, String)>, String> {
+        use rusqlite::OptionalExtension;
+        let row: Option<(String, String)> = self
+            .conn
+            .query_row(
+                "SELECT name, members FROM colleague_groups WHERE id = ?1",
+                [shown.id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        Ok(row.filter(|(name, members)| {
+            *name == shown.name
+                && crate::messages::normalize(&split_list(members))
+                    == crate::messages::normalize(&shown.members)
+        }))
     }
 
     /// Toutes les conversations, la plus récemment active d'abord.
@@ -63161,8 +63204,24 @@ mod tests {
         let db = Db::open(&path, "secret").unwrap();
         let g = db
             .save_colleague_group(None, "Préparateurs", &["jb".into(), "AM".into()])
+            .unwrap()
             .unwrap();
         assert_eq!(db.colleague_groups().unwrap()[0].members, ["AM", "JB"]);
+        // Réécrit contre ce que l'écran montrait ; contre un écran
+        // périmé, refusé.
+        let shown = db.colleague_groups().unwrap().remove(0);
+        let mut old = shown.clone();
+        old.members = vec!["AM".into()];
+        assert_eq!(
+            db.save_colleague_group(Some(&old), "Préparateurs", &["XX".into()])
+                .unwrap(),
+            None
+        );
+        assert_eq!(
+            db.save_colleague_group(Some(&shown), "Préparateurs", &["jb".into(), "am".into()])
+                .unwrap(),
+            Some(g)
+        );
         let c = db
             .create_conversation(
                 "",
@@ -63213,7 +63272,9 @@ mod tests {
         // La marque ne recule pas.
         db.mark_read(c, "CL", "2026-09-24 08:00:00").unwrap();
         assert_eq!(db.read_marks("CL").unwrap()[&c], "2026-09-24 09:05:00");
-        db.delete_colleague_group(g).unwrap();
+        let shown = db.colleague_groups().unwrap().remove(0);
+        assert!(!db.delete_colleague_group(&old).unwrap());
+        assert!(db.delete_colleague_group(&shown).unwrap());
         assert!(db.colleague_groups().unwrap().is_empty());
         assert_eq!(db.conversation_by_uid(&conv.uid).unwrap(), Some(c));
     }

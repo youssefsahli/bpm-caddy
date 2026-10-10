@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pharmacokinetic values window: every value is read before anything is
   written, and all are written together or none; a refusal in the middle
   left half the window saved.
+- Messages: a colleague group is rewritten or deleted against what the
+  screen showed; changed on another post in between, it was overwritten
+  without notice.
 - Take-home plan, treatment sheet and labels print the posology the file
   has saved, not the one still being typed in the field.
 
