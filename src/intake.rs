@@ -590,12 +590,28 @@ fn meal_of(folded: &str) -> String {
 /// c'est-à-dire un demi-comprimé, et lire une fraction comme une
 /// notation serait la faute la plus bête de ce module.
 fn notation(folded: &str) -> Option<[Option<Take>; 4]> {
-    let token = folded
-        .split_whitespace()
-        .find(|t| t.contains('-') || t.contains('/'))?;
+    let words: Vec<&str> = folded.split_whitespace().collect();
+    let at = words
+        .iter()
+        .position(|t| t.contains('-') || t.contains('/'))?;
+    let token = words[at];
     let sep = if token.contains('-') { '-' } else { '/' };
     let parts: Vec<&str> = token.split(sep).collect();
     if parts.len() != 3 && parts.len() != 4 {
+        return None;
+    }
+    // **Une date n'est pas une grille** : « dès le 1/3/26 » se lisait
+    // 1 le matin, 3 à midi, 26 le soir. Une case de grille est petite ;
+    // l'année d'une date ne l'est pas. Les gouttes s'écrivent au tiret.
+    if sep == '/' && parts.iter().any(|p| quarters(p).is_none_or(|q| q > 12 * 4)) {
+        return None;
+    }
+    // **Un milligramme n'est pas un comprimé**, ici comme dans `placed` :
+    // « 5-0-5 mg » comptait cinq unités par prise.
+    if words
+        .get(at + 1)
+        .is_some_and(|u| matches!(*u, "mg" | "g" | "µg" | "mcg" | "ug" | "ui"))
+    {
         return None;
     }
     let mut doses = [None; 4];
@@ -1254,6 +1270,20 @@ mod tests {
         ] {
             assert_eq!(read(text).kind, Kind::Placed, "{text}");
         }
+    }
+
+    /// **Ni une date ni une dose en milligrammes ne sont une grille.**
+    #[test]
+    fn a_date_or_a_strength_is_not_a_grid() {
+        let r = read("1 cp le matin dès le 1/3/26");
+        assert_eq!(r.kind, Kind::Placed);
+        assert_eq!(r.doses[0], Some(Take { quarters: Some(4) }));
+        assert!(r.doses[1..].iter().all(Option::is_none), "{:?}", r.doses);
+        assert_ne!(read("5-0-5 mg").kind, Kind::Placed);
+        // La grille, elle, se lit toujours.
+        assert_eq!(read("1-0-1").kind, Kind::Placed);
+        assert_eq!(read("1/0/1").kind, Kind::Placed);
+        assert_eq!(read("20-0-20 gouttes").kind, Kind::Placed);
     }
 
     #[test]

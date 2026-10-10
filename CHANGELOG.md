@@ -41,6 +41,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   three a day; so did « 5 jours sur 7 », « 1 semaine sur 2 », « 21 jours
   sur 28 », « les jours impairs », « sauf le dimanche ». A day naming a
   start or an end (« à partir du lundi ») is not a rhythm.
+- Posology reading: a date (« dès le 1/3/26 ») is no longer read as a
+  1-3-26 grid (30 units a day), and a grid in milligrams (« 5-0-5 mg »)
+  is no longer counted as tablets.
 
 ## [0.390.0] - 2026-10-10
 
