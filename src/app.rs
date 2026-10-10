@@ -5733,6 +5733,10 @@ struct Session {
     protocol_header: Option<(String, String)>,
     protocol_node_edit: Option<(i64, db::NodeKind, String)>,
     protocol_walk: Option<i64>,
+    /// Le déroulé s'est arrêté sur une branche vide : l'avis reste
+    /// jusqu'au prochain déroulé. Dit dans l'image même où le déroulé
+    /// s'arrêtait, il ne se voyait jamais.
+    protocol_dead_end: bool,
     /// Team edits of the shown table, keyed by (row, col), plus the
     /// cell being edited and the last change (for the undo).
     table_cells: std::collections::HashMap<(usize, usize), String>,
@@ -6363,6 +6367,7 @@ impl Session {
             protocol_header: None,
             protocol_node_edit: None,
             protocol_walk: None,
+            protocol_dead_end: false,
             table_cells: std::collections::HashMap::new(),
             table_edit: None,
             table_undo: None,
@@ -58405,6 +58410,7 @@ impl App {
             // left over from the last déroulé would be written onto the
             // next patient's file.
             session.protocol_trail.clear();
+            session.protocol_dead_end = false;
             session.protocol_walk = if session.protocol_walk.is_some() {
                 None
             } else {
@@ -58453,6 +58459,7 @@ impl App {
             session.protocol_node_edit = None;
             session.protocol_walk = None;
             session.protocol_trail.clear();
+            session.protocol_dead_end = false;
             session.protocol_editing = false;
             session.protocol_header = None;
         }
@@ -58461,6 +58468,10 @@ impl App {
     /// The walk-through: one step at a time, answering the questions.
     fn protocol_walkthrough(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let Some(current) = session.protocol_walk else {
+            if session.protocol_dead_end {
+                ui.add_space(8.0);
+                ui.colored_label(motif::alert(), tr("proto_walk_dead_end"));
+            }
             return;
         };
         let nodes = session.protocol_nodes.clone();
@@ -58595,7 +58606,7 @@ impl App {
                     // A branch that leads nowhere: the tree is
                     // unfinished, and stopping silently would look like
                     // the application had lost the thread.
-                    ui.label(tr("proto_walk_dead_end"));
+                    session.protocol_dead_end = true;
                     session.protocol_walk = None;
                     session.protocol_trail.clear();
                 }

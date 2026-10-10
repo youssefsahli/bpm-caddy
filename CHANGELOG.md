@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   question » under an action) is now part of the protocol's versions. It
   was left out, so it never reached the network, never showed in the
   history, and restoring a version or receiving one deleted it.
+- Counter protocols: when « Dérouler » reaches a branch with no step, the
+  notice now stays on screen until the next walk; it was shown for one
+  frame and the walk silently dropped back to the tree.
 
 ## [0.391.0] - 2026-10-10
 
