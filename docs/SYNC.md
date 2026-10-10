@@ -475,8 +475,9 @@ suppression (la ligne vue). Reçue, une modification ne s'applique que
 sur la valeur qu'elle remplaçait, champ par champ ; sinon elle attend
 « à arbitrer » (`sync_conflicts`), et « Garder la mienne » renvoie la
 valeur locale comme remplaçant l'autre, ce qui remet les postes
-d'accord. Le registre, `stup_labels`, `stup_numbers`, la caisse et les
-journaux des ruptures et des versions sont **en ajout seul** : une
+d'accord. Le registre, `stup_labels`, `stup_numbers`, la caisse, le
+journal des accès et les journaux des ruptures et des versions sont **en
+ajout seul** : une
 modification reçue pour eux est refusée, et le refus se voit.
 
 Deux postes ne sont pas toujours à la même version : le lanceur les met

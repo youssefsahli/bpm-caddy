@@ -108,7 +108,10 @@ pub const TABLES: &[Table] = &[
     t("interviews", Main, Dossiers, false, true),
     t("biology", Main, Dossiers, false, true),
     t("locations", Main, Dossiers, false, true),
-    t("access_log", Main, Dossiers, false, true),
+    // En ajout seul : une ligne du journal des accès ne se réécrit ni ne
+    // s'efface depuis un autre poste. La purge de chaque poste reste chez
+    // lui (`Db::purge_accesses`).
+    t("access_log", Main, Dossiers, true, true),
     t("patient_drugs", Main, Dossiers, false, false),
     t("notes", Main, Dossiers, false, true),
     // Un favori peut nommer un dossier : il voyage sous la clé des

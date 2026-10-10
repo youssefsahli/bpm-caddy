@@ -46237,10 +46237,26 @@ impl Db {
         // journal qui a rétréci sans le dire se lit comme un journal
         // qu'on a vidé, et c'est la seule chose que cette ligne existe
         // pour empêcher.
+        //
+        // **Et chez ce poste seulement.** La durée de garde est un réglage
+        // du poste (`config.toml`) et l'horizon vient de son horloge :
+        // capturée, la suppression voyageait, et un poste réglé à sept
+        // jours — ou dont l'horloge avançait de deux ans — vidait le
+        // journal de tous. Elle se fait sans capture ; la ligne qui la
+        // consigne, elle, voyage.
         let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let removed = self
             .conn
-            .execute("DELETE FROM access_log WHERE at < ?1", [horizon])
+            .execute_batch("INSERT INTO sync_mute (mute) VALUES (1);")
+            .and_then(|()| {
+                self.conn
+                    .execute("DELETE FROM access_log WHERE at < ?1", [horizon])
+            })
+            .and_then(|n| {
+                self.conn
+                    .execute_batch("DELETE FROM sync_mute;")
+                    .map(|()| n)
+            })
             .map_err(|e| e.to_string())?;
         if removed > 0 && !self.log_access(operator, crate::audit::Act::Purge, removed as i64) {
             return Err("purge non consignée : le journal est laissé tel quel".to_owned());
@@ -56578,6 +56594,30 @@ mod tests {
         let a = Db::open(&dir.join("a.db"), "secret").unwrap();
         let b = Db::open(&dir.join("b.db"), "secret").unwrap();
         (swept, a, b)
+    }
+
+    /// **La purge du journal des accès reste chez ce poste** ; la ligne
+    /// qui la consigne voyage. Capturée, la suppression vidait le journal
+    /// de tous les postes selon le réglage et l'horloge d'un seul.
+    #[test]
+    fn purging_the_access_log_stays_on_this_post() {
+        let (_swept, a, _b) = two_posts("purge");
+        a.found_posts("aa", "Comptoir 1", "2026-09-23").unwrap();
+        let (_, upto) = a.pending_ops().unwrap();
+        a.clear_pending(upto).unwrap();
+        assert!(a.log_access("CL", crate::audit::Act::Ouvert, 7));
+        assert!(a.purge_accesses("2999-01-01", "CL").unwrap() >= 1);
+        let (ops, _) = a.pending_ops().unwrap();
+        let log: Vec<&crate::replica::Op> =
+            ops.iter().filter(|o| o.table == "access_log").collect();
+        assert!(
+            log.iter().all(|o| o.kind != crate::replica::Kind::Delete),
+            "la suppression ne voyage pas"
+        );
+        assert!(
+            log.iter().any(|o| o.kind == crate::replica::Kind::Insert),
+            "la ligne de purge voyage"
+        );
     }
 
     /// **Tout voyage, champ par champ, et deux postes ne tirent jamais le

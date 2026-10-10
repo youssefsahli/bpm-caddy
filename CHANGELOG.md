@@ -52,6 +52,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   8 heures » is read as a daily dose again; the interval written after it
   made it a per-take dose, three times too much for a child. « 0,5 mg/kg
   x 2 par jour » is read per take. The first rhythm written now governs.
+- Access log on several posts: its lines can no longer be rewritten or
+  deleted from another post, and each post's purge stays on that post.
+  One post set to keep seven days, or with its clock years ahead, purged
+  the log of every post.
 
 ## [0.390.0] - 2026-10-10
 
