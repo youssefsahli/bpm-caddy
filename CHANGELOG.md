@@ -97,6 +97,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (Skenan and Sevredol, both morphine) are no longer merged into one
   line; renewed as they were, one read « dose changée » and the other
   « arrêté ».
+- Medication reconciliation: « 1 cp le soir » against « 1 cp le matin et
+  1 cp le soir » now reads « dose changée »; a doubled dose read as
+  kept. Only a strength stated up front (« 75 mg : … ») still passes.
 
 ## [0.389.0] - 2026-10-10
 

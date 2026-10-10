@@ -524,6 +524,10 @@ fn identity(name: &str, dci: &str) -> String {
 /// laisse passer le dosage rappelé en tête et attrape le reste — « 5 mg
 /// le soir » contre « 10 mg le soir » n'est le suffixe de personne, et
 /// « 1 cp le matin » contre « 1 cp le matin et le soir » non plus.
+///
+/// **Ce qui précède le suffixe n'est qu'un dosage** : des nombres et des
+/// unités. « 1 cp le soir » est le suffixe de « 1 cp le matin et 1 cp le
+/// soir », et la dose doublée passait pour reconduite.
 fn same_dose(before: &str, after: &str) -> bool {
     let words = |s: &str| -> Vec<String> {
         crate::fuzzy::sort_key(s.trim())
@@ -543,7 +547,30 @@ fn same_dose(before: &str, after: &str) -> bool {
     } else {
         (&b, &a)
     };
-    long.ends_with(&short[..])
+    long.ends_with(&short[..]) && long[..long.len() - short.len()].iter().all(|w| strength(w))
+}
+
+/// Un mot de dosage : un nombre, une unité, ou les deux collés (« 75mg »,
+/// « 2,5 », « mg/ml »).
+fn strength(word: &str) -> bool {
+    const UNITS: [&str; 14] = [
+        "mg",
+        "g",
+        "µg",
+        "mcg",
+        "ug",
+        "ui",
+        "ml",
+        "mmol",
+        "%",
+        "microgrammes",
+        "milligrammes",
+        "gramme",
+        "grammes",
+        "unites",
+    ];
+    let unit = word.trim_start_matches(|c: char| c.is_ascii_digit() || c == '.');
+    unit.is_empty() || UNITS.contains(&unit) || unit.split('/').all(|u| UNITS.contains(&u))
 }
 
 #[cfg(test)]
@@ -736,6 +763,16 @@ Vogalène lyoc si nausées
             1,
             "{out:?}"
         );
+    }
+
+    /// Le dosage rappelé en tête passe ; une prise de plus, non.
+    #[test]
+    fn a_doubled_dose_is_not_a_kept_dose() {
+        assert!(same_dose("1 sachet le matin", "75 mg : 1 sachet le matin"));
+        assert!(same_dose("1 cp le soir", "2,5mg 1 cp le soir"));
+        assert!(!same_dose("1 cp le soir", "1 cp le matin et 1 cp le soir"));
+        assert!(!same_dose("1 cp le soir", "1 cp le matin, 1 cp le soir"));
+        assert!(!same_dose("5 mg le soir", "10 mg le soir"));
     }
 
     #[test]
