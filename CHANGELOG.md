@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.389.0] - 2026-10-10
+
 ### Added
 - Configurable campaigns: « Paramétrer » opens the campaign editor. The
   season's campaign can be customised (dates, stock thresholds, summary
