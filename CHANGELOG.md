@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Counter protocols: when « Dérouler » reaches a branch with no step, the
   notice now stays on screen until the next walk; it was shown for one
   frame and the walk silently dropped back to the tree.
+- Patient identity form on several posts: saving now compares against
+  the file as the form opened it. It compared against the copy refreshed
+  every two seconds, so a colleague's correction made meanwhile (a phone
+  number) was overwritten without notice when this post saved another
+  field.
 
 ## [0.391.0] - 2026-10-10
 

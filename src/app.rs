@@ -5840,6 +5840,14 @@ struct PatientForm {
     regime: String,
     /// `F`, `M` or empty — optional, like the birth date.
     sex: String,
+    /// Le dossier tel que le formulaire l'a ouvert — la valeur contre
+    /// laquelle l'enregistrement compare. `None` pour une création.
+    ///
+    /// Pas `viewing` : la relecture des deux secondes le rafraîchit, et
+    /// l'enregistrement comparait alors à ce qu'un autre poste venait
+    /// d'écrire et que ce formulaire n'avait jamais montré — la
+    /// correction du collègue était réécrite sans un mot.
+    base: Option<Patient>,
     error: Option<String>,
 }
 
@@ -29957,7 +29965,8 @@ impl App {
                     };
                     // CAS against the row as displayed: a colleague's
                     // concurrent correction is never wiped.
-                    let applied = session.db.update_patient(&updated, patient)?;
+                    let shown = form.base.as_ref().unwrap_or(patient);
+                    let applied = session.db.update_patient(&updated, shown)?;
                     Ok((updated, applied))
                 });
                 match outcome {
@@ -29989,8 +29998,12 @@ impl App {
                         // collision a eu lieu, que quelqu'un ait eu
                         // l'écran sous les yeux ou non.
                         let said = session.stale_note("patient_stale");
+                        let fresh = session.viewing.clone();
                         if let Some(form) = &mut session.edit_patient {
                             form.error = Some(said);
+                            // Ce que l'écran montre désormais : le prochain
+                            // enregistrement se compare à lui.
+                            form.base = fresh;
                         }
                     }
                     Err(e) => {
@@ -30626,6 +30639,7 @@ impl App {
             nir: patient.nir.clone(),
             regime: patient.regime.clone(),
             sex: patient.sex.clone(),
+            base: Some(patient.clone()),
             error: None,
         });
     }
@@ -90536,6 +90550,44 @@ mod tests {
         assert!(on(&s, "2026-10-21"), "la semaine demandée");
         assert!(!on(&s, "2026-10-28"), "et plus l'autre");
         assert!(on(&s, "2026-01-07"), "les semaines d'avant restent");
+    }
+
+    /// **Le formulaire d'identité compare à ce qu'il a ouvert**, pas à ce
+    /// que la relecture a rapporté depuis : un autre poste corrige le
+    /// téléphone, la relecture le rapporte, et l'enregistrement de ce
+    /// poste-ci (une adresse) doit se faire refuser — il réécrivait le
+    /// téléphone d'avant sans un mot.
+    #[test]
+    fn the_identity_form_compares_to_what_it_opened() {
+        let (mut s, _swept) = scratch_session("identity_base");
+        let id = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let opened =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap();
+        s.viewing = Some(opened.clone());
+        super::App::patient_edit_started(&mut s, &opened);
+        // L'autre poste.
+        let mut theirs = opened.clone();
+        theirs.phone = "0622".to_owned();
+        assert!(s.db.update_patient(&theirs, &opened).unwrap());
+        s.set_patients(s.db.patients().unwrap());
+        s.resync_viewing();
+        assert_eq!(s.viewing.as_ref().map(|p| p.phone.as_str()), Some("0622"));
+        let form = s.edit_patient.clone().unwrap();
+        let base = form.base.clone().unwrap();
+        assert_eq!(
+            base.phone, opened.phone,
+            "la base reste ce qui a été ouvert"
+        );
+        let mut mine = base.clone();
+        mine.address = "1 rue Neuve".to_owned();
+        assert!(
+            !s.db.update_patient(&mine, &base).unwrap(),
+            "refusé : périmé"
+        );
     }
 
     /// **Une saisie illisible n'est pas un zéro**, au fond laissé et à
