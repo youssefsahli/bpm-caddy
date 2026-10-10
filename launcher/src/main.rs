@@ -128,7 +128,10 @@ fn worker(shared: Arc<Shared>, ctx: egui::Context) {
     let mut phase = shared.phase.lock().unwrap();
     *phase = match outcome {
         Ok(note) => Phase::ReadyToLaunch(note),
-        Err(e) if bin_path().exists() => {
+        // Une copie **entière**, pas seulement présente : un binaire
+        // tronqué (téléchargement interrompu d'une ancienne version)
+        // échouait au lancement sans rien dire de ce qui manquait.
+        Err(e) if installed_whole() => {
             Phase::ReadyToLaunch(format!("Mise à jour impossible ({e}) — version installée"))
         }
         Err(e) => Phase::Error(e.to_string()),
