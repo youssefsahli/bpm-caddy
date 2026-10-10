@@ -48994,13 +48994,22 @@ impl Db {
     }
 
     /// Remove a rental line — a mistake at the counter, not a return.
-    /// Compare-and-set on the label displayed.
-    pub fn delete_location(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+    /// Compare-and-set on the line displayed, **dates included**: the
+    /// label alone never changes, and a return another post had just
+    /// recorded — billable — went with the line.
+    pub fn delete_location(&self, shown: &Location) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
-                "DELETE FROM locations WHERE id = ?1 AND label = ?2",
-                (id, expected_label),
+                "DELETE FROM locations WHERE id = ?1 AND label = ?2
+                   AND started_on = ?3 AND ended_on = ?4 AND renewed_on = ?5",
+                rusqlite::params![
+                    shown.id,
+                    shown.label,
+                    shown.started_on,
+                    shown.ended_on,
+                    shown.renewed_on
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -62460,9 +62469,15 @@ mod tests {
         assert_eq!(l.ended_on, "2026-04-10");
         // And it drops off the running list.
         assert!(db.running_locations().unwrap().is_empty());
-        // Deletion is compare-and-set on the label displayed.
-        assert!(!db.delete_location(id, "Autre matériel").unwrap());
-        assert!(db.delete_location(id, "Nébuliseur").unwrap());
+        // Deletion is compare-and-set on the line displayed: a line read
+        // before its return was recorded is no longer the line.
+        let mut before = l.clone();
+        before.ended_on = String::new();
+        assert!(!db.delete_location(&before).unwrap());
+        let mut renamed = l.clone();
+        renamed.label = "Autre matériel".to_owned();
+        assert!(!db.delete_location(&renamed).unwrap());
+        assert!(db.delete_location(&l).unwrap());
         assert!(db.locations_for(pid).unwrap().is_empty());
 
         let _ = std::fs::remove_file(&path);

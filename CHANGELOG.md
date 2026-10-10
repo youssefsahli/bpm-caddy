@@ -24,6 +24,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second one fail; it takes the next number.
 - Launcher: a failed write of the installed size no longer leaves the
   previous version's size behind to declare the new binary damaged.
+- Rentals: a start or return date typed without a year is a past day
+  (« 2812 » on 4 January is last 28 December, not the coming one, which
+  billed a year too much or dropped the rental from the recap); a date
+  in the future, or a return before the start, is refused.
+- Rentals: deleting a line compares its dates too; a return another post
+  had just recorded was deleted with it.
+- Narcotics register: the prescriber directory suggestions are searched
+  once per keystroke, not on every frame.
+- Self-monitoring sheets: the glucose sheet sends a loss of consciousness
+  to the 15 (it said « appelez : » with no number); the pain sheet's
+  doubled colon is gone.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

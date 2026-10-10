@@ -4402,6 +4402,10 @@ impl CampaignEdit {
     }
 }
 
+/// Les propositions de l'annuaire mémorisées : `(tapé, révision,
+/// (écrit, affiché))`.
+type PrescriberHits = (String, u64, Vec<(String, String)>);
+
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
 /// dossier.
 struct RecallRow {
@@ -4549,6 +4553,14 @@ struct Session {
     /// le chercher à chaque frappe serait une requête par caractère
     /// tapé.
     prescribers: Vec<crate::prescribers::Prescriber>,
+    /// Relu à chaque rechargement de `prescribers`, pour que les
+    /// propositions ne soient recherchées qu'à une question nouvelle.
+    prescribers_rev: u64,
+    /// Les propositions de l'annuaire pour ce qui est tapé — `(tapé,
+    /// révision, (écrit, affiché))`. Une recherche floue sur six champs
+    /// de tout l'annuaire tournait à chaque image, tant que le champ
+    /// restait rempli.
+    prescriber_hits: Option<PrescriberHits>,
     /// Les initiales déclarées dans `[ui] operator`, pour le journal des
     /// accès — voir `src/audit.rs`.
     ///
@@ -5957,6 +5969,8 @@ impl Session {
             loc_watch: Vec::new(),
             loc_notice_days: 7,
             prescribers: Vec::new(),
+            prescribers_rev: 0,
+            prescriber_hits: None,
             operator: String::new(),
             audit_keep_days: 0,
             scripts_dir: std::path::PathBuf::new(),
@@ -6452,6 +6466,7 @@ impl Session {
         // Une ouverture, comptée une fois, ici : c'est le seul endroit
         // par où passent les deux chemins de déverrouillage.
         session.prescribers = session.db.prescribers().unwrap_or_default();
+        session.prescribers_rev += 1;
         // Les compléments nutritionnels, pour que « Aller à… » les trouve
         // sans lire la base à chaque lettre.
         session.conseil.products = session.db.cno_products().unwrap_or_default();
@@ -24623,7 +24638,7 @@ impl App {
         let rows = session.locations.clone();
         let mut close: Option<(i64, String)> = None;
         let mut renew: Option<i64> = None;
-        let mut delete: Option<(i64, String)> = None;
+        let mut delete: Option<db::Location> = None;
         let mut add = false;
         motif::panel(ui, rect, Some(tr("loc_section")), |ui| {
             // Handing a machine out: the forfait comes from the options,
@@ -25103,7 +25118,7 @@ impl App {
                                                 .clicked()
                                             {
                                                 if confirming {
-                                                    delete = Some((l.id, l.label.clone()));
+                                                    delete = Some(l.clone());
                                                 } else {
                                                     session.loc_confirm_delete = Some(l.id);
                                                 }
@@ -25132,6 +25147,13 @@ impl App {
         }
         if let Some((id, typed)) = close {
             let day = Self::read_loc_date(&typed, &today);
+            // Un retour avant le départ n'est pas un retour.
+            let started = session
+                .locations
+                .iter()
+                .find(|l| l.id == id)
+                .map(|l| l.started_on.clone());
+            let day = day.filter(|d| started.is_none_or(|s| d.as_str() >= s.as_str()));
             match day {
                 Some(day) => {
                     if let Some(l) = session.locations.iter().find(|l| l.id == id).cloned() {
@@ -25172,8 +25194,8 @@ impl App {
                 }
             }
         }
-        if let Some((id, label)) = delete {
-            match session.db.delete_location(id, &label) {
+        if let Some(shown) = delete {
+            match session.db.delete_location(&shown) {
                 Ok(true) => session.load_locations(patient.id),
                 Ok(false) => {
                     session.stale("loc_stale");
@@ -25190,8 +25212,28 @@ impl App {
         if typed.trim().is_empty() {
             return Some(today.to_owned());
         }
+        // **Une location se note après coup, jamais d'avance** : le
+        // départ ou le retour d'une machine est un jour passé. Le 4
+        // janvier, « 2812 » se lisait au 28 décembre **à venir** — une
+        // location facturée un an de trop, ou, au départ, sortie du
+        // récapitulatif sans un mot. Une date sans année qui tombe après
+        // aujourd'hui est celle de l'an passé ; une date dans l'avenir
+        // écrite en entier est refusée.
         let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
-        db::parse_french_date(typed, year, db::YearHint::Future).ok()
+        let yearless = typed.chars().filter(char::is_ascii_digit).count() <= 4;
+        // `Past` refuse une date sans année (pensé pour la naissance) ;
+        // ici, sans année, c'est l'année qu'on essaie qui la donne.
+        let hint = if yearless {
+            db::YearHint::Future
+        } else {
+            db::YearHint::Past
+        };
+        let past = |y: u32| {
+            db::parse_french_date(typed, y, hint)
+                .ok()
+                .filter(|d| d.as_str() <= today)
+        };
+        past(year).or_else(|| yearless.then(|| past(year - 1)).flatten())
     }
 
     /// Hand a machine out, copying the forfait as it stands today.
@@ -51245,19 +51287,33 @@ impl App {
                                     let typed = session.stup_new_prescriber.trim().to_owned();
                                     if !session.prescribers.is_empty() && typed.chars().count() >= 2
                                     {
-                                        let hits: Vec<(String, String)> =
-                                            crate::prescribers::search(
-                                                &session.prescribers,
-                                                &typed,
-                                                5,
-                                            )
-                                            .into_iter()
-                                            // Ce qui s'écrit sur la ligne est
-                                            // court ; ce qui s'affiche pour
-                                            // choisir distingue deux homonymes.
-                                            .map(|p| (p.short(), p.label()))
-                                            .filter(|(short, _)| short.trim() != typed)
-                                            .collect();
+                                        let rev = session.prescribers_rev;
+                                        let fresh = session
+                                            .prescriber_hits
+                                            .as_ref()
+                                            .is_some_and(|(t, r, _)| *t == typed && *r == rev);
+                                        if !fresh {
+                                            let hits: Vec<(String, String)> =
+                                                crate::prescribers::search(
+                                                    &session.prescribers,
+                                                    &typed,
+                                                    5,
+                                                )
+                                                .into_iter()
+                                                // Ce qui s'écrit sur la ligne est
+                                                // court ; ce qui s'affiche pour
+                                                // choisir distingue deux homonymes.
+                                                .map(|p| (p.short(), p.label()))
+                                                .filter(|(short, _)| short.trim() != typed)
+                                                .collect();
+                                            session.prescriber_hits =
+                                                Some((typed.clone(), rev, hits));
+                                        }
+                                        let hits = session
+                                            .prescriber_hits
+                                            .as_ref()
+                                            .map(|(_, _, h)| h.clone())
+                                            .unwrap_or_default();
                                         for (short, label) in hits {
                                             if motif::list_row(
                                                 ui,
@@ -78196,6 +78252,7 @@ impl eframe::App for App {
                         };
                         let n = session.db.set_prescribers(&read.found)?;
                         session.prescribers = session.db.prescribers().unwrap_or_default();
+                        session.prescribers_rev += 1;
                         Ok((n, read.skipped, read.unverified))
                     });
                     let said = match read {
@@ -81644,6 +81701,7 @@ impl eframe::App for App {
             let said = match said {
                 Ok((n, skipped, unverified)) => {
                     session.prescribers = session.db.prescribers().unwrap_or_default();
+                    session.prescribers_rev += 1;
                     (false, trn("opts_presc_done", &[&n, &skipped, &unverified]))
                 }
                 Err(e) => (true, e),
@@ -82062,6 +82120,33 @@ mod tests {
     use crate::db::{self, Appointment, ExportRow, InterviewKind, InterviewState};
     use crate::strings::{tr, trn};
     use eframe::egui;
+
+    /// Une date de location est un jour passé : « 2812 » le 4 janvier
+    /// est le 28 décembre d'avant, et une date à venir est refusée.
+    #[test]
+    fn a_rental_date_is_never_in_the_future() {
+        assert_eq!(
+            App::read_loc_date("2812", "2027-01-04").as_deref(),
+            Some("2026-12-28")
+        );
+        assert_eq!(
+            App::read_loc_date("28/12", "2027-01-04").as_deref(),
+            Some("2026-12-28")
+        );
+        assert_eq!(
+            App::read_loc_date("0201", "2027-01-04").as_deref(),
+            Some("2027-01-02")
+        );
+        assert_eq!(
+            App::read_loc_date("151226", "2027-01-04").as_deref(),
+            Some("2026-12-15")
+        );
+        assert_eq!(App::read_loc_date("15/12/2027", "2027-01-04"), None);
+        assert_eq!(
+            App::read_loc_date("", "2027-01-04").as_deref(),
+            Some("2027-01-04")
+        );
+    }
 
     /// Le mois de l'historique de caisse se déplace et se borne **sans
     /// horloge et sans requête** : c'est de l'arithmétique, et janvier
