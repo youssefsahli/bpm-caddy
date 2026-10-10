@@ -92,7 +92,8 @@ pub fn parse_formula(text: &str) -> Vec<FormulaLine> {
             } else {
                 written
             };
-            let (quantity, unit) = match parse_amount(rest) {
+            let rest = thousands_dot(rest);
+            let (quantity, unit) = match parse_amount(&rest) {
                 Some((q, u)) => (Some(q), u.to_owned()),
                 None => (None, String::new()),
             };
@@ -120,6 +121,32 @@ fn starts_with_qsp(text: &str) -> bool {
     // suivait pas le changement de quantité, et la préparation sortait
     // à une autre concentration.
     matches!(head.trim_end_matches('.'), "qsp" | "q.s.p" | "qs" | "q.s")
+}
+
+/// **« 1.000 mL » est mille millilitres** dans une formule écrite à la
+/// française, où la virgule est décimale et le point sépare les
+/// milliers : lu « 1 », il multipliait tout le reste par mille au
+/// recalcul. Un point devant exactement trois chiffres, après un nombre
+/// de un à trois chiffres qui n'est pas zéro, et sans virgule, est un
+/// séparateur de milliers ; « 0.500 » ou « 12.5 » restent des décimaux.
+fn thousands_dot(text: &str) -> String {
+    let head: String = text
+        .chars()
+        .take_while(|c| c.is_ascii_digit() || *c == '.' || *c == ',')
+        .collect();
+    let groups: Vec<&str> = head.split('.').collect();
+    let grouped = groups.len() >= 2
+        && !head.contains(',')
+        && (1..=3).contains(&groups[0].len())
+        && !groups[0].starts_with('0')
+        && groups[1..]
+            .iter()
+            .all(|g| g.len() == 3 && g.chars().all(|c| c.is_ascii_digit()));
+    if grouped {
+        format!("{}{}", head.replace('.', ""), &text[head.len()..])
+    } else {
+        text.to_owned()
+    }
 }
 
 /// Read "100 g", "0,5 mL", "12.5 %" — the number, then whatever unit
@@ -203,8 +230,9 @@ pub fn format_quantity(value: f64) -> String {
 /// the units disagree — a formula for 100 g does not scale to 60 mL,
 /// and guessing there would be worse than saying nothing.
 pub fn scale_factor(yield_amount: &str, target: &str) -> Option<f64> {
-    let (base, base_unit) = parse_amount(yield_amount)?;
-    let (want, want_unit) = parse_amount(target)?;
+    let (yield_amount, target) = (thousands_dot(yield_amount), thousands_dot(target));
+    let (base, base_unit) = parse_amount(&yield_amount)?;
+    let (want, want_unit) = parse_amount(&target)?;
     if base <= 0.0 || want <= 0.0 {
         return None;
     }
@@ -259,6 +287,16 @@ pub fn capsule_batch_mass(dose_mg: f64, count: f64, overage_percent: f64) -> f64
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un point de milliers dans une formule n'est pas une virgule.
+    #[test]
+    fn a_thousands_dot_in_a_formula_is_a_thousand() {
+        let lines = parse_formula("Eau purifiée | 1.000 mL\nGlycérol | 0.500 g\nUrée | 12.5 g");
+        assert_eq!(lines[0].quantity, Some(1000.0));
+        assert_eq!(lines[1].quantity, Some(0.5));
+        assert_eq!(lines[2].quantity, Some(12.5));
+        assert_eq!(lines[0].scaled(0.5), "500 mL");
+    }
 
     /// « 1 000 g » est mille grammes : l'espace des milliers ne coupe
     /// pas le nombre — mais seulement devant exactement trois chiffres.

@@ -171,8 +171,9 @@ est remplacé — le refus, lui, se dit maintenant.
 enceinte » (aucune ligne ne le rappelle) ; aucune barrière d'allergie
 (l'amoxicilline est proposée quoi que dise le dossier).
 
-**Codex (relevé).** « 1.000 mL » (point des milliers) se lit 1 mL et
-multiplie tout par mille ; les formules livrées écrivent « 1000 ».
+**Codex (corrigé le 11/10).** « 1.000 mL » se lit mille dans une formule,
+sa quantité préparée et la quantité voulue ; ailleurs (biologie,
+registre), un point reste décimal.
 
 **Classes à relire (relevé).** Des alias regroupent des molécules que
 l'anneau « même classe » de la carte présente alors comme substituts :

@@ -28,6 +28,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Strep throat TROD sheet: under 15, the test is done without the Mac
   Isaac score, as the reference table says; the sheet read « no test »
   for a 12-year-old with fever only.
+- Codex: « 1.000 mL » in a formula, its yield or the target amount is a
+  thousand (French thousands dot); read as 1, it scaled everything else
+  a thousand times.
 
 ## [0.395.0] - 2026-10-11
 
