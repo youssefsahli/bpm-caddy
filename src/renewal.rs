@@ -234,9 +234,14 @@ pub fn read(p: &Prescription, today: &str, notice_days: u32) -> Stand {
     // de retard n'est pas couvert huit jours de plus, et une feuille
     // réimprimée n'est pas une délivrance. Jour inconnu, date tue.
     let dispensed_on = p.dispensed_on.trim();
-    let covered_to = (step > 0 && state != State::Over && !dispensed_on.is_empty())
-        .then(|| add_days(dispensed_on, duration - 1))
-        .flatten();
+    // **Une délivrance d'avant l'ordonnance n'est pas la sienne** : une
+    // nouvelle ordonnance tapée sur la ligne gardait le jour de la
+    // délivrance précédente, et la feuille imprimait « couvre votre
+    // traitement jusqu'au 30/08 » le 10 octobre. Mieux vaut rien.
+    let covered_to =
+        (step > 0 && state != State::Over && !dispensed_on.is_empty() && dispensed_on >= from)
+            .then(|| add_days(dispensed_on, duration - 1))
+            .flatten();
     Stand {
         state,
         step,
@@ -336,6 +341,21 @@ mod tests {
             dispensed,
             dispensed_on: String::new(),
         }
+    }
+
+    /// **Une délivrance d'avant l'ordonnance n'est pas la sienne** : la
+    /// nouvelle ordonnance gardait le jour de l'ancienne délivrance, et la
+    /// feuille annonçait une couverture finie depuis six semaines.
+    #[test]
+    fn a_delivery_older_than_the_prescription_covers_nothing() {
+        let mut rx = p("2026-10-10", 30, 0, 1);
+        rx.dispensed_on = "2026-08-01".to_owned();
+        assert_eq!(read(&rx, "2026-10-10", 7).covered_to, None);
+        rx.dispensed_on = "2026-10-10".to_owned();
+        assert_eq!(
+            read(&rx, "2026-10-10", 7).covered_to.as_deref(),
+            Some("2026-11-08")
+        );
     }
 
     /// **Pas de date, pas d'étape.**

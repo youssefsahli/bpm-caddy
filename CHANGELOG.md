@@ -71,6 +71,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sheet; « q.s. pour 100 g » and « qsp ad 100 g » now follow the
   quantity like « qsp 100 g » (the excipient stayed at 100 g); « 2 ou
   3 g » is no longer half-scaled.
+- Renewal sheet: a new prescription typed on a line no longer prints the
+  « covered until » date of the previous delivery (a date weeks in the
+  past); a delivery older than the prescription gives no date.
 
 ## [0.390.0] - 2026-10-10
 
