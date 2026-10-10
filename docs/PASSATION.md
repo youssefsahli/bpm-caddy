@@ -1,4 +1,94 @@
-# Passation — 08/10/2026
+# Passation — 10/10/2026
+
+Écrit pour reprendre sans l'ordinateur qui a servi.
+
+**Versions.** 0.389.0 (campagnes paramétrables) et 0.390.0 (corrections
+de la relecture) sont **committées sur `main` et non poussées** : aucune
+étiquette, rien sur GitHub. La 0.389.0 a passé le smoke dans les quatre
+formes ; celle de la 0.390.0 est indiquée au bas de cette section quand
+elle a tourné. Pour publier : `git push origin main`, puis
+`git tag v0.390.0 && git push origin v0.390.0` (la 0.389.0 n'a pas
+besoin de sa propre étiquette, son contenu est dans la 0.390.0).
+
+**Ce qui a été fait le 10/10.**
+- Campagnes paramétrables (le travail laissé en cours), relues avant
+  d'être committées : cinq défauts corrigés (clé de saison prise par une
+  campagne nouvelle, deux lignes de même clé venues de deux postes,
+  comparaison qui échouait contre une version plus récente, sujet
+  « appel » compté par appel et non par personne, bilan d'une campagne
+  sans vaccin). Documents de la campagne en menu sur un écran court.
+- **Relecture par domaines**, chaque fois par un agent en lecture seule
+  puis vérifiée ici contre le code avant toute correction ; chaque
+  correction a son test, qui échoue sur l'ancien code. Le détail est au
+  CHANGELOG (0.390.0) et dans les messages de commit. En bref : registre
+  (annulation comptée par-dessus un comptage, annulation en double sur
+  deux postes, registre laissé en arrière par la copie de la base, lot
+  de la boîte précédente gardé au scan), postes de versions différentes
+  (effacements jamais appliqués, questions impossibles à régler),
+  caisse (dernier comptage choisi par numéro de poste, fond et attendu
+  illisibles enregistrés à zéro), honoraires (rang lu à la date de
+  saisie), taux horaire, trame (« Remplacer » effaçait les semaines
+  passées ; une semaine sur deux reposée hors phase), garde de la veille,
+  dates sans année refusées sur sept écrans, table rénale (deux bornes),
+  biologie (seuil bas strict, d'accord avec le rein), écrasement
+  (« Lasilix Retard » répondu « oui »), carte Vitale (nom du bénéficiaire
+  suivant), calendrier et campagnes (dTcaP de la grossesse, campagne
+  préparée d'avance, grippe hors saison, COVID trop récent),
+  conciliation (deux produits d'une molécule, dose doublée), couverture
+  (« Renouveler » recopiait la QSP), carte (noms collés), libellés
+  (champ sous le pli).
+
+**Décisions qui reviennent à l'officine (relevées, non tranchées).**
+- *Changement de poste de référence* : deux postes peuvent numéroter le
+  même numéro d'ordonnancier pendant la bascule, et une ligne reçue dont
+  le numéro heurte l'index unique est comptée « en double » et
+  abandonnée — une délivrance qui manque alors au registre d'un poste.
+  Il faut une passation de la numérotation (l'ancien poste cesse avant
+  que le nouveau commence) ; c'est un protocole, pas une ligne de code.
+  L'index porte aussi sur `(ordo_year, ordo_no)` alors que la suite est
+  continue d'une année à l'autre.
+- *Effacé ici, modifié là* : un dossier supprimé sur un poste et modifié
+  sur un autre reste sur le second, sans son historique (les effacements
+  des lignes liées passent), et la question « Vu » ne remet pas les
+  postes d'accord. Choisir : rendre la suppression, ou proposer de
+  supprimer aussi.
+- *Deux postes invités en même temps* peuvent prendre le même numéro de
+  poste, donc le même bloc d'identifiants. Rare ; à fermer par le poste
+  qui invite (il réserve le numéro), pas par celui qui rejoint.
+- *Blocs d'identifiants* : rien ne prévient quand un poste approche la
+  fin de son bloc (un fondateur dont le plus grand numéro de dossier est
+  199 990 n'a que neuf numéros d'avance).
+- *Table rénale* : six lignes écrivent « entre X et Y » avec Y égal à
+  leur palier strict (édoxaban 15–50, ciprofloxacine 30–60,
+  métoclopramide 15–60, cotrimoxazole 15–30, fondaparinux 20–50,
+  dabigatran 30–50) ; à Y tout juste, elles se taisent. Trancher contre
+  chaque RCP, borne par borne — deux autres l'ont été (céfpodoxime,
+  Tarka) parce que leur source citée le disait.
+- *Conciliation* : une association prise par le préfixe de l'un de ses
+  composants (« Dafalgan codéine » lu comme Dafalgan, la codéine perdue ;
+  « MicardisPlus » comme Micardis) ; « 1 g » contre « 1000 mg » lu comme
+  un changement de dose. Une règle de mots pour l'un, une normalisation
+  des unités pour l'autre — à écrire avec des exemples réels.
+- *Couverture* : les unités qui restent d'une boîte (28 comprimés à
+  trois par jour) ne passent pas à la suivante ; l'erreur va du côté
+  prudent (la boîte suivante paraît due un jour trop tôt).
+- *Carnet* : une dose saisie au nom (« Efluelda ») sans choisir la
+  suggestion reste sans code et ne règle jamais un rappel.
+- *Carte Vitale* : les ayants droit qui portent le NIR de l'ouvrant
+  droit sont dédoublonnés avec lui.
+- *dTcaP* : un rappel fait avant l'âge du rendez-vous (64 ans, après une
+  plaie) ne compte pas pour celui de 65 ans ; à vérifier contre le HCSP.
+- *TROD angine* : la table dit « enfant à partir de 3 ans », l'ordonnance
+  ne propose rien avant 10 ans — cohérent avec le périmètre du
+  pharmacien, à confirmer.
+
+**Pièges de la machine.** Inchangés (voir plus bas). Le smoke se lance
+depuis un `git worktree` du commit à publier ; le retirer après
+(`git worktree remove`), il pèse 4 Go.
+
+---
+
+# Passation précédente — 08/10/2026
 
 Écrit pour reprendre sans l'ordinateur qui a servi : tout ce qui suit est
 dans le dépôt, rien n'est resté en local.
