@@ -817,6 +817,19 @@ fn apply(b: &mut Balance, m: &Move, all: &[&Move]) {
             let Some(target) = all.iter().find(|t| t.seq == m.cancels) else {
                 return;
             };
+            // **Une ligne ne s'annule qu'une fois.** L'écriture le refuse
+            // sur un même fichier, mais deux postes qui annulent la même
+            // sortie avant de s'être joints écrivent chacun la sienne, et
+            // le registre ne retire rien : la seconde ne fait rien, sans
+            // quoi la sortie revenait deux fois au stock.
+            let first = all.iter().any(|o| {
+                o.kind == Kind::Annulation
+                    && o.cancels == m.cancels
+                    && (o.day, o.seq) < (m.day, m.seq)
+            });
+            if first {
+                return;
+            }
             // **Annuler un comptage, c'est relire le registre comme s'il
             // n'avait pas eu lieu** — jusqu'à cette ligne, sans lui ni les
             // comptages déjà annulés. Rendre l'écart écrit à l'époque
@@ -1843,6 +1856,32 @@ mod tests {
             cancel(6, "2026-09-06", 7),
         ];
         assert_eq!(balance(&later).stock, 9.0);
+    }
+
+    /// Deux postes qui annulent la même ligne avant de s'être joints :
+    /// la sortie revient une fois, pas deux.
+    #[test]
+    fn a_line_cancelled_twice_comes_back_once() {
+        let moves = [
+            mv(Kind::Entree, 30.0, "2026-09-01", 1),
+            mv(Kind::Sortie, 14.0, "2026-09-02", 2),
+            cancel(2, "2026-09-04", 3),
+            cancel(2, "2026-09-04", 4),
+        ];
+        assert_eq!(balance(&moves).stock, 30.0);
+        let counted = [
+            mv(Kind::Entree, 10.0, "2026-09-01", 1),
+            count(9.0, 10.0, "2026-09-02", 2),
+            cancel(2, "2026-09-03", 3),
+            cancel(2, "2026-09-03", 4),
+        ];
+        assert_eq!(balance(&counted).stock, 10.0);
+        let returned = [
+            mv(Kind::Retour, 3.0, "2026-09-01", 1),
+            cancel(1, "2026-09-02", 2),
+            cancel(1, "2026-09-02", 3),
+        ];
+        assert_eq!(balance(&returned).to_destroy, 0.0);
     }
 
     /// La balance n'est pas une somme : un inventaire **pose** le solde.

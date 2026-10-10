@@ -250,7 +250,11 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     // n'apprend rien à personne.
     // Les produits déclarés comptent comme des lignes : le registre les
     // porte, et le premier numéro de l'ordonnancier avec eux.
-    if db.stup_weight().map(|(products, lines, _, _)| products + lines) == Ok(0) {
+    if db
+        .stup_weight()
+        .map(|(products, lines, _, _)| products + lines)
+        == Ok(0)
+    {
         return;
     }
     let Ok(today) = db.today_iso() else { return };

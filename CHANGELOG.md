@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Copying the base (Options › Base) now always takes the narcotics
   register file along: with products declared but no line written yet,
   it was left behind, and the copy started a new register numbered from 1.
+- Narcotics register on several posts: a line cancelled on two posts
+  before they synchronised came back twice to the stock; the second
+  cancellation now has no effect.
 
 ## [0.389.0] - 2026-10-10
 

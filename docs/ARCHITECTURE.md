@@ -2102,7 +2102,10 @@ add clicking and typing; it is not the price of entry.
   count of the deliverable stock does not see, and cancelling it moves
   them back. An
   annulation cannot itself be cancelled, cannot be written twice
-  (checked inside the transaction — two PCs would double the stock),
+  (checked inside the transaction — two PCs would double the stock;
+  that check sees one file, so two posts that cancel the same line
+  before they meet each write one, and **the second reads as without
+  effect** — the register removes nothing, its reading does),
   cannot name a line of another product, and never takes a dispensing
   number: the cancelled delivery keeps its own, and the sequence goes
   on after it. A cancelled line stays on screen and on paper, struck
