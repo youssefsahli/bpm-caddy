@@ -4117,6 +4117,58 @@ fn sample_transmissions() -> Vec<crate::db::Note> {
 /// Compile Typst source to a PDF in the temp dir and open it in the OS
 /// viewer. The file name is unique per generation: the previous PDF may
 /// still be open in the viewer (Windows locks it, and reusing the name
+/// Écrire un fichier temporaire **que seul ce compte peut lire**.
+///
+/// Les documents imprimés portent des noms, des traitements, un NIR ; le
+/// dossier temporaire du système est partagé, et sous Linux un fichier
+/// écrit avec les droits par défaut s'y lit par tout utilisateur du
+/// poste. Le lecteur de PDF tourne sous le même compte et l'ouvre.
+pub fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        use std::io::Write;
+        use std::os::unix::fs::OpenOptionsExt;
+        let mut f = std::fs::OpenOptions::new()
+            .write(true)
+            .create(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(bytes)
+    }
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, bytes)
+    }
+}
+
+/// Retirer du dossier temporaire ce que l'application y a laissé il y a
+/// plus d'un jour : les documents imprimés, les bulletins, les pièces
+/// ouvertes. Rien ne les effaçait, et un poste en gardait des années.
+/// Un jour, et non tout de suite : le lecteur de PDF peut l'avoir ouvert.
+pub fn sweep_private() {
+    let Ok(dir) = std::fs::read_dir(std::env::temp_dir()) else {
+        return;
+    };
+    let day = std::time::Duration::from_secs(24 * 3600);
+    for entry in dir.flatten() {
+        let name = entry.file_name();
+        let name = name.to_string_lossy();
+        if !(name.starts_with("bpm_caddy_") || name.starts_with("bpm-caddy-piece-")) {
+            continue;
+        }
+        let old = entry
+            .metadata()
+            .and_then(|m| m.modified())
+            .ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > day);
+        if old {
+            let _ = std::fs::remove_file(entry.path());
+        }
+    }
+}
+
 /// would fail).
 fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
     let world = PdfWorld::new(source);
@@ -4131,7 +4183,7 @@ fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
         .map(|d| d.as_secs())
         .unwrap_or(0);
     let out = std::env::temp_dir().join(format!("bpm_caddy_{stem}_{stamp}.pdf"));
-    std::fs::write(&out, pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
+    write_private(&out, &pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
     // Compté ici et nulle part ailleurs : les vingt et un `open_*`
     // passent tous par cette fonction, et compter chez chacun d'eux
@@ -4512,7 +4564,7 @@ pub fn open_bulletin(
         patient.id,
         kind.as_str().to_lowercase()
     ));
-    std::fs::write(&out, bytes).map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
+    write_private(&out, &bytes).map_err(|e| format!("écriture du bulletin impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
     crate::telemetry::tally(crate::telemetry::Signal::Printed);
     Ok(out)
@@ -8302,6 +8354,19 @@ mod tests {
     /// déclarer est un marqueur que l'éditeur ne montre pas, donc que
     /// personne n'utilisera — et que la première réécriture du modèle
     /// fera disparaître sans que rien ne le dise.
+    /// Un document imprimé, écrit au dossier temporaire, ne se lit que
+    /// par ce compte.
+    #[cfg(unix)]
+    #[test]
+    fn a_printed_document_is_readable_by_this_account_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let path = std::env::temp_dir().join(format!("bpm_caddy_test_{}.pdf", std::process::id()));
+        write_private(&path, b"%PDF-").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(mode, 0o600);
+    }
+
     #[test]
     fn every_document_declares_exactly_the_markers_its_template_writes() {
         for d in DOCS {

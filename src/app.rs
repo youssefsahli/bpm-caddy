@@ -109,6 +109,7 @@ fn spawn_daily_backup(
             std::thread::sleep(std::time::Duration::from_secs(10));
             opened = Db::open(&db_path, &password);
         }
+        crate::pdf::sweep_private();
         if let Ok(db) = opened {
             daily_backup(&db, &db_path, &password, keep);
             daily_scans_backup(&db, &db_path, scans_keep);
@@ -48093,7 +48094,7 @@ impl App {
                     let ext = crate::scans::Media::from_key(&media)
                         .map_or("bin", crate::scans::Media::extension);
                     let path = std::env::temp_dir().join(format!("bpm-caddy-piece-{id}.{ext}"));
-                    let result = std::fs::write(&path, &bytes)
+                    let result = crate::pdf::write_private(&path, &bytes)
                         .map_err(|e| e.to_string())
                         .and_then(|()| open::that_detached(&path).map_err(|e| e.to_string()));
                     if let Err(e) = result {
@@ -81534,7 +81535,14 @@ impl eframe::App for App {
         }
         if let (Some(to), State::Unlocked(session)) = (&bundle_out, &self.state) {
             let said = match session.db.export_bundle(to, &session.password) {
-                Ok(()) => (false, trf("opts_bundle_done", to.display())),
+                Ok(()) => {
+                    // Toute la base sort de l'officine : c'est un export,
+                    // et il s'écrit au journal comme les autres.
+                    session
+                        .db
+                        .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+                    (false, trf("opts_bundle_done", to.display()))
+                }
                 Err(e) => (true, e),
             };
             if let Some(editor) = &mut self.options {
@@ -81697,6 +81705,12 @@ impl eframe::App for App {
             } else {
                 Err(tr("opts_db_locked").to_owned())
             };
+            // Une copie de la base entière est un export : au journal.
+            if let (Ok(()), State::Unlocked(session)) = (&result, &self.state) {
+                session
+                    .db
+                    .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+            }
             if let Some(editor) = &mut self.options {
                 match result {
                     Ok(()) => {

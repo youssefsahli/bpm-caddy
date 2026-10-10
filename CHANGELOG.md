@@ -59,6 +59,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Audit window: it no longer creates a base when the configured one is
   missing (an unmounted share), nor opens with an empty password; it
   says what is wrong.
+- Privacy: printed documents, bulletins and opened scanned pieces are
+  written to the temporary folder readable by this account only (they
+  were readable by every user of the machine on Linux), and those older
+  than a day are removed at startup; nothing removed them. Copying the
+  base and exporting the bundle are now written to the access log, like
+  the CSV exports.
 
 ## [0.390.0] - 2026-10-10
 
