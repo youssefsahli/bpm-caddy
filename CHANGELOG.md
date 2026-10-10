@@ -21,6 +21,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   every two seconds, so a colleague's correction made meanwhile (a phone
   number) was overwritten without notice when this post saved another
   field.
+- Narcotics register: if its file is missing or empty while daily copies
+  of it exist, the application no longer recreates an empty register; it
+  stops and names the copy to put back. Recreated, the empty register
+  started a new numbering, and the daily rotation then deleted every copy
+  of the real one.
 
 ## [0.391.0] - 2026-10-10
 

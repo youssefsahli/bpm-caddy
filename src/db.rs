@@ -1706,6 +1706,31 @@ pub fn backup_prefix(db_path: &Path, kind: Option<&str>) -> String {
     }
 }
 
+/// La dernière copie quotidienne du registre, **quand le registre lui-même
+/// manque** (absent ou vide) : de quoi refuser de le recréer neuf. `None`
+/// quand le registre est là, ou qu'aucune copie n'existe (une installation
+/// neuve, ou une officine qui n'a encore rien inscrit).
+pub fn lost_register(db_path: &Path) -> Option<PathBuf> {
+    let present = std::fs::metadata(stups_path(db_path)).is_ok_and(|m| m.len() > 0);
+    if present {
+        return None;
+    }
+    let prefix = backup_prefix(db_path, Some("stups"));
+    let mut copies: Vec<PathBuf> = std::fs::read_dir(backup_dir(db_path))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| {
+            p.file_name()
+                .and_then(|n| n.to_str())
+                .is_some_and(|n| n.starts_with(&prefix) && n.ends_with(".db"))
+                && std::fs::metadata(p).is_ok_and(|m| m.len() > 0)
+        })
+        .collect();
+    copies.sort();
+    copies.pop()
+}
+
 /// What the backup folder actually holds.
 #[derive(Clone, PartialEq, Eq, Debug, Default)]
 pub struct BackupState {
@@ -42025,6 +42050,23 @@ impl Db {
             std::fs::create_dir_all(parent)
                 .map_err(|e| format!("dossier de données inaccessible : {e}"))?;
         }
+        // **Un registre disparu ne se recrée pas en silence.** Absent ou
+        // vide, le fichier du registre était recréé neuf : l'ordonnancier
+        // repartait de rien, l'équipe redéclarait ses produits, les copies
+        // quotidiennes reprenaient sous le même nom — et la rotation
+        // effaçait, jour après jour, toutes celles du vrai registre, le
+        // seul fichier de la maison qu'on ne reconstitue pas. Quand des
+        // copies d'un registre existent, l'ouverture s'arrête et dit
+        // laquelle remettre en place.
+        if let Some(copy) = lost_register(path) {
+            return Err(format!(
+                "Le registre des stupéfiants est introuvable ou vide à côté de la base \
+                 ({}), alors que des copies en existent. Remettre en place la dernière \
+                 ({}) sous ce nom avant d'ouvrir l'application.",
+                stups_path(path).display(),
+                copy.display()
+            ));
+        }
         let conn = Connection::open(path).map_err(|e| format!("ouverture impossible : {e}"))?;
         // The database may sit on a shared network drive with several
         // PCs writing: wait for a colleague's transaction instead of
@@ -57238,6 +57280,32 @@ mod tests {
             12
         )
         .is_some());
+    }
+
+    /// **Un registre disparu ne se recrée pas en silence** quand des copies
+    /// en existent : l'ouverture dit laquelle remettre en place.
+    #[test]
+    fn a_lost_register_is_not_recreated_empty() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-lostreg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("backups")).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("base.db");
+        // Une installation neuve : rien n'empêche de créer.
+        drop(Db::open(&path, "secret").unwrap());
+        // Le registre a disparu, et une copie de lui existe.
+        std::fs::write(
+            dir.join("backups").join("base_stups-2026-10-01.db"),
+            b"copie",
+        )
+        .unwrap();
+        std::fs::remove_file(stups_path(&path)).unwrap();
+        let err = Db::open(&path, "secret").err().unwrap();
+        assert!(err.contains("base_stups-2026-10-01.db"), "{err}");
+        assert!(!stups_path(&path).exists(), "rien n'a été recréé");
+        // Vide, c'est pareil.
+        std::fs::write(stups_path(&path), b"").unwrap();
+        assert!(Db::open(&path, "secret").is_err());
     }
 
     #[test]
