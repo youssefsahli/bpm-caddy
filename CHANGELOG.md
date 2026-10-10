@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.390.0] - 2026-10-10
+
 ### Fixed
 - Dates of past events typed without a year (« 0810 », « 08/10 ») were
   refused on the delivery coverage, the prescription date, the narcotics
