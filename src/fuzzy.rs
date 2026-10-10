@@ -1,17 +1,25 @@
 //! Diacritic-insensitive subsequence matching: typing "jndp" retrieves
 //! "Jean Dupont".
 
-/// Lowercase and strip the accents used in French names.
+/// Lowercase and strip the accents used in French names — and in the
+/// names a French counter sees: « João », « Muñoz », « Øster », « Haÿ ».
+/// Missed, they did not just fail a search: the search falls into quick
+/// creation, and the miss became a second file for the same person.
+///
+/// One character for one: « œ » and « æ » would need two, and this is
+/// the allocation-free hot path, so they stay as they are.
 pub fn fold(c: char) -> char {
     // Full Unicode lowercasing: 'É' → 'é' ('to_ascii_lowercase' would
     // leave uppercase accented letters untouched).
     let c = c.to_lowercase().next().unwrap_or(c);
     match c {
-        'à' | 'â' | 'ä' => 'a',
+        'à' | 'â' | 'ä' | 'á' | 'ã' | 'å' => 'a',
         'é' | 'è' | 'ê' | 'ë' => 'e',
-        'î' | 'ï' => 'i',
-        'ô' | 'ö' => 'o',
-        'ù' | 'û' | 'ü' => 'u',
+        'î' | 'ï' | 'í' | 'ì' => 'i',
+        'ô' | 'ö' | 'ó' | 'ò' | 'õ' | 'ø' => 'o',
+        'ù' | 'û' | 'ü' | 'ú' => 'u',
+        'ÿ' | 'ý' => 'y',
+        'ñ' => 'n',
         'ç' => 'c',
         c => c,
     }
@@ -30,9 +38,12 @@ pub fn fold(c: char) -> char {
 /// moment the query is exhausted instead of scanning the rest of a
 /// monograph field that can no longer change the answer.
 pub fn score(query: &str, target: &str) -> Option<i32> {
+    // **Ni espace ni ponctuation dans la question** : la cible les saute
+    // déjà, mais un trait d'union tapé (« jean-pierre ») devait se
+    // retrouver dans le nom rangé, et « Jean Pierre » ne venait pas.
     let mut q = query
         .chars()
-        .filter(|c| !c.is_whitespace())
+        .filter(|c| c.is_alphanumeric())
         .map(fold)
         .peekable();
     if q.peek().is_none() {
@@ -194,9 +205,11 @@ pub fn index_letter(s: &str) -> char {
 /// Like [`score`], also returning the char indices of `target` that
 /// matched (ascending), so the UI can highlight them.
 pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)> {
+    // Le même filtre que [`score`] : sinon une question trouvée n'aurait
+    // pas de lettres à éclairer.
     let q: Vec<char> = query
         .chars()
-        .filter(|c| !c.is_whitespace())
+        .filter(|c| c.is_alphanumeric())
         .map(fold)
         .collect();
     if q.is_empty() {
@@ -228,6 +241,27 @@ pub fn score_with_indices(query: &str, target: &str) -> Option<(i32, Vec<usize>)
 #[cfg(test)]
 mod tests {
     use super::score;
+
+    /// Ce qu'un comptoir français tape et range : les accents d'ailleurs,
+    /// et la ponctuation d'un côté seulement. Manqué, le nom menait à la
+    /// création — un second dossier pour la même personne.
+    #[test]
+    fn names_from_elsewhere_and_typed_punctuation_are_found() {
+        for (query, target) in [
+            ("joao", "João Silva"),
+            ("munoz", "Pedro Muñoz"),
+            ("oster", "Øster Karen"),
+            ("hay", "Haÿ Lucie"),
+            ("jean-pierre", "Jean Pierre Martin"),
+            ("d'almeida", "Dalmeida Rui"),
+        ] {
+            assert!(score(query, target).is_some(), "{query} → {target}");
+            assert!(
+                super::score_with_indices(query, target).is_some(),
+                "{query} → {target}"
+            );
+        }
+    }
 
     #[test]
     fn initials_match() {

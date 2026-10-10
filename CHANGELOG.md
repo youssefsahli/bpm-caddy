@@ -15,6 +15,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Carte Vitale: a file created from a card reading now keeps the card's
   NIR. It was dropped, so the next reading of the same card found no
   file and offered to create the person a second time.
+- Patient search now finds names with accents from other languages
+  (« João », « Muñoz », « Øster », « Haÿ ») and queries typed with
+  punctuation (« jean-pierre » finds « Jean Pierre »). A miss fell into
+  quick creation and made a second file for the same person.
 
 ## [0.390.0] - 2026-10-10
 
