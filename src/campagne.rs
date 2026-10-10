@@ -1488,6 +1488,15 @@ pub fn recalls(
         if !listed {
             continue;
         }
+        // Le COVID d'une dose trop récente : dû, mais pas avant le jour
+        // que le délai donne — le détail le dit, et l'appel attend ce
+        // jour-là plutôt que de proposer une injection qu'on refuserait.
+        if s.rule == Rule::Calendar
+            && code == "COVID"
+            && vaccines::covid_ready_from(p.birth, at, &p.doses).is_some()
+        {
+            continue;
+        }
         // Ce qui règle le sujet : assez de doses ou d'actes sur la durée,
         // ou, au milieu d'une série, la suivante pas encore due.
         let done = settled_on(p, s, campaign, today);
@@ -2041,6 +2050,19 @@ mod tests {
         // Vaccinée cette saison-ci : plus rien à rappeler.
         let done = vec![person(1, "1956-01-01", vec![dose("GRIPPE", "2026-10-15")])];
         assert!(recalls(&done, &[], &c, "GRIPPE", "2026-10-20").is_empty());
+    }
+
+    /// **Le COVID d'une dose trop récente attend son jour** : le dossier
+    /// dit « à partir du 01/01/2027 », et la liste n'appelle pas avant.
+    #[test]
+    fn a_covid_dose_too_recent_waits_for_its_day() {
+        let c = default_campaign("2026-10-10");
+        let people = vec![person(1, "1956-01-01", vec![dose("COVID", "2026-07-01")])];
+        assert!(recalls(&people, &[], &c, "COVID", "2026-10-10").is_empty());
+        assert_eq!(
+            ids(&recalls(&people, &[], &c, "COVID", "2027-01-02")),
+            vec![1]
+        );
     }
 
     /// Le pneumocoque : 65 ans et plus sans dose au carnet.

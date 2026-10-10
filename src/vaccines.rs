@@ -741,6 +741,28 @@ pub fn due_lines_with(birth: &str, today: &str, doses: &[Dose], ddr: &str) -> Ve
     out
 }
 
+/// Le jour à partir duquel la prochaine dose de COVID est possible,
+/// quand la dernière est trop récente : six mois, trois à 80 ans et plus
+/// (calendrier 2026). `None` quand rien n'est à attendre.
+///
+/// La ligne du dossier dit « dû, à partir du … » ; la liste des rappels
+/// d'une campagne, elle, n'appelle pas avant ce jour-là.
+pub fn covid_ready_from(birth: &str, today: &str, doses: &[Dose]) -> Option<(u32, String)> {
+    let prev = doses
+        .iter()
+        .filter(|d| d.code == "COVID" && !d.date.is_empty())
+        .map(|d| d.date)
+        .max()?;
+    let months = if crate::db::age_on(birth, today).is_some_and(|a| a >= 80) {
+        3
+    } else {
+        6
+    };
+    crate::date::add_months(prev, i64::from(months))
+        .filter(|from| from.as_str() > today)
+        .map(|from| (months, from))
+}
+
 fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     let age = crate::db::age_on(birth, today);
     let birth_year: Option<u32> = birth.get(..4).and_then(|y| y.parse().ok());
@@ -825,9 +847,15 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     {
         let season = flu_season_start(today);
         let done = last("GRIPPE").is_some_and(|d| d >= season.as_str());
+        // **Dû pendant la saison seulement**, de septembre (on appelle pour
+        // prendre rendez-vous) à février. En juillet, la ligne disait
+        // « campagne en cours » et la personne était due d'un vaccin qui
+        // n'est pas disponible.
+        let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+        let in_season = matches!(month, 9..=12 | 1 | 2);
         let level = if done {
             DueLevel::Ok
-        } else if age.is_some_and(|a| a >= 65) {
+        } else if age.is_some_and(|a| a >= 65) && in_season {
             DueLevel::Due
         } else {
             DueLevel::Ask
@@ -838,6 +866,9 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             level,
             detail: if done {
                 "Dose de la campagne en cours enregistrée.".to_owned()
+            } else if age.is_some_and(|a| a >= 65) && !in_season {
+                "Hors campagne : la prochaine commence à l'automne. À 65 ans et plus : Efluelda ou Fluad de préférence."
+                    .to_owned()
             } else if age.is_some_and(|a| a >= 65) {
                 // Calendrier 2026 : à 65 ans et plus, le vaccin haute dose
                 // ou adjuvanté de préférence ; la dose standard reste
@@ -866,22 +897,19 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
                 .to_owned()
         };
         if !done {
-            if let Some(prev) = last("COVID") {
-                let months = if age.is_some_and(|a| a >= 80) { 3 } else { 6 };
-                if let Some(from) = crate::date::add_months(prev, months) {
-                    if from.as_str() > today {
-                        detail = format!(
-                            "Dernière dose le {} : délai minimal de {months} mois, soit à partir du {}{}.",
-                            crate::db::format_french_date(prev),
-                            crate::db::format_french_date(&from),
-                            if months == 6 {
-                                " (3 mois en cas d'immunodépression)"
-                            } else {
-                                ""
-                            },
-                        );
-                    }
-                }
+            if let (Some(prev), Some((months, from))) =
+                (last("COVID"), covid_ready_from(birth, today, doses))
+            {
+                detail = format!(
+                    "Dernière dose le {} : délai minimal de {months} mois, soit à partir du {}{}.",
+                    crate::db::format_french_date(prev),
+                    crate::db::format_french_date(&from),
+                    if months == 6 {
+                        " (3 mois en cas d'immunodépression)"
+                    } else {
+                        ""
+                    },
+                );
             }
         }
         out.push(DueLine {
@@ -3212,6 +3240,29 @@ mod tests {
         let (_, detail) = find(&due_lines("1940-01-01", today, &spring), "COVID");
         assert!(!detail.contains("délai"), "{detail}");
     }
+    /// **La grippe n'est due que pendant la saison** : en juillet, la
+    /// ligne disait « campagne en cours » pour un vaccin indisponible.
+    #[test]
+    fn the_flu_is_owed_in_season_only() {
+        let find = |lines: &[DueLine]| {
+            lines
+                .iter()
+                .find(|l| l.code == "GRIPPE")
+                .map(|l| (l.level, l.detail.clone()))
+                .unwrap()
+        };
+        let (level, detail) = find(&due_lines("1956-01-01", "2026-07-15", &[]));
+        assert_eq!(level, DueLevel::Ask);
+        assert!(detail.starts_with("Hors campagne"), "{detail}");
+        for day in ["2026-09-10", "2026-12-01", "2027-02-20"] {
+            assert_eq!(
+                find(&due_lines("1956-01-01", day, &[])).0,
+                DueLevel::Due,
+                "{day}"
+            );
+        }
+    }
+
     /// Ce que le carnet signale au moment de noter une dose.
     #[test]
     fn the_carnet_warns_before_a_dose_it_would_question() {

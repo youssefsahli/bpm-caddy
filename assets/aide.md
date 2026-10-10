@@ -900,8 +900,10 @@ restent rangés sous sa clé, même si ses dates changent.
 pour la grippe, le COVID-19, le VRS, le pneumocoque ou le zona (65 ans et plus,
 grossesse en cours selon la date des dernières règles, 75 ans et plus
 pour le VRS ; pour le zona, la seconde dose à partir de deux mois après
-la première)
-et qui n'ont aucune dose de la saison au carnet. Les personnes les plus
+la première ; pour le COVID-19, pas avant la fin du délai depuis la
+dernière dose)
+et qui n'ont aucune dose de la saison au carnet. Une campagne qui n'a
+pas encore commencé se lit à son premier jour. Les personnes les plus
 âgées apparaissent en premier. Après l'appel, un bouton note l'issue :
 **Prévenu**, **Vacciné ailleurs** et **Refus** retirent le dossier de la
 liste pour la saison ; **Message** le laisse, avec la date de l'appel.

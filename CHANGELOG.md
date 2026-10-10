@@ -89,6 +89,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Campaigns prepared ahead of their season are read as of their first
   day: in August, last winter's flu dose counted as this season's and
   the person was not listed for the coming campaign.
+- Vaccination calendar: from March to August, the flu line no longer
+  says « Campagne en cours » and owed; it reads « hors campagne ». A
+  COVID campaign no longer lists someone whose last dose is too recent:
+  the file says from which day, and the recall waits for it.
 
 ## [0.389.0] - 2026-10-10
 
