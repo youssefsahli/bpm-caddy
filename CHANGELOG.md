@@ -46,6 +46,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   is no longer counted as tablets.
 - Posology reading: « 1 1/2 cp le soir » is read as one and a half, not
   a half; coverage said the box lasted three times as long.
+- Posology reading: abbreviated takes per day (« 2x/j », « 2 fois/j »,
+  « x 2/j ») are counted; the sheet printed « 1 prise(s) par jour ».
 
 ## [0.390.0] - 2026-10-10
 

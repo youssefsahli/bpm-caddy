@@ -831,6 +831,36 @@ fn per_day(folded: &str) -> Option<u32> {
     }) {
         return None;
     }
+    // **Les abréviations** : « 2x/j », « 2 x/j », « 2 fois/j »,
+    // « 1 cp x 2/j ». Lues seulement par « par jour », elles faisaient
+    // une prise par jour, imprimée sur la fiche. « 2 x 3/j », qui peut
+    // dire l'un ou l'autre, n'est pas tranché ici.
+    let per = |w: &str| {
+        matches!(
+            w,
+            "/j" | "/jour" | "x/j" | "x/jour" | "fois/j" | "fois/jour"
+        )
+    };
+    let count = |w: &str| w.parse::<u32>().ok().filter(|n| (1..=6).contains(n));
+    for (i, w) in words.iter().enumerate() {
+        let next = words.get(i + 1).copied().unwrap_or("");
+        let found = if let Some(n) = w.strip_suffix("x/j").or_else(|| w.strip_suffix("x/jour")) {
+            count(n)
+        } else if let Some(n) = w.strip_prefix('x').and_then(|r| r.strip_suffix("/j")) {
+            count(n)
+        } else if *w == "x" {
+            next.strip_suffix("/j")
+                .or_else(|| next.strip_suffix("/jour"))
+                .and_then(count)
+        } else if per(next) && next != "/j" && next != "/jour" {
+            count(w)
+        } else {
+            None
+        };
+        if found.is_some() {
+            return found;
+        }
+    }
     let folded = head.as_str();
     for (needle, times) in [
         ("6 fois par jour", 6),
@@ -1320,6 +1350,23 @@ mod tests {
             read("1 cp le matin et 1/2 le soir").doses[2],
             Some(Take { quarters: Some(2) })
         );
+    }
+
+    /// Les abréviations du nombre de prises : « 2x/j » n'est pas une prise
+    /// par jour.
+    #[test]
+    fn the_abbreviated_number_of_takes_is_read() {
+        for (text, n) in [
+            ("1 cp 2x/j", 2),
+            ("1 cp 2 x/j", 2),
+            ("1 cp 2 fois/j", 2),
+            ("1 cp 3 fois/jour", 3),
+            ("1 cp x 2/j", 2),
+            ("1 cp x3/j", 3),
+            ("1 cp/j", 1),
+        ] {
+            assert_eq!(per_day(text), Some(n), "{text}");
+        }
     }
 
     #[test]
