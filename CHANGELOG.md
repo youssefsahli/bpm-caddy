@@ -22,6 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   change against « 1-0-0 ».
 - Two posts storing a scanned piece at the same moment no longer make the
   second one fail; it takes the next number.
+- Launcher: a failed write of the installed size no longer leaves the
+  previous version's size behind to declare the new binary damaged.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

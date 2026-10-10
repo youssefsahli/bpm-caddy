@@ -282,6 +282,11 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
             return Err(e.into());
         }
     }
+    // L'ancienne taille part **avant** le nouveau binaire : si sa
+    // réécriture échoue ensuite (disque plein), une taille restée de la
+    // version d'avant déclarait abîmé le binaire neuf, retéléchargé à
+    // chaque lancement — et refusé hors ligne.
+    let _ = std::fs::remove_file(size_file());
     if let Err(e) = std::fs::rename(&tmp, &bin) {
         // Sous Windows, un binaire en cours d'exécution ne se remplace
         // pas : la version installée reste, et le temporaire part.
