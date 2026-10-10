@@ -61,6 +61,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Charts: the wash under a curve that dips no longer covers the area
   above the dip.
 - A `text_scale = nan` written by hand in config.toml falls back to 1.
+- Sync journal: a correction that does not open under the officine's key
+  corrects nothing. A phone could send an unreadable record « correcting »
+  a patient record, and posts that had not applied it yet never would.
+- Sync journal: a record a peer explicitly asks for is sent even when it
+  lies below what the peer holds (the gap a cut-off round leaves); it was
+  refused, marked unavailable, and never received. Each batch is sent
+  parents before children.
+- Sync journal: the frontier walks at most the 64 newest heads and stops
+  where an earlier walk went; a peer creating many heads made every
+  later sync slower.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

@@ -65,6 +65,9 @@ pub struct Reading {
     pub unopened: Vec<Hash>,
 }
 
+/// How many heads [`Journal::frontier`] walks down from.
+const FRONTIER_HEADS: usize = 64;
+
 /// Every record this post holds.
 #[derive(Default)]
 pub struct Journal {
@@ -127,9 +130,19 @@ impl Journal {
     /// under it is then known to be shared; the doubling distances find
     /// the common ground after longer separations too, at a cost of a
     /// few hashes per head rather than one per record.
+    ///
+    /// **Bounded in what a peer can make it cost.** Heads are free to
+    /// create — a record without a parent is one — and each was walked
+    /// to the root, on every round of every later sync. The newest
+    /// [`FRONTIER_HEADS`] heads are walked, and a walk stops where an
+    /// earlier one already went: below that, the ground is shared.
     pub fn frontier(&self) -> Vec<Hash> {
-        let mut out: Vec<Hash> = self.heads();
-        for head in self.heads() {
+        let mut heads = self.heads();
+        heads.sort_by_key(|h| std::cmp::Reverse(self.records.get(h).map_or(0, |r| r.lamport())));
+        let mut out: Vec<Hash> = heads.clone();
+        let mut listed: BTreeSet<Hash> = out.iter().copied().collect();
+        let mut walked: BTreeSet<Hash> = BTreeSet::new();
+        for head in heads.into_iter().take(FRONTIER_HEADS) {
             let mut at = head;
             let mut step = 0usize;
             let mut next_mark = 1usize;
@@ -140,8 +153,11 @@ impl Journal {
             {
                 step += 1;
                 at = parent;
+                if !walked.insert(at) {
+                    break;
+                }
                 if step == next_mark {
-                    if !out.contains(&at) {
+                    if listed.insert(at) {
                         out.push(at);
                     }
                     next_mark *= 2;
@@ -302,8 +318,14 @@ impl Journal {
         let mut found = Vec::new();
         let mut seen = BTreeSet::new();
         let mut walk: Vec<Hash> = need.to_vec();
+        // **What the peer names, it gets**, even below what it holds: a
+        // record it names is one it lacks — a gap left by an earlier,
+        // cut-off round. Skipped as « theirs », it was never sent, the
+        // peer marked it unavailable, and every member computed the same
+        // refusal.
+        let named: BTreeSet<Hash> = need.iter().copied().filter(|h| !have.contains(h)).collect();
         while let Some(h) = walk.pop() {
-            if theirs.contains(&h) || !seen.insert(h) {
+            if (theirs.contains(&h) && !named.contains(&h)) || !seen.insert(h) {
                 continue;
             }
             if let Some(record) = self.records.get(&h) {
@@ -311,7 +333,7 @@ impl Journal {
                 walk.extend(record.parents().iter().copied());
             }
         }
-        found.sort_by_key(|r| (r.lamport(), r.author(), r.id()));
+        let mut found = causal(found);
         found.truncate(most);
         found
     }
@@ -361,13 +383,26 @@ impl Journal {
         // Corrected by something we hold — and a record only counts as
         // correcting while it is itself current, which falls out of
         // walking the corrections rather than assuming a chain of one.
-        let corrected: BTreeSet<Hash> = of_stream.iter().filter_map(|r| r.corrects()).collect();
+        //
+        // **A correction counts only if it opens.** Any self-signed record
+        // is taken in, so a phone holding a share of the key — the key of
+        // its own streams, not of Dossiers — could send an unreadable
+        // record on the Dossiers stream that « corrects » a patient
+        // record, and every post still catching up never applied that
+        // record. Unopened, it stays named as such and hides nothing.
+        // (Who may correct whom is the reader's rule: the officines'
+        // network keeps only its authors' own, see `trusted_view`.)
+        let correction = |r: &Record| {
+            r.corrects()
+                .filter(|_| keyring.iter().any(|key| r.open(key).is_ok()))
+        };
+        let corrected: BTreeSet<Hash> = of_stream.iter().filter_map(|r| correction(r)).collect();
 
         // How many current records correct each target, so a rival is
         // found without comparing every pair.
         let mut rivals_of: BTreeMap<Hash, Vec<Hash>> = BTreeMap::new();
         for r in of_stream.iter().filter(|r| !corrected.contains(&r.id())) {
-            if let Some(target) = r.corrects() {
+            if let Some(target) = correction(r) {
                 rivals_of.entry(target).or_default().push(r.id());
             }
         }
@@ -400,6 +435,49 @@ impl Journal {
         }
         reading
     }
+}
+
+/// Records in the usual order — Lamport, author, name — **bent so that
+/// none comes before a parent of its own in the set**. Ranks follow
+/// causality only when every author is counted; the officines' network
+/// counts its trusted ones, and a record could rank below the parent it
+/// names. Cut at a cap in Lamport order, a round sent the child and kept
+/// the parent for later.
+fn causal(records: Vec<&Record>) -> Vec<&Record> {
+    let at: BTreeMap<Hash, usize> = records
+        .iter()
+        .enumerate()
+        .map(|(i, r)| (r.id(), i))
+        .collect();
+    let mut waiting = vec![0_usize; records.len()];
+    let mut children: Vec<Vec<usize>> = vec![Vec::new(); records.len()];
+    for (i, r) in records.iter().enumerate() {
+        for p in r.parents() {
+            if let Some(&j) = at.get(p) {
+                waiting[i] += 1;
+                children[j].push(i);
+            }
+        }
+    }
+    let key = |i: usize| {
+        let r = records[i];
+        std::cmp::Reverse((r.lamport(), r.author(), r.id(), i))
+    };
+    let mut ready: std::collections::BinaryHeap<_> = (0..records.len())
+        .filter(|i| waiting[*i] == 0)
+        .map(key)
+        .collect();
+    let mut out = Vec::with_capacity(records.len());
+    while let Some(std::cmp::Reverse((_, _, _, i))) = ready.pop() {
+        out.push(records[i]);
+        for &c in &children[i] {
+            waiting[c] -= 1;
+            if waiting[c] == 0 {
+                ready.push(key(c));
+            }
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -481,6 +559,48 @@ mod tests {
         assert_eq!(reading.facts.len(), 1);
         assert_eq!(reading.facts[0].id, last);
         assert_eq!(post.journal.len(), 3);
+    }
+
+    /// A record the peer names is sent even when it lies below what the
+    /// peer holds: that is exactly the gap a cut-off round leaves.
+    #[test]
+    fn a_named_record_is_sent_even_below_what_the_peer_holds() {
+        let t = officine();
+        let mut post = Post::new(1);
+        let first = post.write(&t, b"un", None);
+        let second = post.write(&t, b"deux", None);
+        let sent: Vec<Hash> = post
+            .journal
+            .since(&[first], &[second], 256)
+            .iter()
+            .map(|r| r.id())
+            .collect();
+        assert_eq!(sent, vec![first]);
+        // And what it holds, it is still not sent.
+        assert!(post.journal.since(&[second], &[second], 256).is_empty());
+    }
+
+    /// A record that does not open corrects nothing: sealed under
+    /// another key, its « corrects » would otherwise hide a record from
+    /// every post that has not applied it yet.
+    #[test]
+    fn a_correction_that_does_not_open_hides_nothing() {
+        let t = officine();
+        let other = {
+            let mut e = Counted(9);
+            Trousseau::generate(&mut e)
+        };
+        let mut post = Post::new(1);
+        let mut phone = Post::new(2);
+        let line = post.write(&t, b"12 comprimes", None);
+        pour(&post.journal, &mut phone.journal);
+        phone.write(&other, b"rien", Some(line));
+        pour(&phone.journal, &mut post.journal);
+        let reading = post.journal.read(&t, Stream::Registre);
+        assert_eq!(reading.facts.len(), 1);
+        assert_eq!(reading.facts[0].id, line);
+        assert!(reading.facts[0].rivals.is_empty());
+        assert_eq!(reading.unopened.len(), 1);
     }
 
     /// Two posts correcting one record without seeing each other. Both
