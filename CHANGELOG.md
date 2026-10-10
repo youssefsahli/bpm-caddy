@@ -34,6 +34,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fluticasone ») now links the two cards on the map, as it already did on
   the card and the ordonnance; 63 shipped pairs were missing (Temesta and
   Dépakine, Paxlovid and Flixotide…).
+- Classes: hepatitis B antivirals have their own class (Vemlidy was in
+  Paxlovid's « same class » ring, Baraclude in Zovirax's), and SGLT2
+  inhibitor + metformin combinations are no longer filed with gliptin +
+  metformin ones.
 
 ## [0.392.0] - 2026-10-10
 

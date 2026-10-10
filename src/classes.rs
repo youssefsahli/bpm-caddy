@@ -1006,12 +1006,21 @@ pub const CLASSES: &[Class] = &[
     Class {
         name: "antiviral",
         family: "infectio",
-        aliases: &["antiviral anti-CMV", "antiviral — hépatite B"],
+        aliases: &["antiviral anti-CMV"],
+    },
+    // L'hépatite B à part : rangée sous le Covid-19 (Vemlidy) d'un côté
+    // et sous l'aciclovir (Baraclude) de l'autre, elle mettait le
+    // ténofovir alafénamide dans l'anneau « même classe » du Paxlovid, et
+    // l'entécavir avec le Zovirax — deux substituts qui n'en sont pas.
+    Class {
+        name: "antiviral (hépatite B)",
+        family: "infectio",
+        aliases: &["antiviral — hépatite B"],
     },
     Class {
         name: "antiviral (Covid-19)",
         family: "infectio",
-        aliases: &["antiviral (hépatite B)"],
+        aliases: &[],
     },
     Class {
         name: "antiviral à action directe (hépatite C)",
@@ -1521,7 +1530,14 @@ pub const CLASSES: &[Class] = &[
     Class {
         name: "gliptine + biguanide",
         family: "endocrino",
-        aliases: &["inhibiteur SGLT2 + biguanide"],
+        aliases: &[],
+    },
+    // Une gliflozine n'est pas une gliptine : rangées ensemble, Xigduo et
+    // Synjardy passaient pour des substituts de Janumet et d'Eucreas.
+    Class {
+        name: "inhibiteur SGLT2 + biguanide",
+        family: "endocrino",
+        aliases: &[],
     },
     Class {
         name: "hormone de croissance",

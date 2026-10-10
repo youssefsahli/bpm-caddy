@@ -645,7 +645,7 @@ The one that was missing — « combien de fois un autre poste avait
   compare on » — and the one view whose whole subject is
   « qu'est-ce qu'il y a autour » was comparing raw strings. Confronted
   with the shipped base it cost
-  **1104 pairs of neighbours over 414 of the 1133 cards**: Fosamax was
+  **1086 pairs of neighbours over 409 of the 1133 cards**: Fosamax was
   not of Actonel's ring for a letter
   (« bisphosphonate » / « biphosphonate »), Cimzia not of Amgevita's for
   a word (« anti-TNF » / « anti-TNF alpha »), and nothing looked broken
