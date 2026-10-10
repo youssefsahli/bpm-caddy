@@ -93,6 +93,10 @@ fn spawn_daily_backup(
     keep: usize,
     scans_keep: usize,
 ) {
+    // Les fichiers temporaires d'abord, **copies quotidiennes ou non** :
+    // appelé seulement là où elles se font, le nettoyage ne tournait pas
+    // sur un poste qui les a coupées.
+    std::thread::spawn(crate::pdf::sweep_private);
     if keep == 0 && scans_keep == 0 {
         return;
     }
@@ -109,7 +113,6 @@ fn spawn_daily_backup(
             std::thread::sleep(std::time::Duration::from_secs(10));
             opened = Db::open(&db_path, &password);
         }
-        crate::pdf::sweep_private();
         if let Ok(db) = opened {
             daily_backup(&db, &db_path, &password, keep);
             daily_scans_backup(&db, &db_path, scans_keep);
@@ -38896,7 +38899,7 @@ impl App {
         // jour que la nouvelle trame remplit : une trame du mardi au samedi
         // laissait sinon le lundi de cette semaine à l'ancienne.
         let cut = crate::date::weekday(&form.from)
-            .and_then(|w| crate::date::add_days(&form.from, -i64::from(w)))
+            .and_then(|w| crate::date::add_days(&form.from, -w))
             .or_else(|| {
                 rows.iter()
                     .map(|r| r.day.as_str())
