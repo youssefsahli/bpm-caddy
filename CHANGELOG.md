@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Narcotics register on several posts: a line cancelled on two posts
   before they synchronised came back twice to the stock; the second
   cancellation now has no effect.
+- Delivery coverage: « Renouveler » no longer copies the prescribed
+  duration onto the new delivery; it restarted the duration from today,
+  so a finished treatment looked overdue and the alignment extended it.
 
 ## [0.389.0] - 2026-10-10
 

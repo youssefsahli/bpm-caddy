@@ -40499,8 +40499,16 @@ impl App {
         // posée juste dessous : elle rejoint la rangée du médicament.
         if let Some(row) = again.and_then(|i| session.couv_rows.get(i).cloned()) {
             let i = again.unwrap_or(0);
+            // **Sans la durée prescrite.** La délivrance suivante d'une
+            // même ordonnance n'en recommence pas la durée : recopiée,
+            // une QSP de 90 jours repartait du jour du renouvellement,
+            // et un traitement fini le 29/11 semblait courir jusqu'en
+            // janvier — en retard au lieu de terminé, et l'alignement le
+            // prolongeait. La durée reste celle de la ligne d'origine ;
+            // une nouvelle ordonnance se tape avec la sienne.
             let next = CouvRow {
                 date: db::format_french_date(&session.today),
+                qsp: String::new(),
                 ..row
             };
             session
