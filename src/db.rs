@@ -52934,9 +52934,14 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT substr(created_at, 1, 10) FROM interviews
-                 WHERE patient_id = ?1 AND kind = ?2
-                 ORDER BY created_at",
+                // La date de l'acte, comme les honoraires (`fee_ranks`) :
+                // lus à la date de saisie, la règle et le tarif ne
+                // rangeaient pas le même acte dans la même année.
+                "SELECT d FROM (
+                     SELECT COALESCE(NULLIF(substr(scheduled_date, 1, 10), ''),
+                                     substr(created_at, 1, 10)) AS d, id
+                     FROM interviews WHERE patient_id = ?1 AND kind = ?2)
+                 ORDER BY d, id",
             )
             .map_err(|e| e.to_string())?;
         let rows = stmt
