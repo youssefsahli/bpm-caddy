@@ -55202,10 +55202,19 @@ impl Db {
         let Some(c) = self.sync_conflicts()?.into_iter().find(|c| c.id == id) else {
             return Ok(());
         };
+        // **Et sur une colonne que ce poste a.** Une question posée sur
+        // une colonne d'une version plus récente (avant que `decide` les
+        // laisse de côté) se refusait ici à « Prendre la leur », avant
+        // d'être retirée : elle restait pour toujours. Sans colonne, il n'y
+        // a rien à écrire, et la question s'en va.
+        let known = crate::replica::table(c.file, &c.table).is_some()
+            && Self::table_shape(self.conn_of(c.file), &c.table)
+                .map(|(cols, _)| cols.contains(&c.column))
+                .unwrap_or(false);
         let plain = c.kind == "CONFLIT"
             && !c.column.is_empty()
             && crate::replica::plain_identifier(&c.column)
-            && crate::replica::table(c.file, &c.table).is_some();
+            && known;
         if plain {
             let conn = self.conn_of(c.file);
             let filter: Vec<String> = c

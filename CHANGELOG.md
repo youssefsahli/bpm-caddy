@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Delivery coverage: « Renouveler » no longer copies the prescribed
   duration onto the new delivery; it restarted the duration from today,
   so a finished treatment looked overdue and the alignment extended it.
+- Posts on different versions: a deletion made on a post with a newer
+  version was never applied on an older one (it became a question), and
+  some questions could never be settled with « Prendre la leur ». A
+  column the receiving post does not have is now left out of the
+  comparison, and such a question can be cleared.
 
 ## [0.389.0] - 2026-10-10
 

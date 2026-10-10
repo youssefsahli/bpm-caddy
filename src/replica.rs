@@ -486,7 +486,9 @@ pub fn decide(op: &Op, append_only: bool, local: Option<&Map<String, Value>>) ->
             let conflicts: Vec<Conflict> = op
                 .new
                 .iter()
-                .filter(|(c, v)| !op.key.contains_key(*c) && row.get(*c) != Some(*v))
+                .filter(|(c, v)| {
+                    !op.key.contains_key(*c) && row.contains_key(*c) && row.get(*c) != Some(*v)
+                })
                 .map(|(c, v)| Conflict {
                     column: c.clone(),
                     mine: row.get(c).cloned(),
@@ -511,6 +513,14 @@ pub fn decide(op: &Op, append_only: bool, local: Option<&Map<String, Value>>) ->
             let mut set = Map::new();
             let mut conflicts = Vec::new();
             for (c, v) in &op.new {
+                // **Une colonne que ce poste n'a pas** (l'auteur a une
+                // version plus récente) ne se compare ni ne s'écrit :
+                // absente de la ligne lue ici, elle passait pour changée,
+                // et chaque écriture qui la touchait devenait une question
+                // que « Prendre la leur » ne pouvait pas régler.
+                if !row.contains_key(c) {
+                    continue;
+                }
                 let here = row.get(c);
                 if here == Some(v) {
                     continue;
@@ -536,7 +546,14 @@ pub fn decide(op: &Op, append_only: bool, local: Option<&Map<String, Value>>) ->
         }
         (Kind::Delete, None) => Outcome::clean(Action::Nothing),
         (Kind::Delete, Some(row)) => {
-            let changed = op.old.iter().any(|(c, v)| row.get(c) != Some(v));
+            // Sur les colonnes que ce poste connaît : un poste plus
+            // récent capture aussi les siennes, et une colonne absente
+            // d'ici n'a pas pu y être modifiée — la compter, c'était ne
+            // jamais appliquer un effacement venu d'une autre version.
+            let changed = op
+                .old
+                .iter()
+                .any(|(c, v)| row.contains_key(c) && row.get(c) != Some(v));
             if changed {
                 Outcome {
                     action: Action::Nothing,
@@ -1179,6 +1196,48 @@ mod tests {
             &keys(&["id"]),
         )
         .is_empty());
+    }
+
+    /// **Deux versions, une colonne de plus chez l'une.** Le poste plus
+    /// récent capture aussi sa colonne nouvelle ; ici, elle n'existe pas.
+    /// Elle ne se compare pas : sans quoi aucun effacement venu de lui ne
+    /// s'appliquait, et chaque écriture qui la touchait posait une
+    /// question impossible à régler.
+    #[test]
+    fn a_column_this_post_lacks_neither_blocks_nor_asks() {
+        let here = m(json!({"id":3,"body":"rappeler"}));
+        let delete = &from_capture(
+            File::Main,
+            "notes",
+            "D",
+            Some(r#"{"id":3,"body":"rappeler","pinned":1}"#),
+            None,
+            &keys(&["id"]),
+        )[0];
+        assert_eq!(decide(delete, false, Some(&here)).action, Action::Delete);
+        let update = &from_capture(
+            File::Main,
+            "notes",
+            "U",
+            Some(r#"{"id":3,"body":"rappeler","pinned":0}"#),
+            Some(r#"{"id":3,"body":"rappeler lundi","pinned":1}"#),
+            &keys(&["id"]),
+        )[0];
+        let o = decide(update, false, Some(&here));
+        assert!(o.conflicts.is_empty(), "{:?}", o.conflicts);
+        assert_eq!(o.action, Action::Set(m(json!({"body":"rappeler lundi"}))));
+        let insert = &from_capture(
+            File::Main,
+            "notes",
+            "I",
+            None,
+            Some(r#"{"id":3,"body":"rappeler","pinned":1}"#),
+            &keys(&["id"]),
+        )[0];
+        assert!(decide(insert, false, Some(&here)).conflicts.is_empty());
+        // Une colonne connue ici, elle, se compare toujours.
+        let changed = m(json!({"id":3,"body":"rappeler mardi"}));
+        assert_eq!(decide(delete, false, Some(&changed)).conflicts.len(), 1);
     }
 
     /// Une suppression ne passe que sur la ligne qu'elle a vue ; une ligne

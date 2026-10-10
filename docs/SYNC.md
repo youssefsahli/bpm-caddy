@@ -479,6 +479,14 @@ d'accord. Le registre, `stup_labels`, `stup_numbers`, la caisse et les
 journaux des ruptures et des versions sont **en ajout seul** : une
 modification reçue pour eux est refusée, et le refus se voit.
 
+Deux postes ne sont pas toujours à la même version : le lanceur les met
+à jour l'un après l'autre. Une colonne qu'un poste plus récent écrit et
+que celui-ci n'a pas **ne se compare ni ne s'écrit** (`decide`, et déjà
+la création et la modification appliquées) : comptée, elle faisait de
+chaque effacement venu de lui une question, et de chaque écriture qui la
+touchait une question que « Prendre la leur » ne pouvait pas régler
+(0.390).
+
 ### 7.3 La projection
 
 **Capturée par des déclencheurs** posés par `Db::install_capture` —
