@@ -25,6 +25,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   register, dose export) gather in one « Documents » menu, so the recall
   list keeps its rows at 1024x700 with large text.
 
+### Fixed
+- Pharmacological map: two names on the same line no longer touch (they
+  read as one word, « StrefenCalciparine »); a name keeps a space from
+  its neighbour or takes another side of its node.
+
 ## [0.388.0] - 2026-10-08
 
 ### Changed

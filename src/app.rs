@@ -71593,6 +71593,15 @@ impl App {
             })
     }
 
+    /// Ce qu'un nom posé réserve : sa place, **et un blanc de chaque
+    /// côté**. Réservé à sa seule taille, un nom pouvait en toucher un
+    /// autre posé sur la même ligne — « Strefen » et « Calciparine »,
+    /// sous leurs carrés voisins, se lisaient « StrefenCalciparine ». Le
+    /// blanc suit la police : un tiers de la hauteur d'une ligne.
+    fn graph_label_reserve(place: egui::Rect) -> egui::Rect {
+        place.expand2(egui::vec2(place.height() / 3.0, 0.0))
+    }
+
     /// La carte d'une ordonnance est-elle possible ? Un dossier ouvert
     /// qui porte au moins deux lignes : une seule ne rencontre personne.
     fn graph_file_possible(session: &Session) -> bool {
@@ -71868,7 +71877,7 @@ impl App {
                 Self::graph_label_spot(p, half, p - mid, size, field, &taken)
             {
                 let place = anchor.anchor_size(pos, size);
-                taken.push(place);
+                taken.push(Self::graph_label_reserve(place));
                 ui.painter()
                     .rect_filled(place.expand(1.0), 0.0, motif::trough());
                 ui.painter().text(
@@ -72697,7 +72706,7 @@ impl App {
                 let spot = Self::graph_label_spot(p, half, p - mid, size, field, &taken);
                 if let Some((anchor, at)) = spot {
                     let place = anchor.anchor_size(at, size);
-                    taken.push(place);
+                    taken.push(Self::graph_label_reserve(place));
                     // **Sur un fond, comme le nom du moyeu.** Un nom écrit
                     // en travers de deux rayons se lit à travers eux ; le
                     // fond les coupe là où le nom est, et nulle part
@@ -84891,6 +84900,34 @@ mod tests {
     ///    voie : avec la seule place d'autrefois, cette même figure perd
     ///    des noms. Sans cette moitié-là, le test passerait aussi sur un
     ///    code qui n'en placerait aucun.
+    /// Deux noms d'une même ligne gardent un blanc entre eux : sous deux
+    /// carrés voisins, « Strefen » et « Calciparine » se touchaient et se
+    /// lisaient d'un seul mot. Le blanc est mesuré ici, pas repris de la
+    /// fonction qui le réserve.
+    #[test]
+    fn two_names_on_one_line_keep_a_space_between_them() {
+        let field = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 300.0));
+        // Le milieu au-dessus : les deux noms se posent d'abord dessous.
+        let mid = egui::pos2(130.0, 0.0);
+        let half = App::GRAPH_NODE_HALF;
+        let size = egui::vec2(60.0, 14.0);
+        let a = egui::pos2(100.0, 150.0);
+        // Assez près pour que, dessous, son nom commence où finit l'autre.
+        let b = egui::pos2(160.0, 150.0);
+        let (anchor, at) = App::graph_label_spot(a, half, a - mid, size, field, &[]).unwrap();
+        let first = anchor.anchor_size(at, size);
+        assert_eq!(anchor, egui::Align2::CENTER_TOP);
+        let taken = [App::graph_label_reserve(first)];
+        let (anchor, at) = App::graph_label_spot(b, half, b - mid, size, field, &taken).unwrap();
+        let second = anchor.anchor_size(at, size);
+        let same_line = first.y_range().intersects(second.y_range());
+        let gap = (second.left() - first.right()).max(first.left() - second.right());
+        assert!(
+            !same_line || gap >= size.y / 3.0 - 0.5,
+            "{first:?} et {second:?} : {gap} de blanc"
+        );
+    }
+
     #[test]
     fn a_name_on_the_map_is_read_whole_or_not_at_all() {
         // Les douze antiépileptiques de la fiche livrée, l'anneau qui a
@@ -84976,16 +85013,20 @@ mod tests {
                                 "échelle {scale} : « {} » sort du creux",
                                 names[i]
                             );
+                            // Et pas collé à lui non plus : un blanc
+                            // entre deux noms d'une même ligne.
                             for (j, q) in painted.iter().enumerate() {
                                 assert!(
-                                    !q.shrink(1.0).intersects(r.shrink(1.0)),
-                                    "échelle {scale} : « {} » s'écrit dans « {} »",
+                                    !App::graph_label_reserve(*q)
+                                        .shrink(1.0)
+                                        .intersects(r.shrink(1.0)),
+                                    "échelle {scale} : « {} » s'écrit dans « {} » ou le touche",
                                     names[i],
                                     names[j]
                                 );
                             }
                             painted.push(r);
-                            taken.push(r);
+                            taken.push(App::graph_label_reserve(r));
                         }
                     }
                     *seen.borrow_mut() = (with_one, painted.len());
