@@ -46,6 +46,14 @@ pub enum CaddyError {
     Failed { reason: String },
 }
 
+/// Des initiales comme les postes de bureau les écrivent : sans espace,
+/// en majuscules. Tapées « cl » au téléphone, elles signaient les messages
+/// et rangeaient les marques de lecture sous « cl », que le bureau, qui lit
+/// « CL », ne retrouvait pas.
+fn initials(raw: &str) -> String {
+    raw.trim().to_uppercase()
+}
+
 impl From<String> for CaddyError {
     fn from(raw: String) -> Self {
         CaddyError::Failed {
@@ -550,6 +558,7 @@ impl Caddy {
         text: String,
         operator: String,
     ) -> Result<bool> {
+        let operator = initials(&operator);
         let db = self.db();
         let Some(current) = db.drugs()?.into_iter().find(|d| d.id == id) else {
             return Ok(false);
@@ -667,6 +676,7 @@ impl Caddy {
     /// avec d'autres officines passent par le réseau, que le téléphone
     /// n'a pas : elles n'y sont pas.
     pub fn conversations(&self, operator: String) -> Result<Vec<Talk>> {
+        let operator = initials(&operator);
         let db = self.db();
         let unread = if operator.trim().is_empty() {
             Default::default()
@@ -757,6 +767,7 @@ impl Caddy {
         name: String,
         bytes: Vec<u8>,
     ) -> Result<()> {
+        let author = initials(&author);
         let db = self.db();
         if bytes.len() > bpm_caddy::messages::MAX_FILE {
             return Err(CaddyError::Failed {
@@ -779,6 +790,7 @@ impl Caddy {
     /// **Ouvrir une conversation d'équipe**, pour toute l'équipe (sans
     /// membres nommés, comme sur un poste). Rend son numéro.
     pub fn new_conversation(&self, title: String, author: String) -> Result<i64> {
+        let author = initials(&author);
         Ok(self.db().create_conversation(
             "",
             bpm_caddy::messages::Channel::Equipe,
@@ -794,6 +806,7 @@ impl Caddy {
     /// message — la marque que les postes lisent aussi. Sans initiales,
     /// rien.
     pub fn mark_read(&self, conversation: i64, operator: String) -> Result<()> {
+        let operator = initials(&operator);
         if operator.trim().is_empty() {
             return Ok(());
         }
@@ -807,6 +820,7 @@ impl Caddy {
     /// Écrire dans une conversation de l'équipe. `author` : les initiales
     /// de qui tient le téléphone. Part à la synchronisation suivante.
     pub fn send_message(&self, conversation: i64, author: String, body: String) -> Result<()> {
+        let author = initials(&author);
         let body = body.trim();
         if body.is_empty() {
             return Ok(());

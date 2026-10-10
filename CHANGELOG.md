@@ -16,6 +16,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   explanation; a long press on one day of a weekly meeting deleted the
   whole series, past and future, on every post, without the warning the
   desktop gives.
+- Phone companion: initials typed in lower case (« cl ») are written as
+  the desktop writes them (« CL »); read marks and signatures did not
+  match the desktop's.
 
 ## [0.393.0] - 2026-10-10
 
