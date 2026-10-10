@@ -56,6 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deleted from another post, and each post's purge stays on that post.
   One post set to keep seven days, or with its clock years ahead, purged
   the log of every post.
+- Audit window: it no longer creates a base when the configured one is
+  missing (an unmounted share), nor opens with an empty password; it
+  says what is wrong.
 
 ## [0.390.0] - 2026-10-10
 

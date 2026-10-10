@@ -147,6 +147,24 @@ impl AuditApp {
     }
 
     fn unlock(&mut self, password: &str) {
+        // **La fenêtre d'audit lit, elle ne crée pas.** `Db::open` crée la
+        // base qu'il ne trouve pas : sur un partage non monté, la fenêtre
+        // en posait une neuve à l'adresse attendue — et, sans mot de passe,
+        // une base en clair — que l'application refusait ensuite.
+        let refused = if password.is_empty() {
+            Some(tr("auditw_no_password").to_owned())
+        } else if !self.path.exists() {
+            Some(trf("auditw_no_base", self.path.display()))
+        } else {
+            None
+        };
+        if let Some(why) = refused {
+            self.state = State::Locked {
+                password: String::new(),
+                error: Some(why),
+            };
+            return;
+        }
         match Db::open(&self.path, password) {
             Ok(db) => {
                 let reading = read(&db, &self.cfg, &self.path, self.days);
@@ -525,6 +543,33 @@ mod tests {
     /// **La fenêtre se dessine sur une base vide sans rien laisser en
     /// blanc** : chaque volet qui ne trouve rien le dit en toutes
     /// lettres, et rien ne panique — ni à l'échelle 1, ni à 1,6.
+    /// **La fenêtre d'audit ne crée pas de base** : ni sans mot de passe,
+    /// ni là où il n'y en a pas (un partage non monté).
+    #[test]
+    fn the_audit_window_never_creates_a_base() {
+        let dir =
+            std::env::temp_dir().join(format!("bpm-caddy-auditw-none-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("absente.db");
+        let mut app = AuditApp {
+            cfg: Config::default(),
+            path: path.clone(),
+            days: 30,
+            state: State::Locked {
+                password: String::new(),
+                error: None,
+            },
+            note: None,
+            themed: false,
+        };
+        for pw in ["", "secret"] {
+            app.unlock(pw);
+            assert!(matches!(app.state, State::Locked { error: Some(_), .. }));
+            assert!(!path.exists(), "aucune base créée ({pw:?})");
+        }
+    }
+
     #[test]
     fn the_audit_window_draws_an_empty_base_in_words() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-auditw-{}", std::process::id()));
