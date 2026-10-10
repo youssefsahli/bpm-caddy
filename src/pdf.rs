@@ -7940,8 +7940,21 @@ fn trod_values(p: &TrodPaper, pharmacy: &PharmacyConfig) -> Vec<(&'static str, S
                 if !o.situation.trim().is_empty() {
                     line.push_str(&format!(" — {}", o.situation.trim()));
                 }
-                if let Some(first) = o.posologies.first() {
-                    line.push_str(&format!(" : {first}"));
+                // **Toutes les posologies, et la précaution** : la
+                // première seule taisait le schéma du pivmécillinam, et la
+                // précaution (« contre-indiqué en cas d'allergie aux
+                // pénicillines ») ne s'imprimait jamais.
+                let poso: Vec<&str> = o
+                    .posologies
+                    .iter()
+                    .map(|p| p.trim())
+                    .filter(|p| !p.is_empty())
+                    .collect();
+                if !poso.is_empty() {
+                    line.push_str(&format!(" : {}", poso.join(" ; ")));
+                }
+                if !o.caution.trim().is_empty() {
+                    line.push_str(&format!(". {}", o.caution.trim()));
                 }
                 format!("- #{}", typst_str(&line))
             })

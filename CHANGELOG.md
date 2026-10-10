@@ -24,6 +24,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   matin et soir ») is no longer drawn as one fixed day, which doubled
   the first week or dropped a loading dose; it is listed with its
   written posology, like a rhythm.
+- TROD sheet: each protocol line now prints all its posologies and its
+  caution (« contre-indiqué en cas d'allergie aux pénicillines »); only
+  the first posology was printed, and never the caution.
 
 ## [0.392.0] - 2026-10-10
 
