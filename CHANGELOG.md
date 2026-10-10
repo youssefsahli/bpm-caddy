@@ -79,6 +79,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   taking the next person's surname, and a new file was pre-filled with
   it. The side of the NIR where the card writes names is now read once
   for the card, and a NIR never takes a name beyond its neighbour's.
+- Crushing table: a box whose name announces an extended-release,
+  gastro-resistant or non-oral form is no longer answered « Peut être
+  écrasé » by the row of its molecule (« Lasilix Retard 60 mg » was);
+  it reads « Ne pas écraser ». No shipped card changes answer.
 
 ## [0.389.0] - 2026-10-10
 

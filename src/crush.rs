@@ -189,6 +189,22 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Answer> {
                     })
                 })
                 .flatten();
+            // **Un « oui » ne tient pas contre ce que la boîte dit
+            // d'elle-même.** Les lignes « oui » nomment des molécules dont
+            // la forme courante s'écrase — et dont une autre forme ne
+            // s'écrase pas : « Lasilix Retard » répondait « peut être
+            // écrasé » par la ligne du furosémide, placée avant le filet
+            // des libérations prolongées. Seul ce sens-là est corrigé : un
+            // « sous condition » nommé plus haut (Skenan LP, qui s'ouvre)
+            // garde sa réponse.
+            let hit = match hit {
+                Some(r) if r.verdict == Verdict::Yes => TABLE
+                    .iter()
+                    .filter(|f| FORM_RULES.contains(&f.label))
+                    .find(|f| f.needs.iter().any(|n| crate::fuzzy::contains_folded(&hay, n)))
+                    .or(Some(r)),
+                other => other,
+            };
             match hit {
                 Some(r) => Answer {
                     treatment: t.name.trim().to_owned(),
@@ -216,6 +232,14 @@ pub fn read(treatments: &[crate::revue::Treatment]) -> Vec<Answer> {
     });
     out
 }
+
+/// Les filets de forme : ce que le nom d'une boîte dit de sa forme, qui
+/// l'emporte sur un « oui » donné à sa molécule (voir [`read`]).
+const FORM_RULES: [&str; 3] = [
+    "Forme injectable ou implantable",
+    "Forme à libération prolongée",
+    "Forme gastro-résistante",
+];
 
 /// Ce que le comptoir peut ou ne peut pas faire d'une présentation.
 ///
@@ -1102,6 +1126,32 @@ mod tests {
     /// nulle fiche ne porte dans son nom. Elles sont nommées ici avec
     /// leur raison ; toute autre règle inatteignable est une faute de
     /// frappe, et c'est ce que le test attrape.
+    /// **Un « oui » ne tient pas contre la boîte** : la ligne du
+    /// furosémide répondait « peut être écrasé » à « Lasilix Retard », une
+    /// gélule à libération prolongée. Un « sous condition » nommé plus haut
+    /// garde sa réponse.
+    #[test]
+    fn a_yes_gives_way_to_what_the_box_says_of_its_form() {
+        let one = |name: &str, dci: &str| {
+            read(&[crate::revue::Treatment {
+                name,
+                dci,
+                class: "",
+                tags: "",
+            }])
+            .remove(0)
+        };
+        assert_eq!(one("Lasilix 40 mg", "furosémide").verdict, Verdict::Yes);
+        let lp = one("Lasilix Retard 60 mg", "furosémide");
+        assert_eq!(lp.verdict, Verdict::No);
+        assert_eq!(lp.label, "Forme à libération prolongée");
+        assert_eq!(one("Lasilix injectable", "furosémide").verdict, Verdict::No);
+        // Les filets sont bien dans la table, sous ces noms.
+        for label in FORM_RULES {
+            assert!(TABLE.iter().any(|r| r.label == label), "{label}");
+        }
+    }
+
     #[test]
     fn every_rule_can_fire_or_says_why_not() {
         // Des présentations que la base ne livre pas encore : la règle
