@@ -44583,16 +44583,7 @@ impl App {
                                 .color(motif::text_faint()),
                         );
                         ui.add_space(4.0);
-                        // Le texte livré, toujours : c'est la référence
-                        // contre laquelle on relit.
-                        ui.label(
-                            egui::RichText::new(tr("libelles_shipped"))
-                                .size(motif::pt(ui, 10.5))
-                                .color(motif::text_dim()),
-                        );
-                        ui.add(egui::Label::new(egui::RichText::new(ship.as_str())).wrap());
                         if state == State::Outdated {
-                            ui.add_space(4.0);
                             ui.add(
                                 egui::Label::new(
                                     egui::RichText::new(tr("libelles_outdated"))
@@ -44613,10 +44604,14 @@ impl App {
                                     .wrap(),
                                 );
                             }
+                            ui.add_space(4.0);
                         }
-                        ui.add_space(8.0);
-                        // Le champ prend sa propre rangée : une rangée
-                        // de boutons sous un champ qui grandit est une
+                        // **Le champ d'abord.** Il venait après le texte
+                        // livré, et à 1024x700 en texte 1,6 le volet du
+                        // détail s'arrêtait sur ce texte : « Enregistrer »
+                        // se voyait, le champ qu'il enregistre non. Le
+                        // champ prend sa propre rangée : une rangée de
+                        // boutons sous un champ qui grandit est une
                         // rangée qu'on finit par dessiner à moitié — et
                         // c'est pourquoi les boutons sont carvés
                         // au-dessous, hors de cette zone défilante.
@@ -44627,6 +44622,15 @@ impl App {
                                 egui::TextEdit::multiline(text),
                             );
                         }
+                        ui.add_space(8.0);
+                        // Le texte livré, toujours, sous le champ : c'est
+                        // la référence contre laquelle on relit.
+                        ui.label(
+                            egui::RichText::new(tr("libelles_shipped"))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                        );
+                        ui.add(egui::Label::new(egui::RichText::new(ship.as_str())).wrap());
                     });
             });
             motif::inside(ui, split[1], |ui| {

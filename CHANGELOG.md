@@ -29,6 +29,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pharmacological map: two names on the same line no longer touch (they
   read as one word, « StrefenCalciparine »); a name keeps a space from
   its neighbour or takes another side of its node.
+- Interface texts: the field where a text is rewritten now comes before
+  the shipped text it is read against; on a short screen the field was
+  below the fold while « Enregistrer » showed.
 
 ## [0.388.0] - 2026-10-08
 
