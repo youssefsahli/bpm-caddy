@@ -42042,6 +42042,58 @@ fn batch_tx(conn: &Connection, body: &str) -> rusqlite::Result<()> {
     done
 }
 
+/// Écrire une valeur sourcée contre celle que l'écran montrait (`None` :
+/// il n'y en avait pas).
+fn fact_write(
+    conn: &Connection,
+    drug_id: i64,
+    new: &crate::pk::Fact,
+    was: Option<&crate::pk::Fact>,
+) -> Result<bool, String> {
+    let changed = match was {
+        None => conn.execute(
+            "INSERT INTO drug_facts (drug_id, property, low, high, text, source)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
+            rusqlite::params![
+                drug_id,
+                new.property.key(),
+                new.low,
+                new.high,
+                new.text,
+                new.source
+            ],
+        ),
+        Some(old) => conn.execute(
+            "UPDATE drug_facts SET low = ?3, high = ?4, text = ?5, source = ?6
+             WHERE drug_id = ?1 AND property = ?2 AND text = ?7 AND source = ?8",
+            rusqlite::params![
+                drug_id,
+                new.property.key(),
+                new.low,
+                new.high,
+                new.text,
+                new.source,
+                old.text,
+                old.source
+            ],
+        ),
+    }
+    .map_err(|e| e.to_string())?;
+    Ok(changed == 1)
+}
+
+/// Retirer une valeur sourcée, contre celle que l'écran montrait.
+fn fact_delete(conn: &Connection, drug_id: i64, was: &crate::pk::Fact) -> Result<bool, String> {
+    let changed = conn
+        .execute(
+            "DELETE FROM drug_facts
+             WHERE drug_id = ?1 AND property = ?2 AND text = ?3 AND source = ?4",
+            (drug_id, was.property.key(), &was.text, &was.source),
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(changed == 1)
+}
+
 impl Db {
     /// Open (or create) the encrypted database. Fails with a French message
     /// if the password does not match an existing file.
@@ -47400,49 +47452,39 @@ impl Db {
         new: &crate::pk::Fact,
         was: Option<&crate::pk::Fact>,
     ) -> Result<bool, String> {
-        let changed = match was {
-            None => self.conn.execute(
-                "INSERT INTO drug_facts (drug_id, property, low, high, text, source)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6) ON CONFLICT DO NOTHING",
-                rusqlite::params![
-                    drug_id,
-                    new.property.key(),
-                    new.low,
-                    new.high,
-                    new.text,
-                    new.source
-                ],
-            ),
-            Some(old) => self.conn.execute(
-                "UPDATE drug_facts SET low = ?3, high = ?4, text = ?5, source = ?6
-                 WHERE drug_id = ?1 AND property = ?2 AND text = ?7 AND source = ?8",
-                rusqlite::params![
-                    drug_id,
-                    new.property.key(),
-                    new.low,
-                    new.high,
-                    new.text,
-                    new.source,
-                    old.text,
-                    old.source
-                ],
-            ),
-        }
-        .map_err(|e| e.to_string())?;
-        Ok(changed == 1)
+        fact_write(&self.conn, drug_id, new, was)
     }
 
     /// Retirer une valeur sourcée, contre celle que l'écran montrait.
     pub fn delete_drug_fact(&self, drug_id: i64, was: &crate::pk::Fact) -> Result<bool, String> {
-        let changed = self
-            .conn
-            .execute(
-                "DELETE FROM drug_facts
-                 WHERE drug_id = ?1 AND property = ?2 AND text = ?3 AND source = ?4",
-                (drug_id, was.property.key(), &was.text, &was.source),
-            )
-            .map_err(|e| e.to_string())?;
-        Ok(changed == 1)
+        fact_delete(&self.conn, drug_id, was)
+    }
+
+    /// **Toutes les valeurs d'une fenêtre, ou aucune.** Écrites une à une,
+    /// un refus au milieu (un autre poste passé sur la troisième) laissait
+    /// les deux premières écrites et les suivantes non : une fiche à
+    /// moitié de l'une, à moitié de l'autre. Chaque ligne est `(nouvelle
+    /// valeur, ou rien pour la retirer ; celle que l'écran montrait)`.
+    /// `false` : une comparaison a échoué, rien n'est écrit.
+    pub fn set_drug_facts(
+        &self,
+        drug_id: i64,
+        changes: &[(Option<crate::pk::Fact>, Option<crate::pk::Fact>)],
+    ) -> Result<bool, String> {
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        for (new, was) in changes {
+            let ok = match (new, was) {
+                (Some(n), w) => fact_write(&tx, drug_id, n, w.as_ref())?,
+                (None, Some(w)) => fact_delete(&tx, drug_id, w)?,
+                (None, None) => true,
+            };
+            if !ok {
+                // Dropped: rolled back.
+                return Ok(false);
+            }
+        }
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(true)
     }
 
     /// Toutes les valeurs sourcées de la base, avec le nom et la DCI de
@@ -56655,6 +56697,21 @@ mod tests {
         assert_eq!(back[0].source, "RCP, 5.2");
         assert!(db.delete_drug_fact(7, &w).unwrap());
         assert!(db.drug_facts(7).unwrap().is_empty());
+
+        // **Une fenêtre s'écrit entière ou pas du tout** : la seconde
+        // valeur compare à un écran périmé, et la première, juste, ne
+        // s'écrit pas non plus.
+        let t = crate::pk::parse(crate::pk::Property::HalfLife, "12 h", "RCP, 5.2").unwrap();
+        let stale_was = Some(v.clone());
+        let refused = db
+            .set_drug_facts(7, &[(Some(t.clone()), None), (Some(w.clone()), stale_was)])
+            .unwrap();
+        assert!(!refused);
+        assert!(db.drug_facts(7).unwrap().is_empty(), "rien d'écrit");
+        assert!(db
+            .set_drug_facts(7, &[(Some(t), None), (Some(w), None)])
+            .unwrap());
+        assert_eq!(db.drug_facts(7).unwrap().len(), 2);
     }
 
     /// **Les versions d'une fiche** : une modification écrit une version

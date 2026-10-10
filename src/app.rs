@@ -60675,8 +60675,9 @@ impl App {
             let Some(edit) = &mut session.pk_edit else {
                 return;
             };
-            let mut stale = false;
-            let mut wrote = false;
+            // **Tout se lit avant que rien ne s'écrive**, et tout s'écrit
+            // ensemble : un refus au milieu laissait la moitié écrite.
+            let mut changes: Vec<(Option<crate::pk::Fact>, Option<crate::pk::Fact>)> = Vec::new();
             let mut refused: Option<String> = None;
             for (p, value, source, was) in &edit.entries {
                 let unchanged = was.as_ref().map_or(value.trim().is_empty(), |w| {
@@ -60686,22 +60687,25 @@ impl App {
                     continue;
                 }
                 if value.trim().is_empty() {
-                    if let Some(w) = was {
-                        match session.db.delete_drug_fact(edit.drug_id, w) {
-                            Ok(true) => wrote = true,
-                            Ok(false) => stale = true,
-                            Err(e) => refused = Some(e),
-                        }
+                    if was.is_some() {
+                        changes.push((None, was.clone()));
                     }
                     continue;
                 }
                 match crate::pk::parse(*p, value, source) {
-                    Ok(fact) => match session.db.set_drug_fact(edit.drug_id, &fact, was.as_ref()) {
-                        Ok(true) => wrote = true,
-                        Ok(false) => stale = true,
-                        Err(e) => refused = Some(e),
-                    },
-                    Err(e) => refused = Some(format!("{} : {e}", p.label())),
+                    Ok(fact) => changes.push((Some(fact), was.clone())),
+                    Err(e) => {
+                        refused = Some(format!("{} : {e}", p.label()));
+                        break;
+                    }
+                }
+            }
+            let (mut stale, mut wrote) = (false, false);
+            if refused.is_none() && !changes.is_empty() {
+                match session.db.set_drug_facts(edit.drug_id, &changes) {
+                    Ok(true) => wrote = true,
+                    Ok(false) => stale = true,
+                    Err(e) => refused = Some(e),
                 }
             }
             if wrote || stale {

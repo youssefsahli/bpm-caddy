@@ -35,6 +35,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   to a conversation that is not a team one is refused; a message written
   into a conversation with other officines left on the network under the
   officine's name at the desktop's next sync.
+- Pharmacokinetic values window: every value is read before anything is
+  written, and all are written together or none; a refusal in the middle
+  left half the window saved.
 - Take-home plan, treatment sheet and labels print the posology the file
   has saved, not the one still being typed in the field.
 
