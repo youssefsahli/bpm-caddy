@@ -38,6 +38,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Paxlovid's « same class » ring, Baraclude in Zovirax's), and SGLT2
   inhibitor + metformin combinations are no longer filed with gliptin +
   metformin ones.
+- Explorer: an organ axis counts cards, not table rows; a card that both
+  treats and affects an organ was counted twice (« 408 fiches » on the
+  heart for 356).
 
 ## [0.392.0] - 2026-10-10
 

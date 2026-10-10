@@ -4609,12 +4609,16 @@ pub fn on_organ(organ: Organ, effect: Effect) -> &'static [Row] {
 /// partielle et doit se voir, sans quoi un classement vide se lit comme
 /// « aucun médicament ne touche cet organe ».
 pub fn coverage(organ: Organ) -> usize {
+    // **Des fiches, pas des lignes** : une fiche qui traite un organe et
+    // l'altère aussi y a deux lignes, et l'axe du cœur annonçait 408
+    // fiches pour 356.
     let ix = index();
     ix.per_organ
         .iter()
         .filter(|(o, ..)| *o == organ)
-        .map(|(_, _, rows)| rows.len())
-        .sum()
+        .flat_map(|(_, _, rows)| rows.iter().map(|(f, _)| f.name))
+        .collect::<std::collections::HashSet<_>>()
+        .len()
 }
 
 #[cfg(test)]
@@ -4623,6 +4627,30 @@ mod tests {
 
     /// Une facette qui nomme une fiche absente du référentiel est une
     /// facette que personne ne verra jamais.
+    /// L'axe compte des fiches : une fiche à deux lignes sur un organe
+    /// (elle le traite et l'altère) n'y compte qu'une fois.
+    #[test]
+    fn an_axis_counts_cards_not_rows() {
+        for organ in Organ::ALL.iter().copied() {
+            let rows: usize = [Effect::Traite, Effect::Altere]
+                .iter()
+                .map(|e| on_organ(organ, *e).len())
+                .sum();
+            assert!(coverage(organ) <= rows, "{organ:?}");
+        }
+        let doubled = Organ::ALL.iter().any(|o| {
+            let rows: usize = [Effect::Traite, Effect::Altere]
+                .iter()
+                .map(|e| on_organ(*o, *e).len())
+                .sum();
+            coverage(*o) < rows
+        });
+        assert!(
+            doubled,
+            "une fiche au moins traite et altère le même organe"
+        );
+    }
+
     #[test]
     fn every_facet_names_a_real_card() {
         let cards: std::collections::HashSet<&str> =
