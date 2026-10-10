@@ -36,6 +36,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pause).
 - A « modified on another post » notice no longer disappears two seconds
   later: the automatic re-read of an open file cleared it.
+- Daily copies: two posts making the day's copy in the same shared folder
+  no longer write the same temporary file; one could rename the other's
+  half-written copy into place.
 
 ## [0.391.0] - 2026-10-10
 

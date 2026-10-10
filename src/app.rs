@@ -194,7 +194,12 @@ fn daily_copy(
         eprintln!("bpm-caddy : dossier de sauvegarde inaccessible : {e}");
         return;
     }
-    let part = target.with_extension("db.part");
+    // **Un nom à ce processus.** Deux postes qui font la copie du jour en
+    // même temps dans le même dossier partagé écrivaient le même
+    // « .db.part » : le second effaçait celui du premier en cours
+    // d'écriture, et le premier renommait en copie du jour le fichier à
+    // moitié écrit du second.
+    let part = target.with_extension(format!("db.{}.part", std::process::id()));
     let _ = std::fs::remove_file(&part);
     if let Err(e) = write(&part) {
         let _ = std::fs::remove_file(&part);
