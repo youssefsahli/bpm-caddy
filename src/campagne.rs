@@ -1952,13 +1952,8 @@ pub fn rdv_day(parsed: &str, typed: &str, today: &str) -> String {
 /// quand ils portent un séparateur. Une ligne par dose, dans l'ordre de
 /// [`crate::db::Db::vaccinations_season`].
 pub fn season_csv(rows: &[[String; 10]]) -> String {
-    fn field(s: &str) -> String {
-        if s.contains([';', '"', '\n', '\r']) {
-            format!("\"{}\"", s.replace('"', "\"\""))
-        } else {
-            s.to_owned()
-        }
-    }
+    // Une cellule, et jamais une formule — voir `db::csv_cell`.
+    let field = crate::db::csv_cell;
     let mut out =
         String::from("\u{feff}Date;Nom;Prénom;Naissance;Vaccin;Code;Dose;Lot;Site;Par\r\n");
     for r in rows {

@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (« João », « Muñoz », « Øster », « Haÿ ») and queries typed with
   punctuation (« jean-pierre » finds « Jean Pierre »). A miss fell into
   quick creation and made a second file for the same person.
+- CSV exports (interviews, season doses): a cell that begins with `=`,
+  `+`, `-` or `@` is no longer opened by Excel as a formula; a phone
+  written « +33 … » showed `#NOM?`, and a crafted name could become a
+  live link. Amounts stay numbers.
 
 ## [0.390.0] - 2026-10-10
 

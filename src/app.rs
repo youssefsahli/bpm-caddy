@@ -311,13 +311,8 @@ fn daily_backup(db: &Db, db_path: &std::path::Path, password: &str, keep: usize)
 /// Build the billing-reconciliation CSV: BOM + semicolons for French
 /// Excel, dates in JJ/MM/AAAA, decimal comma for the fees.
 fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
-    fn field(s: &str) -> String {
-        if s.contains([';', '"', '\n', '\r']) {
-            format!("\"{}\"", s.replace('"', "\"\""))
-        } else {
-            s.to_owned()
-        }
-    }
+    // Une cellule, et jamais une formule — voir `db::csv_cell`.
+    let field = crate::db::csv_cell;
     let mut out = String::from(
         "\u{feff}Patient;Téléphone;Naissance;Type;Code acte;Année;Étape;Thème;État;Fait le;Par;\
          RDV;Durée (min);À distance;Changement de traitement;Situation;Honoraires (€);\

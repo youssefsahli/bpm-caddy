@@ -53123,6 +53123,30 @@ pub fn parse_french_date(input: &str, current_year: u32, hint: YearHint) -> Resu
     Ok(format!("{year:04}-{month:02}-{day:02}"))
 }
 
+/// One cell of an exported CSV (French Excel: semicolons, BOM).
+///
+/// Quoted when it holds a separator, a quote or a line break — and
+/// **never read as a formula**: a cell that begins with `=`, `+`, `-` or
+/// `@` (or a tab or carriage return) is opened by Excel as a formula,
+/// quoted or not. A phone written « +33 6 12 34 56 78 » came back as
+/// `#NOM?`, and a patient named `=HYPERLINK(…)` became a live link. Such
+/// a cell is prefixed with an apostrophe — unless it is a plain number,
+/// so that « -15,00 » stays an amount.
+pub fn csv_cell(s: &str) -> String {
+    let number = s.replace(',', ".").trim().parse::<f64>().is_ok();
+    let formula = !number && s.starts_with(['=', '+', '-', '@', '\t', '\r']);
+    let s = if formula {
+        format!("'{s}")
+    } else {
+        s.to_owned()
+    };
+    if s.contains([';', '"', '\n', '\r']) {
+        format!("\"{}\"", s.replace('"', "\"\""))
+    } else {
+        s
+    }
+}
+
 /// Parse the date of something that **has happened** — a delivery, a
 /// prescription, a register line, a document, a last period.
 ///
@@ -57082,6 +57106,22 @@ mod tests {
             .unwrap();
         assert_eq!(p.nir, "155087511600125");
         assert!(crate::vitale::same_nir(&p.nir, "155087511600125"));
+    }
+
+    /// Une cellule exportée n'est jamais une formule, et un montant reste
+    /// un nombre.
+    #[test]
+    fn a_csv_cell_is_never_a_formula() {
+        assert_eq!(csv_cell("Dupont"), "Dupont");
+        assert_eq!(csv_cell("+33 6 12 34 56 78"), "'+33 6 12 34 56 78");
+        assert_eq!(csv_cell("=1+1"), "'=1+1");
+        assert_eq!(csv_cell("@SUM(A1)"), "'@SUM(A1)");
+        assert_eq!(
+            csv_cell("=HYPERLINK(\"x\";\"clic\")"),
+            "\"'=HYPERLINK(\"\"x\"\";\"\"clic\"\")\""
+        );
+        assert_eq!(csv_cell("-15,00"), "-15,00");
+        assert_eq!(csv_cell("a;b"), "\"a;b\"");
     }
 
     #[test]
