@@ -26942,10 +26942,13 @@ impl App {
                     (true, false) => d.class.trim().to_owned(),
                     (true, true) => String::new(),
                 };
-                let poso = if d.dosage.trim().is_empty() {
-                    d.forms.lines().next().unwrap_or("").trim().to_owned()
-                } else {
-                    d.dosage.trim().to_owned()
+                // **La posologie du dossier**, celle que la base garde pour
+                // ce patient — pas celle de la fiche, dont la colonne
+                // imprimait le paragraphe usuel de la molécule comme si
+                // c'était la sienne. Rien de noté : la feuille le dit.
+                let poso = match session.dose_base_of(d.id).trim() {
+                    "" => tr("bilan_poso_unknown").to_owned(),
+                    own => own.to_owned(),
                 };
                 // Le dosage du dossier avec le nom, comme sur la puce
                 // et sur le plan de prise : un bilan partagé de

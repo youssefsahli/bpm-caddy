@@ -3879,3 +3879,4 @@ camp_export_tooltip = "Les doses de la campagne en fichier CSV (tableur) : date,
 graph_why_cascade = "Cascade « {} » : {} et {} ; {}."
 graph_cascade_opposes = "{} en sens opposé"
 graph_cascade_adds = "{} dans le même sens"
+bilan_poso_unknown = "non notée au dossier"

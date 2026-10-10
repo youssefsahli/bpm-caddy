@@ -13,6 +13,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   operator may see (it listed every private conversation), and a group
   conversation whose group was deleted stays visible to its author only;
   it became visible to the whole team, « no name » included.
+- Printed documents: the medication review sheet's posology column now
+  prints the posology recorded for the patient (« non notée au dossier »
+  when there is none), not the card's usual dosage paragraph; the report
+  and letters to the physician no longer print the card's usual dosage
+  next to each treatment, which read as the patient's own.
 
 ## [0.392.0] - 2026-10-10
 

@@ -396,9 +396,10 @@ fn treatments_markup(treats: &[Drug]) -> String {
             if !d.class.is_empty() {
                 s.push_str(&format!(" — {}", d.class));
             }
-            if !d.dosage.is_empty() {
-                s.push_str(&format!(" — {}", d.dosage));
-            }
+            // **Pas la posologie usuelle de la fiche** : écrite ici, dans un
+            // compte rendu ou une lettre au médecin sur *ce* patient, elle
+            // se lisait comme la sienne — « Eliquis — Fibrillation atriale :
+            // 5 mg deux fois par jour… » pour un patient à 2,5 mg.
             format!("- #{}", typst_str(&s))
         })
         .collect::<Vec<_>>()
@@ -10063,6 +10064,11 @@ mod tests {
         }
         // An empty treatments list renders the placeholder line.
         assert!(treatments_markup(&[]).contains("aucun traitement"));
+        // La posologie usuelle de la fiche n'est pas celle du patient : la
+        // lettre ne l'écrit pas.
+        let listed = treatments_markup(&sample_treatments());
+        assert!(listed.contains("Eliquis (apixaban)"), "{listed}");
+        assert!(!listed.contains("5 mg x2/j"), "{listed}");
     }
 
     #[test]
