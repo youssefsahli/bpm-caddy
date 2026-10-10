@@ -93,6 +93,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   says « Campagne en cours » and owed; it reads « hors campagne ». A
   COVID campaign no longer lists someone whose last dose is too recent:
   the file says from which day, and the recall waits for it.
+- Medication reconciliation: two products of one molecule on the file
+  (Skenan and Sevredol, both morphine) are no longer merged into one
+  line; renewed as they were, one read « dose changée » and the other
+  « arrêté ».
 
 ## [0.389.0] - 2026-10-10
 

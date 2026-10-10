@@ -303,6 +303,20 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
             class: h.class,
         })
         .collect();
+    // **Deux produits d'une même molécule au dossier restent deux.**
+    // Skenan et Sevredol sont tous deux de la morphine : rangées sous la
+    // seule molécule, leurs deux lignes de la feuille se rejoignaient en
+    // une, Skenan se lisait « dose changée » contre les deux posologies
+    // mêlées, et Sevredol « arrêté ». Pour une molécule que le dossier
+    // porte plus d'une fois, une ligne rapprochée d'un de ses produits
+    // est rangée sous ce produit.
+    let shared = |id: &str| {
+        held.iter()
+            .filter(|h| identity(h.name, h.dci) == id)
+            .count()
+            > 1
+    };
+    let product = |id: &str, name: &str| format!("{id}\u{1}{}", crate::fuzzy::sort_key(name));
     let mut entries: Vec<Entry> = Vec::new();
     for raw in list.lines() {
         let raw = raw.trim();
@@ -321,15 +335,20 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
         // de la codéine n'était dit nulle part. À égalité, le dossier
         // garde la main — c'est la raison de le lire en premier.
         let found = match (scored_match(name, &from_file), scored_match(name, base)) {
-            (Some((f, i)), Some((b, _))) if f >= b => Some(&from_file[i]),
-            (Some((_, i)), None) => Some(&from_file[i]),
-            (_, Some((_, j))) => Some(&base[j]),
+            (Some((f, i)), Some((b, _))) if f >= b => Some((&from_file[i], true)),
+            (Some((_, i)), None) => Some((&from_file[i], true)),
+            (_, Some((_, j))) => Some((&base[j], false)),
             (None, None) => None,
         };
         match found {
-            Some(k) => {
+            Some((k, on_file)) => {
+                let id = identity(k.name, k.dci);
                 entries.push(Entry {
-                    key: identity(k.name, k.dci),
+                    key: if on_file && shared(&id) {
+                        product(&id, k.name)
+                    } else {
+                        id
+                    },
                     label: k.name.to_owned(),
                     class: k.class.trim().to_owned(),
                     detail: detail.to_owned(),
@@ -371,11 +390,16 @@ pub fn compare(held: &[Held], list: &str, base: &[Known]) -> Vec<Divergence> {
     let mut taken = vec![false; entries.len()];
     for h in held {
         let key = identity(h.name, h.dci);
-        let hit = entries
-            .iter()
-            .enumerate()
-            .find(|(i, e)| e.key == key && !taken[*i])
-            .map(|(i, _)| i);
+        // Son produit d'abord, la molécule ensuite : une feuille qui
+        // n'écrit que « morphine » rencontre encore l'un des deux.
+        let own = shared(&key).then(|| product(&key, h.name));
+        let hit = own.iter().chain(std::iter::once(&key)).find_map(|k| {
+            entries
+                .iter()
+                .enumerate()
+                .find(|(i, e)| &e.key == k && !taken[*i])
+                .map(|(i, _)| i)
+        });
         match hit {
             Some(i) => {
                 taken[i] = true;
@@ -676,6 +700,42 @@ Vogalène lyoc si nausées
         assert_eq!(c.added, 1);
         assert_eq!(c.unmatched, 1);
         assert_eq!(c.divergences(), 4);
+    }
+
+    /// **Deux produits d'une même molécule au dossier restent deux** :
+    /// Skenan et Sevredol, reconduits tels quels, ne se lisent ni « dose
+    /// changée » ni « arrêté ».
+    #[test]
+    fn two_products_of_one_molecule_on_the_file_stay_two() {
+        let base = base();
+        let held = vec![
+            Held {
+                name: "Skenan",
+                dci: "morphine",
+                class: "opioïde",
+                posology: "30 mg matin et soir",
+            },
+            Held {
+                name: "Sevredol",
+                dci: "morphine",
+                class: "opioïde",
+                posology: "10 mg si douleur",
+            },
+        ];
+        let out = compare(
+            &held,
+            "Skenan 30 mg matin et soir\nSevredol 10 mg si douleur",
+            &base,
+        );
+        assert_eq!(out.len(), 2, "{out:?}");
+        assert!(out.iter().all(|d| d.kind == Change::Kept), "{out:?}");
+        // La molécule seule sur la feuille rencontre encore l'un des deux.
+        let out = compare(&held, "Morphine 30 mg matin et soir", &base);
+        assert_eq!(
+            out.iter().filter(|d| d.kind == Change::Stopped).count(),
+            1,
+            "{out:?}"
+        );
     }
 
     #[test]
