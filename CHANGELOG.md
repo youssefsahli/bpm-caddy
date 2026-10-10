@@ -18,6 +18,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   when there is none), not the card's usual dosage paragraph; the report
   and letters to the physician no longer print the card's usual dosage
   next to each treatment, which read as the patient's own.
+- Vaccination sheet: without a birth date it no longer prints « Calendrier
+  à jour »; the age-dependent lines were not read, and it now says so.
 
 ## [0.392.0] - 2026-10-10
 

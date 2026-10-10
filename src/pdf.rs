@@ -8238,7 +8238,13 @@ fn vaccination_values(
             }
         })
         .collect();
-    let due = if owed.is_empty() {
+    // **« À jour » se dit d'un calendrier qu'on a pu lire.** Sans date de
+    // naissance, les lignes qui dépendent de l'âge (dTcaP, zona,
+    // pneumocoque, VRS, ROR) ne sont pas lues ; la feuille annonçait
+    // pourtant « Calendrier à jour » sur deux doses de saison.
+    let due = if owed.is_empty() && p.patient.birth_date.trim().is_empty() {
+        s(crate::strings::tr("vacc_pdf_due_unknown_age"))
+    } else if owed.is_empty() {
         s(crate::strings::tr("vacc_pdf_due_none"))
     } else {
         owed.iter()
@@ -10064,6 +10070,26 @@ mod tests {
         }
         // An empty treatments list renders the placeholder line.
         assert!(treatments_markup(&[]).contains("aucun traitement"));
+        // Sans date de naissance, le calendrier n'est pas « à jour » : il
+        // est à vérifier.
+        let nobody = Patient {
+            birth_date: String::new(),
+            ..sample_patient()
+        };
+        let pharmacy = PharmacyConfig::default();
+        let paper = VaccinationPaper {
+            patient: &nobody,
+            date: "24/08/2026",
+            age: None,
+            signature: "",
+            treats: &[],
+            due: &[],
+            content: &crate::content::Overrides::default(),
+        };
+        let values = vaccination_values(&paper, &pharmacy);
+        let all: String = values.iter().map(|(_, v)| v.as_str()).collect();
+        assert!(all.contains("à vérifier"), "{all}");
+        assert!(!all.contains("Calendrier à jour"), "{all}");
         // La posologie usuelle de la fiche n'est pas celle du patient : la
         // lettre ne l'écrit pas.
         let listed = treatments_markup(&sample_treatments());
