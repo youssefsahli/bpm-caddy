@@ -54,6 +54,25 @@ fn initials(raw: &str) -> String {
     raw.trim().to_uppercase()
 }
 
+/// **Une conversation de l'équipe, ou rien.** Le téléphone ne liste que
+/// celles-là, mais lire, enregistrer un fichier, marquer lu ou écrire
+/// prenaient n'importe quel numéro : un message écrit dans une
+/// conversation entre officines partait au réseau sous le nom de
+/// l'officine à la synchronisation suivante du bureau.
+fn team_only(db: &bpm_caddy::db::Db, conversation: i64) -> Result<()> {
+    let team = db
+        .conversations()?
+        .into_iter()
+        .any(|c| c.id == conversation && c.channel == bpm_caddy::messages::Channel::Equipe);
+    if team {
+        Ok(())
+    } else {
+        Err(CaddyError::Failed {
+            reason: bpm_caddy::strings::tr("mobile_not_team").to_owned(),
+        })
+    }
+}
+
 impl From<String> for CaddyError {
     fn from(raw: String) -> Self {
         CaddyError::Failed {
@@ -714,6 +733,7 @@ impl Caddy {
 
     pub fn messages(&self, conversation: i64) -> Result<Vec<Said>> {
         let db = self.db();
+        team_only(&db, conversation)?;
         let files = db.conversation_files(conversation)?;
         Ok(db
             .conversation_messages(conversation)?
@@ -746,6 +766,7 @@ impl Caddy {
         let failed = || CaddyError::Failed {
             reason: bpm_caddy::strings::tr("mobile_file_incomplete").to_owned(),
         };
+        team_only(&db, conversation)?;
         let (meta, _) = db
             .conversation_files(conversation)?
             .into_iter()
@@ -777,6 +798,7 @@ impl Caddy {
                 ),
             });
         }
+        team_only(&db, conversation)?;
         let Some(id) =
             db.post_message(conversation, "", author.trim(), body.trim(), None, "", None)?
         else {
@@ -811,6 +833,7 @@ impl Caddy {
             return Ok(());
         }
         let db = self.db();
+        team_only(&db, conversation)?;
         if let Some(last) = db.conversation_messages(conversation)?.last() {
             db.mark_read(conversation, &operator, &last.sent_at)?;
         }
@@ -825,8 +848,9 @@ impl Caddy {
         if body.is_empty() {
             return Ok(());
         }
-        self.db()
-            .post_message(conversation, "", author.trim(), body, None, "", None)?;
+        let db = self.db();
+        team_only(&db, conversation)?;
+        db.post_message(conversation, "", author.trim(), body, None, "", None)?;
         Ok(())
     }
 }
@@ -898,6 +922,48 @@ mod tests {
 
     /// A phone that has joined nothing opens, says so, and refuses to
     /// sync rather than pretend.
+    /// Une conversation entre officines ne se lit ni ne s'écrit depuis
+    /// le téléphone, même en en donnant le numéro.
+    #[test]
+    fn a_conversation_with_other_officines_is_out_of_reach() {
+        let d = dir("not-team");
+        let c = Caddy::open(d.display().to_string(), "k".into()).unwrap();
+        let (team, other) = {
+            let db = c.db();
+            let team = db
+                .create_conversation(
+                    "t",
+                    bpm_caddy::messages::Channel::Equipe,
+                    "Équipe",
+                    &[],
+                    None,
+                    &[],
+                    "AB",
+                )
+                .unwrap();
+            let other = db
+                .create_conversation(
+                    "o",
+                    bpm_caddy::messages::Channel::Officines,
+                    "Voisine",
+                    &[],
+                    None,
+                    &["x".to_owned()],
+                    "AB",
+                )
+                .unwrap();
+            (team, other)
+        };
+        assert!(c.send_message(team, "ab".into(), "bonjour".into()).is_ok());
+        assert!(c.messages(team).is_ok());
+        assert!(c
+            .send_message(other, "ab".into(), "bonjour".into())
+            .is_err());
+        assert!(c.messages(other).is_err());
+        assert!(c.mark_read(other, "ab".into()).is_err());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
     #[test]
     fn a_fresh_phone_opens_and_is_in_no_group() {
         let d = dir("fresh");

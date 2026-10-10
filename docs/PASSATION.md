@@ -188,9 +188,10 @@ est un choix de granularité à faire avec la source.
 écrit : un message écrit hors ligne et synchronisé plus tard n'est
 jamais « non lu », et une horloge en avance fige le compte d'une
 conversation. Un brouillon tapé sous un nom part sous le nom choisi
-ensuite. Le téléphone ne vérifie pas, dans `messages()` et `save_file`,
-qu'une conversation demandée est visible — il ne demande que celles
-qu'il a listées, mais l'API le permettrait.
+ensuite. Le téléphone refuse depuis le 11/10 toute conversation qui
+n'est pas de l'équipe (lire, fichier, lu, écrire) ; il ne vérifie pas
+qu'une conversation privée de l'équipe le concerne (la fonction ne
+reçoit pas les initiales).
 
 **Feuilles remises (corrigé le 11/10).** Le plan de prise, la fiche et
 les étiquettes impriment la posologie que la base garde, et non le champ

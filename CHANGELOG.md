@@ -31,6 +31,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Codex: « 1.000 mL » in a formula, its yield or the target amount is a
   thousand (French thousands dot); read as 1, it scaled everything else
   a thousand times.
+- Phone companion: reading, saving a file from, marking read or writing
+  to a conversation that is not a team one is refused; a message written
+  into a conversation with other officines left on the network under the
+  officine's name at the desktop's next sync.
 - Take-home plan, treatment sheet and labels print the posology the file
   has saved, not the one still being typed in the field.
 
