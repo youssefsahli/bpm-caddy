@@ -103,6 +103,35 @@ anniversaire depuis la toute première délivrance ; l'autre lecture du
 décret la ferait repartir à la délivrance qui suit une interruption —
 à confirmer.
 
+**Changement de mot de passe (relevé).** Les trois fichiers sont
+rechiffrés l'un après l'autre (pièces, registre, base), sur le fil de
+l'écran ; chacun l'est atomiquement, l'ensemble non. Une coupure entre
+deux — un gros fichier de pièces sur le partage peut prendre des
+minutes, la fenêtre « ne répond plus » et on la tue — laisse une base
+qu'aucun des deux mots de passe n'ouvre. À faire hors du fil de l'écran,
+avec une marque « rechiffrement en cours » ou un essai des deux clés par
+fichier à l'ouverture.
+
+**« Effacer toutes les données » (relevé).** L'agenda, le planning, la
+caisse, les protocoles, les prescripteurs, le journal des accès et le
+registre restent ; la confirmation dit « TOUTES les données ». Le
+registre doit rester (R. 5132-36) ; le reste est à décider, ou la
+phrase à corriger.
+
+**Comparaisons restantes (relevé).** Les groupes de collègues
+s'écrivent sans comparer ; la fenêtre des valeurs PK écrit champ par
+champ sans transaction (un refus au milieu laisse la moitié écrite) ;
+les champs de rendez-vous tapés au dossier comparent à la liste relue,
+si bien qu'un rendez-vous déplacé ailleurs pendant qu'on tape le sien
+est remplacé — le refus, lui, se dit maintenant.
+
+**Ordonnances TROD (relevé).** Grossesse inconnue lue comme « pas
+enceinte » (aucune ligne ne le rappelle) ; aucune barrière d'allergie
+(l'amoxicilline est proposée quoi que dise le dossier).
+
+**Codex (relevé).** « 1.000 mL » (point des milliers) se lit 1 mL et
+multiplie tout par mille ; les formules livrées écrivent « 1000 ».
+
 **Petits restes.** Bulletins : un champ trop long déborde sans prévenir
 (5 pt au minimum, pas de découpe). Console : `patients()` reconstruit
 toutes les cartes à chaque appel, si bien qu'une boucle d'appels tourne
