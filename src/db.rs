@@ -44616,6 +44616,18 @@ impl Db {
     /// suppression serait capturée et partirait vers les autres postes :
     /// la remise à zéro d'un poste viderait l'officine entière.
     pub fn wipe_all_data(&self) -> Result<usize, String> {
+        let cited: String = {
+            let mut stmt = self
+                .stups
+                .prepare("SELECT DISTINCT patient_id FROM stup_moves WHERE patient_id > 0")
+                .map_err(|e| e.to_string())?;
+            let ids: Vec<i64> = stmt
+                .query_map([], |r| r.get(0))
+                .map_err(|e| e.to_string())?
+                .collect::<Result<_, _>>()
+                .map_err(|e| e.to_string())?;
+            serde_json::to_string(&ids).map_err(|e| e.to_string())?
+        };
         if self.sync_post().is_some() {
             self.leave_posts()?;
         }
@@ -44683,6 +44695,20 @@ impl Db {
             "patients",
             "drugs",
         ] {
+            // **Un dossier que le registre cite reste.** Le registre se
+            // garde dix ans et ses lignes nomment un numéro de dossier ;
+            // la suppression d'un dossier cité est refusée
+            // (`delete_patient`), et la remise à zéro les effaçait tous :
+            // chaque « dossier N » du registre ne désignait plus personne.
+            // Le dossier garde son identité ; le reste part comme prévu.
+            if table == "patients" {
+                tx.execute(
+                    "DELETE FROM patients WHERE id NOT IN (SELECT value FROM json_each(?1))",
+                    [&cited],
+                )
+                .map_err(|e| e.to_string())?;
+                continue;
+            }
             tx.execute(&format!("DELETE FROM {table}"), [])
                 .map_err(|e| e.to_string())?;
         }
@@ -57367,6 +57393,35 @@ mod tests {
             db.checklist_items(list).unwrap()[0].note,
             "entre +2 et +8 °C"
         );
+    }
+
+    /// **Une remise à zéro garde les dossiers que le registre cite** : le
+    /// registre se garde dix ans et ses lignes nomment un dossier.
+    #[test]
+    fn a_reset_keeps_the_files_the_register_cites() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-wipe-cited-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("w.db"), "secret").unwrap();
+        let cited = db.add_patient("Martin", "Lucie", "1950-01-01").unwrap();
+        db.add_patient("Petit", "Luc", "1970-02-02").unwrap();
+        let product = db
+            .add_stupefiant(0, "Skenan LP 30 mg", "gélule", 0.0)
+            .unwrap();
+        db.stups
+            .execute(
+                "INSERT INTO stup_moves
+                     (id, stup_id, kind, happened_on, quantity, ordo_year, ordo_no,
+                      patient_id, prescriber, supplier, reference, expected, operator, remark)
+                 VALUES (3, ?2, 'SORTIE', '2026-01-08', 14, 2026, 1, ?1, 'Dr Martin',
+                         '', '', 0, 'YS', '')",
+                [cited, product],
+            )
+            .unwrap();
+        db.wipe_all_data().unwrap();
+        let left: Vec<i64> = db.patients().unwrap().into_iter().map(|p| p.id).collect();
+        assert_eq!(left, vec![cited], "seul le dossier cité reste");
     }
 
     #[test]

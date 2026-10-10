@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Reset of the base (« effacer toutes les données ») keeps the patient
+  files the narcotics register cites, as deleting one file already did;
+  every « dossier N » of the ten-year register pointed at nobody.
+
 ## [0.393.0] - 2026-10-10
 
 ### Fixed
