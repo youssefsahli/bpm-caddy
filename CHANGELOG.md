@@ -19,6 +19,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   duplicated delivery, counted, then cancelled, read 44 boxes for the 30
   in the safe). Cancelling an expiry still returns its boxes to the
   deliverable stock.
+- Copying the base (Options › Base) now always takes the narcotics
+  register file along: with products declared but no line written yet,
+  it was left behind, and the copy started a new register numbered from 1.
 
 ## [0.389.0] - 2026-10-10
 

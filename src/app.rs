@@ -248,7 +248,9 @@ fn daily_stups_backup(db: &Db, db_path: &std::path::Path, keep: usize) {
     // officines suivront leur premier produit des semaines après
     // l'installation, et recopier un fichier vide tous les jours
     // n'apprend rien à personne.
-    if db.stup_weight().map(|(_, lines, _, _)| lines) == Ok(0) {
+    // Les produits déclarés comptent comme des lignes : le registre les
+    // porte, et le premier numéro de l'ordonnancier avec eux.
+    if db.stup_weight().map(|(products, lines, _, _)| products + lines) == Ok(0) {
         return;
     }
     let Ok(today) = db.today_iso() else { return };
@@ -81553,15 +81555,14 @@ impl eframe::App for App {
                         if side.exists() {
                             let _ = std::fs::remove_file(&side);
                         }
-                        if session
-                            .db
-                            .stup_weight()
-                            .map(|(_, lines, _, _)| lines)
-                            .unwrap_or(0)
-                            == 0
-                        {
-                            return Ok(());
-                        }
+                        // **Toujours copié**, vide ou non : il porte
+                        // aussi les produits déclarés et le premier
+                        // numéro de l'ordonnancier. Copié seulement s'il
+                        // avait des lignes, une officine qui avait
+                        // déclaré ses produits et fixé son départ à 18950
+                        // retrouvait à l'arrivée un registre neuf, et sa
+                        // première délivrance prenait le numéro 1. Et une
+                        // erreur de lecture du compte passait pour « vide ».
                         session.db.backup_stups_to(&side)
                     })
             } else {
