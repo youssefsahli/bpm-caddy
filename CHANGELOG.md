@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Posology reader: slash grids with a cell above 12 (« 20/0/20 gouttes »,
+  « 14/0/10 ») and unit grids (« 10-0-10 UI ») are read again; only a
+  real date (« 1/3/26 ») is refused.
+- Posology reader: « puis » takes a line off the daily grid only when it
+  opens a phase (a duration before, a dose after); « matin et soir puis
+  se rincer la bouche » stays on the grid.
+- Posology reader: « 2 à 4 semaines sur la peau » is no longer read as a
+  « N weeks out of M » rhythm.
+- Reconciliation: a hospital line that starts with the name, strength
+  and form (« AMLODIPINE 5 MG CPR 1-0-0 ») no longer shows a false dose
+  change against « 1-0-0 ».
+- A post with daily backups turned off still sweeps its leftover
+  temporary print files.
+
 ## [0.394.0] - 2026-10-10
 
 ### Fixed

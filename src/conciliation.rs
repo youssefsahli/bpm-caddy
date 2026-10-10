@@ -525,9 +525,12 @@ fn identity(name: &str, dci: &str) -> String {
 /// le soir » contre « 10 mg le soir » n'est le suffixe de personne, et
 /// « 1 cp le matin » contre « 1 cp le matin et le soir » non plus.
 ///
-/// **Ce qui précède le suffixe n'est qu'un dosage** : des nombres et des
-/// unités. « 1 cp le soir » est le suffixe de « 1 cp le matin et 1 cp le
-/// soir », et la dose doublée passait pour reconduite.
+/// **Ce qui précède le suffixe ne dit pas de prise** : ni moment, ni
+/// liaison, ni fréquence. « 1 cp le soir » est le suffixe de « 1 cp le
+/// matin et 1 cp le soir », et la dose doublée passait pour reconduite.
+/// Le nom, le dosage et la forme qu'une feuille d'hôpital écrit en tête
+/// (« AMLODIPINE 5 MG CPR 1-0-0 ») passent : n'admettre que des nombres
+/// et des unités les annonçait en « dose changée ».
 fn same_dose(before: &str, after: &str) -> bool {
     let words = |s: &str| -> Vec<String> {
         crate::fuzzy::sort_key(s.trim())
@@ -547,7 +550,20 @@ fn same_dose(before: &str, after: &str) -> bool {
     } else {
         (&b, &a)
     };
-    long.ends_with(&short[..]) && long[..long.len() - short.len()].iter().all(|w| strength(w))
+    long.ends_with(&short[..])
+        && long[..long.len() - short.len()]
+            .iter()
+            .all(|w| strength(w) || !takes(w))
+}
+
+/// Un mot qui dit **une prise** : un moment, une liaison, une fréquence
+/// ou une grille (« 1-0-1 »).
+fn takes(word: &str) -> bool {
+    const WORDS: [&str; 22] = [
+        "matin", "midi", "soir", "coucher", "nuit", "et", "le", "la", "les", "au", "puis", "fois",
+        "jour", "jours", "par", "x", "j", "semaine", "heures", "h", "a", "ou",
+    ];
+    WORDS.contains(&word) || word.contains(['-', '/'])
 }
 
 /// Un mot de dosage : un nombre, une unité, ou les deux collés (« 75mg »,
@@ -773,6 +789,14 @@ Vogalène lyoc si nausées
         assert!(!same_dose("1 cp le soir", "1 cp le matin et 1 cp le soir"));
         assert!(!same_dose("1 cp le soir", "1 cp le matin, 1 cp le soir"));
         assert!(!same_dose("5 mg le soir", "10 mg le soir"));
+        // Le nom et la forme en tête d'une ligne d'hôpital ne sont pas
+        // une prise.
+        assert!(same_dose("1-0-0", "AMLODIPINE 5 MG CPR 1-0-0"));
+        assert!(same_dose(
+            "1 cp matin et soir",
+            "Tramadol 100 mg LP 1 cp matin et soir"
+        ));
+        assert!(!same_dose("1-0-0", "1-0-1 1-0-0"));
     }
 
     #[test]

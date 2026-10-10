@@ -408,9 +408,7 @@ pub fn read(posology: &str) -> Reading {
     // imprimé —, et « 2 cp le matin pendant 3 jours puis 1 » perdait sa
     // dose de charge. Une grille ne dit pas une suite : la ligne en sort,
     // avec la posologie écrite en note, comme un rythme.
-    let phased = folded
-        .split(|c: char| !c.is_alphanumeric())
-        .any(|w| w == "puis");
+    let phased = phased(folded.as_str());
     if let Some(m) = CYCLIC
         .iter()
         .copied()
@@ -517,6 +515,58 @@ fn condition(raw: &str, marker: &str) -> String {
         .to_owned()
 }
 
+/// Un « puis » qui **ouvre une seconde phase**, et non tout « puis ».
+///
+/// Le mot seul sortait de la grille « 2 inhalations matin et soir puis
+/// se rincer la bouche » (la consigne de tout corticoïde inhalé), la
+/// Coversyl livrée (« soit 4 mg puis 8 mg », une équivalence de sel) et
+/// le relais d'un collyre. Une phase a **une durée avant** (« pendant
+/// 7 jours », « 3 jours », « la première semaine ») et **une dose
+/// après** (« puis 1 cp », « puis passer à », « puis augmenter »).
+fn phased(folded: &str) -> bool {
+    let words: Vec<&str> = folded
+        .split(|c: char| !c.is_alphanumeric())
+        .filter(|w| !w.is_empty())
+        .collect();
+    words.iter().enumerate().any(|(at, w)| {
+        if *w != "puis" {
+            return false;
+        }
+        let before = &words[..at];
+        let lasting = before.iter().enumerate().any(|(i, w)| {
+            matches!(
+                *w,
+                "pendant"
+                    | "durant"
+                    | "premier"
+                    | "premiers"
+                    | "premiere"
+                    | "premieres"
+                    | "1re"
+                    | "1ere"
+            ) || (matches!(*w, "j" | "jour" | "jours" | "semaine" | "semaines" | "mois")
+                && i > 0
+                && before[i - 1].starts_with(|c: char| c.is_ascii_digit()))
+        });
+        let dosed = words[at + 1..].iter().take(3).any(|w| {
+            w.starts_with(|c: char| c.is_ascii_digit())
+                || matches!(
+                    *w,
+                    "un" | "une"
+                        | "deux"
+                        | "trois"
+                        | "quatre"
+                        | "demi"
+                        | "passer"
+                        | "augmenter"
+                        | "diminuer"
+                        | "reduire"
+                )
+        });
+        lasting && dosed
+    })
+}
+
 /// Ce que porte la ligne d'un traitement à rythme non quotidien.
 ///
 /// Toute la phrase, et non le seul repère : « 1 comprimé par semaine,
@@ -541,7 +591,19 @@ fn weekly_by_name(folded: &str) -> Option<&'static str> {
         "jours impairs",
         "sauf le ",
     ];
-    if let Some(r) = RATIOS.iter().find(|r| folded.contains(**r)) {
+    // « N semaines sur M » est un rapport ; « 2 à 4 semaines sur la
+    // peau glabre » (la Lomexin livrée) est une durée et un lieu. Le
+    // rapport porte un nombre juste après « sur ».
+    let counted = |rest: &str| {
+        let next = rest.split_whitespace().next().unwrap_or("");
+        next.starts_with(|c: char| c.is_ascii_digit())
+            || matches!(next, "deux" | "trois" | "quatre" | "sept")
+    };
+    if let Some(r) = RATIOS.iter().find(|r| {
+        folded
+            .match_indices(**r)
+            .any(|(at, _)| !r.ends_with("sur ") || counted(&folded[at + r.len()..]))
+    }) {
         return Some(r);
     }
     const DAYS: [&str; 7] = [
@@ -611,16 +673,26 @@ fn notation(folded: &str) -> Option<[Option<Take>; 4]> {
         return None;
     }
     // **Une date n'est pas une grille** : « dès le 1/3/26 » se lisait
-    // 1 le matin, 3 à midi, 26 le soir. Une case de grille est petite ;
-    // l'année d'une date ne l'est pas. Les gouttes s'écrivent au tiret.
-    if sep == '/' && parts.iter().any(|p| quarters(p).is_none_or(|q| q > 12 * 4)) {
+    // 1 le matin, 3 à midi, 26 le soir. Une date a un jour, **un mois
+    // de 1 à 12** et une année de deux ou quatre chiffres ; « 20/0/20
+    // gouttes » ou « 14/0/10 » d'une insuline n'en ont pas — refuser
+    // toute case au-delà de 12 les perdait.
+    if sep == '/' && parts.len() == 3 {
+        let int = |p: &str| p.parse::<u32>().ok();
+        let year = parts[2].len() == 2 || parts[2].len() == 4;
+        if matches!(int(parts[0]), Some(1..=31)) && matches!(int(parts[1]), Some(1..=12)) && year {
+            return None;
+        }
+    }
+    if parts.iter().any(|p| quarters(p).is_none()) {
         return None;
     }
     // **Un milligramme n'est pas un comprimé**, ici comme dans `placed` :
-    // « 5-0-5 mg » comptait cinq unités par prise.
+    // « 5-0-5 mg » comptait cinq unités par prise. L'unité d'insuline,
+    // elle, est ce qu'on injecte : « 10-0-10 UI » reste une grille.
     if words
         .get(at + 1)
-        .is_some_and(|u| matches!(*u, "mg" | "g" | "µg" | "mcg" | "ug" | "ui"))
+        .is_some_and(|u| matches!(*u, "mg" | "g" | "µg" | "mcg" | "ug"))
     {
         return None;
     }
@@ -1389,6 +1461,31 @@ mod tests {
             assert_eq!(read(text).kind, Kind::Cyclic, "{text}");
         }
         assert_eq!(read("1 cp matin et soir").kind, Kind::Placed);
+        // Un « puis » qui n'ouvre pas de phase laisse la ligne en grille.
+        for text in [
+            "2 inhalations matin et soir puis se rincer la bouche",
+            "5 mg une fois par jour le matin (soit 4 mg puis 8 mg pour la forme tert-butylamine)",
+        ] {
+            assert_eq!(read(text).kind, Kind::Placed, "{text}");
+        }
+    }
+
+    /// Une grille de gouttes ou d'insuline au-delà de 12 reste une
+    /// grille ; une date, non.
+    #[test]
+    fn a_large_slash_grid_is_read_and_a_date_is_not() {
+        assert_eq!(read("20/0/20 gouttes").kind, Kind::Placed);
+        assert_eq!(read("15/15/15 gouttes").kind, Kind::Placed);
+        assert_eq!(read("14/0/10").kind, Kind::Placed);
+        assert_eq!(read("10-0-10 UI").kind, Kind::Placed);
+        assert_ne!(read("1 cp dès le 1/3/26").kind, Kind::Placed);
+        assert_ne!(read("5-0-5 mg").kind, Kind::Placed);
+        // Une durée sur un lieu n'est pas un rapport.
+        assert_ne!(
+            read("1 application par jour, 3 à 6 semaines entre les orteils, 2 à 4 semaines sur la peau glabre").kind,
+            Kind::Cyclic
+        );
+        assert_eq!(read("1 cp par jour, 3 semaines sur 4").kind, Kind::Cyclic);
     }
 
     #[test]
