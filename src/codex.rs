@@ -34,8 +34,19 @@ impl FormulaLine {
         // 60 g ne devient pas « 3 % »), une quantité par unité non plus,
         // et une fourchette « 2 à 3 g » dont on ne multiplierait que la
         // borne basse se lirait « 1,2 à 3 g ».
+        //
+        // **Ni une concentration écrite par unité** : « 10 mg/g »,
+        // « 50 000 UI/g », « 10 mg/gélule » ou « 5 ‰ » restent ce qu'ils
+        // sont quand on fait 60 g au lieu de 100 — multipliés, la fiche
+        // imprimait une autre concentration. Ni « 2 ou 3 g », ni « 5 g
+        // pour 100 g », qui ne se multiplient pas d'un seul côté.
         let unit = self.unit.trim_start();
-        if unit.starts_with(['%', '/', 'à', '-', '–']) {
+        let words = format!(" {} ", unit.to_lowercase());
+        if unit.starts_with(['%', '/', 'à', '-', '–', '‰'])
+            || unit.contains('/')
+            || words.contains(" ou ")
+            || words.contains(" pour ")
+        {
             return self.written.clone();
         }
         match self.quantity {
@@ -65,10 +76,19 @@ pub fn parse_formula(text: &str) -> Vec<FormulaLine> {
                 None => (line.trim(), ""),
             };
             let qsp = starts_with_qsp(written);
+            // « q.s. pour 100 g », « qsp ad 100 g » : le « pour » ou le
+            // « ad » qui suivent l'abréviation tombent aussi, sans quoi la
+            // quantité ne se lisait pas et l'excipient restait à 100 g
+            // quand le reste passait à 60.
             let rest = if qsp {
-                written
+                let after = written
                     .trim_start_matches(|c: char| c.is_alphabetic() || c == '.')
-                    .trim()
+                    .trim();
+                let lower = after.to_lowercase();
+                ["pour ", "ad "]
+                    .iter()
+                    .find(|w| lower.starts_with(**w))
+                    .map_or(after, |w| after[w.len()..].trim())
             } else {
                 written
             };
@@ -242,6 +262,23 @@ mod tests {
 
     /// « 1 000 g » est mille grammes : l'espace des milliers ne coupe
     /// pas le nombre — mais seulement devant exactement trois chiffres.
+    /// **Une concentration ne se multiplie pas**, et « q.s. pour 100 g »
+    /// suit la quantité comme « qsp 100 g ».
+    #[test]
+    fn a_concentration_stays_and_qs_pour_scales() {
+        let lines = parse_formula(
+            "Hydrocortisone | 10 mg/g\nHéparine | 50 000 UI/g\nMenthol | 5 ‰\nCamphre | 2 ou 3 g\nAcide salicylique | 5 g\nVaseline | q.s. pour 100 g\nLanoline | qsp ad 100 g",
+        );
+        let at = |n: usize| lines[n].scaled(0.6);
+        assert_eq!(at(0), "10 mg/g");
+        assert_eq!(at(1), "50 000 UI/g");
+        assert_eq!(at(2), "5 ‰");
+        assert_eq!(at(3), "2 ou 3 g");
+        assert_eq!(at(4), "3 g");
+        assert_eq!(at(5), "qsp 60 g");
+        assert_eq!(at(6), "qsp 60 g");
+    }
+
     #[test]
     fn a_thousands_space_does_not_cut_the_figure() {
         assert_eq!(parse_amount("1 000 g"), Some((1000.0, "g")));

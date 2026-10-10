@@ -65,6 +65,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   than a day are removed at startup; nothing removed them. Copying the
   base and exporting the bundle are now written to the access log, like
   the CSV exports.
+- Preparations codex: a concentration written per unit (« 10 mg/g »,
+  « 50 000 UI/g », « 10 mg/gélule », « 5 ‰ ») is no longer scaled with
+  the quantity, which printed another concentration on the fabrication
+  sheet; « q.s. pour 100 g » and « qsp ad 100 g » now follow the
+  quantity like « qsp 100 g » (the excipient stayed at 100 g); « 2 ou
+  3 g » is no longer half-scaled.
 
 ## [0.390.0] - 2026-10-10
 
