@@ -8,6 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Counter protocols: a question added after an action (« Ajouter une
+  question » under an action) is now part of the protocol's versions. It
+  was left out, so it never reached the network, never showed in the
+  history, and restoring a version or receiving one deleted it.
+
 ## [0.391.0] - 2026-10-10
 
 ### Fixed

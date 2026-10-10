@@ -3244,6 +3244,7 @@ opts_reseau_minutes = "minutes"
 
 # Le codex et les protocoles, versionnés et partagés
 proto_yes_tag = "oui : "
+proto_next_tag = "puis : "
 proto_no_tag = "non : "
 codex_f_yield = "Quantité obtenue"
 codex_f_caution = "Précautions"

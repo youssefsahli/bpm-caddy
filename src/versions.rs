@@ -443,15 +443,27 @@ pub struct TreeNode {
     pub text: String,
     pub yes: Vec<TreeNode>,
     pub no: Vec<TreeNode>,
+    /// **Ce qui suit une action** (« Ajouter une question » sous une
+    /// action) : rangé sous elle sans branche oui/non. Absent de cette
+    /// forme, il n'entrait dans aucune version, ne voyageait pas, et un
+    /// retour à une version — ou une version reçue — réécrivait l'arbre
+    /// sans lui : la suite que l'équipe avait écrite était effacée.
+    pub next: Vec<TreeNode>,
 }
 
 fn node_json(n: &TreeNode) -> serde_json::Value {
-    serde_json::json!({
+    let mut v = serde_json::json!({
         "k": n.kind,
         "t": n.text,
         "y": n.yes.iter().map(node_json).collect::<Vec<_>>(),
         "n": n.no.iter().map(node_json).collect::<Vec<_>>(),
-    })
+    });
+    // Seulement quand il y en a une : un arbre sans suite garde, octet
+    // pour octet, la forme et l'empreinte qu'il avait.
+    if !n.next.is_empty() {
+        v["x"] = serde_json::Value::Array(n.next.iter().map(node_json).collect());
+    }
+    v
 }
 
 /// L'arbre sous sa forme canonique : le même arbre donne les mêmes
@@ -481,6 +493,7 @@ pub fn tree_from_rows(rows: &[NodeRow]) -> Vec<TreeNode> {
                 text: r.4.clone(),
                 yes: under(rows, Some(r.0), "YES", depth + 1),
                 no: under(rows, Some(r.0), "NO", depth + 1),
+                next: under(rows, Some(r.0), "ROOT", depth + 1),
             })
             .collect()
     }
@@ -509,6 +522,11 @@ pub fn tree_nodes(json: &str) -> Option<Vec<TreeNode>> {
             text: v.get("t")?.as_str()?.to_owned(),
             yes: list("y")?,
             no: list("n")?,
+            next: if v.get("x").is_some() {
+                list("x")?
+            } else {
+                Vec::new()
+            },
         })
     }
     let v: serde_json::Value = serde_json::from_str(json).ok()?;
@@ -525,6 +543,12 @@ pub fn tree_text(json: &str) -> String {
             out.push(format!("{}{lead}{mark}{}", "    ".repeat(depth), n.text));
             walk(out, &n.yes, depth + 1, crate::strings::tr("proto_yes_tag"));
             walk(out, &n.no, depth + 1, crate::strings::tr("proto_no_tag"));
+            walk(
+                out,
+                &n.next,
+                depth + 1,
+                crate::strings::tr("proto_next_tag"),
+            );
         }
     }
     match tree_nodes(json) {
@@ -567,6 +591,30 @@ mod tests {
 
     /// **Une version ne se réécrit pas** : revenir en arrière ajoute une
     /// version, et l'historique garde les trois.
+    /// **La suite d'une action fait partie de l'arbre** : versionnée,
+    /// relue, réécrite. Et un arbre sans suite garde sa forme d'avant,
+    /// octet pour octet.
+    #[test]
+    fn the_step_after_an_action_belongs_to_the_tree() {
+        let row = |id: i64, parent: Option<i64>, branch: &str, kind: &str, text: &str| -> NodeRow {
+            (id, parent, branch.into(), kind.into(), text.into(), id)
+        };
+        let rows = vec![
+            row(1, None, "ROOT", "QUESTION", "Douleur ?"),
+            row(2, Some(1), "YES", "ACTION", "Paracétamol"),
+            row(3, Some(2), "ROOT", "QUESTION", "Fièvre plus de 3 jours ?"),
+            row(4, Some(3), "YES", "ACTION", "Médecin"),
+        ];
+        let tree = tree_from_rows(&rows);
+        let json = tree_json(&tree);
+        assert!(json.contains("Fièvre plus de 3 jours ?"), "{json}");
+        assert_eq!(tree_nodes(&json).as_deref(), Some(&tree[..]));
+        assert!(tree_text(&json).contains("Médecin"));
+        // Sans suite : pas de clé « x », la forme d'avant.
+        let plain = tree_json(&tree_from_rows(&rows[..2]));
+        assert!(!plain.contains("\"x\""), "{plain}");
+    }
+
     #[test]
     fn a_revert_is_one_more_version_and_the_history_keeps_all() {
         let a = ed("a:1", "dosage", "5 mg x2", "", "", "");

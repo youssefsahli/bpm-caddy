@@ -53689,6 +53689,7 @@ fn starter_tree(steps: &[StarterNode]) -> Vec<crate::versions::TreeNode> {
             text: n.text.to_owned(),
             yes: starter_tree(n.yes),
             no: starter_tree(n.no),
+            next: Vec::new(),
         })
         .collect()
 }
@@ -53983,6 +53984,7 @@ impl Db {
                 )?;
                 put(db, protocol_id, Some(id), Branch::Yes, &n.yes)?;
                 put(db, protocol_id, Some(id), Branch::No, &n.no)?;
+                put(db, protocol_id, Some(id), Branch::Root, &n.next)?;
             }
             Ok(())
         }
