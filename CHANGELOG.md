@@ -54,6 +54,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « dose à réduire »; a potassium of 3.5 is no longer read as low. The
   metformin reading between 30 and 45 now says « au tiers de la dose
   usuelle », as the renal panel does, instead of « de moitié ».
+- Counter calculator: the Cockcroft stage is read from the clearance as
+  displayed (29.6 showed « 30 mL/min » next to the « below 30 » stage).
 
 ## [0.389.0] - 2026-10-10
 

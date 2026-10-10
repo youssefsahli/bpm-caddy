@@ -39521,8 +39521,12 @@ impl App {
                     return;
                 }
                 let k = if session.calc_female { 1.04 } else { 1.23 };
+                // **Arrondie une fois**, et c'est ce chiffre-là qui choisit
+                // le stade : 29,6 s'affichait « 30 mL/min » à côté du
+                // stade G4, celui d'au-dessous de 30.
                 let clearance = if session.calc_creat > 0.0 {
-                    (140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat
+                    ((140.0 - session.calc_age) * session.calc_weight * k / session.calc_creat)
+                        .round()
                 } else {
                     0.0
                 };
