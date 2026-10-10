@@ -52950,6 +52950,33 @@ impl Db {
         rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
     }
 
+    /// Les actes de ce thème qui suivent un changement de traitement, dans
+    /// l'ordre de [`Self::interview_dates_for`] : celui-là ouvre une
+    /// nouvelle séquence (anticancéreux), et la règle annuelle doit le
+    /// savoir comme le tarif le sait.
+    pub fn interview_restarts_for(
+        &self,
+        patient_id: i64,
+        kind: InterviewKind,
+    ) -> Result<Vec<bool>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT treatment_change FROM (
+                     SELECT COALESCE(NULLIF(substr(scheduled_date, 1, 10), ''),
+                                     substr(created_at, 1, 10)) AS d, id, treatment_change
+                     FROM interviews WHERE patient_id = ?1 AND kind = ?2)
+                 ORDER BY d, id",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map((patient_id, kind.as_str()), |r| r.get::<_, i64>(0))
+            .map_err(|e| e.to_string())?;
+        rows.map(|r| r.map(|v| v != 0 && kind.allows_treatment_change()))
+            .collect::<Result<_, _>>()
+            .map_err(|e| e.to_string())
+    }
+
     /// Set (or clear) the planned date of an interview (ISO `YYYY-MM-DD`).
     /// Compare-and-set on the date this PC saw (`IS` also matches NULL),
     /// so a stale field never reverts a colleague's newer date. Returns
@@ -53420,6 +53447,26 @@ pub fn rule_next_allowed(
     } else {
         Some(cycle_end)
     }
+}
+
+/// [`rule_next_allowed`] when some acts follow a treatment change: the
+/// last such act opens a new sequence, and the acts before it no longer
+/// count — as the fee reads it (`cycle_positions_with_restarts`). Blocked
+/// otherwise, the very act the derogation exists for was refused until
+/// the year was out.
+pub fn rule_next_allowed_with_restarts(
+    dates: &[String],
+    restarts: &[bool],
+    today: &str,
+    per_year: u32,
+    months: u32,
+) -> Option<String> {
+    let from = restarts
+        .iter()
+        .rposition(|r| *r)
+        .unwrap_or(0)
+        .min(dates.len());
+    rule_next_allowed(&dates[from..], today, per_year, months)
 }
 
 /// "2026-08" → "août 2026", for the agenda's month header.
@@ -57167,6 +57214,28 @@ mod tests {
         );
         assert_eq!(csv_cell("-15,00"), "-15,00");
         assert_eq!(csv_cell("a;b"), "\"a;b\"");
+    }
+
+    /// **Un changement de traitement ouvre une séquence pour la règle
+    /// comme pour le tarif** : l'acte que la dérogation prévoit n'est plus
+    /// refusé jusqu'à la fin de l'année.
+    #[test]
+    fn a_treatment_change_reopens_the_yearly_rule() {
+        let d = |s: &str| s.to_owned();
+        let dates = [d("2026-01-01"), d("2026-02-01"), d("2026-03-01")];
+        assert!(rule_next_allowed(&dates, "2026-04-01", 3, 12).is_some());
+        assert_eq!(
+            rule_next_allowed_with_restarts(&dates, &[false, false, true], "2026-04-01", 3, 12),
+            None
+        );
+        assert!(rule_next_allowed_with_restarts(
+            &dates,
+            &[false, false, false],
+            "2026-04-01",
+            3,
+            12
+        )
+        .is_some());
     }
 
     #[test]

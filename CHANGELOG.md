@@ -87,6 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   convention's sequence, and typing 0 (« sans limite ») there changed
   nothing. A line says so. Yearly rules also count an act at its
   scheduled date, as its fee does.
+- Anticancer interviews: an act following a treatment change opens a new
+  sequence for the yearly rule as it already did for the fee; the act the
+  derogation exists for was blocked until the year was out.
 
 ## [0.390.0] - 2026-10-10
 

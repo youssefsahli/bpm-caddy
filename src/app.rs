@@ -29780,7 +29780,11 @@ impl App {
                 .db
                 .interview_dates_for(patient.id, kind)
                 .unwrap_or_default();
-            let year_now = db::cycle_positions(&dates_so_far, months)
+            let restarts = session
+                .db
+                .interview_restarts_for(patient.id, kind)
+                .unwrap_or_default();
+            let year_now = db::cycle_positions_for(kind, &dates_so_far, &restarts, months)
                 .last()
                 .map(|(y, _)| *y)
                 .unwrap_or(0);
@@ -29798,7 +29802,7 @@ impl App {
                     .interview_dates_for(patient.id, kind)
                     .unwrap_or_default();
                 let today = session.db.today_iso().unwrap_or_default();
-                db::rule_next_allowed(&dates, &today, per_year, months)
+                db::rule_next_allowed_with_restarts(&dates, &restarts, &today, per_year, months)
             } else {
                 None
             };
