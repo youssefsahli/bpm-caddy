@@ -74,6 +74,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   box's lot under « Boîte reconnue ». The note now says when the lot is
   to be typed or the reading is incomplete, and a serial number that may
   have swallowed the lot no longer reads as complete.
+- Carte Vitale: with a second beneficiary on the card, a holder with a
+  long surname (« DELACROIX CLAIRE ») could be read as « CLAIRE MARTIN »,
+  taking the next person's surname, and a new file was pre-filled with
+  it. The side of the NIR where the card writes names is now read once
+  for the card, and a NIR never takes a name beyond its neighbour's.
 
 ## [0.389.0] - 2026-10-10
 

@@ -151,7 +151,7 @@ pub fn nir_birth(nir: &str, this_year: u32) -> Option<(u32, Option<u32>)> {
 pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
     let text = decode(raw);
     let chars: Vec<char> = text.chars().collect();
-    let mut out: Vec<Beneficiary> = Vec::new();
+    let mut found_at: Vec<usize> = Vec::new();
     let mut i = 0usize;
     while i + 15 <= chars.len() {
         let window: String = chars[i..i + 15].iter().collect();
@@ -168,7 +168,36 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
             i += 1;
             continue;
         }
-        let (surname, given) = names_around(&chars, i);
+        found_at.push(i);
+        i += 15;
+    }
+    // **Which side of its NIR a person's names sit, read once for the
+    // card.** Two beneficiaries put two sets of names in each other's
+    // reach: with « DELACROIX CLAIRE » before the holder's NIR and
+    // « MARTIN LUCIE » after it, the two runs nearest the NIR were
+    // CLAIRE and MARTIN, and the holder came back as « CLAIRE MARTIN ».
+    // Names before the first NIR and none after the last: they precede;
+    // the mirror image: they follow. One NIR, or a card that says both
+    // or neither, keeps the nearest two.
+    let side = match (found_at.first(), found_at.last()) {
+        (Some(&first), Some(&last)) if found_at.len() > 1 => {
+            let before = has_name(&chars[first.saturating_sub(96)..first]);
+            let after = has_name(&chars[last + 15..(last + 15 + 96).min(chars.len())]);
+            match (before, after) {
+                (true, false) => Side::Before,
+                (false, true) => Side::After,
+                _ => Side::Either,
+            }
+        }
+        _ => Side::Either,
+    };
+    let mut out: Vec<Beneficiary> = Vec::new();
+    for (n, &i) in found_at.iter().enumerate() {
+        let window: String = chars[i..i + 15].iter().collect();
+        // Never past a neighbouring NIR: what lies beyond is someone else.
+        let lo = n.checked_sub(1).map_or(0, |p| found_at[p] + 15);
+        let hi = found_at.get(n + 1).copied().unwrap_or(chars.len());
+        let (surname, given) = names_around(&chars, i, lo..hi, side);
         let birth_date = birth_around(&chars, i, &window, this_year);
         let found = Beneficiary {
             nir: window,
@@ -179,9 +208,33 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
         if !out.iter().any(|b| b.nir == found.nir) {
             out.push(found);
         }
-        i += 15;
     }
     out
+}
+
+/// Where a card writes a person's names, relative to their NIR.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Side {
+    Before,
+    After,
+    Either,
+}
+
+/// Does this stretch hold a name — a run of name characters with two
+/// letters at least, as [`push_run`] keeps them?
+fn has_name(chars: &[char]) -> bool {
+    let mut letters = 0;
+    for &c in chars {
+        if name_char(c) {
+            letters += usize::from(c.is_alphabetic());
+            if letters >= 2 {
+                return true;
+            }
+        } else {
+            letters = 0;
+        }
+    }
+    false
 }
 
 /// A byte that is not text at all, kept as one character so offsets are
@@ -224,9 +277,14 @@ fn name_char(c: char) -> bool {
 /// the surname. Ranking by distance instead reads « DUPONT⏎JEAN⏎NIR »
 /// backwards and hands « JEAN DUPONT » to a counter, which is the sort
 /// of wrong that gets typed onto a file and stays there.
-fn names_around(chars: &[char], at: usize) -> (String, String) {
-    let start = at.saturating_sub(96);
-    let end = (at + 15 + 96).min(chars.len());
+fn names_around(
+    chars: &[char],
+    at: usize,
+    within: std::ops::Range<usize>,
+    side: Side,
+) -> (String, String) {
+    let start = at.saturating_sub(96).max(within.start);
+    let end = (at + 15 + 96).min(chars.len()).min(within.end.max(at + 15));
     let mut runs: Vec<(usize, String)> = Vec::new();
     let mut current = String::new();
     let mut current_at = start;
@@ -244,6 +302,11 @@ fn names_around(chars: &[char], at: usize) -> (String, String) {
         }
     }
     push_run(&mut runs, current_at, current);
+    runs.retain(|(k, _)| match side {
+        Side::Before => *k < at,
+        Side::After => *k >= at + 15,
+        Side::Either => true,
+    });
     // Nearest to the NIR first: the card's own fields sit against it,
     // and whatever else is in the file is further away.
     runs.sort_by_key(|(k, _)| at.abs_diff(*k));
@@ -509,6 +572,25 @@ mod tests {
         // The same card read twice does not double the list.
         let twice = [raw.clone(), raw].concat();
         assert_eq!(beneficiaries(&twice, 2026).len(), 2);
+    }
+
+    /// **A long surname does not hand the holder the next person's
+    /// name.** The two runs nearest the NIR were CLAIRE (before it) and
+    /// MARTIN (after it, the next beneficiary's): the holder read « CLAIRE
+    /// MARTIN ». The card's layout decides the side, read once.
+    #[test]
+    fn a_holder_keeps_their_own_names_beside_a_second_beneficiary() {
+        let before =
+            b"\x00DELACROIX\x00CLAIRE\x00155087511600125\x00MARTIN\x00LUCIE\x00226027511600139";
+        let found = beneficiaries(before, 2026);
+        assert_eq!(found[0].label(), "DELACROIX CLAIRE");
+        assert_eq!(found[1].label(), "MARTIN LUCIE");
+        // The mirror layout: names after each NIR.
+        let after =
+            b"155087511600125\x00DELACROIX\x00CLAIRE\x00226027511600139\x00MARTIN\x00LUCIE\x00";
+        let found = beneficiaries(after, 2026);
+        assert_eq!(found[0].label(), "DELACROIX CLAIRE");
+        assert_eq!(found[1].label(), "MARTIN LUCIE");
     }
 
     /// What must never happen: a number that is not a NIR read as one,
