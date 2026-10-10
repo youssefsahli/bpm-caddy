@@ -2,13 +2,13 @@
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
-**Versions.** 0.389.0 (campagnes paramétrables) et 0.390.0 (corrections
-de la relecture) sont **committées sur `main` et non poussées** : aucune
-étiquette, rien sur GitHub. La 0.389.0 a passé le smoke dans les quatre
-formes ; celle de la 0.390.0 est indiquée au bas de cette section quand
-elle a tourné. Pour publier : `git push origin main`, puis
-`git tag v0.390.0 && git push origin v0.390.0` (la 0.389.0 n'a pas
-besoin de sa propre étiquette, son contenu est dans la 0.390.0).
+**Versions.** 0.389.0 (campagnes paramétrables), 0.390.0 et 0.391.0
+(corrections de la relecture) sont **committées sur `main` et non
+poussées** : aucune étiquette, rien sur GitHub. 0.389.0 et 0.390.0 ont
+passé le smoke dans les quatre formes ; la 0.391.0, qui les contient
+toutes deux, est celle à publier (son smoke : voir le message de
+commit qui suit cette passation). Pour publier : `git push origin
+main`, puis `git tag v0.391.0 && git push origin v0.391.0`.
 
 **Ce qui a été fait le 10/10.**
 - Campagnes paramétrables (le travail laissé en cours), relues avant

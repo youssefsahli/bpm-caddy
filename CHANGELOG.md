@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.391.0] - 2026-10-10
+
 ### Fixed
 - Launcher: when the update check fails, it falls back to the installed
   copy only if that copy is whole; a truncated binary was launched and
