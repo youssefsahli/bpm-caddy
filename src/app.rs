@@ -20651,11 +20651,12 @@ impl App {
                         if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                             return Err(tr("form_names_required").to_owned());
                         }
-                        session.db.add_patient_with_sex(
+                        session.db.add_patient_with_nir(
                             form.last_name.trim(),
                             form.first_name.trim(),
                             &iso,
                             &form.sex,
+                            &form.nir,
                         )
                     });
                     match outcome {

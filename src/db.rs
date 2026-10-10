@@ -42359,6 +42359,21 @@ impl Db {
         birth_date: &str,
         sex: &str,
     ) -> Result<i64, String> {
+        self.add_patient_with_nir(last_name, first_name, birth_date, sex, "")
+    }
+
+    /// The same, with the NIR a Carte Vitale gave. Created from a card
+    /// and saved without it, a file was never found by that card again:
+    /// the next reading said « aucune fiche avec ce numéro » and offered
+    /// to create the same person a second time.
+    pub fn add_patient_with_nir(
+        &self,
+        last_name: &str,
+        first_name: &str,
+        birth_date: &str,
+        sex: &str,
+        nir: &str,
+    ) -> Result<i64, String> {
         // **Jamais un numéro déjà donné** — voir [`Db::delete_patient`] :
         // le suivant du plus haut, qu'il soit encore là ou supprimé. Lu
         // et écrit dans une même instruction, pour que deux postes qui
@@ -42368,17 +42383,17 @@ impl Db {
         self.conn
             .execute(
                 &format!(
-                    "INSERT INTO patients (id, last_name, first_name, birth_date, sex, created_at)
+                    "INSERT INTO patients (id, last_name, first_name, birth_date, sex, nir, created_at)
                      VALUES (
                          COALESCE({next}, MAX(
                              COALESCE((SELECT MAX(id) FROM patients), 0),
                              COALESCE((SELECT CAST(value AS INTEGER) FROM settings
                                        WHERE key = 'patient_id_high'), 0)
                          ) + 1),
-                         ?1, ?2, ?3, ?4, datetime('now', 'localtime'))",
+                         ?1, ?2, ?3, ?4, ?5, datetime('now', 'localtime'))",
                     next = next_id("patients")
                 ),
-                (last_name, first_name, birth_date, sex),
+                (last_name, first_name, birth_date, sex, nir.trim()),
             )
             .map_err(|e| e.to_string())?;
         Ok(self.conn.last_insert_rowid())
@@ -57045,6 +57060,28 @@ mod tests {
         let mut ranks = fee_ranks(&keys, 12);
         ranks.sort_unstable();
         assert_eq!(ranks, vec![(0, (0, 0)), (1, (1, 0)), (2, (0, 1))]);
+    }
+
+    /// **Un dossier créé depuis la carte Vitale garde son NIR**, et la
+    /// carte le retrouve à la lecture suivante.
+    #[test]
+    fn a_file_created_from_the_card_keeps_its_nir() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-nir-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("n.db"), "secret").unwrap();
+        let id = db
+            .add_patient_with_nir("DUPONT", "Jean", "1955-08-01", "M", "155087511600125")
+            .unwrap();
+        let p = db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        assert_eq!(p.nir, "155087511600125");
+        assert!(crate::vitale::same_nir(&p.nir, "155087511600125"));
     }
 
     #[test]

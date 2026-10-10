@@ -12,6 +12,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Launcher: when the update check fails, it falls back to the installed
   copy only if that copy is whole; a truncated binary was launched and
   failed without saying why.
+- Carte Vitale: a file created from a card reading now keeps the card's
+  NIR. It was dropped, so the next reading of the same card found no
+  file and offered to create the person a second time.
 
 ## [0.390.0] - 2026-10-10
 
