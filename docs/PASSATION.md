@@ -87,6 +87,22 @@ une version est publiée dès le premier binaire envoyé, avant les autres
 plates-formes et sans attendre les tests (passer par un brouillon). Pas
 de retour à la version précédente si la nouvelle ne démarre pas.
 
+**Données en clair (relevé).** Les exports CSV (entretiens : nom,
+téléphone, naissance ; doses de la saison) s'écrivent dans `exports/` à
+côté de la base — donc sur le partage réseau quand la base y est — et
+n'en sont jamais retirés. Choisir : un dossier local au poste, une durée
+de garde, ou un export chiffré.
+
+**Posologies (relevé).** Les schémas en phases (« 2 cp matin et soir
+les 3 premiers jours puis 1 cp matin et soir ») se mêlent dans la
+grille ; une demande n'importe où (« 1 cp le matin et si besoin le
+soir ») sort toute la ligne de la grille, prise du matin comprise —
+voulu, mais une prise systématique se perd ; « 2 x 3/j » reste non
+tranché. Protections périodiques : la période court d'anniversaire en
+anniversaire depuis la toute première délivrance ; l'autre lecture du
+décret la ferait repartir à la délivrance qui suit une interruption —
+à confirmer.
+
 **Petits restes.** Bulletins : un champ trop long déborde sans prévenir
 (5 pt au minimum, pas de découpe). Console : `patients()` reconstruit
 toutes les cartes à chaque appel, si bien qu'une boucle d'appels tourne
