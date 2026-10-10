@@ -50394,21 +50394,15 @@ impl Db {
         // lui, plus récent) redonnait les numéros des pièces rangées
         // depuis, et leurs octets étaient remplacés par ceux de la
         // nouvelle. Le numéro passe maintenant au-dessus des deux.
-        let blob_high: i64 = self
-            .scans
-            .query_row(
-                "SELECT COALESCE(MAX(scan_id), 0) FROM scan_blobs",
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        let row_high: i64 = self
-            .conn
-            .query_row("SELECT COALESCE(MAX(id), 0) FROM scans", [], |r| r.get(0))
-            .map_err(|e| e.to_string())?;
-        let next = blob_high.max(row_high) + 1;
-        self.conn
-            .execute(
+        //
+        // Deux postes qui rangent une pièce au même instant lisent le même
+        // plus haut numéro : le second voit le sien pris et recommence
+        // au-dessus, au lieu d'échouer.
+        let mut attempt = 0;
+        let id = loop {
+            attempt += 1;
+            let next = self.next_scan_id()?;
+            let written = self.conn.execute(
                 "INSERT INTO scans
                      (id, subject_kind, subject_id, doc_kind, label, media, bytes,
                       size, taken_on, operator, remark)
@@ -50425,9 +50419,14 @@ impl Db {
                     scan.remark.trim(),
                     next,
                 ],
-            )
-            .map_err(|e| e.to_string())?;
-        let id = next;
+            );
+            match written {
+                Ok(_) => break next,
+                Err(rusqlite::Error::SqliteFailure(f, _))
+                    if f.code == rusqlite::ErrorCode::ConstraintViolation && attempt < 5 => {}
+                Err(e) => return Err(e.to_string()),
+            }
+        };
         // Si l'écriture des octets échoue — disque plein, partage tombé
         // — la fiche ne doit pas rester seule à promettre une pièce qui
         // n'existe pas : on la retire et on dit pourquoi.
@@ -50441,6 +50440,24 @@ impl Db {
             return Err(format!("écriture de la pièce impossible : {e}"));
         }
         Ok(id)
+    }
+
+    /// Le numéro de la prochaine pièce : au-dessus de toute fiche **et**
+    /// de tout octet déjà rangé.
+    fn next_scan_id(&self) -> Result<i64, String> {
+        let blob_high: i64 = self
+            .scans
+            .query_row(
+                "SELECT COALESCE(MAX(scan_id), 0) FROM scan_blobs",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let row_high: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(id), 0) FROM scans", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        Ok(blob_high.max(row_high) + 1)
     }
 
     /// Les octets d'une pièce, pour la ressortir et l'ouvrir.

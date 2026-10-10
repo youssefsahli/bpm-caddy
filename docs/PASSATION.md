@@ -194,6 +194,26 @@ celle que la base garde.
 toutes les cartes à chaque appel, si bien qu'une boucle d'appels tourne
 une heure avant la limite d'opérations (le bouton d'arrêt marche).
 
+**Relecture de mes propres corrections (relevé, laissé).**
+- *Ruptures* : un retrait ne vaut que de l'officine qui a écrit
+  l'événement, comparée par son **nom affiché** (`source`). Renommée ici
+  entre les deux, l'officine ne lève plus sa propre rupture, qui reste
+  « en cours » jusqu'à l'horizon de 90 jours. Le bon repère est l'appareil
+  signataire, ce qui demande de le garder sur l'événement (colonne et
+  migration).
+- *Grippe* : la saison est fixée de septembre à février. Une campagne dont
+  la fin est repoussée en mars ne liste plus personne après février.
+- *Table rénale* : les paliers de la cefpodoxime (39 → 40) et de Tarka
+  (30 → 31) ont changé d'adresse ; une réécriture faite par l'officine
+  sous l'ancienne adresse revient au texte livré (voulu, et dit dans le
+  commit).
+- *Pièces* : sans aucune fiche en base, les octets restés dans
+  `_scans.db` ne sont jamais compactés — le choix prudent face à une base
+  remise en place.
+- *Posologies* : un jour nommé n'importe où dans la ligne (« contrôle INR
+  jeudi ») la sort de la grille ; dans le doute c'est le sens qui ne
+  coûte qu'une question.
+
 **Décisions qui reviennent à l'officine (relevées, non tranchées).**
 - *Changement de poste de référence* : deux postes peuvent numéroter le
   même numéro d'ordonnancier pendant la bascule, et une ligne reçue dont

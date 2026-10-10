@@ -20,6 +20,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reconciliation: a hospital line that starts with the name, strength
   and form (« AMLODIPINE 5 MG CPR 1-0-0 ») no longer shows a false dose
   change against « 1-0-0 ».
+- Two posts storing a scanned piece at the same moment no longer make the
+  second one fail; it takes the next number.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 
