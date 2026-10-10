@@ -53097,6 +53097,28 @@ pub fn parse_french_date(input: &str, current_year: u32, hint: YearHint) -> Resu
     Ok(format!("{year:04}-{month:02}-{day:02}"))
 }
 
+/// Parse the date of something that **has happened** — a delivery, a
+/// prescription, a register line, a document, a last period.
+///
+/// `YearHint::Past` is for birth dates and refuses the yearless forms
+/// (`JJMM`, `JJ/MM`): a truncated birth date is likelier than a newborn.
+/// An event typed at the counter is the opposite case — « 0810 » is the
+/// 8th of October just gone — and those screens refused the very
+/// shorthand the counter is taught. Full and two-digit years read as for
+/// `Past`; a yearless form is the last such day **on or before** `today`
+/// (ISO), so « 2312 » typed on 5 January is the December just past.
+pub fn parse_event_date(input: &str, today: &str) -> Result<String, String> {
+    let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2000);
+    if let Ok(iso) = parse_french_date(input, year, YearHint::Past) {
+        return Ok(iso);
+    }
+    let iso = parse_french_date(input, year, YearHint::Future)?;
+    if iso.as_str() <= today {
+        return Ok(iso);
+    }
+    parse_french_date(input, year.saturating_sub(1), YearHint::Future)
+}
+
 /// The same ISO date one year later ("2026-02-29" clamps to the 28th).
 /// The same ISO date `months` later, clamping 29 February and the
 /// short months to the last valid day.
@@ -56957,6 +56979,29 @@ mod tests {
         assert!(parse("29/02/1900").is_err());
         assert!(parse("30/04/2020").is_ok());
         assert!(parse("31/12/1999").is_ok());
+    }
+
+    /// The date of something that happened: the yearless shorthand the
+    /// counter is taught reads as the last such day, never refused.
+    #[test]
+    fn an_event_date_reads_the_yearless_shorthand_as_the_day_just_gone() {
+        let today = "2026-10-10";
+        assert_eq!(parse_event_date("0810", today).unwrap(), "2026-10-08");
+        assert_eq!(parse_event_date("08/10", today).unwrap(), "2026-10-08");
+        // Today itself, and a day not yet come: last year's.
+        assert_eq!(parse_event_date("1010", today).unwrap(), "2026-10-10");
+        assert_eq!(parse_event_date("2312", today).unwrap(), "2025-12-23");
+        assert_eq!(
+            parse_event_date("2312", "2027-01-05").unwrap(),
+            "2026-12-23"
+        );
+        // Years typed read as before.
+        assert_eq!(parse_event_date("081026", today).unwrap(), "2026-10-08");
+        assert_eq!(parse_event_date("08/10/2025", today).unwrap(), "2025-10-08");
+        assert!(parse_event_date("3102", today).is_err());
+        assert!(parse_event_date("", today).is_err());
+        // A birth date still asks for its year.
+        assert!(parse_french_date("0810", 2026, YearHint::Past).is_err());
     }
 
     #[test]

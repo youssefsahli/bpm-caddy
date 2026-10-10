@@ -93,8 +93,10 @@ modifie la taille du texte, réglée une fois pour toute l'application à
 Le bandeau porte l'identité et les traitements ; en dessous, les actes,
 le journal, la biologie, les vaccins et les pièces scannées.
 
-Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Des
-heures : `9`, `930`, `9h30`.
+Saisie courte des dates : `230826` ou `2308` donne `23/08/2026`. Pour
+une date déjà passée (délivrance, ordonnance, registre, pièce, DDR),
+`2312` tapé en janvier donne le 23 décembre précédent ; une date de
+naissance demande son année. Des heures : `9`, `930`, `9h30`.
 
 Les données partagées entre postes — identité, états d'acte,
 rendez-vous — sont écrites par comparaison avec la valeur affichée. Si

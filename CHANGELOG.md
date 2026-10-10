@@ -8,6 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Dates of past events typed without a year (« 0810 », « 08/10 ») were
+  refused on the delivery coverage, the prescription date, the narcotics
+  register and batch entry, scanned documents and the last menstrual
+  period; they now read as the most recent such day (« 2312 » typed in
+  January is the December just gone). Birth dates still require a year.
+
 ## [0.389.0] - 2026-10-10
 
 ### Added

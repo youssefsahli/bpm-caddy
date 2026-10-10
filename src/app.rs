@@ -26237,11 +26237,10 @@ impl App {
             session.vacc_cat_edit = Some(VaccCatEdit::default());
         }
         if let Some(typed) = ddr_write {
-            let year = session.db.current_year();
             let iso = if typed.trim().is_empty() {
                 Ok(String::new())
             } else {
-                db::parse_french_date(&typed, year, db::YearHint::Past)
+                db::parse_event_date(&typed, &session.today)
             };
             match iso {
                 Ok(iso) if iso != patient.pregnancy_ddr => {
@@ -29309,11 +29308,8 @@ impl App {
                                 let typed = script_date.trim().to_owned();
                                 if typed.is_empty() {
                                     next.prescribed_on.clear();
-                                } else if let Ok(iso) = db::parse_french_date(
-                                    &typed,
-                                    session.db.current_year(),
-                                    db::YearHint::Past,
-                                ) {
+                                } else if let Ok(iso) = db::parse_event_date(&typed, &session.today)
+                                {
                                     next.prescribed_on = iso;
                                 }
                             }
@@ -40068,7 +40064,6 @@ impl App {
                 return m.clone();
             }
         }
-        let year = session.year_now();
         let lines: Vec<crate::couverture::Line> = session
             .couv_rows
             .iter()
@@ -40077,8 +40072,7 @@ impl App {
                 units: r.units.trim().parse().unwrap_or(0),
                 boxes: r.boxes.trim().parse().unwrap_or(1),
                 posology: r.posology.clone(),
-                delivered_on: db::parse_french_date(&r.date, year, db::YearHint::Past)
-                    .unwrap_or_default(),
+                delivered_on: db::parse_event_date(&r.date, &session.today).unwrap_or_default(),
                 qsp_days: r.qsp.trim().parse().unwrap_or(0),
             })
             .collect();
@@ -48084,11 +48078,7 @@ impl App {
         let taken_on = if session.scan_new_day.trim().is_empty() {
             String::new()
         } else {
-            match db::parse_french_date(
-                &session.scan_new_day,
-                session.year_now(),
-                db::YearHint::Past,
-            ) {
+            match db::parse_event_date(&session.scan_new_day, &session.today) {
                 Ok(iso) => iso,
                 Err(e) => {
                     session.scan_note = Some((true, e));
@@ -49554,7 +49544,7 @@ impl App {
         let sheet_day = if batch.day.trim().is_empty() {
             None
         } else {
-            db::parse_french_date(&batch.day, session.year_now(), db::YearHint::Past)
+            db::parse_event_date(&batch.day, &session.today)
                 .ok()
                 .filter(|iso| *iso < session.today)
         };
@@ -50315,7 +50305,7 @@ impl App {
         let day = if batch.day.trim().is_empty() {
             session.today.clone()
         } else {
-            match db::parse_french_date(&batch.day, session.year_now(), db::YearHint::Past) {
+            match db::parse_event_date(&batch.day, &session.today) {
                 Ok(iso) => iso,
                 Err(e) => {
                     session.stup_note = Some((true, e));
@@ -51355,11 +51345,7 @@ impl App {
         let day = if session.stup_new_day.trim().is_empty() {
             session.today.clone()
         } else {
-            match db::parse_french_date(
-                &session.stup_new_day,
-                session.year_now(),
-                db::YearHint::Past,
-            ) {
+            match db::parse_event_date(&session.stup_new_day, &session.today) {
                 Ok(iso) => iso,
                 Err(e) => {
                     session.stup_note = Some((true, e));
