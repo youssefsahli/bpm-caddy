@@ -39,6 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Daily copies: two posts making the day's copy in the same shared folder
   no longer write the same temporary file; one could rename the other's
   half-written copy into place.
+- Appointments typed in a file (date, time, initials): when another post
+  had changed the same appointment, the typed value was dropped without a
+  word; the « modified on another post » notice now says so.
 
 ## [0.391.0] - 2026-10-10
 

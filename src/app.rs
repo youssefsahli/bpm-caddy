@@ -10807,16 +10807,25 @@ impl Session {
             return;
         }
         let year = self.db.current_year();
+        // **Un refus se dit.** Chaque écriture compare à ce que la liste
+        // montrait ; un `false` — un autre poste a écrit entre-temps —
+        // était jeté, et ce qui avait été tapé disparaissait sans un mot.
+        let mut refused = false;
+        let mut note = |r: Result<bool, String>| {
+            if matches!(r, Ok(false)) {
+                refused = true;
+            }
+        };
         for itv in self.viewing_interviews.clone() {
             if let Some(text) = self.date_edits.get(&itv.id) {
                 let expected = itv.scheduled_date.as_deref();
                 if text.trim().is_empty() {
                     if itv.scheduled_date.is_some() {
-                        let _ = self.db.set_scheduled_date(itv.id, None, expected);
+                        note(self.db.set_scheduled_date(itv.id, None, expected));
                     }
                 } else if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
                     if expected != Some(iso.as_str()) {
-                        let _ = self.db.set_scheduled_date(itv.id, Some(&iso), expected);
+                        note(self.db.set_scheduled_date(itv.id, Some(&iso), expected));
                     }
                 }
             }
@@ -10826,7 +10835,7 @@ impl Session {
                 let made = &itv.created_at[..10.min(itv.created_at.len())];
                 if let Ok(iso) = db::parse_french_date(text, year, db::YearHint::Future) {
                     if iso != made {
-                        let _ = self.db.set_created_date(itv.id, &iso, made);
+                        note(self.db.set_created_date(itv.id, &iso, made));
                     }
                 }
             }
@@ -10835,7 +10844,7 @@ impl Session {
             if let Some(text) = self.by_edits.get(&itv.id) {
                 let who = text.trim();
                 if who != itv.operator {
-                    let _ = self.db.set_interview_operator(itv.id, who, &itv.operator);
+                    note(self.db.set_interview_operator(itv.id, who, &itv.operator));
                 }
             }
             // L'heure, seulement si elle se lit.
@@ -10847,9 +10856,10 @@ impl Session {
                 };
                 if let Some(value) = parsed {
                     if value != itv.scheduled_time {
-                        let _ = self
-                            .db
-                            .set_scheduled_time(itv.id, &value, &itv.scheduled_time);
+                        note(
+                            self.db
+                                .set_scheduled_time(itv.id, &value, &itv.scheduled_time),
+                        );
                     }
                 }
             }
@@ -10858,6 +10868,9 @@ impl Session {
         self.made_edits.clear();
         self.by_edits.clear();
         self.hour_edits.clear();
+        if refused {
+            self.stale("itv_stale");
+        }
         self.reload_interviews(pid);
     }
 

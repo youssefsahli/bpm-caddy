@@ -58568,16 +58568,30 @@ mod tests {
         // Idempotent : un deuxième compactage n'a plus rien à déplacer.
         assert_eq!(db.move_scans_out().unwrap(), 0);
 
-        // Un octet orphelin — une suppression qui n'a pas atteint le
-        // fichier des pièces — est balayé, et rien d'autre avec lui.
+        // Un octet orphelin sous la dernière fiche — une suppression qui
+        // n'a pas atteint le fichier des pièces — est balayé, et rien
+        // d'autre avec lui. Au-dessus, il reste : ce sont les octets de
+        // pièces rangées après une copie remise en place.
         db.scans
             .execute(
-                "INSERT INTO scan_blobs (scan_id, bytes) VALUES (9999, x'0102')",
+                "INSERT INTO scan_blobs (scan_id, bytes) VALUES (?1, x'0102')",
+                [id - 1],
+            )
+            .unwrap();
+        db.scans
+            .execute(
+                "INSERT INTO scan_blobs (scan_id, bytes) VALUES (9999, x'0304')",
                 [],
             )
             .unwrap();
         assert_eq!(db.sweep_orphan_scans().unwrap(), 1);
         assert_eq!(db.scan_bytes(id).unwrap().0, pdf, "la pièce vivante reste");
+        assert!(db
+            .scans
+            .query_row("SELECT 1 FROM scan_blobs WHERE scan_id = 9999", [], |_| Ok(
+                ()
+            ))
+            .is_ok());
     }
 
     /// Les deux fichiers se copient, et une base arrivée sans le sien
