@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   stops and names the copy to put back. Recreated, the empty register
   started a new numbering, and the daily rotation then deleted every copy
   of the real one.
+- Scanned pieces: a new piece always takes a number above the pieces
+  already stored. After the base was put back from a copy, a new piece
+  could take the number of a newer one and overwrite its bytes.
 
 ## [0.391.0] - 2026-10-10
 

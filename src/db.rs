@@ -50356,12 +50356,32 @@ impl Db {
         // La fiche dans la base, les octets à côté. Un `bytes` vide dans
         // la base principale : la colonne existe encore pour les bases
         // d'avant, et n'est plus écrite.
+        //
+        // **Un numéro qu'aucun octet ne porte déjà.** Le numéro de la fiche
+        // était celui que la base donnait, le suivant de ses fiches : une
+        // base remise en place depuis une copie (le fichier des pièces,
+        // lui, plus récent) redonnait les numéros des pièces rangées
+        // depuis, et leurs octets étaient remplacés par ceux de la
+        // nouvelle. Le numéro passe maintenant au-dessus des deux.
+        let blob_high: i64 = self
+            .scans
+            .query_row(
+                "SELECT COALESCE(MAX(scan_id), 0) FROM scan_blobs",
+                [],
+                |r| r.get(0),
+            )
+            .map_err(|e| e.to_string())?;
+        let row_high: i64 = self
+            .conn
+            .query_row("SELECT COALESCE(MAX(id), 0) FROM scans", [], |r| r.get(0))
+            .map_err(|e| e.to_string())?;
+        let next = blob_high.max(row_high) + 1;
         self.conn
             .execute(
                 "INSERT INTO scans
-                     (subject_kind, subject_id, doc_kind, label, media, bytes,
+                     (id, subject_kind, subject_id, doc_kind, label, media, bytes,
                       size, taken_on, operator, remark)
-                 VALUES (?1, ?2, ?3, ?4, ?5, x'', ?6, ?7, ?8, ?9)",
+                 VALUES (?10, ?1, ?2, ?3, ?4, ?5, x'', ?6, ?7, ?8, ?9)",
                 rusqlite::params![
                     scan.subject_kind,
                     scan.subject_id,
@@ -50372,15 +50392,18 @@ impl Db {
                     scan.taken_on.trim(),
                     scan.operator.trim(),
                     scan.remark.trim(),
+                    next,
                 ],
             )
             .map_err(|e| e.to_string())?;
-        let id = self.conn.last_insert_rowid();
+        let id = next;
         // Si l'écriture des octets échoue — disque plein, partage tombé
         // — la fiche ne doit pas rester seule à promettre une pièce qui
         // n'existe pas : on la retire et on dit pourquoi.
         if let Err(e) = self.scans.execute(
-            "INSERT OR REPLACE INTO scan_blobs (scan_id, bytes) VALUES (?1, ?2)",
+            // Jamais « OR REPLACE » : des octets déjà là sous ce numéro
+            // sont ceux d'une autre pièce.
+            "INSERT INTO scan_blobs (scan_id, bytes) VALUES (?1, ?2)",
             rusqlite::params![id, bytes],
         ) {
             let _ = self.conn.execute("DELETE FROM scans WHERE id = ?1", [id]);
@@ -58242,6 +58265,53 @@ mod tests {
     /// octets d'une pièce ne se réécrivent jamais. Une numérisation est
     /// ce que le scanner a produit ; la remplacer sous le même libellé
     /// ferait mentir tout ce qui la cite. On en range une autre.
+    /// **Une base remise en place depuis une copie ne fait pas écraser les
+    /// pièces plus récentes** : la pièce suivante prend un numéro au-dessus
+    /// des octets déjà rangés.
+    #[test]
+    fn a_new_piece_never_takes_the_number_of_stored_bytes() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-scanid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("scan.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let piece = Scan {
+            id: 0,
+            subject_kind: "PATIENT".to_owned(),
+            subject_id: pid,
+            doc_kind: "ORDONNANCE".to_owned(),
+            label: "Ordonnance".to_owned(),
+            media: "application/pdf".to_owned(),
+            size: 0,
+            taken_on: "2026-08-12".to_owned(),
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            created_at: String::new(),
+            stup_move: 0,
+        };
+        db.add_scan(&piece, b"%PDF-un").unwrap();
+        let newer = db.add_scan(&piece, b"%PDF-deux").unwrap();
+        // La base revient d'une copie d'avant la seconde pièce ; le fichier
+        // des pièces, lui, la garde.
+        db.conn
+            .execute("DELETE FROM scans WHERE id = ?1", [newer])
+            .unwrap();
+        let third = db.add_scan(&piece, b"%PDF-trois").unwrap();
+        assert_ne!(third, newer);
+        assert_eq!(
+            db.scans
+                .query_row(
+                    "SELECT bytes FROM scan_blobs WHERE scan_id = ?1",
+                    [newer],
+                    |r| r.get::<_, Vec<u8>>(0)
+                )
+                .unwrap(),
+            b"%PDF-deux".to_vec(),
+            "les octets de la seconde pièce sont intacts"
+        );
+    }
+
     #[test]
     fn a_scanned_piece_is_filed_reread_and_never_rewritten() {
         let dir = std::env::temp_dir().join(format!("bpm-caddy-scan-{}", std::process::id()));
