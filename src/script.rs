@@ -180,7 +180,7 @@ pub fn run_until(
             .unwrap_or_else(|| Outcome {
                 printed: Vec::new(),
                 value: String::new(),
-                error: Some("le script s'est interrompu".to_owned()),
+                error: Some(crate::strings::tr("script_died").to_owned()),
                 read_patients: false,
             })
     })
@@ -211,10 +211,10 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
         let halted = Arc::clone(&stop_seen);
         engine.on_progress(move |_| {
             if halted.load(std::sync::atomic::Ordering::Relaxed) {
-                return Some(rhai::Dynamic::from("arrêté"));
+                return Some(rhai::Dynamic::from(crate::strings::tr("script_halted")));
             }
             (seen.load(std::sync::atomic::Ordering::Relaxed) > MAX_PRINTED)
-                .then(|| rhai::Dynamic::from("sortie trop longue"))
+                .then(|| rhai::Dynamic::from(crate::strings::tr("script_too_long")))
         });
     }
     // Les bornes. `set_max_operations` est ce qui arrête `while true {}` ;
@@ -365,7 +365,7 @@ fn engine_run(source: &str, data: &Snapshot, stop: Arc<std::sync::atomic::Atomic
             // c'est ce qui s'est passé, et ce n'est pas une faute du
             // script.
             error: Some(if stop_seen.load(std::sync::atomic::Ordering::Relaxed) {
-                "arrêté".to_owned()
+                crate::strings::tr("script_halted").to_owned()
             } else {
                 e.to_string()
             }),
