@@ -84887,23 +84887,6 @@ mod tests {
         }
     }
 
-    /// **Un nom de la carte se lit entier, ou pas du tout.**
-    ///
-    /// Trois règles d'un coup, sur la vraie figure et dans la fonte qui
-    /// la dessine — la seule façon de mesurer un texte est de le faire
-    /// poser par un `egui::Context`, fût-il sans écran.
-    ///
-    /// 1. **Deux noms ne se peignent pas l'un dans l'autre.** C'est ce
-    ///    que la place refusée garantit, et rien ne le tenait.
-    /// 2. **Aucun nom ne sort du creux.** Un `Painter` peint où on lui
-    ///    dit : « Zeclar » sortait par le haut du cadre et
-    ///    « Rifadine » par le bas, coupés en leur milieu, parce que la
-    ///    marge verticale valait une ligne là où il en faut une plus le
-    ///    carré.
-    /// 3. **Quatre places valent mieux qu'une**, et il faut que cela se
-    ///    voie : avec la seule place d'autrefois, cette même figure perd
-    ///    des noms. Sans cette moitié-là, le test passerait aussi sur un
-    ///    code qui n'en placerait aucun.
     /// Deux noms d'une même ligne gardent un blanc entre eux : sous deux
     /// carrés voisins, « Strefen » et « Calciparine » se touchaient et se
     /// lisaient d'un seul mot. Le blanc est mesuré ici, pas repris de la
@@ -84932,6 +84915,23 @@ mod tests {
         );
     }
 
+    /// **Un nom de la carte se lit entier, ou pas du tout.**
+    ///
+    /// Trois règles d'un coup, sur la vraie figure et dans la fonte qui
+    /// la dessine — la seule façon de mesurer un texte est de le faire
+    /// poser par un `egui::Context`, fût-il sans écran.
+    ///
+    /// 1. **Deux noms ne se peignent pas l'un dans l'autre.** C'est ce
+    ///    que la place refusée garantit, et rien ne le tenait.
+    /// 2. **Aucun nom ne sort du creux.** Un `Painter` peint où on lui
+    ///    dit : « Zeclar » sortait par le haut du cadre et
+    ///    « Rifadine » par le bas, coupés en leur milieu, parce que la
+    ///    marge verticale valait une ligne là où il en faut une plus le
+    ///    carré.
+    /// 3. **Quatre places valent mieux qu'une**, et il faut que cela se
+    ///    voie : avec la seule place d'autrefois, cette même figure perd
+    ///    des noms. Sans cette moitié-là, le test passerait aussi sur un
+    ///    code qui n'en placerait aucun.
     #[test]
     fn a_name_on_the_map_is_read_whole_or_not_at_all() {
         // Les douze antiépileptiques de la fiche livrée, l'anneau qui a
