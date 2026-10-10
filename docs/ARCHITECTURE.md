@@ -287,7 +287,7 @@ The one that was missing — « combien de fois un autre poste avait
   écrit le premier », the most useful number the pane carries and the
   one no other screen says — was absent for two versions for a reason
   worth keeping: every compare-and-set answers `false` in its own place,
-  86 of them, and counting at all but one would be a counter quietly
+  88 of them, and counting at all but one would be a counter quietly
   short, which is worse than one that is not there. It arrived by making those answers
   go through **one** function, `Session::stale` / `stale_note`, the only
   path to a « rechargez » notice (`stale_note_with` when it names what changed); `no_stale_notice_is_written_by_hand`
@@ -1361,7 +1361,7 @@ add clicking and typing; it is not the price of entry.
   explorer's axes, the map's lenses, the batch sheet's natures, as the
   register form already did (`richest_form`); it says nothing useful
   about a form, a dialog or a table of records, where what is under the
-  fold is the control you came to use. 68 regions now set
+  fold is the control you came to use. 69 regions now set
   `ui.spacing_mut().scroll.floating = false`, each for a loss seen on a
   capture at 1024x700: the planning's entry row (« Poser »), the
   register's write form (its natures and nothing else — the quantity,
@@ -2224,7 +2224,7 @@ add clicking and typing; it is not the price of entry.
 - `BPM_CADDY_START_VIEW=verrou|search|dashboard|patient|patient_edit|patient_new|drugs|drug_card|agenda|agenda_day|
   agenda_filtre|agenda_month|planning|planning_mois|protocols|protocol_open|template|options|about|tables|
   tables_search|regles|mentions|honoraires|forfaits|calc|carnet|vaccins|bio|watch|revue|conciliation|
-  vaccine_map|campagne|campagne_rdv|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
+  vaccine_map|campagne|campagne_rdv|campagne_parametrer|campagne_entretiens|vaccins_grossesse|vaccins_catalogue|ruptures|reseau|versions|postes|postes_seul|postes_telephone|connexions|ordonnance|ordonnance_lignes|rein|grossesse|age|cyp|ddi|ddi_crush|libelles|listes|base|codex|
   codex_open|dispositifs|dispositif_open|conseil_contention|conseil_nutrition|conseil_protections|couverture|locations|keys|keys_outils|nouveautes|messages|connexions_carte|vitale|
   act_picker|goto|goto_jump|mono_search|mono_patient|graph|graph_zoom|graph_wide|graph_ordonnance|graph_filtre|registres|stup|
   trame|cascades|cascades_decrire|cascades_boucle|
@@ -2748,11 +2748,24 @@ name>` follows that node's lineage, as a click would.
 
 ## La campagne et « Mesures et conseils » (0.367 à 0.375)
 
+- **Une campagne est une donnée, pas du code** (0.389) : une période, une
+  clé sous laquelle ses appels sont rangés (fixée à la création, jamais
+  réécrite — des dates corrigées gardent les appels), des seuils, et des
+  sujets (`Subject` : ce qui le règle, `Means::Vaccine | Act | Call` ; qui il
+  vise, `Rule::Calendar | Criteria` ; sur quelle durée, `Coverage`). La
+  table `campaigns` (flux Officine) garde les sujets en texte
+  (`encode_subjects`, une ligne de `clé=valeur` par sujet, clés inconnues
+  ignorées pour qu'une version plus récente en ajoute). Rien n'est semé :
+  `listing` ajoute la campagne de la saison et celle de l'an passé tant
+  qu'aucune ligne ne porte leur clé — personnaliser la campagne livrée,
+  c'est enregistrer une ligne de même clé. Les appels gardent leur
+  colonne `season`, qui porte désormais la clé de la campagne.
+
 - **`src/campagne.rs`** lit la saison (1er septembre au 31 août) et ne
   stocke rien qu'elle puisse recalculer : le stock d'un lot est ce qui a
   été reçu moins les lignes du carnet qui portent son numéro (comparé
   sans espaces ni tirets), si bien qu'une dose corrigée ou supprimée au
-  carnet se retrouve dans le stock. Deux tables seulement : `vaccine_lots`
+  carnet se retrouve dans le stock. Deux tables d'abord : `vaccine_lots`
   (flux Officine) et `campaign_calls` (flux Dossiers, une ligne par appel,
   la liste lit le dernier). La vue ne lit la base qu'à l'ouverture et
   après un geste (`reload_campagne`).

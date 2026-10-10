@@ -8,6 +8,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Configurable campaigns: « Paramétrer » opens the campaign editor. The
+  season's campaign can be customised (dates, stock thresholds, summary
+  age bands, multidose vial delay, subjects) and carried over to next
+  year in one click, and new campaigns can be created: another vaccine
+  targeted by age and sex (HPV catch-up), interviews (AVK, medication
+  review) targeted by treatments and settled by the completed act, or a
+  subject settled by a call alone (a screening). With nothing saved,
+  every winter gets its season's campaign, and last winter's stays
+  readable with its summary.
+- A campaign's summary now also counts call outcomes, subject by subject.
+
+### Changed
+- Campaign tab on a short screen: the four documents (list, summary, day
+  register, dose export) gather in one « Documents » menu, so the recall
+  list keeps its rows at 1024x700 with large text.
+
 ## [0.388.0] - 2026-10-08
 
 ### Changed

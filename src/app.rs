@@ -4108,14 +4108,24 @@ struct CouvRow {
     patient_id: Option<i64>,
 }
 
-/// La campagne de vaccination, telle que la vue la lit : tout est
-/// calculé au chargement (`reload_campagne`) et après chaque geste,
-/// jamais par image.
+/// La campagne, telle que la vue la lit : tout est calculé au
+/// chargement (`reload_campagne`) et après chaque geste, jamais par
+/// image.
 #[derive(Default)]
 struct CampagneState {
-    /// Le vaccin dont on lit les rappels et la courbe (`GRIPPE` par
-    /// défaut).
-    code: &'static str,
+    /// Les campagnes proposées (`campagne::listing`) et celle qu'on lit.
+    campaigns: Vec<crate::campagne::Campaign>,
+    campaign: Option<crate::campagne::Campaign>,
+    /// La clé de la campagne choisie, gardée d'une relecture à l'autre.
+    key: String,
+    /// Et sa ligne : deux postes qui personnalisent la même saison avant
+    /// de s'être joints laissent deux lignes de même clé, et le menu doit
+    /// pouvoir ouvrir l'une comme l'autre (pour en supprimer une). 0 : la
+    /// première de la clé.
+    id: i64,
+    /// Le sujet dont on lit les rappels et la courbe (le premier de la
+    /// campagne par défaut).
+    code: String,
     lots: Vec<crate::campagne::Lot>,
     /// Les doses du carnet sur chaque lot, dans l'ordre de `lots`.
     used: Vec<i64>,
@@ -4124,9 +4134,9 @@ struct CampagneState {
     tally: Vec<crate::campagne::Tally>,
     weekly: Vec<(String, usize)>,
     recalls: Vec<RecallRow>,
-    /// Combien de dossiers à rappeler, par vaccin de
-    /// `campagne::CAMPAIGN_CODES`.
-    counts: [usize; crate::campagne::CAMPAIGN_CODES.len()],
+    /// Combien de dossiers à rappeler, par sujet de la campagne, dans son
+    /// ordre.
+    counts: Vec<usize>,
     new_lot: crate::campagne::Lot,
     /// La page montrée quand la vue est trop étroite pour les trois
     /// panneaux : 0 rappels, 1 doses, 2 lots.
@@ -4146,7 +4156,7 @@ struct CampagneState {
     /// Le dossier dont le rendez-vous se prend, au téléphone : jour et
     /// heure tapés sous sa ligne.
     rdv_for: Option<i64>,
-    /// La liste des rendez-vous de vaccination à la place des rappels.
+    /// La liste des rendez-vous de la campagne à la place des rappels.
     show_rdv: bool,
     appointments: Vec<db::Appointment>,
     /// L'avis du dernier export, jusqu'à la prochaine relecture.
@@ -4154,6 +4164,222 @@ struct CampagneState {
     rdv_date: String,
     rdv_time: String,
     rdv_error: Option<String>,
+    /// L'éditeur des campagnes, quand il est ouvert : il prend la place
+    /// des trois panneaux.
+    edit: Option<CampaignEdit>,
+}
+
+/// L'éditeur d'une campagne : ce qui est tapé, champ par champ, et ce que
+/// la base portait à l'ouverture, contre quoi l'écriture se compare.
+#[derive(Clone, Default)]
+struct CampaignEdit {
+    /// La campagne telle que lue ; `id` 0 : pas encore enregistrée (la
+    /// campagne de la saison qu'on personnalise, une copie, une nouvelle).
+    expected: Option<crate::campagne::Campaign>,
+    key: String,
+    title: String,
+    starts: String,
+    ends: String,
+    low_stock: String,
+    expiry_days: String,
+    bands: String,
+    remark: String,
+    subjects: Vec<SubjectEdit>,
+    /// Le sujet dont le détail est déplié.
+    selected: usize,
+    error: Option<String>,
+    confirm_delete: bool,
+    /// Les vaccins que le calendrier lit (`campagne::calendar_codes`),
+    /// lus à l'ouverture : la règle « calendrier » d'un autre est signalée.
+    calendar: Vec<&'static str>,
+}
+
+/// Un sujet tel que l'éditeur le tape : des chaînes, lues à
+/// l'enregistrement.
+#[derive(Clone, Default, PartialEq)]
+struct SubjectEdit {
+    code: String,
+    label: String,
+    /// 0 vaccin, 1 acte, 2 appel.
+    means: usize,
+    act: String,
+    calendar: bool,
+    age_min: String,
+    age_max: String,
+    sex: String,
+    pregnancy: bool,
+    evoked: bool,
+    molecules: String,
+    min_treatments: String,
+    /// 0 sur la campagne, 1 une fois pour toutes, 2 sur des mois.
+    coverage: usize,
+    months: String,
+    doses: String,
+    interval: String,
+    vial_product: String,
+    vial_hours: String,
+}
+
+impl SubjectEdit {
+    fn from(s: &crate::campagne::Subject) -> Self {
+        use crate::campagne::{Coverage, Means, Rule};
+        let num = |n: u32| if n == 0 { String::new() } else { n.to_string() };
+        SubjectEdit {
+            code: s.code.clone(),
+            label: s.label.clone(),
+            means: match s.means {
+                Means::Vaccine => 0,
+                Means::Act(_) => 1,
+                Means::Call => 2,
+            },
+            act: match &s.means {
+                Means::Act(k) => k.clone(),
+                _ => String::new(),
+            },
+            calendar: s.rule == Rule::Calendar,
+            age_min: s.age_min.map(|a| a.to_string()).unwrap_or_default(),
+            age_max: s.age_max.map(|a| a.to_string()).unwrap_or_default(),
+            sex: s.sex.clone(),
+            pregnancy: s.pregnancy,
+            evoked: s.evoked,
+            molecules: s.molecules.join(", "),
+            min_treatments: num(s.min_treatments),
+            coverage: match s.coverage {
+                Coverage::Campaign => 0,
+                Coverage::Ever => 1,
+                Coverage::Months(_) => 2,
+            },
+            months: match s.coverage {
+                Coverage::Months(n) => n.to_string(),
+                _ => String::new(),
+            },
+            doses: s.doses.to_string(),
+            interval: num(s.interval_months),
+            vial_product: s.vial_product.clone(),
+            vial_hours: num(s.vial_hours),
+        }
+    }
+
+    /// Le sujet tapé, ou la première valeur qui ne se lit pas.
+    fn read(&self) -> Result<crate::campagne::Subject, String> {
+        use crate::campagne::{Coverage, Means, Rule, Subject};
+        let label = if self.label.trim().is_empty() {
+            crate::campagne::code_label(self.code.trim()).to_owned()
+        } else {
+            self.label.trim().to_owned()
+        };
+        let num = |text: &str, key: &'static str| -> Result<Option<u32>, String> {
+            let t = text.trim();
+            if t.is_empty() {
+                return Ok(None);
+            }
+            t.parse::<u32>().map(Some).map_err(|_| trn(key, &[&label]))
+        };
+        let months = num(&self.months, "camp_edit_err_months")?;
+        Ok(Subject {
+            code: self.code.trim().to_owned(),
+            label: label.clone(),
+            means: match self.means {
+                1 => Means::Act(self.act.clone()),
+                2 => Means::Call,
+                _ => Means::Vaccine,
+            },
+            rule: if self.calendar && self.means == 0 {
+                Rule::Calendar
+            } else {
+                Rule::Criteria
+            },
+            age_min: num(&self.age_min, "camp_edit_err_age")?,
+            age_max: num(&self.age_max, "camp_edit_err_age")?,
+            sex: self.sex.clone(),
+            pregnancy: self.pregnancy,
+            evoked: self.evoked,
+            molecules: crate::campagne::split_list(&self.molecules),
+            min_treatments: num(&self.min_treatments, "camp_edit_err_number")?.unwrap_or(0),
+            coverage: match (self.coverage, months) {
+                (1, _) => Coverage::Ever,
+                (2, Some(n)) if n > 0 => Coverage::Months(n),
+                (2, _) => return Err(trn("camp_edit_err_months", &[&label])),
+                _ => Coverage::Campaign,
+            },
+            doses: num(&self.doses, "camp_edit_err_number")?
+                .unwrap_or(1)
+                .max(1),
+            interval_months: num(&self.interval, "camp_edit_err_number")?.unwrap_or(0),
+            vial_product: if self.means == 0 {
+                self.vial_product.trim().to_owned()
+            } else {
+                String::new()
+            },
+            vial_hours: if self.means == 0 {
+                num(&self.vial_hours, "camp_edit_err_number")?.unwrap_or(0)
+            } else {
+                0
+            },
+        })
+    }
+}
+
+impl CampaignEdit {
+    fn from(c: &crate::campagne::Campaign) -> Self {
+        CampaignEdit {
+            expected: Some(c.clone()),
+            key: c.key.clone(),
+            title: c.title.clone(),
+            starts: db::format_french_date(&c.starts_on),
+            ends: db::format_french_date(&c.ends_on),
+            low_stock: c.low_stock.to_string(),
+            expiry_days: c.expiry_days.to_string(),
+            bands: c
+                .bands
+                .iter()
+                .map(u32::to_string)
+                .collect::<Vec<_>>()
+                .join(", "),
+            remark: c.remark.clone(),
+            subjects: c.subjects.iter().map(SubjectEdit::from).collect(),
+            selected: 0,
+            error: None,
+            confirm_delete: false,
+            calendar: Vec::new(),
+        }
+    }
+
+    /// La campagne tapée, ou la première faute, en clair.
+    fn read(&self, year: u32) -> Result<crate::campagne::Campaign, String> {
+        let date = |text: &str| {
+            db::parse_french_date(text, year, db::YearHint::Future)
+                .map_err(|_| tr("camp_edit_err_dates").to_owned())
+        };
+        let number = |text: &str| {
+            text.trim()
+                .parse::<i64>()
+                .ok()
+                .filter(|n| *n >= 0)
+                .ok_or_else(|| tr("camp_edit_err_thresholds").to_owned())
+        };
+        let mut subjects = Vec::new();
+        for s in &self.subjects {
+            subjects.push(s.read()?);
+        }
+        let c = crate::campagne::Campaign {
+            id: self.expected.as_ref().map(|e| e.id).unwrap_or(0),
+            key: self.key.clone(),
+            title: self.title.trim().to_owned(),
+            starts_on: date(&self.starts)?,
+            ends_on: date(&self.ends)?,
+            subjects,
+            low_stock: number(&self.low_stock)?,
+            expiry_days: number(&self.expiry_days)?,
+            bands: crate::campagne::parse_bands(&self.bands)
+                .ok_or_else(|| tr("camp_edit_err_bands").to_owned())?,
+            remark: self.remark.trim().to_owned(),
+        };
+        match crate::campagne::check(&c) {
+            Some(e) => Err(e),
+            None => Ok(c),
+        }
+    }
 }
 
 /// Une ligne de la liste des rappels, avec ce que la vue affiche du
@@ -10027,16 +10253,33 @@ impl Session {
         self.conseil.loaded_for = Some((pid, page));
     }
 
-    /// Relire la campagne : les lots et ce que le carnet en a utilisé,
-    /// les doses de la saison, la courbe du vaccin choisi, et la liste
-    /// des rappels. Appelé à l'ouverture de la vue et après un geste.
+    /// Relire la campagne : les campagnes proposées et celle qu'on lit,
+    /// les lots et ce que le carnet en a utilisé, le compte de chaque
+    /// sujet, la courbe du sujet choisi, et la liste des rappels. Appelé à
+    /// l'ouverture de la vue et après un geste.
     fn reload_campagne(&mut self) {
-        use crate::campagne;
+        use crate::campagne::{self, Means, Phase};
         self.camp.notice = None;
         let today = self.today.clone();
-        let season = campagne::season(&today);
-        if self.camp.code.is_empty() {
-            self.camp.code = campagne::CAMPAIGN_CODES[0];
+        let stored = self.db.campaigns().unwrap_or_default();
+        self.camp.campaigns = campagne::listing(&stored, &today);
+        let campaign = self
+            .camp
+            .campaigns
+            .iter()
+            .find(|c| c.key == self.camp.key && c.id == self.camp.id)
+            .or_else(|| self.camp.campaigns.iter().find(|c| c.key == self.camp.key))
+            .or(self.camp.campaigns.first())
+            .cloned()
+            .unwrap_or_else(|| campagne::default_campaign(&today));
+        self.camp.key = campaign.key.clone();
+        self.camp.id = campaign.id;
+        if campaign.subject(&self.camp.code).is_none() {
+            self.camp.code = campaign
+                .subjects
+                .first()
+                .map(|s| s.code.clone())
+                .unwrap_or_default();
         }
         let lots = self.db.vaccine_lots().unwrap_or_default();
         let dose_lots = self.db.vaccination_lots().unwrap_or_default();
@@ -10044,18 +10287,24 @@ impl Session {
         self.camp.used = campagne::usage(&lots, &refs);
         self.camp.vials = self.db.vial_openings().unwrap_or_default();
         self.camp.lots = lots;
-        // Les rendez-vous de vaccination planifiés : ceux d'aujourd'hui et
-        // après, et ceux dont le jour est passé sans que l'acte soit fait.
+        // Les rendez-vous planifiés des actes de la campagne : ceux
+        // d'aujourd'hui et après, et ceux dont le jour est passé sans que
+        // l'acte soit fait.
+        let kinds: Vec<&str> = campaign
+            .subjects
+            .iter()
+            .filter_map(campagne::Subject::act_kind)
+            .collect();
         self.camp.appointments = self
             .db
             .upcoming_appointments()
             .unwrap_or_default()
             .into_iter()
-            .filter(|a| a.kind == InterviewKind::Vaccination)
+            .filter(|a| kinds.contains(&a.kind.as_str()))
             .collect();
         let rows = self
             .db
-            .vaccinations_since(&season.start)
+            .vaccinations_since(&campaign.starts_on)
             .unwrap_or_default();
         let doses: Vec<campagne::DoseRow> = rows
             .iter()
@@ -10065,10 +10314,46 @@ impl Session {
                 given_on: date,
             })
             .collect();
-        self.camp.tally = campagne::tally(&doses, &today);
-        self.camp.weekly = campagne::weekly(&doses, self.camp.code, &today);
+        // Les actes réalisés ne se lisent que pour une campagne qui en a :
+        // tous, car un sujet peut compter sur douze mois ou une fois pour
+        // toutes.
+        let has_acts = campaign
+            .subjects
+            .iter()
+            .any(|s| matches!(s.means, Means::Act(_)));
+        let acts = if has_acts {
+            self.db.realized_acts_since("").unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+        let act_refs: Vec<(&str, &str)> = acts
+            .iter()
+            .map(|(_, k, d)| (k.as_str(), d.as_str()))
+            .collect();
+        let calls = self.db.campaign_calls(&campaign.key).unwrap_or_default();
+        let done = campagne::Done {
+            doses: &doses,
+            acts: &act_refs,
+            calls: &calls,
+        };
+        self.camp.tally = campagne::tally(&done, &campaign, &today);
+        self.camp.weekly = match campaign.subject(&self.camp.code) {
+            Some(s) => campagne::weekly(
+                &campagne::subject_dates(s, &done, &campaign, &today),
+                &campaign,
+                &today,
+            ),
+            None => Vec::new(),
+        };
+        // Une campagne terminée n'a plus personne à rappeler : son compte
+        // et son bilan restent.
+        if campaign.phase(&today) == Phase::Ended {
+            self.camp.counts = vec![0; campaign.subjects.len()];
+            self.camp.recalls.clear();
+            self.camp.campaign = Some(campaign);
+            return;
+        }
         let dates = self.db.all_vaccination_dates().unwrap_or_default();
-        let calls = self.db.campaign_calls(&season.label).unwrap_or_default();
         let mut by_patient: std::collections::HashMap<i64, Vec<vaccines::Dose>> =
             std::collections::HashMap::new();
         for (pid, code, date) in &dates {
@@ -10077,8 +10362,29 @@ impl Session {
                 .or_default()
                 .push(vaccines::Dose { code, date });
         }
-        let treatments = self.db.all_patient_drug_details().unwrap_or_default();
+        let mut acts_of: std::collections::HashMap<i64, Vec<(&str, &str)>> =
+            std::collections::HashMap::new();
+        for (pid, kind, day) in &acts {
+            acts_of
+                .entry(*pid)
+                .or_default()
+                .push((kind.as_str(), day.as_str()));
+        }
+        // Les traitements ne se lisent que si un sujet les demande : des
+        // molécules, un nombre de traitements, ou les évocations.
+        let wants_evoked = campaign.subjects.iter().any(|s| s.evoked);
+        let wants_treatments = campaign
+            .subjects
+            .iter()
+            .any(|s| !s.molecules.is_empty() || s.min_treatments > 0);
+        let treatments = if wants_evoked || wants_treatments {
+            self.db.all_patient_drug_details().unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let mut evoked: std::collections::HashMap<i64, Vec<(&'static str, String)>> =
+            std::collections::HashMap::new();
+        let mut treated: std::collections::HashMap<i64, Vec<(&str, &str, &str)>> =
             std::collections::HashMap::new();
         let mut memo = std::collections::HashMap::new();
         for chunk in treatments.chunk_by(|a, b| a.0 == b.0) {
@@ -10086,25 +10392,39 @@ impl Session {
                 .iter()
                 .map(|(_, n, d, c)| (n.as_str(), d.as_str(), c.as_str()))
                 .collect();
-            evoked.insert(chunk[0].0, campagne::evocations_memo(&list, &mut memo));
+            if wants_evoked {
+                evoked.insert(chunk[0].0, campagne::evocations_memo(&list, &mut memo));
+            }
+            if wants_treatments {
+                treated.insert(chunk[0].0, list);
+            }
         }
+        let sexes: Vec<&'static str> = self
+            .patients
+            .iter()
+            .map(|p| p.known_sex().map(|s| s.key()).unwrap_or(""))
+            .collect();
         let people: Vec<campagne::Person> = self
             .patients
             .iter()
-            .map(|p| campagne::Person {
+            .zip(&sexes)
+            .map(|(p, sex)| campagne::Person {
                 id: p.id,
                 birth: &p.birth_date,
                 ddr: &p.pregnancy_ddr,
+                sex,
                 doses: by_patient.remove(&p.id).unwrap_or_default(),
+                acts: acts_of.remove(&p.id).unwrap_or_default(),
+                treatments: treated.remove(&p.id).unwrap_or_default(),
                 evoked: evoked.remove(&p.id).unwrap_or_default(),
             })
             .collect();
-        let mut counts = [0usize; campagne::CAMPAIGN_CODES.len()];
+        let mut counts = Vec::with_capacity(campaign.subjects.len());
         let mut chosen = Vec::new();
-        for (i, code) in campagne::CAMPAIGN_CODES.iter().enumerate() {
-            let list = campagne::recalls(&people, &calls, code, &today);
-            counts[i] = list.len();
-            if *code == self.camp.code {
+        for s in &campaign.subjects {
+            let list = campagne::recalls(&people, &calls, &campaign, &s.code, &today);
+            counts.push(list.len());
+            if s.code == self.camp.code {
                 chosen = list;
             }
         }
@@ -10125,6 +10445,7 @@ impl Session {
                 })
             })
             .collect();
+        self.camp.campaign = Some(campaign);
     }
 
     /// Le numéro du lot en stock pour ce vaccin qui périme le premier,
@@ -12588,6 +12909,7 @@ struct PostsWindow {
 /// de la palette (`motif::paper`, `motif::ink`), échangées si une palette
 /// les donnait dans l'autre sens. Une marge de quatre modules autour,
 /// comme la norme la demande.
+#[cfg(feature = "sync")]
 fn qr_code(ui: &mut egui::Ui, text: &str, side: f32) {
     let Ok(qr) = qrcodegen::QrCode::encode_text(text, qrcodegen::QrCodeEcc::Medium) else {
         return;
@@ -17109,6 +17431,87 @@ impl App {
                             }
                             session.view = MainView::Campagne;
                             session.camp.show_rdv = true;
+                            session.reload_campagne();
+                        }
+                        // L'éditeur ouvert sur la campagne de la saison,
+                        // un sujet de plus par critères déplié.
+                        Ok("campagne_parametrer") => {
+                            session.view = MainView::Campagne;
+                            session.reload_campagne();
+                            session.reload_vacc_catalogue();
+                            if let Some(c) = session.camp.campaign.clone() {
+                                let mut edit = Self::campaign_edit_of(&c, &session.today);
+                                edit.subjects.push(SubjectEdit {
+                                    code: "HPV".to_owned(),
+                                    label: "HPV, rattrapage".to_owned(),
+                                    age_min: "15".to_owned(),
+                                    age_max: "26".to_owned(),
+                                    doses: "2".to_owned(),
+                                    interval: "6".to_owned(),
+                                    coverage: 1,
+                                    ..Default::default()
+                                });
+                                edit.selected = edit.subjects.len() - 1;
+                                session.camp.edit = Some(edit);
+                            }
+                        }
+                        // Une campagne qui n'est pas de vaccination : les
+                        // entretiens AVK et les bilans de médication, visés
+                        // par les traitements, enregistrés dans la base de
+                        // démonstration.
+                        Ok("campagne_entretiens") => {
+                            use crate::campagne::{Campaign, Coverage, Means, Subject};
+                            let today = session.today.clone();
+                            let c = Campaign {
+                                id: 0,
+                                key: String::new(),
+                                title: "Entretiens de l'automne".to_owned(),
+                                starts_on: crate::date::add_days(&today, -20).unwrap_or_default(),
+                                ends_on: crate::date::add_months(&today, 3).unwrap_or_default(),
+                                subjects: vec![
+                                    Subject {
+                                        code: "AVK".to_owned(),
+                                        label: "Entretien AVK".to_owned(),
+                                        means: Means::Act("AVK".to_owned()),
+                                        molecules: vec![
+                                            "fluindione".to_owned(),
+                                            "warfarine".to_owned(),
+                                            "acenocoumarol".to_owned(),
+                                        ],
+                                        coverage: Coverage::Months(12),
+                                        ..Default::default()
+                                    },
+                                    Subject {
+                                        code: "BPM".to_owned(),
+                                        label: "Bilan de médication".to_owned(),
+                                        means: Means::Act("BPM".to_owned()),
+                                        age_min: Some(65),
+                                        min_treatments: 5,
+                                        coverage: Coverage::Months(12),
+                                        ..Default::default()
+                                    },
+                                    Subject {
+                                        code: "COLON".to_owned(),
+                                        label: "Dépistage colorectal".to_owned(),
+                                        means: Means::Call,
+                                        age_min: Some(50),
+                                        age_max: Some(74),
+                                        ..Default::default()
+                                    },
+                                ],
+                                low_stock: crate::campagne::DEFAULT_LOW_STOCK,
+                                expiry_days: crate::campagne::DEFAULT_EXPIRY_DAYS,
+                                bands: crate::campagne::DEFAULT_BANDS.to_vec(),
+                                remark: String::new(),
+                            };
+                            let mut c = c;
+                            c.key = crate::campagne::fresh_key(&c.starts_on, &c.ends_on, &[]);
+                            if session.db.campaigns().unwrap_or_default().is_empty() {
+                                let _ = session.db.add_campaign(&c);
+                            }
+                            session.camp.key = c.key;
+                            session.camp.code = "BPM".to_owned();
+                            session.view = MainView::Campagne;
                             session.reload_campagne();
                         }
                         // The carnet de vaccination is the patient
@@ -52915,48 +53318,103 @@ impl App {
         }
     }
 
-    /// La campagne de vaccination de l'hiver.
+    /// La campagne : celle de la saison, ou celle que l'officine s'est
+    /// donnée.
     ///
-    /// Trois panneaux : **à rappeler** (les dossiers que le calendrier
-    /// déclare dus et qui n'ont pas de dose de la saison), **les doses
-    /// de la saison** (par vaccin, et la courbe de la semaine), **les
-    /// lots** (reçus, utilisés d'après le carnet, restants). Tout ce qui
-    /// est affiché est calculé par `reload_campagne`, jamais par image.
+    /// Trois panneaux : **à rappeler** (les dossiers que chaque sujet vise
+    /// et que rien n'a encore réglé), **le compte de la campagne** (par
+    /// sujet, et la courbe de la semaine), **les lots** (reçus, utilisés
+    /// d'après le carnet, restants) quand la campagne a des vaccins. Tout
+    /// ce qui est affiché est calculé par `reload_campagne`, jamais par
+    /// image. « Paramétrer » ouvre l'éditeur des campagnes à leur place.
     fn campagne_view(ui: &mut egui::Ui, session: &mut Session, operator: &str, config: &Config) {
-        use crate::campagne::{self, LotState, Outcome, CAMPAIGN_CODES};
+        use crate::campagne::{self, LotState, Outcome, Phase};
         let body = motif::visible_rect(ui);
-        let season = campagne::season(&session.today);
-        let title = trf("camp_title", &season.label);
+        if session.camp.campaign.is_none() {
+            session.reload_campagne();
+        }
+        let campaign = session
+            .camp
+            .campaign
+            .clone()
+            .unwrap_or_else(|| campagne::default_campaign(&session.today));
+        let phase = campaign.phase(&session.today);
+        let title = campaign.title.clone();
+        let subject = campaign.subject(&session.camp.code).cloned();
+        let vaccines = campaign.has_vaccines();
         // Sur un volet court, le sous-titre se réduit à la saison : ses
         // trois lignes d'explication prenaient la place de la liste.
         let short = body.height() < Self::row_height(ui) * 20.0;
         // L'avis d'un export prend la place du sous-titre : la bande garde
         // sa hauteur, et l'avis se lit là où l'on regarde.
+        let period = [
+            db::format_french_date(&campaign.starts_on),
+            db::format_french_date(&campaign.ends_on),
+        ];
         let subtitle = if let Some(n) = &session.camp.notice {
             n.clone()
+        } else if phase == Phase::Ended {
+            trn("camp_subtitle_ended", &[&period[0], &period[1]])
+        } else if phase == Phase::Upcoming {
+            trn("camp_subtitle_upcoming", &[&period[0], &period[1]])
         } else if short {
-            trn(
-                "camp_subtitle_short",
-                &[
-                    &db::format_french_date(&season.start),
-                    &db::format_french_date(&season.end),
-                ],
-            )
+            trn("camp_subtitle_short", &[&period[0], &period[1]])
         } else {
             tr("camp_subtitle").to_owned()
         };
+        // Plusieurs campagnes : un menu les propose, à côté du titre.
+        let choices: Vec<((String, i64), String)> = session
+            .camp
+            .campaigns
+            .iter()
+            .map(|c| ((c.key.clone(), c.id), c.title.clone()))
+            .collect();
+        let menu_w = motif::select_width(
+            ui,
+            choices
+                .iter()
+                .map(|(_, t)| t.as_str())
+                .chain([tr("camp_switch")]),
+        );
+        let editing = session.camp.edit.is_some();
+        // Sur un volet court, les quatre documents tiennent dans un menu :
+        // en boutons, ils prenaient deux rangées de plus au bandeau, et la
+        // liste des rappels n'avait plus une ligne à 1024x700 en texte 1,6.
+        let fold = short;
+        let documents: Vec<(u8, String)> = [
+            (0, tr("camp_print")),
+            (1, tr("camp_summary")),
+            (2, tr("camp_register")),
+            (3, tr("camp_export")),
+        ]
+        .into_iter()
+        .filter(|(i, _)| *i < 2 || vaccines)
+        .map(|(i, l)| (i, l.to_owned()))
+        .collect();
+        let docs_w = motif::select_width(
+            ui,
+            documents
+                .iter()
+                .map(|(_, l)| l.as_str())
+                .chain([tr("camp_documents")]),
+        );
         let band = Self::title_band_height(
             ui,
             body.width(),
             [
-                Self::heading_width(ui, &title),
-                Self::button_width(ui, tr("camp_reload")),
-                Self::button_width(ui, tr("camp_print")),
-                Self::button_width(ui, tr("camp_summary")),
-                Self::button_width(ui, tr("camp_register")),
-                Self::button_width(ui, tr("camp_export")),
+                Some(Self::heading_width(ui, &title)),
+                (choices.len() > 1).then_some(menu_w),
+                Some(Self::button_width(ui, tr("camp_settings"))),
+                (!editing).then(|| Self::button_width(ui, tr("camp_reload"))),
+                (!editing && fold).then_some(docs_w),
+                (!editing && !fold).then(|| Self::button_width(ui, tr("camp_print"))),
+                (!editing && !fold).then(|| Self::button_width(ui, tr("camp_summary"))),
+                (!editing && !fold && vaccines)
+                    .then(|| Self::button_width(ui, tr("camp_register"))),
+                (!editing && !fold && vaccines).then(|| Self::button_width(ui, tr("camp_export"))),
             ]
-            .into_iter(),
+            .into_iter()
+            .flatten(),
             &subtitle,
         );
         let rows = motif::split_rows(body, &[band, 0.0], 6.0);
@@ -52965,14 +53423,56 @@ impl App {
         let mut print_summary = false;
         let mut print_register = false;
         let mut export = false;
+        let mut pick_campaign: Option<(String, i64)> = None;
+        let mut settings = false;
         motif::inside(ui, rows[0], |ui| {
             ui.horizontal_wrapped(|ui| {
                 ui.heading(&title);
+                if choices.len() > 1 {
+                    if let Some(key) = motif::menu(
+                        ui,
+                        "camp_campaign_menu",
+                        menu_w,
+                        tr("camp_switch"),
+                        &choices,
+                    )
+                    .inner
+                    {
+                        pick_campaign = Some(key);
+                    }
+                }
+                if motif::toggle(ui, tr("camp_settings"), editing)
+                    .on_hover_text(tr("camp_settings_tooltip"))
+                    .clicked()
+                {
+                    settings = true;
+                }
+                if editing {
+                    return;
+                }
                 if motif::button(ui, tr("camp_reload"))
                     .on_hover_text(tr("camp_reload_tooltip"))
                     .clicked()
                 {
                     reload = true;
+                }
+                if fold {
+                    match motif::menu(
+                        ui,
+                        "camp_documents_menu",
+                        docs_w,
+                        tr("camp_documents"),
+                        &documents,
+                    )
+                    .inner
+                    {
+                        Some(0) => print = true,
+                        Some(1) => print_summary = true,
+                        Some(2) => print_register = true,
+                        Some(3) => export = true,
+                        _ => {}
+                    }
+                    return;
                 }
                 if motif::button(ui, tr("camp_print"))
                     .on_hover_text(tr("camp_print_tooltip"))
@@ -52985,6 +53485,9 @@ impl App {
                     .clicked()
                 {
                     print_summary = true;
+                }
+                if !vaccines {
+                    return;
                 }
                 if motif::button(ui, tr("camp_register"))
                     .on_hover_text(tr("camp_register_tooltip"))
@@ -53008,6 +53511,32 @@ impl App {
                 .wrap(),
             );
         });
+        if let Some((key, id)) = pick_campaign {
+            session.camp.key = key;
+            session.camp.id = id;
+            session.camp.show_rdv = false;
+            session.camp.rdv_for = None;
+            session.camp.cursor = 0;
+            session.reload_campagne();
+            if let (Some(edit), Some(c)) = (&mut session.camp.edit, &session.camp.campaign) {
+                *edit = Self::campaign_edit_of(c, &session.today);
+            }
+            return;
+        }
+        if settings {
+            session.camp.edit = match session.camp.edit {
+                Some(_) => None,
+                None => {
+                    session.reload_vacc_catalogue();
+                    Some(Self::campaign_edit_of(&campaign, &session.today))
+                }
+            };
+            return;
+        }
+        if session.camp.edit.is_some() {
+            Self::campaign_editor(ui, rows[1], session);
+            return;
+        }
         // Large : les rappels à gauche, les doses et les lots à droite.
         // Étroit : les trois l'un sous l'autre, les rappels en premier —
         // c'est la liste qu'on vient chercher.
@@ -53017,19 +53546,35 @@ impl App {
         // liste des rappels n'avait plus une seule ligne. Une rangée de
         // pages choisit lequel prend toute la hauteur.
         let hidden = egui::Rect::NOTHING;
+        // Une campagne sans vaccin n'a pas de lots : son compte prend la
+        // colonne entière. Sans acte à planifier, pas de rendez-vous.
+        let with_rdv = campaign.subjects.iter().any(|s| s.act_kind().is_some());
+        if !vaccines && session.camp.page == 2 {
+            session.camp.page = 0;
+        }
+        if !with_rdv && session.camp.show_rdv {
+            session.camp.show_rdv = false;
+        }
         let (recall_rect, tally_rect, lots_rect) = if wide {
             let cols = motif::split_columns(rows[1], 2, 8.0);
-            let right = motif::split_rows(cols[1], &[0.0, 0.0], 8.0);
-            (cols[0], right[0], right[1])
+            if vaccines {
+                let right = motif::split_rows(cols[1], &[0.0, 0.0], 8.0);
+                (cols[0], right[0], right[1])
+            } else {
+                (cols[0], cols[1], hidden)
+            }
         } else {
             // Les rendez-vous sont une page de plus (rang 3), à côté des
             // rappels : la bascule du panneau prendrait une rangée.
-            let pages = [
+            let pages: Vec<(usize, &str)> = [
                 (0, tr("camp_page_recalls")),
                 (3, tr("camp_page_rdv")),
                 (1, tr("camp_page_tally")),
                 (2, tr("camp_page_lots")),
-            ];
+            ]
+            .into_iter()
+            .filter(|(i, _)| (*i != 2 || vaccines) && (*i != 3 || with_rdv))
+            .collect();
             let strip = Self::wrapped_rows(ui, rows[1].width(), pages.iter().map(|(_, l)| *l))
                 * (Self::row_height(ui) + ui.spacing().item_spacing.y);
             let r = motif::split_rows(rows[1], &[strip, 0.0], 6.0);
@@ -53058,7 +53603,7 @@ impl App {
         };
 
         // --- À rappeler -------------------------------------------------
-        let mut pick_code: Option<&'static str> = None;
+        let mut pick_code: Option<String> = None;
         let mut call: Option<(i64, Outcome)> = None;
         let mut open: Option<i64> = None;
         let mut elsewhere: Option<i64> = None;
@@ -53068,6 +53613,13 @@ impl App {
         // liste, Entrée ouvre le carnet, 1 à 4 notent l'issue — tant
         // qu'aucun champ n'a le foyer (le formulaire des lots en a).
         let n = session.camp.recalls.len();
+        // Le sujet lu : un vaccin ouvre le carnet, un autre le dossier ; son
+        // rendez-vous est l'acte qu'il planifie, s'il en a un.
+        let vaccine = subject.as_ref().is_none_or(|s| s.is_vaccine());
+        let rdv_kind = subject
+            .as_ref()
+            .and_then(|s| s.act_kind())
+            .and_then(db::InterviewKind::parse);
         let mut keyed = false;
         if ui.ctx().wants_keyboard_input() {
             session.camp.keys_armed = false;
@@ -53126,19 +53678,19 @@ impl App {
                 let codes_row = wide || !session.camp.show_rdv;
                 if codes_row {
                     ui.horizontal_wrapped(|ui| {
-                        let labels: Vec<(&'static str, String)> = CAMPAIGN_CODES
+                        let labels: Vec<(String, String)> = campaign
+                            .subjects
                             .iter()
                             .enumerate()
-                            .map(|(i, code)| {
+                            .map(|(i, s)| {
+                                let n = session.camp.counts.get(i).copied().unwrap_or(0);
                                 (
-                                    *code,
-                                    trn(
-                                        "camp_code_count",
-                                        &[
-                                            &Self::campaign_code_label(code),
-                                            &session.camp.counts[i],
-                                        ],
-                                    ),
+                                    s.code.clone(),
+                                    if phase == Phase::Ended {
+                                        s.label.clone()
+                                    } else {
+                                        trn("camp_code_count", &[&s.label, &n])
+                                    },
                                 )
                             })
                             .collect();
@@ -53166,11 +53718,12 @@ impl App {
                             )
                             .clicked()
                             {
-                                pick_code = Some(code);
+                                pick_code = Some(code.clone());
                             }
                         }
                         let rdv_label = trf("camp_rdv_list", session.camp.appointments.len());
                         if wide
+                            && with_rdv
                             && motif::toggle(ui, &rdv_label, session.camp.show_rdv)
                                 .on_hover_text(tr("camp_rdv_list_tooltip"))
                                 .clicked()
@@ -53194,9 +53747,12 @@ impl App {
                         if session.camp.recalls.is_empty() {
                             ui.add(
                                 egui::Label::new(
-                                    egui::RichText::new(tr("camp_recall_none"))
-                                        .size(motif::pt(ui, 11.0))
-                                        .color(motif::text_dim()),
+                                    egui::RichText::new(match phase {
+                                        Phase::Ended => tr("camp_recall_ended"),
+                                        _ => tr("camp_recall_none"),
+                                    })
+                                    .size(motif::pt(ui, 11.0))
+                                    .color(motif::text_dim()),
                                 )
                                 .wrap(),
                             );
@@ -53231,7 +53787,7 @@ impl App {
                             let mut note = r.detail.clone();
                             if let Some((day, outcome)) = &r.last_call {
                                 let what = Outcome::from_key(outcome)
-                                    .map(Self::campaign_outcome_label)
+                                    .map(|o| Self::campaign_outcome_label(o, vaccine))
                                     .unwrap_or(outcome.as_str());
                                 note = trn(
                                     "camp_last_call",
@@ -53243,17 +53799,18 @@ impl App {
                             // la liste en montre deux fois plus.
                             ui.horizontal_wrapped(|ui| {
                                 for o in Outcome::ALL {
-                                    if motif::button(ui, Self::campaign_outcome_label(o))
-                                        .on_hover_text(Self::campaign_outcome_tooltip(o))
+                                    if motif::button(ui, Self::campaign_outcome_label(o, vaccine))
+                                        .on_hover_text(Self::campaign_outcome_tooltip(o, vaccine))
                                         .clicked()
                                     {
                                         call = Some((r.patient_id, o));
                                     }
                                 }
                                 let open_rdv = session.camp.rdv_for == Some(r.patient_id);
-                                if motif::toggle(ui, tr("camp_rdv"), open_rdv)
-                                    .on_hover_text(tr("camp_rdv_tooltip"))
-                                    .clicked()
+                                if rdv_kind.is_some()
+                                    && motif::toggle(ui, tr("camp_rdv"), open_rdv)
+                                        .on_hover_text(tr("camp_rdv_tooltip"))
+                                        .clicked()
                                 {
                                     rdv_toggle = Some(r.patient_id);
                                 }
@@ -53308,7 +53865,7 @@ impl App {
         // --- Les doses de la saison --------------------------------------
         if tally_rect.is_positive() {
             motif::panel(ui, tally_rect, Some(tr("camp_tally_title")), |ui| {
-                let since = db::format_french_date(&season.start);
+                let since = db::format_french_date(&campaign.starts_on);
                 if session.camp.tally.is_empty() {
                     ui.add(
                         egui::Label::new(
@@ -53339,15 +53896,15 @@ impl App {
                                 } else {
                                     t.label.clone()
                                 };
-                                let side = trn("camp_tally_line", &[&t.today, &t.week, &t.season]);
+                                let side = if phase == Phase::Ended {
+                                    trf("camp_tally_line_ended", t.season)
+                                } else {
+                                    trn("camp_tally_line", &[&t.today, &t.week, &t.season])
+                                };
                                 let on = t.code == session.camp.code;
                                 let row = motif::list_row_pair(ui, &name, &side, on, 0.0);
-                                if row.clicked() {
-                                    if let Some(code) =
-                                        CAMPAIGN_CODES.iter().find(|c| **c == t.code.as_str())
-                                    {
-                                        pick_code = Some(code);
-                                    }
+                                if row.clicked() && campaign.subject(&t.code).is_some() {
+                                    pick_code = Some(t.code.clone());
                                 }
                             }
                         });
@@ -53406,13 +53963,35 @@ impl App {
                     }
                 } else {
                     ui.horizontal_wrapped(|ui| {
-                        let codes: Vec<(String, String)> = CAMPAIGN_CODES
+                        // Les vaccins de la campagne d'abord, puis le reste du
+                        // catalogue : un lot de dTcaP reçu en pleine campagne
+                        // de grippe se saisit au même endroit.
+                        let mut codes: Vec<(String, String)> = campaign
+                            .subjects
                             .iter()
-                            .chain(["DTCAP"].iter())
-                            .map(|c| ((*c).to_owned(), Self::campaign_code_label(c).to_owned()))
+                            .filter(|s| s.is_vaccine())
+                            .map(|s| (s.code.clone(), s.label.clone()))
                             .collect();
-                        if session.camp.new_lot.code.is_empty() {
-                            session.camp.new_lot.code = session.camp.code.to_owned();
+                        for v in &session.vacc_catalogue {
+                            if !v.code.is_empty() && !codes.iter().any(|(c, _)| *c == v.code) {
+                                codes.push((v.code.clone(), v.label.clone()));
+                            }
+                        }
+                        if !codes.iter().any(|(c, _)| c == "DTCAP") {
+                            codes.push((
+                                "DTCAP".to_owned(),
+                                campagne::code_label("DTCAP").to_owned(),
+                            ));
+                        }
+                        if session.camp.new_lot.code.is_empty()
+                            || !codes.iter().any(|(c, _)| *c == session.camp.new_lot.code)
+                        {
+                            session.camp.new_lot.code = codes
+                                .iter()
+                                .find(|(c, _)| *c == session.camp.code)
+                                .or(codes.first())
+                                .map(|(c, _)| c.clone())
+                                .unwrap_or_default();
                         }
                         let w = motif::select_width(ui, codes.iter().map(|(_, l)| l.as_str()));
                         motif::select(
@@ -53486,10 +54065,13 @@ impl App {
                             return;
                         }
                         for (lot, used) in session.camp.lots.iter().zip(&session.camp.used) {
-                            let u = campagne::lot_use(lot, *used, &today);
+                            let u = campagne::lot_use(lot, *used, &today, campaign.stock());
                             let primary = format!(
                                 "{} · {} · {}",
-                                Self::campaign_code_label(&lot.code),
+                                campaign
+                                    .subject(&lot.code)
+                                    .map(|s| s.label.as_str())
+                                    .unwrap_or_else(|| campagne::code_label(&lot.code)),
                                 if lot.product.trim().is_empty() {
                                     "—"
                                 } else {
@@ -53559,17 +54141,12 @@ impl App {
                             });
                             // Le flacon multidose ouvert : l'heure limite après la
                             // première ponction, et ce qu'il en reste.
-                            if lot.code == "COVID"
-                                && crate::fuzzy::contains_folded(
-                                    &crate::fuzzy::sort_key(&lot.product),
-                                    "comirnaty",
-                                )
-                            {
+                            if let Some(hours) = campaign.vial_hours(lot) {
                                 let open = session.camp.vials.iter().find(|v| {
                                     campagne::norm_lot(&v.lot) == campagne::norm_lot(&lot.lot)
                                 });
                                 let state = open.and_then(|v| {
-                                    campagne::vial_left(v, &today, now_min).map(|x| (v, x))
+                                    campagne::vial_left(v, hours, &today, now_min).map(|x| (v, x))
                                 });
                                 ui.horizontal_wrapped(|ui| match state {
                                     Some((v, (day, at, left))) => {
@@ -53615,7 +54192,7 @@ impl App {
                                     }
                                     None => {
                                         if motif::button(ui, tr("camp_vial_opened"))
-                                            .on_hover_text(tr("camp_vial_opened_tooltip"))
+                                            .on_hover_text(trf("camp_vial_opened_tooltip", hours))
                                             .clicked()
                                         {
                                             open_vial = Some(lot.lot.clone());
@@ -53662,7 +54239,8 @@ impl App {
                     session.camp.rdv_error = Some(tr("camp_rdv_past").to_owned());
                 }
                 (Ok(day), Some(time)) => {
-                    match session.db.plan_vaccination(pid, &day, &time, operator) {
+                    let kind = rdv_kind.unwrap_or(db::InterviewKind::Vaccination);
+                    match session.db.plan_act(pid, kind, &day, &time, operator) {
                         Ok(_) => {
                             session.camp.rdv_for = None;
                             session.camp.rdv_error = None;
@@ -53679,8 +54257,8 @@ impl App {
             let c = campagne::Call {
                 id: 0,
                 patient_id,
-                season: season.label.clone(),
-                code: session.camp.code.to_owned(),
+                season: campaign.key.clone(),
+                code: session.camp.code.clone(),
                 called_on: session.today.clone(),
                 outcome: outcome.key().to_owned(),
                 operator: operator.to_owned(),
@@ -53691,8 +54269,9 @@ impl App {
             reload = true;
             // Vacciné ailleurs : la dose a sa place au carnet, pour que le
             // calendrier ne la demande plus. Le carnet s'ouvre avec le
-            // vaccin et la remarque ; la date reste à écrire.
-            if outcome == Outcome::Ailleurs {
+            // vaccin et la remarque ; la date reste à écrire. Un autre
+            // sujet fait ailleurs n'a rien à écrire : l'appel le règle.
+            if outcome == Outcome::Ailleurs && vaccine {
                 elsewhere = Some(patient_id);
             }
         }
@@ -53785,7 +54364,7 @@ impl App {
                             .as_ref()
                             .map(|(d, o)| {
                                 let what = Outcome::from_key(o)
-                                    .map(Self::campaign_outcome_label)
+                                    .map(|o| Self::campaign_outcome_label(o, vaccine))
                                     .unwrap_or(o.as_str());
                                 format!("{} : {}", db::format_french_date(d), what)
                             })
@@ -53796,7 +54375,10 @@ impl App {
             let paper = crate::pdf::RecallPaper {
                 title: trn(
                     "camp_print_title",
-                    &[&Self::campaign_code_label(session.camp.code), &season.label],
+                    &[
+                        &subject.as_ref().map(|s| s.label.as_str()).unwrap_or(""),
+                        &campaign.title,
+                    ],
                 ),
                 date: db::format_french_date(&session.today),
                 rows,
@@ -53815,19 +54397,28 @@ impl App {
             session
                 .db
                 .log_access(&session.operator, crate::audit::Act::Exporte, 0);
-            match session.db.vaccinations_season(&season.start) {
-                Ok(rows) => {
+            match session.db.vaccinations_season(&campaign.starts_on) {
+                Ok(mut rows) => {
+                    // Une campagne passée s'arrête à son dernier jour.
+                    rows.retain(|r| r[0].as_str() <= campaign.ends_on.as_str());
                     let csv = campagne::season_csv(&rows);
                     let dir = config
                         .db_path()
                         .parent()
                         .map(|p| p.join("exports"))
                         .unwrap_or_else(|| std::path::PathBuf::from("exports"));
-                    let file = dir.join(format!(
-                        "vaccinations-{}-{}.csv",
-                        season.label.replace('/', "-"),
-                        session.today
-                    ));
+                    let stem: String = campaign
+                        .key
+                        .chars()
+                        .map(|c| {
+                            if c.is_ascii_alphanumeric() || c == '-' {
+                                c
+                            } else {
+                                '-'
+                            }
+                        })
+                        .collect();
+                    let file = dir.join(format!("vaccinations-{stem}-{}.csv", session.today));
                     match std::fs::create_dir_all(&dir)
                         .and_then(|()| std::fs::write(&file, csv.as_bytes()))
                     {
@@ -53879,27 +54470,24 @@ impl App {
         if print_summary {
             let rows = session
                 .db
-                .vaccinations_with_birth_since(&season.start)
+                .vaccinations_with_birth_since(&campaign.starts_on)
                 .unwrap_or_default();
             let refs: Vec<(&str, &str, &str, &str)> = rows
                 .iter()
                 .map(|(b, c, l, d)| (b.as_str(), c.as_str(), l.as_str(), d.as_str()))
                 .collect();
-            let by_age: Vec<[String; 6]> = campagne::summary(&refs, &session.today)
+            let by_age: Vec<Vec<String>> = campagne::summary(&refs, &campaign, &session.today)
                 .iter()
                 .map(|s| {
-                    [
-                        if s.label.is_empty() {
-                            s.code.clone()
-                        } else {
-                            s.label.clone()
-                        },
-                        s.under_65.to_string(),
-                        s.from_65.to_string(),
-                        s.from_75.to_string(),
-                        s.unknown.to_string(),
-                        s.total().to_string(),
-                    ]
+                    let mut row = vec![if s.label.is_empty() {
+                        s.code.clone()
+                    } else {
+                        s.label.clone()
+                    }];
+                    row.extend(s.by_band.iter().map(usize::to_string));
+                    row.push(s.unknown.to_string());
+                    row.push(s.total().to_string());
+                    row
                 })
                 .collect();
             let doses: Vec<campagne::DoseRow> = rows
@@ -53910,10 +54498,25 @@ impl App {
                     given_on: date,
                 })
                 .collect();
+            let acts = session
+                .db
+                .realized_acts_since(&campaign.starts_on)
+                .unwrap_or_default();
+            let act_refs: Vec<(&str, &str)> = acts
+                .iter()
+                .map(|(_, k, d)| (k.as_str(), d.as_str()))
+                .collect();
+            let calls = session.db.campaign_calls(&campaign.key).unwrap_or_default();
+            let done = campagne::Done {
+                doses: &doses,
+                acts: &act_refs,
+                calls: &calls,
+            };
             let mut weeks: Vec<String> = Vec::new();
             let mut by_week: Vec<(String, Vec<usize>)> = Vec::new();
-            for code in CAMPAIGN_CODES {
-                let series = campagne::weekly(&doses, code, &session.today);
+            for s in &campaign.subjects {
+                let dates = campagne::subject_dates(s, &done, &campaign, &session.today);
+                let series = campagne::weekly(&dates, &campaign, &session.today);
                 if weeks.is_empty() {
                     weeks = series
                         .iter()
@@ -53925,18 +54528,38 @@ impl App {
                         .collect();
                 }
                 if series.iter().any(|(_, n)| *n > 0) {
-                    by_week.push((
-                        Self::campaign_code_label(code).to_owned(),
-                        series.iter().map(|(_, n)| *n).collect(),
-                    ));
+                    by_week.push((s.label.clone(), series.iter().map(|(_, n)| *n).collect()));
                 }
             }
+            // Les appels : combien de dossiers ont pour dernier appel
+            // chaque issue, sujet par sujet.
+            let by_call: Vec<Vec<String>> = campaign
+                .subjects
+                .iter()
+                .filter_map(|s| {
+                    let n = campagne::call_counts(&calls, &campaign.key, &s.code);
+                    (n.iter().sum::<usize>() > 0).then(|| {
+                        std::iter::once(s.label.clone())
+                            .chain(n.iter().map(usize::to_string))
+                            .collect()
+                    })
+                })
+                .collect();
             let paper = crate::pdf::CampaignSummaryPaper {
-                title: trf("camp_summary_title", &season.label),
-                date: trf("camp_summary_date", db::format_french_date(&session.today)),
+                title: trf("camp_summary_title", &campaign.title),
+                date: trf(
+                    "camp_summary_date",
+                    db::format_french_date(campaign.read_until(&session.today)),
+                ),
+                bands: campagne::band_labels(&campaign.bands),
                 by_age,
                 weeks,
                 by_week,
+                outcomes: Outcome::ALL
+                    .iter()
+                    .map(|o| Self::campaign_outcome_label(*o, vaccines).to_owned())
+                    .collect(),
+                by_call,
             };
             if let Err(e) = crate::pdf::open_campaign_summary(
                 &paper,
@@ -53949,7 +54572,14 @@ impl App {
         if reload {
             session.reload_campagne();
         }
-        if let Some(id) = open {
+        if let Some(id) = open.filter(|_| !vaccine) {
+            // Un sujet qui n'est pas un vaccin : le dossier, sur ses actes.
+            if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
+                session.open_patient(p);
+                session.patient_tab = PatientTab::Acts;
+                session.view = MainView::Search;
+            }
+        } else if let Some(id) = open {
             if let Some(p) = session.patients.iter().find(|p| p.id == id).cloned() {
                 session.open_patient(p);
                 session.patient_tab = PatientTab::Vaccins;
@@ -53958,7 +54588,7 @@ impl App {
                 // le lot en stock qui périme le premier : il ne reste à
                 // saisir que le site, une fois l'injection faite.
                 session.reload_vacc_catalogue();
-                let code = session.camp.code;
+                let code = session.camp.code.clone();
                 if let Some(v) = session
                     .vacc_catalogue
                     .iter()
@@ -53981,7 +54611,7 @@ impl App {
                 session.patient_tab = PatientTab::Vaccins;
                 session.view = MainView::Search;
                 session.reload_vacc_catalogue();
-                let code = session.camp.code;
+                let code = session.camp.code.clone();
                 if let Some(v) = session
                     .vacc_catalogue
                     .iter()
@@ -54000,26 +54630,15 @@ impl App {
         }
     }
 
-    /// Le nom court d'un vaccin de la campagne, pour les boutons et les
-    /// lots ; un code inconnu se montre tel quel.
-    fn campaign_code_label(code: &str) -> &str {
-        match code {
-            "GRIPPE" => tr("camp_code_grippe"),
-            "COVID" => tr("camp_code_covid"),
-            "VRS" => tr("camp_code_vrs"),
-            "PNEUMO" => tr("camp_code_pneumo"),
-            "ZONA" => tr("camp_code_zona"),
-            "DTCAP" => tr("camp_code_dtcap"),
-            other => other,
-        }
-    }
-
-    fn campaign_outcome_label(o: crate::campagne::Outcome) -> &'static str {
+    /// Le libellé d'une issue d'appel : « Vacciné ailleurs » pour un
+    /// vaccin, « Fait ailleurs » pour un autre sujet.
+    fn campaign_outcome_label(o: crate::campagne::Outcome, vaccine: bool) -> &'static str {
         use crate::campagne::Outcome;
         match o {
             Outcome::Prevenu => tr("camp_outcome_prevenu"),
             Outcome::Message => tr("camp_outcome_message"),
-            Outcome::Ailleurs => tr("camp_outcome_ailleurs"),
+            Outcome::Ailleurs if vaccine => tr("camp_outcome_ailleurs"),
+            Outcome::Ailleurs => tr("camp_outcome_ailleurs_other"),
             Outcome::Refus => tr("camp_outcome_refus"),
         }
     }
@@ -54089,13 +54708,620 @@ impl App {
         open
     }
 
-    fn campaign_outcome_tooltip(o: crate::campagne::Outcome) -> &'static str {
+    fn campaign_outcome_tooltip(o: crate::campagne::Outcome, vaccine: bool) -> &'static str {
         use crate::campagne::Outcome;
         match o {
             Outcome::Prevenu => tr("camp_outcome_prevenu_tooltip"),
             Outcome::Message => tr("camp_outcome_message_tooltip"),
-            Outcome::Ailleurs => tr("camp_outcome_ailleurs_tooltip"),
-            Outcome::Refus => tr("camp_outcome_refus_tooltip"),
+            Outcome::Ailleurs if vaccine => tr("camp_outcome_ailleurs_tooltip"),
+            Outcome::Ailleurs => tr("camp_outcome_ailleurs_other_tooltip"),
+            Outcome::Refus if vaccine => tr("camp_outcome_refus_tooltip"),
+            Outcome::Refus => tr("camp_outcome_refus_other_tooltip"),
+        }
+    }
+
+    /// L'éditeur ouvert sur une campagne : la campagne de la saison
+    /// (`id` 0) s'y personnalise, une campagne enregistrée s'y corrige.
+    fn campaign_edit_of(c: &crate::campagne::Campaign, today: &str) -> CampaignEdit {
+        let mut edit = CampaignEdit::from(c);
+        edit.calendar = crate::campagne::calendar_codes(today);
+        edit
+    }
+
+    /// Le résumé d'un sujet, sur sa ligne dans l'éditeur : ce qui le
+    /// règle, qui il vise, sur quelle durée.
+    fn subject_summary(s: &SubjectEdit) -> String {
+        let mut parts: Vec<String> = Vec::new();
+        parts.push(match s.means {
+            1 => trf(
+                "camp_edit_sum_act",
+                db::InterviewKind::parse(&s.act)
+                    .map(db::InterviewKind::label)
+                    .unwrap_or("?"),
+            ),
+            2 => tr("camp_edit_sum_call").to_owned(),
+            _ => trf("camp_edit_sum_vaccine", s.code.trim()),
+        });
+        if s.calendar && s.means == 0 {
+            parts.push(tr("camp_edit_sum_calendar").to_owned());
+        } else {
+            match (s.age_min.trim(), s.age_max.trim()) {
+                ("", "") => {}
+                (a, "") => parts.push(trf("camp_band_from", a)),
+                ("", b) => parts.push(trf("camp_edit_sum_upto", b)),
+                (a, b) => parts.push(trn("camp_edit_sum_between", &[&a, &b])),
+            }
+            match s.sex.as_str() {
+                "F" => parts.push(tr("camp_edit_sex_f").to_owned()),
+                "M" => parts.push(tr("camp_edit_sex_m").to_owned()),
+                _ => {}
+            }
+            if !s.molecules.trim().is_empty() {
+                parts.push(s.molecules.trim().to_owned());
+            }
+            if !s.min_treatments.trim().is_empty() {
+                parts.push(trf("camp_edit_sum_treatments", s.min_treatments.trim()));
+            }
+            if s.pregnancy {
+                parts.push(tr("camp_edit_sum_pregnancy").to_owned());
+            }
+        }
+        parts.push(match s.coverage {
+            1 => tr("camp_edit_cov_ever").to_owned(),
+            2 => trf("camp_edit_sum_months", s.months.trim()),
+            _ => tr("camp_edit_cov_campaign").to_owned(),
+        });
+        parts.join(" · ")
+    }
+
+    /// L'éditeur des campagnes, à la place des trois panneaux : la
+    /// campagne choisie dans le menu du titre, ses dates, ses seuils, et
+    /// ses sujets — le détail de celui qu'on a choisi. Rien n'est écrit
+    /// avant « Enregistrer ».
+    fn campaign_editor(ui: &mut egui::Ui, rect: egui::Rect, session: &mut Session) {
+        use crate::campagne::{self, Campaign};
+        let Some(mut edit) = session.camp.edit.take() else {
+            return;
+        };
+        let today = session.today.clone();
+        let stored = edit.expected.as_ref().is_some_and(|c| c.id != 0);
+        let mut save = false;
+        let mut cancel = false;
+        let mut delete = false;
+        let mut fresh = false;
+        let mut next_year = false;
+        let h = Self::button_height(ui);
+        let catalogue: Vec<(String, String)> = session
+            .vacc_catalogue
+            .iter()
+            .filter(|v| !v.code.is_empty())
+            .map(|v| (v.code.clone(), format!("{} ({})", v.label, v.code)))
+            .collect();
+        let caption = match &edit.expected {
+            Some(c) if c.id != 0 => trf("camp_edit_title", &c.title),
+            Some(c)
+                if session
+                    .camp
+                    .campaigns
+                    .iter()
+                    .any(|x| x.key == c.key && x.id == 0) =>
+            {
+                trf("camp_edit_title_default", &c.title)
+            }
+            _ => tr("camp_edit_title_new").to_owned(),
+        };
+        motif::panel(ui, rect, Some(&caption), |ui| {
+            ui.horizontal_wrapped(|ui| {
+                if motif::button(ui, tr("camp_edit_save")).clicked() {
+                    save = true;
+                }
+                if motif::button(ui, tr("camp_edit_cancel")).clicked() {
+                    cancel = true;
+                }
+                if motif::button(ui, tr("camp_edit_new"))
+                    .on_hover_text(tr("camp_edit_new_tooltip"))
+                    .clicked()
+                {
+                    fresh = true;
+                }
+                if edit.expected.is_some()
+                    && motif::button(ui, tr("camp_edit_next_year"))
+                        .on_hover_text(tr("camp_edit_next_year_tooltip"))
+                        .clicked()
+                {
+                    next_year = true;
+                }
+                if stored {
+                    let label = if edit.confirm_delete {
+                        tr("patient_delete_confirm")
+                    } else {
+                        tr("camp_edit_delete")
+                    };
+                    if motif::button(ui, label)
+                        .on_hover_text(tr("camp_edit_delete_tooltip"))
+                        .clicked()
+                    {
+                        if edit.confirm_delete {
+                            delete = true;
+                        } else {
+                            edit.confirm_delete = true;
+                        }
+                    }
+                }
+            });
+            if let Some(e) = &edit.error {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(e)
+                            .size(motif::pt(ui, 11.0))
+                            .color(motif::alert()),
+                    )
+                    .wrap(),
+                );
+            }
+            ui.add_space(2.0);
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt("camp_edit")
+                .auto_shrink([false, false])
+                .show(ui, |ui| {
+                    Self::campaign_edit_fields(ui, &mut edit, &catalogue, h);
+                });
+        });
+        let year = session.year_now();
+        if cancel {
+            return;
+        }
+        if fresh {
+            let start = today.clone();
+            let end = crate::date::add_months(&today, 3).unwrap_or_else(|| today.clone());
+            let blank = Campaign {
+                id: 0,
+                key: String::new(),
+                title: String::new(),
+                starts_on: start,
+                ends_on: end,
+                subjects: Vec::new(),
+                low_stock: campagne::DEFAULT_LOW_STOCK,
+                expiry_days: campagne::DEFAULT_EXPIRY_DAYS,
+                bands: campagne::DEFAULT_BANDS.to_vec(),
+                remark: String::new(),
+            };
+            let mut e = Self::campaign_edit_of(&blank, &today);
+            e.expected = None;
+            session.camp.edit = Some(e);
+            return;
+        }
+        if next_year {
+            // Ce qui est tapé, s'il se lit, sinon ce que la base portait.
+            let base = edit.read(year).ok().or(edit.expected.clone());
+            if let Some(c) = base {
+                let taken: Vec<&str> = session
+                    .camp
+                    .campaigns
+                    .iter()
+                    .filter(|x| x.id != 0)
+                    .map(|x| x.key.as_str())
+                    .collect();
+                let n = c.next_year(&taken);
+                let mut e = Self::campaign_edit_of(&n, &today);
+                e.expected = None;
+                e.key = n.key;
+                session.camp.edit = Some(e);
+            }
+            return;
+        }
+        if delete {
+            if let Some(c) = &edit.expected {
+                match session.db.delete_campaign(c.id, &c.key, &c.title) {
+                    Ok(true) => {}
+                    Ok(false) => session.stale("camp_edit_stale"),
+                    Err(e) => session.error = Some(e),
+                }
+            }
+            session.camp.key.clear();
+            session.reload_campagne();
+            return;
+        }
+        if save {
+            match edit.read(year) {
+                Err(e) => edit.error = Some(e),
+                Ok(mut c) => {
+                    let taken: Vec<String> = session
+                        .camp
+                        .campaigns
+                        .iter()
+                        .filter(|x| x.id != 0)
+                        .map(|x| x.key.clone())
+                        .collect();
+                    let result = match edit.expected.as_ref().filter(|e| e.id != 0) {
+                        Some(expected) => session.db.update_campaign(&c, expected),
+                        None => {
+                            if c.key.is_empty() || taken.contains(&c.key) {
+                                let refs: Vec<&str> = taken.iter().map(String::as_str).collect();
+                                c.key = campagne::fresh_key(&c.starts_on, &c.ends_on, &refs);
+                            }
+                            session.db.add_campaign(&c).map(|_| true)
+                        }
+                    };
+                    match result {
+                        Ok(true) => {
+                            session.camp.key = c.key.clone();
+                            session.reload_campagne();
+                            // Une campagne à venir ou passée enregistrée :
+                            // elle est celle qu'on lit, même si une autre
+                            // est en cours.
+                            if session.camp.campaign.as_ref().map(|x| &x.key) != Some(&c.key) {
+                                session.camp.key = c.key;
+                                session.reload_campagne();
+                            }
+                            return;
+                        }
+                        Ok(false) => {
+                            session.stale("camp_edit_stale");
+                            session.reload_campagne();
+                            return;
+                        }
+                        Err(e) => edit.error = Some(e),
+                    }
+                }
+            }
+        }
+        session.camp.edit = Some(edit);
+    }
+
+    /// Les champs de l'éditeur : la campagne, puis ses sujets.
+    fn campaign_edit_fields(
+        ui: &mut egui::Ui,
+        edit: &mut CampaignEdit,
+        catalogue: &[(String, String)],
+        h: f32,
+    ) {
+        // Le libellé centré sur la hauteur du champ qui le suit.
+        let label = |ui: &mut egui::Ui, text: &str| {
+            let font = egui::TextStyle::Body.resolve(ui.style());
+            let w = ui.fonts(|f| {
+                f.layout_no_wrap(text.to_owned(), font, motif::text())
+                    .size()
+                    .x
+            });
+            ui.add_sized(egui::vec2(w, h), egui::Label::new(text));
+        };
+        let typed = |ui: &mut egui::Ui, value: &mut String, sample: &str, hint: &str| {
+            let w = Self::field_width(ui, [sample, hint].into_iter());
+            motif::field_sized(
+                ui,
+                egui::vec2(w, h),
+                egui::TextEdit::singleline(value).hint_text(motif::hint(hint)),
+            );
+        };
+        motif::section(ui, tr("camp_edit_campaign"));
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_name"));
+            let w = chars_wide(ui, 34.0).min(ui.available_width().max(chars_wide(ui, 12.0)));
+            motif::field_sized(
+                ui,
+                egui::vec2(w, h),
+                egui::TextEdit::singleline(&mut edit.title)
+                    .hint_text(motif::hint(tr("camp_edit_name_hint"))),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_from"));
+            typed(
+                ui,
+                &mut edit.starts,
+                "00/00/0000",
+                tr("camp_edit_date_hint"),
+            );
+            label(ui, tr("camp_edit_to"));
+            typed(ui, &mut edit.ends, "00/00/0000", tr("camp_edit_date_hint"));
+        });
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_low_stock"));
+            typed(ui, &mut edit.low_stock, "000", "");
+            label(ui, tr("camp_edit_expiry"));
+            typed(ui, &mut edit.expiry_days, "000", "");
+        });
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_bands"));
+            typed(
+                ui,
+                &mut edit.bands,
+                "00, 00, 00",
+                tr("camp_edit_bands_hint"),
+            );
+        });
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_remark"));
+            let w = chars_wide(ui, 34.0).min(ui.available_width().max(chars_wide(ui, 12.0)));
+            motif::field_sized(
+                ui,
+                egui::vec2(w, h),
+                egui::TextEdit::singleline(&mut edit.remark),
+            );
+        });
+        if !edit.key.is_empty() {
+            ui.label(
+                egui::RichText::new(trf("camp_edit_key", &edit.key))
+                    .size(motif::pt(ui, 10.5))
+                    .color(motif::text_faint()),
+            );
+        }
+        motif::section(ui, &trf("camp_edit_subjects", edit.subjects.len()));
+        let mut pick: Option<usize> = None;
+        for (i, s) in edit.subjects.iter().enumerate() {
+            let name = if s.label.trim().is_empty() {
+                crate::campagne::code_label(s.code.trim()).to_owned()
+            } else {
+                s.label.trim().to_owned()
+            };
+            let name = if name.is_empty() {
+                tr("camp_edit_unnamed").to_owned()
+            } else {
+                name
+            };
+            if motif::list_row_pair(
+                ui,
+                &name,
+                &Self::subject_summary(s),
+                i == edit.selected,
+                0.0,
+            )
+            .clicked()
+            {
+                pick = Some(i);
+            }
+        }
+        if let Some(i) = pick {
+            edit.selected = i;
+        }
+        let mut add: Option<usize> = None;
+        let mut moved: Option<isize> = None;
+        let mut remove = false;
+        ui.horizontal_wrapped(|ui| {
+            for (means, key) in [
+                (0, "camp_edit_add_vaccine"),
+                (1, "camp_edit_add_act"),
+                (2, "camp_edit_add_call"),
+            ] {
+                if motif::button(ui, tr(key)).clicked() {
+                    add = Some(means);
+                }
+            }
+            if !edit.subjects.is_empty() {
+                if motif::button_enabled(ui, tr("camp_edit_up"), edit.selected > 0).clicked() {
+                    moved = Some(-1);
+                }
+                if motif::button_enabled(
+                    ui,
+                    tr("camp_edit_down"),
+                    edit.selected + 1 < edit.subjects.len(),
+                )
+                .clicked()
+                {
+                    moved = Some(1);
+                }
+                if motif::button(ui, tr("camp_edit_remove_subject")).clicked() {
+                    remove = true;
+                }
+            }
+        });
+        if let Some(means) = add {
+            let n = edit.subjects.len() + 1;
+            edit.subjects.push(SubjectEdit {
+                means,
+                code: match means {
+                    1 => String::new(),
+                    2 => format!("SUJET{n}"),
+                    _ => String::new(),
+                },
+                act: if means == 1 {
+                    db::InterviewKind::Avk.as_str().to_owned()
+                } else {
+                    String::new()
+                },
+                doses: "1".to_owned(),
+                ..SubjectEdit::default()
+            });
+            edit.selected = edit.subjects.len() - 1;
+        }
+        if let Some(d) = moved {
+            let i = edit.selected;
+            let j = i as isize + d;
+            if j >= 0 && (j as usize) < edit.subjects.len() {
+                edit.subjects.swap(i, j as usize);
+                edit.selected = j as usize;
+            }
+        }
+        if remove && edit.selected < edit.subjects.len() {
+            edit.subjects.remove(edit.selected);
+            edit.selected = edit.selected.min(edit.subjects.len().saturating_sub(1));
+        }
+        let calendar = edit.calendar.clone();
+        let Some(s) = edit.subjects.get_mut(edit.selected) else {
+            return;
+        };
+        ui.add_space(4.0);
+        motif::section(ui, tr("camp_edit_subject"));
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_means"));
+            let options = vec![
+                (0usize, tr("camp_edit_means_vaccine").to_owned()),
+                (1, tr("camp_edit_means_act").to_owned()),
+                (2, tr("camp_edit_means_call").to_owned()),
+            ];
+            let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+            motif::select(ui, "camp_edit_means", w, &mut s.means, &options);
+            if s.means == 1 {
+                let kinds: Vec<(String, String)> = db::InterviewKind::ALL
+                    .iter()
+                    .filter(|k| **k != db::InterviewKind::Vaccination)
+                    .map(|k| (k.as_str().to_owned(), k.label().to_owned()))
+                    .collect();
+                if !kinds.iter().any(|(k, _)| *k == s.act) {
+                    s.act = kinds.first().map(|(k, _)| k.clone()).unwrap_or_default();
+                }
+                let w = motif::select_width(ui, kinds.iter().map(|(_, l)| l.as_str()));
+                motif::select(ui, "camp_edit_act", w, &mut s.act, &kinds);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            label(ui, tr("camp_edit_code"));
+            if s.means == 0 && !catalogue.is_empty() {
+                let mut options = catalogue.to_vec();
+                if !s.code.is_empty() && !options.iter().any(|(c, _)| *c == s.code) {
+                    options.insert(0, (s.code.clone(), s.code.clone()));
+                }
+                if s.code.is_empty() {
+                    s.code = options[0].0.clone();
+                }
+                let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                motif::select(ui, "camp_edit_code", w, &mut s.code, &options);
+            } else {
+                let w =
+                    Self::field_width(ui, ["MMMMMMMMMM", tr("camp_edit_code_hint")].into_iter());
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.code)
+                        .hint_text(motif::hint(tr("camp_edit_code_hint"))),
+                );
+            }
+            label(ui, tr("camp_edit_label"));
+            let w = chars_wide(ui, 22.0).min(ui.available_width().max(chars_wide(ui, 10.0)));
+            motif::field_sized(
+                ui,
+                egui::vec2(w, h),
+                egui::TextEdit::singleline(&mut s.label)
+                    .hint_text(motif::hint(crate::campagne::code_label(s.code.trim()))),
+            );
+        });
+        if s.means == 0 {
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_rule"));
+                let options = vec![
+                    (true, tr("camp_edit_rule_calendar").to_owned()),
+                    (false, tr("camp_edit_rule_criteria").to_owned()),
+                ];
+                let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                motif::select(ui, "camp_edit_rule", w, &mut s.calendar, &options);
+            });
+            if s.calendar && !calendar.contains(&s.code.trim()) {
+                ui.add(
+                    egui::Label::new(
+                        egui::RichText::new(tr("camp_edit_rule_unknown"))
+                            .size(motif::pt(ui, 10.5))
+                            .color(motif::warn()),
+                    )
+                    .wrap(),
+                );
+            }
+        }
+        let criteria = !(s.calendar && s.means == 0);
+        if criteria {
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_age_from"));
+                let w = Self::field_width(ui, ["000"].into_iter());
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.age_min),
+                );
+                label(ui, tr("camp_edit_age_to"));
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.age_max),
+                );
+                label(ui, tr("camp_edit_age_unit"));
+                let options = vec![
+                    (String::new(), tr("camp_edit_sex_all").to_owned()),
+                    ("F".to_owned(), tr("camp_edit_sex_f").to_owned()),
+                    ("M".to_owned(), tr("camp_edit_sex_m").to_owned()),
+                ];
+                let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                motif::select(ui, "camp_edit_sex", w, &mut s.sex, &options);
+                motif::checkbox(ui, &mut s.pregnancy, tr("camp_edit_pregnancy"));
+            });
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_molecules"));
+                let w = chars_wide(ui, 30.0).min(ui.available_width().max(chars_wide(ui, 12.0)));
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.molecules)
+                        .hint_text(motif::hint(tr("camp_edit_molecules_hint"))),
+                );
+            });
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_min_treatments"));
+                let w = Self::field_width(ui, ["000"].into_iter());
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.min_treatments),
+                );
+            });
+        }
+        motif::checkbox(ui, &mut s.evoked, tr("camp_edit_evoked"))
+            .on_hover_text(tr("camp_edit_evoked_tooltip"));
+        if s.means != 2 {
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_coverage"));
+                let options = vec![
+                    (0usize, tr("camp_edit_cov_campaign").to_owned()),
+                    (1, tr("camp_edit_cov_ever").to_owned()),
+                    (2, tr("camp_edit_cov_months").to_owned()),
+                ];
+                let w = motif::select_width(ui, options.iter().map(|(_, l)| l.as_str()));
+                motif::select(ui, "camp_edit_coverage", w, &mut s.coverage, &options);
+                if s.coverage == 2 {
+                    let w = Self::field_width(ui, ["000"].into_iter());
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(w, h),
+                        egui::TextEdit::singleline(&mut s.months),
+                    );
+                    label(ui, tr("camp_edit_months_unit"));
+                }
+            });
+            ui.horizontal_wrapped(|ui| {
+                let w = Self::field_width(ui, ["000"].into_iter());
+                label(ui, tr("camp_edit_doses"));
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.doses),
+                );
+                label(ui, tr("camp_edit_interval"));
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.interval),
+                );
+                label(ui, tr("camp_edit_months_unit"));
+            });
+        }
+        if s.means == 0 {
+            ui.horizontal_wrapped(|ui| {
+                label(ui, tr("camp_edit_vial"));
+                let w = chars_wide(ui, 16.0).min(ui.available_width().max(chars_wide(ui, 8.0)));
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.vial_product)
+                        .hint_text(motif::hint(tr("camp_edit_vial_hint"))),
+                );
+                label(ui, tr("camp_edit_vial_hours"));
+                let w = Self::field_width(ui, ["000"].into_iter());
+                motif::field_sized(
+                    ui,
+                    egui::vec2(w, h),
+                    egui::TextEdit::singleline(&mut s.vial_hours),
+                );
+                label(ui, tr("camp_edit_hours_unit"));
+            });
         }
     }
 
@@ -89920,6 +91146,26 @@ mod tests {
         let p = session.patients[0].clone();
         session.open_patient(p);
         let config = crate::config::Config::default();
+        // Une campagne sans vaccin : ni lots, ni registre, ni export ; son
+        // compte prend la colonne.
+        let avk = crate::campagne::Campaign {
+            id: 0,
+            key: "avk".to_owned(),
+            title: "Entretiens AVK".to_owned(),
+            starts_on: crate::date::add_days(&today, -30).unwrap(),
+            ends_on: crate::date::add_days(&today, 60).unwrap(),
+            subjects: vec![crate::campagne::Subject {
+                code: "AVK".to_owned(),
+                label: "Entretien AVK".to_owned(),
+                means: crate::campagne::Means::Act("AVK".to_owned()),
+                ..Default::default()
+            }],
+            low_stock: 5,
+            expiry_days: 30,
+            bands: vec![65],
+            remark: String::new(),
+        };
+        session.db.add_campaign(&avk).unwrap();
         for (w, h, scale) in [
             (1400.0, 900.0, 1.0),
             (1024.0, 700.0, 1.6),
@@ -89942,6 +91188,47 @@ mod tests {
                         super::App::campagne_view(ui, &mut session, "CL", &config);
                     });
                 });
+            }
+            // L'éditeur, sur chaque forme de sujet : un vaccin au
+            // calendrier, un acte par critères, un appel.
+            let season = session.camp.campaign.clone().unwrap();
+            let mut edit = super::App::campaign_edit_of(&season, &session.today);
+            edit.subjects.push(super::SubjectEdit {
+                code: "AVK".to_owned(),
+                means: 1,
+                act: "AVK".to_owned(),
+                age_min: "18".to_owned(),
+                molecules: "fluindione".to_owned(),
+                coverage: 2,
+                months: "12".to_owned(),
+                ..Default::default()
+            });
+            edit.subjects.push(super::SubjectEdit {
+                code: "COLON".to_owned(),
+                means: 2,
+                ..Default::default()
+            });
+            for selected in [0, 5, 6] {
+                edit.selected = selected;
+                session.camp.edit = Some(edit.clone());
+                let _ = ctx.run(input(), |ctx| {
+                    egui::CentralPanel::default().show(ctx, |ui| {
+                        super::App::campagne_view(ui, &mut session, "CL", &config);
+                    });
+                });
+            }
+            session.camp.edit = None;
+            for key in ["avk", ""] {
+                session.camp.key = key.to_owned();
+                session.reload_campagne();
+                for page in 0..3 {
+                    session.camp.page = page;
+                    let _ = ctx.run(input(), |ctx| {
+                        egui::CentralPanel::default().show(ctx, |ui| {
+                            super::App::campagne_view(ui, &mut session, "CL", &config);
+                        });
+                    });
+                }
             }
             for page in super::ConseilPage::ALL {
                 session.conseil.page = page;

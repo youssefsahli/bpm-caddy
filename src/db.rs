@@ -740,6 +740,21 @@ CREATE TABLE IF NOT EXISTS campaign_calls (
     outcome     TEXT NOT NULL,
     operator    TEXT NOT NULL DEFAULT ''
 );
+-- Les campagnes que l'officine s'est données (`campagne::Campaign`) : une
+-- période, la clé sous laquelle ses appels sont rangés (`key`, fixée à la
+-- création), et ses sujets en texte (`campagne::encode_subjects`), ses
+-- seuils aussi (`campagne::encode_settings`). Sans ligne, la campagne de la
+-- saison est construite pour l'année en cours : rien n'est semé.
+CREATE TABLE IF NOT EXISTS campaigns (
+    id          INTEGER PRIMARY KEY,
+    key         TEXT NOT NULL,
+    title       TEXT NOT NULL DEFAULT '',
+    starts_on   TEXT NOT NULL,
+    ends_on     TEXT NOT NULL,
+    subjects    TEXT NOT NULL DEFAULT '',
+    settings    TEXT NOT NULL DEFAULT '',
+    remark      TEXT NOT NULL DEFAULT ''
+);
 -- « Mesures et conseils » : ce que l'équipe note pour un dossier — une
 -- prise de mesures et une délivrance de compression, un plan de
 -- compléments nutritionnels, une délivrance de protections périodiques.
@@ -1580,6 +1595,16 @@ const MIGRATIONS: &[&str] = &[
         called_on   TEXT NOT NULL,
         outcome     TEXT NOT NULL,
         operator    TEXT NOT NULL DEFAULT ''
+    )",
+    "CREATE TABLE IF NOT EXISTS campaigns (
+        id          INTEGER PRIMARY KEY,
+        key         TEXT NOT NULL,
+        title       TEXT NOT NULL DEFAULT '',
+        starts_on   TEXT NOT NULL,
+        ends_on     TEXT NOT NULL,
+        subjects    TEXT NOT NULL DEFAULT '',
+        settings    TEXT NOT NULL DEFAULT '',
+        remark      TEXT NOT NULL DEFAULT ''
     )",
     // « Mesures et conseils » — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS counsel_records (
@@ -44572,6 +44597,7 @@ impl Db {
             "DELETE FROM cno_products",
             "DELETE FROM vaccine_lots",
             "DELETE FROM vial_openings",
+            "DELETE FROM campaigns",
             "DELETE FROM patient_travel",
             "DELETE FROM scans WHERE subject_kind IN ('PATIENT', 'DRUG')",
         ] {
@@ -49902,6 +49928,189 @@ impl Db {
         Ok(self.conn.last_insert_rowid())
     }
 
+    /// Les campagnes enregistrées, la plus récente d'abord.
+    pub fn campaigns(&self) -> Result<Vec<crate::campagne::Campaign>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT id, key, title, starts_on, ends_on, subjects, settings, remark
+                 FROM campaigns ORDER BY starts_on DESC, id DESC",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| {
+                let mut c = crate::campagne::Campaign {
+                    id: r.get(0)?,
+                    key: r.get(1)?,
+                    title: r.get(2)?,
+                    starts_on: r.get(3)?,
+                    ends_on: r.get(4)?,
+                    subjects: crate::campagne::decode_subjects(&r.get::<_, String>(5)?),
+                    low_stock: 0,
+                    expiry_days: 0,
+                    bands: Vec::new(),
+                    remark: r.get(7)?,
+                };
+                crate::campagne::decode_settings(&mut c, &r.get::<_, String>(6)?);
+                Ok(c)
+            })
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Enregistrer une campagne nouvelle. Sa clé est celle qu'elle porte :
+    /// tirée par `campagne::fresh_key`, ou celle de la campagne de la
+    /// saison qu'elle personnalise — les appels déjà notés la suivent.
+    pub fn add_campaign(&self, c: &crate::campagne::Campaign) -> Result<i64, String> {
+        self.conn
+            .execute(
+                &format!(
+                    "INSERT INTO campaigns
+                         (id, key, title, starts_on, ends_on, subjects, settings, remark)
+                     VALUES ({next}, ?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                    next = next_id("campaigns")
+                ),
+                rusqlite::params![
+                    &c.key,
+                    &c.title,
+                    &c.starts_on,
+                    &c.ends_on,
+                    crate::campagne::encode_subjects(&c.subjects),
+                    crate::campagne::encode_settings(c),
+                    &c.remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// Corriger une campagne, compare-and-set sur ce que l'éditeur a lu :
+    /// une campagne corrigée sur un autre poste n'est jamais écrasée. La
+    /// clé ne change pas.
+    ///
+    /// La comparaison se fait sur la campagne **relue**, pas sur son texte :
+    /// une version plus récente peut avoir écrit une clé que celle-ci ne
+    /// connaît pas (`decode_subjects` l'ignore), et comparer le texte
+    /// réencodé de ce que l'éditeur a lu à celui de la base ne tomberait
+    /// plus jamais juste — chaque enregistrement sur ce poste finirait en
+    /// « modifiée ailleurs ». L'écriture, elle, porte sur le texte exact
+    /// qu'on vient de relire : rien ne passe entre les deux.
+    pub fn update_campaign(
+        &self,
+        c: &crate::campagne::Campaign,
+        expected: &crate::campagne::Campaign,
+    ) -> Result<bool, String> {
+        use crate::campagne::{decode_settings, decode_subjects, encode_settings, encode_subjects};
+        use rusqlite::OptionalExtension;
+        let stored: Option<(String, String, String, String, String, String, String)> = self
+            .conn
+            .query_row(
+                "SELECT key, title, starts_on, ends_on, subjects, settings, remark
+                 FROM campaigns WHERE id = ?1",
+                [expected.id],
+                |r| {
+                    Ok((
+                        r.get(0)?,
+                        r.get(1)?,
+                        r.get(2)?,
+                        r.get(3)?,
+                        r.get(4)?,
+                        r.get(5)?,
+                        r.get(6)?,
+                    ))
+                },
+            )
+            .optional()
+            .map_err(|e| e.to_string())?;
+        let Some((key, title, starts_on, ends_on, subjects, settings, remark)) = stored else {
+            return Ok(false);
+        };
+        let mut read = crate::campagne::Campaign {
+            id: expected.id,
+            key: key.clone(),
+            title: title.clone(),
+            starts_on: starts_on.clone(),
+            ends_on: ends_on.clone(),
+            subjects: decode_subjects(&subjects),
+            low_stock: 0,
+            expiry_days: 0,
+            bands: Vec::new(),
+            remark: remark.clone(),
+        };
+        decode_settings(&mut read, &settings);
+        let same = read.key == expected.key
+            && read.title == expected.title
+            && read.starts_on == expected.starts_on
+            && read.ends_on == expected.ends_on
+            && read.remark == expected.remark
+            && encode_subjects(&read.subjects) == encode_subjects(&expected.subjects)
+            && encode_settings(&read) == encode_settings(expected);
+        if !same {
+            return Ok(false);
+        }
+        let changed = self
+            .conn
+            .execute(
+                "UPDATE campaigns SET title = ?1, starts_on = ?2, ends_on = ?3, subjects = ?4,
+                     settings = ?5, remark = ?6
+                 WHERE id = ?7 AND key = ?8 AND title = ?9 AND starts_on = ?10
+                   AND ends_on = ?11 AND subjects = ?12 AND settings = ?13 AND remark = ?14",
+                rusqlite::params![
+                    &c.title,
+                    &c.starts_on,
+                    &c.ends_on,
+                    encode_subjects(&c.subjects),
+                    encode_settings(c),
+                    &c.remark,
+                    expected.id,
+                    &key,
+                    &title,
+                    &starts_on,
+                    &ends_on,
+                    &subjects,
+                    &settings,
+                    &remark,
+                ],
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Retirer une campagne, compare-and-set sur sa clé et son titre. Ses
+    /// appels restent : une campagne de la saison retirée retrouve les
+    /// siens dans la campagne livrée, qui porte la même clé.
+    pub fn delete_campaign(&self, id: i64, key: &str, title: &str) -> Result<bool, String> {
+        let changed = self
+            .conn
+            .execute(
+                "DELETE FROM campaigns WHERE id = ?1 AND key = ?2 AND title = ?3",
+                (id, key, title),
+            )
+            .map_err(|e| e.to_string())?;
+        Ok(changed == 1)
+    }
+
+    /// Les actes réalisés depuis `since` (ISO) : dossier, type, jour. Le
+    /// jour est celui du rendez-vous s'il y en avait un, sinon celui de
+    /// la saisie. Ce qui règle un sujet de campagne qui est un acte.
+    pub fn realized_acts_since(&self, since: &str) -> Result<Vec<(i64, String, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT patient_id, kind, day FROM (
+                     SELECT patient_id, kind,
+                            COALESCE(NULLIF(scheduled_date, ''), substr(created_at, 1, 10)) AS day
+                     FROM interviews
+                     WHERE state IN ('PERFORMED', 'REPORT_SENT', 'BILLED'))
+                 WHERE day >= ?1 ORDER BY patient_id, day",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([since], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
     /// Fixer un rendez-vous de vaccination pris au téléphone : l'acte de
     /// vaccination, planifié (`SCHEDULED`) au jour et à l'heure dits, que
     /// l'agenda montre comme tout rendez-vous. Le jour venu, le carnet le
@@ -49909,6 +50118,21 @@ impl Db {
     pub fn plan_vaccination(
         &self,
         patient_id: i64,
+        day: &str,
+        time: &str,
+        operator: &str,
+    ) -> Result<i64, String> {
+        self.plan_act(patient_id, InterviewKind::Vaccination, day, time, operator)
+    }
+
+    /// Fixer un rendez-vous pris au téléphone pour un acte : planifié
+    /// (`SCHEDULED`) au jour et à l'heure dits, comme
+    /// [`Db::plan_vaccination`] le fait pour une vaccination — un entretien
+    /// AVK ou un bilan de médication d'une campagne.
+    pub fn plan_act(
+        &self,
+        patient_id: i64,
+        kind: InterviewKind,
         day: &str,
         time: &str,
         operator: &str,
@@ -49924,7 +50148,7 @@ impl Db {
                 ),
                 rusqlite::params![
                     patient_id,
-                    InterviewKind::Vaccination.as_str(),
+                    kind.as_str(),
                     InterviewState::Scheduled.as_str(),
                     day,
                     time,
@@ -57204,6 +57428,79 @@ mod tests {
         assert_eq!(again[0].stup_move, 42);
     }
 
+    /// **Une campagne enregistrée se relit telle qu'écrite, et ne
+    /// s'écrase pas d'un poste à l'autre** : la correction se compare à
+    /// ce que l'éditeur a lu, la suppression à la clé et au titre. Un acte
+    /// réalisé se lit à son jour ; un acte seulement planifié non.
+    #[test]
+    fn a_campaign_is_written_compared_and_read_back() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-campaigns-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("c.db"), "secret").unwrap();
+        let mut c = crate::campagne::default_campaign("2026-10-20");
+        c.title = "Hiver ; « 2026 »".to_owned();
+        c.bands = vec![60, 70, 80];
+        c.low_stock = 9;
+        c.subjects.push(crate::campagne::Subject {
+            code: "AVK".to_owned(),
+            label: "Entretien AVK".to_owned(),
+            means: crate::campagne::Means::Act("AVK".to_owned()),
+            molecules: vec!["fluindione".to_owned()],
+            coverage: crate::campagne::Coverage::Months(12),
+            ..Default::default()
+        });
+        c.id = db.add_campaign(&c).unwrap();
+        let read = db.campaigns().unwrap();
+        assert_eq!(read, vec![c.clone()]);
+        // Corrigée ici d'après ce qui a été lu : écrite.
+        let mut fixed = c.clone();
+        fixed.ends_on = "2027-03-31".to_owned();
+        assert!(db.update_campaign(&fixed, &c).unwrap());
+        // Un autre poste corrige d'après l'ancienne lecture : refusé.
+        let mut late = c.clone();
+        late.title = "Autre".to_owned();
+        assert!(!db.update_campaign(&late, &c).unwrap());
+        assert_eq!(db.campaigns().unwrap(), vec![fixed.clone()]);
+        // La clé ne se réécrit jamais, même demandée.
+        let mut rekeyed = fixed.clone();
+        rekeyed.key = "autre".to_owned();
+        assert!(db.update_campaign(&rekeyed, &fixed).unwrap());
+        assert_eq!(db.campaigns().unwrap()[0].key, c.key);
+        // Une version plus récente a écrit une clé que celle-ci ne connaît
+        // pas : ce poste, qui la relit sans elle, enregistre encore.
+        db.conn
+            .execute(
+                "UPDATE campaigns SET subjects = subjects || ';demain=1',
+                     settings = settings || ';demain=2'",
+                [],
+            )
+            .unwrap();
+        let newer = db.campaigns().unwrap().remove(0);
+        let mut again = newer.clone();
+        again.remark = "Relu".to_owned();
+        assert!(db.update_campaign(&again, &newer).unwrap());
+        assert_eq!(db.campaigns().unwrap()[0].remark, "Relu");
+        let fixed = again;
+        assert!(!db.delete_campaign(c.id, &c.key, "Autre").unwrap());
+        assert!(db.delete_campaign(c.id, &c.key, &fixed.title).unwrap());
+        assert!(db.campaigns().unwrap().is_empty());
+        // Les actes : un réalisé compte à son jour, un planifié non.
+        let pid = db.add_patient("Martin", "Lucie", "1950-01-01").unwrap();
+        db.plan_act(pid, InterviewKind::Avk, "2026-11-02", "10:00", "MB")
+            .unwrap();
+        assert!(db.realized_acts_since("").unwrap().is_empty());
+        db.conn
+            .execute("UPDATE interviews SET state = 'PERFORMED'", [])
+            .unwrap();
+        assert_eq!(
+            db.realized_acts_since("2026-11-01").unwrap(),
+            vec![(pid, "AVK".to_owned(), "2026-11-02".to_owned())]
+        );
+        assert!(db.realized_acts_since("2026-11-03").unwrap().is_empty());
+    }
+
     #[test]
     fn a_base_from_an_older_version_still_answers_every_query() {
         const OLD: &str = include_str!("../tests/fixtures/schema-0.109.0.sql");
@@ -57260,6 +57557,15 @@ mod tests {
         db.interviews_for(pid).expect("interviews_for");
         db.bio_results(pid).expect("bio_results");
         db.vaccinations(pid).expect("vaccinations");
+        // La campagne : ses lots, ses appels, ses campagnes enregistrées
+        // et les actes réalisés qui règlent un sujet — des tables ajoutées
+        // après la 0.109.
+        db.vaccine_lots().expect("vaccine_lots");
+        db.campaign_calls("2026-2027").expect("campaign_calls");
+        let mut c = crate::campagne::default_campaign("2026-10-20");
+        c.id = db.add_campaign(&c).expect("add_campaign");
+        assert_eq!(db.campaigns().expect("campaigns"), vec![c]);
+        db.realized_acts_since("").expect("realized_acts_since");
         db.travels(pid).expect("travels");
         db.locations_for(pid).expect("locations_for");
         db.running_locations().expect("running_locations");

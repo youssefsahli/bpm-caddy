@@ -865,7 +865,28 @@ le dossier, par comparaison du calendrier et des doses enregistrées.
 # Campagne de vaccination
 
 L'onglet **Campagne** regroupe ce que l'équipe consulte chaque jour
-d'octobre à février. La saison court du 1er septembre au 31 août.
+d'octobre à février. Sans réglage, la campagne est celle de la saison,
+du 1er septembre au 31 août, construite chaque année sans rien à faire ;
+celle de l'hiver passé reste lisible dans le menu « Autre campagne »,
+avec son compte et son bilan. Une campagne terminée ne rappelle plus
+personne.
+
+**Paramétrer.** Le bouton ouvre l'éditeur à la place des panneaux. La
+campagne de la saison s'y personnalise : titre, dates, stock bas,
+péremption signalée, tranches d'âge du bilan (`65, 75`), et ses
+**sujets**. Un sujet est réglé par une dose au carnet (un vaccin du
+catalogue), par un acte réalisé (entretien AVK, bilan partagé de
+médication…) ou par un appel seulement (un dépistage, une information).
+Il vise les personnes que désigne le calendrier vaccinal, ou des
+critères : âge, sexe, grossesse en cours, un traitement contenant l'une
+des molécules données, un nombre minimal de traitements. Il compte sur
+la campagne, une fois pour toutes, ou sur un nombre de mois, avec un
+nombre de doses ou d'actes et un intervalle entre deux. Un vaccin peut
+déclarer un flacon multidose : la spécialité et son délai d'utilisation.
+« Reprendre l'an prochain » prépare la même campagne un an plus tard,
+dates et années du titre avancées ; « Nouvelle campagne » part d'une page
+vide. Rien n'est écrit avant « Enregistrer ». Les appels d'une campagne
+restent rangés sous sa clé, même si ses dates changent.
 
 **À rappeler.** Les dossiers que le calendrier vaccinal déclare dus
 pour la grippe, le COVID-19, le VRS, le pneumocoque ou le zona (65 ans et plus,
@@ -893,18 +914,20 @@ avec le médicament en cause. L'indication est à confirmer avec le
 patient. Ouvrir un dossier depuis la liste prépare le carnet : le vaccin
 de la campagne et le lot en stock sont déjà renseignés. « Imprimer la
 liste » sort la liste du vaccin choisi, avec une colonne pour noter
-l'issue de chaque appel.
+l'issue de chaque appel. Sur un écran court, les quatre documents de
+la campagne (liste, bilan, registre du jour, export) sont réunis dans
+le menu « Documents ».
 Au clavier, une flèche active la liste et la parcourt ; Entrée ouvre
 alors le carnet et les touches 1 à 4 notent l'issue de l'appel, dans
 l'ordre des boutons. La saisie dans un champ désactive la liste.
 
 **Doses de la saison.** Par vaccin : le jour, les sept derniers jours et
 la saison, lus dans tous les carnets ; puis la courbe hebdomadaire du
-vaccin choisi. « Bilan de la saison » imprime les doses par vaccin et
+vaccin choisi. « Bilan » imprime les doses par vaccin et
 par tranche d'âge à la date de l'injection, puis semaine par semaine.
 « Registre du jour » imprime les doses inscrites aux carnets dans la
 journée, avec le patient, le lot, le site et l'opérateur.
-« Exporter la saison » écrit les doses de la saison dans un fichier CSV
+« Exporter les doses » écrit les doses de la saison dans un fichier CSV
 (dossier `exports` à côté de la base) : date, patient, vaccin, dose,
 lot, site et opérateur. L'export est tracé dans le journal d'accès.
 
@@ -918,7 +941,13 @@ le stock. Un lot est signalé périmé, épuisé, proche de la péremption
 
 Sur un lot de Comirnaty, « Flacon ouvert » note la première ponction
 d'un flacon multidose : la ligne donne l'heure limite
-d'utilisation, 12 heures plus tard, et le temps restant.
+d'utilisation, 12 heures plus tard, et le temps restant. La spécialité
+et le délai se règlent dans le sujet de la campagne.
+
+Pour un sujet qui n'est pas un vaccin, la ligne ouvre le dossier,
+« Fait ailleurs » remplace « Vacciné ailleurs », et « Rendez-vous »
+planifie l'acte du sujet. Une campagne sans vaccin n'a ni lots, ni
+registre du jour, ni export.
 
 Dans le carnet d'un dossier, le choix d'un vaccin propose le lot en
 stock qui périme le premier. Une remarque s'affiche sous la saisie quand

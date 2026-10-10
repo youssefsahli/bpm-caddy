@@ -131,6 +131,9 @@ pub const TABLES: &[Table] = &[
     t("campaign_calls", Main, Dossiers, false, true),
     t("vaccine_lots", Main, Officine, false, true),
     t("vial_openings", Main, Officine, false, true),
+    // Les campagnes que l'officine s'est données : son contenu, comme
+    // ses lots.
+    t("campaigns", Main, Officine, false, true),
     // « Mesures et conseils » : les fiches d'un dossier voyagent avec les
     // dossiers ; les grilles et les compléments sont du contenu.
     t("counsel_records", Main, Dossiers, false, true),

@@ -533,6 +533,12 @@ conseils à tenir à jour deux fois.
 
 ## La campagne de vaccination
 
+- **Les campagnes sont des données** (`campagne::Campaign`, table
+  `campaigns`) : rien n'est semé ; la campagne de la saison
+  (`default_campaign`, sujets `season_subjects`) se construit pour l'année
+  en cours. Changer ce que livre un hiver — un vaccin, un délai de
+  flacon — c'est `season_subjects` ; ce qu'une officine change pour elle
+  s'enregistre dans sa base.
 - **Où** : `src/campagne.rs` — la saison (1er septembre au 31 août), le
   compte des lots contre les numéros du carnet, le décompte des doses,
   la liste des rappels, et `EVOCATIONS`, les molécules dont la présence

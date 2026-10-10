@@ -3481,17 +3481,25 @@ const DEFAULT_REGISTRE_VACCINS_TEMPLATE: &str = r##"
 {{BODY}}
 "##;
 
-/// Le bilan de la saison : les doses par vaccin et par tranche d'âge,
-/// puis semaine par semaine pour les vaccins de la campagne.
+/// Le bilan d'une campagne : les doses par vaccin et par tranche d'âge,
+/// puis semaine par semaine pour chaque sujet, puis l'issue des appels.
 pub struct CampaignSummaryPaper {
     pub title: String,
     pub date: String,
-    /// Vaccin, moins de 65 ans, 65-74, 75 et plus, âge inconnu, total.
-    pub by_age: Vec<[String; 6]>,
-    /// En-têtes des semaines (« S42 ») puis, par vaccin, le compte de
+    /// Les en-têtes des tranches d'âge de la campagne (« Moins de 65
+    /// ans »…), que suivent « Âge inconnu » et « Total ».
+    pub bands: Vec<String>,
+    /// Vaccin, une case par tranche, âge inconnu, total.
+    pub by_age: Vec<Vec<String>>,
+    /// En-têtes des semaines (« S42 ») puis, par sujet, le compte de
     /// chaque semaine.
     pub weeks: Vec<String>,
     pub by_week: Vec<(String, Vec<usize>)>,
+    /// Les issues d'appel, dans l'ordre des colonnes de `by_call`.
+    pub outcomes: Vec<String>,
+    /// Sujet, puis le nombre de dossiers dont le dernier appel a chaque
+    /// issue.
+    pub by_call: Vec<Vec<String>>,
 }
 
 pub fn open_campaign_summary(
@@ -3524,30 +3532,33 @@ fn campaign_summary_values(
         typst_str(&paper.title),
         typst_str(&paper.date)
     ));
-    src.push_str(
-        "#table(columns: (1fr, auto, auto, auto, auto, auto), stroke: 0.4pt, inset: 4pt,\n",
-    );
-    for h in [
-        "Vaccin",
-        "Moins de 65 ans",
-        "65 à 74 ans",
-        "75 ans et plus",
-        "Âge inconnu",
-        "Total",
-    ] {
+    // Une campagne sans dose (des entretiens, des appels) n'a pas de
+    // tableau des âges : son bilan commence aux semaines.
+    if !paper.by_age.is_empty() {
+        let heads: Vec<&str> = std::iter::once("Vaccin")
+            .chain(paper.bands.iter().map(String::as_str))
+            .chain(["Âge inconnu", "Total"])
+            .collect();
         src.push_str(&format!(
-            "  [#text(weight: \"bold\")[#{}]],\n",
-            typst_str(h)
+            "#table(columns: (1fr{}), stroke: 0.4pt, inset: 4pt,\n",
+            ", auto".repeat(heads.len() - 1)
         ));
-    }
-    for row in &paper.by_age {
-        for cell in row {
-            src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+        for h in &heads {
+            src.push_str(&format!(
+                "  [#text(weight: \"bold\")[#{}]],\n",
+                typst_str(h)
+            ));
         }
+        for row in &paper.by_age {
+            for i in 0..heads.len() {
+                let cell = row.get(i).map(String::as_str).unwrap_or("");
+                src.push_str(&format!("  [#{}],\n", typst_str(cell)));
+            }
+        }
+        src.push_str(")\n");
     }
-    src.push_str(")\n");
     if !paper.weeks.is_empty() && !paper.by_week.is_empty() {
-        src.push_str("#v(5mm)\n#text(10.5pt, weight: \"bold\")[Doses par semaine]\n#v(2mm)\n");
+        src.push_str("#v(5mm)\n#text(10.5pt, weight: \"bold\")[Par semaine]\n#v(2mm)\n");
         src.push_str(&format!(
             "#table(columns: {}, stroke: 0.4pt, inset: 3pt,\n",
             paper.weeks.len() + 1
@@ -3564,6 +3575,29 @@ fn campaign_summary_values(
             for i in 0..paper.weeks.len() {
                 let n = counts.get(i).copied().unwrap_or(0);
                 src.push_str(&format!("  [#text(8pt)[{n}]],\n"));
+            }
+        }
+        src.push_str(")\n");
+    }
+    if !paper.by_call.is_empty() {
+        src.push_str("#v(5mm)\n#text(10.5pt, weight: \"bold\")[Appels]\n#v(2mm)\n");
+        let heads: Vec<&str> = std::iter::once("Sujet")
+            .chain(paper.outcomes.iter().map(String::as_str))
+            .collect();
+        src.push_str(&format!(
+            "#table(columns: (1fr{}), stroke: 0.4pt, inset: 4pt,\n",
+            ", auto".repeat(heads.len() - 1)
+        ));
+        for h in &heads {
+            src.push_str(&format!(
+                "  [#text(weight: \"bold\")[#{}]],\n",
+                typst_str(h)
+            ));
+        }
+        for row in &paper.by_call {
+            for i in 0..heads.len() {
+                let cell = row.get(i).map(String::as_str).unwrap_or("");
+                src.push_str(&format!("  [#{}],\n", typst_str(cell)));
             }
         }
         src.push_str(")\n");
@@ -5956,7 +5990,12 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
             &CampaignSummaryPaper {
                 title: "Campagne de vaccination 2026-2027 : bilan".to_owned(),
                 date: "20/10/2026".to_owned(),
-                by_age: vec![[
+                bands: vec![
+                    "Moins de 65 ans".to_owned(),
+                    "65 à 74 ans".to_owned(),
+                    "75 ans et plus".to_owned(),
+                ],
+                by_age: vec![vec![
                     "Grippe saisonnière".to_owned(),
                     "12".to_owned(),
                     "40".to_owned(),
@@ -5966,6 +6005,19 @@ fn sample_values(key: &str) -> Vec<(&'static str, String)> {
                 ]],
                 weeks: vec!["S41".to_owned(), "S42".to_owned(), "S43".to_owned()],
                 by_week: vec![("Grippe".to_owned(), vec![0, 60, 48])],
+                outcomes: vec![
+                    "Prévenu".to_owned(),
+                    "Message".to_owned(),
+                    "Vacciné ailleurs".to_owned(),
+                    "Refus".to_owned(),
+                ],
+                by_call: vec![vec![
+                    "Grippe".to_owned(),
+                    "30".to_owned(),
+                    "4".to_owned(),
+                    "6".to_owned(),
+                    "2".to_owned(),
+                ]],
             },
             &sample_pharmacy(),
         ),

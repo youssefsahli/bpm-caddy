@@ -1,20 +1,29 @@
-//! La campagne de vaccination de l'hiver : les lots reçus, les doses de
-//! la saison, et les patients à rappeler.
+//! Les campagnes de l'officine : la vaccination de l'hiver, et toute
+//! autre campagne que l'équipe se donne — une autre année, un autre
+//! vaccin, ou un sujet qui n'est pas un vaccin (les entretiens AVK, les
+//! bilans partagés de médication, un dépistage).
 //!
-//! Trois questions que l'équipe se pose chaque jour d'octobre à février,
-//! et auxquelles le carnet de chaque dossier répondait un dossier à la
+//! Une campagne est une **période**, une **clé** sous laquelle ses appels
+//! sont rangés, et des **sujets**. Un sujet dit qui il vise (le calendrier
+//! vaccinal, ou des critères : âge, sexe, grossesse, traitements), ce qui
+//! le règle (une dose au carnet, un acte réalisé, ou seulement un appel)
+//! et sur quelle durée. Trois questions que l'équipe se pose chaque jour
+//! d'une campagne, et auxquelles le dossier répondait un dossier à la
 //! fois :
 //!
 //! - **Combien reste-t-il de doses de ce lot ?** Le lot est saisi au
 //!   carnet à chaque injection ; il suffit de compter les lignes qui le
 //!   portent contre ce qui a été reçu. Rien n'est décrémenté à la main :
 //!   une dose corrigée ou supprimée au carnet se retrouve dans le compte.
-//! - **Combien de doses depuis le début de la saison ?** Par vaccin, le
-//!   jour, la semaine et la saison, lus dans les carnets.
-//! - **Qui n'est pas encore venu ?** Les dossiers que le calendrier
-//!   (`vaccines::due_lines_with`) déclare *dus* — 65 ans et plus, ou
-//!   grossesse — sans dose de la saison, moins ceux que l'équipe a déjà
-//!   appelés pour cette saison.
+//! - **Combien depuis le début de la campagne ?** Par sujet, le jour, la
+//!   semaine et la campagne, lus dans les carnets, les actes et les appels.
+//! - **Qui n'est pas encore venu ?** Les dossiers que le sujet vise, sans
+//!   rien qui le règle sur la période, moins ceux que l'équipe a déjà
+//!   appelés pour cette campagne.
+//!
+//! Sans campagne enregistrée, la campagne de la saison
+//! ([`default_campaign`]) est construite pour l'année en cours : rien
+//! n'est semé, et chaque hiver a la sienne sans qu'on y touche.
 //!
 //! Pur et sans horloge : la date du jour est passée en paramètre.
 
@@ -35,7 +44,8 @@ pub struct Season {
     pub start: String,
     /// ISO, dernier jour (31 août).
     pub end: String,
-    /// « 2026-2027 » : la clé sous laquelle un appel est rangé.
+    /// « 2026-2027 » : la clé sous laquelle les appels de la campagne de
+    /// la saison sont rangés.
     pub label: String,
 }
 
@@ -48,6 +58,738 @@ pub fn season(today: &str) -> Season {
         label: format!("{:04}-{:04}", year, year + 1),
         start,
     }
+}
+
+/// Une clé de la forme d'une saison (« 2026-2027 ») : l'année qui suit.
+fn next_season_key(key: &str) -> Option<String> {
+    let (a, b) = key.split_once('-')?;
+    let (a, b): (u32, u32) = (a.parse().ok()?, b.parse().ok()?);
+    (a >= 1900 && b == a + 1 && key.len() == 9).then(|| format!("{:04}-{:04}", a + 1, b + 1))
+}
+
+// ---------------------------------------------------------------------
+// La campagne et ses sujets
+// ---------------------------------------------------------------------
+
+/// Ce qui règle un sujet pour un dossier.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Means {
+    /// Une dose de ce vaccin au carnet (`Subject::code` est le code du
+    /// catalogue). Le rendez-vous est un acte de vaccination.
+    Vaccine,
+    /// Un acte de ce type réalisé (`db::InterviewKind::as_str`) : un
+    /// entretien AVK, un bilan partagé de médication. Le rendez-vous est
+    /// cet acte, planifié.
+    Act(String),
+    /// Rien que la base sache lire : seul un appel le règle (un dépistage
+    /// fait ailleurs, une information donnée).
+    Call,
+}
+
+/// Qui un sujet vise.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Rule {
+    /// Le calendrier vaccinal en décide (`vaccines::due_lines_with`) :
+    /// seulement pour un vaccin que le calendrier lit.
+    Calendar,
+    /// Les critères du sujet : âge, sexe, grossesse, traitements.
+    Criteria,
+}
+
+/// Sur quelle durée ce qui règle un sujet compte.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Coverage {
+    /// Depuis le premier jour de la campagne (la grippe, chaque hiver).
+    Campaign,
+    /// Une fois pour toutes (le pneumocoque, le VRS).
+    Ever,
+    /// Dans les `n` derniers mois (un bilan annuel : 12).
+    Months(u32),
+}
+
+/// Un sujet de campagne : un vaccin, un acte, ou un appel à passer.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Subject {
+    /// Le code du catalogue pour un vaccin ; pour un autre sujet, une
+    /// clé libre, stable, sous laquelle ses appels sont rangés.
+    pub code: String,
+    /// Le nom court, sur les boutons et les listes.
+    pub label: String,
+    pub means: Means,
+    pub rule: Rule,
+    /// Critères (`Rule::Criteria`) : âge à la date du jour, bornes
+    /// comprises ; une borne exige une date de naissance.
+    pub age_min: Option<u32>,
+    pub age_max: Option<u32>,
+    /// `F`, `M`, ou vide pour tous.
+    pub sex: String,
+    /// Une grossesse en cours inclut le dossier quel que soit son âge.
+    pub pregnancy: bool,
+    /// Un dossier hors des bornes d'âge, dont un traitement évoque un
+    /// groupe à risque ([`evocations`]), est listé à part, « à confirmer ».
+    pub evoked: bool,
+    /// Fragments de DCI ou de nom (« apixaban », « fluindione ») : le
+    /// dossier doit avoir un traitement qui en porte un.
+    pub molecules: Vec<String>,
+    /// Le dossier doit avoir au moins ce nombre de traitements (le bilan
+    /// partagé de médication : 5).
+    pub min_treatments: u32,
+    pub coverage: Coverage,
+    /// Le nombre de doses ou d'actes qui règlent le sujet (le zona : 2).
+    pub doses: u32,
+    /// Entre deux doses d'une série, en mois : la suivante n'est pas
+    /// rappelée avant.
+    pub interval_months: u32,
+    /// Les flacons multidoses : un lot de ce vaccin dont la spécialité
+    /// porte ce fragment se note ouvert, et s'utilise dans `vial_hours`.
+    pub vial_product: String,
+    pub vial_hours: u32,
+}
+
+impl Default for Subject {
+    fn default() -> Self {
+        Subject {
+            code: String::new(),
+            label: String::new(),
+            means: Means::Vaccine,
+            rule: Rule::Criteria,
+            age_min: None,
+            age_max: None,
+            sex: String::new(),
+            pregnancy: false,
+            evoked: false,
+            molecules: Vec::new(),
+            min_treatments: 0,
+            coverage: Coverage::Campaign,
+            doses: 1,
+            interval_months: 0,
+            vial_product: String::new(),
+            vial_hours: 0,
+        }
+    }
+}
+
+impl Subject {
+    pub fn is_vaccine(&self) -> bool {
+        self.means == Means::Vaccine
+    }
+
+    /// Le type d'acte que son rendez-vous planifie, s'il en a un.
+    pub fn act_kind(&self) -> Option<&str> {
+        match &self.means {
+            Means::Vaccine => Some("VACCINATION"),
+            Means::Act(kind) if !kind.trim().is_empty() => Some(kind.as_str()),
+            _ => None,
+        }
+    }
+}
+
+/// Une campagne : une période, une clé, des sujets, et les seuils de son
+/// stock et de son bilan.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Campaign {
+    /// 0 : la campagne de la saison, construite et non enregistrée.
+    pub id: i64,
+    /// La clé de ses appels : « 2026-2027 » pour la campagne d'une
+    /// saison. Fixée à la création, jamais réécrite — des dates
+    /// corrigées gardent les appels déjà notés.
+    pub key: String,
+    pub title: String,
+    /// ISO, premier et dernier jour.
+    pub starts_on: String,
+    pub ends_on: String,
+    pub subjects: Vec<Subject>,
+    /// Sous ce nombre de doses, un lot est en stock bas.
+    pub low_stock: i64,
+    /// Une péremption à moins de ce nombre de jours est signalée.
+    pub expiry_days: i64,
+    /// Les âges qui découpent le bilan : `[65, 75]` donne moins de 65 ans,
+    /// 65 à 74 ans, 75 ans et plus.
+    pub bands: Vec<u32>,
+    pub remark: String,
+}
+
+/// Le stock bas et la péremption proche par défaut.
+pub const DEFAULT_LOW_STOCK: i64 = 5;
+pub const DEFAULT_EXPIRY_DAYS: i64 = 30;
+/// Les tranches d'âge du bilan par défaut.
+pub const DEFAULT_BANDS: [u32; 2] = [65, 75];
+
+/// Le délai d'utilisation d'un flacon multidose de vaccin contre le
+/// COVID-19 après la première ponction (Comirnaty, campagne 2026-2027) :
+/// celui de la campagne de la saison, que l'officine corrige dans la
+/// sienne quand la spécialité change.
+pub const VIAL_HOURS: u32 = 12;
+
+/// Les vaccins de la campagne de la saison, dans l'ordre des boutons.
+pub const SEASON_CODES: [&str; 5] = ["GRIPPE", "COVID", "VRS", "PNEUMO", "ZONA"];
+
+/// Les sujets de la campagne de la saison : ce que le calendrier lit
+/// chaque hiver, réglé comme il le règle.
+pub fn season_subjects() -> Vec<Subject> {
+    let vaccine = |code: &str| Subject {
+        code: code.to_owned(),
+        label: code_label(code).to_owned(),
+        rule: Rule::Calendar,
+        ..Subject::default()
+    };
+    vec![
+        Subject {
+            evoked: true,
+            ..vaccine("GRIPPE")
+        },
+        Subject {
+            evoked: true,
+            vial_product: "comirnaty".to_owned(),
+            vial_hours: VIAL_HOURS,
+            ..vaccine("COVID")
+        },
+        Subject {
+            coverage: Coverage::Ever,
+            ..vaccine("VRS")
+        },
+        Subject {
+            coverage: Coverage::Ever,
+            ..vaccine("PNEUMO")
+        },
+        // Deux doses, la seconde à partir de deux mois après la première.
+        Subject {
+            coverage: Coverage::Ever,
+            doses: 2,
+            interval_months: 2,
+            ..vaccine("ZONA")
+        },
+    ]
+}
+
+/// Le nom court d'un vaccin de la saison ; un autre code se montre tel
+/// quel.
+pub fn code_label(code: &str) -> &str {
+    match code {
+        "GRIPPE" => crate::strings::tr("camp_code_grippe"),
+        "COVID" => crate::strings::tr("camp_code_covid"),
+        "VRS" => crate::strings::tr("camp_code_vrs"),
+        "PNEUMO" => crate::strings::tr("camp_code_pneumo"),
+        "ZONA" => crate::strings::tr("camp_code_zona"),
+        "DTCAP" => crate::strings::tr("camp_code_dtcap"),
+        other => other,
+    }
+}
+
+/// La campagne de la saison où tombe `today`, telle que livrée.
+pub fn default_campaign(today: &str) -> Campaign {
+    let s = season(today);
+    Campaign {
+        id: 0,
+        title: crate::strings::trf("camp_title", &s.label),
+        key: s.label,
+        starts_on: s.start,
+        ends_on: s.end,
+        subjects: season_subjects(),
+        low_stock: DEFAULT_LOW_STOCK,
+        expiry_days: DEFAULT_EXPIRY_DAYS,
+        bands: DEFAULT_BANDS.to_vec(),
+        remark: String::new(),
+    }
+}
+
+/// Où en est une campagne à une date.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Phase {
+    Upcoming,
+    Running,
+    Ended,
+}
+
+impl Campaign {
+    pub fn phase(&self, today: &str) -> Phase {
+        if today < self.starts_on.as_str() {
+            Phase::Upcoming
+        } else if !self.ends_on.is_empty() && today > self.ends_on.as_str() {
+            Phase::Ended
+        } else {
+            Phase::Running
+        }
+    }
+
+    /// Le dernier jour lu : aujourd'hui, ou la fin d'une campagne passée.
+    pub fn read_until<'a>(&'a self, today: &'a str) -> &'a str {
+        if !self.ends_on.is_empty() && self.ends_on.as_str() < today {
+            &self.ends_on
+        } else {
+            today
+        }
+    }
+
+    pub fn subject(&self, code: &str) -> Option<&Subject> {
+        self.subjects.iter().find(|s| s.code == code)
+    }
+
+    pub fn has_vaccines(&self) -> bool {
+        self.subjects.iter().any(Subject::is_vaccine)
+    }
+
+    /// Les seuils de son stock.
+    pub fn stock(&self) -> Stock {
+        Stock {
+            low: self.low_stock,
+            expiry_days: self.expiry_days,
+        }
+    }
+
+    /// Le délai d'utilisation d'un flacon ouvert de ce lot, en heures, si
+    /// un sujet de la campagne le déclare multidose.
+    pub fn vial_hours(&self, lot: &Lot) -> Option<u32> {
+        let product = crate::fuzzy::sort_key(&lot.product);
+        self.subjects
+            .iter()
+            .filter(|s| s.is_vaccine() && s.code == lot.code && s.vial_hours > 0)
+            .find(|s| {
+                let f = crate::fuzzy::sort_key(&s.vial_product);
+                f.is_empty() || crate::fuzzy::contains_folded(&product, &f)
+            })
+            .map(|s| s.vial_hours)
+    }
+
+    /// La même campagne l'année suivante : les dates décalées d'un an,
+    /// les années du titre aussi, les sujets et les seuils repris. La
+    /// clé d'une saison devient celle de la saison suivante ; une autre
+    /// est tirée de ses nouvelles dates.
+    pub fn next_year(&self, taken: &[&str]) -> Campaign {
+        // Un dernier jour de mois reste le dernier : une campagne qui finit
+        // le 28 février 2027 finit le 29 février 2028.
+        let shift = |d: &str| {
+            let moved = crate::date::add_months(d, 12).unwrap_or_else(|| d.to_owned());
+            match (crate::date::parse_iso(d), crate::date::parse_iso(&moved)) {
+                (Some((y, m, day)), Some((ny, nm, _)))
+                    if crate::date::end_of_month(y, m) == Some(day) =>
+                {
+                    crate::date::end_of_month(ny, nm)
+                        .map(|last| format!("{ny:04}-{nm:02}-{last:02}"))
+                        .unwrap_or(moved)
+                }
+                _ => moved,
+            }
+        };
+        let starts_on = shift(&self.starts_on);
+        let ends_on = shift(&self.ends_on);
+        let key = next_season_key(&self.key)
+            .filter(|k| !taken.contains(&k.as_str()))
+            .unwrap_or_else(|| fresh_key(&starts_on, &ends_on, taken));
+        Campaign {
+            id: 0,
+            key,
+            title: shift_years(&self.title),
+            starts_on,
+            ends_on,
+            ..self.clone()
+        }
+    }
+}
+
+/// Chaque année écrite dans un titre, avancée d'un an : « Hiver
+/// 2026-2027 » devient « Hiver 2027-2028 ». Un nombre de quatre chiffres
+/// hors de 1900 à 2999 n'est pas une année et reste.
+pub fn shift_years(title: &str) -> String {
+    let chars: Vec<char> = title.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        if chars[i].is_ascii_digit() {
+            let mut j = i;
+            while j < chars.len() && chars[j].is_ascii_digit() {
+                j += 1;
+            }
+            let run: String = chars[i..j].iter().collect();
+            match run.parse::<u32>() {
+                Ok(y) if run.len() == 4 && (1900..3000).contains(&y) => {
+                    out.push_str(&(y + 1).to_string())
+                }
+                _ => out.push_str(&run),
+            }
+            i = j;
+        } else {
+            out.push(chars[i]);
+            i += 1;
+        }
+    }
+    out
+}
+
+/// La clé d'une campagne nouvelle : ses dates, et un rang si une autre
+/// campagne les porte déjà. Jamais le libellé d'une saison, même quand
+/// ses dates en sont les bornes : cette clé est celle de la campagne
+/// livrée de cet hiver-là (et de ce qui la personnalise ou la reprend),
+/// et une campagne nouvelle qui la prendrait effacerait la campagne
+/// livrée du menu et lirait ses appels — aujourd'hui, ou à l'automne où
+/// cette saison arrive.
+pub fn fresh_key(starts_on: &str, ends_on: &str, taken: &[&str]) -> String {
+    let base = format!("{starts_on}~{ends_on}");
+    if !taken.contains(&base.as_str()) {
+        return base;
+    }
+    (2..)
+        .map(|n| format!("{base}#{n}"))
+        .find(|k| !taken.contains(&k.as_str()))
+        .unwrap_or(base)
+}
+
+/// Les campagnes que la vue propose : celles de la base, et la campagne
+/// de la saison et celle de la saison passée tant qu'aucune campagne
+/// enregistrée ne porte leur clé — le bilan de l'hiver dernier reste
+/// lisible. En cours d'abord (la plus récente en tête), puis les
+/// terminées (la plus récente en tête), puis celles à venir.
+pub fn listing(stored: &[Campaign], today: &str) -> Vec<Campaign> {
+    let mut out: Vec<Campaign> = stored.to_vec();
+    let last_year = crate::date::add_months(today, -12).unwrap_or_default();
+    for day in [today, last_year.as_str()] {
+        if day.is_empty() {
+            continue;
+        }
+        let d = default_campaign(day);
+        if !out.iter().any(|c| c.key == d.key) {
+            out.push(d);
+        }
+    }
+    let rank = |c: &Campaign| match c.phase(today) {
+        Phase::Running => 0,
+        Phase::Ended => 1,
+        Phase::Upcoming => 2,
+    };
+    out.sort_by(|a, b| {
+        rank(a).cmp(&rank(b)).then_with(|| match a.phase(today) {
+            Phase::Upcoming => a.starts_on.cmp(&b.starts_on),
+            Phase::Running => b.starts_on.cmp(&a.starts_on),
+            Phase::Ended => b.ends_on.cmp(&a.ends_on),
+        })
+    });
+    out
+}
+
+// ---------------------------------------------------------------------
+// La campagne écrite en base
+// ---------------------------------------------------------------------
+
+/// Une valeur sans `;`, `=` ni fin de ligne : les séparateurs du texte
+/// d'une campagne. `%` s'échappe aussi, pour que la lecture soit sûre.
+fn escape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '%' => out.push_str("%25"),
+            ';' => out.push_str("%3B"),
+            '=' => out.push_str("%3D"),
+            '\n' => out.push_str("%0A"),
+            '\r' => out.push_str("%0D"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+fn unescape(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    let mut rest = s;
+    while let Some(i) = rest.find('%') {
+        out.push_str(&rest[..i]);
+        let code = rest.get(i + 1..i + 3);
+        let c = match code {
+            Some("25") => Some('%'),
+            Some("3B") => Some(';'),
+            Some("3D") => Some('='),
+            Some("0A") => Some('\n'),
+            Some("0D") => Some('\r'),
+            _ => None,
+        };
+        match c {
+            Some(c) => {
+                out.push(c);
+                rest = &rest[i + 3..];
+            }
+            None => {
+                out.push('%');
+                rest = &rest[i + 1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+fn encode_pairs(pairs: &[(&str, String)]) -> String {
+    pairs
+        .iter()
+        .filter(|(_, v)| !v.is_empty())
+        .map(|(k, v)| format!("{k}={}", escape(v)))
+        .collect::<Vec<_>>()
+        .join(";")
+}
+
+fn decode_pairs(line: &str) -> Vec<(String, String)> {
+    line.split(';')
+        .filter_map(|p| p.split_once('='))
+        .map(|(k, v)| (k.trim().to_owned(), unescape(v)))
+        .collect()
+}
+
+fn opt_num(v: Option<u32>) -> String {
+    v.map(|n| n.to_string()).unwrap_or_default()
+}
+
+/// Un nombre, ou rien quand il vaut sa valeur par défaut.
+fn unless_default(n: u32, default: u32) -> String {
+    if n == default {
+        String::new()
+    } else {
+        n.to_string()
+    }
+}
+
+fn flag(b: bool) -> String {
+    if b { "1" } else { "" }.to_owned()
+}
+
+/// Les sujets d'une campagne en texte, une ligne par sujet de
+/// `clé=valeur` séparés par des points-virgules. Une valeur par défaut
+/// n'est pas écrite ; une clé inconnue est ignorée à la lecture, si bien
+/// qu'une version plus récente peut en ajouter sans casser une plus
+/// ancienne.
+pub fn encode_subjects(subjects: &[Subject]) -> String {
+    subjects
+        .iter()
+        .map(|s| {
+            let (means, act) = match &s.means {
+                Means::Vaccine => ("vaccin", String::new()),
+                Means::Act(k) => ("acte", k.clone()),
+                Means::Call => ("appel", String::new()),
+            };
+            let (coverage, months) = match s.coverage {
+                Coverage::Campaign => ("campagne", String::new()),
+                Coverage::Ever => ("toujours", String::new()),
+                Coverage::Months(n) => ("mois", n.to_string()),
+            };
+            encode_pairs(&[
+                ("code", s.code.clone()),
+                ("libelle", s.label.clone()),
+                ("moyen", means.to_owned()),
+                ("acte", act),
+                (
+                    "cible",
+                    match s.rule {
+                        Rule::Calendar => "calendrier",
+                        Rule::Criteria => "criteres",
+                    }
+                    .to_owned(),
+                ),
+                ("age_min", opt_num(s.age_min)),
+                ("age_max", opt_num(s.age_max)),
+                ("sexe", s.sex.clone()),
+                ("grossesse", flag(s.pregnancy)),
+                ("evocation", flag(s.evoked)),
+                ("molecules", s.molecules.join(", ")),
+                ("traitements", unless_default(s.min_treatments, 0)),
+                ("couverture", coverage.to_owned()),
+                ("mois", months),
+                ("doses", unless_default(s.doses, 1)),
+                ("intervalle", unless_default(s.interval_months, 0)),
+                ("flacon", s.vial_product.clone()),
+                ("heures", unless_default(s.vial_hours, 0)),
+            ])
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// Relire [`encode_subjects`]. Une ligne sans code est ignorée.
+pub fn decode_subjects(text: &str) -> Vec<Subject> {
+    let mut out = Vec::new();
+    for line in text.lines() {
+        let mut s = Subject::default();
+        let mut means = "vaccin".to_owned();
+        let mut act = String::new();
+        let mut coverage = "campagne".to_owned();
+        let mut months = 0u32;
+        for (k, v) in decode_pairs(line) {
+            let n = || v.trim().parse::<u32>().ok();
+            match k.as_str() {
+                "code" => s.code = v.trim().to_owned(),
+                "libelle" => s.label = v.trim().to_owned(),
+                "moyen" => means = v.clone(),
+                "acte" => act = v.trim().to_owned(),
+                "cible" => {
+                    s.rule = if v == "calendrier" {
+                        Rule::Calendar
+                    } else {
+                        Rule::Criteria
+                    }
+                }
+                "age_min" => s.age_min = n(),
+                "age_max" => s.age_max = n(),
+                "sexe" => s.sex = v.trim().to_owned(),
+                "grossesse" => s.pregnancy = v == "1",
+                "evocation" => s.evoked = v == "1",
+                "molecules" => s.molecules = split_list(&v),
+                "traitements" => s.min_treatments = n().unwrap_or(0),
+                "couverture" => coverage = v.clone(),
+                "mois" => months = n().unwrap_or(0),
+                "doses" => s.doses = n().unwrap_or(1).max(1),
+                "intervalle" => s.interval_months = n().unwrap_or(0),
+                "flacon" => s.vial_product = v.trim().to_owned(),
+                "heures" => s.vial_hours = n().unwrap_or(0),
+                _ => {}
+            }
+        }
+        s.means = match means.as_str() {
+            "acte" => Means::Act(act),
+            "appel" => Means::Call,
+            _ => Means::Vaccine,
+        };
+        s.coverage = match coverage.as_str() {
+            "toujours" => Coverage::Ever,
+            "mois" if months > 0 => Coverage::Months(months),
+            _ => Coverage::Campaign,
+        };
+        if s.label.is_empty() {
+            s.label = code_label(&s.code).to_owned();
+        }
+        if !s.code.is_empty() {
+            out.push(s);
+        }
+    }
+    out
+}
+
+/// Une liste tapée à virgules (ou points-virgules), sans les vides.
+pub fn split_list(text: &str) -> Vec<String> {
+    text.split([',', ';'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
+        .collect()
+}
+
+/// Les seuils d'une campagne en texte : stock bas, péremption, tranches.
+pub fn encode_settings(c: &Campaign) -> String {
+    encode_pairs(&[
+        ("stock", c.low_stock.to_string()),
+        ("peremption", c.expiry_days.to_string()),
+        (
+            "tranches",
+            if c.bands.is_empty() {
+                "aucune".to_owned()
+            } else {
+                c.bands
+                    .iter()
+                    .map(u32::to_string)
+                    .collect::<Vec<_>>()
+                    .join(",")
+            },
+        ),
+    ])
+}
+
+/// Relire [`encode_settings`] dans `c` ; ce qui manque garde sa valeur
+/// par défaut.
+pub fn decode_settings(c: &mut Campaign, text: &str) {
+    c.low_stock = DEFAULT_LOW_STOCK;
+    c.expiry_days = DEFAULT_EXPIRY_DAYS;
+    c.bands = DEFAULT_BANDS.to_vec();
+    for (k, v) in decode_pairs(text) {
+        match k.as_str() {
+            "stock" => {
+                if let Ok(n) = v.trim().parse() {
+                    c.low_stock = n;
+                }
+            }
+            "peremption" => {
+                if let Ok(n) = v.trim().parse() {
+                    c.expiry_days = n;
+                }
+            }
+            "tranches" if v == "aucune" => c.bands.clear(),
+            "tranches" => {
+                if let Some(b) = parse_bands(&v) {
+                    c.bands = b;
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Des âges tapés (« 65, 75 ») : croissants, sans doublon, au plus
+/// six ; `None` si l'un n'est pas un âge.
+pub fn parse_bands(text: &str) -> Option<Vec<u32>> {
+    let mut out: Vec<u32> = Vec::new();
+    for part in split_list(text) {
+        let n: u32 = part.parse().ok()?;
+        if !(1..=120).contains(&n) {
+            return None;
+        }
+        out.push(n);
+    }
+    out.sort_unstable();
+    out.dedup();
+    out.truncate(6);
+    Some(out)
+}
+
+/// Ce qui ne va pas dans une campagne avant de l'enregistrer : la
+/// première faute, en clair ; `None` si elle peut s'écrire.
+pub fn check(c: &Campaign) -> Option<String> {
+    let tr = crate::strings::tr;
+    if c.title.trim().is_empty() {
+        return Some(tr("camp_edit_err_title").to_owned());
+    }
+    if crate::date::to_days(&c.starts_on).is_none() || crate::date::to_days(&c.ends_on).is_none() {
+        return Some(tr("camp_edit_err_dates").to_owned());
+    }
+    if c.ends_on < c.starts_on {
+        return Some(tr("camp_edit_err_order").to_owned());
+    }
+    if c.subjects.is_empty() {
+        return Some(tr("camp_edit_err_none").to_owned());
+    }
+    for (i, s) in c.subjects.iter().enumerate() {
+        if s.code.trim().is_empty() {
+            return Some(crate::strings::trf("camp_edit_err_code", i + 1));
+        }
+        if c.subjects[..i].iter().any(|o| o.code == s.code) {
+            return Some(crate::strings::trf("camp_edit_err_twice", &s.code));
+        }
+        if let (Some(a), Some(b)) = (s.age_min, s.age_max) {
+            if b < a {
+                return Some(crate::strings::trf("camp_edit_err_ages", &s.label));
+            }
+        }
+        if matches!(&s.means, Means::Act(k) if k.trim().is_empty()) {
+            return Some(crate::strings::trf("camp_edit_err_act", &s.label));
+        }
+        if s.rule == Rule::Calendar && !s.is_vaccine() {
+            return Some(crate::strings::trf("camp_edit_err_calendar", &s.label));
+        }
+    }
+    None
+}
+
+/// Les vaccins dont le calendrier sait dire qui les doit : la règle
+/// « calendrier » n'a de sens que pour eux. Lu en interrogeant le
+/// calendrier à tous les âges, avec et sans grossesse, à `today`.
+pub fn calendar_codes(today: &str) -> Vec<&'static str> {
+    let mut out: Vec<&'static str> = Vec::new();
+    let year: i64 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2026);
+    let ddr = crate::date::add_days(today, -7 * 33).unwrap_or_default();
+    for age in 0..=100 {
+        let birth = format!("{:04}{}", year - age, today.get(4..).unwrap_or("-01-01"));
+        for d in ["", ddr.as_str()] {
+            for l in vaccines::due_lines_with(&birth, today, &[], d) {
+                if l.level != DueLevel::Ok && !out.contains(&l.code) {
+                    out.push(l.code);
+                }
+            }
+        }
+    }
+    out
 }
 
 // ---------------------------------------------------------------------
@@ -91,17 +833,28 @@ pub enum LotState {
     Expired,
     /// Toutes les doses reçues sont au carnet.
     Exhausted,
-    /// Périmé dans moins de [`EXPIRY_WARNING_DAYS`] jours.
+    /// Périmé dans moins de [`Stock::expiry_days`] jours.
     ExpiresSoon(i64),
-    /// Moins de [`LOW_STOCK`] doses restantes.
+    /// Moins de [`Stock::low`] doses restantes.
     Low,
     Ok,
 }
 
-/// Délai sous lequel une péremption proche est signalée.
-pub const EXPIRY_WARNING_DAYS: i64 = 30;
-/// Seuil sous lequel il reste peu de doses.
-pub const LOW_STOCK: i64 = 5;
+/// Les seuils qui disent un lot en stock bas ou proche de sa péremption.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Stock {
+    pub low: i64,
+    pub expiry_days: i64,
+}
+
+impl Default for Stock {
+    fn default() -> Self {
+        Stock {
+            low: DEFAULT_LOW_STOCK,
+            expiry_days: DEFAULT_EXPIRY_DAYS,
+        }
+    }
+}
 
 /// Ce qu'un lot est devenu : doses utilisées, restantes, et son état.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -114,7 +867,7 @@ pub struct LotUse {
 }
 
 /// Lire un lot contre le nombre de doses du carnet qui le portent.
-pub fn lot_use(lot: &Lot, used: i64, today: &str) -> LotUse {
+pub fn lot_use(lot: &Lot, used: i64, today: &str, stock: Stock) -> LotUse {
     let remaining = lot.received - used;
     let to_expiry = (!lot.expires_on.trim().is_empty())
         .then(|| crate::date::days_between(today, lot.expires_on.trim()))
@@ -122,8 +875,8 @@ pub fn lot_use(lot: &Lot, used: i64, today: &str) -> LotUse {
     let state = match to_expiry {
         Some(d) if d < 0 => LotState::Expired,
         _ if lot.received > 0 && remaining <= 0 => LotState::Exhausted,
-        Some(d) if d <= EXPIRY_WARNING_DAYS => LotState::ExpiresSoon(d),
-        _ if remaining < LOW_STOCK => LotState::Low,
+        Some(d) if d <= stock.expiry_days => LotState::ExpiresSoon(d),
+        _ if remaining < stock.low => LotState::Low,
         _ => LotState::Ok,
     };
     LotUse {
@@ -224,7 +977,7 @@ pub fn usable_lots<'a>(lots: &'a [Lot], used: &[i64], code: &str, today: &str) -
         .filter(|(l, _)| code.is_empty() || l.code == code)
         .filter(|(l, &u)| {
             !matches!(
-                lot_use(l, u, today).state,
+                lot_use(l, u, today, Stock::default()).state,
                 LotState::Expired | LotState::Exhausted
             )
         })
@@ -256,7 +1009,17 @@ pub struct DoseRow<'a> {
     pub given_on: &'a str,
 }
 
-/// Les doses d'un vaccin sur la saison.
+/// Ce qui s'est fait sur la période, tel que le décompte le lit : les
+/// doses des carnets, les actes réalisés (type et jour), les appels de la
+/// campagne.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct Done<'a> {
+    pub doses: &'a [DoseRow<'a>],
+    pub acts: &'a [(&'a str, &'a str)],
+    pub calls: &'a [Call],
+}
+
+/// Le compte d'un sujet sur la campagne.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Tally {
     pub code: String,
@@ -267,63 +1030,132 @@ pub struct Tally {
     pub season: usize,
 }
 
-/// Les doses de la saison par vaccin, la plus fournie d'abord.
-///
-/// Une ligne sans code (vaccin saisi en texte libre) est comptée sous
-/// son libellé.
-pub fn tally(doses: &[DoseRow], today: &str) -> Vec<Tally> {
-    let s = season(today);
-    let week_start = crate::date::add_days(today, -6).unwrap_or_default();
-    let mut out: Vec<Tally> = Vec::new();
-    for d in doses {
-        let date = d.given_on.trim();
-        if date.is_empty() || date < s.start.as_str() || date > today {
-            continue;
-        }
-        let key = if d.code.trim().is_empty() {
-            d.label.trim()
-        } else {
-            d.code.trim()
-        };
-        if key.is_empty() {
-            continue;
-        }
-        let i = match out.iter().position(|t| t.code == key) {
-            Some(i) => i,
-            None => {
-                out.push(Tally {
-                    code: key.to_owned(),
-                    label: d.label.trim().to_owned(),
-                    today: 0,
-                    week: 0,
-                    season: 0,
-                });
-                out.len() - 1
-            }
-        };
-        let t = &mut out[i];
-        t.season += 1;
-        if date >= week_start.as_str() {
-            t.week += 1;
-        }
-        if date == today {
-            t.today += 1;
-        }
+/// La clé sous laquelle une dose se compte : son code, ou son libellé
+/// pour un vaccin saisi en texte libre.
+fn row_key<'a>(code: &'a str, label: &'a str) -> &'a str {
+    if code.trim().is_empty() {
+        label.trim()
+    } else {
+        code.trim()
     }
-    out.sort_by(|a, b| b.season.cmp(&a.season).then(a.code.cmp(&b.code)));
+}
+
+/// Les jours où le sujet a été réglé, sur la période de la campagne :
+/// les doses de son vaccin, ses actes réalisés, ou les dossiers dont le
+/// dernier appel conclut (prévenu, fait ailleurs), au jour de cet appel.
+pub fn subject_dates<'a>(
+    s: &Subject,
+    done: &Done<'a>,
+    campaign: &Campaign,
+    today: &str,
+) -> Vec<&'a str> {
+    let until = campaign.read_until(today);
+    let inside = |d: &str| !d.is_empty() && d >= campaign.starts_on.as_str() && d <= until;
+    let mut out: Vec<&'a str> = match &s.means {
+        Means::Vaccine => done
+            .doses
+            .iter()
+            .filter(|d| d.code == s.code)
+            .map(|d| d.given_on.trim())
+            .filter(|d| inside(d))
+            .collect(),
+        Means::Act(kind) => done
+            .acts
+            .iter()
+            .filter(|(k, _)| k == kind)
+            .map(|(_, d)| d.trim())
+            .filter(|d| inside(d))
+            .collect(),
+        // Une personne, une fois : son **dernier** appel, comme le bilan
+        // des appels (`call_counts`) — deux « prévenu » ne font pas deux
+        // personnes, et un « prévenu » suivi d'un refus n'en fait aucune.
+        Means::Call => last_calls(done.calls, &campaign.key, &s.code)
+            .into_values()
+            .filter(|c| matches!(c.outcome.as_str(), "prevenu" | "ailleurs"))
+            .map(|c| c.called_on.trim())
+            .filter(|d| inside(d))
+            .collect(),
+    };
+    out.sort_unstable();
     out
 }
 
-/// Les doses d'un vaccin semaine par semaine depuis le début de la
-/// saison, le lundi de chaque semaine et son compte. La première
-/// semaine commence au lundi qui précède (ou est) le 1er septembre.
-pub fn weekly(doses: &[DoseRow], code: &str, today: &str) -> Vec<(String, usize)> {
-    let s = season(today);
+fn count(code: &str, label: &str, dates: &[&str], until: &str) -> Tally {
+    let week_start = crate::date::add_days(until, -6).unwrap_or_default();
+    Tally {
+        code: code.to_owned(),
+        label: label.to_owned(),
+        today: dates.iter().filter(|d| **d == until).count(),
+        week: dates.iter().filter(|d| **d >= week_start.as_str()).count(),
+        season: dates.len(),
+    }
+}
+
+/// Le compte de la campagne : chaque sujet, dans l'ordre de la campagne
+/// et même à zéro ; puis, si la campagne a des vaccins, les autres
+/// vaccins faits sur la période, le plus fourni d'abord. « Aujourd'hui »
+/// est le dernier jour d'une campagne passée.
+///
+/// Une dose sans code (vaccin saisi en texte libre) est comptée sous son
+/// libellé.
+pub fn tally(done: &Done, campaign: &Campaign, today: &str) -> Vec<Tally> {
+    let until = campaign.read_until(today);
+    let mut out: Vec<Tally> = campaign
+        .subjects
+        .iter()
+        .map(|s| {
+            count(
+                &s.code,
+                &s.label,
+                &subject_dates(s, done, campaign, today),
+                until,
+            )
+        })
+        .collect();
+    if !campaign.has_vaccines() {
+        return out;
+    }
+    let mut others: Vec<(String, String, Vec<&str>)> = Vec::new();
+    for d in done.doses {
+        let date = d.given_on.trim();
+        if date.is_empty() || date < campaign.starts_on.as_str() || date > until {
+            continue;
+        }
+        let key = row_key(d.code, d.label);
+        if key.is_empty()
+            || campaign
+                .subjects
+                .iter()
+                .any(|s| s.is_vaccine() && s.code == key)
+        {
+            continue;
+        }
+        match others.iter_mut().find(|o| o.0 == key) {
+            Some(o) => o.2.push(date),
+            None => others.push((key.to_owned(), d.label.trim().to_owned(), vec![date])),
+        }
+    }
+    let mut extra: Vec<Tally> = others
+        .iter()
+        .map(|(code, label, dates)| count(code, label, dates, until))
+        .collect();
+    extra.sort_by(|a, b| b.season.cmp(&a.season).then(a.code.cmp(&b.code)));
+    out.extend(extra);
+    out
+}
+
+/// Une série semaine par semaine depuis le début de la campagne : le
+/// lundi de chaque semaine et le nombre de `dates` qui y tombent. La
+/// première semaine commence au lundi qui précède (ou est) le premier
+/// jour ; la dernière est celle d'aujourd'hui, ou de la fin d'une
+/// campagne passée.
+pub fn weekly(dates: &[&str], campaign: &Campaign, today: &str) -> Vec<(String, usize)> {
+    let until = campaign.read_until(today);
     let monday = |iso: &str| -> Option<String> {
         let wd = crate::date::weekday(iso)?;
         crate::date::add_days(iso, 1 - wd)
     };
-    let (Some(first), Some(last)) = (monday(&s.start), monday(today)) else {
+    let (Some(first), Some(last)) = (monday(&campaign.starts_on), monday(until)) else {
         return Vec::new();
     };
     let mut out: Vec<(String, usize)> = Vec::new();
@@ -335,9 +1167,9 @@ pub fn weekly(doses: &[DoseRow], code: &str, today: &str) -> Vec<(String, usize)
             None => break,
         }
     }
-    for d in doses.iter().filter(|d| d.code == code) {
-        let date = d.given_on.trim();
-        if date < s.start.as_str() || date > today {
+    for date in dates {
+        let date = date.trim();
+        if date < campaign.starts_on.as_str() || date > until {
             continue;
         }
         if let Some(m) = monday(date) {
@@ -353,10 +1185,6 @@ pub fn weekly(doses: &[DoseRow], code: &str, today: &str) -> Vec<(String, usize)
 // Les rappels
 // ---------------------------------------------------------------------
 
-/// Les vaccins de la campagne que la liste des rappels sait lire. Le
-/// calendrier a d'autres lignes, mais celles-ci sont celles de l'hiver.
-pub const CAMPAIGN_CODES: [&str; 5] = ["GRIPPE", "COVID", "VRS", "PNEUMO", "ZONA"];
-
 /// Ce que l'équipe a noté après un appel.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Outcome {
@@ -364,9 +1192,9 @@ pub enum Outcome {
     Prevenu,
     /// Message laissé, sans réponse : reste dans la liste.
     Message,
-    /// Vacciné ailleurs (médecin, infirmier, autre officine).
+    /// Fait ailleurs (médecin, infirmier, autre officine).
     Ailleurs,
-    /// Ne souhaite pas être vacciné cette saison.
+    /// Ne souhaite pas y donner suite pour cette campagne.
     Refus,
 }
 
@@ -398,11 +1226,12 @@ impl Outcome {
     }
 }
 
-/// Un appel noté, pour une saison et un vaccin.
+/// Un appel noté, pour une campagne (sa clé) et un sujet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Call {
     pub id: i64,
     pub patient_id: i64,
+    /// La clé de la campagne (`Campaign::key`).
     pub season: String,
     pub code: String,
     /// ISO.
@@ -411,12 +1240,49 @@ pub struct Call {
     pub operator: String,
 }
 
+/// Le dernier appel de chaque dossier pour un sujet d'une campagne.
+fn last_calls<'a>(
+    calls: &'a [Call],
+    key: &str,
+    code: &str,
+) -> std::collections::HashMap<i64, &'a Call> {
+    let mut out: std::collections::HashMap<i64, &Call> = std::collections::HashMap::new();
+    for c in calls.iter().filter(|c| c.season == key && c.code == code) {
+        match out.get(&c.patient_id) {
+            Some(prev) if (prev.called_on.as_str(), prev.id) > (c.called_on.as_str(), c.id) => {}
+            _ => {
+                out.insert(c.patient_id, c);
+            }
+        }
+    }
+    out
+}
+
+/// Le bilan des appels d'un sujet : combien de dossiers ont pour dernier
+/// appel chaque issue, dans l'ordre de [`Outcome::ALL`].
+pub fn call_counts(calls: &[Call], key: &str, code: &str) -> [usize; 4] {
+    let mut out = [0; 4];
+    for c in last_calls(calls, key, code).values() {
+        if let Some(i) = Outcome::ALL.iter().position(|o| o.key() == c.outcome) {
+            out[i] += 1;
+        }
+    }
+    out
+}
+
 /// Un dossier tel que la liste des rappels le lit.
+#[derive(Default)]
 pub struct Person<'a> {
     pub id: i64,
     pub birth: &'a str,
     pub ddr: &'a str,
+    /// `F`, `M` ou vide.
+    pub sex: &'a str,
     pub doses: Vec<vaccines::Dose<'a>>,
+    /// Les actes réalisés : type (`db::InterviewKind::as_str`) et jour.
+    pub acts: Vec<(&'a str, &'a str)>,
+    /// Les traitements : nom, DCI, classe.
+    pub treatments: Vec<(&'a str, &'a str, &'a str)>,
     /// Les groupes que ses traitements évoquent ([`evocations`]).
     pub evoked: Vec<(&'static str, String)>,
 }
@@ -425,86 +1291,241 @@ pub struct Person<'a> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Recall {
     pub patient_id: i64,
-    pub code: &'static str,
-    /// La raison que le calendrier donne (« Campagne en cours, aucune
-    /// dose enregistrée. »).
+    pub code: String,
+    /// La raison : celle que le calendrier donne (« Campagne en cours,
+    /// aucune dose enregistrée. »), ou les critères que le dossier
+    /// remplit.
     pub detail: String,
-    /// Le dernier appel de la saison pour ce vaccin, s'il y en a un :
+    /// Le dernier appel de la campagne pour ce sujet, s'il y en a un :
     /// un message laissé reste dans la liste, avec sa date.
     pub last_call: Option<(String, String)>,
-    /// La ligne vient d'un traitement évocateur et non de l'âge ou d'une
-    /// grossesse : l'indication est à confirmer avec le patient.
+    /// La ligne vient d'un traitement évocateur et non des critères :
+    /// l'indication est à confirmer avec le patient.
     pub evoked: bool,
 }
 
-/// Les dossiers à rappeler pour `code` : dus selon le calendrier, sans
-/// dose de la saison, et sans appel qui ait clos la question cette
-/// saison. Les plus âgés d'abord — c'est l'ordre du risque, et celui
-/// dans lequel on appelle.
-pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Vec<Recall> {
-    let s = season(today);
+/// Les jours de ce qui règle le sujet pour ce dossier, sur la durée que
+/// le sujet compte, jusqu'à `today` : les doses de son vaccin ou ses
+/// actes réalisés. Un appel ne laisse rien à compter.
+fn settled_on<'a>(p: &'a Person, s: &Subject, campaign: &Campaign, today: &str) -> Vec<&'a str> {
+    let from: String = match s.coverage {
+        Coverage::Campaign => campaign.starts_on.clone(),
+        Coverage::Ever => String::new(),
+        Coverage::Months(n) => crate::date::add_months(today, -i64::from(n)).unwrap_or_default(),
+    };
+    // Une dose sans date compte pour « une fois pour toutes » : elle a
+    // été faite, on ne sait quand.
+    let keep = |d: &str| {
+        if d.is_empty() {
+            from.is_empty()
+        } else {
+            d >= from.as_str() && d <= today
+        }
+    };
+    let mut out: Vec<&str> = match &s.means {
+        Means::Vaccine => p
+            .doses
+            .iter()
+            .filter(|d| d.code == s.code && keep(d.date))
+            .map(|d| d.date)
+            .collect(),
+        Means::Act(kind) => p
+            .acts
+            .iter()
+            .filter(|(k, d)| k == kind && keep(d))
+            .map(|(_, d)| *d)
+            .collect(),
+        Means::Call => Vec::new(),
+    };
+    out.sort_unstable();
+    out
+}
+
+/// Le premier traitement du dossier qui porte l'un des fragments, hors
+/// formes locales.
+fn treatment_with<'a>(p: &Person<'a>, molecules: &[String]) -> Option<&'a str> {
+    let folded: Vec<String> = molecules
+        .iter()
+        .map(|m| crate::fuzzy::sort_key(m))
+        .collect();
+    p.treatments
+        .iter()
+        .filter(|(_, _, class)| !crate::classes::is_local_form(class))
+        .find(|(name, dci, _)| {
+            let (n, d) = (crate::fuzzy::sort_key(name), crate::fuzzy::sort_key(dci));
+            folded.iter().filter(|f| !f.is_empty()).any(|f| {
+                crate::fuzzy::contains_folded(&d, f) || crate::fuzzy::contains_folded(&n, f)
+            })
+        })
+        .map(|(name, _, _)| *name)
+}
+
+/// Le nombre de traitements distincts du dossier (par DCI, sinon par
+/// nom), hors formes locales.
+fn treatment_count(p: &Person) -> usize {
+    let mut seen: Vec<String> = p
+        .treatments
+        .iter()
+        .filter(|(_, _, class)| !crate::classes::is_local_form(class))
+        .map(|(name, dci, _)| {
+            crate::fuzzy::sort_key(if dci.trim().is_empty() { name } else { dci })
+        })
+        .filter(|k| !k.is_empty())
+        .collect();
+    seen.sort_unstable();
+    seen.dedup();
+    seen.len()
+}
+
+/// Les critères d'un sujet lus sur un dossier : `Some(raisons)` s'il est
+/// visé, avec ce qui le désigne ; `None` sinon. `age_ok` dit à part si
+/// seul l'âge l'écarte, pour la liste des traitements évocateurs.
+fn criteria(p: &Person, s: &Subject, today: &str) -> (Option<Vec<String>>, bool) {
+    use crate::strings::{trf, trn};
+    let age = crate::db::age_on(p.birth, today);
+    let mut why: Vec<String> = Vec::new();
+    // La grossesse inclut, quels que soient l'âge et le reste.
+    if s.pregnancy {
+        if let Some(sa) = vaccines::weeks_of_amenorrhea(p.ddr, today) {
+            return (Some(vec![trf("camp_why_pregnancy", sa)]), true);
+        }
+    }
+    let bounded = s.age_min.is_some() || s.age_max.is_some();
+    let age_ok = match age {
+        Some(a) => s.age_min.is_none_or(|m| a >= m) && s.age_max.is_none_or(|m| a <= m),
+        None => !bounded,
+    };
+    if bounded {
+        if let Some(a) = age {
+            why.push(trf("camp_why_age", a));
+        }
+    }
+    if !s.sex.is_empty() && !p.sex.eq_ignore_ascii_case(&s.sex) {
+        return (None, false);
+    }
+    if !s.molecules.is_empty() {
+        match treatment_with(p, &s.molecules) {
+            Some(name) => why.push(trf("camp_why_treatment", name)),
+            None => return (None, false),
+        }
+    }
+    if s.min_treatments > 0 {
+        let n = treatment_count(p);
+        if n < s.min_treatments as usize {
+            return (None, false);
+        }
+        why.push(trn("camp_why_treatments", &[&n]));
+    }
+    if !age_ok {
+        return (None, true);
+    }
+    (Some(why), true)
+}
+
+/// Les dossiers à rappeler pour le sujet `code` de la campagne : visés
+/// (par le calendrier ou par les critères), sans rien qui le règle sur
+/// la durée qu'il compte, et sans appel qui ait clos la question pour
+/// cette campagne. Les plus âgés d'abord — c'est l'ordre du risque, et
+/// celui dans lequel on appelle.
+pub fn recalls(
+    people: &[Person],
+    calls: &[Call],
+    campaign: &Campaign,
+    code: &str,
+    today: &str,
+) -> Vec<Recall> {
+    let Some(s) = campaign.subject(code) else {
+        return Vec::new();
+    };
+    let last = last_calls(calls, &campaign.key, code);
     let mut out: Vec<(String, Recall)> = Vec::new();
     for p in people {
-        let lines = vaccines::due_lines_with(p.birth, today, &p.doses, p.ddr);
-        let Some(line) = lines.iter().find(|l| l.code == code) else {
-            continue;
+        let (listed, evoked, mut detail) = match s.rule {
+            Rule::Calendar => {
+                let lines = vaccines::due_lines_with(p.birth, today, &p.doses, p.ddr);
+                let Some(line) = lines.iter().find(|l| l.code == code) else {
+                    continue;
+                };
+                // Dû par l'âge ou la grossesse ; sinon, si le sujet lit les
+                // traitements, évoqué par l'un d'eux — une question ouverte
+                // que le calendrier laisse en « à demander ».
+                let evoked = line.level == DueLevel::Ask && s.evoked && !p.evoked.is_empty();
+                (
+                    line.level == DueLevel::Due || evoked,
+                    evoked,
+                    line.detail.clone(),
+                )
+            }
+            Rule::Criteria => match criteria(p, s, today) {
+                (Some(why), _) => (true, false, why.join(" ; ")),
+                (None, true) if s.evoked && !p.evoked.is_empty() => (true, true, String::new()),
+                _ => (false, false, String::new()),
+            },
         };
-        // Dû par l'âge ou la grossesse ; sinon, pour la grippe et le
-        // COVID-19, évoqué par un traitement — une question ouverte que
-        // le calendrier laisse en « à demander ».
-        let evoked = line.level == DueLevel::Ask
-            && matches!(code, "GRIPPE" | "COVID")
-            && !p.evoked.is_empty();
-        if line.level != DueLevel::Due && !evoked {
+        if !listed {
             continue;
         }
-        // Le zona : une première dose faite, la seconde ne se propose
-        // qu'à partir de deux mois après elle.
-        if code == "ZONA" {
-            let mut zona: Vec<&str> = p
-                .doses
-                .iter()
-                .filter(|d| d.code == "ZONA" && !d.date.is_empty())
-                .map(|d| d.date)
-                .collect();
-            zona.sort_unstable();
-            if let [first] = zona.as_slice() {
-                if crate::date::add_months(first, 2).is_some_and(|from| from.as_str() > today) {
-                    continue;
-                }
+        // Ce qui règle le sujet : assez de doses ou d'actes sur la durée,
+        // ou, au milieu d'une série, la suivante pas encore due.
+        let done = settled_on(p, s, campaign, today);
+        if done.len() >= s.doses.max(1) as usize {
+            continue;
+        }
+        if let Some(prev) = done.last().filter(|d| !d.is_empty()) {
+            if s.interval_months > 0
+                && crate::date::add_months(prev, i64::from(s.interval_months))
+                    .is_some_and(|from| from.as_str() > today)
+            {
+                continue;
             }
         }
-        let mut mine: Vec<&Call> = calls
-            .iter()
-            .filter(|c| c.patient_id == p.id && c.code == code && c.season == s.label)
-            .collect();
-        mine.sort_by(|a, b| a.called_on.cmp(&b.called_on).then(a.id.cmp(&b.id)));
-        let last = mine.last();
-        if last.is_some_and(|c| Outcome::from_key(&c.outcome).is_some_and(Outcome::closes)) {
+        let call = last.get(&p.id);
+        if call.is_some_and(|c| Outcome::from_key(&c.outcome).is_some_and(Outcome::closes)) {
             continue;
         }
-        let detail = if evoked {
+        if evoked {
             let named: Vec<String> = p
                 .evoked
                 .iter()
                 .map(|(group, drug)| format!("{group} ({drug})"))
                 .collect();
-            crate::strings::trf("camp_evoked", named.join(" ; "))
-        } else {
-            line.detail.clone()
-        };
+            detail = crate::strings::trf("camp_evoked", named.join(" ; "));
+        } else if s.rule == Rule::Criteria {
+            let mut parts: Vec<String> = Vec::new();
+            if !detail.is_empty() {
+                parts.push(detail);
+            }
+            let vaccine = s.is_vaccine();
+            parts.push(match (&s.means, done.len()) {
+                (Means::Call, _) => crate::strings::tr("camp_why_to_call").to_owned(),
+                (_, 0) if vaccine => crate::strings::tr("camp_why_no_dose").to_owned(),
+                (_, 0) => crate::strings::tr("camp_why_no_act").to_owned(),
+                (_, n) => crate::strings::trn(
+                    if vaccine {
+                        "camp_why_series_dose"
+                    } else {
+                        "camp_why_series_act"
+                    },
+                    &[&n, &s.doses, &crate::db::format_french_date(done[n - 1])],
+                ),
+            });
+            detail = capitalize(&parts.join(" ; "));
+            if !detail.ends_with('.') {
+                detail.push('.');
+            }
+        }
         out.push((
             p.birth.to_owned(),
             Recall {
                 patient_id: p.id,
-                code: line.code,
+                code: s.code.clone(),
                 detail,
-                last_call: last.map(|c| (c.called_on.clone(), c.outcome.clone())),
+                last_call: call.map(|c| (c.called_on.clone(), c.outcome.clone())),
                 evoked,
             },
         ));
     }
-    // Les dossiers dus d'abord, puis les traitements évocateurs ; dans
+    // Les dossiers visés d'abord, puis les traitements évocateurs ; dans
     // chaque groupe, la naissance la plus ancienne d'abord, sans date en
     // dernier.
     out.sort_by(|a, b| {
@@ -518,14 +1539,17 @@ pub fn recalls(people: &[Person], calls: &[Call], code: &str, today: &str) -> Ve
     out.into_iter().map(|(_, r)| r).collect()
 }
 
+fn capitalize(s: &str) -> String {
+    let mut c = s.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().chain(c).collect(),
+        None => String::new(),
+    }
+}
+
 // ---------------------------------------------------------------------
 // Les flacons multidoses ouverts
 // ---------------------------------------------------------------------
-
-/// Le délai d'utilisation d'un flacon multidose de vaccin contre le
-/// COVID-19 après la première ponction (Comirnaty XFG, campagne
-/// 2026-2027).
-pub const VIAL_HOURS: i64 = 12;
 
 /// Un flacon ouvert : le lot, le jour et la minute de la première
 /// ponction.
@@ -540,13 +1564,13 @@ pub struct Vial {
     pub operator: String,
 }
 
-/// Ce qu'il reste d'un flacon : l'heure limite (jour ISO et minute) et
-/// les minutes restantes à `today`/`now_min`, négatives une fois le délai
-/// dépassé.
-pub fn vial_left(v: &Vial, today: &str, now_min: i64) -> Option<(String, i64, i64)> {
+/// Ce qu'il reste d'un flacon utilisable `hours` heures : l'heure limite
+/// (jour ISO et minute) et les minutes restantes à `today`/`now_min`,
+/// négatives une fois le délai dépassé.
+pub fn vial_left(v: &Vial, hours: u32, today: &str, now_min: i64) -> Option<(String, i64, i64)> {
     let opened = crate::date::to_days(&v.opened_on)? * 1440 + v.opened_min;
     let now = crate::date::to_days(today)? * 1440 + now_min;
-    let end = opened + VIAL_HOURS * 60;
+    let end = opened + i64::from(hours) * 60;
     let day = crate::date::from_days(end.div_euclid(1440));
     Some((day, end.rem_euclid(1440), end - now))
 }
@@ -558,55 +1582,78 @@ pub fn hm(minutes: i64) -> String {
 }
 
 // ---------------------------------------------------------------------
-// Le bilan de la saison
+// Le bilan de la campagne
 // ---------------------------------------------------------------------
 
-/// Les doses d'un vaccin sur la saison, par tranche d'âge à la date de
-/// l'injection : moins de 65 ans, 65 à 74 ans, 75 ans et plus, âge
-/// inconnu (pas de date de naissance au dossier).
+/// Les doses d'un vaccin sur la campagne, par tranche d'âge à la date de
+/// l'injection (`Campaign::bands`), puis l'âge inconnu (pas de date de
+/// naissance au dossier).
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Summary {
     pub code: String,
     pub label: String,
-    pub under_65: usize,
-    pub from_65: usize,
-    pub from_75: usize,
+    /// Une case de plus que de bornes : avant la première, entre deux,
+    /// à partir de la dernière.
+    pub by_band: Vec<usize>,
     pub unknown: usize,
 }
 
 impl Summary {
     pub fn total(&self) -> usize {
-        self.under_65 + self.from_65 + self.from_75 + self.unknown
+        self.by_band.iter().sum::<usize>() + self.unknown
     }
 }
 
-/// Le bilan de la saison en cours. `rows` : naissance (ISO, vide si
-/// inconnue), code, libellé, date de la dose.
-pub fn summary(rows: &[(&str, &str, &str, &str)], today: &str) -> Vec<Summary> {
-    let s = season(today);
+/// Les en-têtes des tranches d'âge : « Moins de 65 ans », « 65 à 74
+/// ans », « 75 ans et plus ». Sans borne, une seule : « Tous âges ».
+pub fn band_labels(bands: &[u32]) -> Vec<String> {
+    use crate::strings::{trf, trn};
+    if bands.is_empty() {
+        return vec![crate::strings::tr("camp_band_all").to_owned()];
+    }
+    let mut out = vec![trf("camp_band_under", bands[0])];
+    for w in bands.windows(2) {
+        out.push(trn("camp_band_between", &[&w[0], &(w[1] - 1)]));
+    }
+    out.push(trf("camp_band_from", bands[bands.len() - 1]));
+    out
+}
+
+/// Le bilan de la campagne. `rows` : naissance (ISO, vide si inconnue),
+/// code, libellé, date de la dose. Une campagne sans vaccin (des
+/// entretiens, un dépistage) n'a pas de doses à compter : comme son
+/// compte (`tally`), son bilan ne reprend pas la grippe de la saison.
+pub fn summary(
+    rows: &[(&str, &str, &str, &str)],
+    campaign: &Campaign,
+    today: &str,
+) -> Vec<Summary> {
+    if !campaign.has_vaccines() {
+        return Vec::new();
+    }
+    let until = campaign.read_until(today);
+    let bands = &campaign.bands;
     let mut out: Vec<Summary> = Vec::new();
     for (birth, code, label, given) in rows {
         let date = given.trim();
-        if date.is_empty() || date < s.start.as_str() || date > today {
+        if date.is_empty() || date < campaign.starts_on.as_str() || date > until {
             continue;
         }
-        let key = if code.trim().is_empty() {
-            label.trim()
-        } else {
-            code.trim()
-        };
+        let key = row_key(code, label);
         if key.is_empty() {
             continue;
         }
         let i = match out.iter().position(|x| x.code == key) {
             Some(i) => i,
             None => {
+                let label = campaign
+                    .subject(key)
+                    .map(|s| s.label.clone())
+                    .unwrap_or_else(|| label.trim().to_owned());
                 out.push(Summary {
                     code: key.to_owned(),
-                    label: label.trim().to_owned(),
-                    under_65: 0,
-                    from_65: 0,
-                    from_75: 0,
+                    label,
+                    by_band: vec![0; bands.len() + 1],
                     unknown: 0,
                 });
                 out.len() - 1
@@ -614,9 +1661,10 @@ pub fn summary(rows: &[(&str, &str, &str, &str)], today: &str) -> Vec<Summary> {
         };
         let row = &mut out[i];
         match crate::db::age_on(birth, date) {
-            Some(a) if a >= 75 => row.from_75 += 1,
-            Some(a) if a >= 65 => row.from_65 += 1,
-            Some(_) => row.under_65 += 1,
+            Some(a) => {
+                let band = bands.iter().take_while(|b| a >= **b).count();
+                row.by_band[band] += 1;
+            }
             None => row.unknown += 1,
         }
     }
@@ -898,34 +1946,40 @@ pub fn season_csv(rows: &[[String; 10]]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
+
+    fn dose(code: &'static str, date: &'static str) -> vaccines::Dose<'static> {
+        vaccines::Dose { code, date }
+    }
+
+    fn person(
+        id: i64,
+        birth: &'static str,
+        doses: Vec<vaccines::Dose<'static>>,
+    ) -> Person<'static> {
+        Person {
+            id,
+            birth,
+            doses,
+            ..Person::default()
+        }
+    }
+
+    fn ids(r: &[Recall]) -> Vec<i64> {
+        r.iter().map(|x| x.patient_id).collect()
+    }
 
     /// Le pneumocoque : 65 ans et plus sans dose au carnet.
     #[test]
     fn the_pneumococcal_recall_lists_those_without_a_dose_from_65() {
-        let p = |id: i64, birth: &'static str, doses: Vec<vaccines::Dose<'static>>| Person {
-            id,
-            birth,
-            ddr: "",
-            doses,
-            evoked: vec![],
-        };
+        let today = "2026-10-20";
         let people = vec![
-            p(1, "1955-01-01", vec![]),
-            p(
-                2,
-                "1955-01-01",
-                vec![vaccines::Dose {
-                    code: "PNEUMO",
-                    date: "2026-01-10",
-                }],
-            ),
-            p(3, "1975-01-01", vec![]),
+            person(1, "1955-01-01", vec![]),
+            person(2, "1955-01-01", vec![dose("PNEUMO", "2026-01-10")]),
+            person(3, "1975-01-01", vec![]),
         ];
-        let ids: Vec<i64> = recalls(&people, &[], "PNEUMO", "2026-10-20")
-            .iter()
-            .map(|r| r.patient_id)
-            .collect();
-        assert_eq!(ids, vec![1]);
+        let c = default_campaign(today);
+        assert_eq!(ids(&recalls(&people, &[], &c, "PNEUMO", today)), vec![1]);
     }
 
     /// Le zona : à 65 ans et plus sans dose, ou une première dose faite
@@ -933,52 +1987,19 @@ mod tests {
     #[test]
     fn a_second_shingrix_dose_is_recalled_from_two_months() {
         let today = "2026-10-20";
-        let person = |id: i64, birth: &'static str, doses: Vec<vaccines::Dose<'static>>| Person {
-            id,
-            birth,
-            ddr: "",
-            doses,
-            evoked: vec![],
-        };
         let people = vec![
             person(1, "1950-01-01", vec![]),
-            person(
-                2,
-                "1950-01-01",
-                vec![vaccines::Dose {
-                    code: "ZONA",
-                    date: "2026-09-30",
-                }],
-            ),
-            person(
-                3,
-                "1950-01-01",
-                vec![vaccines::Dose {
-                    code: "ZONA",
-                    date: "2026-07-01",
-                }],
-            ),
+            person(2, "1950-01-01", vec![dose("ZONA", "2026-09-30")]),
+            person(3, "1950-01-01", vec![dose("ZONA", "2026-07-01")]),
             person(4, "1970-01-01", vec![]),
             person(
                 5,
                 "1950-01-01",
-                vec![
-                    vaccines::Dose {
-                        code: "ZONA",
-                        date: "2026-03-01",
-                    },
-                    vaccines::Dose {
-                        code: "ZONA",
-                        date: "2026-05-01",
-                    },
-                ],
+                vec![dose("ZONA", "2026-03-01"), dose("ZONA", "2026-05-01")],
             ),
         ];
-        let ids: Vec<i64> = recalls(&people, &[], "ZONA", today)
-            .iter()
-            .map(|r| r.patient_id)
-            .collect();
-        assert_eq!(ids, vec![1, 3]);
+        let c = default_campaign(today);
+        assert_eq!(ids(&recalls(&people, &[], &c, "ZONA", today)), vec![1, 3]);
     }
 
     /// L'export de la saison se lit dans un tableur français : dates à la
@@ -1005,6 +2026,7 @@ mod tests {
         assert!(csv.contains("\"Vaxigrip; tétra\""));
         assert_eq!(csv.matches("\r\n").count(), 3);
     }
+
     #[test]
     fn a_yearless_rdv_after_new_year_falls_next_year() {
         assert_eq!(rdv_day("2026-01-05", "05/01", "2026-12-20"), "2027-01-05");
@@ -1016,8 +2038,6 @@ mod tests {
         );
         assert_eq!(rdv_day("2026-12-22", "22/12", "2026-12-20"), "2026-12-22");
     }
-
-    use super::*;
 
     fn lot(id: i64, code: &str, n: &str, exp: &str, received: i64, on: &str) -> Lot {
         Lot {
@@ -1043,6 +2063,25 @@ mod tests {
         assert_eq!(season("2027-09-01").label, "2027-2028");
     }
 
+    /// **Chaque hiver a sa campagne sans qu'on y touche** : rien n'est
+    /// enregistré, et la campagne de la saison se construit pour l'année
+    /// où tombe la date — 2026, 2031 ou 2040.
+    #[test]
+    fn every_winter_has_its_campaign_without_a_row() {
+        for (today, key, start) in [
+            ("2026-10-08", "2026-2027", "2026-09-01"),
+            ("2032-01-15", "2031-2032", "2031-09-01"),
+            ("2040-09-01", "2040-2041", "2040-09-01"),
+        ] {
+            let c = default_campaign(today);
+            assert_eq!((c.key.as_str(), c.starts_on.as_str()), (key, start));
+            assert!(c.title.contains(key), "{}", c.title);
+            assert_eq!(c.phase(today), Phase::Running);
+            let codes: Vec<&str> = c.subjects.iter().map(|s| s.code.as_str()).collect();
+            assert_eq!(codes, SEASON_CODES);
+        }
+    }
+
     #[test]
     fn a_lot_number_is_compared_without_its_typing() {
         assert_eq!(norm_lot(" fl25-208 "), "FL25208");
@@ -1053,22 +2092,33 @@ mod tests {
     #[test]
     fn a_lot_reads_its_state_most_serious_first() {
         let today = "2026-10-08";
+        let st = Stock::default();
         let l = lot(1, "GRIPPE", "A1", "2027-06-30", 20, "2026-10-01");
-        assert_eq!(lot_use(&l, 3, today).state, LotState::Ok);
-        assert_eq!(lot_use(&l, 3, today).remaining, 17);
-        assert_eq!(lot_use(&l, 16, today).state, LotState::Low);
-        assert_eq!(lot_use(&l, 20, today).state, LotState::Exhausted);
+        assert_eq!(lot_use(&l, 3, today, st).state, LotState::Ok);
+        assert_eq!(lot_use(&l, 3, today, st).remaining, 17);
+        assert_eq!(lot_use(&l, 16, today, st).state, LotState::Low);
+        assert_eq!(lot_use(&l, 20, today, st).state, LotState::Exhausted);
         // Plus de doses au carnet que reçues : épuisé, et le reste
         // négatif dit l'erreur.
-        assert_eq!(lot_use(&l, 22, today).remaining, -2);
+        assert_eq!(lot_use(&l, 22, today, st).remaining, -2);
         let soon = lot(2, "GRIPPE", "A2", "2026-10-20", 20, "2026-10-01");
-        assert_eq!(lot_use(&soon, 0, today).state, LotState::ExpiresSoon(12));
+        assert_eq!(
+            lot_use(&soon, 0, today, st).state,
+            LotState::ExpiresSoon(12)
+        );
         let gone = lot(3, "GRIPPE", "A3", "2026-10-07", 20, "2026-10-01");
         // Périmé l'emporte sur tout, même s'il reste des doses.
-        assert_eq!(lot_use(&gone, 0, today).state, LotState::Expired);
+        assert_eq!(lot_use(&gone, 0, today, st).state, LotState::Expired);
         // Sans date de péremption : jamais dit périmé.
         let undated = lot(4, "GRIPPE", "A4", "", 10, "");
-        assert_eq!(lot_use(&undated, 0, today).state, LotState::Ok);
+        assert_eq!(lot_use(&undated, 0, today, st).state, LotState::Ok);
+        // Les seuils sont ceux de la campagne : 10 doses, 7 jours.
+        let strict = Stock {
+            low: 10,
+            expiry_days: 7,
+        };
+        assert_eq!(lot_use(&l, 12, today, strict).state, LotState::Low);
+        assert_eq!(lot_use(&soon, 0, today, strict).state, LotState::Ok);
     }
 
     #[test]
@@ -1131,85 +2181,121 @@ mod tests {
             // Une date à venir (erreur de saisie) : ne compte pas.
             d("GRIPPE", "2026-10-09"),
             d("COVID", "2026-10-08"),
+            d("DTCAP", "2026-10-07"),
             d("", "2026-10-08"),
         ];
-        let t = tally(&doses, today);
-        assert_eq!(t[0].code, "GRIPPE");
+        let c = default_campaign(today);
+        let t = tally(
+            &Done {
+                doses: &doses,
+                ..Done::default()
+            },
+            &c,
+            today,
+        );
+        // Les cinq sujets dans leur ordre, même à zéro, puis le dTcaP.
+        let codes: Vec<&str> = t.iter().map(|x| x.code.as_str()).collect();
+        assert_eq!(codes, ["GRIPPE", "COVID", "VRS", "PNEUMO", "ZONA", "DTCAP"]);
         assert_eq!((t[0].today, t[0].week, t[0].season), (1, 2, 3));
         assert_eq!((t[1].today, t[1].week, t[1].season), (1, 1, 1));
-        // Ni code ni libellé : rien à quoi la rattacher.
-        assert_eq!(t.len(), 2);
+        assert_eq!(t[2].season, 0);
+        assert_eq!(t[0].label, code_label("GRIPPE"));
+    }
+
+    /// Une campagne sans vaccin compte ses actes et ses appels conclus, et
+    /// rien des carnets.
+    #[test]
+    fn a_campaign_without_vaccines_counts_its_acts_and_calls() {
+        let today = "2026-11-10";
+        let mut c = custom("2026-10-01", "2026-12-31");
+        c.subjects = vec![
+            Subject {
+                code: "AVK".into(),
+                label: "Entretien AVK".into(),
+                means: Means::Act("AVK".into()),
+                ..Subject::default()
+            },
+            Subject {
+                code: "COLON".into(),
+                label: "Dépistage".into(),
+                means: Means::Call,
+                ..Subject::default()
+            },
+        ];
+        let acts = [
+            ("AVK", "2026-11-10"),
+            ("AVK", "2026-09-30"),
+            ("BPM", "2026-11-10"),
+        ];
+        let call = |id, outcome: &str, day: &str| Call {
+            id,
+            patient_id: id,
+            season: c.key.clone(),
+            code: "COLON".into(),
+            called_on: day.into(),
+            outcome: outcome.into(),
+            operator: String::new(),
+        };
+        let calls = [
+            call(1, "prevenu", "2026-11-09"),
+            call(2, "message", "2026-11-09"),
+            call(3, "ailleurs", "2026-10-02"),
+        ];
+        let doses = [DoseRow {
+            code: "GRIPPE",
+            label: "",
+            given_on: "2026-11-10",
+        }];
+        let done = Done {
+            doses: &doses,
+            acts: &acts,
+            calls: &calls,
+        };
+        let t = tally(&done, &c, today);
+        assert_eq!(t.len(), 2, "la grippe n'est pas de cette campagne");
+        assert_eq!((t[0].today, t[0].season), (1, 1));
+        assert_eq!((t[1].week, t[1].season), (1, 2));
+        let w = weekly(&subject_dates(&c.subjects[1], &done, &c, today), &c, today);
+        assert_eq!(w.iter().map(|x| x.1).sum::<usize>(), 2);
     }
 
     #[test]
     fn the_weekly_series_starts_on_the_monday_of_september() {
-        let doses = [
-            DoseRow {
-                code: "GRIPPE",
-                label: "",
-                given_on: "2026-10-08",
-            },
-            DoseRow {
-                code: "GRIPPE",
-                label: "",
-                given_on: "2026-10-05",
-            },
-        ];
-        let w = weekly(&doses, "GRIPPE", "2026-10-08");
+        let c = default_campaign("2026-10-08");
+        let w = weekly(&["2026-10-08", "2026-10-05"], &c, "2026-10-08");
         // Le 1er septembre 2026 est un mardi : la série part du lundi 31 août.
         assert_eq!(w.first().map(|x| x.0.as_str()), Some("2026-08-31"));
         assert_eq!(w.last(), Some(&("2026-10-05".to_owned(), 2)));
         assert_eq!(w.iter().map(|x| x.1).sum::<usize>(), 2);
     }
 
+    /// Une campagne passée se lit jusqu'à son dernier jour, et pas au-delà.
+    #[test]
+    fn an_ended_campaign_reads_until_its_last_day() {
+        let c = custom("2026-10-01", "2026-10-31");
+        let today = "2027-03-01";
+        assert_eq!(c.phase(today), Phase::Ended);
+        assert_eq!(c.read_until(today), "2026-10-31");
+        let w = weekly(&["2026-10-30", "2026-11-02"], &c, today);
+        assert_eq!(w.last().map(|x| x.0.as_str()), Some("2026-10-26"));
+        assert_eq!(w.iter().map(|x| x.1).sum::<usize>(), 1);
+    }
+
     #[test]
     fn the_recall_list_keeps_those_owed_and_not_yet_settled() {
         let today = "2026-10-08";
-        let s = season(today).label;
+        let c = default_campaign(today);
         let people = vec![
             // 80 ans, rien au carnet : à rappeler.
-            Person {
-                id: 1,
-                birth: "1946-03-01",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(1, "1946-03-01", vec![]),
             // 70 ans, déjà vacciné cette saison : non.
-            Person {
-                id: 2,
-                birth: "1956-01-01",
-                ddr: "",
-                doses: vec![vaccines::Dose {
-                    code: "GRIPPE",
-                    date: "2026-10-02",
-                }],
-                evoked: vec![],
-            },
+            person(2, "1956-01-01", vec![dose("GRIPPE", "2026-10-02")]),
             // 40 ans : la grippe est une question, pas un dû.
-            Person {
-                id: 3,
-                birth: "1986-01-01",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(3, "1986-01-01", vec![]),
             // 68 ans, appelé, a refusé : sorti de la liste.
-            Person {
-                id: 4,
-                birth: "1958-05-05",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(4, "1958-05-05", vec![]),
             // 90 ans, message laissé : reste, avec la date.
-            Person {
-                id: 5,
-                birth: "1936-05-05",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(5, "1936-05-05", vec![]),
         ];
         let call = |id, pid, outcome: &str, season: &str| Call {
             id,
@@ -1221,14 +2307,13 @@ mod tests {
             operator: String::new(),
         };
         let calls = [
-            call(1, 4, "refus", &s),
-            call(2, 5, "message", &s),
+            call(1, 4, "refus", &c.key),
+            call(2, 5, "message", &c.key),
             // Un refus de la saison passée ne vaut pas pour celle-ci.
             call(3, 1, "refus", "2025-2026"),
         ];
-        let r = recalls(&people, &calls, "GRIPPE", today);
-        let ids: Vec<i64> = r.iter().map(|x| x.patient_id).collect();
-        assert_eq!(ids, [5, 1], "les plus âgés d'abord");
+        let r = recalls(&people, &calls, &c, "GRIPPE", today);
+        assert_eq!(ids(&r), [5, 1], "les plus âgés d'abord");
         assert_eq!(
             r[0].last_call,
             Some(("2026-10-05".to_owned(), "message".to_owned()))
@@ -1243,10 +2328,9 @@ mod tests {
             id: 9,
             birth: "1995-04-04",
             ddr: "2026-06-01",
-            doses: vec![],
-            evoked: vec![],
+            ..Person::default()
         }];
-        let r = recalls(&people, &[], "GRIPPE", today);
+        let r = recalls(&people, &[], &default_campaign(today), "GRIPPE", today);
         assert_eq!(r.len(), 1);
     }
 
@@ -1324,31 +2408,19 @@ mod tests {
             Person {
                 id: 1,
                 birth: "1980-01-01",
-                ddr: "",
-                doses: vec![],
                 evoked: vec![(DIAB, "Lantus".to_owned())],
+                ..Person::default()
             },
-            Person {
-                id: 2,
-                birth: "1950-01-01",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(2, "1950-01-01", vec![]),
             // 46 ans sans traitement évocateur : pas dans la liste.
-            Person {
-                id: 3,
-                birth: "1980-01-01",
-                ddr: "",
-                doses: vec![],
-                evoked: vec![],
-            },
+            person(3, "1980-01-01", vec![]),
         ];
-        let r = recalls(&people, &[], "GRIPPE", today);
-        assert_eq!(r.iter().map(|x| x.patient_id).collect::<Vec<_>>(), [2, 1]);
+        let c = default_campaign(today);
+        let r = recalls(&people, &[], &c, "GRIPPE", today);
+        assert_eq!(ids(&r), [2, 1]);
         assert!(r[1].evoked && r[1].detail.contains("Lantus"));
         // Le VRS ne se lit pas sur un traitement.
-        assert!(recalls(&people, &[], "VRS", today)
+        assert!(recalls(&people, &[], &c, "VRS", today)
             .iter()
             .all(|x| x.patient_id != 1));
     }
@@ -1364,18 +2436,28 @@ mod tests {
             // Saison passée : hors bilan.
             ("1950-01-01", "GRIPPE", "Grippe", "2026-01-10"),
         ];
-        let s = summary(&rows, "2026-10-20");
+        let mut c = default_campaign("2026-10-20");
+        let s = summary(&rows, &c, "2026-10-20");
         assert_eq!(s[0].code, "GRIPPE");
-        assert_eq!(
-            (s[0].under_65, s[0].from_65, s[0].from_75, s[0].unknown),
-            (1, 1, 1, 1)
-        );
+        assert_eq!((s[0].by_band.as_slice(), s[0].unknown), (&[1, 1, 1][..], 1));
         assert_eq!(s[0].total(), 4);
         assert_eq!(s[1].total(), 1);
+        // Une seule borne, 70 ans : 36 ans d'un côté, 71 et 81 ans de l'autre.
+        c.bands = vec![70];
+        let s = summary(&rows, &c, "2026-10-20");
+        assert_eq!(s[0].by_band, [1, 2]);
+        assert_eq!(
+            band_labels(&c.bands),
+            ["Moins de 70 ans", "70 ans et plus"],
+            "une colonne de plus que de bornes"
+        );
+        assert_eq!(band_labels(&[65, 75])[1], "65 à 74 ans");
+        c.bands.clear();
+        assert_eq!(summary(&rows, &c, "2026-10-20")[0].by_band, [3]);
     }
 
     #[test]
-    fn an_open_vial_is_used_within_twelve_hours_even_across_midnight() {
+    fn an_open_vial_is_used_within_its_hours_even_across_midnight() {
         let v = Vial {
             id: 1,
             lot: "CX".to_owned(),
@@ -1383,7 +2465,7 @@ mod tests {
             opened_min: 9 * 60 + 12,
             operator: String::new(),
         };
-        let (day, at, left) = vial_left(&v, "2026-10-20", 18 * 60).unwrap();
+        let (day, at, left) = vial_left(&v, 12, "2026-10-20", 18 * 60).unwrap();
         assert_eq!(
             (day.as_str(), hm(at).as_str(), left),
             ("2026-10-20", "21 h 12", 192)
@@ -1393,10 +2475,27 @@ mod tests {
             opened_min: 19 * 60,
             ..v.clone()
         };
-        let (day, at, _) = vial_left(&late, "2026-10-20", 19 * 60).unwrap();
+        let (day, at, _) = vial_left(&late, 12, "2026-10-20", 19 * 60).unwrap();
         assert_eq!((day.as_str(), hm(at).as_str()), ("2026-10-21", "7 h 00"));
         // Délai dépassé : négatif.
-        assert!(vial_left(&v, "2026-10-20", 22 * 60).unwrap().2 < 0);
+        assert!(vial_left(&v, 12, "2026-10-20", 22 * 60).unwrap().2 < 0);
+        // Un autre délai, celui d'une autre spécialité : 6 heures.
+        assert!(vial_left(&v, 6, "2026-10-20", 16 * 60).unwrap().2 < 0);
+    }
+
+    /// Le flacon multidose se déclare au sujet : la spécialité de la
+    /// campagne, et pas une autre, reçoit le bouton et son délai.
+    #[test]
+    fn a_vial_rule_belongs_to_its_subject_and_product() {
+        let c = default_campaign("2026-10-20");
+        let mut l = lot(1, "COVID", "CX", "2027-01-31", 10, "2026-10-01");
+        l.product = "Comirnaty XFG 30 µg".into();
+        assert_eq!(c.vial_hours(&l), Some(VIAL_HOURS));
+        l.product = "Nuvaxovid".into();
+        assert_eq!(c.vial_hours(&l), None);
+        l.code = "GRIPPE".into();
+        l.product = "Comirnaty".into();
+        assert_eq!(c.vial_hours(&l), None);
     }
 
     #[test]
@@ -1406,6 +2505,425 @@ mod tests {
         }
         assert!(!Outcome::Message.closes());
         assert!(Outcome::Refus.closes());
+    }
+
+    fn custom(start: &str, end: &str) -> Campaign {
+        Campaign {
+            id: 7,
+            key: fresh_key(start, end, &[]),
+            title: "Campagne".into(),
+            starts_on: start.into(),
+            ends_on: end.into(),
+            subjects: Vec::new(),
+            low_stock: DEFAULT_LOW_STOCK,
+            expiry_days: DEFAULT_EXPIRY_DAYS,
+            bands: DEFAULT_BANDS.to_vec(),
+            remark: String::new(),
+        }
+    }
+
+    /// **Un sujet par critères** : un vaccin que le calendrier ne lit pas
+    /// à cet âge (le HPV de rattrapage), visé de 15 à 26 ans.
+    #[test]
+    fn a_criteria_subject_lists_by_age_and_sex() {
+        let today = "2026-10-20";
+        let mut c = custom("2026-09-01", "2027-06-30");
+        c.subjects = vec![Subject {
+            code: "HPV".into(),
+            label: "HPV".into(),
+            age_min: Some(15),
+            age_max: Some(26),
+            ..Subject::default()
+        }];
+        let people = vec![
+            person(1, "2005-01-01", vec![]),
+            person(2, "2008-06-01", vec![dose("HPV", "2026-10-01")]),
+            person(3, "1990-01-01", vec![]),
+            // Sans date de naissance : une borne d'âge ne se lit pas.
+            person(4, "", vec![]),
+            person(5, "2012-01-01", vec![]),
+        ];
+        let r = recalls(&people, &[], &c, "HPV", today);
+        assert_eq!(ids(&r), [1]);
+        assert!(r[0].detail.starts_with("21 ans"), "{}", r[0].detail);
+        // Réservé aux femmes : un dossier sans sexe connu n'y est pas.
+        c.subjects[0].sex = "F".into();
+        assert!(recalls(&people, &[], &c, "HPV", today).is_empty());
+        let women = vec![Person {
+            sex: "F",
+            ..person(1, "2005-01-01", vec![])
+        }];
+        assert_eq!(ids(&recalls(&women, &[], &c, "HPV", today)), [1]);
+    }
+
+    /// **Un sujet qui n'est pas un vaccin** : les entretiens AVK, visés
+    /// par les traitements, réglés par un entretien réalisé dans l'année.
+    #[test]
+    fn an_act_subject_targets_treatments_and_is_settled_by_the_act() {
+        let today = "2026-11-10";
+        let mut c = custom("2026-11-01", "2027-03-31");
+        c.subjects = vec![Subject {
+            code: "AVK".into(),
+            label: "Entretien AVK".into(),
+            means: Means::Act("AVK".into()),
+            molecules: vec!["fluindione".into(), "warfarine".into()],
+            coverage: Coverage::Months(12),
+            ..Subject::default()
+        }];
+        let on = |id, name, dci, acts: Vec<(&'static str, &'static str)>| Person {
+            id,
+            birth: "1950-01-01",
+            treatments: vec![(name, dci, "antivitamine K")],
+            acts,
+            ..Person::default()
+        };
+        let people = vec![
+            on(1, "Préviscan", "fluindione", vec![]),
+            // Un entretien il y a huit mois : réglé pour douze mois.
+            on(2, "Coumadine", "warfarine", vec![("AVK", "2026-03-10")]),
+            // Il y a plus d'un an : à refaire.
+            on(3, "Coumadine", "warfarine", vec![("AVK", "2025-10-01")]),
+            on(4, "Eliquis", "apixaban", vec![]),
+            // Un autre acte ne règle rien.
+            on(5, "Préviscan", "fluindione", vec![("BPM", "2026-11-01")]),
+        ];
+        let r = recalls(&people, &[], &c, "AVK", today);
+        assert_eq!(ids(&r), [1, 3, 5]);
+        assert!(r[0].detail.contains("Préviscan"), "{}", r[0].detail);
+        assert_eq!(c.subjects[0].act_kind(), Some("AVK"));
+    }
+
+    /// **Le bilan partagé de médication** : 65 ans et plus, au moins cinq
+    /// traitements, comptés par molécule et hors formes locales.
+    #[test]
+    fn a_minimum_number_of_treatments_counts_molecules() {
+        let today = "2026-11-10";
+        let mut c = custom("2026-11-01", "2027-10-31");
+        c.subjects = vec![Subject {
+            code: "BPM".into(),
+            label: "Bilan de médication".into(),
+            means: Means::Act("BPM".into()),
+            age_min: Some(65),
+            min_treatments: 5,
+            ..Subject::default()
+        }];
+        let five = vec![
+            ("Kardegic", "acide acetylsalicylique", "antiagrégant"),
+            ("Bisoce", "bisoprolol", "bêtabloquant"),
+            ("Tahor", "atorvastatine", "statine"),
+            ("Glucophage", "metformine", "biguanide"),
+            ("Inexium", "esomeprazole", "IPP"),
+        ];
+        let mut twice = five[..4].to_vec();
+        twice.push(("Metformine Biogaran", "metformine", "biguanide"));
+        let people = vec![
+            Person {
+                id: 1,
+                birth: "1950-01-01",
+                treatments: five.clone(),
+                ..Person::default()
+            },
+            Person {
+                id: 2,
+                birth: "1950-01-01",
+                treatments: twice,
+                ..Person::default()
+            },
+            Person {
+                id: 3,
+                birth: "1980-01-01",
+                treatments: five,
+                ..Person::default()
+            },
+        ];
+        let r = recalls(&people, &[], &c, "BPM", today);
+        assert_eq!(ids(&r), [1]);
+        assert!(r[0].detail.contains('5'), "{}", r[0].detail);
+    }
+
+    /// **Un sujet sans rien à lire en base** : seul l'appel le règle, et
+    /// un message laissé ne le règle pas.
+    #[test]
+    fn a_call_subject_is_settled_only_by_a_closing_call() {
+        let today = "2026-11-10";
+        let mut c = custom("2026-11-01", "2026-11-30");
+        c.subjects = vec![Subject {
+            code: "COLON".into(),
+            label: "Dépistage colorectal".into(),
+            means: Means::Call,
+            age_min: Some(50),
+            age_max: Some(74),
+            ..Subject::default()
+        }];
+        let people = vec![
+            person(1, "1960-01-01", vec![]),
+            person(2, "1960-01-01", vec![]),
+            person(3, "1960-01-01", vec![]),
+        ];
+        let call = |pid, outcome: &str| Call {
+            id: pid,
+            patient_id: pid,
+            season: c.key.clone(),
+            code: "COLON".into(),
+            called_on: "2026-11-05".into(),
+            outcome: outcome.into(),
+            operator: String::new(),
+        };
+        let calls = [call(2, "prevenu"), call(3, "message")];
+        let r = recalls(&people, &calls, &c, "COLON", today);
+        assert_eq!(ids(&r), [1, 3]);
+        assert_eq!(c.subjects[0].act_kind(), None);
+        assert_eq!(call_counts(&calls, &c.key, "COLON"), [1, 1, 0, 0]);
+    }
+
+    /// Une série par critères : la seconde dose n'est rappelée qu'après
+    /// l'intervalle, et la série faite sort de la liste.
+    #[test]
+    fn a_series_waits_for_its_interval() {
+        let today = "2026-11-10";
+        let mut c = custom("2026-09-01", "2027-08-31");
+        c.subjects = vec![Subject {
+            code: "HEPB".into(),
+            label: "Hépatite B".into(),
+            coverage: Coverage::Ever,
+            doses: 3,
+            interval_months: 1,
+            ..Subject::default()
+        }];
+        let people = vec![
+            person(1, "1990-01-01", vec![dose("HEPB", "2026-10-30")]),
+            person(2, "1990-01-01", vec![dose("HEPB", "2026-09-01")]),
+            person(
+                3,
+                "1990-01-01",
+                vec![
+                    dose("HEPB", "2026-01-01"),
+                    dose("HEPB", "2026-02-01"),
+                    dose("HEPB", "2026-07-01"),
+                ],
+            ),
+        ];
+        let r = recalls(&people, &[], &c, "HEPB", today);
+        assert_eq!(ids(&r), [2]);
+        assert!(r[0].detail.contains("1 dose"), "{}", r[0].detail);
+    }
+
+    /// **L'an prochain** : les dates, les années du titre et la clé d'une
+    /// saison avancent d'un an ; le reste est repris.
+    #[test]
+    fn a_campaign_carries_over_to_next_year() {
+        let mut c = default_campaign("2026-10-20");
+        c.id = 4;
+        c.title = "Hiver 2026-2027 (équipe de 2026)".into();
+        c.subjects[1].vial_hours = 6;
+        let n = c.next_year(&[]);
+        assert_eq!(n.id, 0);
+        assert_eq!(n.key, "2027-2028");
+        assert_eq!(
+            (n.starts_on.as_str(), n.ends_on.as_str()),
+            ("2027-09-01", "2028-08-31")
+        );
+        assert_eq!(n.title, "Hiver 2027-2028 (équipe de 2027)");
+        assert_eq!(n.subjects, c.subjects);
+        // La clé de la saison suivante prise : une autre, tirée des dates.
+        let n = c.next_year(&["2027-2028"]);
+        assert_eq!(n.key, "2027-09-01~2028-08-31");
+        // Une campagne d'une autre forme garde sa forme.
+        let m = custom("2026-11-01", "2027-02-28").next_year(&[]);
+        assert_eq!(m.key, "2027-11-01~2028-02-29");
+        assert_eq!(shift_years("Lot 12345 en 2026"), "Lot 12345 en 2027");
+    }
+
+    #[test]
+    fn a_fresh_key_never_takes_one_already_used() {
+        // Les bornes d'une saison ne donnent pas sa clé : elle reste à la
+        // campagne livrée de cet hiver-là, dont les appels y sont rangés.
+        assert_eq!(
+            fresh_key("2027-09-01", "2028-08-31", &[]),
+            "2027-09-01~2028-08-31"
+        );
+        assert_eq!(
+            fresh_key("2027-09-01", "2028-08-31", &["2027-09-01~2028-08-31"]),
+            "2027-09-01~2028-08-31#2"
+        );
+    }
+
+    /// Une campagne nouvelle aux bornes de la saison ne prend pas la place
+    /// de la campagne livrée : les deux restent au menu, chacune ses appels.
+    #[test]
+    fn a_new_campaign_on_season_dates_leaves_the_season_campaign() {
+        let today = "2026-10-10";
+        let season = default_campaign(today);
+        let avk = custom("2026-09-01", "2027-08-31");
+        assert_ne!(avk.key, season.key);
+        let keys: Vec<String> = listing(std::slice::from_ref(&avk), today)
+            .into_iter()
+            .map(|c| c.key)
+            .collect();
+        assert!(keys.contains(&season.key) && keys.contains(&avk.key));
+        // L'an prochain, la saison 2027-2028 arrive : sa clé est libre.
+        let later = avk.next_year(&[]);
+        assert_ne!(later.key, default_campaign("2027-10-10").key);
+    }
+
+    /// Ce que la base garde se relit à l'identique, séparateurs compris ;
+    /// une clé inconnue (d'une version plus récente) est ignorée.
+    #[test]
+    fn a_campaign_reads_back_what_it_wrote() {
+        let mut subjects = season_subjects();
+        subjects.push(Subject {
+            code: "AVK".into(),
+            label: "Entretien ; AVK = 100 % ".trim().into(),
+            means: Means::Act("AVK".into()),
+            age_min: Some(18),
+            age_max: Some(99),
+            sex: "F".into(),
+            pregnancy: true,
+            molecules: vec!["fluindione".into(), "warfarine".into()],
+            min_treatments: 3,
+            coverage: Coverage::Months(12),
+            doses: 2,
+            interval_months: 6,
+            ..Subject::default()
+        });
+        subjects.push(Subject {
+            code: "COLON".into(),
+            label: "Dépistage\nrévisé".into(),
+            means: Means::Call,
+            ..Subject::default()
+        });
+        let text = encode_subjects(&subjects);
+        assert_eq!(decode_subjects(&text), subjects);
+        assert_eq!(decode_subjects(&format!("{text};futur=oui")), subjects);
+        assert!(decode_subjects("libelle=sans code").is_empty());
+        let mut c = default_campaign("2026-10-20");
+        c.low_stock = 12;
+        c.bands = vec![50, 65, 80];
+        let mut back = default_campaign("2026-10-20");
+        decode_settings(&mut back, &encode_settings(&c));
+        assert_eq!((back.low_stock, back.bands.clone()), (12, vec![50, 65, 80]));
+        c.bands.clear();
+        decode_settings(&mut back, &encode_settings(&c));
+        assert!(back.bands.is_empty(), "aucune tranche reste aucune tranche");
+    }
+
+    /// Un sujet réglé par un appel se compte par personne, d'après son
+    /// dernier appel — comme le bilan des appels.
+    #[test]
+    fn a_call_subject_counts_people_by_their_last_call() {
+        let mut c = custom("2026-09-01", "2027-03-31");
+        c.subjects = vec![Subject {
+            code: "COLON".into(),
+            label: "Dépistage".into(),
+            means: Means::Call,
+            ..Subject::default()
+        }];
+        let call = |id: i64, patient_id: i64, day: &str, outcome: &str| Call {
+            id,
+            patient_id,
+            season: c.key.clone(),
+            code: "COLON".into(),
+            called_on: day.into(),
+            outcome: outcome.into(),
+            operator: String::new(),
+        };
+        let calls = vec![
+            // Prévenue deux fois : une personne.
+            call(1, 10, "2026-10-01", "prevenu"),
+            call(2, 10, "2026-10-05", "prevenu"),
+            // Prévenu, puis refus : personne.
+            call(3, 11, "2026-10-02", "prevenu"),
+            call(4, 11, "2026-10-06", "refus"),
+            call(5, 12, "2026-10-03", "ailleurs"),
+        ];
+        let done = Done {
+            doses: &[],
+            acts: &[],
+            calls: &calls,
+        };
+        let dates = subject_dates(&c.subjects[0], &done, &c, "2026-10-10");
+        assert_eq!(dates, ["2026-10-03", "2026-10-05"]);
+        let counts = call_counts(&calls, &c.key, "COLON");
+        let settled = Outcome::ALL
+            .iter()
+            .zip(counts)
+            .filter(|(o, _)| matches!(o.key(), "prevenu" | "ailleurs"))
+            .map(|(_, n)| n)
+            .sum::<usize>();
+        assert_eq!(settled, dates.len(), "le compte et le bilan des appels");
+    }
+
+    #[test]
+    fn a_campaign_without_vaccines_sums_no_doses() {
+        let mut c = custom("2026-09-01", "2027-03-31");
+        c.subjects = vec![Subject {
+            code: "AVK".into(),
+            label: "Entretien AVK".into(),
+            means: Means::Act("AVK".into()),
+            ..Subject::default()
+        }];
+        let rows = [("1950-01-01", "GRIPPE", "Grippe", "2026-10-02")];
+        assert!(summary(&rows, &c, "2026-10-10").is_empty());
+        let winter = default_campaign("2026-10-10");
+        assert_eq!(summary(&rows, &winter, "2026-10-10").len(), 1);
+    }
+
+    #[test]
+    fn typed_age_bands_are_sorted_or_refused() {
+        assert_eq!(parse_bands("75, 65"), Some(vec![65, 75]));
+        assert_eq!(parse_bands(""), Some(vec![]));
+        assert_eq!(parse_bands("65;65"), Some(vec![65]));
+        assert_eq!(parse_bands("soixante"), None);
+        assert_eq!(parse_bands("0"), None);
+    }
+
+    /// La liste propose la campagne de la saison et celle de l'an passé
+    /// tant que la base n'en porte pas la clé, en cours d'abord.
+    #[test]
+    fn the_listing_puts_the_running_campaign_first() {
+        let today = "2026-11-10";
+        let l = listing(&[], today);
+        let keys: Vec<&str> = l.iter().map(|c| c.key.as_str()).collect();
+        assert_eq!(keys, ["2026-2027", "2025-2026"]);
+        let mut avk = custom("2026-11-01", "2027-03-31");
+        avk.title = "AVK".into();
+        let mut stored = default_campaign(today);
+        stored.id = 3;
+        stored.title = "Hiver de l'officine".into();
+        let soon = custom("2027-01-01", "2027-02-28");
+        let l = listing(&[stored, avk, soon], today);
+        let titles: Vec<&str> = l.iter().map(|c| c.title.as_str()).collect();
+        assert_eq!(titles[..2], ["AVK", "Hiver de l'officine"]);
+        assert_eq!(l.len(), 4, "la campagne de la saison n'est pas doublée");
+        assert_eq!(l[3].phase(today), Phase::Upcoming);
+    }
+
+    #[test]
+    fn a_campaign_is_checked_before_it_is_written() {
+        let ok = default_campaign("2026-10-20");
+        assert_eq!(check(&ok), None);
+        let mut c = ok.clone();
+        c.ends_on = "2026-01-01".into();
+        assert!(check(&c).is_some());
+        let mut c = ok.clone();
+        c.subjects[1].code = "GRIPPE".into();
+        assert!(check(&c).is_some(), "deux sujets du même code");
+        let mut c = ok.clone();
+        c.subjects[0].means = Means::Call;
+        assert!(check(&c).is_some(), "le calendrier ne lit que les vaccins");
+        let mut c = ok;
+        c.subjects[0].rule = Rule::Criteria;
+        c.subjects[0].age_min = Some(70);
+        c.subjects[0].age_max = Some(60);
+        assert!(check(&c).is_some());
+    }
+
+    #[test]
+    fn the_calendar_reads_the_winter_vaccines() {
+        let codes = calendar_codes("2026-10-20");
+        for c in SEASON_CODES {
+            assert!(codes.contains(&c), "{c} : {codes:?}");
+        }
     }
 }
 
@@ -1445,20 +2963,20 @@ mod perf {
             .map(|(i, (b, e))| super::Person {
                 id: i as i64,
                 birth: b,
-                ddr: "",
-                doses: vec![],
                 evoked: e,
+                ..super::Person::default()
             })
             .collect();
         let t1 = std::time::Instant::now();
-        let n: usize = super::CAMPAIGN_CODES
+        let c = super::default_campaign("2026-10-20");
+        let n: usize = super::SEASON_CODES
             .iter()
-            .map(|c| super::recalls(&people, &[], c, "2026-10-20").len())
+            .map(|code| super::recalls(&people, &[], &c, code, "2026-10-20").len())
             .sum();
         eprintln!(
             "évocations : {:?} ; rappels ({} vaccins) : {:?} ; {n} lignes",
             t_evoc,
-            super::CAMPAIGN_CODES.len(),
+            super::SEASON_CODES.len(),
             t1.elapsed()
         );
         assert!(n > 0);
