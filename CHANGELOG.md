@@ -35,6 +35,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   as 9.999… % and missed its criterion while the screen showed « 10,0 % »;
   a BMI shown « 20,0 » could read as below 20; a 1 cm leg asymmetry could
   go unflagged. Values are compared at the precision they are shown.
+- Posology reading: a rhythm written with a day name or a ratio is no
+  longer drawn as a daily dose. « 3 cp le lundi matin » (weekly
+  methotrexate) showed three tablets every morning and coverage counted
+  three a day; so did « 5 jours sur 7 », « 1 semaine sur 2 », « 21 jours
+  sur 28 », « les jours impairs », « sauf le dimanche ». A day naming a
+  start or an end (« à partir du lundi ») is not a rhythm.
 
 ## [0.390.0] - 2026-10-10
 

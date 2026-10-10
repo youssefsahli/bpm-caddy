@@ -402,7 +402,12 @@ pub fn read(posology: &str) -> Reading {
 
     // **Puis le rythme.** Avant de chercher les moments, parce que « le
     // lundi matin » porte « matin » et n'est pas une prise du matin.
-    if let Some(m) = CYCLIC.iter().find(|m| folded.contains(**m)) {
+    if let Some(m) = CYCLIC
+        .iter()
+        .copied()
+        .find(|m| folded.contains(*m))
+        .or_else(|| weekly_by_name(&folded))
+    {
         let mut r = Reading::empty(Kind::Cyclic);
         r.note = rhythm(raw, m);
         r.meal = meal_of(&plain);
@@ -507,6 +512,49 @@ fn condition(raw: &str, marker: &str) -> String {
 /// Toute la phrase, et non le seul repère : « 1 comprimé par semaine,
 /// le lundi matin » ne se résume pas à « par semaine », et c'est le
 /// jour qui manque le plus au patient.
+/// Un rythme écrit **par le nom d'un jour ou par un rapport**, que
+/// [`CYCLIC`] ne porte pas : « 3 cp le lundi matin » (le méthotrexate,
+/// la règle qui tue) se dessinait trois comprimés chaque matin, et
+/// « 5 jours sur 7 », « 1 semaine sur 2 », « 21 jours sur 28 », « les
+/// jours impairs », « sauf le dimanche » faisaient de même.
+///
+/// Un jour nommé comme **début ou fin** (« à partir du lundi », « dès
+/// lundi », « jusqu'à lundi ») n'est pas un rythme. Dans le doute, la
+/// ligne sort de la grille du jour : c'est le sens qui ne coûte qu'une
+/// question, l'autre multiplie une dose hebdomadaire par sept.
+fn weekly_by_name(folded: &str) -> Option<&'static str> {
+    const RATIOS: [&str; 6] = [
+        "jours sur ",
+        "semaine sur ",
+        "semaines sur ",
+        "jours pairs",
+        "jours impairs",
+        "sauf le ",
+    ];
+    if let Some(r) = RATIOS.iter().find(|r| folded.contains(**r)) {
+        return Some(r);
+    }
+    const DAYS: [&str; 7] = [
+        "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
+    ];
+    for day in DAYS {
+        for (at, _) in folded.match_indices(day) {
+            let whole = !folded[..at].ends_with(char::is_alphanumeric)
+                && !folded[at + day.len()..].starts_with(char::is_alphanumeric);
+            // Les trois mots d'avant : « a partir du », « des le »,
+            // « jusqu'a », « a compter du ».
+            let near: Vec<&str> = folded[..at].split_whitespace().rev().take(3).collect();
+            let bound = near.iter().any(|w| {
+                matches!(*w, "partir" | "des" | "compter" | "apres") || w.starts_with("jusqu")
+            });
+            if whole && !bound {
+                return Some(day);
+            }
+        }
+    }
+    None
+}
+
 fn rhythm(raw: &str, _marker: &str) -> String {
     raw.trim().to_owned()
 }
@@ -1183,6 +1231,31 @@ mod tests {
     /// pas. Un test qui se contenterait de relire les fiches livrées
     /// repasserait au vert le jour où la faute revient sur un mot que
     /// la base ne dit pas encore.
+    /// **Un jour nommé est un rythme** : « 3 cp le lundi matin » (le
+    /// méthotrexate) se dessinait trois comprimés chaque matin. Un jour de
+    /// début ou de fin, lui, n'en est pas un.
+    #[test]
+    fn a_named_day_or_a_ratio_is_not_a_daily_dose() {
+        for text in [
+            "3 cp le lundi matin",
+            "1 cp le mercredi soir",
+            "1 cp le soir 5 jours sur 7",
+            "1 cp le matin 1 semaine sur 2",
+            "1 cp par jour 21 jours sur 28",
+            "1 cp le matin les jours impairs",
+            "1 cp le matin sauf le dimanche",
+        ] {
+            assert_eq!(read(text).kind, Kind::Cyclic, "{text}");
+        }
+        for text in [
+            "1 cp le matin à partir du lundi",
+            "1 cp le matin dès lundi",
+            "1 cp le soir jusqu'à lundi",
+        ] {
+            assert_eq!(read(text).kind, Kind::Placed, "{text}");
+        }
+    }
+
     #[test]
     fn every_rhythm_word_names_a_repetition_and_not_a_duration() {
         for m in CYCLIC {
