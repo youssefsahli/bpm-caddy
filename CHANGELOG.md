@@ -78,6 +78,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   « CR envoyé » (it said « Rien en attente de facturation » while the
   status bar said one was), and the dashboard tile « Actes à facturer »
   no longer counts acts only identified or planned.
+- Medication review: Entresto alone no longer raises « Double blocage »
+  (its shipped class reads « IEC/ARA2 », but sacubitril is not an ACE
+  inhibitor); with an ACE inhibitor it still does. The rule now names the
+  ACE inhibitors.
 
 ## [0.390.0] - 2026-10-10
 

@@ -441,7 +441,31 @@ const RULES: &[Rule] = &[
         detail: "Bloqueur du système rénine-angiotensine, diurétique et AINS ensemble : cette association expose à l'insuffisance rénale aiguë, d'autant plus vite qu'il fait chaud ou que le patient se déshydrate. L'AINS est le médicament à retirer.",
     },
     Rule {
-        kind: Kind::Combination(&[&["IEC"], &["sartan", "ARA II"]]),
+        // **Les molécules, et « IEC » borné** : la classe livrée
+        // d'Entresto s'écrit « IEC/ARA2 — insuffisance cardiaque », et le
+        // fragment nu « IEC » faisait d'Entresto seul un double blocage —
+        // le sacubitril n'est pas un IEC. « IEC » suivi d'une espace
+        // attrape les classes « IEC » et « IEC + … » et pas celle-là ;
+        // Entresto avec un vrai IEC, contre-indiqué, alerte toujours par
+        // son valsartan.
+        kind: Kind::Combination(&[
+            &[
+                "IEC ",
+                "ramipril",
+                "périndopril",
+                "énalapril",
+                "captopril",
+                "lisinopril",
+                "fosinopril",
+                "quinapril",
+                "trandolapril",
+                "bénazépril",
+                "zofénopril",
+                "cilazapril",
+                "moexipril",
+            ],
+            &["sartan", "ARA II"],
+        ]),
         severity: Severity::Alert,
         title: "Double blocage",
         detail: "IEC et sartan ensemble : le double blocage du système rénine-angiotensine n'apporte pas de bénéfice et majore le risque d'insuffisance rénale et d'hyperkaliémie. À signaler au prescripteur.",
@@ -1314,6 +1338,30 @@ mod tests {
             class,
             tags: "",
         }
+    }
+
+    /// **Entresto seul n'est pas un double blocage** ; avec un IEC, si.
+    #[test]
+    fn sacubitril_valsartan_alone_is_not_a_double_blockade() {
+        let t = |name, dci, class| Treatment {
+            name,
+            dci,
+            class,
+            tags: "",
+        };
+        let entresto = || {
+            t(
+                "Entresto",
+                "sacubitril + valsartan",
+                "IEC/ARA2 — insuffisance cardiaque",
+            )
+        };
+        let triatec = || t("Triatec", "ramipril", "IEC");
+        let cozaar = || t("Cozaar", "losartan", "sartan");
+        let double = |list: &[Treatment]| review(list).iter().any(|p| p.title == "Double blocage");
+        assert!(!double(&[entresto()]));
+        assert!(double(&[entresto(), triatec()]));
+        assert!(double(&[triatec(), cozaar()]));
     }
 
     #[test]
