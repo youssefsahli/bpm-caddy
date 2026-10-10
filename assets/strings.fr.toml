@@ -1091,6 +1091,7 @@ opts_db_same = "La cible est l'un des fichiers ouverts : la base, ses pièces ou
 opts_db_locked = "Déverrouillez la session d'abord."
 opts_fees = "Honoraires (€ / acte)"
 opts_rules = "Règles (actes / année d'accompagnement, 0 = sans limite)"
+opts_rules_convention = "BPM, AOD, AVK, asthme, anticancéreux : le nombre d'actes de chaque année est celui de la convention."
 opts_fiche = "Fiche de traitement remise au patient"
 opts_notice_days = "Délai de prévenance du rendez-vous, en jours (0 = ne pas l'imprimer)"
 opts_renewal_viz = "Représentation de l'avancement des renouvellements"

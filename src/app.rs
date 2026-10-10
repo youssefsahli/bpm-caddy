@@ -81308,15 +81308,14 @@ impl eframe::App for App {
                                     .num_columns(4)
                                     .spacing([12.0, 6.0])
                                     .show(ui, |ui| {
-                                        let rules: [(&str, &mut u32); 9] = [
-                                            ("BPM", &mut editor.cfg.rules.bpm_per_year),
-                                            ("AOD", &mut editor.cfg.rules.aod_per_year),
-                                            ("AVK", &mut editor.cfg.rules.avk_per_year),
-                                            ("Asthme", &mut editor.cfg.rules.asthme_per_year),
-                                            (
-                                                "Anticancéreux",
-                                                &mut editor.cfg.rules.anticancereux_per_year,
-                                            ),
+                                        let rules: [(&str, &mut u32); 4] = [
+                                            // Les accompagnements (BPM, AOD, AVK,
+                                            // asthme, anticancéreux) ne sont pas ici :
+                                            // le nombre d'actes de chaque année est
+                                            // celui de la convention
+                                            // (`Config::sequence_len`), et leurs
+                                            // champs ne changeaient rien — « 0 = sans
+                                            // limite » y laissait la limite.
                                             (
                                                 "TROD angine",
                                                 &mut editor.cfg.rules.trod_angine_per_year,
@@ -81342,6 +81341,7 @@ impl eframe::App for App {
                                             }
                                         }
                                     });
+                                ui.add(egui::Label::new(dim(tr("opts_rules_convention"))).wrap());
                                 // La fiche de traitement remise au
                                 // patient : de combien de jours le
                                 // rendez-vous doit précéder

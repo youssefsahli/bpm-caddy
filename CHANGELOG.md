@@ -82,6 +82,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (its shipped class reads « IEC/ARA2 », but sacubitril is not an ACE
   inhibitor); with an ACE inhibitor it still does. The rule now names the
   ACE inhibitors.
+- Options › Règles: the yearly act counts for BPM, AOD, AVK, asthma and
+  anticancer interviews are no longer shown as settings; they follow the
+  convention's sequence, and typing 0 (« sans limite ») there changed
+  nothing. A line says so. Yearly rules also count an act at its
+  scheduled date, as its fee does.
 
 ## [0.390.0] - 2026-10-10
 
