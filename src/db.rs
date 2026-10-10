@@ -58316,6 +58316,21 @@ mod tests {
             b"%PDF-deux".to_vec(),
             "les octets de la seconde pièce sont intacts"
         );
+        // Et le compactage ne les efface pas : plus récents que la dernière
+        // fiche d'avant la copie, ils ne sont pas les restes d'une pièce
+        // supprimée.
+        db.conn
+            .execute("DELETE FROM scans WHERE id = ?1", [third])
+            .unwrap();
+        db.sweep_orphan_scans().unwrap();
+        assert!(db
+            .scans
+            .query_row(
+                "SELECT 1 FROM scan_blobs WHERE scan_id = ?1",
+                [newer],
+                |_| Ok(())
+            )
+            .is_ok());
     }
 
     #[test]

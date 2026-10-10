@@ -29,6 +29,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Scanned pieces: a new piece always takes a number above the pieces
   already stored. After the base was put back from a copy, a new piece
   could take the number of a newer one and overwrite its bytes.
+  « Compacter » no longer deletes stored bytes newer than every piece on
+  file (those of pieces filed after the copy that was put back).
 
 ## [0.391.0] - 2026-10-10
 
