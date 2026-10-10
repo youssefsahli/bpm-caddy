@@ -5741,7 +5741,7 @@ struct Session {
     /// Le déroulé s'est arrêté sur une branche vide : l'avis reste
     /// jusqu'au prochain déroulé. Dit dans l'image même où le déroulé
     /// s'arrêtait, il ne se voyait jamais.
-    protocol_dead_end: bool,
+    protocol_dead_end: Option<i64>,
     /// Team edits of the shown table, keyed by (row, col), plus the
     /// cell being edited and the last change (for the undo).
     table_cells: std::collections::HashMap<(usize, usize), String>,
@@ -6380,7 +6380,7 @@ impl Session {
             protocol_header: None,
             protocol_node_edit: None,
             protocol_walk: None,
-            protocol_dead_end: false,
+            protocol_dead_end: None,
             table_cells: std::collections::HashMap::new(),
             table_edit: None,
             table_undo: None,
@@ -38891,11 +38891,18 @@ impl App {
         // reste écrit : supprimée entière, elle emportait les semaines
         // déjà travaillées — les mois passés perdaient leurs heures, et
         // le planning ne disait plus qui était là en janvier.
-        let cut = rows
-            .iter()
-            .map(|r| r.day.as_str())
-            .min()
-            .and_then(|d| crate::date::add_days(d, -1))
+        //
+        // La veille de **la semaine** de « À partir du », et non du premier
+        // jour que la nouvelle trame remplit : une trame du mardi au samedi
+        // laissait sinon le lundi de cette semaine à l'ancienne.
+        let cut = crate::date::weekday(&form.from)
+            .and_then(|w| crate::date::add_days(&form.from, -i64::from(w)))
+            .or_else(|| {
+                rows.iter()
+                    .map(|r| r.day.as_str())
+                    .min()
+                    .and_then(|d| crate::date::add_days(d, -1))
+            })
             .unwrap_or_default();
         let mut kept: Vec<i64> = Vec::new();
         let mut rows = rows;
@@ -58229,6 +58236,14 @@ impl App {
                         Self::protocol_walkthrough(ui, session, operator);
                         return;
                     }
+                    // Le déroulé arrêté sur une branche vide : l'avis reste
+                    // au-dessus de l'arbre jusqu'au prochain déroulé.
+                    if session.protocol_dead_end.is_some()
+                        && session.protocol_dead_end == session.protocol_open.as_ref().map(|p| p.id)
+                    {
+                        ui.colored_label(motif::alert(), tr("proto_walk_dead_end"));
+                        ui.add_space(4.0);
+                    }
                     if session.protocol_nodes.is_empty() {
                         ui.label(
                             egui::RichText::new(tr("proto_no_steps"))
@@ -58476,7 +58491,7 @@ impl App {
             // left over from the last déroulé would be written onto the
             // next patient's file.
             session.protocol_trail.clear();
-            session.protocol_dead_end = false;
+            session.protocol_dead_end = None;
             session.protocol_walk = if session.protocol_walk.is_some() {
                 None
             } else {
@@ -58525,7 +58540,7 @@ impl App {
             session.protocol_node_edit = None;
             session.protocol_walk = None;
             session.protocol_trail.clear();
-            session.protocol_dead_end = false;
+            session.protocol_dead_end = None;
             session.protocol_editing = false;
             session.protocol_header = None;
         }
@@ -58534,10 +58549,6 @@ impl App {
     /// The walk-through: one step at a time, answering the questions.
     fn protocol_walkthrough(ui: &mut egui::Ui, session: &mut Session, operator: &str) {
         let Some(current) = session.protocol_walk else {
-            if session.protocol_dead_end {
-                ui.add_space(8.0);
-                ui.colored_label(motif::alert(), tr("proto_walk_dead_end"));
-            }
             return;
         };
         let nodes = session.protocol_nodes.clone();
@@ -58672,7 +58683,9 @@ impl App {
                     // A branch that leads nowhere: the tree is
                     // unfinished, and stopping silently would look like
                     // the application had lost the thread.
-                    session.protocol_dead_end = true;
+                    // Rattaché au protocole : ouvert sur un autre, l'avis
+                    // ne le suit pas.
+                    session.protocol_dead_end = session.protocol_open.as_ref().map(|p| p.id);
                     session.protocol_walk = None;
                     session.protocol_trail.clear();
                 }
@@ -90680,6 +90693,49 @@ mod tests {
         assert!(said.contains(tr("caisse_expected")), "{said}");
         s.caisse_expected = "1 200,50".to_owned();
         assert_eq!(super::App::caisse_unreadable(&s), None);
+    }
+
+    /// **La coupure est la semaine de « À partir du »**, pas le premier jour
+    /// que la nouvelle trame remplit : sans lundi dans la nouvelle, le lundi
+    /// de cette semaine-là restait à l'ancienne.
+    #[test]
+    fn replacing_cuts_at_the_week_not_at_the_first_new_day() {
+        let (mut s, _swept) = scratch_session("trame_cut_week");
+        s.db.add_shift(&crate::db::NewShift {
+            operator: "ZZ".to_owned(),
+            day: "2026-01-05".to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "12:30".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            repeat_days: 7,
+            cadence: "HEBDO".to_owned(),
+            ..Default::default()
+        })
+        .unwrap();
+        s.today = "2026-10-28".to_owned();
+        s.frame.operator = "ZZ".to_owned();
+        s.frame.from = "2026-11-02".to_owned();
+        super::App::frame_load(&mut s);
+        s.frame.weeks[0][0] = super::FrameDay::default();
+        s.frame.weeks[0][1] = super::FrameDay {
+            from: "09:00".to_owned(),
+            to: "12:30".to_owned(),
+            ..Default::default()
+        };
+        s.frame.replace = true;
+        super::App::frame_apply(&mut s);
+        let on = |day: &str| {
+            s.db.shifts_between(day, day)
+                .unwrap()
+                .iter()
+                .any(|p| p.operator == "ZZ")
+        };
+        assert!(
+            !on("2026-11-02"),
+            "le lundi de la semaine n'est plus à l'ancienne"
+        );
+        assert!(on("2026-11-03"), "le mardi de la nouvelle");
+        assert!(on("2026-10-26"), "la semaine d'avant reste");
     }
 
     /// **« Remplacer » remplace à partir du jour de la nouvelle trame.**
