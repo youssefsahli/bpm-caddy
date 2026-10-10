@@ -873,7 +873,9 @@ pub const TABLE: &[Adaptation] = &[
         label: "Cefpodoxime",
         steps: &[
             Step {
-                below: 39,
+                // « Entre 10 et 39 » : 39 compris. Au palier strict de
+                // 39, une clairance de 39 ne disait rien.
+                below: 40,
                 level: Level::Reduce,
                 conduct: "Entre 10 et 39 : une seule prise toutes les vingt-quatre heures.",
             },
@@ -1130,9 +1132,12 @@ pub const TABLE: &[Adaptation] = &[
         never: &[],
         label: "Vérapamil + trandolapril (Tarka)",
         steps: &[Step {
-            below: 30,
+            // « Inférieure ou égale à 30 » : 30 compris. Le palier est
+            // strict, et à 30 la contre-indication se taisait ; un DFG
+            // rendu en entier est contre-indiqué à 30 ou moins.
+            below: 31,
             level: Level::Contraindicated,
-            conduct: "Au-dessous de 30, et chez le dialysé : contre-indiqué (la fiche écrit « inférieure ou égale à 30 »).",
+            conduct: "À 30 ou moins, et chez le dialysé : contre-indiqué (la fiche écrit « inférieure ou égale à 30 »).",
         }],
         source: "RCP Tarka LP",
     },
@@ -2068,6 +2073,27 @@ mod tests {
     /// en lettres dans le message, il finit par se contredire — c'est
     /// arrivé dans `biology.rs`, dans `revue.rs` et dans le plancher de
     /// toxicité de `db.rs`.
+    /// **Le palier que la source écrit, bornes comprises.** « Entre 10 et
+    /// 39 » compte 39 ; « inférieure ou égale à 30 » compte 30 : aux
+    /// paliers stricts de 39 et de 30, ces deux clairances ne disaient
+    /// rien, et la contre-indication de Tarka se taisait à 30.
+    #[test]
+    fn the_bounds_a_source_includes_are_included() {
+        let at = |name: &str, dfg: f64| {
+            let t = [crate::revue::Treatment {
+                name,
+                dci: "",
+                class: "",
+                tags: "",
+            }];
+            read(&t, Some(dfg)).first().and_then(|f| f.level)
+        };
+        assert_eq!(at("Orelox 100 mg", 39.0), Some(Level::Reduce));
+        assert_eq!(at("Orelox 100 mg", 40.0), None);
+        assert_eq!(at("Tarka LP 240/2 mg", 30.0), Some(Level::Contraindicated));
+        assert_eq!(at("Tarka LP 240/2 mg", 31.0), None);
+    }
+
     #[test]
     fn the_table_only_ever_grows() {
         const FLOOR: usize = 108;

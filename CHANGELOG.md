@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Cash register: an unreadable float kept (« 15O ») or expected takings
   were saved as zero or as nothing, without a word; saving now refuses
   and names the field, as it already did for the other amounts.
+- Renal table: two thresholds now include the bound their source writes.
+  Cefpodoxime (« entre 10 et 39 ») said nothing at a clearance of 39,
+  and Tarka (« inférieure ou égale à 30 ») was not flagged as
+  contraindicated at exactly 30.
 
 ## [0.389.0] - 2026-10-10
 
