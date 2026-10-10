@@ -667,6 +667,13 @@ impl Caddy {
             if c.channel != bpm_caddy::messages::Channel::Equipe {
                 continue;
             }
+            // **La même règle que le poste de bureau** : une conversation
+            // privée ne se montre qu'à ses membres. Le téléphone ne tient
+            // pas les groupes — une conversation de groupe y reste à son
+            // auteur. Sans initiales, seules celles de toute l'équipe.
+            if !bpm_caddy::messages::visible_to(&c, &[], &operator) {
+                continue;
+            }
             let said = db.conversation_messages(c.id)?;
             let (last, last_at) = said
                 .last()

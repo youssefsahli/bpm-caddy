@@ -279,11 +279,22 @@ pub fn visible_to(c: &Conversation, groups: &[Group], operator: &str) -> bool {
     if c.channel == Channel::Officines {
         return true;
     }
+    let me = operator.trim().to_uppercase();
+    // **Un groupe qu'on ne trouve pas ne fait pas une conversation de
+    // toute l'équipe.** Une conversation de groupe ne garde pas de liste
+    // à elle : le groupe supprimé (ou inconnu ici — le téléphone ne tient
+    // pas les groupes), sa liste vide la donnait à tous, « sans nom »
+    // compris. Elle reste alors à son auteur.
+    let group_gone = c
+        .group_id
+        .is_some_and(|id| !groups.iter().any(|g| g.id == id));
+    if group_gone && normalize(&c.members).is_empty() {
+        return !me.is_empty() && c.created_by.trim().to_uppercase() == me;
+    }
     let members = members_of(c, groups);
     if members.is_empty() {
         return true;
     }
-    let me = operator.trim().to_uppercase();
     !me.is_empty() && (members.contains(&me) || c.created_by.trim().to_uppercase() == me)
 }
 
@@ -405,9 +416,12 @@ mod tests {
         assert!(visible_to(&grp, &groups, "AM"));
         assert!(visible_to(&grp, &groups, "CL"), "l'auteur la voit");
         assert!(!visible_to(&grp, &groups, "YS"));
-        // Un groupe supprimé : la conversation revient à sa liste (vide :
-        // toute l'équipe).
-        assert!(visible_to(&grp, &[], "YS"));
+        // Un groupe supprimé (ou inconnu, sur le téléphone) : sans liste à
+        // elle, la conversation reste à son auteur — jamais à toute
+        // l'équipe.
+        assert!(!visible_to(&grp, &[], "YS"));
+        assert!(!visible_to(&grp, &[], ""));
+        assert!(visible_to(&grp, &[], "CL"), "l'auteur la voit");
         let mut net = conv(4, &["CL"], None, "CL");
         net.channel = Channel::Officines;
         assert!(visible_to(&net, &groups, "MB"), "l'officine parle");
