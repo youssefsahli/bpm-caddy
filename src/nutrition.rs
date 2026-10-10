@@ -90,14 +90,22 @@ pub struct Reading {
     pub lpp: Vec<&'static str>,
 }
 
+/// La perte, en pourcentage, **arrondie au centième** : calculée en
+/// flottants, une perte de 10 % tout juste (48 kg à 43,2 kg) valait
+/// 9,999 999 999 999 993, l'écran affichait « 10,0 % » et le critère
+/// « 10 % ou plus en six mois » n'était pas retenu.
 fn loss(from: Option<f64>, now: f64) -> Option<f64> {
     let from = from.filter(|w| *w > 0.0)?;
-    Some(((from - now) / from * 100.0).max(0.0))
+    Some((((from - now) / from * 100.0) * 100.0).round().max(0.0) / 100.0)
 }
 
-/// L'indice de masse corporelle, kg/m².
+/// L'indice de masse corporelle, kg/m², **au dixième**, comme il s'écrit
+/// et comme l'écran le montre : les seuils (18,5 ; 20 ; 21) se lisent sur
+/// ce chiffre-là. 51,2 kg pour 1,60 m donnait 19,999…, « au-dessous de
+/// 20 » pour un IMC affiché « 20,0 ».
 pub fn bmi(weight: f64, height_cm: f64) -> Option<f64> {
-    (weight > 0.0 && height_cm > 0.0).then(|| weight / (height_cm / 100.0).powi(2))
+    (weight > 0.0 && height_cm > 0.0)
+        .then(|| (weight / (height_cm / 100.0).powi(2) * 10.0).round() / 10.0)
 }
 
 /// Lire une évaluation.
@@ -631,6 +639,22 @@ mod tests {
         b.aggression = true;
         b.albumin = Some(30.0);
         assert_eq!(assess(&b).severity, Some(Severity::Moderate));
+    }
+
+    /// **Un seuil tout juste atteint est atteint** : 48 kg à 43,2 kg font
+    /// 10 %, que les flottants comptaient 9,999… — l'écran affichait
+    /// « 10,0 % » et le critère manquait. De même un IMC affiché « 20,0 ».
+    #[test]
+    fn a_threshold_reached_exactly_is_reached() {
+        let mut a = base(50);
+        a.weight = 43.2;
+        a.weight_6m = Some(48.0);
+        assert!(!assess(&a).lpp.is_empty(), "10 % en six mois");
+        let mut b = base(50);
+        b.weight = 72.2;
+        b.weight_1m = Some(76.0);
+        assert!(!assess(&b).lpp.is_empty(), "5 % en un mois");
+        assert_eq!(bmi(51.2, 160.0), Some(20.0));
     }
 
     #[test]

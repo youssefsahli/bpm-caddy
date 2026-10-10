@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Officines' network: a shortage can only be withdrawn by the officine
   that reported it. Any member could withdraw another officine's
   shortage, or this officine's own, by naming its identifier.
+- Oral nutrition and compression: a threshold reached exactly now
+  counts. A loss of exactly 10 % (48 kg to 43.2 kg) or 5 % was computed
+  as 9.999… % and missed its criterion while the screen showed « 10,0 % »;
+  a BMI shown « 20,0 » could read as below 20; a 1 cm leg asymmetry could
+  go unflagged. Values are compared at the precision they are shown.
 
 ## [0.390.0] - 2026-10-10
 

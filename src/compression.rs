@@ -337,7 +337,8 @@ pub fn check(article: Article, sides: &[Side], m: &Measures) -> Vec<Finding> {
     if sides.contains(&Side::Droite) && sides.contains(&Side::Gauche) {
         for &p in article.points().iter().filter(|p| article.per_leg(p)) {
             if let (Some(d), Some(g)) = (m.get(p, Side::Droite), m.get(p, Side::Gauche)) {
-                let diff = (d - g).abs();
+                // Au dixième : 32,8 contre 31,8 valait 0,999…
+                let diff = ((d - g).abs() * 10.0).round() / 10.0;
                 // Au-delà de la précision de la mesure (le
                 // demi-centimètre) : un écart d'un centimètre au moins.
                 if diff >= 1.0 {
