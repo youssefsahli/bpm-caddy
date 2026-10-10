@@ -56,6 +56,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   usuelle », as the renal panel does, instead of « de moitié ».
 - Counter calculator: the Cockcroft stage is read from the clearance as
   displayed (29.6 showed « 30 mL/min » next to the « below 30 » stage).
+- Planning: a night duty on Sunday now covers Monday morning even when
+  Monday is the first day shown; the morning was flagged as uncovered.
 
 ## [0.389.0] - 2026-10-10
 

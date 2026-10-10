@@ -5120,6 +5120,11 @@ struct Session {
     /// The team's shifts for the week on screen, patterns unfolded and
     /// exceptions applied.
     shifts: Vec<db::PlannedShift>,
+    /// La veille de la plage chargée, et elle seule : la garde de nuit
+    /// qui déborde sur le matin du premier jour affiché (`planning::spill`).
+    /// À part de `shifts`, que la grille lit en entier — ses postes y
+    /// feraient une rangée de plus.
+    shifts_eve: Vec<db::PlannedShift>,
     /// The height the agenda's control band actually took, last frame —
     /// `0` until it has been drawn once.
     ///
@@ -6121,6 +6126,7 @@ impl Session {
             planning_undo: Vec::new(),
             planning_notice: None,
             shifts: Vec::new(),
+            shifts_eve: Vec::new(),
             shifts_week: None,
             drug_tech_open: true,
             mono_links: MonoLinks::new(),
@@ -10721,6 +10727,11 @@ impl Session {
             return;
         }
         self.shifts = self.db.shifts_between(&from, &to).unwrap_or_default();
+        // Sans la veille, le lundi d'une semaine affichée ne voyait pas la
+        // garde du dimanche soir, et son matin s'annonçait sans personne.
+        self.shifts_eve = crate::date::add_days(&from, -1)
+            .and_then(|eve| self.db.shifts_between(&eve, &eve).ok())
+            .unwrap_or_default();
         self.shifts_week = Some(key);
     }
 
@@ -32811,7 +32822,9 @@ impl App {
     ) -> std::collections::HashMap<String, PlanningDigest> {
         let mut by_day: std::collections::HashMap<&str, Vec<planning::Shift>> =
             std::collections::HashMap::new();
-        for s in &session.shifts {
+        // La veille du premier jour aussi, pour sa garde de nuit : elle
+        // n'entre que dans `present` du lendemain, pas dans les jours.
+        for s in session.shifts.iter().chain(&session.shifts_eve) {
             if let Some(sh) = planned_shift(s) {
                 by_day.entry(s.day.as_str()).or_default().push(sh);
             }
@@ -35365,6 +35378,7 @@ impl App {
             let yesterday: Vec<planning::Shift> = session
                 .shifts
                 .iter()
+                .chain(&session.shifts_eve)
                 .filter(|s| s.day == prev)
                 .filter_map(planned_shift)
                 .collect();
@@ -90360,6 +90374,42 @@ mod tests {
             vec![id],
             "aucune seconde trame"
         );
+    }
+
+    /// **La garde du dimanche soir couvre le lundi matin**, même quand le
+    /// lundi est le premier jour affiché : la veille n'était pas chargée,
+    /// et le matin d'avant neuf heures s'annonçait sans personne.
+    #[test]
+    fn a_night_shift_covers_the_first_shown_morning() {
+        let (mut s, _swept) = scratch_session("planning_eve");
+        let shift = |who: &str, day: &str, from: &str, to: &str, kind: &str| crate::db::NewShift {
+            operator: who.to_owned(),
+            day: day.to_owned(),
+            start_time: from.to_owned(),
+            end_time: to.to_owned(),
+            kind: kind.to_owned(),
+            ..Default::default()
+        };
+        s.db.add_shift(&shift("ZZ", "2026-10-11", "20:00", "33:00", "GARDE"))
+            .unwrap();
+        s.db.add_shift(&shift("YY", "2026-10-12", "09:00", "19:00", "JOURNEE"))
+            .unwrap();
+        let mut config = crate::config::Config::default();
+        config.pharmacy.horaires = vec![crate::config::Horaire {
+            jour: "lundi".to_owned(),
+            de: "08:30".to_owned(),
+            a: "19:00".to_owned(),
+        }];
+        s.agenda_week = (12..=18).map(|d| format!("2026-10-{d}")).collect();
+        s.agenda_day = "2026-10-12".to_owned();
+        s.load_shifts(true);
+        let monday = ["2026-10-12".to_owned()];
+        let covered = |s: &Session| {
+            !super::App::planning_digests(s, &config, &monday)["2026-10-12"].uncovered
+        };
+        assert!(covered(&s), "la garde de la veille tient le matin");
+        s.shifts_eve.clear();
+        assert!(!covered(&s), "sans la veille, ce test ne garderait rien");
     }
 
     /// **Une saisie illisible n'est pas un zéro**, au fond laissé et à
