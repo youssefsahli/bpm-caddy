@@ -45269,10 +45269,17 @@ impl Db {
             ) = row.map_err(|e| e.to_string())?;
             let kind = InterviewKind::parse(&kind)
                 .ok_or_else(|| format!("type d'entretien inconnu : {kind}"))?;
+            // Le rang se lit à la **date de l'acte** (voir `fee_ranks`).
+            let act_date = scheduled_date
+                .as_deref()
+                .map(|d| d.get(..10).unwrap_or(d))
+                .filter(|d| !d.is_empty())
+                .unwrap_or(&created_date)
+                .to_owned();
             keys.push((
                 patient_id,
                 kind,
-                created_date.clone(),
+                act_date,
                 treatment_change && kind.allows_treatment_change(),
             ));
             out.push(ExportRow {
@@ -52647,7 +52654,10 @@ impl Db {
             .conn
             .prepare(
                 "SELECT kind, state, substr(created_at, 1, 7), substr(updated_at, 1, 7),
-                        duration_minutes, patient_id, substr(created_at, 1, 10), remote,
+                        duration_minutes, patient_id,
+                        COALESCE(NULLIF(substr(scheduled_date, 1, 10), ''),
+                                 substr(created_at, 1, 10)),
+                        remote,
                         treatment_change, operator
                  FROM interviews ORDER BY created_at, id",
             )
@@ -53188,7 +53198,14 @@ fn fee_ranks(keys: &[FeeKey], months: u32) -> Vec<(usize, (usize, usize))> {
             .push((i, date.clone(), *restart));
     }
     let mut out = Vec::with_capacity(keys.len());
-    for ((_, kind), rows) in groups {
+    // **La date de l'acte, pas celle de sa saisie** : un entretien pris
+    // le 20 décembre pour le 20 janvier se rangeait en année 1, à un rang
+    // au-delà de la séquence — souvent à 0 € — au lieu d'ouvrir l'année 2.
+    // Les appelants donnent la date prévue quand il y en a une ; l'ordre
+    // de saisie n'est donc plus celui des dates, et chaque groupe se
+    // trie ici (stable : à date égale, l'ordre de saisie départage).
+    for ((_, kind), mut rows) in groups {
+        rows.sort_by(|a, b| a.1.cmp(&b.1));
         let dates: Vec<String> = rows.iter().map(|(_, d, _)| d.clone()).collect();
         // Only the anticancéreux themes carry the derogation; elsewhere
         // the marker is ignored, as the memo says it no longer applies.
@@ -57012,6 +57029,22 @@ mod tests {
         assert!(parse_event_date("", today).is_err());
         // A birth date still asks for its year.
         assert!(parse_french_date("0810", 2026, YearHint::Past).is_err());
+    }
+
+    /// **Le rang d'un acte se lit à sa date, pas à sa saisie.** Pris le
+    /// 20 décembre pour le 20 janvier, il ouvre l'année 2 au lieu de se
+    /// ranger en fin d'année 1, au-delà de la séquence.
+    #[test]
+    fn a_fee_rank_follows_the_act_date_not_its_entry() {
+        let keys: Vec<FeeKey> = vec![
+            (1, InterviewKind::Aod, "2025-01-10".into(), false),
+            // Saisi avant le suivant, prévu après lui.
+            (1, InterviewKind::Aod, "2026-01-20".into(), false),
+            (1, InterviewKind::Aod, "2025-06-01".into(), false),
+        ];
+        let mut ranks = fee_ranks(&keys, 12);
+        ranks.sort_unstable();
+        assert_eq!(ranks, vec![(0, (0, 0)), (1, (1, 0)), (2, (0, 1))]);
     }
 
     #[test]

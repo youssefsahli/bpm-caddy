@@ -61,6 +61,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Weekly template: an every-other-week (or every third or fourth week)
   template posted again from a week out of its phase was taken as
   unchanged and nothing was written; it now moves to the weeks asked.
+- Fees: the year and rank of an act (« année 1 », « années suivantes »)
+  are now read from its scheduled date, not from the day it was entered.
+  An interview booked in December for January was ranked at the end of
+  year 1, often at 0 €, instead of opening year 2.
 
 ## [0.389.0] - 2026-10-10
 
