@@ -2,13 +2,28 @@
 
 Écrit pour reprendre sans l'ordinateur qui a servi.
 
-**Versions.** 0.389.0 (campagnes paramétrables), puis 0.390.0 à 0.395.0
+**Versions.** 0.389.0 (campagnes paramétrables), puis 0.390.0 à 0.396.0
 (corrections de la relecture) sont **committées sur `main` et non
-poussées** : aucune étiquette, rien sur GitHub. 0.389.0 à 0.394.0 ont
-passé le smoke dans les quatre formes ; la 0.395.0, qui les contient
-toutes, est celle à publier (son smoke est dit dans le commit qui suit
-sa version). Pour publier : `git push origin main`, puis
-`git tag v0.395.0 && git push origin v0.395.0`.
+poussées** : aucune étiquette, rien sur GitHub. 0.389.0 à 0.395.0 ont
+passé le smoke dans les quatre formes, mais **la 0.395.0 ne se publie
+pas** : elle lisait mal les doses de charge et les titrations (un
+« puis » trop restreint), corrigé dans la 0.396.0. La 0.396.0, qui
+contient tout, est celle à publier (son smoke est dit dans le commit qui
+suit sa version). Pour publier : `git push origin main`, puis
+`git tag v0.396.0 && git push origin v0.396.0`.
+
+**Ce qui a été fait le 11/10.** Relectures par domaines, suite :
+tables cliniques (foie, grossesse, cytochromes : associations prises
+par la ligne d'un de leurs composants, aiguilles sans espace), console
+(une récursion arrêtait l'application), biologie (bornes dessinées sur
+une autre échelle que la courbe), journal des postes (une correction
+illisible masquait un enregistrement ; un enregistrement demandé n'était
+jamais envoyé), téléphone (arrivée interrompue sans retour possible ;
+conversations entre officines), locations, contenu de référence semé
+hors du poste de référence, réécritures du foie au mauvais stade, valeurs
+PK, groupes de collègues, feuilles remises, codex. Et une relecture de
+mes propres corrections, deux fois : chaque régression trouvée est
+corrigée et a son test. Le détail est au CHANGELOG (0.395.0, 0.396.0).
 
 **Ce qui a été fait le 10/10.**
 - Campagnes paramétrables (le travail laissé en cours), relues avant
