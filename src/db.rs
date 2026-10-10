@@ -45605,12 +45605,17 @@ impl Db {
         text: &str,
         note: &str,
         expected_text: &str,
+        expected_note: &str,
     ) -> Result<bool, String> {
+        // Les deux colonnes écrites, les deux comparées : la note corrigée
+        // sur un autre poste revenait à l'ancienne quand celui-ci
+        // enregistrait le texte.
         let n = self
             .conn
             .execute(
-                "UPDATE checklist_items SET text = ?2, note = ?3 WHERE id = ?1 AND text = ?4",
-                (id, text, note, expected_text),
+                "UPDATE checklist_items SET text = ?2, note = ?3
+                 WHERE id = ?1 AND text = ?4 AND note = ?5",
+                (id, text, note, expected_text, expected_note),
             )
             .map_err(|e| e.to_string())?;
         Ok(n == 1)
@@ -57335,6 +57340,33 @@ mod tests {
         // Vide, c'est pareil.
         std::fs::write(stups_path(&path), b"").unwrap();
         assert!(Db::open(&path, "secret").is_err());
+    }
+
+    /// Une ligne de liste se corrige contre son texte **et** sa note : la
+    /// note corrigée ailleurs ne revient pas à l'ancienne.
+    #[test]
+    fn a_checklist_line_compares_its_note_too() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-cklist-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("l.db"), "secret").unwrap();
+        let list = db.add_checklist("Ouverture", "").unwrap();
+        let id = db
+            .add_checklist_item(list, "Frigo", "entre 2 et 8")
+            .unwrap();
+        // Un autre poste corrige la note.
+        assert!(db
+            .update_checklist_item(id, "Frigo", "entre +2 et +8 °C", "Frigo", "entre 2 et 8")
+            .unwrap());
+        // Ce poste-ci, qui montrait l'ancienne note, corrige le texte.
+        assert!(!db
+            .update_checklist_item(id, "Réfrigérateur", "entre 2 et 8", "Frigo", "entre 2 et 8")
+            .unwrap());
+        assert_eq!(
+            db.checklist_items(list).unwrap()[0].note,
+            "entre +2 et +8 °C"
+        );
     }
 
     #[test]

@@ -45005,7 +45005,7 @@ impl App {
         let mut add = false;
         let mut print = false;
         let mut rename = false;
-        let mut save: Option<(i64, String, String, String)> = None;
+        let mut save: Option<(i64, String, String, String, String)> = None;
         let mut remove: Option<(i64, String)> = None;
         let mut shift: Option<(i64, bool)> = None;
         let mut edit: Option<Option<(i64, String, String)>> = None;
@@ -45084,7 +45084,13 @@ impl App {
                                 ui.horizontal_wrapped(|ui| {
                                     if motif::button(ui, tr("listes_save")).clicked() {
                                         if let Some((id, text, note)) = typed {
-                                            save = Some((id, text, note, item.text.clone()));
+                                            save = Some((
+                                                id,
+                                                text,
+                                                note,
+                                                item.text.clone(),
+                                                item.note.clone(),
+                                            ));
                                         }
                                     }
                                     if motif::button(ui, tr("libelles_cancel")).clicked() {
@@ -45172,10 +45178,10 @@ impl App {
             session.checklist_note.clear();
             session.reload_checklist_items();
         }
-        if let Some((id, text, note, expected)) = save {
+        if let Some((id, text, note, expected, expected_note)) = save {
             match session
                 .db
-                .update_checklist_item(id, &text, &note, &expected)
+                .update_checklist_item(id, &text, &note, &expected, &expected_note)
             {
                 Ok(true) => session.checklist_edit = None,
                 Ok(false) => session.stale("listes_stale"),

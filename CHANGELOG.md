@@ -42,6 +42,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Appointments typed in a file (date, time, initials): when another post
   had changed the same appointment, the typed value was dropped without a
   word; the « modified on another post » notice now says so.
+- Checklists: correcting a line's text no longer puts back the note
+  another post had just corrected.
 
 ## [0.391.0] - 2026-10-10
 
