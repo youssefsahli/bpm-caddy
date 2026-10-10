@@ -325,10 +325,15 @@ pub fn parse_euros(text: &str) -> Option<i64> {
 /// partout ailleurs dans ce fichier.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Counted {
-    /// La ligne, telle que la base l'a numérotée. C'est elle qui dit
-    /// quel comptage est le dernier d'un soir : deux comptages peuvent
-    /// partager la seconde, jamais l'identifiant.
+    /// La ligne, telle que la base l'a numérotée. Elle départage deux
+    /// comptages écrits dans la même seconde — et **elle seule ne dit pas
+    /// lequel est le dernier** : sur des postes joints, chaque poste
+    /// numérote dans son propre bloc, et le comptage du poste 2 passait
+    /// toujours devant le recomptage du poste 1, écrit vingt minutes après.
     pub id: i64,
+    /// Quand le comptage a été écrit (`created_at`, heure locale du poste
+    /// qui l'a écrit). C'est lui qui dit le dernier d'un soir.
+    pub written: String,
     /// ISO `AAAA-MM-JJ` — le jour compté.
     pub day: String,
     pub cash: i64,
@@ -373,7 +378,7 @@ pub fn per_day(counts: &[Counted]) -> Vec<&Counted> {
     let mut kept: Vec<&Counted> = Vec::new();
     for c in counts {
         match kept.iter().position(|k| k.day == c.day) {
-            Some(at) if kept[at].id < c.id => kept[at] = c,
+            Some(at) if (&kept[at].written, kept[at].id) < (&c.written, c.id) => kept[at] = c,
             Some(_) => {}
             None => kept.push(c),
         }
@@ -646,6 +651,7 @@ mod tests {
     fn counted(id: i64, day: &str, cash: i64, expected: Option<i64>) -> Counted {
         Counted {
             id,
+            written: String::new(),
             day: day.to_owned(),
             cash,
             other: 0,
@@ -653,6 +659,30 @@ mod tests {
             opening: Some(0),
             expected,
         }
+    }
+
+    /// **Le dernier comptage d'un soir est le dernier écrit**, pas celui
+    /// du plus grand identifiant : sur des postes joints, le poste 2
+    /// numérote au-dessus du poste 1, et son comptage faux de 19 h 50
+    /// l'emportait sur le recomptage du poste 1 à 20 h 10.
+    #[test]
+    fn the_last_count_of_an_evening_is_the_last_written() {
+        let wrong = Counted {
+            written: "2026-10-10 19:50:00".to_owned(),
+            ..counted(2_000_001, "2026-10-10", 45_000, None)
+        };
+        let recount = Counted {
+            written: "2026-10-10 20:10:00".to_owned(),
+            ..counted(1_000_001, "2026-10-10", 50_000, None)
+        };
+        let both = [wrong.clone(), recount.clone()];
+        assert_eq!(per_day(&both), vec![&recount]);
+        // Dans la même seconde, l'identifiant départage encore.
+        let same = Counted {
+            written: recount.written.clone(),
+            ..counted(1_000_002, "2026-10-10", 51_000, None)
+        };
+        assert_eq!(per_day(&[recount, same.clone()]), vec![&same]);
     }
 
     /// **Le fond d'ouverture n'est pas une recette** : le tiroir du soir

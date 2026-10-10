@@ -37,6 +37,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   entirely, so every week already worked (and its absences) vanished
   from the planning and the past months lost their hours. The previous
   template now ends the day before the new one starts; undo restores it.
+- Cash register on several posts: when a day was counted on two posts,
+  the count from the higher-numbered post always won, even when the
+  other post recounted later. The last count written now wins, as on a
+  single post.
 
 ## [0.389.0] - 2026-10-10
 

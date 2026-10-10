@@ -2718,6 +2718,7 @@ impl CaisseCount {
     pub fn counted(&self) -> crate::caisse::Counted {
         crate::caisse::Counted {
             id: self.id,
+            written: self.created_at.clone(),
             day: self.day.clone(),
             cash: self.cash,
             other: self.others.iter().map(|(_, v)| v).sum(),
@@ -43555,7 +43556,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "{CAISSE_SELECT} WHERE day < ?1 ORDER BY day DESC, id DESC LIMIT 1"
+                "{CAISSE_SELECT} WHERE day < ?1 ORDER BY day DESC, created_at DESC, id DESC LIMIT 1"
             ))
             .map_err(|e| e.to_string())?;
         let mut rows = stmt
@@ -43569,7 +43570,7 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(&format!(
-                "{CAISSE_SELECT} ORDER BY day DESC, id DESC LIMIT ?1"
+                "{CAISSE_SELECT} ORDER BY day DESC, created_at DESC, id DESC LIMIT ?1"
             ))
             .map_err(|e| e.to_string())?;
         let rows = stmt

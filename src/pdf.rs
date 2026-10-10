@@ -556,6 +556,7 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
     vec![
         crate::caisse::Counted {
             id: 1,
+            written: String::new(),
             day: "2026-09-07".to_owned(),
             cash: 20_250,
             other: 45_075,
@@ -565,6 +566,7 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
         },
         crate::caisse::Counted {
             id: 2,
+            written: String::new(),
             day: "2026-09-07".to_owned(),
             cash: 20_450,
             other: 45_075,
@@ -574,6 +576,7 @@ fn sample_counted() -> Vec<crate::caisse::Counted> {
         },
         crate::caisse::Counted {
             id: 3,
+            written: String::new(),
             day: "2026-09-08".to_owned(),
             cash: 31_200,
             other: 52_300,
