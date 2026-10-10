@@ -1187,6 +1187,15 @@ pub const TABLE: &[Profile] = &[
         ],
         source: "Euphylline : « Métabolisme hépatique majoritaire, principalement par le CYP1A2 avec participation du CYP3A4 ».",
     },
+    // **Avant la mélatonine** : la classe du Valdoxan, « antidépresseur
+    // mélatoninergique », contient « melatonine », et la ligne se lisait
+    // « Mélatonine », sur la foi du Circadin.
+    Profile {
+        needs: &["agomelatine", "valdoxan"],
+        label: "Agomélatine",
+        actions: &[Action::new(Cyp1a2, Substrate, Some(Strong))],
+        source: "Valdoxan : « Fluvoxamine et ciprofloxacine : inhibition puissante du CYP1A2 et augmentation majeure de l'exposition, association contre-indiquée ».",
+    },
     Profile {
         needs: &["melatonine"],
         label: "Mélatonine",

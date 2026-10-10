@@ -180,14 +180,16 @@ pub fn period(history: &[Delivery], today: &str) -> Period {
     };
     // L'anniversaire de la première délivrance qui précède ou est le
     // jour : on avance d'un an tant que l'année suivante a commencé.
-    let mut start = first.on.clone();
-    loop {
-        match crate::date::add_months(&start, 12) {
-            Some(n) if n.as_str() <= today => start = n,
-            _ => break,
-        }
+    // **Compté depuis la première délivrance**, et non d'anniversaire en
+    // anniversaire : un 29 février devenait 28 février en 2029 et le
+    // restait, si bien que l'année 2032 s'ouvrait un jour trop tôt.
+    let mut years: i64 = 0;
+    while crate::date::add_months(&first.on, 12 * (years + 1)).is_some_and(|n| n.as_str() <= today)
+    {
+        years += 1;
     }
-    let next = crate::date::add_months(&start, 12);
+    let start = crate::date::add_months(&first.on, 12 * years).unwrap_or_else(|| first.on.clone());
+    let next = crate::date::add_months(&first.on, 12 * (years + 1));
     let used: u32 = past
         .iter()
         .filter(|d| d.on.as_str() >= start.as_str())
@@ -204,6 +206,20 @@ pub fn period(history: &[Delivery], today: &str) -> Period {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un 29 février ne dérive pas : l'année 2032 s'ouvre le 29.
+    #[test]
+    fn a_leap_day_anniversary_does_not_drift() {
+        let history = [Delivery {
+            on: "2028-02-29".to_owned(),
+            quantity: 1,
+        }];
+        let p = period(&history, "2032-02-28");
+        assert_eq!(p.start.as_deref(), Some("2031-02-28"));
+        assert_eq!(p.next.as_deref(), Some("2032-02-29"));
+        let p = period(&history, "2032-02-29");
+        assert_eq!(p.start.as_deref(), Some("2032-02-29"));
+    }
 
     #[test]
     fn under_twenty_six_or_c2s() {

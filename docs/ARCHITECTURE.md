@@ -135,7 +135,7 @@ are read verbatim by tests in `src/strings.rs`.
   table's *order*, since the first row that matches wins: it earned its
   keep the day it was written — « actiskenan » contains « skenan », and
   immediate-release Actiskenan was getting Skenan LP's answer),
-  `src/gravidity.rs` (pregnancy and breastfeeding as a level: eighty
+  `src/gravidity.rs` (pregnancy and breastfeeding as a level: eighty-two
   molecules, each with a `never` — the same veto as `renal.rs`, for the
   same reason: a collyre, a pommade or a gel of a systemic molecule
   falls into its row and wears a level written for the general route.
@@ -416,7 +416,7 @@ The one that was missing — « combien de fois un autre poste avait
   view reads them through `unwrap_or_default` and a mistyped table name
   therefore shows a confident zero rather than an error — which is
   exactly what happened (`bio_results` for `biology`).
-  `src/content.rs` (the 1649 printed phrases the officine may rewrite —
+  `src/content.rs` (the 1660 printed phrases the officine may rewrite —
   see « Réécrire les phrases imprimées » in `docs/CONTENU.md` and the
   convention below. Pure, tested, no database: the table is read once and
   passed in),

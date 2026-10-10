@@ -35,6 +35,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Self-monitoring sheets: the glucose sheet sends a loss of consciousness
   to the 15 (it said « appelez : » with no number); the pain sheet's
   doubled colon is gone.
+- Pregnancy table: Nifluril, Surgam and Ponstyl are NSAIDs (contraindicated
+  from 24 weeks; breastfeeding contraindicated or advised against, as
+  their cards say); their needles were written without the space and
+  matched nothing, so they answered « à vérifier ».
+- Pregnancy table: ACE inhibitor or ARB + diuretic combinations (Hyzaar,
+  CoAprovel, Bipréterax, Triplixam, Cotareg…) carry the breastfeeding
+  level of their cards instead of the ACE-inhibitor row's « non
+  documenté ».
+- Liver table: Exforge and Triplixam are contraindicated at the severe
+  stage (they took the amlodipine row, « start at the lowest dose »);
+  Janumet, Eucreas, Xigduo and Stagid are contraindicated at every stage,
+  as their cards say, instead of « nothing to change » at mild and
+  moderate stages.
+- CYP table: Valdoxan is read as agomelatine, not as melatonin.
+- Free period products for under-26s: a yearly period started on 29 February
+  no longer opens a day early four years later.
 - A post with daily backups turned off still sweeps its leftover
   temporary print files.
 

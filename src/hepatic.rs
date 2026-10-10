@@ -697,6 +697,21 @@ pub const TABLE: &[Adaptation] = &[
         )],
         source: "Synjardy : « Insuffisance hépatique, intoxication alcoolique aiguë, alcoolisme ».",
     },
+    // **Les associations à la metformine, et le Stagid**, dont les fiches
+    // contre-indiquent toute insuffisance hépatique, et non la seule
+    // sévère du Glucophage. Elles tombaient sur la ligne de la
+    // metformine, qui ne parle qu'au stade sévère : « rien à changer »
+    // aux stades léger et modéré, contre leurs fiches.
+    Adaptation {
+        needs: &["janumet", "eucreas", "xigduo", "stagid"],
+        label: "Metformine : associations et Stagid",
+        steps: &[step(
+            Mild,
+            Contraindicated,
+            "Contre-indiqué à tout stade d'insuffisance hépatique : la metformine y expose à l'acidose lactique.",
+        )],
+        source: "Janumet, Xigduo, Stagid : contre-indication en « insuffisance hépatique » ; Eucreas : « insuffisance hépatique ou transaminases élevées avant l'instauration ».",
+    },
     Adaptation {
         needs: &["metformine"],
         label: "Metformine",
@@ -785,6 +800,27 @@ pub const TABLE: &[Adaptation] = &[
         label: "Atorvastatine + périndopril + amlodipine (Triveram)",
         steps: &[step(Mild, Watch, "Insuffisance hépatique : à utiliser avec précaution ; l'association fixe ne permet pas de débuter l'amlodipine à la dose la plus faible.")],
         source: "Triveram : « Insuffisance hépatique : à utiliser avec précaution ; contre-indiqué en cas d'affection hépatique évolutive ».",
+    },
+    // **Avant l'amlodipine** : Exforge et Triplixam la contiennent, et
+    // la ligne de l'amlodipine — « débuter à la dose la plus faible » —
+    // répondait au stade sévère, que leurs fiches contre-indiquent.
+    Adaptation {
+        needs: &["exforge"],
+        label: "Valsartan + amlodipine (Exforge)",
+        steps: &[
+            step(Mild, Reduce, "L'amlodipine se débute à la dose la plus faible et se titre lentement, ce que l'association fixe ne permet pas : composants séparés, sur décision du prescripteur."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère, cirrhose biliaire et cholestase : contre-indiqué."),
+        ],
+        source: "Exforge : contre-indication en « insuffisance hépatique sévère, cirrhose biliaire et cholestase » ; Amlor : « En cas d'insuffisance hépatique, débuter à 2,5 mg et titrer lentement ».",
+    },
+    Adaptation {
+        needs: &["triplixam"],
+        label: "Périndopril + indapamide + amlodipine (Triplixam)",
+        steps: &[
+            step(Mild, Reduce, "L'amlodipine se débute à la dose la plus faible et se titre lentement, ce que l'association fixe ne permet pas : composants séparés, sur décision du prescripteur."),
+            step(Severe, Contraindicated, "Insuffisance hépatique sévère et encéphalopathie hépatique : contre-indiqué."),
+        ],
+        source: "Triplixam : contre-indication en « encéphalopathie hépatique et insuffisance hépatique sévère » ; Amlor : « En cas d'insuffisance hépatique, débuter à 2,5 mg et titrer lentement ».",
     },
     Adaptation {
         needs: &["amlodipine"],
@@ -2238,6 +2274,37 @@ mod tests {
             class: "",
             tags: "",
         }
+    }
+
+    /// Les associations que leurs fiches contre-indiquent ne prennent
+    /// pas la ligne plus douce de l'un de leurs composants.
+    #[test]
+    fn a_combination_is_read_by_its_own_card() {
+        for (name, dci) in [
+            ("Exforge", "valsartan + amlodipine"),
+            ("Triplixam", "périndopril + indapamide + amlodipine"),
+        ] {
+            let f = &read(&[t(name, dci)], Some(Stage::Severe))[0];
+            assert!(
+                matches!(f.verdict, Verdict::Adapt(Level::Contraindicated)),
+                "{name}"
+            );
+        }
+        for (name, dci) in [
+            ("Janumet", "sitagliptine + metformine"),
+            ("Eucreas", "vildagliptine + metformine"),
+            ("Xigduo", "dapagliflozine + metformine"),
+            ("Stagid", "metformine"),
+        ] {
+            let f = &read(&[t(name, dci)], Some(Stage::Mild))[0];
+            assert!(
+                matches!(f.verdict, Verdict::Adapt(Level::Contraindicated)),
+                "{name}"
+            );
+        }
+        // Le Glucophage, lui, reste à sa fiche : le stade sévère seul.
+        let f = &read(&[t("Glucophage", "metformine")], Some(Stage::Mild))[0];
+        assert!(!matches!(f.verdict, Verdict::Adapt(Level::Contraindicated)));
     }
 
     /// **Sans stade, pas de verdict.**

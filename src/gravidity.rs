@@ -416,15 +416,39 @@ pub const TABLE: &[Advice] = &[
         breastfeeding_note: "Déconseillé. Le lavage de nez reste le premier geste.",
         source: "CRAT ; Actifed Rhume : « Contre-indiqué pendant la grossesse et déconseillé pendant l'allaitement. » ; Dérinox : « Contre-indiqué ou fortement déconseillé pendant la grossesse et l'allaitement, du fait de l'effet vasoconstricteur systémique des sympathomimétiques. »",
     },
+    // **Les AINS que leurs fiches retirent aussi de l'allaitement.**
+    // Leurs aiguilles s'écrivaient sans espace (« acideniflumique ») et
+    // ne trouvaient aucune fiche : Nifluril, Surgam et Ponstyl
+    // répondaient « à vérifier » au lieu de l'interdit de 24 SA. Ils ont
+    // leur ligne, au-dessus de celle des AINS : celle-ci dit
+    // l'allaitement compatible — vrai de l'ibuprofène —, et ces trois
+    // fiches le contre-indiquent ou le déconseillent.
+    Advice {
+        needs: &[
+            "acide niflumique",
+            "acide tiaprofenique",
+            "acide mefenamique",
+            "nifluril",
+            "surgam",
+            "ponstyl",
+        ],
+        never: &[],
+        label: "AINS (acides niflumique, tiaprofénique, méfénamique)",
+        pregnancy: Level::Interdit,
+        term: "À partir du début du 6e mois de grossesse, soit 24 semaines d'aménorrhée : contre-indication formelle, même en prise unique. Avant ce terme : à éviter.",
+        pregnancy_note: "Après 24 SA, ils ferment le canal artériel du fœtus et atteignent son rein ; l'accident est décrit après une seule prise. Le paracétamol est l'antalgique de la grossesse.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué pendant l'allaitement par les fiches de l'acide niflumique et de l'acide tiaprofénique, déconseillé par celle de l'acide méfénamique. L'ibuprofène est l'AINS de l'allaitement.",
+        source: "RCP Nifluril, Surgam, Ponstyl ; CRAT ; ANSM, alerte AINS et grossesse",
+    },
     Advice {
         needs: &[
             // **Jamais « ains » tout court.** Les mots cherchés sont des
-            // sous-chaînes d'un texte replié sans espaces : « Apidra
-            // insuline glulisine » devient « apidrainsulineglulisine »,
-            // qui contient « ains ». Deux insulines recevaient ainsi la
-            // ligne des AINS — « contre-indication formelle à partir de
-            // 24 SA », c'est-à-dire, lue chez une diabétique enceinte,
+            // sous-chaînes du texte replié : deux insulines recevaient
+            // la ligne des AINS — « contre-indication formelle à partir
+            // de 24 SA », c'est-à-dire, lue chez une diabétique enceinte,
             // d'arrêter son insuline. Les molécules sont nommées.
+
             "ibuprofene",
             "diclofenac",
             "ketoprofene",
@@ -432,9 +456,6 @@ pub const TABLE: &[Advice] = &[
             "celecoxib",
             "etoricoxib",
             "piroxicam",
-            "acideniflumique",
-            "acidetiaprofenique",
-            "acidemefenamique",
             "advil",
             "nurofen",
         ],
@@ -472,6 +493,26 @@ pub const TABLE: &[Advice] = &[
         breastfeeding: Level::Eviter,
         breastfeeding_note: "À dose antalgique, préférer le paracétamol ou l'ibuprofène. La faible dose antiagrégante est compatible.",
         source: "CRAT",
+    },
+    // **IEC ou sartan associé à un diurétique**, avant la ligne des IEC :
+    // celle-ci dit l'allaitement « non documenté », et Hyzaar,
+    // CoAprovel, Bipréterax ou Cotareg la prenaient, quand leurs fiches
+    // le contre-indiquent ou le déconseillent — le diurétique inhibe la
+    // lactation, et la ligne des diurétiques, plus bas, ne parlait pas.
+    Advice {
+        needs: &[
+            "sartan + hydrochlorothiazide",
+            "pril + hydrochlorothiazide",
+            "pril + indapamide",
+        ],
+        never: &[],
+        label: "IEC ou sartan + diurétique",
+        pregnancy: Level::Interdit,
+        term: "Aux deuxième et troisième trimestres : contre-indication. Au premier, à remplacer dès que la grossesse est connue.",
+        pregnancy_note: "Fœtopathie de l'IEC ou du sartan : atteinte rénale, oligoamnios, défaut d'ossification du crâne ; le diurétique réduit en outre la perfusion placentaire. Un relais existe et se décide avec le prescripteur.",
+        breastfeeding: Level::Interdit,
+        breastfeeding_note: "Contre-indiqué ou déconseillé selon la fiche de l'association : le diurétique passe dans le lait et peut inhiber la lactation.",
+        source: "CRAT ; Hyzaar, CoAprovel, Bipréterax, Triplixam : « contre-indiqué pendant l'allaitement » ; Cotareg, Cokenzen, Alteisduo, Micardisplus : « déconseillé pendant l'allaitement ».",
     },
     Advice {
         needs: &["ramipril", "perindopril", "coversyl", "enalapril", "lisinopril", "captopril", "trandolapril", "odrik", "zofenopril", "zofenil", "benazepril", "fosinopril", "quinapril", "valsartan", "losartan", "candesartan", "irbesartan", "sartan"],
@@ -1345,6 +1386,52 @@ pub const TABLE: &[Advice] = &[
 
 #[cfg(test)]
 mod tests {
+
+    /// Une association à un diurétique porte l'allaitement de sa fiche.
+    #[test]
+    fn a_diuretic_combination_is_not_read_as_its_ace_inhibitor() {
+        for (name, dci) in [
+            ("Hyzaar", "losartan + hydrochlorothiazide"),
+            ("Bipréterax", "périndopril + indapamide"),
+            ("Triplixam", "périndopril + indapamide + amlodipine"),
+        ] {
+            let t = crate::revue::Treatment {
+                name,
+                dci,
+                class: "",
+                tags: "",
+            };
+            assert_eq!(read(&[t])[0].breastfeeding, Level::Interdit, "{name}");
+        }
+        let t = crate::revue::Treatment {
+            name: "Coversyl",
+            dci: "périndopril",
+            class: "",
+            tags: "",
+        };
+        assert_eq!(read(&[t])[0].label, "IEC et sartans");
+    }
+
+    /// Les AINS nommés par une DCI en deux mots sont des AINS.
+    #[test]
+    fn a_two_word_nsaid_is_an_nsaid() {
+        for (name, dci) in [
+            ("Nifluril", "acide niflumique"),
+            ("Surgam", "acide tiaprofénique"),
+            ("Ponstyl", "acide méfénamique"),
+        ] {
+            let t = crate::revue::Treatment {
+                name,
+                dci,
+                class: "",
+                tags: "",
+            };
+            let found = read(&[t]);
+            assert!(found[0].label.starts_with("AINS"), "{name}");
+            assert_eq!(found[0].pregnancy, Level::Interdit, "{name}");
+            assert_eq!(found[0].breastfeeding, Level::Interdit, "{name}");
+        }
+    }
 
     /// **Une ligne qu'aucune fiche n'atteint ne se voit jamais.**
     ///
