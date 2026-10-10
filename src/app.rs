@@ -70203,8 +70203,13 @@ impl App {
             .filter(|s| s.state == InterviewState::Billed)
             .map(|s| s.duration_minutes)
             .sum();
+        // **Sur les seuls actes dont la durée est notée** : la durée vaut
+        // zéro tant qu'on ne l'a pas saisie, et la recette de tous les
+        // actes sur le temps de quelques-uns gonflait le taux — deux actes
+        // à 15 €, dont un seul de trente minutes, faisaient 60 €/h.
+        let timed = total(&|s| s.state == InterviewState::Billed && s.duration_minutes > 0);
         let roi = if billed_minutes > 0 {
-            let v = billed / (billed_minutes as f64 / 60.0);
+            let v = timed / (billed_minutes as f64 / 60.0);
             if masked {
                 "•••".to_owned()
             } else {

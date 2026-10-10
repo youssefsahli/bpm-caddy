@@ -65,6 +65,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are now read from its scheduled date, not from the day it was entered.
   An interview booked in December for January was ranked at the end of
   year 1, often at 0 €, instead of opening year 2.
+- Dashboard: the hourly rate counts only the billed acts whose duration
+  is recorded; acts without a duration added revenue but no time and
+  inflated it.
 
 ## [0.389.0] - 2026-10-10
 
