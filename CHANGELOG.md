@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.395.0] - 2026-10-11
+
 ### Fixed
 - Posology reader: slash grids with a cell above 12 (« 20/0/20 gouttes »,
   « 14/0/10 ») and unit grids (« 10-0-10 UI ») are read again; only a
