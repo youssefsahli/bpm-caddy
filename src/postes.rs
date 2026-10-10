@@ -555,6 +555,7 @@ impl Posts {
         )
         .map_err(|e| format!("{e:?}"))?;
         let mut meter = Meter::new();
+        let held = self.journal.len();
         let said = bpm_sync::drive(
             &mut session,
             link,
@@ -565,7 +566,15 @@ impl Posts {
         // Kept even when the conversation was cut: every record that came
         // in was checked on arrival, and a long catch-up cut by the bound
         // goes on from there next time instead of starting over for ever.
-        self.keep(db)?;
+        //
+        // **But only when something came in.** `keep` rewrites the whole
+        // journal in one write transaction, and a door published on the
+        // internet answers anyone: each knock with garbage cost a write
+        // of every record ever kept, holding the shared base's lock while
+        // the counter waited.
+        if self.journal.len() != held {
+            self.keep(db)?;
+        }
         said.map_err(|e| format!("{e:?}"))
     }
 }

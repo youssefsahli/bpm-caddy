@@ -23,6 +23,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `+`, `-` or `@` is no longer opened by Excel as a formula; a phone
   written « +33 … » showed `#NOM?`, and a crafted name could become a
   live link. Amounts stay numbers.
+- Posts: a connection that brings no record (a stranger knocking on a
+  door published on the internet) no longer rewrites the whole sync
+  journal in one write transaction, which held the shared base's lock
+  while the counter waited.
 
 ## [0.390.0] - 2026-10-10
 
