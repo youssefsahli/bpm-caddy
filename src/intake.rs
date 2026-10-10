@@ -402,11 +402,21 @@ pub fn read(posology: &str) -> Reading {
 
     // **Puis le rythme.** Avant de chercher les moments, parce que « le
     // lundi matin » porte « matin » et n'est pas une prise du matin.
+    // **Un schéma en phases n'est pas une journée.** « 1 cp le soir
+    // pendant 7 jours puis 1 cp matin et soir » se dessinait matin et soir
+    // dès le premier jour — la première semaine doublée sur le plan
+    // imprimé —, et « 2 cp le matin pendant 3 jours puis 1 » perdait sa
+    // dose de charge. Une grille ne dit pas une suite : la ligne en sort,
+    // avec la posologie écrite en note, comme un rythme.
+    let phased = folded
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|w| w == "puis");
     if let Some(m) = CYCLIC
         .iter()
         .copied()
         .find(|m| folded.contains(*m))
         .or_else(|| weekly_by_name(&folded))
+        .or(phased.then_some("puis"))
     {
         let mut r = Reading::empty(Kind::Cyclic);
         r.note = rhythm(raw, m);
@@ -1367,6 +1377,18 @@ mod tests {
         ] {
             assert_eq!(per_day(text), Some(n), "{text}");
         }
+    }
+
+    /// Un schéma en phases sort de la grille du jour.
+    #[test]
+    fn a_phased_schedule_is_not_drawn_as_one_day() {
+        for text in [
+            "1 cp le soir pendant 7 jours puis 1 cp matin et soir",
+            "2 cp le matin pendant 3 jours, puis 1 cp le matin",
+        ] {
+            assert_eq!(read(text).kind, Kind::Cyclic, "{text}");
+        }
+        assert_eq!(read("1 cp matin et soir").kind, Kind::Placed);
     }
 
     #[test]

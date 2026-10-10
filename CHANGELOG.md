@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   next to each treatment, which read as the patient's own.
 - Vaccination sheet: without a birth date it no longer prints « Calendrier
   à jour »; the age-dependent lines were not read, and it now says so.
+- Pill plan: a phased posology (« 1 cp le soir pendant 7 jours puis 1 cp
+  matin et soir ») is no longer drawn as one fixed day, which doubled
+  the first week or dropped a loading dose; it is listed with its
+  written posology, like a rhythm.
 
 ## [0.392.0] - 2026-10-10
 
