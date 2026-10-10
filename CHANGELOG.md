@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.393.0] - 2026-10-10
+
 ### Fixed
 - Team messages: the phone companion now lists only the conversations its
   operator may see (it listed every private conversation), and a group
