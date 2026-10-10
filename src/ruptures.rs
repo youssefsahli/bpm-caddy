@@ -153,17 +153,25 @@ pub fn key(name: &str) -> String {
 /// levée.
 pub const HORIZON_DAYS: i64 = 90;
 
-/// Les événements qui tiennent : ceux qu'aucun retrait ne nomme, et pas
-/// les retraits eux-mêmes.
+/// Les événements qui tiennent : ceux qu'aucun retrait **de leur auteur**
+/// ne nomme, et pas les retraits eux-mêmes.
+///
+/// Un retrait ne vaut que de l'officine qui a écrit l'événement (même
+/// `source` : vide pour celle-ci, le nom de l'officine signataire pour
+/// les autres). Lu sans cette condition, n'importe quel membre du réseau
+/// retirait la rupture d'un autre — ou celle de cette officine — en
+/// nommant son `uid`, qui circule avec l'événement.
 pub fn standing(events: &[Event]) -> Vec<&Event> {
-    let withdrawn: std::collections::HashSet<&str> = events
+    let withdrawn: std::collections::HashSet<(&str, &str)> = events
         .iter()
         .filter(|e| e.kind == Kind::Retrait)
-        .map(|e| e.refers.as_str())
+        .map(|e| (e.refers.as_str(), e.source.as_str()))
         .collect();
     events
         .iter()
-        .filter(|e| e.kind != Kind::Retrait && !withdrawn.contains(e.uid.as_str()))
+        .filter(|e| {
+            e.kind != Kind::Retrait && !withdrawn.contains(&(e.uid.as_str(), e.source.as_str()))
+        })
         .collect()
 }
 
@@ -435,6 +443,30 @@ mod tests {
             source: source.to_owned(),
             refers: String::new(),
         }
+    }
+
+    /// **Un retrait ne vaut que de l'auteur de l'événement** : un membre
+    /// du réseau ne retire ni la rupture d'un autre, ni celle d'ici.
+    #[test]
+    fn only_its_author_withdraws_an_event() {
+        let ours = ev("a:1", "2026-10-01", Kind::Rupture, "Diprosone", "", "");
+        let theirs = ev("b:1", "2026-10-01", Kind::Rupture, "Locoid", "", "Gare");
+        let mut forged = ev("x:9", "2026-10-02", Kind::Retrait, "", "", "Port");
+        forged.refers = "a:1".into();
+        let mut forged2 = forged.clone();
+        forged2.uid = "x:10".into();
+        forged2.refers = "b:1".into();
+        let events = [ours.clone(), theirs.clone(), forged, forged2];
+        assert_eq!(
+            standing(&events).len(),
+            2,
+            "aucun retrait d'un autre ne compte"
+        );
+        let mut own = ev("b:2", "2026-10-03", Kind::Retrait, "", "", "Gare");
+        own.refers = "b:1".into();
+        let events = [ours, theirs, own];
+        let left: Vec<&str> = standing(&events).iter().map(|e| e.uid.as_str()).collect();
+        assert_eq!(left, ["a:1"], "la Gare retire la sienne");
     }
 
     /// **Ce qui a été tenté, et combien de fois cela a tenu** — compté

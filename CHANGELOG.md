@@ -27,6 +27,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   door published on the internet) no longer rewrites the whole sync
   journal in one write transaction, which held the shared base's lock
   while the counter waited.
+- Officines' network: a shortage can only be withdrawn by the officine
+  that reported it. Any member could withdraw another officine's
+  shortage, or this officine's own, by naming its identifier.
 
 ## [0.390.0] - 2026-10-10
 
