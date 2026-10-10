@@ -12413,6 +12413,12 @@ impl GraphIndex {
             .iter()
             .map(|d| crate::fuzzy::sort_key(&d.ddi))
             .collect();
+        // **Les mêmes clés que la lecture exacte**, tête de DCI comprise :
+        // « valproate » pour « valproate de sodium ». Sans elle, le tri
+        // écartait des paires que `interactions_paired` aurait liées — le
+        // Temesta qui cite le valproate ne voyait pas la Dépakine, ni le
+        // Paxlovid la fluticasone : soixante-trois paires livrées.
+        let heads = dci_heads(&drugs);
         let keys = drugs
             .iter()
             .map(|d| {
@@ -12420,6 +12426,12 @@ impl GraphIndex {
                     .iter()
                     .map(|t| crate::fuzzy::sort_key(t.trim()))
                     .filter(|k| k.chars().count() >= 4)
+                    .chain(
+                        heads
+                            .iter()
+                            .filter(|(_, id)| *id == d.id)
+                            .map(|(k, _)| k.clone()),
+                    )
                     .collect()
             })
             .collect();
@@ -90808,6 +90820,33 @@ mod tests {
             std::fs::write(to, b"demain").map_err(|e| e.to_string())
         });
         assert!(neighbour.exists(), "la série voisine reste");
+    }
+
+    /// **La carte lit la tête d'une DCI comme la fiche la lit** : le
+    /// Temesta cite « le valproate », la Dépakine est « valproate de
+    /// sodium ». Le tri préalable n'avait que le nom et la DCI entière, et
+    /// la paire n'entrait pas dans l'anneau des interactions.
+    #[test]
+    fn the_map_follows_a_molecule_named_without_its_salt() {
+        let (s, _swept) = scratch_session("graph-heads");
+        let card = |name: &str| {
+            s.drugs
+                .iter()
+                .find(|d| d.name.trim() == name)
+                .unwrap_or_else(|| panic!("{name} livré"))
+                .clone()
+        };
+        let (temesta, depakine) = (card("Temesta"), card("Dépakine"));
+        let ix = super::GraphIndex::build(
+            0,
+            std::sync::Arc::new(s.drugs.clone()),
+            std::sync::Arc::clone(&s.cascade_set),
+        );
+        let reasons = super::graph_reasons(&temesta, &ix);
+        let why = reasons.get(&depakine.id).expect("la Dépakine est reliée");
+        assert!(why
+            .iter()
+            .any(|w| matches!(w, crate::graph::Why::Cited { .. })));
     }
 
     /// **Ce que les tables savent d'une paire entre dans la carte**, et

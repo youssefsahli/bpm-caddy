@@ -29,6 +29,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the first posology was printed, and never the caution.
 - Printed vaccination carnet: doses without a date are listed last, not
   first.
+- Pharmacological map: an interaction cited under the molecule's name
+  without its salt (« le valproate » for « valproate de sodium », « la
+  fluticasone ») now links the two cards on the map, as it already did on
+  the card and the ordonnance; 63 shipped pairs were missing (Temesta and
+  Dépakine, Paxlovid and Flixotide…).
 
 ## [0.392.0] - 2026-10-10
 
