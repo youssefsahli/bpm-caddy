@@ -20,6 +20,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - « Synchroniser le contenu de référence » and « Compléter les médicaments
   de départ » seed only on the reference post, as start-up does; run on
   another post first, they made two copies of each new shipped item.
+- Insulin table: Fiasp is no longer called the only insulin that can be
+  injected after the start of a meal; the rapid analogues' own row says
+  otherwise.
+- Antibiotics table: amoxicillin is taken in two doses in strep throat,
+  as the strep throat table and the printed prescription say.
+- Strep throat TROD sheet: under 15, the test is done without the Mac
+  Isaac score, as the reference table says; the sheet read « no test »
+  for a 12-year-old with fever only.
 
 ## [0.395.0] - 2026-10-11
 

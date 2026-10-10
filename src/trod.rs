@@ -105,7 +105,7 @@ const ANGINE: Sheet = Sheet {
             from_age: Some(45),
         },
     ],
-    score_rule: "Score de Mac Isaac, à partir de 15 ans : TROD si le score atteint 2 ; en dessous, pas de test, traitement symptomatique.",
+    score_rule: "Mac Isaac dès 15 ans : TROD si le score atteint 2, sinon pas de test, traitement symptomatique. Avant 15 ans : TROD sans score.",
     readings: &["Streptocoque du groupe A"],
     positive: &[
         "Dispensation selon le protocole, ordonnance protocolisée remise",

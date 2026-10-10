@@ -227,6 +227,15 @@ une heure avant la limite d'opérations (le bouton d'arrêt marche).
 - *Textes réécrits* : « Revenir au texte livré » sur tout un document
   (`reset_content`) efface aussi une réécriture qu'un autre poste a faite
   après l'ouverture de l'écran, sans avis.
+- *Ordonnances protocolisées* : la grossesse n'est connue que par une
+  date de début au dossier ; sans elle, une femme de 16 à 65 ans se voit
+  proposer les trois lignes de la cystite comme « pas enceinte ». La
+  feuille du TROD cystite liste « grossesse en cours ou possible » parmi
+  les signes qui excluent, c'est là qu'elle se demande — un `Option` et
+  un « grossesse à vérifier » à côté des lignes le diraient mieux.
+  L'amoxicilline de l'enfant (50 mg/kg/j) s'imprime sans dose maximale
+  par jour : à vérifier contre le texte du protocole (non consultable
+  ici), rien n'a été inventé.
 - *Posologies* : un jour nommé n'importe où dans la ligne (« contrôle INR
   jeudi ») la sort de la grille ; dans le doute c'est le sens qui ne
   coûte qu'une question.

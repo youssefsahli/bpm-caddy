@@ -249,7 +249,7 @@ pub const TABLES: &[ConvTable] = &[
         columns: &["Type (spécialités)", "Début", "Pic", "Durée", "Moment de l'injection", "Conservation"],
         rows: &[
             &["Analogue rapide (Humalog, NovoRapid, Apidra)", "10 à 20 min", "1 à 3 h", "3 à 5 h", "Juste avant le repas ; chez le jeune enfant, juste après si la prise alimentaire est incertaine", "2 à 8 °C non entamé ; stylo en cours à température ambiante 4 semaines"],
-            &["Analogue ultra-rapide (Fiasp)", "Environ 5 min", "30 min à 1 h", "3 à 4 h", "Au début du repas, ou jusqu'à 20 minutes après l'avoir commencé : seule insuline à pouvoir être injectée après le début du repas", "2 à 8 °C non entamé ; stylo en cours à température ambiante 4 semaines"],
+            &["Analogue ultra-rapide (Fiasp)", "Environ 5 min", "30 min à 1 h", "3 à 4 h", "Au début du repas, ou jusqu'à 20 minutes après l'avoir commencé", "2 à 8 °C non entamé ; stylo en cours à température ambiante 4 semaines"],
             &["Humaine rapide (Actrapid, Umuline Rapide)", "30 à 60 min", "2 à 4 h", "6 à 8 h", "20 à 30 min avant le repas", "2 à 8 °C non entamé ; durée d'utilisation après ouverture selon le RCP"],
             &["Prémix biphasique (NovoMix, Humalog Mix)", "10 à 20 min (fraction rapide)", "Double : rapide puis prolongé", "10 à 16 h", "Juste avant le repas, après homogénéisation", "2 à 8 °C non entamé ; remettre en suspension avant chaque injection"],
             &["NPH intermédiaire (Insulatard, Umuline NPH)", "1 à 2 h", "4 à 8 h", "12 à 16 h", "Indépendante du repas, souvent au coucher ; retourner le stylo une dizaine de fois", "2 à 8 °C non entamé ; durée après ouverture selon le RCP"],
@@ -647,7 +647,7 @@ pub const TABLES: &[ConvTable] = &[
         ],
         columns: &["Famille (exemples)", "Durée usuelle", "Prise", "Perte d'efficacité", "À surveiller"],
         rows: &[
-            &["Amoxicilline (Clamoxyl)", "5 à 7 jours selon l'indication, 6 jours dans l'angine", "Au moment des repas ou non, en trois prises espacées", "Prises rapprochées la nuit et sautées le jour : c'est la régularité qui maintient la concentration", "Éruption cutanée, diarrhée ; une éruption au 7e jour n'est pas toujours une allergie"],
+            &["Amoxicilline (Clamoxyl)", "5 à 7 jours selon l'indication, 6 jours dans l'angine", "Au moment des repas ou non, en trois prises espacées (deux dans l'angine)", "Prises rapprochées la nuit et sautées le jour : c'est la régularité qui maintient la concentration", "Éruption cutanée, diarrhée ; une éruption au 7e jour n'est pas toujours une allergie"],
             &["Amoxicilline-acide clavulanique (Augmentin)", "5 à 7 jours", "Au début du repas : cela réduit nettement l'intolérance digestive", "Prise à jeun, qui fait arrêter pour diarrhée", "Diarrhée fréquente, cholestase possible ; première cause d'hépatite médicamenteuse en ville"],
             &["Céfpodoxime, céfuroxime (C3G, C2G orales)", "5 à 7 jours", "Au cours d'un repas", "Antiacides et IPP pris en même temps", "Éruption, diarrhée ; allergie croisée rare avec les pénicillines"],
             &["Azithromycine, clarithromycine (macrolides)", "3 jours pour l'azithromycine, 5 à 10 jours pour les autres", "Indifférente pour l'azithromycine ; au repas pour la clarithromycine", "Interactions : statines, colchicine, AOD, antiarythmiques", "Allongement du QT, diarrhée, hépatotoxicité"],
