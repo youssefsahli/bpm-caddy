@@ -383,9 +383,19 @@ fn interviews_csv(rows: &[db::ExportRow], config: &Config) -> String {
 
 /// The acts still to invoice — performed but not yet billed — turned
 /// into the lines of the printable recap.
+///
+/// **« Réalisé » et « CR envoyé » tous deux** : le second est l'acte qui
+/// n'attend plus que la facture, et le récapitulatif l'oubliait — la
+/// barre d'état disait « 1 à facturer » et la feuille « Rien en attente
+/// de facturation ».
 fn billing_lines(rows: &[db::ExportRow], config: &Config) -> Vec<crate::pdf::BillingLine> {
     rows.iter()
-        .filter(|r| r.state == InterviewState::Performed)
+        .filter(|r| {
+            matches!(
+                r.state,
+                InterviewState::Performed | InterviewState::ReportSent
+            )
+        })
         .map(|r| crate::pdf::BillingLine {
             date: r
                 .scheduled_date
@@ -70572,7 +70582,19 @@ impl App {
             .iter()
             .filter(|s| s.state == InterviewState::Billed)
             .count();
-        let to_bill = acts - billed_count;
+        // Ce qui est fait et pas encore facturé — comme le récapitulatif
+        // imprimé. `acts - billed` comptait aussi les actes seulement
+        // repérés ou planifiés, qui n'ont rien à facturer.
+        let to_bill = session
+            .summaries
+            .iter()
+            .filter(|s| {
+                matches!(
+                    s.state,
+                    InterviewState::Performed | InterviewState::ReportSent
+                )
+            })
+            .count();
         let minutes: i64 = session
             .summaries
             .iter()
@@ -92662,6 +92684,14 @@ mod tests {
         let mut remote = base.clone();
         remote.remote = true;
         assert!(billing_lines(&[remote], &cfg)[0].remote);
+        // « CR envoyé » n'attend plus que la facture : il est sur la
+        // feuille ; « Facturé » n'y est plus.
+        let mut sent = base.clone();
+        sent.state = InterviewState::ReportSent;
+        assert_eq!(billing_lines(&[sent], &cfg).len(), 1);
+        let mut billed = base.clone();
+        billed.state = InterviewState::Billed;
+        assert!(billing_lines(&[billed], &cfg).is_empty());
     }
 
     /// The URL handed to the browser is the only string this offline

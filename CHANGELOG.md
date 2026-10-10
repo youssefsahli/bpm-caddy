@@ -74,6 +74,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Renewal sheet: a new prescription typed on a line no longer prints the
   « covered until » date of the previous delivery (a date weeks in the
   past); a delivery older than the prescription gives no date.
+- Billing: the printed recap of acts still to bill now includes those at
+  « CR envoyé » (it said « Rien en attente de facturation » while the
+  status bar said one was), and the dashboard tile « Actes à facturer »
+  no longer counts acts only identified or planned.
 
 ## [0.390.0] - 2026-10-10
 
