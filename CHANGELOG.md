@@ -33,6 +33,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   some questions could never be settled with « Prendre la leur ». A
   column the receiving post does not have is now left out of the
   comparison, and such a question can be cleared.
+- Weekly template: « Remplacer » deleted the person's previous template
+  entirely, so every week already worked (and its absences) vanished
+  from the planning and the past months lost their hours. The previous
+  template now ends the day before the new one starts; undo restores it.
 
 ## [0.389.0] - 2026-10-10
 

@@ -701,6 +701,12 @@ hebdomadaire.
 rythme et ses journées — pour la personne choisie ; rien n'est écrit
 avant « Poser la trame », et la trame du collègue n'est pas touchée.
 
+« Remplacer » arrête les trames existantes de la personne la veille du
+premier jour de la nouvelle : les semaines d'avant, et leurs absences,
+restent écrites — les heures des mois passés ne bougent pas. Une trame
+qui commence le même jour ou après est retirée. « Annuler » rend
+l'ancienne trame entière.
+
 « Lundi à vendredi » et « Lundi à samedi » recopient la journée
 modifiée en dernier (à défaut, la première écrite). Le « × » d'une
 rangée vide cette journée.

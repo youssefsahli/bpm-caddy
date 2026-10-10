@@ -37165,7 +37165,7 @@ impl App {
                 Ok(false) => Err(session.stale_note("planning_stale")),
                 Err(e) => Err(e),
             },
-            PlanningUndo::Deleted { family } => Self::restore_family(session, family),
+            PlanningUndo::Deleted { family } => Self::restore_family(session, family).map(|_| ()),
             // Poser une trame est **un** geste, même quand il a retiré
             // ce qu'il remplaçait : on enlève ce qui a été écrit, puis
             // on rend ce qui avait été retiré. L'ordre compte — rendre
@@ -37202,7 +37202,10 @@ impl App {
     /// réinsertion finirait par oublier de réécrire les `supersedes`,
     /// ce qui rendrait la trame et perdrait les absences qui la
     /// corrigeaient.
-    fn restore_family(session: &mut Session, family: Vec<db::NewShift>) -> Result<(), String> {
+    fn restore_family(
+        session: &mut Session,
+        family: Vec<db::NewShift>,
+    ) -> Result<Option<i64>, String> {
         // **La ligne rangée était-elle du voyage ?** Une famille commence
         // par elle quand c'est une trame qu'on a supprimée ; une
         // exception supprimée *seule* est une famille d'une ligne, dont
@@ -37237,7 +37240,8 @@ impl App {
                 Err(e) => last = Err(e),
             }
         }
-        last
+        // La ligne rangée réécrite, pour qui doit pouvoir la défaire.
+        last.map(|()| base)
     }
 
     /// Write the shown week onto the next one.
@@ -38775,6 +38779,17 @@ impl App {
                 && a.cadence == b.cadence
                 && a.repeat_until == b.repeat_until
         };
+        // **Remplacer, c'est à partir du jour de la nouvelle trame.** Une
+        // trame retirée s'arrête la veille, et ce qu'elle a fait avant
+        // reste écrit : supprimée entière, elle emportait les semaines
+        // déjà travaillées — les mois passés perdaient leurs heures, et
+        // le planning ne disait plus qui était là en janvier.
+        let cut = rows
+            .iter()
+            .map(|r| r.day.as_str())
+            .min()
+            .and_then(|d| crate::date::add_days(d, -1))
+            .unwrap_or_default();
         let mut kept: Vec<i64> = Vec::new();
         let mut rows = rows;
         if form.replace {
@@ -38799,6 +38814,7 @@ impl App {
             }
         }
         let mut removed: Vec<Vec<db::NewShift>> = Vec::new();
+        let mut added = Vec::new();
         if form.replace {
             for id in form
                 .replacing
@@ -38808,21 +38824,50 @@ impl App {
                 .collect::<Vec<_>>()
             {
                 let family = session.db.shift_family(id).unwrap_or_default();
+                let base = family.first().filter(|f| f.supersedes == 0).cloned();
+                // Finie avant la nouvelle : c'est de l'histoire, elle reste.
+                if base
+                    .as_ref()
+                    .is_some_and(|b| !b.repeat_until.is_empty() && b.repeat_until <= cut)
+                {
+                    continue;
+                }
                 match session.db.delete_shift(id, &who) {
-                    Ok(true) => removed.push(family),
+                    Ok(true) => {
+                        // Commencée avant : sa part passée revient, arrêtée
+                        // la veille, avec les exceptions de cette part. Le
+                        // retour arrière l'enlève puis rend la ligne
+                        // entière, comme pour tout ce que la trame a écrit.
+                        if base
+                            .as_ref()
+                            .is_some_and(|b| !cut.is_empty() && b.day <= cut)
+                        {
+                            let mut past = family.clone();
+                            past.retain(|r| r.supersedes == 0 || r.day <= cut);
+                            past[0].repeat_until = cut.clone();
+                            match Self::restore_family(session, past) {
+                                Ok(Some(id)) => added.push((id, who.clone())),
+                                Ok(None) => {}
+                                Err(e) => session.error = Some(e),
+                            }
+                        }
+                        removed.push(family);
+                    }
                     Ok(false) => {}
                     Err(e) => session.error = Some(e),
                 }
             }
         }
-        let mut added = Vec::new();
+        let shortened = added.len();
         for new in &rows {
             match session.db.add_shift(new) {
                 Ok(id) => added.push((id, new.operator.clone())),
                 Err(e) => session.error = Some(e),
             }
         }
-        let n = added.len();
+        // Le compte des postes posés ne compte pas les trames arrêtées
+        // la veille, réécrites ci-dessus.
+        let n = added.len() - shortened;
         let replaced = removed.len();
         if n > 0 || replaced > 0 {
             session.remember(PlanningUndo::Framed { added, removed });
@@ -90293,6 +90338,70 @@ mod tests {
             s.db.shift_patterns("ZZ", "2026-09-23").unwrap(),
             vec![id],
             "aucune seconde trame"
+        );
+    }
+
+    /// **« Remplacer » remplace à partir du jour de la nouvelle trame.**
+    /// L'ancienne s'arrête la veille, et ses semaines passées — avec les
+    /// absences qui les corrigeaient — restent écrites : supprimée
+    /// entière, elle emportait les mois déjà travaillés. Un retour
+    /// arrière rend l'ancienne telle qu'elle était.
+    #[test]
+    fn replacing_a_trame_keeps_the_weeks_before_it() {
+        let (mut s, _swept) = scratch_session("trame_replace");
+        let monday = |day: &str| crate::db::NewShift {
+            operator: "ZZ".to_owned(),
+            day: day.to_owned(),
+            start_time: "09:00".to_owned(),
+            end_time: "12:30".to_owned(),
+            kind: "JOURNEE".to_owned(),
+            repeat_days: 7,
+            cadence: "HEBDO".to_owned(),
+            ..Default::default()
+        };
+        let id = s.db.add_shift(&monday("2026-01-05")).unwrap();
+        for day in ["2026-03-02", "2026-11-16"] {
+            s.db.add_shift(&crate::db::NewShift {
+                supersedes: id,
+                cancelled: true,
+                ..monday(day)
+            })
+            .unwrap();
+        }
+        let mondays = |s: &Session, from: &str, to: &str| -> Vec<(String, String)> {
+            s.db.shifts_between(from, to)
+                .unwrap()
+                .into_iter()
+                .filter(|p| p.operator == "ZZ")
+                .map(|p| (p.day, p.start_time))
+                .collect()
+        };
+        let before = mondays(&s, "2026-01-01", "2026-10-31");
+        assert!(before.iter().any(|(d, _)| d == "2026-01-05"));
+        assert!(!before.iter().any(|(d, _)| d == "2026-03-02"), "l'absence");
+        s.today = "2026-10-28".to_owned();
+        s.frame.operator = "ZZ".to_owned();
+        s.frame.from = "2026-11-02".to_owned();
+        super::App::frame_load(&mut s);
+        s.frame.weeks[0][0].from = "10:00".to_owned();
+        s.frame.replace = true;
+        super::App::frame_apply(&mut s);
+        assert_eq!(
+            mondays(&s, "2026-01-01", "2026-10-31"),
+            before,
+            "les semaines d'avant, absence comprise, n'ont pas bougé"
+        );
+        let after = mondays(&s, "2026-11-01", "2026-11-30");
+        assert_eq!(after.len(), 5, "{after:?}");
+        assert!(after.iter().all(|(_, t)| t == "10:00"), "{after:?}");
+        // Le retour arrière rend l'ancienne trame, absences comprises.
+        super::App::planning_undo(&mut s);
+        assert_eq!(mondays(&s, "2026-01-01", "2026-10-31"), before);
+        let undone = mondays(&s, "2026-11-01", "2026-11-30");
+        assert!(undone.iter().all(|(_, t)| t == "09:00"), "{undone:?}");
+        assert!(
+            !undone.iter().any(|(d, _)| d == "2026-11-16"),
+            "l'absence de novembre est revenue"
         );
     }
 
