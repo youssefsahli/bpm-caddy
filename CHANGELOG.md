@@ -48,6 +48,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a half; coverage said the box lasted three times as long.
 - Posology reading: abbreviated takes per day (« 2x/j », « 2 fois/j »,
   « x 2/j ») are counted; the sheet printed « 1 prise(s) par jour ».
+- Weight-based doses: « 80 mg/kg par jour en 3 prises toutes les
+  8 heures » is read as a daily dose again; the interval written after it
+  made it a per-take dose, three times too much for a child. « 0,5 mg/kg
+  x 2 par jour » is read per take. The first rhythm written now governs.
 
 ## [0.390.0] - 2026-10-10
 

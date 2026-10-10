@@ -288,21 +288,30 @@ fn cadence_of(hay: &str, at: usize, window: &str) -> Cadence {
     // jour » aussi** : « 10 mg/kg deux fois par jour » donne dix par
     // prise, vingt dans la journée — le lire par jour divisait la dose
     // par deux.
-    if window.contains("par prise")
-        || window.contains("toutes les")
-        || window.contains("fois par jour")
-        || window.contains("fois dans la journée")
-        || window.contains("par injection")
-        || window.contains("par nébulisation")
-    {
-        return Cadence::Prise;
-    }
-    if window.contains("par jour")
-        || window.contains("par 24 heures")
-        || window.contains("par vingt-quatre")
-        || window.contains("quotidien")
-    {
-        return Cadence::Jour;
+    //
+    // **Le premier dit** : « 80 mg/kg par jour en 3 prises toutes les
+    // 8 heures » est une dose du jour, que la suite répartit — lue « par
+    // prise » parce que « toutes les » y figure, elle triplait la dose
+    // d'un enfant. « fois par jour » commence avant le « par jour » qu'il
+    // contient, et « deux fois par jour » reste une dose par prise.
+    let first = |markers: &[&str]| markers.iter().filter_map(|m| window.find(m)).min();
+    let per_take = first(&[
+        "par prise",
+        "toutes les",
+        "fois par jour",
+        "fois dans la journée",
+        "par injection",
+        "par nébulisation",
+        "x 2 par jour",
+        "x 3 par jour",
+        "x 4 par jour",
+    ]);
+    let per_day = first(&["par jour", "par 24 heures", "par vingt-quatre", "quotidien"]);
+    match (per_take, per_day) {
+        (Some(t), Some(d)) if d < t => return Cadence::Jour,
+        (Some(_), _) => return Cadence::Prise,
+        (None, Some(_)) => return Cadence::Jour,
+        (None, None) => {}
     }
     // « 40 mg/kg en une prise », « en dose unique » : toute la dose,
     // prise une fois — c'est une dose par prise, et la dire « sans
@@ -444,6 +453,22 @@ mod tests {
     /// quatre. Un outil qui rendrait « 15 » sans son rythme ferait
     /// prendre quinze milligrammes par kilo et par jour à qui en a
     /// besoin de soixante, ou l'inverse.
+    /// **Le rythme dit d'abord gouverne** : une dose « par jour » répartie
+    /// « en 3 prises toutes les 8 heures » reste une dose du jour, et
+    /// « x 2 par jour » est une dose par prise.
+    #[test]
+    fn the_first_rhythm_written_governs() {
+        let one = |text: &str| read(text).first().map(|p| p.cadence);
+        assert_eq!(
+            one("80 mg/kg par jour en 3 prises toutes les 8 heures"),
+            Some(Cadence::Jour)
+        );
+        assert_eq!(one("10 mg/kg deux fois par jour"), Some(Cadence::Prise));
+        assert_eq!(one("0,5 mg/kg x 2 par jour"), Some(Cadence::Prise));
+        assert_eq!(one("15 mg/kg toutes les 6 heures"), Some(Cadence::Prise));
+        assert_eq!(one("50 mg/kg par jour"), Some(Cadence::Jour));
+    }
+
     #[test]
     fn a_dose_per_take_is_not_a_dose_per_day() {
         let got = read(
