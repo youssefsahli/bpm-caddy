@@ -684,35 +684,51 @@ fn placed(folded: &str) -> [Option<Take>; 4] {
         // « **20** à 40 mg », « en **3** prises » —, et la grille du
         // Skenan imprimait « 12 » au matin et au soir d'une morphine.
         if let Some(q) = quarters(t) {
+            // **Un nombre mixte** : « 1 1/2 cp le soir » est un et demi.
+            // Lu nombre par nombre, le « 1 », sans unité ni moment juste
+            // après, tombait, et il restait un demi — la boîte durait
+            // trois fois plus que la vraie.
+            let mut j = i;
+            let mut q = q;
+            if q % 4 == 0 {
+                if let Some(frac) = tokens
+                    .get(i + 1)
+                    .and_then(|t| quarters(t.trim_matches(|c: char| c == ',' || c == '.')))
+                    .filter(|f| *f > 0 && *f < 4 && tokens[i + 1].contains(['/', '½', '¼', '¾']))
+                {
+                    q += frac;
+                    j = i + 1;
+                }
+            }
             // Une fourchette : « 1 à 2 comprimés », « 20 à 40 mg ». Ce
             // qui suit le second nombre décide des deux.
-            if is(i + 1, &["a", "ou"]) && number(i + 2).is_some() {
-                if is(i + 3, UNITS) {
+            if is(j + 1, &["a", "ou"]) && number(j + 2).is_some() {
+                if is(j + 3, UNITS) {
                     pending = Some(None);
                     last = Some(None);
-                    i += 4;
+                    i = j + 4;
                 } else {
-                    i += 3;
+                    i = j + 3;
                 }
                 continue;
             }
-            if is(i + 1, STRENGTHS) {
-                i += 2;
+            if is(j + 1, STRENGTHS) {
+                i = j + 2;
                 continue;
             }
-            if q > 0 && is(i + 1, UNITS) {
+            if q > 0 && is(j + 1, UNITS) {
                 pending = Some(Some(q));
                 last = Some(Some(q));
                 // L'unité confirme, et n'est pas un moment : on la saute.
-                i += 2;
+                i = j + 2;
                 continue;
             }
-            let article = is(i + 1, &["le", "la", "l", "au", "aux", "a"]);
-            if q > 0 && (moment_at(i + 1) || (article && moment_at(i + 2))) {
+            let article = is(j + 1, &["le", "la", "l", "au", "aux", "a"]);
+            if q > 0 && (moment_at(j + 1) || (article && moment_at(j + 2))) {
                 pending = Some(Some(q));
                 last = Some(Some(q));
             }
-            i += 1;
+            i = j + 1;
             continue;
         }
         if let Some(m) = moment_of(t) {
@@ -1284,6 +1300,26 @@ mod tests {
         assert_eq!(read("1-0-1").kind, Kind::Placed);
         assert_eq!(read("1/0/1").kind, Kind::Placed);
         assert_eq!(read("20-0-20 gouttes").kind, Kind::Placed);
+    }
+
+    /// « 1 1/2 cp le soir » est un et demi, pas un demi.
+    #[test]
+    fn a_mixed_number_is_read_whole() {
+        let r = read("1 1/2 cp le soir");
+        assert_eq!(
+            r.doses[2],
+            Some(Take { quarters: Some(6) }),
+            "{:?}",
+            r.doses
+        );
+        assert_eq!(
+            read("1 ½ comprimé le matin").doses[0],
+            Some(Take { quarters: Some(6) })
+        );
+        assert_eq!(
+            read("1 cp le matin et 1/2 le soir").doses[2],
+            Some(Take { quarters: Some(2) })
+        );
     }
 
     #[test]

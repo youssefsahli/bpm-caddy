@@ -44,6 +44,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Posology reading: a date (« dès le 1/3/26 ») is no longer read as a
   1-3-26 grid (30 units a day), and a grid in milligrams (« 5-0-5 mg »)
   is no longer counted as tablets.
+- Posology reading: « 1 1/2 cp le soir » is read as one and a half, not
+  a half; coverage said the box lasted three times as long.
 
 ## [0.390.0] - 2026-10-10
 
