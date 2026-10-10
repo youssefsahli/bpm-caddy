@@ -48,6 +48,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Cefpodoxime (« entre 10 et 39 ») said nothing at a clearance of 39,
   and Tarka (« inférieure ou égale à 30 ») was not flagged as
   contraindicated at exactly 30.
+- Biology: a low threshold now reads strictly, as its text says
+  (« inférieur à »). At a DFG of exactly 30, biology announced the
+  metformin contraindication while the renal panel on the same file said
+  « dose à réduire »; a potassium of 3.5 is no longer read as low. The
+  metformin reading between 30 and 45 now says « au tiers de la dose
+  usuelle », as the renal panel does, instead of « de moitié ».
 
 ## [0.389.0] - 2026-10-10
 

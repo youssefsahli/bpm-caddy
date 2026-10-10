@@ -249,7 +249,14 @@ pub fn read(readings: &[Reading], treatments: &[crate::revue::Treatment]) -> Vec
         };
         let hit = match rule.side {
             Side::Above => r.value >= rule.threshold,
-            Side::Below => r.value <= rule.threshold,
+            // **Strictement au-dessous**, comme le disent les textes
+            // (« inférieur à ») et comme le panneau rénal lit ses paliers :
+            // à un DFG de 30 tout rond, la biologie annonçait la
+            // contre-indication de la metformine pendant que le rein, sur
+            // le même dossier, disait « dose à réduire ». Un potassium de
+            // 3,5 n'est pas une hypokaliémie. Au-dessus, le seuil reste
+            // compris : c'est le côté de la prudence.
+            Side::Below => r.value < rule.threshold,
         };
         if !hit {
             continue;
@@ -1099,7 +1106,7 @@ const RULES: &[Rule] = &[
         threshold: 30.0,
         needs: &["metformine", "biguanide"],
         severity: Severity::Alert,
-        text: "DFG inférieur à 30 mL/min sous metformine : contre-indication, en raison du risque d'acidose lactique. Entre 30 et 45, la dose est réduite de moitié.",
+        text: "DFG inférieur à 30 mL/min sous metformine : contre-indication, en raison du risque d'acidose lactique. Entre 30 et 45, la dose maximale est abaissée au tiers de la dose usuelle.",
     },
     Rule {
         code: "DFG",
@@ -1933,6 +1940,40 @@ mod tests {
     }
 
     /// Toute lecture s'édite, et toute réécriture arrive sur le bilan.
+    /// **Un seuil bas se lit strictement**, comme le texte le dit et comme
+    /// le panneau rénal le lit : à un DFG de 30 sous metformine, la
+    /// biologie annonçait la contre-indication et le rein « dose à
+    /// réduire », sur le même dossier.
+    #[test]
+    fn a_low_threshold_is_strict_and_agrees_with_the_renal_panel() {
+        let treatments = [treat("Glucophage 1000 mg", "metformine", "biguanide", "")];
+        let dfg = |value: f64| {
+            let readings = [Reading {
+                code: "DFG",
+                value,
+                date: "2026-09-11",
+            }];
+            read(&readings, &treatments)
+                .iter()
+                .any(|f| f.text.contains("metformine"))
+        };
+        assert!(dfg(29.0), "au-dessous de 30 : la contre-indication");
+        assert!(!dfg(30.0), "à 30 : pas de contre-indication");
+        let renal = crate::renal::read(
+            &[crate::revue::Treatment {
+                name: "Glucophage 1000 mg",
+                dci: "metformine",
+                class: "biguanide",
+                tags: "",
+            }],
+            Some(30.0),
+        );
+        assert_eq!(
+            renal.first().and_then(|f| f.level),
+            Some(crate::renal::Level::Reduce)
+        );
+    }
+
     #[test]
     fn every_biology_reading_is_editable_and_every_rewrite_arrives() {
         // Une kaliémie haute sous IEC : une lecture que le tableau a.
