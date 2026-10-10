@@ -31,6 +31,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could take the number of a newer one and overwrite its bytes.
   « Compacter » no longer deletes stored bytes newer than every piece on
   file (those of pieces filed after the copy that was put back).
+- Planning: changing a shift's hours with the pause field left empty no
+  longer resets its pause to zero (the day's and month's hours gained the
+  pause).
 
 ## [0.391.0] - 2026-10-10
 

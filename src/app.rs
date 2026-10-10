@@ -36052,14 +36052,18 @@ impl App {
                     .iter()
                     .find(|s| s.id == id)
                     .map_or(0, |s| s.pause_minutes);
-                match session.db.update_shift(
-                    id,
-                    &from,
-                    &to,
-                    form.pause.trim().parse().unwrap_or(0),
-                    &was_from,
-                    &was_to,
-                ) {
+                // **Un champ de pause vide garde la pause du poste** : le
+                // champ n'est pas rempli depuis le poste choisi, et changer
+                // les heures remettait la pause à zéro — les heures du
+                // jour et du mois en gagnaient trois quarts d'heure.
+                let pause = match form.pause.trim() {
+                    "" => was_pause,
+                    typed => typed.parse().unwrap_or(was_pause),
+                };
+                match session
+                    .db
+                    .update_shift(id, &from, &to, pause, &was_from, &was_to)
+                {
                     Ok(true) => {
                         session.remember(PlanningUndo::Edited {
                             id,
