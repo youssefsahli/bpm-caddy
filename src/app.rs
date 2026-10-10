@@ -7973,7 +7973,16 @@ impl Session {
             // qu'on vient de relire.
             self.reload_treatments(open);
             self.refresh_vacc_due();
+            // **L'avis à l'écran survit à la relecture.** `reload_interviews`
+            // efface l'erreur affichée, ce qui est juste après un geste
+            // réussi et faux ici : l'avis « modifié sur un autre poste »
+            // — posé justement parce qu'un autre poste venait d'écrire —
+            // disparaissait à la relecture suivante, deux secondes après.
+            let shown = self.error.take();
             self.reload_interviews(open);
+            if self.error.is_none() {
+                self.error = shown;
+            }
             self.refresh_fil();
             self.refresh_scans(crate::scans::Subject::Patient, open);
         }
@@ -90554,6 +90563,25 @@ mod tests {
         assert!(on(&s, "2026-10-21"), "la semaine demandée");
         assert!(!on(&s, "2026-10-28"), "et plus l'autre");
         assert!(on(&s, "2026-01-07"), "les semaines d'avant restent");
+    }
+
+    /// **L'avis « modifié ailleurs » survit à la relecture** : effacé par
+    /// la relecture des interventions, il disparaissait deux secondes après
+    /// avoir été posé.
+    #[test]
+    fn a_stale_notice_survives_the_resync() {
+        let (mut s, _swept) = scratch_session("notice_resync");
+        let id = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let p =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == id)
+                .unwrap();
+        s.viewing = Some(p);
+        s.error = Some("modifié sur un autre poste".to_owned());
+        s.resync();
+        assert_eq!(s.error.as_deref(), Some("modifié sur un autre poste"));
     }
 
     /// **Le formulaire d'identité compare à ce qu'il a ouvert**, pas à ce

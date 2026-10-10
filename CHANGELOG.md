@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Planning: changing a shift's hours with the pause field left empty no
   longer resets its pause to zero (the day's and month's hours gained the
   pause).
+- A « modified on another post » notice no longer disappears two seconds
+  later: the automatic re-read of an open file cleared it.
 
 ## [0.391.0] - 2026-10-10
 
