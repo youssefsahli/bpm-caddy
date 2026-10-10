@@ -48456,9 +48456,19 @@ impl App {
                                         crate::codebar::Resolved::Known { stup_id } => {
                                             scan_pick = Some(stup_id);
                                             session.stup_scan_unknown = None;
+                                            // Ce que la lecture n'a pas pu
+                                            // dire se dit : sans quoi un champ
+                                            // vide passe pour un oubli.
+                                            let key = if !s.read_to_end || s.expiry.is_empty() {
+                                                "stup_scan_partial"
+                                            } else if !s.lot_certain || s.lot.is_empty() {
+                                                "stup_scan_no_lot"
+                                            } else {
+                                                "stup_scan_known"
+                                            };
                                             session.stup_note = Some((
-                                                false,
-                                                trf("stup_scan_known", s.code.clone()),
+                                                key != "stup_scan_known",
+                                                trf(key, s.code.clone()),
                                             ));
                                             // Une boîte scannée apporte son lot
                                             // et sa péremption : ils sont
@@ -48473,12 +48483,21 @@ impl App {
                                             // lignes reçues à la douchette, et
                                             // un rappel de lot n'avait alors
                                             // rien de fiable à interroger.
-                                            if !s.lot.is_empty() && s.lot_certain {
-                                                session.stup_new_lot = s.lot.clone();
-                                            }
-                                            if !s.expiry.is_empty() {
-                                                session.stup_new_expiry = s.expiry.clone();
-                                            }
+                                            //
+                                            // **Et chaque scan remplace les
+                                            // deux**, vides s'il ne les a pas
+                                            // lus : remplis seulement quand il
+                                            // les lisait, ils gardaient ceux de
+                                            // la boîte d'avant, et la ligne
+                                            // s'écrivait au registre avec le
+                                            // lot d'une autre boîte, sous
+                                            // « Boîte reconnue ».
+                                            session.stup_new_lot = if s.lot_certain {
+                                                s.lot.clone()
+                                            } else {
+                                                String::new()
+                                            };
+                                            session.stup_new_expiry = s.expiry.clone();
                                         }
                                         // L'application ne propose jamais un
                                         // produit pour un code : elle n'a rien

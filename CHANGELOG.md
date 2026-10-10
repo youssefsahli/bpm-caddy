@@ -68,6 +68,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Dashboard: the hourly rate counts only the billed acts whose duration
   is recorded; acts without a duration added revenue but no time and
   inflated it.
+- Narcotics register, scanning a box: the lot and expiry are now replaced
+  at every recognised scan. A scan that could not read them left those of
+  the previous box in the form, and the line was written with another
+  box's lot under « Boîte reconnue ». The note now says when the lot is
+  to be typed or the reading is incomplete, and a serial number that may
+  have swallowed the lot no longer reads as complete.
 
 ## [0.389.0] - 2026-10-10
 

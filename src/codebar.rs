@@ -272,7 +272,12 @@ fn read_element_string(
                 // n'avait plus de date, et rien ne le disait. Quand la
                 // péremption n'a pas été lue, la lecture ne se dit plus
                 // complète.
-                if !closed && out.expiry.is_empty() {
+                //
+                // De même pour le lot : un numéro de série que rien ne
+                // ferme, lot encore non lu, a pu l'avaler (« 21…10LOT42 »
+                // rendait un numéro « …10LOT42 », aucun lot, et une
+                // lecture dite complète).
+                if !closed && (out.expiry.is_empty() || (ai == "21" && out.lot.is_empty())) {
                     out.read_to_end = false;
                 }
                 rest = tail;
@@ -373,6 +378,21 @@ mod tests {
     /// clé complète à la dizaine, soit 7.
     const CIP: &str = "3400930000007";
     const GTIN14: &str = "03400930000007";
+
+    /// **Un numéro de série que rien ne ferme a pu avaler le lot** : la
+    /// lecture ne se dit plus complète, et le registre ne reçoit pas un
+    /// lot vide pour certain.
+    #[test]
+    fn a_serial_that_runs_to_the_end_may_have_swallowed_the_lot() {
+        let s = read("010340093000000717270531211234567810LOT42", "2026-10-10").unwrap();
+        assert_eq!(s.expiry, "2027-05-31");
+        assert!(s.lot.is_empty());
+        assert!(!s.read_to_end, "le lot a pu disparaître dans le numéro");
+        // Un lot que rien ne ferme est lu au plus large et dit incertain
+        // (`lot_certain`) ; la lecture, elle, est allée au bout.
+        let s = read("0103400930000007172705311010LOT4221SERIE", "2026-10-10").unwrap();
+        assert!(s.read_to_end && !s.lot_certain);
+    }
 
     #[test]
     fn a_thirteen_digit_code_proves_itself_by_its_key() {
