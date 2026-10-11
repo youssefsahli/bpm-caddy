@@ -312,6 +312,15 @@ fn run(db: &Db, job: Job, report: &mut dyn FnMut(Progress) -> bool) -> Outcome {
         }
         match (step.run)(db) {
             Ok(n) => counts.push(n),
+            // **Sans copie, pas d'effacement** : la remise à zéro
+            // continuait après une copie ratée (dossier en lecture seule,
+            // disque plein), et le filet manquait justement quand il
+            // avait échoué.
+            Err(e) if step.key == "maint_step_snapshot" => {
+                counts.push(0);
+                error = Some(crate::strings::trf("maint_err_snapshot", e));
+                break;
+            }
             Err(e) => {
                 counts.push(0);
                 error = error.or(Some(e));
@@ -355,7 +364,24 @@ mod tests {
         }
     }
 
-    /// The reset wipes first and reseeds after — in that order, or it
+    /// A reset whose safety copy fails stops there: nothing is erased.
+    #[test]
+    fn a_reset_whose_copy_fails_erases_nothing() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-maint-f-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let db = Db::open(&dir.join("maint.db"), "secret").unwrap();
+        db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        // Un fichier à la place du dossier des copies : la copie échoue.
+        std::fs::write(dir.join("backups"), b"pas un dossier").unwrap();
+        let out = run(&db, Job::Reset, &mut |_| true);
+        assert!(out.error.is_some());
+        assert_eq!(out.counts.len(), 1, "rien après la copie ratée");
+        assert_eq!(db.patients().unwrap().len(), 1, "rien n'est effacé");
+    }
+
+    /// The reset copies, then wipes, then reseeds — in that order, or it
     /// deletes what it has just put back.
     #[test]
     fn the_reset_empties_before_it_refills() {

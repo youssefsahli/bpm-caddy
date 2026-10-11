@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.399.0] - 2026-10-12
+
 ### Fixed
 - « Copier / Déplacer la base vers… »: the base, its pieces and its
   register are written beside the destination and put in place together;
@@ -23,7 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   export failed for good); the working folder is removed when an export
   fails.
 - « Réinitialiser la base » first copies the three files into the backup
-  folder, outside the daily series.
+  folder, outside the daily series, and erases nothing when that copy
+  fails. Copy and Move are unavailable during a maintenance pass; Move
+  keeps the Options edits not yet saved, and is written in the access
+  log of the base the post moves to.
 - Options › Base reads the backup folder at most every thirty seconds,
   not on every frame.
 

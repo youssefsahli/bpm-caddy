@@ -219,8 +219,23 @@ fn daily_copy(
                 .and_then(|m| m.modified())
                 .ok()
                 .and_then(|t| t.elapsed().ok())
-                .is_some_and(|age| age > std::time::Duration::from_secs(24 * 3600));
-            if name.starts_with(prefix) && name.ends_with(".part") && stale {
+                .is_some_and(|age| age > std::time::Duration::from_secs(3 * 24 * 3600));
+            // De cette série seulement, et sous la forme qu'elle écrit :
+            // « <préfixe>AAAA-MM-JJ.db.<processus>.part ». Une copie
+            // d'avant remise à zéro, ou la série d'une base « bpm_caddy-x »,
+            // ne sont pas à elle.
+            let ours = name.strip_prefix(prefix).is_some_and(|rest| {
+                rest.get(..10)
+                    .is_some_and(|d| crate::date::parse_iso(d).is_some())
+                    && rest.get(10..).is_some_and(|tail| {
+                        tail.strip_prefix(".db.")
+                            .and_then(|t| t.strip_suffix(".part"))
+                            .is_some_and(|pid| {
+                                !pid.is_empty() && pid.chars().all(|c| c.is_ascii_digit())
+                            })
+                    })
+            });
+            if ours && stale {
                 let _ = std::fs::remove_file(e.path());
             }
         }
@@ -81312,10 +81327,14 @@ impl eframe::App for App {
                                 }
                                 // File-level tools: consistent encrypted copy
                                 // (VACUUM INTO) to any destination; "move"
-                                // additionally points the config at the copy
-                                // (applied on save + restart, old file kept).
+                                // additionally points this post at the copy
+                                // and reopens on it (old file kept). Not
+                                // during a maintenance pass: the three files
+                                // would be taken halfway through it.
                                 ui.horizontal(|ui| {
-                                    if motif::button(ui, tr("opts_db_copy")).clicked() {
+                                    if motif::button_enabled(ui, tr("opts_db_copy"), !maint_busy)
+                                        .clicked()
+                                    {
                                         if let Some(p) = rfd::FileDialog::new()
                                             .set_file_name("bpm_caddy.db")
                                             .save_file()
@@ -81323,7 +81342,9 @@ impl eframe::App for App {
                                             db_export = Some((p, false));
                                         }
                                     }
-                                    if motif::button(ui, tr("opts_db_move")).clicked() {
+                                    if motif::button_enabled(ui, tr("opts_db_move"), !maint_busy)
+                                        .clicked()
+                                    {
                                         if let Some(p) = rfd::FileDialog::new()
                                             .set_file_name("bpm_caddy.db")
                                             .save_file()
@@ -82086,6 +82107,13 @@ impl eframe::App for App {
             } else if let State::Unlocked(session) = &mut self.state {
                 // Une date tapée et pas encore quittée part avec la copie.
                 session.flush_date_edits();
+                // Un déplacement s'écrit **avant** la copie : la base que
+                // le poste va ouvrir en garde la trace.
+                if point {
+                    session
+                        .db
+                        .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+                }
                 // Les trois fichiers, toujours, et ensemble : copier la base
                 // seule laisserait les pièces et le registre en arrière —
                 // voir `Db::copy_whole_to`.
@@ -82094,7 +82122,7 @@ impl eframe::App for App {
                 Err(tr("opts_db_locked").to_owned())
             };
             // Une copie de la base entière est un export : au journal.
-            if let (Ok(()), State::Unlocked(session)) = (&result, &self.state) {
+            if let (Ok(()), false, State::Unlocked(session)) = (&result, point, &self.state) {
                 session
                     .db
                     .log_access(&session.operator, crate::audit::Act::Exporte, 0);
@@ -82104,20 +82132,27 @@ impl eframe::App for App {
             // plus dans l'ancienne entre-temps — ce qui était saisi entre
             // le clic et un redémarrage, le lendemain parfois, manquait à
             // la nouvelle base.
-            if point && result.is_ok() {
-                let mut moved = self.config.clone();
+            // Ce que la page des options montrait et n'était pas encore
+            // enregistré part avec : fermée par le déplacement, elle
+            // l'aurait perdu sans un mot.
+            let switched = point && result.is_ok() && {
+                let mut moved = self
+                    .options
+                    .as_ref()
+                    .map_or_else(|| self.config.clone(), |e| e.cfg.clone());
                 moved.database.path = Some(target.clone());
-                if moved.save().is_ok() {
+                moved.save().is_ok() && {
                     self.config = moved;
                     self.options = None;
                     self.state = State::Locked {
                         password: String::new(),
                         error: Some(tr("opts_db_moved_now").to_owned()),
                     };
-                    return;
+                    ctx.request_repaint();
+                    true
                 }
-            }
-            if let Some(editor) = &mut self.options {
+            };
+            if let (false, Some(editor)) = (switched, &mut self.options) {
                 match result {
                     Ok(()) => {
                         if point {
@@ -93288,24 +93323,34 @@ mod tests {
         for day in 1..=16 {
             std::fs::write(bdir.join(format!("bpm_caddy-2000-01-{day:02}.db")), b"old").unwrap();
         }
-        // A copy cut by a power failure two days ago, under another
-        // process's number: swept. One of the hour stays (it may be
-        // another post's copy in progress).
+        // A copy cut by a power failure days ago, under another process's
+        // number: swept. One of the hour stays (it may be another post's
+        // copy in progress), and so does a part of another series.
         let stale = bdir.join("bpm_caddy-2000-02-01.db.99999.part");
         let fresh = bdir.join("bpm_caddy-2000-02-02.db.99998.part");
-        for p in [&stale, &fresh] {
+        let other = bdir.join("bpm_caddy-avant-remise-a-zero-2000-01-01-1.db.part");
+        for p in [&stale, &fresh, &other] {
             std::fs::write(p, b"half").unwrap();
         }
+        let old = std::time::SystemTime::now() - std::time::Duration::from_secs(96 * 3600);
+        std::fs::File::options()
+            .write(true)
+            .open(&other)
+            .unwrap()
+            .set_modified(old)
+            .unwrap();
         std::fs::File::options()
             .write(true)
             .open(&stale)
             .unwrap()
-            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(48 * 3600))
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(96 * 3600))
             .unwrap();
 
         super::daily_backup(&db, &db_path, "secret", 14);
         assert!(!stale.exists(), "le .part d'avant-hier est balayé");
         assert!(fresh.exists(), "celui de l'heure reste");
+        assert!(other.exists(), "une autre série reste");
+        std::fs::remove_file(&other).unwrap();
         std::fs::remove_file(&fresh).unwrap();
         let today = db.today_iso().unwrap();
         let todays = bdir.join(format!("bpm_caddy-{today}.db"));

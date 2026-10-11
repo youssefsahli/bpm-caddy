@@ -42607,20 +42607,56 @@ impl Db {
             }
             return Err(e);
         }
-        // Le registre et les pièces d'abord, la base en dernier : tant
-        // qu'elle n'est pas là, rien n'ouvre ce qui est à côté. Des pièces
-        // d'une copie précédente ne restent pas à côté d'une base qui
-        // n'en a pas.
-        let rename = |from: &Path, to: &Path| {
-            std::fs::rename(from, to).map_err(|e| format!("copie impossible : {e}"))
+        // **La mise en place aussi, tout ou rien** : ce qui était là est
+        // d'abord mis de côté (`.avant`), puis les trois copies prennent
+        // leur nom. Un renommage refusé (un fichier ouvert sous Windows)
+        // remet tout comme avant, au lieu de laisser le nouveau registre à
+        // côté de l'ancienne base.
+        let aside = |p: &Path| {
+            let mut name = p.file_name().unwrap_or_default().to_os_string();
+            name.push(".avant");
+            p.with_file_name(name)
         };
-        rename(&parts[2], &finals[2])?;
-        if with_scans {
-            rename(&parts[1], &finals[1])?;
-        } else if finals[1].exists() {
-            std::fs::remove_file(&finals[1]).map_err(|e| format!("copie impossible : {e}"))?;
+        let fail = |e: std::io::Error| format!("copie impossible : {e}");
+        let mut moved: Vec<usize> = Vec::new();
+        let mut placed: Vec<usize> = Vec::new();
+        let undo = |moved: &[usize], placed: &[usize]| {
+            for &i in placed {
+                let _ = std::fs::remove_file(&finals[i]);
+            }
+            for &i in moved {
+                let _ = std::fs::rename(aside(&finals[i]), &finals[i]);
+            }
+            for p in &parts {
+                let _ = std::fs::remove_file(p);
+            }
+        };
+        for (i, f) in finals.iter().enumerate() {
+            if f.exists() {
+                let _ = std::fs::remove_file(aside(f));
+                if let Err(e) = std::fs::rename(f, aside(f)) {
+                    undo(&moved, &placed);
+                    return Err(fail(e));
+                }
+                moved.push(i);
+            }
         }
-        rename(&parts[0], &finals[0])
+        // Le registre et les pièces d'abord, la base en dernier : tant
+        // qu'elle n'est pas là, rien n'ouvre ce qui est à côté.
+        for i in [2usize, 1, 0] {
+            if i == 1 && !with_scans {
+                continue;
+            }
+            if let Err(e) = std::fs::rename(&parts[i], &finals[i]) {
+                undo(&moved, &placed);
+                return Err(fail(e));
+            }
+            placed.push(i);
+        }
+        for &i in &moved {
+            let _ = std::fs::remove_file(aside(&finals[i]));
+        }
+        Ok(())
     }
 
     /// Write a consistent snapshot of the database to `path` (encrypted
