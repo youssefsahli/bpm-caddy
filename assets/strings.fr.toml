@@ -1089,6 +1089,7 @@ opts_db_move = "Déplacer la base vers…"
 opts_db_copied = "Copie cohérente écrite : {}"
 opts_db_copy_error = "Échec de la copie : {}"
 opts_db_moved = "Base copiée, chemin mis à jour : enregistrer puis redémarrer. L'ancien fichier est conservé et reste celui des autres postes : les repointer un par un, sinon les écritures se répartissent entre les deux bases."
+opts_db_moved_now = "Base déplacée : ce poste ouvre désormais la copie — déverrouiller pour reprendre. L'ancien fichier reste celui des autres postes : les repointer un par un, sinon les écritures se répartissent entre les deux bases."
 opts_db_same = "La cible est l'un des fichiers ouverts : la base, ses pièces ou son registre."
 opts_db_locked = "Déverrouillez la session d'abord."
 opts_fees = "Honoraires (€ / acte)"
@@ -1247,6 +1248,7 @@ telem_collision = "Écritures concurrentes signalées"
 # --- Les passes longues sur la base, sur leur propre fil ---
 # Une ligne par étape de `maintenance::steps`. Une clé sans libellé
 # s'afficherait telle quelle au comptoir : un test le refuse.
+maint_step_snapshot = "Copie des trois fichiers avant effacement"
 maint_step_wipe = "Effacement des données"
 maint_err_not_reference = "Le contenu de référence se sème sur le poste de référence ; il arrivera ici avec la synchronisation."
 maint_step_drugs = "Médicaments"

@@ -61,6 +61,15 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   télécharge puis échoue au remplacement, et lance une seconde instance ;
 - relais : un membre du réseau peut occuper les quatre places d'attente
   d'un groupe (déni de service, pas de fuite).
+- la fenêtre d'audit (`bpm-audit`) ouvre la base par `Db::open`, qui
+  migre et peut créer les fichiers voisins : il lui faudrait une
+  ouverture en lecture seule ;
+- le dossier `backups/` est créé avec les droits par défaut (0755) : le
+  restreindre à 0700 fermerait un dossier partagé aux postes d'autres
+  comptes, donc laissé ;
+- la 0.398.0 a passé le smoke et la CI ; l'étiquette n'a pas pu être
+  posée d'ici (refusée par les permissions) : `git tag v0.398.0 277eaa3
+  && git push origin v0.398.0` ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

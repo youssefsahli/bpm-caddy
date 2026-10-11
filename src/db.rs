@@ -41938,6 +41938,13 @@ const STUP_MIGRATIONS: &[&str] = &[
 /// Écrits une fois : l'export les pose et l'import les cherche, et deux
 /// listes des mêmes noms finiraient par ne plus se répondre — un paquet
 /// qu'on ne peut plus ouvrir.
+/// Au-delà, un fichier du paquet voyage en morceaux de cette taille (un
+/// BLOB SQLite s'arrête à un milliard d'octets). Variable en test.
+#[cfg(not(test))]
+const BUNDLE_CHUNK: usize = 256 * 1024 * 1024;
+#[cfg(test)]
+const BUNDLE_CHUNK: usize = 4096;
+
 pub const BUNDLE_BASE: &str = "bpm_caddy.db";
 pub const BUNDLE_SCANS: &str = "bpm_caddy_scans.db";
 pub const BUNDLE_STUPS: &str = "bpm_caddy_stups.db";
@@ -42540,6 +42547,82 @@ impl Db {
         Ok(())
     }
 
+    /// La copie qui précède une remise à zéro : les trois fichiers, dans
+    /// `backups/`, sous un nom que l'élagage des copies quotidiennes ne
+    /// reconnaît pas. Rend 1. Une base sans fichier (en mémoire) n'en a
+    /// pas besoin.
+    pub fn snapshot_before_reset(&self) -> Result<usize, String> {
+        let Some(path) = self.path() else {
+            return Ok(0);
+        };
+        let dir = backup_dir(&path);
+        std::fs::create_dir_all(&dir).map_err(|e| format!("sauvegarde impossible : {e}"))?;
+        let stem = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("bpm_caddy")
+            .to_owned();
+        let stamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let day = self.today_iso().unwrap_or_default();
+        self.copy_whole_to(&dir.join(format!("{stem}-avant-remise-a-zero-{day}-{stamp}.db")))?;
+        Ok(1)
+    }
+
+    /// **The three files, all or none**, at `target` and beside it: the
+    /// base, its pieces (when there are any) and its register.
+    ///
+    /// Each is written to `<name>.part` first, and the three are renamed
+    /// only once all three are written. The copy used to delete the
+    /// destination and write onto it file by file: a full disk midway
+    /// left a broken base under the real name and last week's register
+    /// beside it — which the next opening took for this base's register.
+    pub fn copy_whole_to(&self, target: &Path) -> Result<(), String> {
+        let finals = [target.to_path_buf(), scans_path(target), stups_path(target)];
+        let part = |p: &Path| {
+            let mut name = p.file_name().unwrap_or_default().to_os_string();
+            name.push(".part");
+            p.with_file_name(name)
+        };
+        let parts: Vec<PathBuf> = finals.iter().map(|p| part(p)).collect();
+        for p in &parts {
+            let _ = std::fs::remove_file(p);
+        }
+        let with_scans = self.scan_weight()?.0 > 0;
+        let written = self
+            .backup_to(&parts[0])
+            .and_then(|()| {
+                if with_scans {
+                    self.backup_scans_to(&parts[1])
+                } else {
+                    Ok(())
+                }
+            })
+            .and_then(|()| self.backup_stups_to(&parts[2]));
+        if let Err(e) = written {
+            for p in &parts {
+                let _ = std::fs::remove_file(p);
+            }
+            return Err(e);
+        }
+        // Le registre et les pièces d'abord, la base en dernier : tant
+        // qu'elle n'est pas là, rien n'ouvre ce qui est à côté. Des pièces
+        // d'une copie précédente ne restent pas à côté d'une base qui
+        // n'en a pas.
+        let rename = |from: &Path, to: &Path| {
+            std::fs::rename(from, to).map_err(|e| format!("copie impossible : {e}"))
+        };
+        rename(&parts[2], &finals[2])?;
+        if with_scans {
+            rename(&parts[1], &finals[1])?;
+        } else if finals[1].exists() {
+            std::fs::remove_file(&finals[1]).map_err(|e| format!("copie impossible : {e}"))?;
+        }
+        rename(&parts[0], &finals[0])
+    }
+
     /// Write a consistent snapshot of the database to `path` (encrypted
     /// with the same key). `VACUUM INTO` takes the proper locks, so the
     /// copy is safe even while other PCs are writing.
@@ -42587,7 +42670,14 @@ impl Db {
         let stage = to.with_extension("en-cours");
         let _ = std::fs::remove_dir_all(&stage);
         std::fs::create_dir_all(&stage).map_err(|e| e.to_string())?;
+        // **Le dossier de travail part aussi quand l'export échoue** : il
+        // laissait sur la clé trois copies entières de la base.
+        let done = self.export_bundle_in(&stage, to, password);
+        let _ = std::fs::remove_dir_all(&stage);
+        done
+    }
 
+    fn export_bundle_in(&self, stage: &Path, to: &Path, password: &str) -> Result<(), String> {
         let base = stage.join(BUNDLE_BASE);
         let scans = stage.join(BUNDLE_SCANS);
         let stups = stage.join(BUNDLE_STUPS);
@@ -42614,6 +42704,12 @@ impl Db {
              CREATE TABLE IF NOT EXISTS about (
                  key   TEXT PRIMARY KEY,
                  value TEXT NOT NULL
+             );
+             CREATE TABLE IF NOT EXISTS chunks (
+                 name  TEXT NOT NULL,
+                 n     INTEGER NOT NULL,
+                 bytes BLOB NOT NULL,
+                 PRIMARY KEY (name, n)
              );",
         )
         .map_err(|e| e.to_string())?;
@@ -42622,12 +42718,42 @@ impl Db {
             (BUNDLE_SCANS, &scans),
             (BUNDLE_STUPS, &stups),
         ] {
-            let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
-            out.execute(
-                "INSERT INTO files (name, bytes) VALUES (?1, ?2)",
-                rusqlite::params![name, bytes],
-            )
-            .map_err(|e| e.to_string())?;
+            // **Un gros fichier voyage en morceaux** : un BLOB s'arrête à
+            // un milliard d'octets, et le fichier des pièces y arrive en
+            // un an et demi — l'export échouait alors pour toujours. Un
+            // fichier qui tient en une ligne reste dans `files`, que les
+            // versions d'avant savent lire ; un plus gros n'y est pas, et
+            // une version d'avant le dit manquant plutôt que de l'écrire
+            // vide.
+            let size = std::fs::metadata(path).map_err(|e| e.to_string())?.len();
+            if size <= BUNDLE_CHUNK as u64 {
+                let bytes = std::fs::read(path).map_err(|e| e.to_string())?;
+                out.execute(
+                    "INSERT INTO files (name, bytes) VALUES (?1, ?2)",
+                    rusqlite::params![name, bytes],
+                )
+                .map_err(|e| e.to_string())?;
+                continue;
+            }
+            let mut f = std::fs::File::open(path).map_err(|e| e.to_string())?;
+            let mut n = 0i64;
+            loop {
+                let mut piece = Vec::with_capacity(BUNDLE_CHUNK);
+                std::io::Read::read_to_end(
+                    &mut std::io::Read::take(&mut f, BUNDLE_CHUNK as u64),
+                    &mut piece,
+                )
+                .map_err(|e| e.to_string())?;
+                if piece.is_empty() {
+                    break;
+                }
+                out.execute(
+                    "INSERT INTO chunks (name, n, bytes) VALUES (?1, ?2, ?3)",
+                    rusqlite::params![name, n, piece],
+                )
+                .map_err(|e| e.to_string())?;
+                n += 1;
+            }
         }
         // De quoi et de quand : un paquet qu'on retrouve dans six mois
         // sur une clé doit pouvoir dire lui-même ce qu'il est.
@@ -42646,10 +42772,9 @@ impl Db {
         std::fs::rename(&part, to)
             .or_else(|_| std::fs::copy(&part, to).map(|_| ()))
             .map_err(|e| e.to_string())?;
-        // Les trois copies intermédiaires ne traînent pas : ce sont des
-        // bases en clair de rien du tout — chiffrées, mais posées dans
-        // un dossier que personne ne surveille.
-        let _ = std::fs::remove_dir_all(&stage);
+        // Les trois copies intermédiaires ne traînent pas (l'appelant
+        // efface le dossier) : chiffrées, mais posées dans un dossier que
+        // personne ne surveille.
         Ok(())
     }
 
@@ -42695,14 +42820,28 @@ impl Db {
     /// de la base dont il vient. Un paquet d'une autre officine se
     /// refuse ici, et le dit.
     pub fn import_bundle(from: &Path, password: &str, into: &Path) -> Result<PathBuf, String> {
+        use rusqlite::OptionalExtension;
         let pack = Connection::open(from).map_err(|e| e.to_string())?;
         pack.pragma_update(None, "key", password)
             .map_err(|e| e.to_string())?;
         // La première lecture est ce qui prouve la clé : SQLCipher ne
         // refuse pas à l'ouverture, il refuse au premier octet lu.
+        // Un paquet d'une version d'avant n'a pas de table des morceaux.
+        let chunked = pack
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE name = 'chunks'",
+                [],
+                |r| r.get::<_, i64>(0),
+            )
+            .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?
+            > 0;
         let names: Vec<String> = {
             let mut q = pack
-                .prepare("SELECT name FROM files ORDER BY name")
+                .prepare(if chunked {
+                    "SELECT name FROM files UNION SELECT name FROM chunks ORDER BY name"
+                } else {
+                    "SELECT name FROM files ORDER BY name"
+                })
                 .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?;
             let rows = q
                 .query_map([], |r| r.get::<_, String>(0))
@@ -42735,13 +42874,35 @@ impl Db {
         let part = |name: &str| into.join(format!("{name}.part"));
         let written = (|| -> Result<(), String> {
             for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
-                let bytes: Vec<u8> = pack
+                let mut f = std::fs::File::create(part(name)).map_err(|e| e.to_string())?;
+                let whole: Option<Vec<u8>> = pack
                     .query_row("SELECT bytes FROM files WHERE name = ?1", [name], |r| {
                         r.get(0)
                     })
+                    .optional()
                     .map_err(|e| e.to_string())?;
-                let mut f = std::fs::File::create(part(name)).map_err(|e| e.to_string())?;
-                std::io::Write::write_all(&mut f, &bytes).map_err(|e| e.to_string())?;
+                match whole {
+                    Some(bytes) => {
+                        std::io::Write::write_all(&mut f, &bytes).map_err(|e| e.to_string())?;
+                    }
+                    None => {
+                        // Morceau par morceau, dans l'ordre, sans trou.
+                        let mut q = pack
+                            .prepare("SELECT n, bytes FROM chunks WHERE name = ?1 ORDER BY n")
+                            .map_err(|e| e.to_string())?;
+                        let mut rows = q.query([name]).map_err(|e| e.to_string())?;
+                        let mut expected = 0i64;
+                        while let Some(row) = rows.next().map_err(|e| e.to_string())? {
+                            let n: i64 = row.get(0).map_err(|e| e.to_string())?;
+                            if n != expected {
+                                return Err(crate::strings::trf("opts_bundle_missing", name));
+                            }
+                            let bytes: Vec<u8> = row.get(1).map_err(|e| e.to_string())?;
+                            std::io::Write::write_all(&mut f, &bytes).map_err(|e| e.to_string())?;
+                            expected += 1;
+                        }
+                    }
+                }
                 f.sync_all().map_err(|e| e.to_string())?;
             }
             for name in [BUNDLE_BASE, BUNDLE_SCANS, BUNDLE_STUPS] {
@@ -42777,8 +42938,20 @@ impl Db {
             .unwrap_or_default()
         };
         let weight: i64 = pack
-            .query_row("SELECT SUM(LENGTH(bytes)) FROM files", [], |r| r.get(0))
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(bytes)), 0) FROM files",
+                [],
+                |r| r.get(0),
+            )
             .map_err(|_| crate::strings::tr("opts_bundle_wrong_key").to_owned())?;
+        let in_chunks: i64 = pack
+            .query_row(
+                "SELECT COALESCE(SUM(LENGTH(bytes)), 0) FROM chunks",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap_or(0);
+        let weight = weight + in_chunks;
         Ok((read("version"), read("fait_le"), weight.max(0) as u64))
     }
 
@@ -59038,6 +59211,28 @@ mod tests {
         );
         // Et une pièce qui n'existe pas du tout est une autre erreur.
         assert!(orphan.scan_bytes(4242).is_err());
+
+        // **Les trois, ou rien** : une copie sur une ancienne remplace les
+        // trois fichiers ; une copie qui échoue ne touche à rien de ce
+        // qui était là, et ne laisse aucun `.part`.
+        let whole = dir.join("entiere.db");
+        std::fs::write(stups_path(&whole), b"ancien registre").unwrap();
+        db.copy_whole_to(&whole).unwrap();
+        assert_ne!(
+            std::fs::read(stups_path(&whole)).unwrap(),
+            b"ancien registre"
+        );
+        let there = Db::open(&whole, "secret").unwrap();
+        assert_eq!(there.scan_bytes(id).unwrap().0, pdf);
+        drop(there);
+        let nowhere = dir.join("absent").join("copie.db");
+        assert!(db.copy_whole_to(&nowhere).is_err());
+        let left: Vec<_> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().ends_with(".part"))
+            .collect();
+        assert!(left.is_empty(), "aucun .part laissé");
     }
 
     /// **Une exception ne réécrit pas la trame.**
@@ -59804,7 +59999,22 @@ mod tests {
         // six mois sur une clé n'a personne pour l'expliquer.
         let (version, _day, weight) = Db::bundle_about(&pack, "secret").unwrap();
         assert_eq!(version, env!("CARGO_PKG_VERSION"));
-        assert!(weight > 0);
+        // Plus gros qu'un morceau (4 Kio en test), la base voyage en
+        // morceaux, et le poids les compte.
+        let base_size = std::fs::metadata(dir.join(BUNDLE_BASE))
+            .map(|m| m.len())
+            .unwrap_or(0);
+        assert!(weight >= base_size.min(BUNDLE_CHUNK as u64), "{weight}");
+        {
+            let raw = Connection::open(&pack).unwrap();
+            raw.pragma_update(None, "key", "secret").unwrap();
+            let pieces: i64 = raw
+                .query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))
+                .unwrap();
+            assert!(pieces > 1, "en morceaux");
+        }
+        // Le dossier de travail ne reste pas.
+        assert!(!pack.with_extension("en-cours").exists());
         // Chiffré du mot de passe de la base, et de lui seul.
         assert!(Db::bundle_about(&pack, "autre").is_err());
 

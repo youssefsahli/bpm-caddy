@@ -113,10 +113,14 @@ fn spawn_daily_backup(
             std::thread::sleep(std::time::Duration::from_secs(10));
             opened = Db::open(&db_path, &password);
         }
+        // **Le registre d'abord, la base en dernier** : chaque ligne du
+        // registre cite un dossier, et une base copiée après lui les porte
+        // tous — copiée avant, un patient créé entre les deux manquait à
+        // la restauration.
         if let Ok(db) = opened {
-            daily_backup(&db, &db_path, &password, keep);
-            daily_scans_backup(&db, &db_path, scans_keep);
             daily_stups_backup(&db, &db_path, keep.max(scans_keep));
+            daily_scans_backup(&db, &db_path, scans_keep);
+            daily_backup(&db, &db_path, &password, keep);
         }
     });
 }
@@ -204,6 +208,23 @@ fn daily_copy(
     // moitié écrit du second.
     let part = target.with_extension(format!("db.{}.part", std::process::id()));
     let _ = std::fs::remove_file(&part);
+    // Les « .part » d'une copie coupée (une coupure de courant) portent
+    // le numéro d'un autre processus : passé un jour, ils partent.
+    if let Ok(rd) = std::fs::read_dir(dir) {
+        for e in rd.flatten() {
+            let name = e.file_name();
+            let name = name.to_string_lossy();
+            let stale = e
+                .metadata()
+                .and_then(|m| m.modified())
+                .ok()
+                .and_then(|t| t.elapsed().ok())
+                .is_some_and(|age| age > std::time::Duration::from_secs(24 * 3600));
+            if name.starts_with(prefix) && name.ends_with(".part") && stale {
+                let _ = std::fs::remove_file(e.path());
+            }
+        }
+    }
     if let Err(e) = write(&part) {
         let _ = std::fs::remove_file(&part);
         eprintln!("bpm-caddy : {e}");
@@ -15852,6 +15873,10 @@ struct OptionsEditor {
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
     confirm_telemetry_clear: bool,
+    /// Ce que le dossier des copies tient, relu au plus toutes les trente
+    /// secondes : lu à chaque image, c'était un `read_dir` sur un partage
+    /// réseau soixante fois par seconde.
+    backup_seen: Option<(std::path::PathBuf, std::time::Instant, db::BackupState)>,
     /// Le premier numéro d'ordonnancier, **tel qu'il est tapé**.
     ///
     /// Le texte vit ici jusqu'à ce que le champ perde le foyer, comme
@@ -15900,6 +15925,7 @@ impl OptionsEditor {
             message: None,
             confirm_reset: false,
             confirm_telemetry_clear: false,
+            backup_seen: None,
             stup_start_text: None,
         }
     }
@@ -17984,6 +18010,7 @@ impl App {
                 message: None,
                 confirm_reset: false,
                 confirm_telemetry_clear: false,
+                backup_seen: None,
                 stup_start_text: None,
             })
         } else {
@@ -81048,7 +81075,21 @@ impl eframe::App for App {
                                         // is silent: this line is what
                                         // makes it audible.
                                         Self::form_label(ui, tr("opts_backup_state"));
-                                        let state = crate::db::backup_state(&editor.cfg.db_path());
+                                        let path = editor.cfg.db_path();
+                                        let fresh = editor.backup_seen.as_ref().is_some_and(
+                                            |(p, at, _)| {
+                                                *p == path && at.elapsed() < Duration::from_secs(30)
+                                            },
+                                        );
+                                        if !fresh {
+                                            let read = crate::db::backup_state(&path);
+                                            editor.backup_seen = Some((path, Instant::now(), read));
+                                        }
+                                        let state = editor
+                                            .backup_seen
+                                            .as_ref()
+                                            .map(|(_, _, s)| s.clone())
+                                            .unwrap_or_default();
                                         let text = match (&state.newest, &state.oldest) {
                                             (Some(newest), Some(oldest)) => trn(
                                                 "opts_backup_have",
@@ -82042,50 +82083,13 @@ impl eframe::App for App {
                     .any(|p| session.db.is_live(p)));
             let result = if same || onto_live {
                 Err(tr("opts_db_same").to_owned())
-            } else if let State::Unlocked(session) = &self.state {
-                // The native dialog already confirmed overwriting, but
-                // VACUUM INTO refuses existing files — clear it first.
-                if target.exists() {
-                    let _ = std::fs::remove_file(&target);
-                }
-                // Les trois fichiers, toujours. Copier la base seule
-                // emporterait les fiches des pièces et laisserait leurs
-                // octets derrière : sur le poste d'arrivée, chaque pièce
-                // s'afficherait dans sa liste et refuserait de s'ouvrir.
-                // Et laisserait le registre en arrière, ce qui serait
-                // pire : lui ne s'afficherait pas du tout.
-                session
-                    .db
-                    .backup_to(&target)
-                    // **Et ce qui traînait à l'arrivée part d'abord**, même
-                    // quand il n'y a rien à copier : un registre resté là
-                    // d'un essai précédent devenait, au démarrage suivant,
-                    // le registre de la base qu'on vient de copier.
-                    .and_then(|()| {
-                        let side = db::scans_path(&target);
-                        if side.exists() {
-                            let _ = std::fs::remove_file(&side);
-                        }
-                        if session.db.scan_weight().map(|(n, _)| n).unwrap_or(0) == 0 {
-                            return Ok(());
-                        }
-                        session.db.backup_scans_to(&side)
-                    })
-                    .and_then(|()| {
-                        let side = db::stups_path(&target);
-                        if side.exists() {
-                            let _ = std::fs::remove_file(&side);
-                        }
-                        // **Toujours copié**, vide ou non : il porte
-                        // aussi les produits déclarés et le premier
-                        // numéro de l'ordonnancier. Copié seulement s'il
-                        // avait des lignes, une officine qui avait
-                        // déclaré ses produits et fixé son départ à 18950
-                        // retrouvait à l'arrivée un registre neuf, et sa
-                        // première délivrance prenait le numéro 1. Et une
-                        // erreur de lecture du compte passait pour « vide ».
-                        session.db.backup_stups_to(&side)
-                    })
+            } else if let State::Unlocked(session) = &mut self.state {
+                // Une date tapée et pas encore quittée part avec la copie.
+                session.flush_date_edits();
+                // Les trois fichiers, toujours, et ensemble : copier la base
+                // seule laisserait les pièces et le registre en arrière —
+                // voir `Db::copy_whole_to`.
+                session.db.copy_whole_to(&target)
             } else {
                 Err(tr("opts_db_locked").to_owned())
             };
@@ -82094,6 +82098,24 @@ impl eframe::App for App {
                 session
                     .db
                     .log_access(&session.operator, crate::audit::Act::Exporte, 0);
+            }
+            // **Déplacer bascule tout de suite** : la copie faite, ce poste
+            // ouvre la copie au déverrouillage suivant, et rien ne s'écrit
+            // plus dans l'ancienne entre-temps — ce qui était saisi entre
+            // le clic et un redémarrage, le lendemain parfois, manquait à
+            // la nouvelle base.
+            if point && result.is_ok() {
+                let mut moved = self.config.clone();
+                moved.database.path = Some(target.clone());
+                if moved.save().is_ok() {
+                    self.config = moved;
+                    self.options = None;
+                    self.state = State::Locked {
+                        password: String::new(),
+                        error: Some(tr("opts_db_moved_now").to_owned()),
+                    };
+                    return;
+                }
             }
             if let Some(editor) = &mut self.options {
                 match result {
@@ -93266,8 +93288,25 @@ mod tests {
         for day in 1..=16 {
             std::fs::write(bdir.join(format!("bpm_caddy-2000-01-{day:02}.db")), b"old").unwrap();
         }
+        // A copy cut by a power failure two days ago, under another
+        // process's number: swept. One of the hour stays (it may be
+        // another post's copy in progress).
+        let stale = bdir.join("bpm_caddy-2000-02-01.db.99999.part");
+        let fresh = bdir.join("bpm_caddy-2000-02-02.db.99998.part");
+        for p in [&stale, &fresh] {
+            std::fs::write(p, b"half").unwrap();
+        }
+        std::fs::File::options()
+            .write(true)
+            .open(&stale)
+            .unwrap()
+            .set_modified(std::time::SystemTime::now() - std::time::Duration::from_secs(48 * 3600))
+            .unwrap();
 
         super::daily_backup(&db, &db_path, "secret", 14);
+        assert!(!stale.exists(), "le .part d'avant-hier est balayé");
+        assert!(fresh.exists(), "celui de l'heure reste");
+        std::fs::remove_file(&fresh).unwrap();
         let today = db.today_iso().unwrap();
         let todays = bdir.join(format!("bpm_caddy-{today}.db"));
         assert!(todays.exists());

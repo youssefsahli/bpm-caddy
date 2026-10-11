@@ -8,6 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- « Copier / Déplacer la base vers… »: the base, its pieces and its
+  register are written beside the destination and put in place together;
+  a failed copy no longer leaves a broken base under the real name with
+  last week's register next to it. « Déplacer » switches this post to the
+  copy at once (it locks, and reopens on the copy), so nothing typed
+  after the click is left behind in the old file.
+- Daily copies: the register is copied first and the base last, so a
+  restored register never cites a file the base lacks; copies cut by a
+  power failure are swept after a day.
+- Export bundle: a file over 256 MB travels in pieces (the pieces file
+  passed SQLite's one-gigabyte limit after about eighteen months, and the
+  export failed for good); the working folder is removed when an export
+  fails.
+- « Réinitialiser la base » first copies the three files into the backup
+  folder, outside the daily series.
+- Options › Base reads the backup folder at most every thirty seconds,
+  not on every frame.
+
 ## [0.398.0] - 2026-10-12
 
 ### Fixed

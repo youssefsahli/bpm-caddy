@@ -140,10 +140,20 @@ const DETAILS: &[Step] = &[Step {
 /// Emptying every table, then putting the shipped content back. The
 /// wipe is its own step because it is the one the operator is anxious
 /// about: it should be seen to start and to finish.
-const RESET: &[Step] = &[Step {
-    key: "maint_step_wipe",
-    run: Db::wipe_all_data,
-}];
+///
+/// **Une copie des trois fichiers d'abord**, hors de la série des copies
+/// quotidiennes : sans elle, le filet était la copie du matin, que les
+/// copies des jours suivants — d'une base vide — poussaient dehors.
+const RESET: &[Step] = &[
+    Step {
+        key: "maint_step_snapshot",
+        run: Db::snapshot_before_reset,
+    },
+    Step {
+        key: "maint_step_wipe",
+        run: Db::wipe_all_data,
+    },
+];
 
 /// Reprendre la place : déplacer ce qui restait de pièces dans la base
 /// principale, balayer les octets orphelins, puis réécrire les deux
@@ -350,9 +360,24 @@ mod tests {
     #[test]
     fn the_reset_empties_before_it_refills() {
         let steps = steps(Job::Reset);
-        assert_eq!(steps[0].key, "maint_step_wipe");
-        assert!(steps.len() > 1, "un effacement sans remise en place");
-        assert_eq!(steps[1].key, "maint_step_drugs");
+        assert_eq!(steps[0].key, "maint_step_snapshot", "une copie d'abord");
+        assert_eq!(steps[1].key, "maint_step_wipe");
+        assert!(steps.len() > 2, "un effacement sans remise en place");
+        assert_eq!(steps[2].key, "maint_step_drugs");
+        // Et la copie est faite, les trois fichiers, hors de la série.
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-maint-r-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let db = Db::open(&dir.join("maint.db"), "secret").unwrap();
+        assert_eq!(db.snapshot_before_reset().unwrap(), 1);
+        let copies: Vec<String> = std::fs::read_dir(dir.join("backups"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(copies.len(), 2, "la base et son registre : {copies:?}");
+        assert!(copies.iter().all(|c| c.contains("avant-remise-a-zero")));
     }
 
     /// The job actually runs, reports one message per step plus the
