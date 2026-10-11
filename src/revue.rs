@@ -1407,10 +1407,7 @@ mod tests {
             "biphosphonate — perfusion annuelle",
         );
         let cacit = t("Cacit", "carbonate de calcium", "calcium");
-        assert!(!fired(
-            &[aclasta, cacit],
-            "Bisphosphonate à distance"
-        ));
+        assert!(!fired(&[aclasta, cacit], "Bisphosphonate à distance"));
         let fosamax = t("Fosamax", "alendronate", "bisphosphonate");
         assert!(fired(&[fosamax, cacit], "Bisphosphonate à distance"));
         let ellaone = t("EllaOne", "ulipristal", "contraception d'urgence");
@@ -1421,14 +1418,8 @@ mod tests {
             "lévonorgestrel + éthinylestradiol",
             "estroprogestatif",
         );
-        assert!(!fired(
-            &[ellaone, mifegyne],
-            "Ulipristal + progestatif"
-        ));
-        assert!(fired(
-            &[ellaone, duphaston],
-            "Ulipristal + progestatif"
-        ));
+        assert!(!fired(&[ellaone, mifegyne], "Ulipristal + progestatif"));
+        assert!(fired(&[ellaone, duphaston], "Ulipristal + progestatif"));
         assert!(fired(&[ellaone, pill], "Ulipristal + progestatif"));
     }
 

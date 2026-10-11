@@ -80,6 +80,10 @@ pub enum Act {
     /// après confirmation — la seule façon dont un patient quitte
     /// l'officine par le réseau.
     Transmis,
+    /// Un acte qu'une version postérieure a écrit (le journal voyage entre
+    /// les postes) : compté à part, jamais pris pour un dossier ouvert.
+    /// Jamais écrit par celle-ci, et hors de [`Act::ALL`].
+    Autre,
 }
 
 impl Act {
@@ -99,6 +103,7 @@ impl Act {
             Act::Purge => "purge",
             Act::Console => "console",
             Act::Transmis => "transmis",
+            Act::Autre => "autre",
         }
     }
 
@@ -116,6 +121,7 @@ impl Act {
             Act::Purge => tr("audit_act_purge"),
             Act::Console => tr("audit_act_console"),
             Act::Transmis => tr("audit_act_transmis"),
+            Act::Autre => tr("audit_act_autre"),
         }
     }
 }
@@ -206,7 +212,9 @@ pub fn summarize(accesses: &[Access]) -> Summary {
         // le nombre de lignes qu'elle a retirées, et ce nombre se
         // comptait comme un numéro de dossier — un de plus, ou fondu
         // avec le vrai dossier qui porte ce numéro.
-        if a.file != 0 && a.act != Act::Purge {
+        // Un acte inconnu non plus : ce qu'il range dans `file` n'est pas
+        // dit.
+        if a.file != 0 && a.act != Act::Purge && a.act != Act::Autre {
             files.insert(a.file);
         }
         *per_act.entry(a.act.key()).or_default() += 1;
@@ -236,6 +244,7 @@ pub fn summarize(accesses: &[Access]) -> Summary {
         by_act: Act::ALL
             .into_iter()
             .map(|act| (act, per_act.get(act.key()).copied().unwrap_or(0)))
+            .chain(per_act.get(Act::Autre.key()).map(|n| (Act::Autre, *n)))
             .collect(),
         by_operator,
     }
@@ -847,5 +856,24 @@ mod tests {
             ["ouvert", "exporte", "purge", "console", "transmis"]
         );
         assert_eq!(Act::from_key("ce-que-fera-la-suite"), None);
+        assert!(!Act::ALL.contains(&Act::Autre));
+    }
+
+    /// **Un acte d'une version plus récente n'est pas un dossier ouvert** :
+    /// compté à part, et son `file` n'est pas un dossier touché.
+    #[test]
+    fn an_act_from_a_newer_version_is_counted_apart() {
+        let line = |act, file| Access {
+            at: "2026-10-11 10:00:00".to_owned(),
+            operator: "CL".to_owned(),
+            act,
+            file,
+        };
+        let s = summarize(&[line(Act::Ouvert, 7), line(Act::Autre, 42)]);
+        assert_eq!(s.files, 1);
+        assert!(s.by_act.contains(&(Act::Ouvert, 1)));
+        assert!(s.by_act.contains(&(Act::Autre, 1)));
+        let s = summarize(&[line(Act::Ouvert, 7)]);
+        assert!(s.by_act.iter().all(|(a, _)| *a != Act::Autre));
     }
 }

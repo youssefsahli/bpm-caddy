@@ -79,7 +79,7 @@ pub struct Scanned {
     /// Le numéro de série (AI 21). Lu, gardé, et ici sans emploi.
     pub serial: String,
     /// La lecture est-elle allée au bout ? Faux quand un AI inconnu l'a
-    /// arrêtée.
+    /// arrêtée, ou qu'une péremption ne se lisait pas.
     pub read_to_end: bool,
     /// Ce que la douchette a tapé, entier. Rien ne se garde sans ce qui
     /// l'a produit.
@@ -250,7 +250,13 @@ fn read_element_string(
                     out.read_to_end = false;
                     break;
                 };
-                out.expiry = read_expiry(digits, today).unwrap_or_default();
+                // Une date impossible n'est pas une lecture propre : la
+                // péremption reste vide, et la lecture le dit plutôt que
+                // de passer pour une boîte sans péremption.
+                match read_expiry(digits, today) {
+                    Some(e) => out.expiry = e,
+                    None => out.read_to_end = false,
+                }
                 rest = tail;
             }
             "10" | "21" => {
@@ -497,6 +503,7 @@ mod tests {
         let bad = read(&format!("01{GTIN14}17261331"), "2026-09-01").unwrap();
         assert_eq!(bad.code, GTIN14);
         assert!(bad.expiry.is_empty());
+        assert!(!bad.read_to_end, "et la lecture le dit");
         let overflow = read(&format!("01{GTIN14}17260231"), "2026-09-01").unwrap();
         assert!(overflow.expiry.is_empty(), "le 31 février n'existe pas");
     }

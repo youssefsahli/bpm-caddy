@@ -3180,20 +3180,25 @@ fn week_plan_values(
             crate::db::format_french_date(day)
         );
         let mark = if day == today { " (aujourd'hui)" } else { "" };
-        let mut body = String::new();
+        // **Dans l'ordre de la journée** : rendez-vous et événements
+        // ensemble, par heure ; ce qui n'a pas d'heure vient après.
+        let mut items: Vec<(String, String)> = Vec::new();
         for rdv in appointments.iter().filter(|r| r.date == *day) {
             let hour = if rdv.time.is_empty() {
                 String::new()
             } else {
                 format!("{} ", rdv.time)
             };
-            body.push_str(&format!(
-                "#text(size: 8pt)[#{}]#linebreak()\n",
-                typst_str(&format!(
-                    "{hour}{} — {}",
-                    rdv.patient_name,
-                    rdv.kind.label()
-                ))
+            items.push((
+                rdv.time.trim().to_owned(),
+                format!(
+                    "#text(size: 8pt)[#{}]#linebreak()\n",
+                    typst_str(&format!(
+                        "{hour}{} — {}",
+                        rdv.patient_name,
+                        rdv.kind.label()
+                    ))
+                ),
             ));
         }
         for ev in events.iter().filter(|e| e.day == *day) {
@@ -3204,11 +3209,17 @@ fn week_plan_values(
                 (t, "") => format!("{t} "),
                 (t, e) => format!("{t}–{e} "),
             };
-            body.push_str(&format!(
-                "#text(size: 8pt, style: \"italic\")[#{}]#linebreak()\n",
-                typst_str(&format!("{hour}{} ({})", ev.title, ev.category.label()))
+            items.push((
+                ev.time.trim().to_owned(),
+                format!(
+                    "#text(size: 8pt, style: \"italic\")[#{}]#linebreak()\n",
+                    typst_str(&format!("{hour}{} ({})", ev.title, ev.category.label()))
+                ),
             ));
         }
+        // `HH:MM` se trie comme du texte ; le tri est stable.
+        items.sort_by(|a, b| (a.0.is_empty(), &a.0).cmp(&(b.0.is_empty(), &b.0)));
+        let mut body: String = items.into_iter().map(|(_, m)| m).collect();
         if body.is_empty() {
             body.push_str("#text(size: 8pt, fill: gray)[—]\n");
         }
@@ -4181,7 +4192,27 @@ pub fn sweep_private() {
     }
 }
 
-/// would fail).
+/// Un nom de fichier temporaire neuf pour un PDF : à la seconde près,
+/// deux impressions de la même seconde (les trois liasses d'un dossier
+/// portent le même nom) s'écrasaient, ou la seconde échouait sous
+/// Windows pendant que la visionneuse tenait la première.
+fn fresh_pdf_path(stem: &str) -> PathBuf {
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    let seq = SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    std::env::temp_dir().join(format!(
+        "bpm_caddy_{stem}_{nanos}_{}_{seq}.pdf",
+        std::process::id()
+    ))
+}
+
+/// Compile Typst source to a PDF in the temp dir and open it in the OS
+/// viewer. The file name is unique per generation ([`fresh_pdf_path`]):
+/// the previous PDF may still be open in the viewer (Windows locks it,
+/// and reusing the name would fail).
 fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
     let world = PdfWorld::new(source);
     let document: PagedDocument = typst::compile(&world)
@@ -4190,11 +4221,7 @@ fn compile_and_open(source: String, stem: &str) -> Result<PathBuf, String> {
     let pdf = typst_pdf::pdf(&document, &typst_pdf::PdfOptions::default())
         .map_err(|errs| format!("export PDF : {}", format_diagnostics(&errs)))?;
 
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let out = std::env::temp_dir().join(format!("bpm_caddy_{stem}_{stamp}.pdf"));
+    let out = fresh_pdf_path(stem);
     write_private(&out, &pdf).map_err(|e| format!("écriture du PDF impossible : {e}"))?;
     open::that_detached(&out).map_err(|e| format!("ouverture du PDF impossible : {e}"))?;
     // Compté ici et nulle part ailleurs : les vingt et un `open_*`
@@ -4380,11 +4407,27 @@ fn appointment_list_values(
 ) -> Vec<(&'static str, String)> {
     let mut rows = String::new();
     for rdv in rdvs {
+        // L'heure dans la case de la date, « à distance » dans celle du
+        // type : deux rendez-vous du même jour se distinguent, et le
+        // modèle d'une officine garde ses quatre colonnes.
+        let mut when = crate::db::format_french_date(&rdv.date);
+        if !rdv.time.trim().is_empty() {
+            when = format!("{when} {}", rdv.time.trim());
+        }
+        let kind = if rdv.remote {
+            format!(
+                "{} ({})",
+                rdv.kind.label(),
+                crate::strings::tr("agenda_place_remote").to_lowercase()
+            )
+        } else {
+            rdv.kind.label().to_owned()
+        };
         rows.push_str(&format!(
             "  {}, {}, {}, {},\n",
-            typst_str(&crate::db::format_french_date(&rdv.date)),
+            typst_str(&when),
             typst_str(&rdv.patient_name),
-            typst_str(rdv.kind.label()),
+            typst_str(&kind),
             typst_str(&rdv.phone),
         ));
     }
@@ -4567,12 +4610,8 @@ pub fn open_bulletin(
     pharmacy: &PharmacyConfig,
 ) -> Result<PathBuf, String> {
     let bytes = crate::bulletin::fill(kind, patient, pharmacy)?;
-    let stamp = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-    let out = std::env::temp_dir().join(format!(
-        "bpm_caddy_bulletin_{}_{}_{stamp}.pdf",
+    let out = fresh_pdf_path(&format!(
+        "bulletin_{}_{}",
         patient.id,
         kind.as_str().to_lowercase()
     ));
@@ -7524,7 +7563,16 @@ fn label_sheet_values(data: &LabelSheet, pharmacy: &PharmacyConfig) -> Vec<(&'st
     };
     let mut body = String::new();
     for (name, dose, missed) in &data.lines {
-        let missed = short(missed, 110);
+        // La place que la posologie prend est rendue par l'oubli : sur
+        // une étiquette de taille fixe, c'est lui qui cède, et sous une
+        // posologie très longue il ne s'imprime pas (le plan de prise le
+        // porte entier).
+        let dose_len = dose.trim().chars().count();
+        let missed = match dose_len {
+            0..=70 => short(missed, 110),
+            71..=150 => short(missed, 60),
+            _ => String::new(),
+        };
         let missed = if missed.is_empty() {
             String::new()
         } else {
@@ -7543,13 +7591,13 @@ fn label_sheet_values(data: &LabelSheet, pharmacy: &PharmacyConfig) -> Vec<(&'st
         // lecture, jamais au sens : c'est le corps qui cède, d'un cran,
         // et la phrase de l'oubli qui s'arrête.
         let dose = dose.trim();
-        let dose_pt = if dose.chars().count() <= 70 {
-            "9.5pt"
-        } else {
-            "8pt"
+        let dose_pt = match dose_len {
+            0..=70 => "9.5pt",
+            71..=150 => "8pt",
+            _ => "7pt",
         };
         body.push_str(&format!(
-            "  box(width: 100%, height: 100%, stroke: 0.5pt, inset: 5pt, clip: true)[\n    #text(11pt, weight: \"bold\")[#{}] \\\n    #text({dose_pt})[#{}]{}\n    #place(bottom + left)[#text(6.5pt)[#{} — #{}]]\n  ],\n",
+            "  box(width: 100%, height: 100%, stroke: 0.5pt, inset: 5pt, clip: true)[\n    #text(11pt, weight: \"bold\")[#{}] \\\n    #text({dose_pt})[#{}]{}\n    #v(1fr)\n    #text(6.5pt)[#{} — #{}]\n  ],\n",
             typst_str(name.trim()),
             typst_str(dose),
             missed,
@@ -9009,6 +9057,7 @@ mod tests {
         let long = "Prendre le comprimé oublié dès que l'on s'en aperçoit, sauf s'il est presque l'heure de la prise suivante, auquel cas on saute la prise oubliée et on reprend le rythme habituel sans jamais doubler la dose.";
         const LONG_DOSE: &str =
             "1 comprimé le matin et 1 le soir pendant 7 jours, puis 1 comprimé le matin seul";
+        const VERY_LONG_DOSE: &str = "25 mg un jour sur deux pendant 2 semaines, puis 25 mg par jour pendant 2 semaines, puis 50 mg par jour pendant 1 semaine, puis 100 mg par jour en une ou deux prises, à adapter selon la réponse et la tolérance, sans jamais dépasser la dose prescrite";
         let data = LabelSheet {
             patient: &patient,
             today: "24/08/2026",
@@ -9034,6 +9083,14 @@ mod tests {
                     "Kardégic 75 mg".to_owned(),
                     LONG_DOSE.to_owned(),
                     String::new(),
+                ),
+                // Une titration écrite en entier, sous un nom de deux
+                // lignes : le pied ne recouvre plus le texte, et l'oubli
+                // cède sa place.
+                (
+                    "Lamotrigine Arrow 25 mg comprimé dispersible ou à croquer".to_owned(),
+                    VERY_LONG_DOSE.to_owned(),
+                    "Prendre dès que possible sauf si la prise suivante est proche.".to_owned(),
                 ),
             ],
             mention: "",
@@ -9064,6 +9121,8 @@ mod tests {
         // Le second traitement n'a rien à dire sur l'oubli : pas de
         // ligne du tout, plutôt qu'un « Oubli : » suivi de rien.
         assert_eq!(labels.matches("Oubli :").count(), 1);
+        assert!(labels.contains(VERY_LONG_DOSE) && labels.contains("7pt)"));
+        assert!(!labels.contains("place(bottom"), "le pied suit le texte");
         assert!(!labels.contains("#eval \"x\"]"), "rien n'est du code Typst");
         // Une mention vide n'imprime pas un cadre vide.
         assert_eq!(
@@ -9493,17 +9552,30 @@ mod tests {
                 operator: String::new(),
             },
         ];
-        let events = vec![Event {
-            end_time: String::new(),
-            id: 1,
-            day: "2026-08-25".to_owned(),
-            time: "14:00".to_owned(),
-            title: "Formation AOD".to_owned(),
-            category: EventCategory::Formation,
-            repeat_days: 0,
-            cadence: String::new(),
-            source_id: 1,
-        }];
+        let events = vec![
+            Event {
+                end_time: String::new(),
+                id: 1,
+                day: "2026-08-25".to_owned(),
+                time: "14:00".to_owned(),
+                title: "Formation AOD".to_owned(),
+                category: EventCategory::Formation,
+                repeat_days: 0,
+                cadence: String::new(),
+                source_id: 1,
+            },
+            Event {
+                end_time: String::new(),
+                id: 2,
+                day: "2026-08-27".to_owned(),
+                time: "08:00".to_owned(),
+                title: "Réunion d'équipe".to_owned(),
+                category: EventCategory::Formation,
+                repeat_days: 0,
+                cadence: String::new(),
+                source_id: 2,
+            },
+        ];
         let src = fill(
             DEFAULT_SEMAINE_TEMPLATE,
             &week_plan_values(&week, &rdvs, &events, "2026-08-25"),
@@ -9511,6 +9583,8 @@ mod tests {
         // The hostile name is escaped, and the timed rendez-vous leads.
         assert!(!src.contains("#eval \"Bernard\"]"));
         assert!(src.find("09:30").unwrap() < src.find("Paul").unwrap());
+        // An event at 08:00 comes before the 09:30 rendez-vous.
+        assert!(src.find("Réunion").unwrap() < src.find("09:30").unwrap());
         let world = PdfWorld::new(src);
         let document: PagedDocument = typst::compile(&world)
             .output
@@ -10145,6 +10219,11 @@ mod tests {
     }
 
     #[test]
+    fn two_prints_in_the_same_instant_get_two_files() {
+        assert_ne!(fresh_pdf_path("liasse_1"), fresh_pdf_path("liasse_1"));
+    }
+
+    #[test]
     fn appointment_list_compiles_even_with_hostile_names() {
         let rdvs = [
             Appointment {
@@ -10172,10 +10251,13 @@ mod tests {
                 operator: "CL".to_owned(),
             },
         ];
-        let source = fill(
-            DEFAULT_RDV_TEMPLATE,
-            &appointment_list_values(&rdvs, "23/08/2026"),
+        let values = appointment_list_values(&rdvs, "23/08/2026");
+        let rows = &values.iter().find(|(k, _)| *k == "{{ROWS}}").unwrap().1;
+        assert!(
+            rows.contains("03/09/2026 09:30"),
+            "l'heure est imprimée : {rows}"
         );
+        let source = fill(DEFAULT_RDV_TEMPLATE, &values);
         let world = PdfWorld::new(source);
         let document: PagedDocument = typst::compile(&world)
             .output

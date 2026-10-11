@@ -198,14 +198,19 @@ pub fn beneficiaries(raw: &[u8], this_year: u32) -> Vec<Beneficiary> {
         let lo = n.checked_sub(1).map_or(0, |p| found_at[p] + 15);
         let hi = found_at.get(n + 1).copied().unwrap_or(chars.len());
         let (surname, given) = names_around(&chars, i, lo..hi, side);
-        let birth_date = birth_around(&chars, i, &window, this_year);
+        let birth_date = birth_around(&chars, i, lo..hi, &window, this_year);
         let found = Beneficiary {
             nir: window,
             surname,
             given,
             birth_date,
         };
-        if !out.iter().any(|b| b.nir == found.nir) {
+        // Une personne par numéro **et par nom** : un enfant écrit sous
+        // le NIR de l'assuré est une seconde personne, pas un doublon.
+        if !out
+            .iter()
+            .any(|b| b.nir == found.nir && b.surname == found.surname && b.given == found.given)
+        {
             out.push(found);
         }
     }
@@ -332,15 +337,23 @@ fn push_run(runs: &mut Vec<(usize, String)>, at: usize, run: String) {
 /// That agreement is the whole point: eight digits near a NIR could be
 /// anything, and a birth date invented from an expiry date would put a
 /// wrong age on a file for years.
-fn birth_around(chars: &[char], at: usize, nir: &str, this_year: u32) -> String {
+fn birth_around(
+    chars: &[char],
+    at: usize,
+    bounds: std::ops::Range<usize>,
+    nir: &str,
+    this_year: u32,
+) -> String {
     let Some((year, month)) = nir_birth(nir, this_year) else {
         return String::new();
     };
     let Some(month) = month else {
         return String::new();
     };
-    let start = at.saturating_sub(96);
-    let end = (at + 15 + 96).min(chars.len());
+    // Jamais au-delà d'un NIR voisin, comme les noms : un conjoint né le
+    // même mois de la même année donnait sinon son jour.
+    let start = at.saturating_sub(96).max(bounds.start);
+    let end = (at + 15 + 96).min(chars.len()).min(bounds.end.max(at + 15));
     let text: String = chars[start..end].iter().collect();
     let digits: Vec<char> = text.chars().collect();
     for k in 0..digits.len().saturating_sub(7) {
@@ -591,6 +604,19 @@ mod tests {
         let found = beneficiaries(after, 2026);
         assert_eq!(found[0].label(), "DELACROIX CLAIRE");
         assert_eq!(found[1].label(), "MARTIN LUCIE");
+    }
+
+    /// **A spouse born the same month does not lend their day.** The
+    /// birth date was searched 96 characters around the NIR, across the
+    /// neighbour's: the holder, whose date the card does not write,
+    /// took the spouse's.
+    #[test]
+    fn a_birth_date_is_never_read_past_a_neighbouring_nir() {
+        let raw = b"\x00DUPONT\x00JEAN\x00155087511600125\x00DUPONT\x00MARIE\x00255087511600172\x0017081955\x00";
+        let found = beneficiaries(raw, 2026);
+        assert_eq!(found.len(), 2);
+        assert_eq!(found[1].birth_date, "1955-08-17");
+        assert_eq!(found[0].birth_date, "", "{:?}", found[0]);
     }
 
     /// What must never happen: a number that is not a NIR read as one,

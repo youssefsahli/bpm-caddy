@@ -46384,7 +46384,7 @@ impl Db {
                     at: r.get::<_, String>(0)?,
                     operator: r.get::<_, String>(1)?,
                     act: crate::audit::Act::from_key(&r.get::<_, String>(2)?)
-                        .unwrap_or(crate::audit::Act::Ouvert),
+                        .unwrap_or(crate::audit::Act::Autre),
                     file: r.get::<_, i64>(3)?,
                 })
             })

@@ -291,9 +291,55 @@ fn pdf_literal(bytes: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Helvetica is about half an em wide on average; enough to decide
-/// whether a long address has to be set smaller to fit its box.
-const AVERAGE_GLYPH_EM: f32 = 0.5;
+/// Helvetica's advance widths (the standard AFM, in thousandths of an
+/// em) for printable ASCII, from the space on. An average of half an em
+/// underestimated capitals and a name in upper case was clipped at the
+/// edge of its field on paper.
+const HELVETICA: [u16; 95] = [
+    278, 278, 355, 556, 556, 889, 667, 191, 333, 333, 389, 584, 278, 333, 278, 278, // ' '../
+    556, 556, 556, 556, 556, 556, 556, 556, 556, 556, // 0-9
+    278, 278, 584, 584, 584, 556, 1015, // :;<=>?@
+    667, 667, 722, 722, 667, 611, 778, 722, 278, 500, 667, 556, 833, // A-M
+    722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, // N-Z
+    278, 278, 278, 469, 556, 333, // [\]^_`
+    556, 556, 500, 556, 556, 278, 556, 556, 222, 222, 500, 222, 833, // a-m
+    556, 556, 556, 556, 333, 500, 278, 556, 500, 722, 500, 500, 500, // n-z
+    334, 260, 334, 584, // {|}~
+];
+
+/// The width of `text` in Helvetica, in ems: an accented letter is as
+/// wide as its base letter; anything else counts as a digit.
+fn helvetica_em(text: &str) -> f32 {
+    let width = |c: char| -> u16 {
+        let base = match c {
+            'à' | 'â' | 'ä' | 'á' | 'ã' | 'å' => 'a',
+            'À' | 'Â' | 'Ä' | 'Á' | 'Ã' | 'Å' => 'A',
+            'é' | 'è' | 'ê' | 'ë' => 'e',
+            'É' | 'È' | 'Ê' | 'Ë' => 'E',
+            'î' | 'ï' | 'í' | 'ì' => 'i',
+            'Î' | 'Ï' | 'Í' | 'Ì' => 'I',
+            'ô' | 'ö' | 'ó' | 'ò' | 'õ' => 'o',
+            'Ô' | 'Ö' | 'Ó' | 'Ò' | 'Õ' => 'O',
+            'ù' | 'û' | 'ü' | 'ú' => 'u',
+            'Ù' | 'Û' | 'Ü' | 'Ú' => 'U',
+            'ç' => 'c',
+            'Ç' => 'C',
+            'ñ' => 'n',
+            'Ñ' => 'N',
+            'ÿ' | 'ý' => 'y',
+            'Ÿ' | 'Ý' => 'Y',
+            'œ' => return 944,
+            'Œ' | 'Æ' => return 1000,
+            'æ' => return 889,
+            c => c,
+        };
+        match base {
+            ' '..='~' => HELVETICA[base as usize - 32],
+            _ => 556,
+        }
+    };
+    text.chars().map(|c| f32::from(width(c))).sum::<f32>() / 1000.0
+}
 
 /// Write `value` into the text field named `name`: the value itself,
 /// a `/DA` that draws it through Helvetica, and an appearance stream so
@@ -311,7 +357,7 @@ fn set_text_field(
     let (w, h) = (rect[2] - rect[0], rect[3] - rect[1]);
     // Shrink to fit rather than overflow the ruled line.
     let mut size = (h * 0.62).clamp(6.0, 10.0);
-    let needed = value.chars().count() as f32 * AVERAGE_GLYPH_EM;
+    let needed = helvetica_em(value);
     if needed > 0.0 {
         size = size.min(((w - 4.0).max(1.0)) / needed).max(5.0);
     }
@@ -492,6 +538,21 @@ mod tests {
             ["12 rue des Lilas".to_owned(), String::new()]
         );
         assert_eq!(split_address(""), [String::new(), String::new()]);
+    }
+
+    /// **Les capitales sont plus larges que la moyenne** : le nom du
+    /// pharmacien désigné, en capitales, tenait dans le calcul et
+    /// dépassait du champ sur le papier.
+    #[test]
+    fn a_name_in_capitals_is_measured_wider_than_half_an_em() {
+        assert!((helvetica_em("a") - 0.556).abs() < 1e-6);
+        assert!((helvetica_em("É") - helvetica_em("E")).abs() < 1e-6);
+        let name = "Dr Marie-Christine DELACROIX-LEFEBVRE";
+        let em = helvetica_em(name);
+        assert!(em > name.chars().count() as f32 * 0.5, "{em}");
+        // Au corps que le champ choisit, le nom tient dans ses 180 points.
+        let size = (176.0 / em).min(10.0);
+        assert!(em * size <= 176.0 + 1e-3);
     }
 
     #[test]

@@ -8,6 +8,46 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Officines' network: a message or a shared version too large for one
+  record no longer blocks publishing. It is reported and set aside, the
+  following items still leave, and what was sealed before an error is
+  marked sent — it was sealed again, and the journals grew, on every
+  synchronisation, and « Essayer » failed every time.
+- Officines' network: a codex, protocol or vaccine field typed back to its
+  value from before a local version now sends a new version; the other
+  officines kept the intermediate value for good.
+- Weight-based dosing: « dose maximale 28 mg/kg/jour » is read as a
+  ceiling, not as a dose to give; a step (« augmentés de 10 mg/kg »,
+  « par paliers de 3,5 à 7 mg/kg/jour ») is no longer read as a dose.
+- Prescription review: a combination rule needs two lines (Eupressyl or
+  Natrixam alone no longer fire); IV iron and IV bisphosphonates are out
+  of the stomach-absorption rules; « antiprogestatif » is no longer a
+  progestogen; the ankle-oedema cascade names the dihydropyridines only.
+- Mechanism cascades: the naloxone of Targinact or Suboxone is not
+  carried (Targinact with Oxynorm read as an antagonism); a whole DCI the
+  cascade names answers alone; « A --> B » and « molécule : x : … » read.
+- Local forms: a nasal decongestant, a digestive antifungal and a
+  haemorrhoid cream are no longer placed on the skin, which hid real
+  same-site ties (Rhinofluimucil with Dérinox).
+- Facets are found by the folded name; index letters file Œ under O.
+- Box labels: a long posology is no longer covered by the footer or
+  clipped; the type steps down once more and the missed-dose line gives
+  way.
+- Appointment list: the time and remote appointments are printed. Week
+  plan: appointments and events are listed together by hour.
+- Bulletins: field text is measured with Helvetica's real widths, so a
+  name in capitals is no longer clipped at the field's edge.
+- Printing: two documents printed within the same second no longer share
+  a temporary file.
+- Vitale card: the file opened is the one whose birth date or given name
+  agrees with the card when several share a NIR, or the list is shown;
+  a child listed under the holder's NIR is no longer dropped from the
+  card's list, nor given a neighbour's birth day.
+- Barcode: an impossible expiry date says the reading is incomplete.
+- Access log: an act written by a newer version is counted apart, not as
+  an opened file.
+
 ## [0.397.0] - 2026-10-11
 
 ### Fixed

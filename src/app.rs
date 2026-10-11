@@ -9720,16 +9720,42 @@ impl Session {
     /// The NIR is what matches, not the name: two people can share a
     /// name and nobody shares a NIR.
     fn open_vitale(&mut self, who: &crate::vitale::Beneficiary) {
-        if let Some(p) = self
+        // **Un numéro ne suffit pas toujours** : un enfant ayant droit
+        // peut être rangé sous le NIR de l'assuré, et deux fiches porter
+        // le même numéro. La fiche ouverte est celle que le numéro
+        // désigne seule, ou la seule dont la date de naissance ou le
+        // prénom s'accorde avec la carte ; sinon la liste est montrée,
+        // et c'est l'opérateur qui choisit.
+        let candidates: Vec<&Patient> = self
             .patients
             .iter()
-            .find(|p| crate::vitale::same_nir(&p.nir, &who.nir))
-            .cloned()
-        {
+            .filter(|p| crate::vitale::same_nir(&p.nir, &who.nir))
+            .collect();
+        let agrees = |p: &Patient| {
+            let birth = !who.birth_date.is_empty() && p.birth_date == who.birth_date;
+            let given = !who.given.trim().is_empty()
+                && crate::fuzzy::eq_folded(p.first_name.trim(), who.given.trim());
+            birth || given
+        };
+        let says_nothing = who.birth_date.is_empty() && who.given.trim().is_empty();
+        let agreeing: Vec<&&Patient> = candidates.iter().filter(|p| agrees(p)).collect();
+        let pick = match (candidates.as_slice(), agreeing.as_slice()) {
+            ([only], _) if says_nothing || agrees(only) => Some((*only).clone()),
+            (_, [one]) => Some((**one).clone()),
+            _ => None,
+        };
+        if let Some(p) = pick {
             self.vitale_found.clear();
             self.vitale_note = None;
             self.query.clear();
             self.open_patient(p);
+            return;
+        }
+        if !candidates.is_empty() {
+            self.query = who.surname.trim().to_owned();
+            self.selected = 0;
+            self.vitale_found.clear();
+            self.vitale_note = Some((false, tr("vitale_several").to_owned()));
             return;
         }
         // Nobody with that NIR: the creation form opens already filled,
@@ -90759,6 +90785,55 @@ mod tests {
         assert!(on(&s, "2026-10-21"), "la semaine demandée");
         assert!(!on(&s, "2026-10-28"), "et plus l'autre");
         assert!(on(&s, "2026-01-07"), "les semaines d'avant restent");
+    }
+
+    /// **La carte Vitale ouvre la fiche de la personne, pas celle du
+    /// numéro** : un enfant rangé sous le NIR de l'assuré ouvrait la fiche
+    /// du parent.
+    #[test]
+    fn a_vitale_card_opens_the_person_not_the_number() {
+        let (mut s, _swept) = scratch_session("vitale_person");
+        let nir = "158077512345678";
+        for (last, first, birth) in [
+            ("Dupont", "Jean", "1958-07-03"),
+            ("Dupont", "Léa", "2015-04-02"),
+        ] {
+            let id = s.db.add_patient(last, first, birth).unwrap();
+            let p =
+                s.db.patients()
+                    .unwrap()
+                    .into_iter()
+                    .find(|p| p.id == id)
+                    .unwrap();
+            let mut with = p.clone();
+            with.nir = nir.to_owned();
+            assert!(s.db.update_patient(&with, &p).unwrap());
+        }
+        s.set_patients(s.db.patients().unwrap());
+        let who = |given: &str, birth: &str| crate::vitale::Beneficiary {
+            nir: nir.to_owned(),
+            surname: "DUPONT".to_owned(),
+            given: given.to_owned(),
+            birth_date: birth.to_owned(),
+        };
+        s.open_vitale(&who("LEA", ""));
+        assert_eq!(
+            s.viewing.as_ref().map(|p| p.first_name.as_str()),
+            Some("Léa")
+        );
+        s.viewing = None;
+        s.open_vitale(&who("", "1958-07-03"));
+        assert_eq!(
+            s.viewing.as_ref().map(|p| p.first_name.as_str()),
+            Some("Jean")
+        );
+        // Une troisième personne sous le même numéro : rien n'est ouvert,
+        // la liste est montrée.
+        s.viewing = None;
+        s.open_vitale(&who("TOM", "2018-01-09"));
+        assert!(s.viewing.is_none());
+        assert_eq!(s.query, "DUPONT");
+        assert!(s.vitale_note.is_some());
     }
 
     /// **L'avis « modifié ailleurs » survit à la relecture** : effacé par
