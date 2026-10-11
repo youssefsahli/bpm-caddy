@@ -508,6 +508,9 @@ impl Net {
             // Les morceaux de ses fichiers d'abord, scellés pour les mêmes
             // officines : le message qui les annonce arrive après eux, ou
             // avec eux.
+            // Un morceau refusé retient son message : il n'arrive jamais
+            // avant ses morceaux.
+            let mut chunks_ok = true;
             for f in &attached {
                 for (n, d) in db.file_chunks(&f.uid)? {
                     let key = format!("morceau:{}:{n}", f.uid);
@@ -527,8 +530,13 @@ impl Net {
                     payload.extend(sealed);
                     if self.seal_one(trousseau, &payload) {
                         done.push(key);
+                    } else {
+                        chunks_ok = false;
                     }
                 }
+            }
+            if !chunks_ok {
+                continue;
             }
             let inner = crate::messages::Incoming {
                 uid: m.uid.clone(),

@@ -9743,16 +9743,35 @@ impl Session {
             .iter()
             .filter(|p| crate::vitale::same_nir(&p.nir, &who.nir))
             .collect();
-        let agrees = |p: &Patient| {
-            let birth = !who.birth_date.is_empty() && p.birth_date == who.birth_date;
-            let given = !who.given.trim().is_empty()
-                && crate::fuzzy::eq_folded(p.first_name.trim(), who.given.trim());
-            birth || given
+        // Le prénom par son premier mot, traits d'union et casse repliés :
+        // « JEAN PIERRE » sur la carte est « Jean-Pierre » ou « Jean » au
+        // dossier.
+        let first_word = |s: &str| {
+            crate::fuzzy::sort_key(&s.replace('-', " "))
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_owned()
         };
-        let says_nothing = who.birth_date.is_empty() && who.given.trim().is_empty();
-        let agreeing: Vec<&&Patient> = candidates.iter().filter(|p| agrees(p)).collect();
+        let card_given = first_word(&who.given);
+        let birth_agrees =
+            |p: &Patient| !who.birth_date.is_empty() && p.birth_date == who.birth_date;
+        let birth_differs = |p: &Patient| {
+            !who.birth_date.is_empty() && !p.birth_date.is_empty() && p.birth_date != who.birth_date
+        };
+        let given_agrees =
+            |p: &Patient| !card_given.is_empty() && first_word(&p.first_name) == card_given;
+        let given_differs = |p: &Patient| {
+            let mine = first_word(&p.first_name);
+            !card_given.is_empty() && !mine.is_empty() && mine != card_given
+        };
+        let agreeing: Vec<&&Patient> = candidates
+            .iter()
+            .filter(|p| birth_agrees(p) || given_agrees(p))
+            .collect();
         let pick = match (candidates.as_slice(), agreeing.as_slice()) {
-            ([only], _) if says_nothing || agrees(only) => Some((*only).clone()),
+            // Seule sous ce numéro : ouverte, sauf si la carte la contredit.
+            ([only], _) if !birth_differs(only) && !given_differs(only) => Some((*only).clone()),
             (_, [one]) => Some((**one).clone()),
             _ => None,
         };
@@ -90953,6 +90972,26 @@ mod tests {
             given: given.to_owned(),
             birth_date: birth.to_owned(),
         };
+        // Un seul dossier sous un numéro, le prénom écrit autrement : il
+        // s'ouvre.
+        let (mut solo, _swept2) = scratch_session("vitale_solo");
+        let id = solo
+            .db
+            .add_patient("Martin", "Jean-Pierre", "1950-01-01")
+            .unwrap();
+        let p = solo
+            .db
+            .patients()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let mut with = p.clone();
+        with.nir = nir.to_owned();
+        assert!(solo.db.update_patient(&with, &p).unwrap());
+        solo.set_patients(solo.db.patients().unwrap());
+        solo.open_vitale(&who("JEAN PIERRE", ""));
+        assert!(solo.viewing.is_some());
         s.open_vitale(&who("LEA", ""));
         assert_eq!(
             s.viewing.as_ref().map(|p| p.first_name.as_str()),

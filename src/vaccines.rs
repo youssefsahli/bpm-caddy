@@ -896,6 +896,9 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
         // d'elle, la dose de printemps ne concerne que les 80 ans et plus
         // et les immunodéprimés, et la ligne disait « dû » toute l'année.
         let in_season = in_flu_season(today);
+        // La campagne de printemps, d'avril à juin : 80 ans et plus.
+        let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+        let spring = matches!(month, 4..=6);
         let mut detail = if done {
             "Dose de la campagne en cours enregistrée.".to_owned()
         } else if !in_season && age.is_some_and(|a| a >= 65) {
@@ -926,7 +929,9 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             label: "COVID-19",
             level: if done {
                 DueLevel::Ok
-            } else if age.is_some_and(|a| a >= 65) && in_season {
+            } else if (age.is_some_and(|a| a >= 65) && in_season)
+                || (age.is_some_and(|a| a >= 80) && spring)
+            {
                 DueLevel::Due
             } else {
                 DueLevel::Ask
@@ -2945,6 +2950,18 @@ mod tests {
         };
         assert_eq!(level("2026-10-10", "COVID"), Some(DueLevel::Due));
         assert_eq!(level("2026-07-10", "COVID"), Some(DueLevel::Ask));
+        let old = |today: &str| {
+            due_lines("1944-03-01", today, &[])
+                .into_iter()
+                .find(|l| l.code == "COVID")
+                .map(|l| l.level)
+        };
+        assert_eq!(
+            old("2026-05-10"),
+            Some(DueLevel::Due),
+            "printemps, 80 ans et plus"
+        );
+        assert_eq!(old("2026-07-10"), Some(DueLevel::Ask));
         let pregnant = due_lines_with("1995-01-01", "2026-09-15", &[], "2026-06-01");
         let flu = pregnant.iter().find(|l| l.code == "GRIPPE").unwrap();
         assert_eq!(flu.level, DueLevel::Due);

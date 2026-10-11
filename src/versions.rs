@@ -412,25 +412,28 @@ pub fn changes(
         }
         let h = history_of(edits, kind, card_name, field);
         let start = origin(field);
-        let known = if h.is_empty() {
-            *value == start
-        } else {
-            let mut known = false;
-            for e in h.iter().rev() {
-                if e.value == *value {
-                    known = true;
-                    break;
-                }
-                if e.source.is_empty() {
-                    break;
-                }
-                if e.previous == *value {
-                    known = true;
-                    break;
-                }
+        // Derrière des versions reçues seulement : l'origine reste aussi
+        // une valeur dite — il peut manquer le premier maillon de la
+        // chaîne, ou l'autre officine partir d'un texte livré autrement.
+        let mut known = false;
+        let mut stopped_on_ours = false;
+        for e in h.iter().rev() {
+            if e.value == *value {
+                known = true;
+                break;
             }
-            known
-        };
+            if e.source.is_empty() {
+                stopped_on_ours = true;
+                break;
+            }
+            if e.previous == *value {
+                known = true;
+                break;
+            }
+        }
+        if !known && !stopped_on_ours && *value == start {
+            known = true;
+        }
         if known {
             continue;
         }
@@ -800,6 +803,22 @@ mod tests {
             &local("acide | 3 g"),
             &origin,
             std::slice::from_ref(&mine)
+        )
+        .is_empty());
+        // Only foreign versions, and the first link missing: the origin
+        // is still known, nothing answers the pending one.
+        let chained = Edit {
+            uid: "b:2".to_owned(),
+            value: "acide | 6 g".to_owned(),
+            previous: "acide | 5 g".to_owned(),
+            ..all[0].clone()
+        };
+        assert!(changes(
+            Kind::Codex,
+            "Vaseline",
+            &local("acide | 2 g"),
+            &origin,
+            std::slice::from_ref(&chained)
         )
         .is_empty());
         // A drug card's history is not a preparation's.

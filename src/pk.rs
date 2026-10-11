@@ -202,11 +202,33 @@ pub fn parse(property: Property, typed: &str, source: &str) -> Result<Fact, Stri
         // unité se lit en heures, puis dans l'unité du champ ; une unité
         // qui ne se lit pas est refusée plutôt que jetée.
         Shape::Number { unit, max } if unit == "h" || unit == "min" => {
-            // Les mots d'une fourchette ne sont pas une unité.
-            let bare = typed
+            // Sans mot d'unité de temps (« env. 12 », « 12 (adulte) »),
+            // le nombre est dans l'unité du champ, comme avant.
+            let bare = !typed
                 .split(|c: char| !c.is_alphabetic())
                 .filter(|w| !w.is_empty())
-                .all(|w| matches!(w.to_lowercase().as_str(), "à" | "a" | "et" | "environ"));
+                .any(|w| {
+                    matches!(
+                        w.to_lowercase().as_str(),
+                        "h" | "heure"
+                            | "heures"
+                            | "min"
+                            | "mn"
+                            | "minute"
+                            | "minutes"
+                            | "j"
+                            | "jour"
+                            | "jours"
+                            | "semaine"
+                            | "semaines"
+                            | "s"
+                            | "seconde"
+                            | "secondes"
+                            | "mois"
+                            | "an"
+                            | "ans"
+                    )
+                });
             let (low, high) = match hours_range(typed) {
                 Some((lo, hi)) if unit == "min" => (lo * 60.0, hi * 60.0),
                 Some(range) => range,
@@ -652,6 +674,18 @@ mod tests {
         assert_eq!(got(Property::Tmax, "1 h 30"), Ok((Some(1.5), Some(1.5))));
         assert_eq!(got(Property::Onset, "20"), Ok((Some(20.0), Some(20.0))));
         assert!(got(Property::HalfLife, "quelques heures").is_err());
+        assert_eq!(
+            got(Property::HalfLife, "env. 12"),
+            Ok((Some(12.0), Some(12.0)))
+        );
+        assert_eq!(
+            got(Property::HalfLife, "12 (adulte)"),
+            Ok((Some(12.0), Some(12.0)))
+        );
+        assert!(
+            got(Property::HalfLife, "2 mois").is_err(),
+            "une unité non lue est refusée"
+        );
         assert_eq!(parse_hours("2 heures 15 minutes"), Some(2.25));
         assert_eq!(parse_hours("3 à 5 h"), Some(4.0));
         let table = rows(&mined, &[typed], &[]);

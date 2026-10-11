@@ -53760,8 +53760,18 @@ pub fn parse_hour(text: &str) -> Option<String> {
         .to_lowercase()
         .replace("heures", "h")
         .replace("heure", "h");
-    let text = lower.trim_end_matches("min").trim_end_matches("mn").trim();
-    if let Some(at) = text.find([':', 'h', '.']) {
+    // « à 9h », « vers 9h30 » : ce qui précède le premier chiffre ; et
+    // l'unité des minutes, quelle qu'en soit l'écriture.
+    let mut text = lower
+        .trim_start_matches(|c: char| !c.is_ascii_digit())
+        .trim_end();
+    for unit in ["minutes", "minute", "min", "mn", "m"] {
+        if let Some(rest) = text.strip_suffix(unit) {
+            text = rest.trim_end();
+            break;
+        }
+    }
+    if let Some(at) = text.find([':', 'h', '.', ',']) {
         let (head, tail) = (&text[..at], &text[at + 1..]);
         let only_digits = |s: &str| s.trim().chars().all(|c| c.is_ascii_digit());
         if !only_digits(head) || !only_digits(tail) {
@@ -57814,6 +57824,12 @@ mod tests {
         assert_eq!(parse_hour("12:3"), None);
         assert_eq!(parse_hour("1:5"), None);
         assert_eq!(parse_hour("8:05").as_deref(), Some("08:05"));
+        assert_eq!(parse_hour("9,30").as_deref(), Some("09:30"));
+        assert_eq!(parse_hour("à 9h").as_deref(), Some("09:00"));
+        assert_eq!(parse_hour("vers 9h30").as_deref(), Some("09:30"));
+        assert_eq!(parse_hour("9h30m").as_deref(), Some("09:30"));
+        assert_eq!(parse_hour("9 heures 30 minutes").as_deref(), Some("09:30"));
+        assert_eq!(parse_hour("midi"), None);
         // Nonsense is refused rather than stored.
         assert_eq!(parse_hour("25h"), None);
         assert_eq!(parse_hour("1290"), None);

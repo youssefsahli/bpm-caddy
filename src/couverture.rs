@@ -106,11 +106,37 @@ pub fn per_day(posology: &str) -> Option<f64> {
         "pression",
         "pressions",
     ];
+    // Ce qui se compte l'emporte : « 1 sachet dans 100 ml d'eau » est
+    // un sachet.
+    const COUNTED: &[&str] = &[
+        "comprime",
+        "comprimes",
+        "cp",
+        "gelule",
+        "gelules",
+        "sachet",
+        "sachets",
+        "capsule",
+        "capsules",
+        "ampoule",
+        "ampoules",
+        "suppositoire",
+        "suppositoires",
+        "patch",
+        "patchs",
+        "ovule",
+        "ovules",
+        "dosette",
+        "dosettes",
+        "unidose",
+        "unidoses",
+    ];
     let folded = crate::fuzzy::sort_key(posology);
-    if folded
+    let words: Vec<&str> = folded
         .split(|c: char| !c.is_alphanumeric())
-        .any(|w| UNCOUNTED.contains(&w))
-    {
+        .filter(|w| !w.is_empty())
+        .collect();
+    if words.iter().any(|w| UNCOUNTED.contains(w)) && !words.iter().any(|w| COUNTED.contains(w)) {
         return None;
     }
     let r = crate::intake::read(posology);
@@ -145,9 +171,10 @@ pub fn read(line: &Line, today: &str) -> Result<Coverage, Vec<Missing>> {
     };
     let total = f64::from(line.units) * f64::from(line.boxes.max(1));
     let days = (total / per_day + 1e-9).floor() as u32;
-    // Moins d'un jour de traitement : rien à dessiner, et pas un retard.
+    // Moins d'un jour de traitement : rien à dessiner, et pas un retard —
+    // le nombre d'unités par boîte est le plus probablement à revoir.
     if days == 0 {
-        return Err(vec![Missing::Posology]);
+        return Err(vec![Missing::Units]);
     }
     let until = if days > 0 {
         add_days(start, i64::from(days) - 1).unwrap_or_default()
@@ -930,7 +957,12 @@ mod tests {
             missing(line(1, "20-0-20 gouttes", 0)),
             Some(vec![Missing::Posology])
         );
-        assert_eq!(missing(line(1, "1-0-1", 0)), Some(vec![Missing::Posology]));
+        assert_eq!(missing(line(1, "1-0-1", 0)), Some(vec![Missing::Units]));
+        // Ce qui se compte l'emporte sur l'eau où il se dissout.
+        assert_eq!(
+            per_day("1 sachet dans 100 ml d'eau matin et soir"),
+            per_day("1 sachet matin et soir")
+        );
         assert!(read(&line(30, "1 comprimé le matin", 0), "2026-10-12").is_ok());
     }
 

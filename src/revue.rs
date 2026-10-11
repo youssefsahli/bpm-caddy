@@ -672,7 +672,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["dihydropyridine", "amlodipine", "nifédipine", "félodipine", "lercanidipine", "nicardipine", "lacidipine", "isradipine"],
+            &["dihydropyridine", "amlodipine", "nifédipine", "félodipine", "lercanidipine", "nicardipine", "lacidipine", "isradipine", "manidipine", "nitrendipine"],
             &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide"],
         ]),
         severity: Severity::Info,
@@ -690,7 +690,8 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["alendronate", "risédronate", "ibandronate"],
+            // Les deux écritures : « alendronate » et « acide alendronique ».
+            &["alendroni", "alendronate", "risédroni", "risédronate", "ibandroni", "ibandronate"],
             &["calcium", "ferreux", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         ]),
         severity: Severity::Info,
@@ -1408,6 +1409,12 @@ mod tests {
         );
         let cacit = t("Cacit", "carbonate de calcium", "calcium");
         assert!(!fired(&[aclasta, cacit], "Bisphosphonate à distance"));
+        let iperten = t("Iperten", "manidipine", "inhibiteur calcique");
+        let lasix = t("Lasilix", "furosémide", "diurétique de l'anse");
+        assert!(fired(&[iperten, lasix], "Œdème et diurétique"));
+        let generic = t("Acide alendronique Biogaran", "acide alendronique", "");
+        let calcium = t("Cacit", "carbonate de calcium", "calcium");
+        assert!(fired(&[generic, calcium], "Bisphosphonate à distance"));
         let fosamax = t("Fosamax", "alendronate", "bisphosphonate");
         assert!(fired(&[fosamax, cacit], "Bisphosphonate à distance"));
         let ellaone = t("EllaOne", "ulipristal", "contraception d'urgence");
