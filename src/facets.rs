@@ -4467,7 +4467,8 @@ struct Index {
     /// par organe de prêter des `&'static Facets` sans `unsafe`.
     ranked: &'static [Facets],
     /// Les mêmes, par nom, pour une recherche dichotomique.
-    by_name: Vec<usize>,
+    /// Les fiches par nom replié (`fuzzy::sort_key`), et leur rang.
+    by_name: Vec<(String, usize)>,
     /// Pour chaque axe et chaque sens, les lignes déjà triées.
     per_organ: Vec<Axis>,
 }
@@ -4523,16 +4524,20 @@ fn index() -> &'static Index {
             .collect();
         ranked.sort_by(
             |a, b| match (a.half_life.sort_key(), b.half_life.sort_key()) {
-                (Some(x), Some(y)) => y.total_cmp(&x).then_with(|| a.name.cmp(b.name)),
+                (Some(x), Some(y)) => y.total_cmp(&x).then_with(|| by_key(a.name, b.name)),
                 (Some(_), None) => std::cmp::Ordering::Less,
                 (None, Some(_)) => std::cmp::Ordering::Greater,
-                (None, None) => a.name.cmp(b.name),
+                (None, None) => by_key(a.name, b.name),
             },
         );
 
         let ranked: &'static [Facets] = Box::leak(ranked.into_boxed_slice());
-        let mut by_name: Vec<usize> = (0..ranked.len()).collect();
-        by_name.sort_unstable_by_key(|i| ranked[*i].name);
+        let mut by_name: Vec<(String, usize)> = ranked
+            .iter()
+            .enumerate()
+            .map(|(i, f)| (crate::fuzzy::sort_key(f.name), i))
+            .collect();
+        by_name.sort_unstable();
 
         let mut per_organ: Vec<Axis> = Vec::new();
         for organ in Organ::ALL {
@@ -4557,7 +4562,7 @@ fn index() -> &'static Index {
                 rows.sort_by(|a, b| {
                     b.1.grade
                         .cmp(&a.1.grade)
-                        .then_with(|| a.0.name.cmp(b.0.name))
+                        .then_with(|| by_key(a.0.name, b.0.name))
                 });
                 per_organ.push((*organ, harms, rows));
             }
@@ -4570,13 +4575,23 @@ fn index() -> &'static Index {
     })
 }
 
+/// L'ordre alphabétique des noms, accents repliés : « Éfferalgan » avant
+/// « Zoloft », pas après.
+fn by_key(a: &str, b: &str) -> std::cmp::Ordering {
+    crate::fuzzy::sort_key(a).cmp(&crate::fuzzy::sort_key(b))
+}
+
 /// Les facettes d'une fiche, ou `None` si elle n'en a aucune.
+///
+/// Par le nom replié : une fiche renommée « skenan » ou « Skenan␠ » garde
+/// ses facettes.
 pub fn facets(name: &str) -> Option<&'static Facets> {
     let ix = index();
+    let key = crate::fuzzy::sort_key(name.trim());
     ix.by_name
-        .binary_search_by_key(&name, |i| ix.ranked[*i].name)
+        .binary_search_by(|(k, _)| k.as_str().cmp(key.as_str()))
         .ok()
-        .map(|pos| &ix.ranked[ix.by_name[pos]])
+        .map(|pos| &ix.ranked[ix.by_name[pos].1])
 }
 
 /// Toutes les fiches qui portent une facette.
@@ -5302,6 +5317,17 @@ mod tests {
         let fosamax = facets("Fosamax").expect("Fosamax");
         assert_eq!(fosamax.half_life, HalfLife::None(Unknown::NonChiffree));
         assert!(fosamax.beyond.contains("osseuse"), "{}", fosamax.beyond);
+        // Par le nom replié : une fiche renommée garde ses facettes.
+        assert!(std::ptr::eq(facets("fosamax ").expect("replié"), fosamax));
+        // Deux fiches ne se replient jamais sur le même nom.
+        let mut keys: Vec<String> = all()
+            .iter()
+            .map(|f| crate::fuzzy::sort_key(f.name))
+            .collect();
+        let n = keys.len();
+        keys.sort();
+        keys.dedup();
+        assert_eq!(keys.len(), n);
         // Les fiches sans demi-vie ne valent pas zéro : elles viennent après.
         let last = ranked.last().expect("non vide");
         assert!(last.half_life.sort_key().is_none());

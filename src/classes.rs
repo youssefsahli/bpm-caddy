@@ -2628,14 +2628,25 @@ pub fn local_site(class: &str) -> Option<&'static str> {
         // « antibiotique » and « antimitotique », and sent Mupiderm,
         // Erythrogel and Condyline to the ear.
         ("oreille", &["auriculaire", " otique"]),
-        ("nez", &["nasal"]),
+        // « décongestionnant local » (Rhinofluimucil), « antifongique
+        // local digestif » (Mycostatine), « antihémorroïdaire local »
+        // (Titanoréine) : sans leur mot, ils tombaient sur la peau, et le
+        // Rhinofluimucil ne croisait plus le Dérinox.
+        ("nez", &["nasal", "decongestionnant", "rhino"]),
         (
             "bouche",
-            &["buccal", "bouche", "gorge", "gingiv", "oropharyn"],
+            &[
+                "buccal",
+                "bouche",
+                "gorge",
+                "gingiv",
+                "oropharyn",
+                "digestif",
+            ],
         ),
         ("poumon", &["inhal"]),
         ("vagin", &["vaginal", "ovule"]),
-        ("rectum", &["rectal"]),
+        ("rectum", &["rectal", "hemorroid"]),
         (
             "peau",
             &[
@@ -3056,6 +3067,9 @@ mod tests {
         assert_eq!(local_site("antifongique local"), Some("peau"));
         assert_eq!(local_site("AINS local — bouche et gorge"), Some("bouche"));
         assert_eq!(local_site("corticoïde nasal"), Some("nez"));
+        assert_eq!(local_site("décongestionnant local"), Some("nez"));
+        assert_eq!(local_site("antifongique local digestif"), Some("bouche"));
+        assert_eq!(local_site("antihémorroïdaire local"), Some("rectum"));
         assert_eq!(local_site("collyre — AINS"), Some("oeil"));
         assert_eq!(local_site("pommade ophtalmique antibiotique"), Some("oeil"));
         assert_eq!(local_site("estrogène local vaginal"), Some("vagin"));

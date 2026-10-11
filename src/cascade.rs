@@ -418,7 +418,9 @@ fn arrows(line: &str) -> Option<(Vec<&str>, Vec<Sign>)> {
             (None, Some(i)) => (i, Sign::Inhibe),
             (None, None) => break,
         };
-        groups.push(&rest[..at]);
+        // « A --> B » : le tiret de plus est le trait de la flèche, pas
+        // la fin du nom.
+        groups.push(rest[..at].trim_end().trim_end_matches('-'));
         signs.push(sign);
         rest = &rest[at + 2..];
     }
@@ -544,6 +546,8 @@ pub fn parse(text: &str) -> Cascade {
             continue;
         }
         if let Some(rest) = head("molécule").or_else(|| head("molecules")) {
+            // « molécule : morphine : agoniste X », comme « scénario : ».
+            let rest = rest.trim_start().trim_start_matches(':');
             let Some((name, acts)) = rest.split_once(':') else {
                 c.faults.push(Fault::UnknownAction {
                     line,
@@ -1542,9 +1546,32 @@ pub struct Meeting {
 /// l'un des composants d'une association (« vérapamil + trandolapril »
 /// porte le vérapamil). **Jamais une sous-chaîne** — la règle des
 /// portes de fiche, et pour la même raison.
+///
+/// Une DCI entière que la cascade nomme répond seule : le Symbicort
+/// donnait sinon trois molécules, et deux rencontres pour une paire. Et
+/// un composant qui ne passe pas dans le sang dans une association n'est
+/// pas porté : la naloxone du Targinact ou du Suboxone, presque pas
+/// absorbée, opposait l'oxycodone au fond douloureux qu'elle accompagne.
 fn carried(c: &Cascade, dci: &str) -> Vec<usize> {
-    let parts: Vec<&str> = std::iter::once(dci)
-        .chain(dci.split(" + ").filter(|p| p.len() < dci.len()))
+    let whole: Vec<usize> = c
+        .molecules
+        .iter()
+        .enumerate()
+        .filter(|(_, m)| fuzzy::eq_folded(dci, &m.name))
+        .map(|(i, _)| i)
+        .collect();
+    if !whole.is_empty() {
+        return whole;
+    }
+    const UNABSORBED_IN_A_COMBINATION: &[&str] = &["naloxone"];
+    let parts: Vec<&str> = dci
+        .split(" + ")
+        .filter(|p| p.len() < dci.len())
+        .filter(|p| {
+            !UNABSORBED_IN_A_COMBINATION
+                .iter()
+                .any(|u| fuzzy::eq_folded(p.trim(), u))
+        })
         .collect();
     c.molecules
         .iter()
@@ -3825,6 +3852,30 @@ adaptation Bêta-1
             meetings(&[&c], &lines).is_empty(),
             "une ligne ne se croise pas elle-même"
         );
+        // La naloxone d'une association reste dans l'intestin : le
+        // Targinact et l'Oxynorm, fond et interdose, ne s'opposent pas.
+        let m = meet(&[
+            ("Targinact", "oxycodone + naloxone"),
+            ("Oxynorm", "oxycodone"),
+        ]);
+        assert!(
+            m.iter()
+                .all(|x| x.molecules.0 != "naloxone" && x.molecules.1 != "naloxone"),
+            "{m:?}"
+        );
+        // « --> » est une flèche, et « molécule : » un deux-points de trop.
+        let c = parse("A --> B\nmolécule : x : agoniste A");
+        assert!(c.faults.is_empty(), "{:?}", c.faults);
+        assert_eq!(
+            c.nodes.len(),
+            2,
+            "{:?}",
+            c.nodes.iter().map(|n| &n.name).collect::<Vec<_>>()
+        );
+        assert_eq!(c.molecules[0].name, "x");
+        // Une DCI entière nommée répond seule.
+        let c = parse("A -> B\nmolécule x + y : agoniste A\nmolécule x : antagoniste A");
+        assert_eq!(carried(&c, "x + y"), vec![0]);
     }
 
     #[test]

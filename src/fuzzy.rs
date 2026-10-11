@@ -197,8 +197,14 @@ pub fn index_letter(s: &str) -> char {
     s.chars()
         .find(|c| !c.is_whitespace())
         .map(fold)
-        .filter(|c| c.is_alphabetic())
-        .map(|c| c.to_ascii_uppercase())
+        // `fold` garde œ et æ ; l'index les range sous O et A. Une lettre
+        // hors de A–Z va sous « # » plutôt que dans une section après Z.
+        .map(|c| match c {
+            'œ' | 'Œ' => 'O',
+            'æ' | 'Æ' => 'A',
+            c => c.to_ascii_uppercase(),
+        })
+        .filter(|c| c.is_ascii_uppercase())
         .unwrap_or('#')
 }
 
@@ -345,6 +351,8 @@ mod tests {
         assert_eq!(super::index_letter("  Zovirax"), 'Z');
         // Everything that is not a letter shares one drawer.
         assert_eq!(super::index_letter("5-FU"), '#');
+        assert_eq!(super::index_letter("Œstrogel"), 'O');
+        assert_eq!(super::index_letter("œstrogel"), 'O');
         assert_eq!(super::index_letter(""), '#');
         assert_eq!(super::index_letter("   "), '#');
     }

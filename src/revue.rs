@@ -34,6 +34,7 @@
 use crate::biology::Severity;
 
 /// One treatment, reduced to the words the rules match on.
+#[derive(Clone, Copy)]
 pub struct Treatment<'a> {
     pub name: &'a str,
     pub dci: &'a str,
@@ -248,7 +249,10 @@ pub fn review_folded(lines: &[&Folded]) -> Vec<Point> {
                         }
                     }
                 }
-                if complete {
+                // **Deux lignes au moins** : une association fixe n'est pas
+                // une ordonnance qui associe — l'Eupressyl, « alpha-bloquant
+                // antihypertenseur », se déclenchait seul.
+                if complete && named.len() >= 2 {
                     named
                 } else {
                     Vec::new()
@@ -424,7 +428,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "oméprazole", "pantoprazole", "ésoméprazole", "lansoprazole", "rabéprazole"],
-            &["ferreux", " ferrique", "fer saccharose", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
+            &["ferreux", "sulfate ferreux", "fumarate ferreux", "ascorbate ferreux"],
         ]),
         severity: Severity::Warn,
         title: "IPP + fer oral",
@@ -668,7 +672,7 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["inhibiteur calcique", "amlodipine", "nifédipine", "félodipine", "lercanidipine"],
+            &["dihydropyridine", "amlodipine", "nifédipine", "félodipine", "lercanidipine", "nicardipine", "lacidipine", "isradipine"],
             &["diurétique", "furosémide", "hydrochlorothiazide", "indapamide"],
         ]),
         severity: Severity::Info,
@@ -686,8 +690,8 @@ const RULES: &[Rule] = &[
     },
     Rule {
         kind: Kind::Combination(&[
-            &["biphosphonate", "bisphosphonate", "alendronate", "risédronate", "ibandronate"],
-            &["calcium", "ferreux", "ferrique", "fer saccharose", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
+            &["alendronate", "risédronate", "ibandronate"],
+            &["calcium", "ferreux", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole"],
         ]),
         severity: Severity::Info,
         title: "Bisphosphonate à distance",
@@ -859,7 +863,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["lévothyroxine", "hormone thyroïdienne"],
-            &["ferreux", "ferrique", "fer saccharose", "calcium", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "colestyramine"],
+            &["ferreux", "calcium", "magnésium", "oméprazole", "ésoméprazole", "pantoprazole", "lansoprazole", "rabéprazole", "colestyramine"],
         ]),
         severity: Severity::Warn,
         title: "Lévothyroxine et chélation",
@@ -1197,7 +1201,7 @@ const RULES: &[Rule] = &[
     Rule {
         kind: Kind::Combination(&[
             &["ulipristal", "ellaone"],
-            &["désogestrel", "lévonorgestrel", "étonogestrel", "drospirénone", "chlormadinone", "nomégestrol", "diénogest", "progestatif"],
+            &["désogestrel", "lévonorgestrel", "étonogestrel", "drospirénone", "chlormadinone", "nomégestrol", "diénogest", " progestatif", "estroprogestatif"],
         ]),
         severity: Severity::Warn,
         title: "Ulipristal + progestatif",
@@ -1362,6 +1366,70 @@ mod tests {
         assert!(!double(&[entresto()]));
         assert!(double(&[entresto(), triatec()]));
         assert!(double(&[triatec(), cozaar()]));
+    }
+
+    /// **Une association fixe ne s'associe pas à elle-même**, le fer
+    /// injectable et le bisphosphonate en perfusion ne passent pas par
+    /// l'estomac, et « antiprogestatif » n'est pas un progestatif.
+    #[test]
+    fn a_rule_reads_what_the_lines_really_bring() {
+        let fired = |list: &[Treatment], title: &str| review(list).iter().any(|p| p.title == title);
+        let eupressyl = t("Eupressyl", "urapidil", "alpha-bloquant antihypertenseur");
+        assert!(!fired(
+            std::slice::from_ref(&eupressyl),
+            "Alpha-bloquant + antihypertenseur"
+        ));
+        let natrixam = t(
+            "Natrixam",
+            "indapamide + amlodipine",
+            "diurétique + inhibiteur calcique",
+        );
+        assert!(!fired(&[natrixam], "Œdème et diurétique"));
+        let isoptine = t("Isoptine", "vérapamil", "inhibiteur calcique");
+        let lasilix = t("Lasilix", "furosémide", "diurétique de l'anse");
+        assert!(!fired(&[isoptine, lasilix], "Œdème et diurétique"));
+        let amlor = t("Amlor", "amlodipine", "inhibiteur calcique");
+        assert!(fired(&[amlor, lasilix], "Œdème et diurétique"));
+        let mopral = t("Mopral", "oméprazole", "IPP");
+        let venofer = t("Venofer", "fer saccharose", "fer injectable");
+        let tardyferon = t("Tardyferon", "sulfate ferreux", "fer oral");
+        assert!(!fired(&[mopral, venofer], "IPP + fer oral"));
+        assert!(fired(&[mopral, tardyferon], "IPP + fer oral"));
+        let levothyrox = t("Levothyrox", "lévothyroxine", "hormone thyroïdienne");
+        let ferinject = t("Ferinject", "carboxymaltose ferrique", "fer injectable");
+        assert!(!fired(
+            &[levothyrox, ferinject],
+            "Lévothyroxine et chélation"
+        ));
+        let aclasta = t(
+            "Aclasta",
+            "acide zolédronique",
+            "biphosphonate — perfusion annuelle",
+        );
+        let cacit = t("Cacit", "carbonate de calcium", "calcium");
+        assert!(!fired(
+            &[aclasta, cacit],
+            "Bisphosphonate à distance"
+        ));
+        let fosamax = t("Fosamax", "alendronate", "bisphosphonate");
+        assert!(fired(&[fosamax, cacit], "Bisphosphonate à distance"));
+        let ellaone = t("EllaOne", "ulipristal", "contraception d'urgence");
+        let mifegyne = t("Mifégyne", "mifépristone", "antiprogestatif — IVG");
+        let duphaston = t("Duphaston", "dydrogestérone", "progestatif");
+        let pill = t(
+            "Leeloo",
+            "lévonorgestrel + éthinylestradiol",
+            "estroprogestatif",
+        );
+        assert!(!fired(
+            &[ellaone, mifegyne],
+            "Ulipristal + progestatif"
+        ));
+        assert!(fired(
+            &[ellaone, duphaston],
+            "Ulipristal + progestatif"
+        ));
+        assert!(fired(&[ellaone, pill], "Ulipristal + progestatif"));
     }
 
     #[test]

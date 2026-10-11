@@ -115,7 +115,7 @@ pub fn read(dosage: &str) -> Vec<PerKilo> {
             // (l'isotrétinoïne) est le total d'un traitement de
             // plusieurs mois ; lue comme une dose, elle donnait sept
             // grammes à un adulte de soixante kilos.
-            if !cumulative_before(hay, start) {
+            if !cumulative_before(hay, start) && !step_before(hay, begin) {
                 let tail = rhythm_window(hay, end);
                 out.push(PerKilo {
                     low,
@@ -339,6 +339,22 @@ fn cumulative_before(hay: &str, at: usize) -> bool {
     head.contains("cumul")
 }
 
+/// **Un pas n'est pas une dose** : « augmentés de 10 mg/kg tous les
+/// trois jours », « par paliers de 3,5 à 7 mg/kg/jour » disent de combien
+/// on monte, pas ce qu'on donne. `at` est l'endroit où le chiffre commence.
+fn step_before(hay: &str, at: usize) -> bool {
+    let head = hay[..at].trim_end().to_lowercase();
+    [
+        "augmenté de",
+        "augmentés de",
+        "augmentée de",
+        "palier de",
+        "paliers de",
+    ]
+    .iter()
+    .any(|w| head.ends_with(w))
+}
+
 /// Le chiffre est-il un plafond plutôt qu'une dose ? `at` est l'endroit
 /// où le chiffre commence.
 fn ceiling_around(hay: &str, at: usize, window: &str) -> bool {
@@ -360,7 +376,16 @@ fn ceiling_around(hay: &str, at: usize, window: &str) -> bool {
     if window.contains("davantage") || window.contains("et plus") {
         return false;
     }
-    ["dépasser", "maximum", "jusqu'à", "au plus", "inférieure à"]
+    // « maximal » : « dose maximale 28 mg/kg/jour », que le calcul
+    // montrait comme une dose à donner.
+    [
+        "dépasser",
+        "maximum",
+        "maximal",
+        "jusqu'à",
+        "au plus",
+        "inférieure à",
+    ]
         .iter()
         .any(|w| head.contains(w))
         // « 60 mg/kg par jour au maximum » — collé au rythme, et pas
@@ -706,6 +731,15 @@ mod tests {
         // bien précédé de « sans dépasser ».
         let got = read("sans dépasser 30 mg par jour ni 0,5 mg/kg par jour.");
         assert!(got[0].ceiling, "{got:?}");
+        let got = read("cible 500 à 1 000 µg/L, dose maximale 28 mg/kg/jour.");
+        assert!(got[0].ceiling, "{got:?}");
+        // Un pas n'est ni une dose ni un plafond.
+        let got =
+            read("10 mg/kg/jour, augmentés de 10 mg/kg tous les trois jours jusqu'à 45 mg/kg/jour");
+        assert_eq!(got.len(), 2, "{got:?}");
+        assert!(!got[0].ceiling && got[1].ceiling);
+        let got = read("ajustement par paliers de 3,5 à 7 mg/kg/jour sur la ferritinémie");
+        assert!(got.is_empty(), "{got:?}");
         let got = read("soit 60 mg/kg par jour au maximum ; ne pas associer.");
         assert!(got[0].ceiling);
         // « au maximum » qui borne une durée ne borne pas la dose.
