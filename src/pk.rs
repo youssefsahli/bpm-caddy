@@ -197,17 +197,21 @@ pub fn parse(property: Property, typed: &str, source: &str) -> Result<Fact, Stri
     };
     match property.shape() {
         Shape::Text | Shape::Flag => Ok(base),
-        Shape::Number { max, .. } => {
-            let numbers: Vec<f64> = typed
-                .replace(',', ".")
-                .split(|c: char| !(c.is_ascii_digit() || c == '.'))
-                .filter(|t| !t.is_empty())
-                .filter_map(|t| t.parse::<f64>().ok())
-                .collect();
-            let (low, high) = match numbers.as_slice() {
-                [one] => (*one, *one),
-                [a, b, ..] => (a.min(*b), a.max(*b)),
-                [] => return Err(crate::strings::tr("pk_err_number").to_owned()),
+        // **L'unité tapée compte** : « 4 jours » dans la demi-vie était
+        // rangé 4 h, et « 30 min » au Tmax 30 h. Une durée qui porte son
+        // unité se lit en heures, puis dans l'unité du champ ; une unité
+        // qui ne se lit pas est refusée plutôt que jetée.
+        Shape::Number { unit, max } if unit == "h" || unit == "min" => {
+            // Les mots d'une fourchette ne sont pas une unité.
+            let bare = typed
+                .split(|c: char| !c.is_alphabetic())
+                .filter(|w| !w.is_empty())
+                .all(|w| matches!(w.to_lowercase().as_str(), "à" | "a" | "et" | "environ"));
+            let (low, high) = match hours_range(typed) {
+                Some((lo, hi)) if unit == "min" => (lo * 60.0, hi * 60.0),
+                Some(range) => range,
+                None if bare => plain_numbers(typed)?,
+                None => return Err(crate::strings::tr("pk_err_number").to_owned()),
             };
             if low < 0.0 || high > max {
                 return Err(crate::strings::tr("pk_err_range").to_owned());
@@ -218,6 +222,32 @@ pub fn parse(property: Property, typed: &str, source: &str) -> Result<Fact, Stri
                 ..base
             })
         }
+        Shape::Number { max, .. } => {
+            let (low, high) = plain_numbers(typed)?;
+            if low < 0.0 || high > max {
+                return Err(crate::strings::tr("pk_err_range").to_owned());
+            }
+            Ok(Fact {
+                low: Some(low),
+                high: Some(high),
+                ..base
+            })
+        }
+    }
+}
+
+/// Les nombres d'une saisie, en fourchette : « 60 », « 50-70 », « 0,5 à 1 ».
+fn plain_numbers(typed: &str) -> Result<(f64, f64), String> {
+    let numbers: Vec<f64> = typed
+        .replace(',', ".")
+        .split(|c: char| !(c.is_ascii_digit() || c == '.'))
+        .filter(|t| !t.is_empty())
+        .filter_map(|t| t.parse::<f64>().ok())
+        .collect();
+    match numbers.as_slice() {
+        [one] => Ok((*one, *one)),
+        [a, b, ..] => Ok((a.min(*b), a.max(*b))),
+        [] => Err(crate::strings::tr("pk_err_number").to_owned()),
     }
 }
 
@@ -486,7 +516,12 @@ pub fn hours_range(text: &str) -> Option<(f64, f64)> {
             // A figure glued to a name: a letter just before, or a hyphen
             // that itself follows a letter.
             let before = start.checked_sub(1).map(|k| chars[k]);
-            let named = before.is_some_and(|b| b.is_alphabetic())
+            // « 1h30 » : la lettre devant est l'heure, pas un nom.
+            let after_hour = before == Some('h')
+                && start
+                    .checked_sub(2)
+                    .is_none_or(|k| !chars[k].is_alphabetic());
+            let named = (before.is_some_and(|b| b.is_alphabetic()) && !after_hour)
                 || (before == Some('-')
                     && start
                         .checked_sub(2)
@@ -534,6 +569,20 @@ pub fn hours_range(text: &str) -> Option<(f64, f64)> {
             }
             if let Some(Tok::Word(w)) = toks.get(next) {
                 if let Some(f) = factor(w) {
+                    // « 1 h 30 », « 1h30 », « 2 heures 15 minutes » : les
+                    // minutes qui suivent une heure seule s'ajoutent.
+                    if f == 1.0 && high == low {
+                        if let Some(Tok::Num(m)) = toks.get(next + 1) {
+                            let unit_after = match toks.get(next + 2) {
+                                Some(Tok::Word(u)) => factor(u),
+                                _ => None,
+                            };
+                            if *m < 60.0 && unit_after.is_none_or(|u| u == 1.0 / 60.0) {
+                                let t = low + m / 60.0;
+                                return Some((t, t));
+                            }
+                        }
+                    }
                     return Some((low * f, high * f));
                 }
             }
@@ -591,6 +640,20 @@ mod tests {
         });
         let typed = parse(Property::HalfLife, "10 à 14", "RCP Eliquis, 5.2").unwrap();
         assert_eq!((typed.low, typed.high), (Some(10.0), Some(14.0)));
+        // L'unité tapée compte : des jours, des minutes, une heure et demie.
+        let got = |p, t| parse(p, t, "RCP").map(|f| (f.low, f.high));
+        assert_eq!(
+            got(Property::HalfLife, "4 jours"),
+            Ok((Some(96.0), Some(96.0)))
+        );
+        assert_eq!(got(Property::Tmax, "30 min"), Ok((Some(0.5), Some(0.5))));
+        assert_eq!(got(Property::Onset, "1 h"), Ok((Some(60.0), Some(60.0))));
+        assert_eq!(got(Property::Tmax, "1h30"), Ok((Some(1.5), Some(1.5))));
+        assert_eq!(got(Property::Tmax, "1 h 30"), Ok((Some(1.5), Some(1.5))));
+        assert_eq!(got(Property::Onset, "20"), Ok((Some(20.0), Some(20.0))));
+        assert!(got(Property::HalfLife, "quelques heures").is_err());
+        assert_eq!(parse_hours("2 heures 15 minutes"), Some(2.25));
+        assert_eq!(parse_hours("3 à 5 h"), Some(4.0));
         let table = rows(&mined, &[typed], &[]);
         assert_eq!(table.len(), Property::ALL.len());
         let hl = table

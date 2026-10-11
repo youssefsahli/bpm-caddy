@@ -22,6 +22,45 @@ PK, groupes de collègues, feuilles remises, codex. Et une relecture de
 mes propres corrections, deux fois : chaque régression trouvée est
 corrigée et a son test. Le détail est au CHANGELOG (0.395.0, 0.396.0).
 
+**Après la publication de la 0.397.0 (11/10, après-midi).** Poussé sur
+`main` au fil de l'eau (consigne : pousser à chaque lot), étiquette à la
+prochaine version dont le smoke passe. Relectures : réseau (un
+enregistrement trop gros bloquait toute publication et faisait resceller
+le reste à chaque synchronisation ; une valeur revenue ne partait pas),
+dose au poids (« dose maximale » lue comme une dose), revue d'ordonnance
+(associations fixes seules, fer et bisphosphonate injectables,
+« antiprogestatif »), cascades (naloxone des associations), sites des
+formes locales, impression (étiquettes, rendez-vous, semaine, bulletins,
+fichiers temporaires), carte Vitale (plusieurs fiches sous un NIR),
+codes-barres, journal d'accès. Le détail est au CHANGELOG (Unreleased).
+Puis (même jour, 12/10) : config.toml illisible écrasé par les défauts,
+planning (fin illisible ou avant le début, pause, heures « 12:3 »),
+dates de naissance au futur, unités PK, couverture en UI ou gouttes,
+insuline humaine, COVID hors saison, compare-and-set (pause d'un poste,
+conciliation, acte de vaccination, retour d'une case de table), ADELI,
+lanceur, relais.
+
+Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- l'oxomémazine (Toplexil) n'est pas dans la table du sujet âgé — à
+  vérifier contre la liste de Laroche avant de l'y mettre ;
+- dTcaP : un rappel fait à 64 ans rend celui de 65 ans « dû » un an
+  plus tard ; la règle de transition du calendrier est à vérifier ;
+- insuline lispro biphasique : Humalog Mix 25 et Mix 50 se lisent sur la
+  même courbe ;
+- planning : une nuit à cheval sur un changement d'heure se compte en
+  heures d'horloge (une heure de plus ou de moins) ;
+- `delete_patient` ne compare que l'identité : un acte ou une dose
+  ajoutés ailleurs entre-temps partent avec le dossier ;
+  `delete_protocol_node` lit l'arbre hors transaction ; plusieurs
+  suppressions ne comparent qu'un champ (vaccination, posologie, poste,
+  fiche) ; `reset_table` est sans comparaison ; `rename_protocol`,
+  `rename_checklist`, `update_protocol_node` écrivent un champ qu'ils ne
+  comparent pas ;
+- lanceur sous Windows : lancé pendant que l'application tourne, il
+  télécharge puis échoue au remplacement, et lance une seconde instance ;
+- relais : un membre du réseau peut occuper les quatre places d'attente
+  d'un groupe (déni de service, pas de fuite).
+
 **Ce qui a été fait le 10/10.**
 - Campagnes paramétrables (le travail laissé en cours), relues avant
   d'être committées : cinq défauts corrigés (clé de saison prise par une

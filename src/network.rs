@@ -2450,6 +2450,17 @@ mod tests {
         assert_eq!(na.publish(&a, "Centre").unwrap(), 0, "rien n'est rescellé");
         assert_eq!(na.refused.len(), 1, "et il est redit");
         assert_eq!(a.net_records_of("").unwrap().len(), records);
+        // Ce que l'écran laisse passer part : `NET_BODY_MAX` octets.
+        let most = "é".repeat(crate::messages::NET_BODY_MAX / 2);
+        a.post_message(conv, "", "CL", &most, None, "", Some("2026-10-11 10:02:00"))
+            .unwrap()
+            .unwrap();
+        let mut na = Net::load(&a).unwrap();
+        assert_eq!(
+            na.publish(&a, "Centre").unwrap(),
+            1,
+            "la limite de l'écran tient"
+        );
     }
 
     /// **Une officine du réseau ne se fait pas passer pour une autre**, ne

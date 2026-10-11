@@ -137,6 +137,12 @@ pub const BOX_TAG: &[u8] = b"BOX1";
 /// boîte du réseau (48 000).
 pub const CHUNK: usize = 12 * 1024;
 
+/// **Le texte d'un message entre officines, au plus**, en octets : le
+/// message part en une seule boîte du réseau (48 000), qui porte aussi
+/// les participants, les fichiers annoncés et l'échappement du JSON.
+/// Plus long, l'écran le refuse avant l'envoi.
+pub const NET_BODY_MAX: usize = 30_000;
+
 /// Au plus cette taille par fichier. Chaque morceau reste au journal de
 /// chaque poste — et, entre officines, de chaque officine du réseau.
 pub const MAX_FILE: usize = 5 * 1024 * 1024;

@@ -631,8 +631,11 @@ pub fn due_lines_with(birth: &str, today: &str, doses: &[Dose], ddr: &str) -> Ve
             .iter()
             .any(|d| d.code == code && !d.date.is_empty() && d.date >= ddr)
     };
+    // La même saison que la ligne générale : en septembre, la femme
+    // enceinte lisait « hors campagne » quand la personne de 65 ans
+    // lisait « dû ».
+    let campaign = in_flu_season(today);
     let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
-    let campaign = matches!(month, 10..=12 | 1 | 2);
     let season = flu_season_start(today);
     let this_season = |code: &str| {
         doses
@@ -851,8 +854,7 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
         // prendre rendez-vous) à février. En juillet, la ligne disait
         // « campagne en cours » et la personne était due d'un vaccin qui
         // n'est pas disponible.
-        let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
-        let in_season = matches!(month, 9..=12 | 1 | 2);
+        let in_season = in_flu_season(today);
         let level = if done {
             DueLevel::Ok
         } else if age.is_some_and(|a| a >= 65) && in_season {
@@ -890,8 +892,15 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     {
         let season = flu_season_start(today);
         let done = last("COVID").is_some_and(|d| d >= season.as_str());
+        // **Dû pendant la campagne d'automne**, comme la grippe : hors
+        // d'elle, la dose de printemps ne concerne que les 80 ans et plus
+        // et les immunodéprimés, et la ligne disait « dû » toute l'année.
+        let in_season = in_flu_season(today);
         let mut detail = if done {
             "Dose de la campagne en cours enregistrée.".to_owned()
+        } else if !in_season && age.is_some_and(|a| a >= 65) {
+            "Hors campagne d'automne : au printemps, 80 ans et plus et immunodéprimés seulement."
+                .to_owned()
         } else {
             "Campagne annuelle : 65 ans et plus, comorbidités, immunodéprimés, entourage."
                 .to_owned()
@@ -917,7 +926,7 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             label: "COVID-19",
             level: if done {
                 DueLevel::Ok
-            } else if age.is_some_and(|a| a >= 65) {
+            } else if age.is_some_and(|a| a >= 65) && in_season {
                 DueLevel::Due
             } else {
                 DueLevel::Ask
@@ -1096,6 +1105,13 @@ fn dtp_next_after(m: u32) -> u32 {
         45..=64 => 65,
         _ => m + 10,
     }
+}
+
+/// Is `today` inside the autumn campaign, September to February — the
+/// one window every flu and COVID line reads.
+pub fn in_flu_season(today: &str) -> bool {
+    let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+    matches!(month, 9..=12 | 1 | 2)
 }
 
 /// The first day of the vaccination campaign `today` falls in: doses
@@ -2918,6 +2934,20 @@ mod tests {
         assert_eq!(flu_season_start("2026-08-26"), "2025-09-01");
         assert_eq!(flu_season_start("2026-09-01"), "2026-09-01");
         assert_eq!(flu_season_start("2026-12-31"), "2026-09-01");
+        // Le COVID suit la même saison : dû en octobre à 70 ans, pas en
+        // juillet ; et la grippe de la grossesse est due dès septembre,
+        // comme celle des 65 ans.
+        let level = |today: &str, code: &str| {
+            due_lines("1956-03-01", today, &[])
+                .into_iter()
+                .find(|l| l.code == code)
+                .map(|l| l.level)
+        };
+        assert_eq!(level("2026-10-10", "COVID"), Some(DueLevel::Due));
+        assert_eq!(level("2026-07-10", "COVID"), Some(DueLevel::Ask));
+        let pregnant = due_lines_with("1995-01-01", "2026-09-15", &[], "2026-06-01");
+        let flu = pregnant.iter().find(|l| l.code == "GRIPPE").unwrap();
+        assert_eq!(flu.level, DueLevel::Due);
     }
 
     #[test]

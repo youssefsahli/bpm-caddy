@@ -84,7 +84,35 @@ pub const MAX_SPANS: usize = 26;
 
 /// Unités par jour, quand la posologie place chaque prise avec sa
 /// quantité (« 1-0-1 », « 1 le matin, ½ le soir »).
+///
+/// **Une unité qui ne se compte pas en boîte n'en donne pas** : « 10-0-10
+/// UI » est une grille pour le plan de prise, mais vingt unités par jour
+/// sur une boîte de cinq stylos ne disent pas combien de jours elle
+/// couvre — l'échelle montrait un retard dès le jour de la délivrance.
+/// De même des gouttes, des millilitres, des cuillères, des pressions.
 pub fn per_day(posology: &str) -> Option<f64> {
+    const UNCOUNTED: &[&str] = &[
+        "ui",
+        "u",
+        "unite",
+        "unites",
+        "goutte",
+        "gouttes",
+        "ml",
+        "cuillere",
+        "cuilleres",
+        "cuilleree",
+        "cuillerees",
+        "pression",
+        "pressions",
+    ];
+    let folded = crate::fuzzy::sort_key(posology);
+    if folded
+        .split(|c: char| !c.is_alphanumeric())
+        .any(|w| UNCOUNTED.contains(&w))
+    {
+        return None;
+    }
     let r = crate::intake::read(posology);
     if r.kind != crate::intake::Kind::Placed {
         return None;
@@ -117,6 +145,10 @@ pub fn read(line: &Line, today: &str) -> Result<Coverage, Vec<Missing>> {
     };
     let total = f64::from(line.units) * f64::from(line.boxes.max(1));
     let days = (total / per_day + 1e-9).floor() as u32;
+    // Moins d'un jour de traitement : rien à dessiner, et pas un retard.
+    if days == 0 {
+        return Err(vec![Missing::Posology]);
+    }
     let until = if days > 0 {
         add_days(start, i64::from(days) - 1).unwrap_or_default()
     } else {
@@ -883,6 +915,23 @@ mod tests {
         // Du 22/10 au 21/11 : 31 jours à 2 par jour.
         assert_eq!((b.units, b.boxes), (62, 3));
         assert!(bridge(&t[1], &target, "2026-10-08").is_none());
+    }
+
+    /// **Des unités d'insuline ou des gouttes ne se comptent pas en
+    /// boîtes**, et une boîte de moins d'un jour n'est pas un retard.
+    #[test]
+    fn units_that_are_not_boxes_give_no_coverage() {
+        let missing = |l: Line| read(&l, "2026-10-12").err();
+        assert_eq!(
+            missing(line(5, "10-0-10 UI", 0)),
+            Some(vec![Missing::Posology])
+        );
+        assert_eq!(
+            missing(line(1, "20-0-20 gouttes", 0)),
+            Some(vec![Missing::Posology])
+        );
+        assert_eq!(missing(line(1, "1-0-1", 0)), Some(vec![Missing::Posology]));
+        assert!(read(&line(30, "1 comprimé le matin", 0), "2026-10-12").is_ok());
     }
 
     #[test]

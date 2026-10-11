@@ -52612,17 +52612,16 @@ impl Db {
     pub fn update_shift(
         &self,
         id: i64,
-        start_time: &str,
-        end_time: &str,
-        pause_minutes: i64,
-        expected_start: &str,
-        expected_end: &str,
+        (start_time, end_time, pause_minutes): (&str, &str, i64),
+        (expected_start, expected_end, expected_pause): (&str, &str, i64),
     ) -> Result<bool, String> {
+        // La pause aussi : elle est écrite, elle est donc comparée — une
+        // pause corrigée ailleurs était réécrite avec celle d'avant.
         let changed = self
             .conn
             .execute(
                 "UPDATE shifts SET start_time = ?1, end_time = ?2, pause_minutes = ?3
-                 WHERE id = ?4 AND start_time = ?5 AND end_time = ?6",
+                 WHERE id = ?4 AND start_time = ?5 AND end_time = ?6 AND pause_minutes = ?7",
                 (
                     start_time,
                     end_time,
@@ -52630,6 +52629,7 @@ impl Db {
                     id,
                     expected_start,
                     expected_end,
+                    expected_pause,
                 ),
             )
             .map_err(|e| e.to_string())?;
@@ -53423,6 +53423,25 @@ pub fn csv_cell(s: &str) -> String {
     }
 }
 
+/// A birth date — `YearHint::Past` — **never after `today`** (ISO).
+/// `Past` only compares years: on 11/10/2026, « 151226 » read 15/12/2026,
+/// a birth two months ahead, where 1926 is meant; and a full year typed
+/// wrong (« 12/05/2062 ») went in as written.
+pub fn parse_birth_date(input: &str, today: &str) -> Result<String, String> {
+    let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2000);
+    let iso = parse_french_date(input, year, YearHint::Past)?;
+    if iso.as_str() <= today {
+        return Ok(iso);
+    }
+    // Une année à deux chiffres de cette année-ci, plus tard dans l'année :
+    // lue avec l'année d'avant, elle passe au siècle d'avant.
+    let again = parse_french_date(input, year.saturating_sub(1), YearHint::Past)?;
+    if again.as_str() <= today {
+        return Ok(again);
+    }
+    Err("Date postérieure à aujourd'hui.".to_owned())
+}
+
 /// Parse the date of something that **has happened** — a delivery, a
 /// prescription, a register line, a document, a last period.
 ///
@@ -53436,7 +53455,12 @@ pub fn csv_cell(s: &str) -> String {
 pub fn parse_event_date(input: &str, today: &str) -> Result<String, String> {
     let year: u32 = today.get(..4).and_then(|y| y.parse().ok()).unwrap_or(2000);
     if let Ok(iso) = parse_french_date(input, year, YearHint::Past) {
-        return Ok(iso);
+        // Ce qui a eu lieu n'est pas plus tard qu'aujourd'hui : « 151226 »
+        // tapé le 11/10/2026 n'est pas une délivrance de décembre.
+        if iso.as_str() <= today {
+            return Ok(iso);
+        }
+        return Err("Date postérieure à aujourd'hui.".to_owned());
     }
     let iso = parse_french_date(input, year, YearHint::Future)?;
     if iso.as_str() <= today {
@@ -53726,7 +53750,44 @@ pub fn month_name_fr(ym: &str) -> String {
 /// Read an hour typed the fast way — "9", "9h", "930", "9h30", "09:30"
 /// — into `HH:MM`. Returns `None` when it is not a plausible hour, so
 /// the field can simply refuse it.
+///
+/// **A separator splits where it stands**: « 12:3 » was read as the
+/// digits « 123 », that is 01:23 — and a shift ending then ran into the
+/// next morning. One minute digit after a separator is refused.
 pub fn parse_hour(text: &str) -> Option<String> {
+    let lower = text
+        .trim()
+        .to_lowercase()
+        .replace("heures", "h")
+        .replace("heure", "h");
+    let text = lower.trim_end_matches("min").trim_end_matches("mn").trim();
+    if let Some(at) = text.find([':', 'h', '.']) {
+        let (head, tail) = (&text[..at], &text[at + 1..]);
+        let only_digits = |s: &str| s.trim().chars().all(|c| c.is_ascii_digit());
+        if !only_digits(head) || !only_digits(tail) {
+            return None;
+        }
+        let (head, tail) = (head.trim(), tail.trim());
+        if head.is_empty() || head.len() > 2 || tail.len() == 1 || tail.len() > 2 {
+            return None;
+        }
+        let h: u32 = head.parse().ok()?;
+        let m: u32 = if tail.is_empty() {
+            0
+        } else {
+            tail.parse().ok()?
+        };
+        if h > 23 || m > 59 {
+            return None;
+        }
+        return Some(format!("{h:02}:{m:02}"));
+    }
+    if !text
+        .chars()
+        .all(|c| c.is_ascii_digit() || c.is_whitespace())
+    {
+        return None;
+    }
     let digits: String = text.chars().filter(char::is_ascii_digit).collect();
     if digits.is_empty() {
         return None;
@@ -57384,6 +57445,24 @@ mod tests {
         assert!(parse("31/12/1999").is_ok());
     }
 
+    /// **A birth, or anything that happened, is never after today** :
+    /// a two-digit year later in this year is the century before, and a
+    /// full year in the future is refused.
+    #[test]
+    fn a_birth_date_is_never_in_the_future() {
+        let today = "2026-10-11";
+        assert_eq!(parse_birth_date("151226", today).unwrap(), "1926-12-15");
+        assert_eq!(parse_birth_date("150326", today).unwrap(), "2026-03-15");
+        assert_eq!(parse_birth_date("030749", today).unwrap(), "1949-07-03");
+        assert!(parse_birth_date("12/05/2062", today).is_err());
+        assert!(
+            parse_birth_date("0810", today).is_err(),
+            "l'année est requise"
+        );
+        assert!(parse_event_date("151226", today).is_err());
+        assert!(parse_event_date("12/05/2062", today).is_err());
+    }
+
     /// The date of something that happened: the yearless shorthand the
     /// counter is taught reads as the last such day, never refused.
     #[test]
@@ -57728,6 +57807,13 @@ mod tests {
         assert_eq!(parse_hour("09:30").as_deref(), Some("09:30"));
         assert_eq!(parse_hour("1615").as_deref(), Some("16:15"));
         assert_eq!(parse_hour("16 h 15").as_deref(), Some("16:15"));
+        assert_eq!(parse_hour("9 heures").as_deref(), Some("09:00"));
+        assert_eq!(parse_hour("9h30min").as_deref(), Some("09:30"));
+        assert_eq!(parse_hour("12H30").as_deref(), Some("12:30"));
+        // Un séparateur coupe où il est : « 12:3 » n'est pas 01:23.
+        assert_eq!(parse_hour("12:3"), None);
+        assert_eq!(parse_hour("1:5"), None);
+        assert_eq!(parse_hour("8:05").as_deref(), Some("08:05"));
         // Nonsense is refused rather than stored.
         assert_eq!(parse_hour("25h"), None);
         assert_eq!(parse_hour("1290"), None);
@@ -59339,11 +59425,15 @@ mod tests {
             .unwrap();
         // Quelqu'un d'autre l'a déjà bougé : l'écriture ne passe pas.
         assert!(!db
-            .update_shift(id, "10:00", "19:00", 90, "08:00", "19:00")
+            .update_shift(id, ("10:00", "19:00", 90), ("08:00", "19:00", 90))
+            .unwrap());
+        // Une pause corrigée ailleurs refuse l'écriture aussi.
+        assert!(!db
+            .update_shift(id, ("10:00", "18:30", 60), ("09:00", "19:00", 30))
             .unwrap());
         // Avec les valeurs que cet écran affichait, elle passe.
         assert!(db
-            .update_shift(id, "10:00", "18:30", 60, "09:00", "19:00")
+            .update_shift(id, ("10:00", "18:30", 60), ("09:00", "19:00", 90))
             .unwrap());
         let after = db.shifts_between("2026-09-07", "2026-09-07").unwrap();
         assert_eq!(after[0].start_time, "10:00");
@@ -59352,7 +59442,7 @@ mod tests {
         // Et une seconde fois avec les anciennes valeurs échoue, ce qui
         // est la moitié utile de la garantie.
         assert!(!db
-            .update_shift(id, "11:00", "18:30", 60, "09:00", "19:00")
+            .update_shift(id, ("11:00", "18:30", 60), ("09:00", "19:00", 90))
             .unwrap());
 
         // Une trame annulée en bloc ne rend plus d'occurrence.

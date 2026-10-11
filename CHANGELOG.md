@@ -47,6 +47,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Barcode: an impossible expiry date says the reading is incomplete.
 - Access log: an act written by a newer version is counted apart, not as
   an opened file.
+- config.toml: a file that does not parse is said at the lock screen and
+  never written over (the defaults, database path included, replaced the
+  officine's file at the first save); the password is not used to open
+  the default base on its own; saving is atomic.
+- Staff planning: an end date that does not read, or falls before the
+  first day, is refused (it meant « forever » or a line never shown); a
+  yearless end before the start is next year; a pause that does not read
+  is refused rather than counted zero. Hours typed « 12:3 » are refused
+  instead of read as 01:23.
+- Birth dates and dates of past events are never after today
+  (« 151226 » typed in October 2026 is 1926 for a birth, refused for a
+  delivery).
+- PK values: the unit typed counts (« 4 jours » was stored as 4 h,
+  « 30 min » as 30 h); « 1 h 30 » reads as 1.5 h.
+- Box coverage: insulin units, drops, millilitres and spoons no longer
+  count as box units, and a box of less than a day is not drawn overdue.
+- Insulin: the human-insulin box sets the sensitivity rule too (1500);
+  Fiasp is no longer called the only insulin injectable after the meal
+  starts.
+- Vaccines: COVID is due during the autumn campaign only, and the
+  pregnancy flu line uses the same season as the general one.
+- Concurrent edits: a shift's pause is compared before it is written;
+  conciliation says when another post had already added a treatment
+  with its posology; a vaccination act is advanced only once dated and
+  signed; undoing a reference-table cell compares with what was written
+  and says when it is refused.
+- Prescribers' import: an ADELI practitioner with several activities is
+  one person.
+- Launcher: a damaged binary is never repaired with an older release.
+- Relay: a long one-way transfer is no longer cut after 90 s of silence
+  in the other direction; expired waits are released when the relay is
+  full.
+- Messages to other officines: a text too long for the network is
+  refused before sending.
 
 ## [0.397.0] - 2026-10-11
 

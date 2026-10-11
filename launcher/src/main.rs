@@ -123,6 +123,30 @@ fn version_parts(tag: &str) -> Vec<u64> {
         .collect()
 }
 
+#[derive(Debug, PartialEq, Eq)]
+enum Decision {
+    UpToDate,
+    /// Le binaire est abîmé, mais la publication est plus ancienne.
+    Older,
+    Install,
+}
+
+/// **Jamais en arrière** : si la dernière publication est retirée,
+/// « la plus récente » redevient la précédente, et chaque officine aurait
+/// remplacé une version par une plus ancienne — qui ouvrirait une base
+/// qu'une version plus récente a déjà migrée. Un binaire abîmé ne se
+/// répare pas non plus par une version plus ancienne.
+fn decide(tag: &str, installed: &str, whole: bool) -> Decision {
+    let (published, here) = (version_parts(tag), version_parts(installed));
+    if whole && published <= here {
+        Decision::UpToDate
+    } else if !installed.trim().is_empty() && published < here {
+        Decision::Older
+    } else {
+        Decision::Install
+    }
+}
+
 fn worker(shared: Arc<Shared>, ctx: egui::Context) {
     let outcome = check_and_update(&shared);
     let mut phase = shared.phase.lock().unwrap();
@@ -170,12 +194,17 @@ fn check_and_update(shared: &Shared) -> Result<String, Box<dyn std::error::Error
     // l'installation ; une taille qui ne correspond plus est un fichier
     // abîmé, et il se retélécharge.
     let whole = installed_whole();
-    // **Jamais en arrière** : si la dernière publication est retirée,
-    // « la plus récente » redevient la précédente, et chaque officine
-    // aurait remplacé une version par une plus ancienne — qui ouvrirait
-    // une base qu'une version plus récente a déjà migrée.
-    if whole && version_parts(&tag) <= version_parts(&installed) {
-        return Ok(format!("À jour ({})", installed.trim()));
+    match decide(&tag, &installed, whole) {
+        Decision::UpToDate => return Ok(format!("À jour ({})", installed.trim())),
+        Decision::Older => {
+            return Err(format!(
+                "binaire installé abîmé, et la version publiée ({tag}) est plus ancienne que {} : \
+                 rien n'est remplacé",
+                installed.trim()
+            )
+            .into())
+        }
+        Decision::Install => {}
     }
 
     *shared.phase.lock().unwrap() = Phase::Downloading(tag.clone());
@@ -490,6 +519,17 @@ mod tests {
     /// What matters is the two ways of getting it wrong: a `theme` under
     /// another section is not the interface's, and a key that merely
     /// starts with the word is not the key.
+    /// Jamais en arrière, même pour réparer un binaire abîmé.
+    #[test]
+    fn an_update_never_goes_backwards() {
+        use super::{decide, Decision};
+        assert_eq!(decide("v0.397.0", "0.397.0", true), Decision::UpToDate);
+        assert_eq!(decide("v0.398.0", "0.397.0", true), Decision::Install);
+        assert_eq!(decide("v0.397.0", "0.397.0", false), Decision::Install);
+        assert_eq!(decide("v0.397.0", "0.398.0", false), Decision::Older);
+        assert_eq!(decide("v0.397.0", "", false), Decision::Install);
+    }
+
     #[test]
     fn the_skin_is_read_out_of_the_ui_section_and_nowhere_else() {
         let t = |s: &str| super::theme_in(s);

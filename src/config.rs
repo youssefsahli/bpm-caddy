@@ -439,6 +439,13 @@ pub struct Config {
     pub postes: PostesConfig,
     pub audit: AuditConfig,
     pub prescribers: PrescribersConfig,
+    /// **Le fichier n'a pas pu se lire** : l'erreur, et rien n'est
+    /// réécrit tant qu'elle reste. Une faute de frappe dans
+    /// `config.toml` donnait les valeurs par défaut, que le premier
+    /// enregistrement écrivait par-dessus le fichier de l'officine —
+    /// chemin de la base compris.
+    #[serde(skip)]
+    pub unreadable: Option<String>,
 }
 
 /// L'annuaire des prescripteurs — voir `src/prescribers.rs` et le
@@ -1875,7 +1882,10 @@ impl Config {
     pub fn load() -> Self {
         let path = Self::path();
         match std::fs::read_to_string(&path) {
-            Ok(s) => toml::from_str(&s).unwrap_or_default(),
+            Ok(s) => toml::from_str(&s).unwrap_or_else(|e: toml::de::Error| Self {
+                unreadable: Some(e.to_string()),
+                ..Self::default()
+            }),
             Err(_) => {
                 Self::write_template(&path);
                 Self::default()
@@ -2010,13 +2020,31 @@ impl Config {
 
     /// Serialize and persist the configuration (the options editor).
     /// Note: rewrites `config.toml`, replacing any hand-written comments.
+    ///
+    /// Refused while the file on disk could not be read (`unreadable`):
+    /// what this copy holds is the defaults, not the officine's file.
+    /// Written beside and renamed over, so a crash mid-write never leaves
+    /// an empty file.
     pub fn save(&self) -> Result<(), String> {
+        if let Some(e) = &self.unreadable {
+            return Err(crate::strings::trn(
+                "config_unreadable",
+                &[&Self::path().display(), e],
+            ));
+        }
         let text = toml::to_string_pretty(self).map_err(|e| e.to_string())?;
         let path = Self::path();
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&path, text).map_err(|e| e.to_string())
+        let tmp = path.with_extension("toml.tmp");
+        {
+            use std::io::Write;
+            let mut f = std::fs::File::create(&tmp).map_err(|e| e.to_string())?;
+            f.write_all(text.as_bytes()).map_err(|e| e.to_string())?;
+            f.sync_all().map_err(|e| e.to_string())?;
+        }
+        std::fs::rename(&tmp, &path).map_err(|e| e.to_string())
     }
 
     pub fn act_fees(&self, kind: crate::db::InterviewKind) -> ActFees {
@@ -2906,6 +2934,14 @@ mod tests {
         let cfg = Config::load();
         assert_eq!(cfg.density(), motif::Density::Compact);
         assert_eq!(cfg.ui.operator, "CL");
+
+        // A file that does not read is said, and never written over.
+        let broken = "[ui]\ndensity = \"compact\"\noperator = CL\n";
+        std::fs::write(&expected, broken).unwrap();
+        let cfg = Config::load();
+        assert!(cfg.unreadable.is_some());
+        assert!(cfg.save().is_err(), "les défauts n'écrasent pas le fichier");
+        assert_eq!(std::fs::read_to_string(&expected).unwrap(), broken);
 
         // Saving writes real TOML that loads back as itself.
         let mut cfg = Config::default();

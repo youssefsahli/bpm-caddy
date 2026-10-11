@@ -60,7 +60,7 @@ pub const PROFILES: &[Profile] = &[
         onset_min: 5,
         peak_min: Some((30, 60)),
         duration_min: 240,
-        note: "Se pique au début du repas, ou jusqu'à vingt minutes après : c'est la seule qui permet une injection après le début du repas.",
+        note: "Se pique au début du repas, ou jusqu'à vingt minutes après son début.",
     },
     Profile {
         name: "NovoRapid",
@@ -334,11 +334,18 @@ pub fn rules(total_daily_units: f64, human_insulin: bool) -> Option<Rules> {
     if total_daily_units <= 0.0 {
         return None;
     }
-    let numerator = if human_insulin { 450.0 } else { 500.0 };
+    // L'insuline humaine prend ses deux règles : 450 pour les glucides,
+    // et 1500 (et non 1800) pour la sensibilité — la case ne changeait
+    // que la première, et la correction sortait trop faible d'un sixième.
+    let (numerator, sensitivity, sensitivity_mmol) = if human_insulin {
+        (450.0, 15.0, 15.0 / 0.18)
+    } else {
+        (500.0, 18.0, 100.0)
+    };
     Some(Rules {
         carb_ratio: numerator / total_daily_units,
-        sensitivity_gl: 18.0 / total_daily_units,
-        sensitivity_mmol: 100.0 / total_daily_units,
+        sensitivity_gl: sensitivity / total_daily_units,
+        sensitivity_mmol: sensitivity_mmol / total_daily_units,
     })
 }
 
@@ -465,6 +472,8 @@ mod tests {
         // Human insulin covers less per unit.
         let h = rules(50.0, true).unwrap();
         assert!(h.carb_ratio < r.carb_ratio);
+        assert!((h.sensitivity_gl - 0.3).abs() < 1e-9, "règle des 1500");
+        assert!((h.sensitivity_gl - h.sensitivity_mmol * 0.18).abs() < 1e-9);
         // No insulin, no ratio — never an infinity dressed up as a dose.
         assert!(rules(0.0, false).is_none());
         assert!(rules(-3.0, false).is_none());

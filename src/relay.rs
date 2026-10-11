@@ -134,8 +134,20 @@ pub fn serve(port: u16, allowed: Allowed, stop: Arc<AtomicBool>) -> std::io::Res
                     continue;
                 }
             };
-            if !admit(&calls, from.ip()) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+            if !admit(&calls, from.ip()) {
                 continue;
+            }
+            // Plein : d'abord lâcher les attentes échues. Elles ne
+            // s'élaguaient qu'à l'arrivée d'une nouvelle attente, que le
+            // relais plein refusait — saturé, il le restait jusqu'au
+            // redémarrage.
+            if open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+                if let Ok(mut w) = waiting.lock() {
+                    prune(&mut w, &open);
+                }
+                if open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+                    continue;
+                }
             }
             open.fetch_add(1, Ordering::SeqCst);
             let (allowed, waiting, open) = (
@@ -150,6 +162,16 @@ pub fn serve(port: u16, allowed: Allowed, stop: Arc<AtomicBool>) -> std::io::Res
         }
     });
     Ok(())
+}
+
+/// Lâcher les attentes échues, et les décompter.
+fn prune(w: &mut HashMap<String, Vec<Waiting>>, open: &std::sync::atomic::AtomicUsize) {
+    w.retain(|_, v| {
+        let before = v.len();
+        v.retain(|x| x.since.elapsed() < WAIT_BOUND);
+        open.fetch_sub(before - v.len(), Ordering::SeqCst);
+        !v.is_empty()
+    });
 }
 
 /// Une adresse qui appelle trop souvent est lâchée.
@@ -194,12 +216,7 @@ fn take(
             let Ok(mut w) = waiting.lock() else {
                 return Ok(());
             };
-            w.retain(|_, v| {
-                let before = v.len();
-                v.retain(|x| x.since.elapsed() < WAIT_BOUND);
-                open.fetch_sub(before - v.len(), Ordering::SeqCst);
-                !v.is_empty()
-            });
+            prune(&mut w, open);
             if !w.contains_key(&group) && w.len() >= MOST_GROUPS {
                 return Ok(());
             }
@@ -270,36 +287,69 @@ fn read_line(mut stream: &TcpStream) -> std::io::Result<String> {
 }
 
 /// Passer les octets de l'un à l'autre, dans les deux sens, jusqu'à ce
-/// que l'un se taise, ferme, ou dépasse les bornes.
+/// que l'un ferme, que **les deux** se taisent, ou que les bornes soient
+/// dépassées.
+///
+/// Le silence se compte pour la conversation, pas pour un sens : un
+/// téléphone qui reçoit un long tour sur un lien faible n'envoie rien
+/// pendant des minutes, et l'attente de quatre-vingt-dix secondes sur
+/// son seul sens coupait le transfert au milieu.
 fn splice(a: TcpStream, b: TcpStream) {
-    let until = Instant::now() + TALK_BOUND;
+    let start = Instant::now();
+    let until = start + TALK_BOUND;
     for s in [&a, &b] {
-        let _ = s.set_read_timeout(Some(IDLE));
+        let _ = s.set_read_timeout(Some(TICK));
         let _ = s.set_write_timeout(Some(IDLE));
     }
     let (Ok(a2), Ok(b2)) = (a.try_clone(), b.try_clone()) else {
         return;
     };
-    let one = std::thread::spawn(move || pipe(a, b2, until));
-    pipe(b, a2, until);
+    let last = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let other = std::sync::Arc::clone(&last);
+    let one = std::thread::spawn(move || pipe(a, b2, start, until, &other));
+    pipe(b, a2, start, until, &last);
     let _ = one.join();
 }
 
-fn pipe(mut from: TcpStream, mut to: TcpStream, until: Instant) {
+/// Le pas auquel chaque sens regarde si la conversation s'est tue.
+const TICK: Duration = Duration::from_secs(5);
+
+fn pipe(
+    mut from: TcpStream,
+    mut to: TcpStream,
+    start: Instant,
+    until: Instant,
+    last: &std::sync::atomic::AtomicU64,
+) {
+    use std::sync::atomic::Ordering;
     let mut buf = [0u8; 16 * 1024];
     let mut moved: u64 = 0;
+    let since_start = || u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX);
     loop {
         if Instant::now() >= until || moved >= TALK_BYTES {
             break;
         }
         match from.read(&mut buf) {
-            Ok(0) | Err(_) => break,
+            Ok(0) => break,
             Ok(n) => {
                 moved += n as u64;
+                last.store(since_start(), Ordering::Relaxed);
                 if to.write_all(&buf[..n]).is_err() {
                     break;
                 }
             }
+            Err(e)
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) =>
+            {
+                let quiet = since_start().saturating_sub(last.load(Ordering::Relaxed));
+                if quiet >= u64::try_from(IDLE.as_millis()).unwrap_or(u64::MAX) {
+                    break;
+                }
+            }
+            Err(_) => break,
         }
     }
     let _ = to.shutdown(std::net::Shutdown::Both);

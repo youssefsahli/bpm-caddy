@@ -5761,7 +5761,7 @@ struct Session {
     /// cell being edited and the last change (for the undo).
     table_cells: std::collections::HashMap<(usize, usize), String>,
     table_edit: Option<(usize, usize, String)>,
-    table_undo: Option<(usize, usize, String)>,
+    table_undo: Option<(usize, usize, String, String)>,
     /// The calculation panel: which tool, and its inputs.
     calc_open: bool,
     /// La fiche que les calculs regardent, quand on leur en donne une.
@@ -7081,6 +7081,18 @@ impl Session {
         };
         let body = self.msg.draft.trim().to_owned();
         if body.is_empty() && self.msg.attach.is_none() {
+            return;
+        }
+        // **Dit avant l'envoi** : un message pour une autre officine part
+        // en un seul enregistrement du réseau, et trop long, il restait en
+        // attente pour toujours, dit à chaque synchronisation.
+        let to_officines = self
+            .msg
+            .conversations
+            .iter()
+            .any(|c| c.id == id && c.channel == crate::messages::Channel::Officines);
+        if to_officines && body.len() > crate::messages::NET_BODY_MAX {
+            self.msg.note = Some((true, tr("msg_too_long").to_owned()));
             return;
         }
         let op = self.msg.loaded_for.clone().unwrap_or_default();
@@ -13931,11 +13943,11 @@ fn list_step(cursor: usize, len: usize, up: bool, down: bool) -> usize {
 /// A birth date that may be left out: **quick entry stays quick**. Empty
 /// is an unknown date, never an error; anything typed must still read as
 /// a date.
-fn optional_birth(input: &str, year: u32) -> Result<String, String> {
+fn optional_birth(input: &str, today: &str) -> Result<String, String> {
     if input.trim().is_empty() {
         Ok(String::new())
     } else {
-        db::parse_french_date(input, year, db::YearHint::Past)
+        db::parse_birth_date(input, today)
     }
 }
 
@@ -14643,6 +14655,7 @@ enum PlanningUndo {
         /// arrière porte là-dessus, pas sur ce qu'on croit savoir.
         now_start: String,
         now_end: String,
+        now_pause: i64,
     },
     /// Une famille supprimée : la ligne rangée **et** ses exceptions.
     /// Les réinsérer donne de nouveaux identifiants, et le
@@ -16045,15 +16058,22 @@ impl App {
         let show_nav = layout.nav_open.unwrap_or(config.ui.show_nav_on_start);
 
         // Silent unlock when the OS credential manager holds the password.
+        // Un `config.toml` illisible est dit à l'écran de verrouillage, et
+        // rien ne s'ouvre seul : le chemin de la base est celui par défaut,
+        // peut-être pas celui de l'officine.
         let mut state = State::Locked {
             password: String::new(),
-            error: None,
+            error: config
+                .unreadable
+                .as_ref()
+                .map(|e| trn("config_unreadable", &[&Config::path().display(), e])),
         };
         let mut remember_password = false;
         // Demo/e2e hook first, then the OS credential manager.
         let stored_pw = std::env::var("BPM_CADDY_PASSWORD")
             .ok()
-            .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()));
+            .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()))
+            .filter(|_| config.unreadable.is_none());
         if let Some(pw) = stored_pw {
             match Db::open(&config.db_path(), &pw)
                 .and_then(|db| {
@@ -20750,9 +20770,10 @@ impl App {
                 });
 
                 if create {
-                    // Birth dates read two-digit years as the past ("49" → 1949).
-                    let year = session.db.current_year();
-                    let outcome = optional_birth(&form.birth_date, year).and_then(|iso| {
+                    // Birth dates read two-digit years as the past ("49" → 1949),
+                    // and never after today.
+                    let today = session.today.clone();
+                    let outcome = optional_birth(&form.birth_date, &today).and_then(|iso| {
                         if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                             return Err(tr("form_names_required").to_owned());
                         }
@@ -22790,22 +22811,30 @@ impl App {
         };
         if let Some((id, made, booked_by)) = planned {
             let today = session.today.clone();
-            let dated = made == today
-                || session
-                    .db
-                    .set_created_date(id, &today, &made)
-                    .unwrap_or(false);
+            // **Daté et signé, ou rien** : un refus (l'acte changé sur un
+            // autre poste) laissait l'acte avancer quand même, facturable
+            // sous la date du rendez-vous ou les initiales d'un autre. Il
+            // reste prévu, la liste est relue, et c'est dit.
+            let dated = if made == today {
+                Ok(true)
+            } else {
+                session.db.set_created_date(id, &today, &made)
+            };
             // L'acte signe des initiales de qui vaccine, pas de qui a pris
             // le rendez-vous au téléphone.
-            let signed = booked_by == operator.trim()
-                || session
-                    .db
-                    .set_interview_operator(id, operator, &booked_by)
-                    .unwrap_or(false);
-            let dated = dated && signed;
-            match session.db.advance_interview(id, InterviewState::Scheduled) {
-                Ok(true) if dated => session.error = None,
-                Ok(_) => session.stale("vacc_stale"),
+            let signed = match dated {
+                Ok(true) if booked_by != operator.trim() => {
+                    session.db.set_interview_operator(id, operator, &booked_by)
+                }
+                other => other,
+            };
+            match signed {
+                Ok(true) => match session.db.advance_interview(id, InterviewState::Scheduled) {
+                    Ok(true) => session.error = None,
+                    Ok(false) => session.stale("vacc_stale"),
+                    Err(e) => session.error = Some(e),
+                },
+                Ok(false) => session.stale("vacc_stale"),
                 Err(e) => session.error = Some(e),
             }
             session.reload_interviews(patient.id);
@@ -24591,6 +24620,7 @@ impl App {
             .map(|d| (d.label.clone(), d.after.trim().to_owned()))
             .collect();
         let mut done = 0usize;
+        let mut stale = false;
         for (name, dose) in wanted {
             let Some(id) = session
                 .drugs
@@ -24602,21 +24632,30 @@ impl App {
             };
             match session.db.add_patient_drug(patient.id, id) {
                 Ok(()) => {
-                    done += 1;
                     // La posologie de la feuille avec le traitement :
                     // elle est sur la ligne qu'on vient de lire, et la
                     // retaper serait recopier ce qu'on a sous les yeux.
                     // Le lien vient d'être créé, donc la valeur attendue
-                    // est vide.
-                    if !dose.is_empty() {
-                        let _ = session.db.set_patient_posology(patient.id, id, &dose, "");
+                    // est vide — sauf si un autre poste l'a ajouté entre-
+                    // temps avec sa posologie : la sienne reste, et c'est
+                    // dit, plutôt que compté comme ajouté.
+                    if dose.is_empty() {
+                        done += 1;
+                    } else {
+                        match session.db.set_patient_posology(patient.id, id, &dose, "") {
+                            Ok(true) => done += 1,
+                            Ok(false) => stale = true,
+                            Err(e) => session.error = Some(e),
+                        }
                     }
                 }
                 Err(e) => session.error = Some(e),
             }
         }
         session.reload_treatments(patient.id);
-        if done > 0 {
+        if stale {
+            session.stale("concil_stale");
+        } else if done > 0 {
             session.error = Some(trf("concil_add_done", done.to_string()));
         }
     }
@@ -24633,6 +24672,7 @@ impl App {
             .map(|d| (d.label.clone(), d.after.trim().to_owned()))
             .collect();
         let mut done = 0usize;
+        let mut stale = false;
         for (name, dose) in wanted {
             let Some(drug) = session.patient_treats.iter().find(|t| t.name == name) else {
                 continue;
@@ -24644,13 +24684,16 @@ impl App {
                 .set_patient_posology(patient.id, id, &dose, &expected)
             {
                 Ok(true) => done += 1,
-                Ok(false) => session.stale("concil_stale"),
+                Ok(false) => stale = true,
                 Err(e) => session.error = Some(e),
             }
         }
         session.concil_adopt_confirm = false;
         session.reload_treatments(patient.id);
-        if done > 0 {
+        // L'avis « modifié ailleurs » n'est pas recouvert par le compte.
+        if stale {
+            session.stale("concil_stale");
+        } else if done > 0 {
             session.error = Some(trf("concil_adopt_done", done.to_string()));
         }
     }
@@ -30065,8 +30108,8 @@ impl App {
         }
         if save_edit {
             if let Some(form) = session.edit_patient.clone() {
-                let year = session.db.current_year();
-                let outcome = optional_birth(&form.birth_date, year).and_then(|iso| {
+                let today = session.today.clone();
+                let outcome = optional_birth(&form.birth_date, &today).and_then(|iso| {
                     if form.last_name.trim().is_empty() || form.first_name.trim().is_empty() {
                         return Err(tr("form_names_required").to_owned());
                     }
@@ -35670,6 +35713,29 @@ impl App {
         8.0
     }
 
+    /// La fin d'un poste qui revient, lue : vide si rien n'est tapé ;
+    /// une date sans année qui tomberait avant `day` est l'an prochain.
+    /// L'erreur est la clé du message.
+    fn shift_until(typed: &str, day: &str, year: u32) -> Result<String, &'static str> {
+        let typed = typed.trim();
+        if typed.is_empty() {
+            return Ok(String::new());
+        }
+        let mut until = db::parse_french_date(typed, year, db::YearHint::Future)
+            .map_err(|_| "planning_bad_end")?;
+        if until.as_str() < day {
+            if let Ok(next) = db::parse_french_date(typed, year + 1, db::YearHint::Future) {
+                if next != until && next.as_str() >= day {
+                    until = next;
+                }
+            }
+        }
+        if until.as_str() < day {
+            return Err("planning_end_before");
+        }
+        Ok(until)
+    }
+
     /// The stored end of a shift, from what was typed in both fields.
     ///
     /// Empty when no end was written — **et cela ne vaut pas zéro
@@ -36063,9 +36129,33 @@ impl App {
             // **Un rythme quotidien sans fin n'est pas un congé**, c'est
             // quelqu'un d'absent pour toujours — et une ligne que chaque
             // lecture déplierait sur des centaines de jours.
-            let until =
-                db::parse_french_date(&form.until_text, session.year_now(), db::YearHint::Future)
-                    .unwrap_or_default();
+            // **Une fin tapée qui ne se lit pas n'est pas « sans fin »** :
+            // « 31/04 » faisait revenir le poste pour toujours. Et une fin
+            // sans année qui tombe avant le début est l'an prochain
+            // (« 1501 » tapé en octobre) : rangée telle quelle, la ligne
+            // était en base et ne se montrait jamais.
+            let until = if rhythm == planning::Cadence::Unique {
+                String::new()
+            } else {
+                match Self::shift_until(&form.until_text, &form.day, session.year_now()) {
+                    Ok(until) => until,
+                    Err(key) => {
+                        session.error = Some(tr(key).to_owned());
+                        return;
+                    }
+                }
+            };
+            // Une pause qui ne se lit pas n'est pas zéro : « 30 min »
+            // comptait la pause dans les heures.
+            let pause = form.pause.trim();
+            let Ok(pause_minutes) = (if pause.is_empty() {
+                Ok(0)
+            } else {
+                pause.parse::<i64>()
+            }) else {
+                session.error = Some(tr("planning_bad_pause").to_owned());
+                return;
+            };
             if rhythm.needs_an_end() && until.is_empty() {
                 session.error = Some(tr("planning_needs_an_end").to_owned());
                 return;
@@ -36080,12 +36170,8 @@ impl App {
                 // et ce qu'on y avait tapé reste dans le formulaire :
                 // appliqué quand même, un poste posé après cette
                 // date-là serait écrit en base et invisible à l'écran.
-                repeat_until: if rhythm == planning::Cadence::Unique {
-                    String::new()
-                } else {
-                    until
-                },
-                pause_minutes: form.pause.trim().parse().unwrap_or(0),
+                repeat_until: until,
+                pause_minutes,
                 kind: form
                     .kind
                     .unwrap_or(planning::ShiftKind::Journee)
@@ -36184,10 +36270,11 @@ impl App {
                     "" => was_pause,
                     typed => typed.parse().unwrap_or(was_pause),
                 };
-                match session
-                    .db
-                    .update_shift(id, &from, &to, pause, &was_from, &was_to)
-                {
+                match session.db.update_shift(
+                    id,
+                    (&from, &to, pause),
+                    (&was_from, &was_to, was_pause),
+                ) {
                     Ok(true) => {
                         session.remember(PlanningUndo::Edited {
                             id,
@@ -36196,6 +36283,7 @@ impl App {
                             pause: was_pause,
                             now_start: from.clone(),
                             now_end: to.clone(),
+                            now_pause: pause,
                         });
                         session.load_shifts(true);
                     }
@@ -37325,13 +37413,14 @@ impl App {
                 pause,
                 now_start,
                 now_end,
+                now_pause,
             } => match session
                 .db
                 // Le compare-and-set porte sur ce que l'écriture avait
                 // mis : si quelqu'un d'autre a bougé le poste depuis,
                 // le retour arrière ne passe pas — et c'est ce qu'on
                 // veut, plutôt qu'écraser son travail.
-                .update_shift(id, &start, &end, pause, &now_start, &now_end)
+                .update_shift(id, (&start, &end, pause), (&now_start, &now_end, now_pause))
             {
                 Ok(true) => Ok(()),
                 Ok(false) => Err(session.stale_note("planning_stale")),
@@ -59461,7 +59550,7 @@ impl App {
                 .db
                 .set_table_cell(t.short, r, c, value.trim(), shipped, &previous)
             {
-                Ok(true) => session.table_undo = Some((r, c, previous)),
+                Ok(true) => session.table_undo = Some((r, c, previous, value.trim().to_owned())),
                 Ok(false) => session.stale("tables_cell_stale"),
                 Err(e) => session.error = Some(e),
             }
@@ -59470,23 +59559,24 @@ impl App {
             session.table_edit = None;
         }
         if undo {
-            if let Some((r, c, previous)) = session.table_undo.take() {
+            if let Some((r, c, previous, written)) = session.table_undo.take() {
                 let shipped = t
                     .rows
                     .get(r)
                     .and_then(|row| row.get(c))
                     .copied()
                     .unwrap_or("");
-                let current = session
-                    .table_cells
-                    .get(&(r, c))
-                    .cloned()
-                    .unwrap_or_else(|| shipped.to_owned());
-                if let Err(e) = session
+                // Le retour compare à **ce que l'écriture avait mis**, pas
+                // à la case relue depuis : relue après la modification
+                // d'un autre poste, elle le laissait écraser. Et un refus
+                // se dit, au lieu d'un retour arrière muet.
+                match session
                     .db
-                    .set_table_cell(t.short, r, c, &previous, shipped, &current)
+                    .set_table_cell(t.short, r, c, &previous, shipped, &written)
                 {
-                    session.error = Some(e);
+                    Ok(true) => {}
+                    Ok(false) => session.stale("tables_cell_stale"),
+                    Err(e) => session.error = Some(e),
                 }
                 session.table_cells = session.db.table_cells(t.short).unwrap_or_default();
                 session.table_rev = session.table_rev.wrapping_add(1);
@@ -90785,6 +90875,53 @@ mod tests {
         assert!(on(&s, "2026-10-21"), "la semaine demandée");
         assert!(!on(&s, "2026-10-28"), "et plus l'autre");
         assert!(on(&s, "2026-01-07"), "les semaines d'avant restent");
+    }
+
+    /// **Un ajout de la conciliation ne recouvre pas celui d'un autre
+    /// poste** : la posologie qu'il y avait mise reste, c'est dit, et la
+    /// ligne n'est pas comptée comme ajoutée.
+    #[test]
+    fn a_conciliation_add_says_when_another_post_was_first() {
+        let (mut s, _swept) = scratch_session("concil_first");
+        let pid = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let drug = s.db.add_drug("Zzkardegic").unwrap();
+        s.set_drugs(s.db.drugs().unwrap());
+        // L'autre poste, avant.
+        s.db.add_patient_drug(pid, drug).unwrap();
+        assert!(s
+            .db
+            .set_patient_posology(pid, drug, "75 mg 1/j", "")
+            .unwrap());
+        s.concil_rows = vec![crate::conciliation::Divergence {
+            kind: crate::conciliation::Change::Added,
+            label: "Zzkardegic".to_owned(),
+            replaces: String::new(),
+            before: String::new(),
+            after: "160 mg 1/j".to_owned(),
+            note: String::new(),
+        }];
+        let patient =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == pid)
+                .unwrap();
+        super::App::concil_add_treatments(&mut s, &patient);
+        let said = s.stale_note("concil_stale");
+        assert_eq!(s.error.as_deref(), Some(said.as_str()));
+    }
+
+    /// **La fin d'un poste qui revient** : illisible, elle est refusée
+    /// (elle valait « sans fin ») ; sans année et avant le début, c'est
+    /// l'an prochain ; avant le début avec son année, refusée.
+    #[test]
+    fn a_shift_end_is_read_or_refused_never_dropped() {
+        let until = |t: &str| super::App::shift_until(t, "2026-10-12", 2026);
+        assert_eq!(until(""), Ok(String::new()));
+        assert_eq!(until("31/04/2027"), Err("planning_bad_end"));
+        assert_eq!(until("1501"), Ok("2027-01-15".to_owned()));
+        assert_eq!(until("20/10"), Ok("2026-10-20".to_owned()));
+        assert_eq!(until("15/01/2026"), Err("planning_end_before"));
     }
 
     /// **La carte Vitale ouvre la fiche de la personne, pas celle du

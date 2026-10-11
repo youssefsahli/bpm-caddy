@@ -367,14 +367,24 @@ pub fn import(text: &str) -> Result<Imported, String> {
         // chiffres d'un ADELI se comptaient comme autant de RPPS faux.
         // Rangé à sa place, il ne se vérifie pas par une clé qu'il n'a
         // pas.
+        let mut adeli = String::new();
         if take(&cells, "kind").trim() == "0" {
+            adeli = who.rpps.trim().to_owned();
             if who.am.trim().is_empty() {
                 who.am = std::mem::take(&mut who.rpps);
             } else {
                 who.rpps.clear();
             }
         }
-        let key = who.rpps.trim().to_owned();
+        // Une personne par numéro : le RPPS, ou à défaut l'ADELI — un
+        // praticien ADELI à trois activités donnait trois personnes.
+        let key = if !who.rpps.trim().is_empty() {
+            who.rpps.trim().to_owned()
+        } else if !adeli.is_empty() {
+            format!("adeli:{adeli}")
+        } else {
+            String::new()
+        };
         if !key.is_empty() && !seen.insert(key) {
             out.merged += 1;
             continue;
@@ -687,7 +697,8 @@ mod tests {
     fn the_public_extract_is_read_as_it_is_published() {
         let text = "\"Type d'identifiant PP\";\"Identifiant PP\";\"Nom d'exercice\";\"Prénom d'exercice\";\"Libellé commune (coord. structure)\"\n\
                     \"8\";\"10001234565\";\"Morel\";\"Jean\";\"Montpellier\"\n\
-                    \"0\";\"341234567\";\"Dupont; Martin\";\"Anne\";\"Sète\"\n";
+                    \"0\";\"341234567\";\"Dupont; Martin\";\"Anne\";\"Sète\"\n\
+                    \"0\";\"341234567\";\"Dupont; Martin\";\"Anne\";\"Agde\"\n";
         let read = import(text).expect("lu");
         assert_eq!(read.found.len(), 2);
         assert_eq!(read.found[0].rpps, "10001234565");
@@ -701,6 +712,8 @@ mod tests {
         assert_eq!(read.found[1].rpps, "");
         assert_eq!(read.found[1].am, "341234567");
         assert_eq!(read.unverified, 0);
+        // Une personne ADELI à deux activités est une personne.
+        assert_eq!(read.merged, 1);
         // Et une ligne sans guillemets se lit comme avant.
         assert_eq!(cells_of("a|b||c", '|'), vec!["a", "b", "", "c"]);
         assert_eq!(cells_of("\"x \"\"y\"\"\";z", ';'), vec!["x \"y\"", "z"]);
