@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Another post's write no longer undoes or erases what is on screen: an
+  act's date, day held, initials or hour that was not touched follows the
+  value read back (kept, it wrote the old value over the other post's at
+  the next change of view); one being typed compares with what it showed,
+  so the refusal is said; the « modifié depuis un autre poste » notice of
+  those fields is no longer cleared at once; a posology being typed in the
+  conciliation view stays; an untouched pregnancy date follows the value
+  read back.
+
 ## [0.399.0] - 2026-10-12
 
 ### Fixed

@@ -227,9 +227,10 @@ registre restent ; la confirmation dit « TOUTES les données ». Le
 registre doit rester (R. 5132-36) ; le reste est à décider, ou la
 phrase à corriger.
 
-**Comparaisons restantes (relevé).** Les champs de rendez-vous tapés au dossier comparent à la liste relue,
-si bien qu'un rendez-vous déplacé ailleurs pendant qu'on tape le sien
-est remplacé — le refus, lui, se dit maintenant.
+**Comparaisons restantes (corrigé le 12/10).** Les champs d'un acte
+comparent à la ligne qu'ils montraient (`itv_seen`) ; un champ non touché
+suit la relecture. Reste : une DDR en cours de frappe compare encore à la
+valeur relue, et la date d'ordonnance tapée aussi (`script_date_edit`).
 
 **Ordonnances TROD (relevé).** Grossesse inconnue lue comme « pas
 enceinte » (aucune ligne ne le rappelle) ; aucune barrière d'allergie

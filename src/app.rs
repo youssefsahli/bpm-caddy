@@ -5229,6 +5229,9 @@ struct Session {
     /// modifiables et ne l'étaient pas.
     by_edits: std::collections::HashMap<i64, String>,
     hour_edits: std::collections::HashMap<i64, String>,
+    /// Les actes tels que leurs champs tapés les ont vus, quand un autre
+    /// poste les a changés depuis — voir `keep_act_edits`.
+    itv_seen: std::collections::HashMap<i64, Interview>,
     /// Voir [`StupEdits`].
     stup_edits: Option<StupEdits>,
     /// Discreet mode: revenue amounts stay masked until explicitly
@@ -6210,6 +6213,7 @@ impl Session {
             made_edits: std::collections::HashMap::new(),
             by_edits: std::collections::HashMap::new(),
             hour_edits: std::collections::HashMap::new(),
+            itv_seen: std::collections::HashMap::new(),
             stup_edits: None,
             show_amounts: false,
             dup_check: None,
@@ -7955,11 +7959,20 @@ impl Session {
         self.graph_pair = None;
         self.calc_poso = None;
         if let Ok(list) = self.db.patients() {
+            let ddr_before = self.viewing.as_ref().map(|p| p.pregnancy_ddr.clone());
             self.set_patients(list);
             // L'en-tête du dossier ouvert suit — et se **ferme** si
             // l'autre poste a supprimé le dossier, plutôt que de rester
             // sur une identité qui n'existe plus.
             self.resync_viewing();
+            // Le champ de la DDR qu'on n'a pas touché repart de la valeur
+            // relue : gardé, il remettait l'ancienne date au premier
+            // passage dans le champ, par-dessus celle d'un autre poste.
+            if let (Some((_, text)), Some(old)) = (&self.vacc_ddr_text, ddr_before) {
+                if *text == db::format_french_date(&old) {
+                    self.vacc_ddr_text = None;
+                }
+            }
         }
         if let Ok(counts) = self.db.pending_counts() {
             self.pending = counts;
@@ -8042,8 +8055,35 @@ impl Session {
             self.locations = self.db.locations_for(open).unwrap_or_default();
             self.travels = self.db.travels(open).unwrap_or_default();
             // Recalcule aussi les lectures de biologie, sur les valeurs
-            // qu'on vient de relire.
+            // qu'on vient de relire. **Une posologie en cours de frappe
+            // reste**, avec ce qu'elle remplaçait : la relecture la
+            // remplaçait par la valeur rangée, et l'écriture suivante,
+            // comparée à l'ancienne, dira le refus si un autre poste l'a
+            // changée.
+            let typing: Vec<(i64, String, String)> = self
+                .patient_doses
+                .iter()
+                .filter_map(|(id, text)| {
+                    let base = self
+                        .patient_doses_base
+                        .iter()
+                        .find(|(b, _)| b == id)
+                        .map(|(_, v)| v.clone())
+                        .unwrap_or_default();
+                    (*text != base).then(|| (*id, text.clone(), base))
+                })
+                .collect();
             self.reload_treatments(open);
+            for (id, text, base) in typing {
+                for (list, value) in [
+                    (&mut self.patient_doses, text),
+                    (&mut self.patient_doses_base, base),
+                ] {
+                    if let Some(slot) = list.iter_mut().find(|(i, _)| *i == id) {
+                        slot.1 = value;
+                    }
+                }
+            }
             self.refresh_vacc_due();
             // **L'avis à l'écran survit à la relecture.** `reload_interviews`
             // efface l'erreur affichée, ce qui est juste après un geste
@@ -8051,7 +8091,9 @@ impl Session {
             // — posé justement parce qu'un autre poste venait d'écrire —
             // disparaissait à la relecture suivante, deux secondes après.
             let shown = self.error.take();
+            let before = self.viewing_interviews.clone();
             self.reload_interviews(open);
+            self.keep_act_edits(&before);
             if self.error.is_none() {
                 self.error = shown;
             }
@@ -10921,6 +10963,56 @@ impl Session {
     /// Commit any parseable in-progress RDV field before the patient
     /// view goes away (view switch, Escape, lock): a date the user
     /// typed but never tabbed out of must not be silently dropped.
+    /// Après une relecture des actes : un champ qu'on n'a pas touché
+    /// repart de la ligne relue — gardé, il réécrivait l'ancienne valeur
+    /// par-dessus celle d'un autre poste au premier changement de vue —, et
+    /// un champ tapé garde **la ligne qu'il montrait** (`itv_seen`), à
+    /// laquelle son écriture compare : le refus se dit.
+    fn keep_act_edits(&mut self, before: &[Interview]) {
+        for old in before {
+            let Some(new) = self.viewing_interviews.iter().find(|i| i.id == old.id) else {
+                continue;
+            };
+            let id = old.id;
+            let date = old
+                .scheduled_date
+                .as_deref()
+                .map(db::format_french_date)
+                .unwrap_or_default();
+            let made = db::format_french_date(&old.created_at[..10.min(old.created_at.len())]);
+            let mut typed = false;
+            for (map, shown) in [
+                (&mut self.date_edits, date),
+                (&mut self.made_edits, made),
+                (&mut self.by_edits, old.operator.clone()),
+                (&mut self.hour_edits, old.scheduled_time.clone()),
+            ] {
+                match map.get(&id) {
+                    Some(text) if *text == shown => {
+                        map.remove(&id);
+                    }
+                    Some(_) => typed = true,
+                    None => {}
+                }
+            }
+            let changed = new.scheduled_date != old.scheduled_date
+                || new.created_at != old.created_at
+                || new.operator != old.operator
+                || new.scheduled_time != old.scheduled_time;
+            if typed && changed {
+                self.itv_seen.entry(id).or_insert_with(|| old.clone());
+            }
+        }
+    }
+
+    /// La ligne d'un acte telle que ses champs tapés l'ont vue.
+    fn act_as_seen(&self, itv: &Interview) -> Interview {
+        self.itv_seen
+            .get(&itv.id)
+            .cloned()
+            .unwrap_or_else(|| itv.clone())
+    }
+
     fn flush_date_edits(&mut self) {
         let Some(pid) = self.viewing.as_ref().map(|p| p.id) else {
             self.date_edits.clear();
@@ -10946,7 +11038,8 @@ impl Session {
                 refused = true;
             }
         };
-        for itv in self.viewing_interviews.clone() {
+        for fresh in self.viewing_interviews.clone() {
+            let itv = self.act_as_seen(&fresh);
             if let Some(text) = self.date_edits.get(&itv.id) {
                 let expected = itv.scheduled_date.as_deref();
                 if text.trim().is_empty() {
@@ -10998,10 +11091,13 @@ impl Session {
         self.made_edits.clear();
         self.by_edits.clear();
         self.hour_edits.clear();
+        self.itv_seen.clear();
+        // Relire d'abord : `reload_interviews` efface l'avis affiché, et le
+        // refus posé avant elle ne se voyait jamais.
+        self.reload_interviews(pid);
         if refused {
             self.stale("itv_stale");
         }
-        self.reload_interviews(pid);
     }
 
     /// Replace the patient list and rebuild its search keys. The list is
@@ -18248,6 +18344,7 @@ impl App {
                 session.made_edits.clear();
                 session.by_edits.clear();
                 session.hour_edits.clear();
+                session.itv_seen.clear();
                 session.drug_form = None;
                 session.drug_base = None;
                 session.drug_selected = 0;
@@ -31872,7 +31969,11 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
+        // Ce que les champs tapés montraient, quand la ligne a changé
+        // ailleurs depuis : c'est à cela que leur écriture compare.
+        let seen = |session: &Session, id: i64| session.itv_seen.get(&id).cloned();
         if let Some((id, hour, expected)) = set_hour {
+            let expected = seen(session, id).map_or(expected, |i| i.scheduled_time);
             match session.db.set_scheduled_time(id, &hour, &expected) {
                 Ok(true) => {
                     session.error = None;
@@ -31896,6 +31997,7 @@ impl App {
             session.vacc_new.operator = who;
         }
         if let Some((id, who, expected)) = set_by {
+            let expected = seen(session, id).map_or(expected, |i| i.operator);
             match session.db.set_interview_operator(id, &who, &expected) {
                 Ok(true) => {
                     session.error = None;
@@ -31914,6 +32016,9 @@ impl App {
             }
         }
         if let Some((id, made, expected)) = set_made {
+            let expected = seen(session, id).map_or(expected, |i| {
+                i.created_at[..10.min(i.created_at.len())].to_owned()
+            });
             match session.db.set_created_date(id, &made, &expected) {
                 Ok(true) => {
                     session.error = None;
@@ -31996,6 +32101,7 @@ impl App {
             }
         }
         if let Some((id, date, expected)) = set_date {
+            let expected = seen(session, id).map_or(expected, |i| i.scheduled_date);
             match session
                 .db
                 .set_scheduled_date(id, date.as_deref(), expected.as_deref())
@@ -32014,6 +32120,17 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
+        // Une ligne vue n'a plus lieu d'être quand plus aucun de ses
+        // champs n'est en cours : le suivant repart de la ligne relue.
+        let open: std::collections::HashSet<i64> = session
+            .date_edits
+            .keys()
+            .chain(session.made_edits.keys())
+            .chain(session.by_edits.keys())
+            .chain(session.hour_edits.keys())
+            .copied()
+            .collect();
+        session.itv_seen.retain(|id, _| open.contains(id));
         // La fenêtre d'export, et ce qu'elle rend quand on valide.
         let export_now = export_window(ui.ctx(), session);
         // Les deux boutons n'impriment plus : ils ouvrent la fenêtre
@@ -91003,6 +91120,80 @@ mod tests {
         super::App::concil_add_treatments(&mut s, &patient);
         let said = s.stale_note("concil_stale");
         assert_eq!(s.error.as_deref(), Some(said.as_str()));
+    }
+
+    /// **Une relecture ne fait rien réécrire** : un champ d'acte qu'on
+    /// n'a pas touché repart de la ligne relue, un champ tapé compare à
+    /// ce qu'il montrait (le refus se dit), et une posologie en cours de
+    /// frappe reste.
+    #[test]
+    fn a_resync_neither_reverts_nor_erases_what_is_typed() {
+        let (mut s, _swept) = scratch_session("resync_typed");
+        let pid = s.db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let a =
+            s.db.add_interview_by(pid, InterviewKind::Bpm, "", "CL")
+                .unwrap();
+        let b =
+            s.db.add_interview_by(pid, InterviewKind::Bpm, "", "CL")
+                .unwrap();
+        for id in [a, b] {
+            assert!(s
+                .db
+                .set_scheduled_date(id, Some("2026-11-02"), None)
+                .unwrap());
+        }
+        let drug = s.db.add_drug("Zzresync").unwrap();
+        s.db.add_patient_drug(pid, drug).unwrap();
+        assert!(s.db.set_patient_posology(pid, drug, "1 cp", "").unwrap());
+        let p =
+            s.db.patients()
+                .unwrap()
+                .into_iter()
+                .find(|p| p.id == pid)
+                .unwrap();
+        s.open_patient(p);
+        if let Some(slot) = s.patient_doses.iter_mut().find(|(i, _)| *i == drug) {
+            slot.1 = "2 cp le m".to_owned();
+        }
+        // Ce que l'écran a semé (a) et tapé (b).
+        s.date_edits.insert(a, "02/11/2026".to_owned());
+        s.date_edits.insert(b, "03/11/2026".to_owned());
+        // L'autre poste déplace les deux.
+        for id in [a, b] {
+            assert!(s
+                .db
+                .set_scheduled_date(id, Some("2026-11-09"), Some("2026-11-02"))
+                .unwrap());
+        }
+        s.resync();
+        assert_eq!(
+            s.patient_doses
+                .iter()
+                .find(|(i, _)| *i == drug)
+                .map(|(_, t)| t.as_str()),
+            Some("2 cp le m"),
+            "la frappe reste"
+        );
+        s.flush_date_edits();
+        let date = |s: &Session, id: i64| {
+            s.db.interviews_for(pid)
+                .unwrap()
+                .into_iter()
+                .find(|i| i.id == id)
+                .and_then(|i| i.scheduled_date)
+        };
+        assert_eq!(
+            date(&s, a).as_deref(),
+            Some("2026-11-09"),
+            "rien n'est remis"
+        );
+        assert_eq!(
+            date(&s, b).as_deref(),
+            Some("2026-11-09"),
+            "le tapé est refusé"
+        );
+        let said = s.stale_note(concat!("itv_sta", "le"));
+        assert_eq!(s.error.as_deref(), Some(said.as_str()), "et c'est dit");
     }
 
     /// **La fin d'un poste qui revient** : illisible, elle est refusée
