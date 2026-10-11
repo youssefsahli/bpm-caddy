@@ -48291,7 +48291,25 @@ impl App {
                 return;
             }
         };
-        let bytes = match std::fs::read(&path) {
+        // **La taille avant la lecture** : un fichier de plusieurs
+        // gigaoctets choisi par erreur se lisait en entier, sur le fil de
+        // l'écran, avant d'être refusé comme trop gros. Un octet de plus
+        // que la limite suffit à `accept` pour le dire.
+        let from_scanner = !import;
+        let limit = u64::from(config.scans.max_mb) * 1024 * 1024;
+        let read = std::fs::File::open(&path).and_then(|f| {
+            use std::io::Read;
+            let mut bytes = Vec::new();
+            f.take(limit + 1).read_to_end(&mut bytes)?;
+            Ok(bytes)
+        });
+        // **Ce que le scanner a écrit ne reste pas** : le fichier brut,
+        // posé par le programme du scanner avec les droits par défaut,
+        // restait lisible dans le dossier temporaire partagé.
+        if from_scanner {
+            let _ = std::fs::remove_file(&path);
+        }
+        let bytes = match read {
             Ok(b) => b,
             Err(e) => {
                 session.scan_note = Some((true, e.to_string()));
@@ -54682,7 +54700,7 @@ impl App {
                         .collect();
                     let file = dir.join(format!("vaccinations-{stem}-{}.csv", session.today));
                     match std::fs::create_dir_all(&dir)
-                        .and_then(|()| std::fs::write(&file, csv.as_bytes()))
+                        .and_then(|()| crate::pdf::write_private(&file, csv.as_bytes()))
                     {
                         Ok(()) => {
                             let _ = open::that_detached(&file);
@@ -63647,7 +63665,7 @@ impl App {
                         .unwrap_or_else(|| std::path::PathBuf::from("exports"));
                     let file = dir.join(format!("entretiens-{today}.csv"));
                     let result = std::fs::create_dir_all(&dir)
-                        .and_then(|()| std::fs::write(&file, csv.as_bytes()));
+                        .and_then(|()| crate::pdf::write_private(&file, csv.as_bytes()));
                     match result {
                         Ok(()) => {
                             let _ = open::that_detached(&file);

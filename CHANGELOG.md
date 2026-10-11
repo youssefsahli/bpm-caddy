@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Scanning: the scanner's raw output is deleted once read (and swept if
+  left behind); it stayed in the shared temporary folder, readable by
+  other accounts on Linux.
+- Printed documents and opened pieces: a file of the same name already in
+  the temporary folder has its permissions brought back to this account
+  only before anything is written into it.
+- Scanning: a file is no longer read whole before being refused as too
+  large.
+- Vaccination and interview CSV exports are written readable by this
+  account only.
+
 ## [0.396.0] - 2026-10-11
 
 ### Fixed

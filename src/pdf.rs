@@ -4129,12 +4129,20 @@ pub fn write_private(path: &std::path::Path, bytes: &[u8]) -> std::io::Result<()
     {
         use std::io::Write;
         use std::os::unix::fs::OpenOptionsExt;
+        use std::os::unix::fs::PermissionsExt;
         let mut f = std::fs::OpenOptions::new()
             .write(true)
             .create(true)
             .truncate(true)
             .mode(0o600)
             .open(path)?;
+        // `mode` ne vaut qu'à la création : un fichier du même nom déjà
+        // là — laissé par une version d'avant en 0644, ou posé d'avance
+        // par un autre compte du poste, les noms se devinent — gardait
+        // ses droits, et le document s'y écrivait lisible. Les droits
+        // sont reposés sur le fichier ouvert, **avant** d'écrire ; sur le
+        // fichier d'un autre compte, c'est refusé, et rien ne s'écrit.
+        f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
         f.write_all(bytes)
     }
     #[cfg(not(unix))]
@@ -4155,7 +4163,10 @@ pub fn sweep_private() {
     for entry in dir.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !(name.starts_with("bpm_caddy_") || name.starts_with("bpm-caddy-piece-")) {
+        if !(name.starts_with("bpm_caddy_")
+            || name.starts_with("bpm-caddy-piece-")
+            || name.starts_with("bpm-caddy-scan-"))
+        {
             continue;
         }
         let old = entry
@@ -8356,6 +8367,24 @@ pub fn open_trod_sheet(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Un fichier déjà là, lisible de tous, est ramené à ce compte seul
+    /// avant que le document s'y écrive.
+    #[cfg(unix)]
+    #[test]
+    fn a_private_write_tightens_a_file_already_there() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-private-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = crate::db::Swept(dir.clone());
+        let path = dir.join("doc.pdf");
+        std::fs::write(&path, b"old").unwrap();
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(&path, b"secret").unwrap();
+        let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600);
+        assert_eq!(std::fs::read(&path).unwrap(), b"secret");
+    }
 
     /// Tous les marqueurs `{{…}}` écrits dans un texte, dans l'ordre.
     fn markers_in(text: &str) -> Vec<String> {
