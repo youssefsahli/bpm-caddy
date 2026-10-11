@@ -4,12 +4,11 @@
 
 **Versions.** 0.389.0 (campagnes paramétrables), puis 0.390.0 à 0.397.0
 (corrections de la relecture) sont **committées sur `main` et non
-poussées** : aucune étiquette, rien sur GitHub. 0.389.0 à 0.396.0 ont
+poussées** : aucune étiquette, rien sur GitHub. 0.389.0 à 0.397.0 ont
 passé le smoke dans les quatre formes ; **la 0.395.0 ne se publie pas**
 (elle lisait mal les doses de charge et les titrations, corrigé dans la
 0.396.0). La 0.397.0 (fichiers temporaires et pièces : droits, sortie du
-scanner, exports) contient tout et est celle à publier ; son smoke est
-dit dans le commit qui suit sa version. Pour publier :
+scanner, exports) contient tout et est celle à publier. Pour publier :
 `git push origin main`, puis `git tag v0.397.0 && git push origin v0.397.0`.
 
 **Ce qui a été fait le 11/10.** Relectures par domaines, suite :
