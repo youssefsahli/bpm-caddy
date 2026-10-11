@@ -101,6 +101,9 @@ pub struct Net {
     /// Ce que le dossier d'échange a montré d'officines qu'on n'a pas
     /// ajoutées — **compté, jamais gardé** : voir [`Net::introduced`].
     strangers: Vec<Introduced>,
+    /// Ce que la dernière publication a laissé de côté (trop gros pour un
+    /// enregistrement) : dit à la synchronisation, sans arrêter le reste.
+    pub refused: Vec<String>,
 }
 
 impl Net {
@@ -129,6 +132,7 @@ impl Net {
             shares: db.principal_shares(),
             folder: String::new(),
             strangers: Vec::new(),
+            refused: Vec::new(),
         })
     }
 
@@ -158,6 +162,7 @@ impl Net {
             shares: n.shares,
             folder: n.folder.clone(),
             strangers: Vec::new(),
+            refused: Vec::new(),
         })
     }
 
@@ -275,7 +280,7 @@ impl Net {
     /// Sceller vers le réseau les événements locaux qui ne sont pas encore
     /// partis. Rend combien.
     pub fn publish(&mut self, db: &Db, officine: &str) -> Result<usize, String> {
-        let Some(trousseau) = &self.trousseau else {
+        let Some(trousseau) = self.trousseau.clone() else {
             return Ok(0);
         };
         // **Un seul à la fois dans ce processus** : la synchronisation et
@@ -296,6 +301,46 @@ impl Net {
         // Ce que **ce** réseau a déjà reçu d'ici, et ce que l'officine y
         // partage : un événement part une fois par réseau, et pas du tout
         // dans un réseau où son genre n'est pas partagé.
+        // **Ce qui est scellé est marqué parti, même quand la suite échoue** :
+        // sans cela, une erreur au milieu laissait au journal des
+        // enregistrements jamais marqués, rescellés à chaque synchronisation.
+        self.refused.clear();
+        let mut done = Vec::new();
+        let outcome = self.seal_pending(db, officine, &trousseau, &mut done);
+        self.keep(db)?;
+        let keys: Vec<String> = done.iter().map(|k| self.done_key(k)).collect();
+        db.mark_published(&keys)?;
+        outcome.map(|()| done.len())
+    }
+
+    /// Sceller un enregistrement du réseau ; un refus (trop gros) est
+    /// gardé dans `refused` et n'arrête pas les suivants.
+    fn seal_one(&mut self, trousseau: &Trousseau, payload: &[u8]) -> bool {
+        match self.journal.write(
+            &self.device,
+            trousseau,
+            Stream::Reseau,
+            payload,
+            None,
+            &mut bpm_sync::OsEntropy,
+        ) {
+            Ok(_) => true,
+            Err(e) => {
+                self.refused.push(format!("{e:?}"));
+                false
+            }
+        }
+    }
+
+    /// Ce qui n'est pas encore parti, scellé ; `done` reçoit chaque clé
+    /// scellée au fur et à mesure.
+    fn seal_pending(
+        &mut self,
+        db: &Db,
+        officine: &str,
+        trousseau: &Trousseau,
+        done: &mut Vec<String>,
+    ) -> Result<(), String> {
         let already = self.already(db)?;
         let pending: Vec<crate::ruptures::Event> = if self.shares.ruptures {
             db.supply_events()?
@@ -305,20 +350,11 @@ impl Net {
         } else {
             Vec::new()
         };
-        let mut done = Vec::new();
         for e in &pending {
             let payload = crate::ruptures::encode(e, officine);
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(e.uid.clone());
+            if self.seal_one(trousseau, &payload) {
+                done.push(e.uid.clone());
+            }
         }
         // Les versions des fiches, des préparations et des protocoles :
         // ce que le codex et les protocoles ont changé ici est d'abord
@@ -335,17 +371,9 @@ impl Net {
         };
         for e in versions {
             let payload = crate::versions::encode(&e, officine);
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(e.uid);
+            if self.seal_one(trousseau, &payload) {
+                done.push(e.uid);
+            }
         }
         // Les valeurs de pharmacocinétique sourcées : chacune part une
         // fois par valeur — la clé porte le texte et la source, donc une
@@ -367,17 +395,9 @@ impl Net {
                 continue;
             }
             let payload = crate::pk::encode_shared(&name, &dci, &fact, officine);
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(key);
+            if self.seal_one(trousseau, &payload) {
+                done.push(key);
+            }
         }
         // **L'adresse où l'officine se joint de l'extérieur**, quand elle
         // en déclare une : annoncée une fois par valeur, aux seuls membres
@@ -397,17 +417,9 @@ impl Net {
             })
             .to_string()
             .into_bytes();
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(key);
+            if self.seal_one(trousseau, &payload) {
+                done.push(key);
+            }
         }
         // **La clé de boîte**, annoncée une fois : ce qui permet aux
         // autres officines de sceller un message pour celle-ci seule.
@@ -421,17 +433,9 @@ impl Net {
             })
             .to_string()
             .into_bytes();
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(key);
+            if self.seal_one(trousseau, &payload) {
+                done.push(key);
+            }
         }
         // **Le relais** (`relay.rs`) : l'officine qui relaie dit où, une
         // fois par valeur — une valeur vide aussi, qui retire l'offre ;
@@ -451,17 +455,9 @@ impl Net {
             }
             let mut payload = serde_json::json!({ "t": t, "officine": officine });
             payload[field] = serde_json::Value::String(value.to_owned());
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload.to_string().into_bytes(),
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(key);
+            if self.seal_one(trousseau, &payload.to_string().into_bytes()) {
+                done.push(key);
+            }
         }
         // **Les messages**, scellés pour leurs seules officines — et pour
         // celle-ci, qui les relit comme les autres. Un message dont une
@@ -474,8 +470,8 @@ impl Net {
             .filter_map(|(device, k)| unhex::<32>(&k).map(|b| (device, b)))
             .collect();
         let mine = self.device.box_public();
-        let members: std::collections::HashSet<&str> =
-            self.peers.iter().map(|p| p.device.as_str()).collect();
+        let members: std::collections::HashSet<String> =
+            self.peers.iter().map(|p| p.device.clone()).collect();
         for m in db.outgoing_net_messages()? {
             let key = format!("msg:{}", m.uid);
             if already.contains(&key) {
@@ -529,17 +525,9 @@ impl Net {
                             .map_err(|e| format!("{e:?}"))?;
                     let mut payload = crate::messages::BOX_TAG.to_vec();
                     payload.extend(sealed);
-                    self.journal
-                        .write(
-                            &self.device,
-                            trousseau,
-                            Stream::Reseau,
-                            &payload,
-                            None,
-                            &mut bpm_sync::OsEntropy,
-                        )
-                        .map_err(|e| format!("{e:?}"))?;
-                    done.push(key);
+                    if self.seal_one(trousseau, &payload) {
+                        done.push(key);
+                    }
                 }
             }
             let inner = crate::messages::Incoming {
@@ -559,24 +547,15 @@ impl Net {
             let mut payload = crate::messages::BOX_TAG.to_vec();
             payload.extend(sealed);
             if payload.len() > bpm_sync::MAX_PAYLOAD {
-                return Err(crate::strings::tr("msg_too_long").to_owned());
+                self.refused
+                    .push(crate::strings::tr("msg_too_long").to_owned());
+                continue;
             }
-            self.journal
-                .write(
-                    &self.device,
-                    trousseau,
-                    Stream::Reseau,
-                    &payload,
-                    None,
-                    &mut bpm_sync::OsEntropy,
-                )
-                .map_err(|e| format!("{e:?}"))?;
-            done.push(key);
+            if self.seal_one(trousseau, &payload) {
+                done.push(key);
+            }
         }
-        self.keep(db)?;
-        let keys: Vec<String> = done.iter().map(|k| self.done_key(k)).collect();
-        db.mark_published(&keys)?;
-        Ok(done.len())
+        Ok(())
     }
 
     /// Ranger dans la base les enregistrements que le journal tient.
@@ -1744,6 +1723,7 @@ pub fn run(
                     Ok(n) => sent += n,
                     Err(e) => failed.push(e),
                 }
+                failed.append(&mut net.refused);
                 // Le principal prend le dossier de la configuration ; les
                 // autres, le leur.
                 let dir = if net.id.is_empty() {
@@ -2414,6 +2394,62 @@ mod tests {
         let thread = a.conversation_messages(conv).unwrap();
         assert_eq!(thread.len(), 2);
         assert_eq!(thread[1].source, "Port");
+    }
+
+    /// **Un message trop long pour le réseau ne retient rien d'autre** :
+    /// il est dit, les suivants partent, et ce qui est scellé est marqué
+    /// parti — rien n'est rescellé au tour suivant.
+    #[test]
+    fn a_message_too_long_holds_back_nothing_else() {
+        use crate::messages::Channel;
+        let (dir_a, _sa, a) = officine("long-a");
+        let (_db, _sb, b) = officine("long-b");
+        let folder = dir_a.join("echange");
+        Net::create(&a).unwrap();
+        let key = a.setting("net_trousseau").unwrap();
+        b.net_key("net_trousseau", &key).unwrap();
+        let ids: Vec<String> = [&a, &b]
+            .iter()
+            .map(|d| hex(&Net::load(d).unwrap().device.id().0))
+            .collect();
+        a.add_net_peer(&ids[1], "", "2026-10-11").unwrap();
+        b.add_net_peer(&ids[0], "", "2026-10-11").unwrap();
+        for (d, name) in [(&a, "Centre"), (&b, "Port")] {
+            let mut n = Net::load(d).unwrap();
+            n.publish(d, name).unwrap();
+            n.exchange_folder(d, &folder).unwrap();
+        }
+        let mut na = Net::load(&a).unwrap();
+        na.exchange_folder(&a, &folder).unwrap();
+        na.absorb(&a).unwrap();
+        let conv = a
+            .create_conversation(
+                "",
+                Channel::Officines,
+                "Trop long",
+                &[],
+                None,
+                &[ids[1].clone()],
+                "CL",
+            )
+            .unwrap();
+        let long = "x".repeat(bpm_sync::MAX_PAYLOAD + 1);
+        for (body, at) in [
+            (long.as_str(), "2026-10-11 10:00:00"),
+            ("Le suivant.", "2026-10-11 10:01:00"),
+        ] {
+            a.post_message(conv, "", "CL", body, None, "", Some(at))
+                .unwrap()
+                .unwrap();
+        }
+        let mut na = Net::load(&a).unwrap();
+        assert_eq!(na.publish(&a, "Centre").unwrap(), 1, "le suivant part");
+        assert_eq!(na.refused.len(), 1, "le trop long est dit");
+        let records = a.net_records_of("").unwrap().len();
+        let mut na = Net::load(&a).unwrap();
+        assert_eq!(na.publish(&a, "Centre").unwrap(), 0, "rien n'est rescellé");
+        assert_eq!(na.refused.len(), 1, "et il est redit");
+        assert_eq!(a.net_records_of("").unwrap().len(), records);
     }
 
     /// **Une officine du réseau ne se fait pas passer pour une autre**, ne

@@ -389,12 +389,15 @@ pub fn decode(bytes: &[u8]) -> Option<Edit> {
 /// `origin` ce qu'il valait avant toute version — le contenu livré pour
 /// une entrée livrée, vide pour une entrée de l'officine.
 ///
-/// **Une valeur déjà connue n'est pas une modification** : ni l'origine,
-/// ni la valeur d'une version de l'historique. C'est ce qui empêche une
-/// version reçue en attente d'arbitrage d'être « répondue » par la valeur
-/// locale qu'elle n'a pas remplacée. Une nouvelle version remplace la
-/// dernière de l'historique — celle que les autres officines ont, le plus
-/// probablement.
+/// **Une valeur déjà dite n'est pas une modification** : la valeur de la
+/// dernière version (l'origine sans historique), ou, derrière des versions
+/// reçues, ce qu'elles remplaçaient ou apportaient. C'est ce qui empêche
+/// une version reçue en attente d'arbitrage d'être « répondue » par la
+/// valeur locale qu'elle n'a pas remplacée. Mais une valeur **revenue**
+/// après une version d'ici en est une : comparée à tout l'historique, un
+/// champ remis à sa valeur d'avant ne partait jamais. Une nouvelle version
+/// remplace la dernière de l'historique — celle que les autres officines
+/// ont, le plus probablement.
 pub fn changes(
     kind: Kind,
     card_name: &str,
@@ -409,7 +412,25 @@ pub fn changes(
         }
         let h = history_of(edits, kind, card_name, field);
         let start = origin(field);
-        let known = *value == start || h.iter().any(|e| e.value == *value);
+        let known = if h.is_empty() {
+            *value == start
+        } else {
+            let mut known = false;
+            for e in h.iter().rev() {
+                if e.value == *value {
+                    known = true;
+                    break;
+                }
+                if e.source.is_empty() {
+                    break;
+                }
+                if e.previous == *value {
+                    known = true;
+                    break;
+                }
+            }
+            known
+        };
         if known {
             continue;
         }
@@ -752,6 +773,35 @@ mod tests {
             (next[0].previous.as_str(), next[0].corrects.as_str()),
             ("acide | 5 g", "b:1")
         );
+        // A value typed back after a version from here is a change: the
+        // others still hold 3 g.
+        let mine = Edit {
+            uid: "a:1".to_owned(),
+            value: "acide | 3 g".to_owned(),
+            previous: "acide | 2 g".to_owned(),
+            source: String::new(),
+            ..all[0].clone()
+        };
+        let back = changes(
+            Kind::Codex,
+            "Vaseline",
+            &local("acide | 2 g"),
+            &origin,
+            std::slice::from_ref(&mine),
+        );
+        assert_eq!(back.len(), 1, "le retour à 2 g part");
+        assert_eq!(
+            (back[0].previous.as_str(), back[0].corrects.as_str()),
+            ("acide | 3 g", "a:1")
+        );
+        assert!(changes(
+            Kind::Codex,
+            "Vaseline",
+            &local("acide | 3 g"),
+            &origin,
+            std::slice::from_ref(&mine)
+        )
+        .is_empty());
         // A drug card's history is not a preparation's.
         assert!(history_of(&all, Kind::Fiche, "Vaseline", "formula").is_empty());
         assert!(!Kind::Codex.fields().contains(&"name"));
