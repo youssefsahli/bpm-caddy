@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.397.0] - 2026-10-11
+
 ### Fixed
 - Scanning: the scanner's raw output is deleted once read (and swept if
   left behind); it stayed in the shared temporary folder, readable by
