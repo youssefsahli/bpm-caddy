@@ -8,6 +8,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.398.0] - 2026-10-12
+
 ### Fixed
 - Officines' network: a message or a shared version too large for one
   record no longer blocks publishing. It is reported and set aside, the

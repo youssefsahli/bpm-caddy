@@ -5,7 +5,8 @@
 **Versions.** 0.389.0 (campagnes paramétrables), puis 0.390.0 à 0.397.0
 (corrections de la relecture) ont passé le smoke dans les quatre formes.
 La 0.397.0 est publiée (étiquette `v0.397.0` poussée le 11/10, versions
-construites par la CI) ; les étiquettes intermédiaires n'ont jamais été
+construites par la CI) ; la 0.398.0 (relectures du 11 et du 12/10) est
+publiée à son tour une fois son smoke passé ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
