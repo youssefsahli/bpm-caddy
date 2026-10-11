@@ -9759,15 +9759,32 @@ impl Session {
         let birth_differs = |p: &Patient| {
             !who.birth_date.is_empty() && !p.birth_date.is_empty() && p.birth_date != who.birth_date
         };
+        // Le prénom entier accorde ; le premier mot seul ne fait que **ne
+        // pas contredire** (« Jean » au dossier, « JEAN PIERRE » sur la
+        // carte). Deux prénoms composés se comparent entiers : « Jean-Marc »
+        // n'est pas « Jean-Pierre ».
+        let whole = |s: &str| crate::fuzzy::sort_key(&s.replace('-', " "));
+        let card_whole = whole(&who.given);
         let given_agrees =
-            |p: &Patient| !card_given.is_empty() && first_word(&p.first_name) == card_given;
+            |p: &Patient| !card_given.is_empty() && whole(&p.first_name) == card_whole;
         let given_differs = |p: &Patient| {
-            let mine = first_word(&p.first_name);
-            !card_given.is_empty() && !mine.is_empty() && mine != card_given
+            let mine = whole(&p.first_name);
+            if card_given.is_empty() || mine.is_empty() {
+                return false;
+            }
+            let several = |s: &str| s.split_whitespace().count() > 1;
+            if several(&mine) && several(&card_whole) {
+                mine != card_whole
+            } else {
+                first_word(&p.first_name) != card_given
+            }
         };
+        // Une fiche que la carte contredit n'est jamais retenue.
         let agreeing: Vec<&&Patient> = candidates
             .iter()
-            .filter(|p| birth_agrees(p) || given_agrees(p))
+            .filter(|p| {
+                (birth_agrees(p) || given_agrees(p)) && !birth_differs(p) && !given_differs(p)
+            })
             .collect();
         let pick = match (candidates.as_slice(), agreeing.as_slice()) {
             // Seule sous ce numéro : ouverte, sauf si la carte la contredit.
@@ -40925,6 +40942,7 @@ impl App {
                     crate::couverture::Missing::Units => tr("couv_missing_units"),
                     crate::couverture::Missing::Posology => tr("couv_missing_posology"),
                     crate::couverture::Missing::Date => tr("couv_missing_date"),
+                    crate::couverture::Missing::Short => tr("couv_missing_short"),
                 })
                 .collect();
             ui.add(
@@ -90992,6 +91010,13 @@ mod tests {
         solo.set_patients(solo.db.patients().unwrap());
         solo.open_vitale(&who("JEAN PIERRE", ""));
         assert!(solo.viewing.is_some());
+        // Un fils sous le numéro du père, prénom composé différent : rien
+        // n'est ouvert, avec ou sans date de naissance.
+        solo.viewing = None;
+        solo.open_vitale(&who("JEAN-MARC", "2010-05-01"));
+        assert!(solo.viewing.is_none());
+        solo.open_vitale(&who("JEAN MARC", ""));
+        assert!(solo.viewing.is_none());
         s.open_vitale(&who("LEA", ""));
         assert_eq!(
             s.viewing.as_ref().map(|p| p.first_name.as_str()),

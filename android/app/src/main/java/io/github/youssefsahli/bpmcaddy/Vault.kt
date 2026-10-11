@@ -39,10 +39,14 @@ class Vault(private val context: Context) {
         val cipher = Cipher.getInstance(TRANSFORM)
         cipher.init(Cipher.ENCRYPT_MODE, key())
         val out = cipher.doFinal(fresh.toByteArray(Charsets.UTF_8))
-        prefs.edit()
+        // **Écrite avant que la base ne soit créée avec elle** : `apply()`
+        // écrivait plus tard, et un arrêt du processus entre-temps laissait
+        // une base dont la phrase n'existait plus nulle part.
+        val written = prefs.edit()
             .putString(SEALED, encode(out))
             .putString(IV, encode(cipher.iv))
-            .apply()
+            .commit()
+        check(written) { "phrase de la base non enregistrée" }
         return fresh
     }
 

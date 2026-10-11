@@ -83,6 +83,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   full.
 - Messages to other officines: a text too long for the network is
   refused before sending.
+- Android companion: the screen is kept out of the recent-apps thumbnail
+  and screen captures (FLAG_SECURE); the five-minute lock closes the base
+  before the periodic sync restarts; a message that fails to send keeps
+  its text; a card edit refused once can be saved again against the
+  reloaded section; the base's passphrase is written before the base is
+  created with it; a sync that reached no post no longer says « sent ».
 
 ## [0.397.0] - 2026-10-11
 

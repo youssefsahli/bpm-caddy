@@ -53762,9 +53762,15 @@ pub fn parse_hour(text: &str) -> Option<String> {
         .replace("heure", "h");
     // « à 9h », « vers 9h30 » : ce qui précède le premier chiffre ; et
     // l'unité des minutes, quelle qu'en soit l'écriture.
-    let mut text = lower
-        .trim_start_matches(|c: char| !c.is_ascii_digit())
-        .trim_end();
+    // Seuls ces mots de tête s'effacent : « midi 15 » ou « J+2 » ne sont
+    // pas des heures, et le reste de la frappe non plus.
+    let mut text = lower.trim();
+    for lead in ["vers les ", "vers ", "à ", "a ", "dès ", "des ", "pour "] {
+        if let Some(rest) = text.strip_prefix(lead) {
+            text = rest.trim_start();
+            break;
+        }
+    }
     for unit in ["minutes", "minute", "min", "mn", "m"] {
         if let Some(rest) = text.strip_suffix(unit) {
             text = rest.trim_end();
@@ -57830,6 +57836,10 @@ mod tests {
         assert_eq!(parse_hour("9h30m").as_deref(), Some("09:30"));
         assert_eq!(parse_hour("9 heures 30 minutes").as_deref(), Some("09:30"));
         assert_eq!(parse_hour("midi"), None);
+        assert_eq!(parse_hour("midi 15"), None);
+        assert_eq!(parse_hour("minuit 5"), None);
+        assert_eq!(parse_hour("J+2"), None);
+        assert_eq!(parse_hour("-9h"), None);
         // Nonsense is refused rather than stored.
         assert_eq!(parse_hour("25h"), None);
         assert_eq!(parse_hour("1290"), None);

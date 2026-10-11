@@ -58,15 +58,24 @@ class MainActivity : FragmentActivity() {
     }
 
     override fun onStart() {
-        super.onStart()
+        // **Refermée avant de repartir** : `super.onStart()` relance la
+        // boucle d'échange, qui partait sur la base qu'on allait refermer.
         if (leftAt != 0L && android.os.SystemClock.elapsedRealtime() - leftAt > LOCK_AFTER_MS) {
             state.lock()
         }
         leftAt = 0L
+        super.onStart()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // **Rien de l'écran dans la liste des applications récentes**, ni
+        // dans une capture ou une diffusion : la vignette gardait les
+        // messages de l'équipe, lisibles sans déverrouiller.
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_SECURE,
+            android.view.WindowManager.LayoutParams.FLAG_SECURE,
+        )
         setContent {
             CompanionApp(state = state, unlock = { unlock(state) })
         }

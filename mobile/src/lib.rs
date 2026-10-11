@@ -461,8 +461,12 @@ impl Caddy {
         drop(db);
         self.forget_cards();
         use bpm_caddy::strings::{tr, trf, trn};
+        // Aucun poste joint : ce qui est écrit attend, et ce n'est pas dit
+        // « envoyé ».
         let mut said = if targets == 0 {
             tr("mobile_sync_nobody").to_owned()
+        } else if reached == 0 {
+            trf("mobile_sync_unreached", sent)
         } else {
             trn(
                 "mobile_sync_done",

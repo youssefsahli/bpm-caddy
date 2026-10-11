@@ -890,15 +890,20 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
     // printemps n'appartient pas à la saison mais peut encore être trop
     // récente à l'automne : la ligne dit alors à partir de quand.
     {
-        let season = flu_season_start(today);
-        let done = last("COVID").is_some_and(|d| d >= season.as_str());
         // **Dû pendant la campagne d'automne**, comme la grippe : hors
         // d'elle, la dose de printemps ne concerne que les 80 ans et plus
         // et les immunodéprimés, et la ligne disait « dû » toute l'année.
         let in_season = in_flu_season(today);
-        // La campagne de printemps, d'avril à juin : 80 ans et plus.
+        // La campagne de printemps, d'avril à juin : 80 ans et plus — et
+        // pour eux, la dose de l'automne ne la remplace pas.
         let month: u32 = today.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
-        let spring = matches!(month, 4..=6);
+        let spring = matches!(month, 4..=6) && age.is_some_and(|a| a >= 80);
+        let season = if spring {
+            format!("{}-04-01", today.get(..4).unwrap_or(""))
+        } else {
+            flu_season_start(today)
+        };
+        let done = last("COVID").is_some_and(|d| d >= season.as_str());
         let mut detail = if done {
             "Dose de la campagne en cours enregistrée.".to_owned()
         } else if !in_season && age.is_some_and(|a| a >= 65) {
@@ -929,9 +934,7 @@ fn general_lines(birth: &str, today: &str, doses: &[Dose]) -> Vec<DueLine> {
             label: "COVID-19",
             level: if done {
                 DueLevel::Ok
-            } else if (age.is_some_and(|a| a >= 65) && in_season)
-                || (age.is_some_and(|a| a >= 80) && spring)
-            {
+            } else if (age.is_some_and(|a| a >= 65) && in_season) || spring {
                 DueLevel::Due
             } else {
                 DueLevel::Ask
@@ -2962,6 +2965,16 @@ mod tests {
             "printemps, 80 ans et plus"
         );
         assert_eq!(old("2026-07-10"), Some(DueLevel::Ask));
+        // La dose de l'automne ne vaut pas celle du printemps à 80 ans.
+        let autumn = [Dose {
+            code: "COVID",
+            date: "2025-10-15",
+        }];
+        let spring = due_lines("1940-03-01", "2026-05-10", &autumn)
+            .into_iter()
+            .find(|l| l.code == "COVID")
+            .unwrap();
+        assert_eq!(spring.level, DueLevel::Due);
         let pregnant = due_lines_with("1995-01-01", "2026-09-15", &[], "2026-06-01");
         let flu = pregnant.iter().find(|l| l.code == "GRIPPE").unwrap();
         assert_eq!(flu.level, DueLevel::Due);

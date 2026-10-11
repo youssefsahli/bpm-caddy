@@ -60,6 +60,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -73,6 +74,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -233,8 +235,13 @@ private fun CardScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Unit
         value = withContext(Dispatchers.IO) { caddy.card(id) }
     }
     var editing by remember { mutableStateOf<uniffi.bpm_caddy_mobile.Section?>(null) }
+    val scope = rememberCoroutineScope()
     editing?.let { s ->
-        var text by remember(s.key) { mutableStateOf(s.text) }
+        var text by rememberSaveable(s.key) { mutableStateOf(s.text) }
+        // Ce que l'écran a montré : après un refus (modifié ailleurs), la
+        // version relue — sans quoi chaque nouvel essai comparait encore à
+        // l'ancienne et se faisait refuser, jusqu'à l'abandon du texte.
+        var shown by remember(s.key) { mutableStateOf(s.text) }
         AlertDialog(
             onDismissRequest = { editing = null },
             title = { Text(s.label) },
@@ -246,7 +253,20 @@ private fun CardScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Unit
             },
             confirmButton = {
                 TextButton(
-                    onClick = { state.editSection(id, s.key, s.text, text) { editing = null } },
+                    onClick = {
+                        state.editSection(id, s.key, shown, text) { ok ->
+                            if (ok) {
+                                editing = null
+                            } else {
+                                scope.launch {
+                                    val fresh = withContext(Dispatchers.IO) {
+                                        runCatching { caddy.card(id) }.getOrNull()
+                                    }
+                                    fresh?.sections?.firstOrNull { it.key == s.key }?.let { shown = it.text }
+                                }
+                            }
+                        }
+                    },
                     enabled = state.settings.initials.isNotBlank(),
                 ) { Text(T("mobile_save")) }
             },
@@ -589,7 +609,11 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
                 if (uri != null) {
                     val body = draft
                     draft = ""
-                    state.sendFile(id, body, uri) { tick++ }
+                    // Refusé, le texte revient — s'il n'a rien été tapé depuis.
+                    state.sendFile(id, body, uri) { ok ->
+                        if (!ok && draft.isEmpty()) draft = body
+                        tick++
+                    }
                 }
             }
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -607,7 +631,10 @@ private fun ThreadScreen(state: AppState, caddy: Caddy, id: Long, back: () -> Un
                     onClick = {
                         val body = draft
                         draft = ""
-                        state.send(id, body) { tick++ }
+                        state.send(id, body) { ok ->
+                            if (!ok && draft.isEmpty()) draft = body
+                            tick++
+                        }
                     },
                     enabled = draft.isNotBlank(),
                     modifier = Modifier.padding(start = 8.dp),

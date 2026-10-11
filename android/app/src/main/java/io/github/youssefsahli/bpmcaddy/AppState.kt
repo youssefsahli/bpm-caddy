@@ -149,14 +149,15 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
         }
     }
 
-    fun send(conversation: Long, body: String, then: () -> Unit) {
+    /** Écrire ; `then(true)` quand c'est écrit — sinon le texte est rendu. */
+    fun send(conversation: Long, body: String, then: (Boolean) -> Unit) {
         val c = caddy ?: return
         scope.launch {
             val done = withContext(Dispatchers.IO) {
                 runCatching { c.sendMessage(conversation, settings.initials, body) }
             }
             done.onFailure { note = said(it) }
-            then()
+            then(done.isSuccess)
             // Part tout de suite si un poste est là.
             sync()
         }
@@ -206,7 +207,7 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
     }
 
     /** Écrire avec un fichier joint (lu depuis le document choisi). */
-    fun sendFile(conversation: Long, body: String, uri: android.net.Uri, then: () -> Unit) {
+    fun sendFile(conversation: Long, body: String, uri: android.net.Uri, then: (Boolean) -> Unit) {
         val c = caddy ?: return
         scope.launch {
             val done = withContext(Dispatchers.IO) {
@@ -225,7 +226,7 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
                 }
             }
             done.onFailure { note = said(it) }
-            then()
+            then(done.isSuccess)
             sync()
         }
     }
@@ -282,9 +283,13 @@ class AppState(application: android.app.Application) : androidx.lifecycle.Androi
     private fun work(block: () -> String) {
         if (busy) return
         busy = true
+        val opened = caddy
         scope.launch {
             val done = withContext(Dispatchers.IO) { runCatching(block) }
             busy = false
+            // La base refermée (ou rouverte) pendant l'échange : ce qu'il
+            // dit ne concerne plus l'écran.
+            if (caddy !== opened) return@launch
             note = done.fold({ it }, { said(it) })
             refresh()
         }

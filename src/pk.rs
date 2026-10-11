@@ -202,37 +202,21 @@ pub fn parse(property: Property, typed: &str, source: &str) -> Result<Fact, Stri
         // unité se lit en heures, puis dans l'unité du champ ; une unité
         // qui ne se lit pas est refusée plutôt que jetée.
         Shape::Number { unit, max } if unit == "h" || unit == "min" => {
-            // Sans mot d'unité de temps (« env. 12 », « 12 (adulte) »),
-            // le nombre est dans l'unité du champ, comme avant.
-            let bare = !typed
-                .split(|c: char| !c.is_alphabetic())
-                .filter(|w| !w.is_empty())
-                .any(|w| {
-                    matches!(
-                        w.to_lowercase().as_str(),
-                        "h" | "heure"
-                            | "heures"
-                            | "min"
-                            | "mn"
-                            | "minute"
-                            | "minutes"
-                            | "j"
-                            | "jour"
-                            | "jours"
-                            | "semaine"
-                            | "semaines"
-                            | "s"
-                            | "seconde"
-                            | "secondes"
-                            | "mois"
-                            | "an"
-                            | "ans"
-                    )
-                });
+            // Un mot collé derrière un nombre est une unité (« 3 sem »,
+            // « 12 hrs ») : lue par `hours_range`, ou refusée. Sans unité
+            // (« env. 12 », « 12 (adulte) »), le nombre est dans l'unité du
+            // champ — et un seul : « 12 (adulte), 30 (IR) » n'est pas une
+            // fourchette.
+            let (bare, annotated) = unit_words(typed);
             let (low, high) = match hours_range(typed) {
                 Some((lo, hi)) if unit == "min" => (lo * 60.0, hi * 60.0),
                 Some(range) => range,
-                None if bare => plain_numbers(typed)?,
+                None if bare => match plain_numbers(typed)? {
+                    (lo, hi) if annotated && lo != hi => {
+                        return Err(crate::strings::tr("pk_err_number").to_owned())
+                    }
+                    range => range,
+                },
                 None => return Err(crate::strings::tr("pk_err_number").to_owned()),
             };
             if low < 0.0 || high > max {
@@ -256,6 +240,43 @@ pub fn parse(property: Property, typed: &str, source: &str) -> Result<Fact, Stri
             })
         }
     }
+}
+
+/// Ce que les mots d'une saisie disent : aucun n'est collé derrière un
+/// nombre (pas d'unité), et certains annotent (autre chose que « à »,
+/// « et », « environ »).
+fn unit_words(typed: &str) -> (bool, bool) {
+    const LINKS: &[&str] = &["à", "a", "et", "environ", "env"];
+    let mut bare = true;
+    let mut annotated = false;
+    let mut after_number = false;
+    let mut chars = typed.chars().peekable();
+    while let Some(c) = chars.next() {
+        let decimal = (c == ',' || c == '.')
+            && after_number
+            && chars.peek().is_some_and(char::is_ascii_digit);
+        if c.is_ascii_digit() || decimal {
+            after_number = true;
+        } else if c.is_alphabetic() {
+            let mut word = c.to_lowercase().to_string();
+            while let Some(&n) = chars.peek() {
+                if !n.is_alphabetic() {
+                    break;
+                }
+                word.extend(n.to_lowercase());
+                chars.next();
+            }
+            let link = LINKS.contains(&word.as_str());
+            if after_number && !link {
+                bare = false;
+            }
+            annotated |= !link;
+            after_number = false;
+        } else if !c.is_whitespace() {
+            after_number = false;
+        }
+    }
+    (bare, annotated)
 }
 
 /// Les nombres d'une saisie, en fourchette : « 60 », « 50-70 », « 0,5 à 1 ».
@@ -685,6 +706,13 @@ mod tests {
         assert!(
             got(Property::HalfLife, "2 mois").is_err(),
             "une unité non lue est refusée"
+        );
+        assert!(got(Property::HalfLife, "3 sem").is_err());
+        assert!(got(Property::HalfLife, "3 jrs").is_err());
+        assert!(got(Property::HalfLife, "12 (adulte), 30 (IR)").is_err());
+        assert_eq!(
+            got(Property::HalfLife, "10 à 14"),
+            Ok((Some(10.0), Some(14.0)))
         );
         assert_eq!(parse_hours("2 heures 15 minutes"), Some(2.25));
         assert_eq!(parse_hours("3 à 5 h"), Some(4.0));

@@ -61,6 +61,11 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   télécharge puis échoue au remplacement, et lance une seconde instance ;
 - relais : un membre du réseau peut occuper les quatre places d'attente
   d'un groupe (déni de service, pas de fuite).
+- téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
+  le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
+  n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le
+  12/10 (FLAG_SECURE, verrou, brouillon, fiche, phrase) n'a pas pu être
+  compilé ici (pas de SDK Android) : c'est la CI qui le compile.
 
 **Ce qui a été fait le 10/10.**
 - Campagnes paramétrables (le travail laissé en cours), relues avant
