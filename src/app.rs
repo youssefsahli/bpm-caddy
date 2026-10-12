@@ -16554,6 +16554,8 @@ impl OptionsPage {
 
 struct OptionsEditor {
     page: OptionsPage,
+    /// Les réglages de l'officine ont été relus de la base.
+    officine_seeded: bool,
     /// Two-step guard on the destructive reset button.
     confirm_reset: bool,
     /// Le même garde-fou sur « Effacer les compteurs ».
@@ -16593,6 +16595,7 @@ impl OptionsEditor {
     /// l'ouvrent de la même façon.
     fn open(config: &Config, page: OptionsPage) -> Self {
         Self {
+            officine_seeded: false,
             page,
             loc_fee_text: config
                 .locations
@@ -16793,6 +16796,24 @@ struct GraphMini {
 }
 
 impl App {
+    /// Les réglages qui valent pour l'officine et vivent dans la base,
+    /// posés dans la page des options à son ouverture : sans quoi elle
+    /// montrait la valeur du fichier de ce poste, et la remettre à ce
+    /// qu'elle affichait n'écrivait rien.
+    fn seed_officine_settings(&mut self) {
+        let (State::Unlocked(session), Some(editor)) = (&self.state, &mut self.options) else {
+            return;
+        };
+        editor.officine_seeded = true;
+        if let Some(days) = session
+            .db
+            .setting(AUDIT_KEEP_KEY)
+            .and_then(|v| v.trim().parse::<u32>().ok())
+        {
+            editor.cfg.audit.keep_days = days;
+        }
+    }
+
     // Not `Default`: building the application reads config.toml and the
     // layout from disk, which a `Default` would hide behind a name that
     // promises nothing happens.
@@ -18696,6 +18717,7 @@ impl App {
             || start_view == "forfaits"
         {
             Some(OptionsEditor {
+                officine_seeded: false,
                 page: match start_view.as_str() {
                     "about" => OptionsPage::About,
                     // The page where the ten skins are chosen. It
@@ -76163,6 +76185,7 @@ impl App {
             } else {
                 Some(OptionsEditor::open(&self.config, OptionsPage::Pharmacy))
             };
+            self.seed_officine_settings();
         }
         if matches!(self.state, State::Unlocked(_))
             && motif::icon_button(
@@ -81121,6 +81144,9 @@ impl eframe::App for App {
                 self.options = Some(OptionsEditor::open(&self.config, page));
             }
         }
+        if self.options.as_ref().is_some_and(|e| !e.officine_seeded) {
+            self.seed_officine_settings();
+        }
         if let Some(t) = switch_tpl {
             // Load the other template (unsaved edits are discarded).
             self.tpl_editor = Some(TplEditor::open(t, &self.config.doc_template_path(t)));
@@ -83735,8 +83761,14 @@ impl eframe::App for App {
                 // pour l'officine entière : écrite à chaque enregistrement,
                 // n'importe quel poste qui changeait son thème remettait sa
                 // propre valeur, et deux postes se la disputaient.
+                // La page part de la valeur de la base (voir
+                // `seed_officine_settings`) : ce qu'elle rend n'en diffère
+                // que si quelqu'un l'a changée.
                 let was = session.db.setting(AUDIT_KEEP_KEY);
-                if self.config.audit.keep_days != before.audit.keep_days {
+                if was.as_deref().map(str::trim)
+                    != Some(self.config.audit.keep_days.to_string().as_str())
+                    && (was.is_some() || self.config.audit.keep_days != before.audit.keep_days)
+                {
                     let _ = session.db.set_setting(
                         AUDIT_KEEP_KEY,
                         &self.config.audit.keep_days.to_string(),

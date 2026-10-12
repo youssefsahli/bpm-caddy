@@ -283,55 +283,17 @@ fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32
 /// Les mots qui nomment une molécule, lus dans les DCI connues : ceux
 /// de cinq lettres et plus, moins les sels et les mots de liaison.
 fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
-    // Les sels, les cations et ce qui qualifie sans nommer : jamais une
-    // molécule à part entière, quelle que soit leur place dans la DCI.
-    const NOT_A_MOLECULE: [&str; 16] = [
-        "acide",
-        "sodique",
-        "potassique",
-        "calcique",
-        "magnesique",
-        "chlorhydrate",
-        "monohydrate",
-        "anhydre",
-        "lysine",
-        "sodium",
-        "potassium",
-        "calcium",
-        "magnesium",
-        "ferreux",
-        "ferrique",
-        "humaine",
-    ];
-    // **La tête de chaque DCI, pas chacun de ses mots** : « valproate de
-    // sodium » nomme le valproate, et son sel n'est pas une seconde
-    // molécule. Tous les mots pris, « Valproate » ne répondait plus à
-    // la Dépakine (« sodium » de plus), qui se lisait arrêtée — de même
-    // la fluticasone contre « fluticasone furoate ». Une association se
-    // coupe à ses « + » et « / », et chaque part donne sa tête.
-    // Une tête qui nomme une famille et pas la molécule : « insuline
-    // glargine » est la glargine. Seulement celles-là — sauter les anions
-    // (« carbonate de calcium ») ramenait le cation, et le sodium d'un sel
-    // redevenait une seconde molécule.
-    const GENERIC_HEADS: [&str; 2] = ["insuline", "vaccin"];
+    // **Une molécule est ce qu'une fiche porte seule comme DCI.** Un mot
+    // de plus ne veut dire « une molécule de plus » que s'il est, à lui
+    // seul, la DCI d'un produit connu — le valsartan du Tareg, l'amlodipine
+    // de l'Amlor. Un sel, un anion, un cation ne le sont jamais : « sodium »
+    // ajouté à « valproate », « acétate » à « cyprotérone » ne faisaient
+    // plus répondre la Dépakine ni l'Androcur à leur molécule. Les listes
+    // de mots à écarter se contredisaient d'une relecture à l'autre ; ce
+    // critère-là se lit sur la base.
     let mut out: Vec<String> = dcis
-        .flat_map(|d| {
-            crate::fuzzy::sort_key(d)
-                .split(['+', '/'])
-                .filter_map(|part| {
-                    // Une tête générique ou un anion ne nomme pas la
-                    // molécule : « insuline glargine » est la glargine,
-                    // « carbonate de calcium » le calcium.
-                    part.split(|c: char| !c.is_alphanumeric())
-                        .find(|w| {
-                            w.chars().count() >= 5
-                                && !NOT_A_MOLECULE.contains(w)
-                                && !GENERIC_HEADS.contains(w)
-                        })
-                        .map(str::to_owned)
-                })
-                .collect::<Vec<_>>()
-        })
+        .map(|d| crate::fuzzy::sort_key(d.trim()))
+        .filter(|d| d.chars().count() >= 5 && d.chars().all(|c| c.is_alphanumeric() || c == '-'))
         .collect();
     out.sort();
     out.dedup();
@@ -1256,25 +1218,47 @@ Vogalène lyoc si nausées
         assert!(rows.iter().all(|r| r.kind == Change::Kept));
     }
 
-    /// Une tête générique ne nomme pas la molécule : la glargine, la
-    /// lispro, le calcium restent des molécules.
+    /// **Le nom de la molécule répond à sa fiche**, sel ou pas, contre
+    /// toute la base livrée — chacun des cas que les relectures ont
+    /// trouvés, dans un sens puis dans l'autre.
     #[test]
-    fn generic_heads_give_way_to_the_molecule() {
-        let words = molecule_words(
-            [
-                "insuline glargine",
-                "insuline lispro",
-                "carbonate de calcium",
-                "valproate de sodium",
-                "citrate de sodium + laurilsulfate de sodium",
-            ]
-            .into_iter(),
+    fn a_molecule_named_without_its_salt_finds_its_card() {
+        let shipped: Vec<Known> = crate::db::STARTER_DRUGS
+            .iter()
+            .map(|(name, dci, class, _)| Known { name, dci, class })
+            .collect();
+        let card = |name: &str| {
+            crate::db::STARTER_DRUGS
+                .iter()
+                .find(|(n, ..)| *n == name)
+                .map(|(n, d, c, _)| (*n, *d, *c))
+        };
+        let words = molecule_words(shipped.iter().map(|k| k.dci));
+        for (name, typed) in [
+            ("Dépakine", "Valproate"),
+            ("Androcur", "Cyprotérone"),
+            ("Cacit", "Calcium"),
+            ("Tardyferon", "Ferreux"),
+        ] {
+            let (n, dci, class) = card(name).expect("fiche livrée");
+            let k = Known {
+                name: n,
+                dci,
+                class,
+            };
+            let hit = scored_match(typed, std::slice::from_ref(&k), &words);
+            assert!(hit.is_some(), "« {typed} » ne répond plus à {name} ({dci})");
+        }
+        // Et une association reste une association.
+        let (n, dci, class) = card("Amlor").expect("fiche livrée");
+        let k = Known {
+            name: n,
+            dci,
+            class,
+        };
+        assert!(
+            scored_match("Amlodipine valsartan", std::slice::from_ref(&k), &words).is_none(),
+            "l'Amlor ne répond pas à une association"
         );
-        for w in ["glargine", "lispro", "valproate"] {
-            assert!(words.iter().any(|m| m == w), "{w} manque : {words:?}");
-        }
-        for w in ["insuline", "sodium", "calcium"] {
-            assert!(!words.iter().any(|m| m == w), "{w} n'est pas une molécule");
-        }
     }
 }

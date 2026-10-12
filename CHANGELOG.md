@@ -18,14 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   retry before a share is mounted, created it); the access-log retention
   uses a new settings key, so the ratcheted value written by 0.404–0.407
   is ignored; a DFG typed in the calculator is rounded as shown; correcting a
-  vaccination line without a code gives it one; conciliation skips
-  the generic head « insuline » (glargine, lispro stay molecules) and
-  never counts a salt or cation (sodium, calcium, potassium, ferreux) as
-  a second molecule — checked against the whole shipped base, where the
-  Microlax's citrate de sodium had brought Dépakine's « stopped » back.
-- Access-log retention has its own field in Options; only a change made
-  there writes the officine's value (any save on any post used to
-  overwrite it). A password kept to confirm creating a missing base is
+  vaccination line without a code gives it one; conciliation counts as
+  a second molecule only a word that is, alone, the DCI of a known card
+  (valsartan for Tareg) — never a salt, an anion or a cation; checked
+  against the whole shipped base (Dépakine, Androcur, Cacit, Tardyferon
+  answer to their molecule, Amlor does not answer to amlodipine +
+  valsartan).
+- Access-log retention has its own field in Options, which opens on the
+  officine's value; a save writes it only when it differs from what the
+  base holds (any save on any post used to overwrite it). A password kept to confirm creating a missing base is
   forgotten as soon as the base is found.
 
 ## [0.408.0] - 2026-10-12
