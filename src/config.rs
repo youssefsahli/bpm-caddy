@@ -2167,7 +2167,11 @@ pub struct Layout {
     /// bouton qui annonce trois cents nouveautés le jour de la mise à
     /// jour. Par base : ouvrir une base d'essai ne vide pas le relevé de
     /// celle de l'officine.
-    pub online_seen: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
+    ///
+    /// Sous ce nom-ci : une version de développement l'écrivait
+    /// `online_seen`, en liste, et la relire en table faisait échouer
+    /// tout le fichier — fenêtre, volets et vue avec.
+    pub online_seen_by_base: std::collections::BTreeMap<String, std::collections::BTreeSet<String>>,
     /// The version of BPM-Caddy that wrote this file. Recorded so
     /// Options › À propos can say when the workspace was last laid out
     /// by another version, and so a future change of shape can tell a
@@ -2189,7 +2193,7 @@ impl Default for Layout {
             patient_band_folded: false,
             companion_width: 0.0,
             companion_height: 0.0,
-            online_seen: std::collections::BTreeMap::new(),
+            online_seen_by_base: std::collections::BTreeMap::new(),
             version: String::new(),
         }
     }

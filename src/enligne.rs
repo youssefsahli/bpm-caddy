@@ -34,9 +34,10 @@ pub struct Offer {
     /// L'identifiant de la dernière version venue d'ailleurs : l'offre a
     /// bougé depuis qu'on l'a vue quand il change (`unseen`).
     pub stamp: String,
-    /// Le jour de cette version-là — qui n'est pas `day` : celui-ci compte
-    /// aussi ce qu'on a écrit ici.
-    pub stamp_day: String,
+    /// Sa place au journal — l'ordre où les versions sont arrivées, non
+    /// leur jour : une version écrite hier, reçue après une autre vue
+    /// ce matin, est la plus récente pour qui regarde.
+    pub stamp_at: usize,
     /// Chaque champ, à sa dernière version — ce que l'entrée est pour le
     /// journal, et ce qu'une adoption écrit.
     pub fields: Vec<(String, String)>,
@@ -51,7 +52,7 @@ pub struct Offer {
 /// l'ouvrant.
 pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
     let mut out: Vec<Offer> = Vec::new();
-    for e in edits.iter().filter(|e| e.kind == kind) {
+    for (at, e) in edits.iter().enumerate().filter(|(_, e)| e.kind == kind) {
         if !kind.fields().contains(&e.field.as_str()) || e.card.is_empty() {
             continue;
         }
@@ -65,7 +66,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     from: Vec::new(),
                     day: String::new(),
                     stamp: String::new(),
-                    stamp_day: String::new(),
+                    stamp_at: 0,
                     fields: Vec::new(),
                 });
                 out.len() - 1
@@ -81,7 +82,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                 o.from.push(source.to_owned());
             }
             o.stamp.clone_from(&e.uid);
-            o.stamp_day.clone_from(&e.day);
+            o.stamp_at = at;
         }
         if e.day > o.day {
             o.day = e.day.clone();
@@ -123,10 +124,9 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     }
                     // La dernière version d'ailleurs des deux, jamais
                     // remplacée par l'absence d'une.
-                    if !old.stamp.is_empty() && (o.stamp.is_empty() || old.stamp_day > o.stamp_day)
-                    {
+                    if !old.stamp.is_empty() && (o.stamp.is_empty() || old.stamp_at > o.stamp_at) {
                         o.stamp = old.stamp;
-                        o.stamp_day = old.stamp_day;
+                        o.stamp_at = old.stamp_at;
                     }
                     for (f, v) in old.fields {
                         if f != "name" && o.field(&f).is_none() {
@@ -385,6 +385,35 @@ mod tests {
         assert_eq!(o[0].stamp, edits[1].uid);
         let seen = std::collections::BTreeSet::from([edits[0].uid.clone()]);
         assert_eq!(unseen(&o, &seen), 1, "la version de Lac reste à voir");
+        // Le même jour, reçue après le renommage déjà vu : elle compte.
+        let edits = [
+            edit(
+                Kind::Fiche,
+                "Molécule A",
+                "name",
+                "Molécule B",
+                "Port",
+                "2026-10-12",
+            ),
+            edit(
+                Kind::Fiche,
+                "Molécule B",
+                "dci",
+                "molécule",
+                "Port",
+                "2026-10-12",
+            ),
+            edit(
+                Kind::Fiche,
+                "Molécule A",
+                "class",
+                "AINS",
+                "Lac",
+                "2026-10-12",
+            ),
+        ];
+        let o = offers(&edits, Kind::Fiche);
+        assert_eq!(o[0].stamp, edits[2].uid);
     }
 
     /// Un champ que la sorte ne partage pas ne passe pas, même s'il est au

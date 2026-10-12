@@ -5505,7 +5505,7 @@ struct Session {
     card_edits: Vec<crate::versions::Edit>,
     edits_rev: u64,
     /// « En ligne » : la dernière version d'ailleurs de chaque offre déjà
-    /// vue sur ce poste (`Layout::online_seen`), et ce qui reste à voir,
+    /// vue sur ce poste (`Layout::online_seen_by_base`), et ce qui reste à voir,
     /// par sorte — lu contre `online_fresh_key`, jamais à chaque image.
     online_seen: Option<std::collections::BTreeSet<String>>,
     /// `online_seen` a changé depuis que `layout.toml` l'a recopié :
@@ -18910,7 +18910,8 @@ impl App {
                     }
                     // Le bandeau tel que le poste l'a laissé.
                     session.patient_band_folded = layout.patient_band_folded;
-                    session.online_seen = layout.online_seen.get(&session.base_key()).cloned();
+                    session.online_seen =
+                        layout.online_seen_by_base.get(&session.base_key()).cloned();
                     state = State::Unlocked(Box::new(session));
                     remember_password = from_keyring;
                 }
@@ -21448,7 +21449,11 @@ impl App {
                         self.config.ui.caisse_expected,
                     );
                     session.patient_band_folded = self.layout.patient_band_folded;
-                    session.online_seen = self.layout.online_seen.get(&session.base_key()).cloned();
+                    session.online_seen = self
+                        .layout
+                        .online_seen_by_base
+                        .get(&session.base_key())
+                        .cloned();
                     self.state = State::Unlocked(Box::new(session));
                     if let Some(entry) = keyring_entry() {
                         if self.remember_password {
@@ -62307,6 +62312,21 @@ impl App {
         }
     }
 
+    /// What « En ligne » has marked seen on this base, into the post's
+    /// `layout.toml` record — only when it changed, and before a session
+    /// that goes (lock, exit) takes its last marks with it.
+    fn keep_online_seen(layout: &mut crate::config::Layout, session: &mut Session) {
+        if !session.online_seen_dirty {
+            return;
+        }
+        if let Some(seen) = &session.online_seen {
+            layout
+                .online_seen_by_base
+                .insert(session.base_key(), seen.clone());
+        }
+        session.online_seen_dirty = false;
+    }
+
     /// The « En ligne » button of a content tab: one gesture to what the
     /// network's officines hold of this kind.
     fn online_button(ui: &mut egui::Ui, session: &mut Session, kind: crate::versions::Kind) {
@@ -76976,6 +76996,7 @@ impl App {
                 // avec eux, et seule la fermeture de l'application les
                 // rendait.
                 session.flush_telemetry();
+                Self::keep_online_seen(&mut self.layout, session);
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -80775,14 +80796,7 @@ impl eframe::App for App {
             if let State::Unlocked(session) = &mut self.state {
                 self.layout.view = session.view.as_key().to_owned();
                 self.layout.patient_band_folded = session.patient_band_folded;
-                if session.online_seen_dirty {
-                    if let Some(seen) = &session.online_seen {
-                        self.layout
-                            .online_seen
-                            .insert(session.base_key(), seen.clone());
-                    }
-                    session.online_seen_dirty = false;
-                }
+                Self::keep_online_seen(&mut self.layout, session);
             }
             if self.layout != self.layout_saved {
                 // A drag reports a new width every frame: wait until it
@@ -80910,6 +80924,7 @@ impl eframe::App for App {
                 // Don't lose an RDV date typed but never tabbed out of.
                 session.flush_date_edits();
                 session.flush_telemetry();
+                Self::keep_online_seen(&mut self.layout, session);
                 self.state = State::Locked {
                     password: String::new(),
                     error: None,
@@ -84445,6 +84460,9 @@ impl eframe::App for App {
                 moved.save().is_ok() && {
                     self.config = moved;
                     self.options = None;
+                    if let State::Unlocked(session) = &mut self.state {
+                        Self::keep_online_seen(&mut self.layout, session);
+                    }
                     self.state = State::Locked {
                         password: String::new(),
                         error: Some(tr("opts_db_moved_now").to_owned()),
@@ -84656,6 +84674,9 @@ impl eframe::App for App {
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         // Reopen where the workspace was left: the window's size and the
         // widths the docks were dragged to.
+        if let State::Unlocked(session) = &mut self.state {
+            Self::keep_online_seen(&mut self.layout, session);
+        }
         self.layout.save();
         if self.doc_dirty {
             // No cursor to protect on the way out: allow the merge.
