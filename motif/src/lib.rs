@@ -2572,11 +2572,22 @@ pub fn menu<T: Clone>(
         egui::popup::PopupCloseBehavior::CloseOnClick,
         |ui| {
             ui.set_min_width(width);
-            for (value, text) in options {
-                if list_row(ui, egui::RichText::new(text), false).clicked() {
-                    picked = Some(value.clone());
-                }
-            }
+            // Jamais plus bas que l'écran, comme `select` : soixante
+            // fiches ouvertes à mi-hauteur descendaient à 1 800 pixels,
+            // et les dernières ne se choisissaient plus.
+            let room = (ui.ctx().screen_rect().bottom() - response.rect.bottom() - 16.0)
+                .max(ui.spacing().interact_size.y * 3.0);
+            ui.spacing_mut().scroll.floating = false;
+            egui::ScrollArea::vertical()
+                .id_salt(id.with("rows"))
+                .max_height(room)
+                .show(ui, |ui| {
+                    for (value, text) in options {
+                        if list_row(ui, egui::RichText::new(text), false).clicked() {
+                            picked = Some(value.clone());
+                        }
+                    }
+                });
             popup_relief(ui);
         },
     );
@@ -2997,11 +3008,15 @@ pub fn scale_range(
         ui.allocate_exact_size(Vec2::new(width.max(24.0), h), egui::Sense::click_and_drag());
     // Une étendue nulle ou à l'envers donnerait une division par zéro
     // plus bas, et un pouce collé à gauche : la borne haute cède.
-    let (min, max) = if max > min {
+    // Une borne qui n'est pas un nombre fini aussi : `clamp(NaN, NaN)`
+    // panique.
+    let min = if min.is_finite() { min } else { 0.0 };
+    let (min, max) = if max.is_finite() && max > min {
         (min, max)
     } else {
         (min, min + 1.0)
     };
+    let value = if value.is_finite() { value } else { min };
     // The groove: a shallow sunken channel across the middle, the full
     // height being the thumb's travel.
     let groove = egui::Rect::from_center_size(rect.center(), Vec2::new(rect.width(), 6.0));
@@ -4210,5 +4225,56 @@ mod tests {
             bottom <= 700.0 + 1.0,
             "le menu descend jusqu'à {bottom} px sur un écran de 700"
         );
+    }
+
+    /// Le menu d'actions suit la même règle que `select` : ouvert à mi-
+    /// hauteur avec soixante choix, **le dernier se rejoint** en faisant
+    /// défiler. Sans défilement, egui garde la zone dans l'écran et coupe
+    /// ce qui dépasse : les dernières fiches n'existaient plus.
+    #[test]
+    fn an_action_menu_s_last_choice_can_be_reached() {
+        use eframe::egui;
+        let ctx = egui::Context::default();
+        super::apply(&ctx);
+        super::apply_scale(&ctx, 1.6, super::Density::Comfortable);
+        let options: Vec<(usize, String)> = (0..60).map(|i| (i, format!("Fiche {i}"))).collect();
+        let mut seen_last = false;
+        for frame in 0..40 {
+            let mut events = vec![egui::Event::PointerMoved(egui::pos2(100.0, 450.0))];
+            if frame >= 4 {
+                events.push(egui::Event::MouseWheel {
+                    unit: egui::MouseWheelUnit::Point,
+                    delta: egui::vec2(0.0, -400.0),
+                    modifiers: egui::Modifiers::NONE,
+                });
+            }
+            let input = egui::RawInput {
+                screen_rect: Some(egui::Rect::from_min_size(
+                    egui::Pos2::ZERO,
+                    egui::vec2(1024.0, 700.0),
+                )),
+                events,
+                ..Default::default()
+            };
+            let out = ctx.run(input, |ctx| {
+                egui::CentralPanel::default().show(ctx, |ui| {
+                    ui.add_space(200.0);
+                    if frame == 0 {
+                        let id = ui.make_persistent_id("long_actions");
+                        ui.memory_mut(|m| m.open_popup(id));
+                    }
+                    let _ = super::menu(ui, "long_actions", 200.0, "Actions", &options);
+                });
+            });
+            seen_last |= out.shapes.iter().any(|c| match &c.shape {
+                egui::Shape::Text(t) => {
+                    t.galley.text() == "Fiche 59"
+                        && c.clip_rect.bottom() <= 701.0
+                        && t.pos.y < 700.0
+                }
+                _ => false,
+            });
+        }
+        assert!(seen_last, "le dernier choix ne se rejoint pas");
     }
 }

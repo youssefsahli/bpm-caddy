@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Narcotics register and access log: a creation that reuses a number
+  already taken here with other values (a post restored from a backup,
+  or forged) is refused, never turned into a question whose « take
+  theirs » rewrote the line in place.
+- Audit: `bpm-caddy audit` no longer creates a base (empty, or without a
+  password) where it finds none, nor reads the default base when
+  `config.toml` does not read; a read error is said instead of an empty
+  log; the period ends today, and a line with an unreadable file number
+  no longer hides the whole log.
+- Action menus scroll within the screen like the other lists — sixty
+  cards opened half-way down left the last ones out of reach; a long
+  dashed band on a timeline is drawn only where it shows; a scale with a
+  non-numeric bound no longer panics.
+
 ## [0.404.0] - 2026-10-12
 
 ### Fixed

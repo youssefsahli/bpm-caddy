@@ -803,6 +803,11 @@ pub fn timeline(
             if x1 < plot.left() || x0 > plot.right() {
                 continue;
             }
+            // Borné à la zone tracée, quelques pixels au-delà : le clip
+            // cachait le reste, mais un trait pointillé de dix ans à la
+            // semaine se construisait tiret par tiret — deux cent mille
+            // formes par image.
+            let (x0, x1) = (x0.max(plot.left() - 4.0), x1.min(plot.right() + 4.0));
             let seg = egui::Rect::from_min_max(
                 egui::pos2(x0, top + pad),
                 egui::pos2(x1, top + lay.row_h - pad),

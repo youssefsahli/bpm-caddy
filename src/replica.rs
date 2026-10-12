@@ -498,6 +498,15 @@ pub fn decide(op: &Op, append_only: bool, local: Option<&Map<String, Value>>) ->
                     theirs: Some(v.clone()),
                 })
                 .collect();
+            // **Une ligne d'une table qu'on n'écrit qu'une fois ne devient
+            // pas une question.** Une création qui reprend un numéro déjà
+            // pris ici, avec d'autres valeurs — un poste restauré d'une
+            // sauvegarde, ou forgée —, posait un « conflit » par colonne,
+            // et « Prendre la leur » réécrivait en place une ligne du
+            // registre des stupéfiants ou du journal des accès. Refusée.
+            if append_only && !conflicts.is_empty() {
+                return Outcome::clean(Action::Refused);
+            }
             Outcome {
                 action: Action::Nothing,
                 conflicts,
@@ -1314,6 +1323,15 @@ mod tests {
         };
         assert_eq!(decide(&insert, true, None).action, Action::Insert);
         assert_eq!(decide(&insert, true, Some(&row)).action, Action::Nothing);
+        // Le même numéro, d'autres valeurs : refusé, jamais une question
+        // qu'on trancherait en réécrivant la ligne.
+        let other = Op {
+            new: m(json!({"id":1,"quantity":20.0})),
+            ..insert
+        };
+        let o = decide(&other, true, Some(&row));
+        assert_eq!(o.action, Action::Refused);
+        assert!(o.conflicts.is_empty());
     }
 
     /// **Deux postes ne tirent jamais le même numéro**, et le fondateur

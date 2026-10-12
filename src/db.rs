@@ -46702,22 +46702,36 @@ impl Db {
     /// Un acte qu'une version postérieure a inventé est **gardé** et
     /// rendu sous sa clé : la ligne reste, et dans un journal d'accès
     /// c'est ce qui compte. L'appelant la nomme comme il peut.
-    pub fn accesses_since(&self, from_day: &str) -> Result<Vec<crate::audit::Access>, String> {
+    ///
+    /// Jusqu'à `to_day` compris — vide, sans borne : la ligne d'un poste
+    /// dont l'horloge avance n'entre pas dans une période déjà finie.
+    /// Le numéro de dossier se lit large : une ligne venue d'ailleurs qui
+    /// n'en porte pas un entier compte zéro, au lieu de faire échouer la
+    /// lecture entière — et le journal de paraître vide.
+    pub fn accesses_since(
+        &self,
+        from_day: &str,
+        to_day: &str,
+    ) -> Result<Vec<crate::audit::Access>, String> {
         let mut q = self
             .conn
             .prepare(
                 "SELECT at, operator, act, file FROM access_log
-                 WHERE at >= ?1 ORDER BY at, id",
+                 WHERE at >= ?1 AND (?2 = '' OR at < date(?2, '+1 day'))
+                 ORDER BY at, id",
             )
             .map_err(|e| e.to_string())?;
         let rows = q
-            .query_map([from_day], |r| {
+            .query_map([from_day, to_day], |r| {
                 Ok(crate::audit::Access {
                     at: r.get::<_, String>(0)?,
                     operator: r.get::<_, String>(1)?,
                     act: crate::audit::Act::from_key(&r.get::<_, String>(2)?)
                         .unwrap_or(crate::audit::Act::Autre),
-                    file: r.get::<_, i64>(3)?,
+                    file: match r.get::<_, rusqlite::types::Value>(3)? {
+                        rusqlite::types::Value::Integer(n) => n,
+                        _ => 0,
+                    },
                 })
             })
             .map_err(|e| e.to_string())?;
@@ -56317,7 +56331,10 @@ impl Db {
         // laisse de côté) se refusait ici à « Prendre la leur », avant
         // d'être retirée : elle restait pour toujours. Sans colonne, il n'y
         // a rien à écrire, et la question s'en va.
-        let known = crate::replica::table(c.file, &c.table).is_some()
+        // Et jamais sur une table qu'on n'écrit qu'une fois (registre des
+        // stupéfiants, journal des accès) : une question restée d'une
+        // version d'avant se retire sans rien écrire.
+        let known = crate::replica::table(c.file, &c.table).is_some_and(|t| !t.append_only)
             && Self::table_shape(self.conn_of(c.file), &c.table)
                 .map(|(cols, _)| cols.contains(&c.column))
                 .unwrap_or(false);
@@ -59226,10 +59243,13 @@ mod tests {
 
         // Le journal des accès. Même raison que les compteurs
         // ci-dessus : la table n'existait pas dans cette version-là.
-        assert!(db.accesses_since("").expect("accesses_since").is_empty());
+        assert!(db
+            .accesses_since("", "")
+            .expect("accesses_since")
+            .is_empty());
         assert!(db.log_access("CL", crate::audit::Act::Ouvert, 4021));
         assert!(db.log_access("", crate::audit::Act::Exporte, 0));
-        let lines = db.accesses_since("").expect("accesses_since");
+        let lines = db.accesses_since("", "").expect("accesses_since");
         assert_eq!(lines.len(), 2);
         assert_eq!(lines[0].file, 4021);
         assert_eq!(lines[0].who(), "CL");
@@ -59239,16 +59259,16 @@ mod tests {
         // quand elle retire quelque chose : un journal qui a rétréci et
         // un journal qu'on a vidé se lisent autrement pareil.
         assert_eq!(db.purge_accesses("1900-01-01", "CL").unwrap(), 0);
-        assert_eq!(db.accesses_since("").unwrap().len(), 2);
+        assert_eq!(db.accesses_since("", "").unwrap().len(), 2);
         // **La borne est gardée** : l'horizon du jour même ne retire pas
         // le jour même. Un intervalle dont on ne sait pas si sa borne
         // est dedans est un intervalle dont personne ne peut dire
         // combien de jours il couvre.
         let today = db.today_iso().unwrap();
         assert_eq!(db.purge_accesses(&today, "CL").unwrap(), 0);
-        assert_eq!(db.accesses_since("").unwrap().len(), 2);
+        assert_eq!(db.accesses_since("", "").unwrap().len(), 2);
         assert_eq!(db.purge_accesses("2999-01-01", "CL").unwrap(), 2);
-        let after = db.accesses_since("").unwrap();
+        let after = db.accesses_since("", "").unwrap();
         assert_eq!(after.len(), 1, "la purge laisse sa propre ligne");
         assert_eq!(after[0].act, crate::audit::Act::Purge);
         assert_eq!(after[0].file, 2, "combien de lignes ont été retirées");
@@ -66887,5 +66907,31 @@ mod tests {
         assert!(!db.delete_cno_product(&shown).unwrap(), "corrigé ailleurs");
         assert!(db.delete_cno_product(&theirs).unwrap());
         assert!(db.cno_products().unwrap().iter().all(|p| p.id != id));
+    }
+
+    /// Une période se ferme à son dernier jour : la ligne d'un poste dont
+    /// l'horloge avance n'y entre pas. Et un numéro de dossier illisible,
+    /// venu d'ailleurs, ne vide pas le journal.
+    #[test]
+    fn the_access_period_ends_today_and_a_bad_line_hides_nothing() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-acc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("acc.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        assert!(db.log_access("CL", crate::audit::Act::Ouvert, 4021));
+        db.conn_for_tests()
+            .execute(
+                "INSERT INTO access_log (id, at, operator, act, file)
+                 VALUES (900001, '2999-01-01 10:00:00', 'XX', 'ouvert', 'x')",
+                [],
+            )
+            .unwrap();
+        let today = db.today_iso().unwrap();
+        assert_eq!(db.accesses_since("", &today).unwrap().len(), 1);
+        let all = db.accesses_since("", "").unwrap();
+        assert_eq!(all.len(), 2);
+        assert_eq!(all[1].file, 0);
     }
 }

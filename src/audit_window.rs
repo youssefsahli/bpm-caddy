@@ -60,7 +60,7 @@ pub fn read(db: &Db, cfg: &Config, path: &std::path::Path, days: i64) -> Reading
         days: days as usize,
     };
     let activity = db.audit_activity(&from, &today).unwrap_or_default();
-    let access = audit::summarize(&db.accesses_since(&from).unwrap_or_default());
+    let access = audit::summarize(&db.accesses_since(&from, &today).unwrap_or_default());
     let conformity = db
         .audit_conformity(
             &today,
@@ -151,13 +151,7 @@ impl AuditApp {
         // base qu'il ne trouve pas : sur un partage non monté, la fenêtre
         // en posait une neuve à l'adresse attendue — et, sans mot de passe,
         // une base en clair — que l'application refusait ensuite.
-        let refused = if password.is_empty() {
-            Some(tr("auditw_no_password").to_owned())
-        } else if !self.path.exists() {
-            Some(trf("auditw_no_base", self.path.display()))
-        } else {
-            None
-        };
+        let refused = audit::may_open(&self.path, password, self.cfg.unreadable.as_deref()).err();
         if let Some(why) = refused {
             self.state = State::Locked {
                 password: String::new(),

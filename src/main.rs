@@ -107,6 +107,10 @@ fn run_audit(args: &[String]) -> i32 {
         return 2;
     };
     let path = cfg.db_path();
+    if let Err(why) = audit::may_open(&path, &password, cfg.unreadable.as_deref()) {
+        eprintln!("{why}");
+        return 2;
+    }
     let db = match db::Db::open(&path, &password) {
         Ok(db) => db,
         Err(e) => {
@@ -135,7 +139,14 @@ fn run_audit(args: &[String]) -> i32 {
         days: days as usize,
     };
     let activity = db.audit_activity(&from, &today).unwrap_or_default();
-    let access = audit::summarize(&db.accesses_since(&from).unwrap_or_default());
+    // Une lecture qui échoue n'est pas un journal vide : elle se dit.
+    let access = match db.accesses_since(&from, &today) {
+        Ok(lines) => audit::summarize(&lines),
+        Err(e) => {
+            eprintln!("{}", audit::unreadable(&e));
+            return 2;
+        }
+    };
     let conformity = db
         .audit_conformity(
             &today,

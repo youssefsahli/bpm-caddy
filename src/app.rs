@@ -92764,7 +92764,7 @@ mod tests {
         s.reload_messages("CL");
         s.msg.open = Some(conv);
         let transmitted = |s: &Session| {
-            s.db.accesses_since("2000-01-01")
+            s.db.accesses_since("2000-01-01", "")
                 .unwrap()
                 .iter()
                 .filter(|a| a.act == crate::audit::Act::Transmis)

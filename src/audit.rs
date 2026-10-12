@@ -520,6 +520,32 @@ pub fn unreadable(why: &str) -> String {
     trf("audit_report_unreadable", why)
 }
 
+/// **L'audit lit, il ne crée pas** — la fenêtre comme la commande.
+/// `Db::open` crée la base qu'il ne trouve pas : sur un partage non
+/// monté, une tâche de nuit posait une base neuve (en clair, sans mot de
+/// passe) à l'adresse attendue, et le rapport disait « aucun accès ». Et
+/// une configuration illisible a remplacé le chemin de la base par celui
+/// par défaut : le rapport porterait sur une autre base.
+pub fn may_open(
+    path: &std::path::Path,
+    password: &str,
+    config_unreadable: Option<&str>,
+) -> Result<(), String> {
+    if let Some(e) = config_unreadable {
+        return Err(crate::strings::trn(
+            "config_unreadable",
+            &[&crate::config::Config::path().display(), &e],
+        ));
+    }
+    if password.is_empty() {
+        return Err(tr("auditw_no_password").to_owned());
+    }
+    if !path.exists() {
+        return Err(trf("auditw_no_base", path.display()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -875,5 +901,17 @@ mod tests {
         assert!(s.by_act.contains(&(Act::Autre, 1)));
         let s = summarize(&[line(Act::Ouvert, 7)]);
         assert!(s.by_act.iter().all(|(a, _)| *a != Act::Autre));
+    }
+
+    /// L'audit ne crée pas de base, n'en ouvre pas sans mot de passe, et
+    /// ne lit pas celle par défaut quand la configuration est illisible.
+    #[test]
+    fn the_audit_opens_only_an_existing_base_with_a_password() {
+        let here = std::env::temp_dir();
+        let missing = here.join("bpm-caddy-audit-nulle-part.db");
+        assert!(may_open(&missing, "secret", None).is_err());
+        assert!(may_open(&here, "", None).is_err());
+        assert!(may_open(&here, "secret", Some("ligne 3")).is_err());
+        assert!(may_open(&here, "secret", None).is_ok());
     }
 }
