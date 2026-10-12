@@ -29,6 +29,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the lines they replace. A received cascade is created from its text;
   a shipped cascade removed here is not brought back by a received
   version.
+- **Rewritten printed phrases travel too**, under their address, with an
+  « En ligne… » button on the « Textes » screen; a phrase restored to its
+  shipped wording travels as such, and one rewritten here meanwhile is
+  kept. Like checklists they are shared only when the network window's
+  « listes de contrôle, phrases imprimées » box is ticked, since a
+  rewrite can carry the officine's name or phone number.
 
 ### Fixed
 - Taking back a shipped entry removed here (a vaccine, a TROD line, a
@@ -36,6 +42,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   values first, the network's latest versions over them — instead of
   with only the fields another officine had touched (a TROD line came
   back without its posologies).
+- Taking back a shipped drug card removed here works (it failed on a
+  nested transaction) and restores only that card's shipped details.
+- Cascades still carrying their pre-0.360 shipped wording are refreshed
+  to the reviewed text when untouched, and never sent to the network
+  (they would have rolled other officines back to the old wording).
+- A received version no longer recreates, empty, a shipped dispositif
+  removed here.
+- Checklists and printed phrases are not even versioned until sharing
+  is ticked, so an older post of the same officine can't publish them,
+  and ticking the box later sends them as they are that day rather than
+  their whole history. A dispositif's tags and sources travel under
+  their own names, so an older version can't mistake them for a drug
+  card's and create a card named after the dressing.
 - A drug card renamed on the network is offered under its new name; its
   old name no longer showed as « absente ici », and taking it no longer
   creates a duplicate card.

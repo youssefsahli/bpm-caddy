@@ -1210,7 +1210,7 @@ donnée patient.
 
 « En ligne… » — dans la liste des fiches, le codex, les protocoles, les
 lignes de TROD, le catalogue des vaccins, les dispositifs, les listes de
-contrôle et les cascades — liste ce que les officines
+contrôle, les cascades et l'écran « Textes » — liste ce que les officines
 du réseau ont écrit de cette sorte, reçu à la dernière synchronisation :
 nom, officines, date, et ce que l'entrée est ici (« absente »,
 « identique », « différente »). La recherche porte sur le nom et ce qui
@@ -1255,8 +1255,10 @@ d'officines… », dans la vue Ruptures. **Sont partagés** les ruptures et
 les substitutions, les valeurs de pharmacocinétique sourcées, et les
 versions des fiches, des préparations, des protocoles, des lignes de
 TROD, des vaccins du catalogue, des dispositifs et des cascades — et les
-listes de contrôle si l'officine coche « listes de contrôle » (non par
-défaut : une liste porte parfois un code ou un numéro) — **jamais un
+listes de contrôle et les phrases imprimées réécrites si l'officine
+coche « listes de contrôle, phrases imprimées » (non par défaut : une
+liste porte parfois un code, une phrase le nom ou le téléphone de
+l'officine) — **jamais un
 patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.

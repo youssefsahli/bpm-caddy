@@ -573,9 +573,23 @@ liste qu'elles remplacent, comme un arbre de protocole) et **cascades**
 (`Kind::Cascade` : `texte`, reconnues par le titre qu'il porte ; une
 cascade reçue se crée par son texte, et une cascade livrée retirée ici
 ne revient pas d'une version reçue). Une liste de contrôle porte la
-façon de faire de l'officine : ses versions ne partent que si
+façon de faire de l'officine, une **phrase imprimée** réécrite
+(`Kind::Texte`, champ `value`, sous son adresse `content::key`, origine
+le texte livré, écrite par `set_content` contre ce qui s'imprimait) son
+nom ou son téléphone : leurs versions ne partent que si
 `NetShares::listes` est coché (non par défaut, colonne `share_listes`),
-et restent sinon en attente, non marquées parties. « En ligne »
+et elles **ne se versionnent même pas** tant qu'aucun réseau ne les
+partage : au journal, elles iraient aux autres postes, et un poste d'une
+version d'avant (qui lit une sorte inconnue comme une fiche) les
+publierait. Cochées, elles partent telles qu'elles sont ce jour-là. Pour
+la même raison, les étiquettes et les sources d'un dispositif voyagent
+sous `etiquettes` et `references` (`versions::dispositif_column`) : sous
+`tags` et `sources`, une version d'avant les publiait comme ceux d'une
+fiche, et les autres officines créaient une fiche au nom du pansement.
+Un texte de cascade livré avant la relecture de la 0.360.0
+(`shipped::CASCADES_REWORDED`) est rafraîchi s'il n'a pas été touché et
+ne se versionne jamais ; un dispositif livré retiré ici ne revient pas
+d'une version reçue. « En ligne »
 (`src/enligne.rs`) lit le journal reçu en offres par sorte ;
 `Db::adopt_offer` prend une offre d'un geste — une entrée livrée retirée
 ici revient alors entière (`entry_origin`), la dernière version

@@ -105,6 +105,13 @@ pub const VACCIN_FIELDS: [&str; 3] = ["label", "code", "schedule"];
 
 /// Les champs d'un dispositif que le réseau partage. Son nom est ce qui
 /// le reconnaît d'une officine à l'autre, comme une préparation.
+///
+/// **Ses étiquettes et ses sources voyagent sous des noms à elles**
+/// (`etiquettes`, `references`), pas sous ceux des colonnes : un poste
+/// d'une version d'avant lit une sorte qu'il ne connaît pas comme une
+/// fiche médicament, et publiait alors les `tags` d'un pansement comme
+/// ceux d'une fiche — chez les autres officines, une fiche médicament
+/// au nom du pansement. Sous ces noms-ci, une version d'avant les refuse.
 pub const DISPOSITIF_FIELDS: [&str; 9] = [
     "family",
     "indication",
@@ -113,9 +120,25 @@ pub const DISPOSITIF_FIELDS: [&str; 9] = [
     "renewal",
     "lpp",
     "caution",
-    "tags",
-    "sources",
+    "etiquettes",
+    "references",
 ];
+
+/// La colonne d'un champ de dispositif, depuis son nom de voyage.
+pub fn dispositif_column(field: &str) -> Option<&'static str> {
+    Some(match field {
+        "family" => "family",
+        "indication" => "indication",
+        "sizes" => "sizes",
+        "application" => "application",
+        "renewal" => "renewal",
+        "lpp" => "lpp",
+        "caution" => "caution",
+        "etiquettes" => "tags",
+        "references" => "sources",
+        _ => return None,
+    })
+}
 
 /// Les champs d'une liste de contrôle : son sujet, et **ses lignes
 /// entières**, sous une forme canonique ([`items_json`]) — comme l'arbre
@@ -126,6 +149,10 @@ pub const LISTE_FIELDS: [&str; 2] = ["subject", "lignes"];
 /// Le seul champ d'une cascade : son texte, d'où tout le reste se lit —
 /// son titre, qui la reconnaît, compris.
 pub const CASCADE_FIELDS: [&str; 1] = ["texte"];
+
+/// Le seul champ d'une phrase imprimée réécrite : le texte qui
+/// s'imprime. Elle voyage sous son adresse (`content::key`).
+pub const TEXTE_FIELDS: [&str; 1] = ["value"];
 
 /// Les lignes d'une liste de contrôle sous leur forme canonique : texte
 /// et note, dans l'ordre. Les mêmes lignes donnent les mêmes octets.
@@ -204,6 +231,8 @@ pub enum Kind {
     Liste,
     /// Une cascade de récepteurs, par son texte.
     Cascade,
+    /// Une phrase imprimée, par son adresse.
+    Texte,
 }
 
 impl Kind {
@@ -217,6 +246,7 @@ impl Kind {
             Kind::Dispositif => "dispositif",
             Kind::Liste => "liste",
             Kind::Cascade => "cascade",
+            Kind::Texte => "texte",
         }
     }
 
@@ -229,16 +259,18 @@ impl Kind {
             "dispositif" => Kind::Dispositif,
             "liste" => Kind::Liste,
             "cascade" => Kind::Cascade,
+            "texte" => Kind::Texte,
             _ => Kind::Fiche,
         }
     }
 
     /// Une liste de contrôle porte la façon de faire de l'officine — un
-    /// seuil, un numéro, un endroit : elle ne part que si l'officine le
+    /// seuil, un numéro, un endroit —, une phrase imprimée réécrite son
+    /// nom ou son téléphone : elles ne partent que si l'officine le
     /// demande (`NetShares::listes`), quand le reste part avec les
     /// versions.
     pub fn is_private(self) -> bool {
-        self == Kind::Liste
+        matches!(self, Kind::Liste | Kind::Texte)
     }
 
     /// Le type de charge qui voyage. Une fiche garde `version`, que les
@@ -254,6 +286,7 @@ impl Kind {
             Kind::Dispositif => "dispositif",
             Kind::Liste => "liste",
             Kind::Cascade => "cascade",
+            Kind::Texte => "texte",
         }
     }
 
@@ -267,6 +300,7 @@ impl Kind {
             "dispositif" => Some(Kind::Dispositif),
             "liste" => Some(Kind::Liste),
             "cascade" => Some(Kind::Cascade),
+            "texte" => Some(Kind::Texte),
             _ => None,
         }
     }
@@ -282,6 +316,7 @@ impl Kind {
             Kind::Dispositif => &DISPOSITIF_FIELDS,
             Kind::Liste => &LISTE_FIELDS,
             Kind::Cascade => &CASCADE_FIELDS,
+            Kind::Texte => &TEXTE_FIELDS,
         }
     }
 }

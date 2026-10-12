@@ -174,6 +174,7 @@ impl Offer {
             Kind::Dispositif => &["family", "indication", "tags"][..],
             Kind::Liste => &["subject"][..],
             Kind::Cascade => &["texte"][..],
+            Kind::Texte => &["value"][..],
         };
         described
             .iter()

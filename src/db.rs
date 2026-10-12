@@ -49092,6 +49092,40 @@ impl Db {
                 }
             }
         }
+        // Les cascades : texte entier, sous leur titre — rafraîchies si
+        // elles disent encore, mot pour mot, un texte livré d'avant.
+        {
+            let rows: Vec<(i64, String)> = {
+                let mut st = tx
+                    .prepare("SELECT id, text FROM cascades")
+                    .map_err(|e| e.to_string())?;
+                let rows = st
+                    .query_map([], |r| Ok((r.get(0)?, r.get(1)?)))
+                    .map_err(|e| e.to_string())?;
+                rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
+            };
+            for (id, text) in rows {
+                let fp = crate::shipped::fingerprint(&text);
+                let title = cascade_title(&text);
+                let known = crate::shipped::CASCADES_REWORDED
+                    .iter()
+                    .any(|(t, old)| *old == fp && *t == title);
+                if !known {
+                    continue;
+                }
+                let Some(new) = STARTER_CASCADES.iter().find(|t| cascade_title(t) == title) else {
+                    continue;
+                };
+                if *new != text {
+                    changed += tx
+                        .execute(
+                            "UPDATE cascades SET text = ?1 WHERE id = ?2 AND text = ?3",
+                            (new, id, &text),
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
         // Les posologies : ligne par ligne, sous le nom de la fiche.
         {
             let rows: Vec<(i64, String, [String; 3])> = {
@@ -54671,7 +54705,7 @@ pub fn codex_field<'a>(p: &'a Preparation, field: &str) -> Option<&'a str> {
 
 /// Un champ d'un dispositif, par son nom de voyage.
 pub fn dispositif_field<'a>(d: &'a Dispositif, field: &str) -> Option<&'a str> {
-    Some(match field {
+    Some(match crate::versions::dispositif_column(field)? {
         "family" => &d.family,
         "indication" => &d.indication,
         "sizes" => &d.sizes,
@@ -54686,7 +54720,7 @@ pub fn dispositif_field<'a>(d: &'a Dispositif, field: &str) -> Option<&'a str> {
 }
 
 fn starter_dispositif_field(d: &StarterDispositif, field: &str) -> Option<&'static str> {
-    Some(match field {
+    Some(match crate::versions::dispositif_column(field)? {
         "family" => d.family,
         "indication" => d.indication,
         "sizes" => d.sizes,
@@ -54698,6 +54732,65 @@ fn starter_dispositif_field(d: &StarterDispositif, field: &str) -> Option<&'stat
         "sources" => d.sources,
         _ => return None,
     })
+}
+
+/// Les phrases imprimées qui se réécrivent, une fois par processus :
+/// adresse et texte livré, dans l'ordre du registre (`content::documents`).
+/// Le rang d'une phrase y est l'identifiant que les versions lui donnent.
+fn phrase_index() -> &'static [(String, &'static str)] {
+    static INDEX: std::sync::OnceLock<Vec<(String, &'static str)>> = std::sync::OnceLock::new();
+    INDEX.get_or_init(|| {
+        crate::content::documents()
+            .into_iter()
+            .flat_map(|d| d.phrases.into_iter().map(|(k, _, shipped)| (k, shipped)))
+            .collect()
+    })
+}
+
+/// Une phrase par son adresse repliée : son rang, son adresse, son texte
+/// livré.
+fn phrase_by_key(card: &str) -> Option<(i64, &'static str, &'static str)> {
+    let k = crate::versions::key(card);
+    phrase_index()
+        .iter()
+        .enumerate()
+        .find(|(_, (a, _))| crate::versions::key(a) == k)
+        .map(|(i, (a, shipped))| (i as i64, a.as_str(), *shipped))
+}
+
+/// Un détail livré d'une fiche, par sa colonne.
+fn starter_detail_field(d: &StarterDetail, column: &str) -> Option<&'static str> {
+    Some(match column {
+        "indications" => d.indications,
+        "mechanism" => d.mechanism,
+        "dosage" => d.dosage,
+        "contraindications" => d.contraindications,
+        "ddi" => d.ddi,
+        "adverse" => d.adverse,
+        "monitoring" => d.monitoring,
+        "iup" => d.iup,
+        "half_life" => d.half_life,
+        "elimination" => d.elimination,
+        "renal" => d.renal,
+        "pregnancy" => d.pregnancy,
+        "sources" => d.sources,
+        "status" => d.status,
+        "smr" => d.smr,
+        "tags" => d.tags,
+        "toxicity" => d.toxicity,
+        "forms" => d.forms,
+        _ => return None,
+    })
+}
+
+/// Un texte de cascade **livré par une version d'avant** : il ne se
+/// versionne pas — il ramènerait les autres officines au texte d'avant
+/// la relecture.
+fn old_shipped_cascade(text: &str) -> bool {
+    let fp = crate::shipped::fingerprint(text);
+    crate::shipped::CASCADES_REWORDED
+        .iter()
+        .any(|(_, old)| *old == fp)
 }
 
 /// Le titre d'une cascade, lu dans son texte.
@@ -54871,6 +54964,16 @@ impl Db {
                 .map(|c| (cascade_title(&c.text), c))
                 .find(|(t, _)| !t.trim().is_empty() && key(t) == k)
                 .map(|(t, c)| (c.id, t, vec![("texte", c.text)]))),
+            // Une phrase que cette version ne connaît pas n'a rien ici.
+            // Ce qu'elle dit est ce qui s'imprime : la réécriture qui vise
+            // encore le texte livré, sinon le texte livré.
+            Kind::Texte => {
+                let Some((rank, address, shipped)) = phrase_by_key(card) else {
+                    return Ok(None);
+                };
+                let shown = self.content_overrides()?.get(address, shipped).to_owned();
+                Ok(Some((rank, address.to_owned(), vec![("value", shown)])))
+            }
         }
     }
 
@@ -54943,6 +55046,9 @@ impl Db {
                 .iter()
                 .find(|t| cascade_title(t) == name)
                 .map(|t| (*t).to_owned())
+                .unwrap_or_default(),
+            Kind::Texte => phrase_by_key(name)
+                .map(|(_, _, shipped)| shipped.to_owned())
                 .unwrap_or_default(),
         }
     }
@@ -55034,17 +55140,51 @@ impl Db {
                 .into_iter()
                 .map(|d| (Kind::Dispositif, d.name)),
         );
-        names.extend(
-            self.checklists()?
-                .into_iter()
-                .map(|l| (Kind::Liste, l.title)),
-        );
+        // **Les listes et les phrases ne se versionnent que partagées.**
+        // Écrites au journal, elles voyagent vers les autres postes, et un
+        // poste d'une version d'avant — qui ne sait pas qu'elles sont
+        // privées — les publierait. Versionnées à partir du jour où
+        // l'officine coche, elles partent aussi telles qu'elles sont ce
+        // jour-là, et non avec tout ce qu'elles ont dit avant.
+        let private =
+            self.principal_shares().listes || self.net_networks()?.iter().any(|n| n.shares.listes);
+        if private {
+            names.extend(
+                self.checklists()?
+                    .into_iter()
+                    .map(|l| (Kind::Liste, l.title)),
+            );
+        }
         names.extend(
             self.cascades()?
                 .into_iter()
+                .filter(|c| !old_shipped_cascade(&c.text))
                 .map(|c| (Kind::Cascade, cascade_title(&c.text)))
                 .filter(|(_, t)| !t.trim().is_empty()),
         );
+        // Les phrases réécrites ici, et celles qui ont une histoire : une
+        // phrase rendue à son texte livré n'a plus de ligne, et ce retour
+        // est une version comme une autre.
+        if private {
+            let mut stmt = self
+                .conn
+                .prepare("SELECT key FROM content_overrides")
+                .map_err(|e| e.to_string())?;
+            let rows = stmt
+                .query_map([], |r| r.get::<_, String>(0))
+                .map_err(|e| e.to_string())?;
+            for k in rows {
+                names.push((Kind::Texte, k.map_err(|e| e.to_string())?));
+            }
+        }
+        if private {
+            names.extend(
+                edits
+                    .iter()
+                    .filter(|e| e.kind == Kind::Texte)
+                    .map(|e| (Kind::Texte, e.card_name.clone())),
+            );
+        }
         // **Une entrée, une fois.** Deux lignes encore nommées « Nouveau
         // médicament » ont la même identité : la première serait
         // versionnée deux fois et la seconde jamais.
@@ -55182,10 +55322,8 @@ impl Db {
                 self.update_trod_line(&new, &line)
             }
             (Kind::Dispositif, _) => {
-                let Some(column) = crate::versions::DISPOSITIF_FIELDS
-                    .iter()
-                    .find(|f| **f == field)
-                else {
+                // The column comes from the list, never from the peer.
+                let Some(column) = crate::versions::dispositif_column(field) else {
                     return Ok(false);
                 };
                 self.conn
@@ -55236,6 +55374,20 @@ impl Db {
                     return Ok(false);
                 }
                 self.update_cascade(id, value, expected)
+            }
+            // Par le chemin de l'écran « Textes » : contre ce qui
+            // s'imprimait, et la phrase rendue à son texte livré quand
+            // c'est lui qui arrive.
+            (Kind::Texte, "value") => {
+                let Some((address, shipped)) = usize::try_from(id)
+                    .ok()
+                    .and_then(|i| phrase_index().get(i))
+                    .map(|(a, s)| (a.clone(), *s))
+                else {
+                    return Ok(false);
+                };
+                let day = self.today_iso().unwrap_or_default();
+                self.set_content_in(&address, value, shipped, expected, &day, "")
             }
             _ => Ok(false),
         }
@@ -55308,11 +55460,18 @@ impl Db {
                 self.set_origin("vaccine_catalogue", id, name)?;
                 id
             }
+            // Un dispositif livré retiré ici ne revient pas d'une version
+            // reçue : il reviendrait vide.
+            Kind::Dispositif if !asked && STARTER_DISPOSITIFS.iter().any(|d| d.name == name) => {
+                return Ok(None)
+            }
             Kind::Dispositif => self.add_dispositif(name)?,
             Kind::Liste => self.add_checklist(name, "")?,
             // Une cascade se crée **avec son texte** — c'est lui qui la
             // nomme : voir `create_cascade`.
             Kind::Cascade => return Ok(None),
+            // Une phrase existe ou n'existe pas : elle ne se crée pas.
+            Kind::Texte => return Ok(None),
             // Une fiche reçue se crée dans `receive_card_edits`, qui
             // a sa propre règle ; ici, seulement d'un geste.
             Kind::Fiche if !asked => return Ok(None),
@@ -55432,6 +55591,15 @@ impl Db {
                     }
                 }
             }
+            Kind::Texte => {
+                let over = self.content_overrides()?;
+                for (address, shipped) in phrase_index() {
+                    out.insert(
+                        key(address),
+                        vec![("value", over.get(address, shipped).to_owned())],
+                    );
+                }
+            }
         }
         Ok(out)
     }
@@ -55465,7 +55633,26 @@ impl Db {
                             (dci, class, antidote, id),
                         )
                         .map_err(|e| e.to_string())?;
-                    self.fill_starter_details()?;
+                    // Les détails livrés **de cette fiche seulement**, dans
+                    // la transaction ouverte : `fill_starter_details` en
+                    // ouvre une à lui, et remplirait aussi les colonnes
+                    // que l'équipe a vidées sur les autres fiches.
+                    if let Some(d) = STARTER_DETAILS.iter().find(|d| d.name == offer.name) {
+                        for &column in &crate::versions::SHARED_FIELDS {
+                            let Some(value) = starter_detail_field(d, column) else {
+                                continue;
+                            };
+                            if value.is_empty() {
+                                continue;
+                            }
+                            self.conn
+                                .execute(
+                                    &format!("UPDATE drugs SET {column} = ?1 WHERE id = ?2"),
+                                    (value, id),
+                                )
+                                .map_err(|e| e.to_string())?;
+                        }
+                    }
                 }
                 for (field, value) in &offer.fields {
                     // The column comes from the list, never from the peer;
@@ -58129,6 +58316,175 @@ mod tests {
             .any(|d| d.name == "Médicament du Port" && d.dci == "molécule"));
     }
 
+    /// **Un texte de cascade livré avant la relecture ne voyage pas**, et
+    /// la table de ses empreintes est juste : les trois premiers textes
+    /// d'aujourd'hui ont l'empreinte que le script qui l'a produite leur
+    /// donne, et aucun texte d'aujourd'hui n'y figure. Une cascade
+    /// modifiée ici, elle, voyage.
+    #[test]
+    fn an_old_shipped_cascade_never_travels() {
+        let fp = |t: &str| format!("{:016x}", crate::shipped::fingerprint(t));
+        assert_eq!(
+            STARTER_CASCADES[..3]
+                .iter()
+                .map(|t| fp(t))
+                .collect::<Vec<_>>(),
+            vec!["f2582da06ecebd55", "4353774e075b294c", "386f361ee72cda85"]
+        );
+        for t in STARTER_CASCADES {
+            assert!(!old_shipped_cascade(t), "{}", cascade_title(t));
+        }
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-oldcasc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let (title, _) = crate::shipped::CASCADES_REWORDED[0];
+        let current = STARTER_CASCADES
+            .iter()
+            .find(|t| cascade_title(t) == title)
+            .expect("le titre existe encore");
+        let edited = format!("{current}\nligand Ajout de l'officine");
+        db.add_cascade(&edited).unwrap();
+        assert!(!old_shipped_cascade(&edited));
+        db.version_shared_entries("AB").unwrap();
+        assert!(
+            db.card_edits()
+                .unwrap()
+                .iter()
+                .any(|e| e.kind == crate::versions::Kind::Cascade),
+            "une cascade modifiée ici voyage"
+        );
+    }
+
+    /// **Un dispositif livré retiré ici ne revient pas, vide,** d'une
+    /// version reçue ; demandé d'un geste, il revient entier. Et une fiche
+    /// livrée retirée se reprend, ses détails livrés compris : elle
+    /// échouait sur une transaction ouverte dans une autre.
+    #[test]
+    fn shipped_entries_removed_here_come_back_only_when_asked_and_whole() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-shipback-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("a.db"), "secret").unwrap();
+        db.seed_drugs_if_empty().unwrap();
+        let theirs =
+            |n: u32, kind: Kind, name: &str, field: &str, value: &str| crate::versions::Edit {
+                kind,
+                uid: format!("port:{n}"),
+                day: "2026-09-01".to_owned(),
+                card: crate::versions::key(name),
+                card_name: name.to_owned(),
+                field: field.to_owned(),
+                value: value.to_owned(),
+                previous: "x".to_owned(),
+                corrects: String::new(),
+                revert: false,
+                operator: String::new(),
+                source: "Pharmacie du Port".to_owned(),
+            };
+        let shipped = &STARTER_DISPOSITIFS[0];
+        let d = db
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == shipped.name)
+            .unwrap();
+        assert!(db.delete_dispositif(&d).unwrap());
+        db.receive_card_edits(&[theirs(
+            1,
+            Kind::Dispositif,
+            shipped.name,
+            "renewal",
+            "Chaque jour",
+        )])
+        .unwrap();
+        assert!(!db
+            .dispositifs()
+            .unwrap()
+            .iter()
+            .any(|d| d.name == shipped.name));
+        let o = crate::enligne::offers(&db.card_edits().unwrap(), Kind::Dispositif);
+        assert!(db.adopt_offer(&o[0]).unwrap());
+        let back = db
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == shipped.name)
+            .unwrap();
+        assert_eq!(back.renewal, "Chaque jour");
+        assert_eq!(
+            back.indication, shipped.indication,
+            "le reste, tel que livré"
+        );
+
+        let detail = &STARTER_DETAILS[0];
+        let card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|c| c.name == detail.name)
+            .unwrap();
+        assert!(db.delete_drug(card.id, &card.name).unwrap());
+        db.receive_card_edits(&[theirs(2, Kind::Fiche, detail.name, "status", "Arrêt")])
+            .unwrap();
+        // Reçue, elle se recrée — la règle des fiches ; retirée de nouveau,
+        // elle se reprend d'un geste.
+        let again = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|c| c.name == detail.name)
+            .unwrap();
+        assert!(db.delete_drug(again.id, &again.name).unwrap());
+        let o = crate::enligne::offers(&db.card_edits().unwrap(), Kind::Fiche);
+        let offer = o.iter().find(|o| o.name == detail.name).unwrap();
+        assert!(db.adopt_offer(offer).unwrap());
+        let back = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|c| c.name == detail.name)
+            .unwrap();
+        assert_eq!(back.status, "Arrêt");
+        assert_eq!(back.indications, detail.indications, "les détails livrés");
+    }
+
+    /// **Une liste ou une phrase ne se versionne pas tant que l'officine
+    /// ne partage pas** : au journal, elle irait aux autres postes, et un
+    /// poste d'une version d'avant la publierait.
+    #[test]
+    fn private_entries_are_not_versioned_until_shared() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-unshared-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let l = db.add_checklist("Ouverture", "Le matin").unwrap();
+        db.add_checklist_item(l, "Alarme", "code 1234").unwrap();
+        let (address, shipped) = phrase_index()[0].clone();
+        db.set_content(
+            &address,
+            "Pharmacie X, 01 02",
+            shipped,
+            shipped,
+            "2026-10-12",
+            "AB",
+        )
+        .unwrap();
+        db.version_shared_entries("AB").unwrap();
+        assert!(!db.card_edits().unwrap().iter().any(|e| e.kind.is_private()));
+        db.set_principal_shares(NetShares {
+            listes: true,
+            ..NetShares::default()
+        })
+        .unwrap();
+        db.version_shared_entries("AB").unwrap();
+        let edits = db.card_edits().unwrap();
+        assert!(edits.iter().any(|e| e.kind == Kind::Liste));
+        assert!(edits.iter().any(|e| e.kind == Kind::Texte));
+    }
+
     /// **Dispositifs, listes de contrôle et cascades voyagent** comme les
     /// préparations : versionnés ici, reçus ailleurs, créés s'ils
     /// manquent, et une liste modifiée ensuite ne s'applique que sur les
@@ -58155,6 +58511,11 @@ mod tests {
             to.receive_card_edits(&edits).unwrap()
         };
 
+        a.set_principal_shares(NetShares {
+            listes: true,
+            ..NetShares::default()
+        })
+        .unwrap();
         let d = a.add_dispositif("Pansement du Port").unwrap();
         let before = a
             .dispositifs()
@@ -58229,6 +58590,87 @@ mod tests {
         assert!(here.contains(&"Ici seulement".to_owned()), "{here:?}");
         assert!(!here.contains(&"Volets".to_owned()), "{here:?}");
         assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
+    }
+
+    /// **Une phrase imprimée réécrite voyage**, sous son adresse : reçue,
+    /// elle s'imprime ailleurs ; rendue à son texte livré, ce retour
+    /// voyage aussi. Une phrase réécrite là-bas pendant qu'on la réécrit
+    /// ici attend.
+    #[test]
+    fn a_rewritten_phrase_travels_under_its_address() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-texte-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let a = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let b = Db::open(&dir.join("b.db"), "secret").unwrap();
+        let ship = |from: &Db, to: &Db| {
+            let edits: Vec<crate::versions::Edit> = from
+                .card_edits()
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.source.is_empty())
+                .map(|e| crate::versions::Edit {
+                    source: "Pharmacie A".to_owned(),
+                    ..e
+                })
+                .collect();
+            to.receive_card_edits(&edits).unwrap()
+        };
+        a.set_principal_shares(NetShares {
+            listes: true,
+            ..NetShares::default()
+        })
+        .unwrap();
+        let (address, shipped) = phrase_index()[0].clone();
+        assert!(a
+            .set_content(
+                &address,
+                "Notre phrase",
+                shipped,
+                shipped,
+                "2026-10-12",
+                "AB"
+            )
+            .unwrap());
+        assert!(a.version_shared_entries("AB").unwrap() >= 1);
+        ship(&a, &b);
+        assert_eq!(
+            b.content_overrides().unwrap().get(&address, shipped),
+            "Notre phrase"
+        );
+
+        // Rendue au texte livré là-bas : le retour arrive ici.
+        assert!(a
+            .set_content(
+                &address,
+                shipped,
+                shipped,
+                "Notre phrase",
+                "2026-10-12",
+                "AB"
+            )
+            .unwrap());
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+        assert_eq!(
+            b.content_overrides().unwrap().get(&address, shipped),
+            shipped
+        );
+
+        // Réécrite des deux côtés : celle d'ici reste.
+        assert!(b
+            .set_content(&address, "La nôtre", shipped, shipped, "2026-10-12", "CD")
+            .unwrap());
+        assert!(a
+            .set_content(&address, "La leur", shipped, shipped, "2026-10-12", "AB")
+            .unwrap());
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+        assert_eq!(
+            b.content_overrides().unwrap().get(&address, shipped),
+            "La nôtre"
+        );
+        assert!(crate::versions::Kind::Texte.is_private());
     }
 
     /// **« En ligne » : une entrée d'un confrère se prend d'un geste.**

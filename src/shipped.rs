@@ -25,6 +25,88 @@ pub fn fingerprint(text: &str) -> u64 {
     h
 }
 
+/// Les cascades livrées par les versions précédentes, **texte entier**
+/// (une cascade est un seul texte) : leur titre et l'empreinte de chaque
+/// texte livré depuis remplacé — la relecture de la 0.360.0 en a changé
+/// plusieurs lignes. Une base semée avant porte encore l'ancien texte :
+/// il est rafraîchi s'il n'a pas été touché, et **jamais versionné** vers
+/// le réseau, où il aurait ramené les autres officines au texte d'avant.
+pub const CASCADES_REWORDED: &[(&str, u64)] = &[
+    ("Activation plaquettaire", 0x06e641e6fc9e81ed),
+    ("Activation plaquettaire", 0x0ed562914e3adf86),
+    ("Alcool, acétaldéhyde et récompense", 0x340ad55606abf8ee),
+    ("Aminosides, rein et oreille interne", 0x0780decd10c20b36),
+    ("Axe gonadotrope", 0xef80994b86666ebc),
+    ("Axe thyréotrope", 0x9128ed825aeb405a),
+    (
+        "Bronchodilatation et inflammation bronchique",
+        0x7c12ddbb58eb6cd0,
+    ),
+    ("Canal hERG et QT long", 0xf5338a6641944b5f),
+    ("Centre du vomissement", 0x6633d2ba0c73087e),
+    ("Cibles des antiépileptiques", 0x4a7a2d8a10ac7d32),
+    ("Cibles des antiépileptiques", 0xe302c5d8c1a3a3c8),
+    ("Coagulation", 0xae055f94d462ecb6),
+    ("Coagulation", 0xdde93572ddfed076),
+    ("Cycle de la vitamine K", 0x3d0abad25244c2ee),
+    ("Cyclo-oxygénases", 0x47c806401617d8b0),
+    ("Cyclo-oxygénases", 0x8817a2f24dc2a4f6),
+    ("Digoxine et pompe Na/K-ATPase", 0x8b84e78ce4573bb8),
+    ("Glutamate et récepteur NMDA", 0xb64cc0c552912c90),
+    ("Glycémie, insuline et incrétines", 0x11ed6a52fb67e052),
+    (
+        "Hyperkaliémie et chélateurs du potassium",
+        0xce41f64b44bee481,
+    ),
+    ("Inflammation de type 2", 0x3e130e2282e370ed),
+    ("Interleukine 6", 0x4b02177c3773a757),
+    ("Interleukine 6", 0xd1cd83d4422f6a4e),
+    ("LDL-cholestérol et récepteur LDL", 0xafc4411793b865be),
+    ("Lymphocyte B et anticorps", 0x732c25327efa4981),
+    ("Lévodopa et dégradation de la dopamine", 0xf060ca13d25ee0d7),
+    ("Mastocyte et dégranulation", 0x574fcc0f1d43aaa6),
+    ("Migraine, sérotonine et CGRP", 0x118e063c89568256),
+    ("Nicotine et arrêt du tabac", 0xbbc148464021c5f1),
+    ("Néphron et potassium", 0xcb78c07da3e28996),
+    ("Purines, urate et goutte", 0x173115a1e750ed90),
+    ("Purines, urate et goutte", 0xb237c64f99d27fd0),
+    ("Remodelage osseux", 0x38c0ed3235d71b88),
+    ("Remodelage osseux", 0x5e7bc342eb438a09),
+    ("Ritonavir, booster du CYP3A4", 0x91548bf1abc4b681),
+    ("Récepteur GABA-A", 0x381a217f05d820b8),
+    ("Récepteur GABA-A", 0x98826cf6da1886df),
+    ("Récepteur des androgènes", 0x344ff65f8880ad34),
+    ("Récepteur des androgènes", 0x902713247df20036),
+    ("Récepteur opioïde mu", 0x377beb4976bf40cd),
+    ("Récepteur opioïde mu", 0xdfac53501920bc34),
+    ("Récepteurs alpha-1 adrénergiques", 0xdbaa62c369dd95ec),
+    ("Récepteurs bêta-adrénergiques", 0x030adb194a9c22d3),
+    ("Récepteurs bêta-adrénergiques", 0xd727a08b57ff416c),
+    ("Récepteurs bêta-adrénergiques", 0xf7efb6fb3d8811fb),
+    ("Récepteurs des œstrogènes et aromatase", 0x8c842a9f0aa64b99),
+    ("Récepteurs des œstrogènes et aromatase", 0xee304431a3f34e33),
+    ("Récepteurs dopaminergiques D2", 0x02af68b82ecd5d15),
+    ("Récepteurs dopaminergiques D2", 0x8056c2cb08669ddc),
+    ("Récepteurs histaminiques H1", 0x38692abf1552c1b0),
+    ("Récepteurs histaminiques H1", 0x9b3b5d408eda4398),
+    ("Récepteurs muscariniques", 0x234c03485dda8fcf),
+    ("Récepteurs muscariniques", 0xbc16e59a716a8b84),
+    ("Rétinoïdes et récepteurs RAR-RXR", 0x6d9022e65f2eb912),
+    ("Synapse sérotoninergique", 0x89b4ebcff222b96a),
+    (
+        "Système rénine-angiotensine-aldostérone",
+        0x685b93098aa26c63,
+    ),
+    ("Sécrétion acide gastrique", 0x0feeee1fd708c8b9),
+    ("Sécrétion acide gastrique", 0x7dfacb1b60b6cba4),
+    ("TNF-alpha", 0x7e6d2cc269bcf68f),
+    ("Transit intestinal et laxatifs", 0x216942fb57e222ec),
+    ("Vasopressine et eau libre", 0x5f14e89970eb5ff1),
+    ("Veille et sommeil", 0x21ff37559f0ed1df),
+    ("Voie JAK-STAT", 0x023196062dcd1d5e),
+    ("Érythropoïèse, fer et folates", 0xcbc6cf781fae58e1),
+];
+
 // StarterDispositif: 152 champs, 55 fiches anciennes, 58 nouvelles
 pub const DISPOSITIFS_REWORDED: &[(&str, &str, u64)] = &[
     ("Hydrocolloïde", "indication", 0x1c9083b2117ffd3f),

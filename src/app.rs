@@ -10712,6 +10712,11 @@ impl Session {
                 self.reload_checklist_items();
             }
             Kind::Cascade => self.reload_cascades(),
+            Kind::Texte => {
+                if let Ok(over) = self.db.content_overrides() {
+                    self.content = over;
+                }
+            }
         }
     }
 
@@ -13772,6 +13777,9 @@ fn network_feed(
                                 crate::versions::Kind::Cascade => {
                                     trf("conn_feed_cascade", &e.card_name)
                                 }
+                                crate::versions::Kind::Texte => {
+                                    trf("conn_feed_texte", &e.card_name)
+                                }
                             },
                             &match e.kind {
                                 crate::versions::Kind::Fiche => App::field_label(&e.field),
@@ -14008,6 +14016,9 @@ struct Online {
     rows_rev: Option<u64>,
     /// Whether this base belongs to an officines' network.
     network: bool,
+    /// What a printed phrase is called, by address: its document and the
+    /// start of its shipped text — an address says nothing to a reader.
+    labels: std::collections::HashMap<String, String>,
     note: Option<(bool, String)>,
 }
 
@@ -62173,6 +62184,7 @@ impl App {
             Kind::Dispositif => tr("online_kind_dispositif"),
             Kind::Liste => tr("online_kind_liste"),
             Kind::Cascade => tr("online_kind_cascade"),
+            Kind::Texte => tr("online_kind_texte"),
         }
     }
 
@@ -62198,6 +62210,16 @@ impl App {
                 })
                 .collect();
             online.rows_rev = Some(session.edits_rev);
+            if online.kind == crate::versions::Kind::Texte && online.labels.is_empty() {
+                for d in crate::content::documents() {
+                    for (address, _, shipped) in d.phrases {
+                        let start: String = shipped.chars().take(60).collect();
+                        online
+                            .labels
+                            .insert(address, format!("{} · {start}", d.label));
+                    }
+                }
+            }
         }
         let kind = online.kind;
         let mut take: Option<usize> = None;
@@ -62291,8 +62313,9 @@ impl App {
                                     })
                                     .collect::<Vec<_>>()
                                     .join("\n");
+                                let shown = online.labels.get(&o.name).unwrap_or(&o.name);
                                 ui.label(
-                                    egui::RichText::new(o.name.as_str())
+                                    egui::RichText::new(shown.as_str())
                                         .size(motif::pt(ui, 11.5))
                                         .strong(),
                                 )
@@ -62415,7 +62438,7 @@ impl App {
             "renewal" => tr("dispo_renewal"),
             "lpp" => tr("dispo_lpp"),
             "lignes" => tr("ver_f_lignes"),
-            "texte" => tr("ver_f_texte"),
+            "texte" | "value" => tr("ver_f_texte"),
             _ => tr("ver_f_other"),
         }
     }
@@ -62657,6 +62680,11 @@ impl App {
                     session.reload_checklist_items();
                 }
                 crate::versions::Kind::Cascade => session.reload_cascades(),
+                crate::versions::Kind::Texte => {
+                    if let Ok(over) = session.db.content_overrides() {
+                        session.content = over;
+                    }
+                }
                 crate::versions::Kind::Fiche => {}
             }
             session.conn_dirty = true;
@@ -63357,18 +63385,24 @@ impl App {
             ui,
             body.width(),
             tr("textes_title"),
-            [Self::button_width(ui, tr("textes_close"))].into_iter(),
+            [
+                Self::button_width(ui, tr("textes_close")),
+                Self::button_width(ui, tr("online_open")),
+            ]
+            .into_iter(),
             tr("textes_subtitle"),
             note_size,
         );
         let rows = motif::split_rows(body, &[head_h, 0.0], 6.0);
         let mut close = false;
         motif::inside(ui, rows[0], |ui| {
-            ui.horizontal(|ui| {
+            // Enveloppée, comme la mesure le suppose (`head_height`).
+            ui.horizontal_wrapped(|ui| {
                 ui.heading(tr("textes_title"));
                 if motif::button(ui, tr("textes_close")).clicked() {
                     close = true;
                 }
+                Self::online_button(ui, session, crate::versions::Kind::Texte);
             });
             ui.add(
                 egui::Label::new(
