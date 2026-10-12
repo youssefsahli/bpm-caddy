@@ -44,7 +44,9 @@ line in that test.
   `admissible`: an op only through its table's stream), `reach` (a post
   reachable from the internet: IPv6, UPnP, published addresses) and
   `relay` (the stateless relay between an unreachable post and a phone)
-  — both under `sync`,
+  and `repertoire` (the directory an officine hosts: who appears on the
+  map, signed, and what each shares) — all under `sync`; `geo`
+  (département outlines and communes, for the map),
   `enligne` (the network journal read as offers to search and take), `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.

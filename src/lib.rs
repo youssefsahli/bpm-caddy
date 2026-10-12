@@ -39,6 +39,8 @@ pub mod entretien;
 pub mod facets;
 pub mod favorites;
 pub mod fuzzy;
+#[cfg(all(feature = "sync", feature = "desktop"))]
+pub mod geo;
 pub mod graph;
 pub mod gravidity;
 pub mod hepatic;
@@ -69,6 +71,8 @@ pub mod relay;
 pub mod release;
 pub mod renal;
 pub mod renewal;
+#[cfg(feature = "sync")]
+pub mod repertoire;
 pub mod replica;
 pub mod revue;
 pub mod ruptures;

@@ -34,6 +34,9 @@ pub struct Offer {
     /// L'identifiant de la dernière version venue d'ailleurs : l'offre a
     /// bougé depuis qu'on l'a vue quand il change (`unseen`).
     pub stamp: String,
+    /// Cette officine y a écrit elle-même : ce qu'elle publie au
+    /// répertoire (`own_offers`).
+    pub mine: bool,
     /// Sa place au journal — l'ordre où les versions sont arrivées, non
     /// leur jour : une version écrite hier, reçue après une autre vue
     /// ce matin, est la plus récente pour qui regarde.
@@ -51,6 +54,26 @@ pub struct Offer {
 /// règle que l'historique d'une entrée, et ce qu'on verrait en
 /// l'ouvrant.
 pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
+    let mut out = gather(edits, kind);
+    out.retain(|o| !o.from.is_empty());
+    out
+}
+
+/// **Ce que cette officine a écrit** d'une sorte d'entrée, à la dernière
+/// version de chaque champ : ce qu'elle publie au répertoire. Jamais une
+/// liste ni une phrase — elles ne sortent pas de l'officine sans réseau
+/// choisi.
+pub fn own_offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
+    if kind.is_private() {
+        return Vec::new();
+    }
+    let mut out = gather(edits, kind);
+    out.retain(|o| o.mine);
+    out
+}
+
+/// Le journal rangé par entrée, d'où que viennent ses versions.
+fn gather(edits: &[Edit], kind: Kind) -> Vec<Offer> {
     let mut out: Vec<Offer> = Vec::new();
     for (at, e) in edits.iter().enumerate().filter(|(_, e)| e.kind == kind) {
         if !kind.fields().contains(&e.field.as_str()) || e.card.is_empty() {
@@ -67,6 +90,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                     day: String::new(),
                     stamp: String::new(),
                     stamp_at: 0,
+                    mine: false,
                     fields: Vec::new(),
                 });
                 out.len() - 1
@@ -77,7 +101,9 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
             o.name = e.card_name.trim().to_owned();
         }
         let source = e.source.trim();
-        if !source.is_empty() {
+        if source.is_empty() {
+            o.mine = true;
+        } else {
             if !o.from.iter().any(|f| f == source) {
                 o.from.push(source.to_owned());
             }
@@ -134,6 +160,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
                         }
                     }
                     o.name.clone_from(&name);
+                    o.mine |= old.mine;
                     // A merged offer may now be renamed again: read it anew.
                     i = 0;
                 }
@@ -153,7 +180,7 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
             }
         }
     }
-    out.retain(|o| !o.from.is_empty() && !o.name.is_empty());
+    out.retain(|o| !o.name.is_empty());
     // Les champs dans l'ordre de la sorte, pas dans celui du journal : une
     // adoption les écrit dans cet ordre, et l'écran les lit ainsi.
     for o in &mut out {

@@ -500,6 +500,29 @@ pub fn encode(e: &Edit, officine: &str) -> Vec<u8> {
 /// L'inverse. Un champ que ce module ne partage pas n'entre pas — une
 /// version postérieure qui partagerait les notes de l'équipe ne les ferait
 /// pas entrer ici.
+/// **Une valeur venue d'ailleurs peut-elle entrer ?** Un champ que la
+/// sorte partage, un arbre qui se lit comme un arbre, des lignes comme
+/// des lignes — la même règle pour le journal du réseau et pour le
+/// répertoire public.
+pub fn admissible(kind: Kind, field: &str, value: &str) -> bool {
+    if !kind.fields().contains(&field) {
+        return false;
+    }
+    // An arbre that does not read as one never enters.
+    if field == "arbre" && !value.is_empty() && tree_nodes(value).is_none() {
+        return false;
+    }
+    // Des lignes qui ne se lisent pas comme des lignes non plus.
+    !(field == "lignes" && !value.is_empty() && items_of(value).is_none())
+}
+
+/// Une sorte par sa clé, **sans repli** : `from_key` lit une clé
+/// inconnue comme une fiche, ce qu'une version d'avant attend du
+/// journal ; ce qui vient d'un inconnu n'a pas droit à ce repli.
+pub fn kind_of_key(key: &str) -> Option<Kind> {
+    Kind::ALL.into_iter().find(|k| k.key() == key)
+}
+
 pub fn decode(bytes: &[u8]) -> Option<Edit> {
     let v: serde_json::Value = serde_json::from_slice(bytes).ok()?;
     if v.get("v")?.as_u64()? != 1 {
@@ -508,15 +531,7 @@ pub fn decode(bytes: &[u8]) -> Option<Edit> {
     let kind = Kind::from_payload(v.get("t")?.as_str()?)?;
     let text = |k: &str| v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_owned();
     let field = text("field");
-    if !kind.fields().contains(&field.as_str()) {
-        return None;
-    }
-    // An arbre that does not read as one never enters.
-    if field == "arbre" && !text("value").is_empty() && tree_nodes(&text("value")).is_none() {
-        return None;
-    }
-    // Des lignes qui ne se lisent pas comme des lignes non plus.
-    if field == "lignes" && !text("value").is_empty() && items_of(&text("value")).is_none() {
+    if !admissible(kind, &field, &text("value")) {
         return None;
     }
     let uid = text("uid");
