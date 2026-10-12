@@ -45,7 +45,7 @@ line in that test.
   reachable from the internet: IPv6, UPnP, published addresses) and
   `relay` (the stateless relay between an unreachable post and a phone)
   — both under `sync`,
-  `release`, `maintenance`, `date`, `fuzzy`, `strings`).
+  `enligne` (the network journal read as offers to search and take), `release`, `maintenance`, `date`, `fuzzy`, `strings`).
 - `launcher/` — `bpm-caddy-launcher`, auto-updates from GitHub Releases;
   does not depend on the app crate.
 - `motif/` — X/Motif theme for egui (palette, bevels, widgets, charts).

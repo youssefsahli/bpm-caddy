@@ -5508,6 +5508,9 @@ struct Session {
     versions_open: Option<i64>,
     /// The history window, on a codex entry or a protocol, by name.
     entry_versions: Option<(crate::versions::Kind, String)>,
+    /// « En ligne » : what the network's officines hold, for one kind of
+    /// entry.
+    online: Option<Online>,
     /// The officines' network window, when open.
     #[cfg(feature = "sync")]
     net_window: Option<NetWindow>,
@@ -6482,6 +6485,7 @@ impl Session {
             edits_rev: 0,
             versions_open: None,
             entry_versions: None,
+            online: None,
             #[cfg(feature = "sync")]
             net_window: None,
             #[cfg(feature = "sync")]
@@ -10685,6 +10689,37 @@ impl Session {
         self.edits_rev = self.edits_rev.wrapping_add(1);
     }
 
+    /// An offer taken: the list it belongs to is read again.
+    fn after_adopt(&mut self, kind: crate::versions::Kind) {
+        use crate::versions::Kind;
+        match kind {
+            Kind::Fiche => {
+                if let Ok(list) = self.db.drugs() {
+                    self.set_drugs(list);
+                }
+            }
+            Kind::Codex => self.reload_codex(),
+            Kind::Protocole => self.reload_protocols(),
+            Kind::Vaccin => self.reload_vacc_catalogue(),
+            Kind::Trod => {
+                if let Some(edit) = &mut self.trod_edit {
+                    edit.lines = None;
+                }
+            }
+        }
+    }
+
+    /// Open « En ligne » on one kind of entry, searched for `query`.
+    fn open_online(&mut self, kind: crate::versions::Kind, query: &str) {
+        self.reload_card_edits();
+        self.online = Some(Online {
+            kind,
+            query: query.trim().to_owned(),
+            network: self.db.setting("net_trousseau").is_some(),
+            ..Online::default()
+        });
+    }
+
     /// The journal of shortages and substitutions — this officine's and
     /// what the network sent. Read at opening, after each write and on a
     /// resync; every reading of a card is computed from it once.
@@ -13945,6 +13980,20 @@ enum MessagesTo {
     People,
     Everyone,
     Group,
+}
+
+/// « En ligne » : the offers of one kind of entry, searched.
+#[derive(Default)]
+struct Online {
+    kind: crate::versions::Kind,
+    query: String,
+    /// The offers and what each is here, read against `rows_rev`.
+    rows: Vec<(crate::enligne::Offer, crate::enligne::Here)>,
+    /// The journal revision the rows were read at; `None` reads again.
+    rows_rev: Option<u64>,
+    /// Whether this base belongs to an officines' network.
+    network: bool,
+    note: Option<(bool, String)>,
 }
 
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
@@ -17249,11 +17298,17 @@ impl App {
                         // The codex, and the codex with a preparation
                         // open: the sheet and its calculators are only
                         // drawn once one is chosen.
-                        Ok(v @ ("codex" | "codex_open")) => {
+                        Ok(v @ ("codex" | "codex_open" | "en_ligne")) => {
                             session.show_codex = true;
                             session.reload_codex();
                             if v == "codex_open" {
                                 session.codex_open = session.preparations.first().map(|p| p.id);
+                            }
+                            // « En ligne » sur le codex : la base de
+                            // démonstration en reçoit deux préparations
+                            // d'une autre officine, dont une retirée ici.
+                            if v == "en_ligne" {
+                                session.open_online(crate::versions::Kind::Codex, "");
                             }
                             session.view = MainView::Drugs;
                         }
@@ -31220,6 +31275,7 @@ impl App {
         let mut save = false;
         let mut delete = false;
         let mut add = false;
+        let mut online = false;
         let mut history: Option<i64> = None;
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("vcat_title"))
@@ -31258,6 +31314,12 @@ impl App {
                             }
                             if motif::button(ui, tr("vcat_add")).clicked() {
                                 add = true;
+                            }
+                            if motif::button(ui, tr("online_open"))
+                                .on_hover_text(tr("online_open_tooltip"))
+                                .clicked()
+                            {
+                                online = true;
                             }
                         });
                         ui.add_space(6.0);
@@ -31356,6 +31418,9 @@ impl App {
             {
                 session.entry_versions = Some((crate::versions::Kind::Vaccin, entry));
             }
+        }
+        if online {
+            session.open_online(crate::versions::Kind::Vaccin, "");
         }
         let mut wrote = false;
         let mut stale = false;
@@ -31467,6 +31532,7 @@ impl App {
         let mut save = false;
         let mut delete = false;
         let mut add = false;
+        let mut online = false;
         let screen = ctx.screen_rect();
         let shown = egui::Window::new(tr("trod_edit_title"))
             .collapsible(false)
@@ -31517,6 +31583,12 @@ impl App {
                             }
                             if motif::button(ui, tr("trod_edit_add")).clicked() {
                                 add = true;
+                            }
+                            if motif::button(ui, tr("online_open"))
+                                .on_hover_text(tr("online_open_tooltip"))
+                                .clicked()
+                            {
+                                online = true;
                             }
                         });
                         ui.add_space(6.0);
@@ -31678,6 +31750,15 @@ impl App {
             {
                 session.entry_versions = Some((crate::versions::Kind::Trod, entry));
             }
+        }
+        // Sur le protocole ouvert : ses lignes d'abord.
+        if online {
+            let protocol = session
+                .trod_edit
+                .as_ref()
+                .map(|e| e.protocol)
+                .unwrap_or_default();
+            session.open_online(crate::versions::Kind::Trod, protocol);
         }
         let Some(edit) = &mut session.trod_edit else {
             return;
@@ -42833,6 +42914,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("codex_title")),
                 Self::button_width(ui, tr("patient_back")),
+                Self::button_width(ui, tr("online_open")),
                 // La même expression que le champ lui-même, pas une
                 // seconde mesure du même besoin : deux mesures d'une
                 // chose divergent toujours.
@@ -42859,6 +42941,7 @@ impl App {
                     session.show_codex = false;
                     session.codex_edit = None;
                 }
+                Self::online_button(ui, session, crate::versions::Kind::Codex);
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("codex_print_all_tooltip"))
                     .clicked()
@@ -59660,6 +59743,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("proto_title")),
                 Self::button_width(ui, tr("patient_back")),
+                Self::button_width(ui, tr("online_open")),
                 // Le nom et le bouton qui le crée, **un seul article** : ils
                 // se dessinent d'un seul tenant.
                 Self::group_width(
@@ -59683,6 +59767,7 @@ impl App {
                     session.show_protocols = false;
                     session.protocol_open = None;
                 }
+                Self::online_button(ui, session, crate::versions::Kind::Protocole);
                 let pair = Self::group_width(
                     ui,
                     [
@@ -61990,6 +62075,235 @@ impl App {
 
     /// Le nom d'un champ de préparation ou de protocole, pour
     /// l'historique.
+    /// The « En ligne » button of a content tab: one gesture to what the
+    /// network's officines hold of this kind.
+    fn online_button(ui: &mut egui::Ui, session: &mut Session, kind: crate::versions::Kind) {
+        if motif::button(ui, tr("online_open"))
+            .on_hover_text(tr("online_open_tooltip"))
+            .clicked()
+        {
+            session.open_online(kind, "");
+        }
+    }
+
+    /// What one kind of entry is called in the window's title.
+    fn online_kind_label(kind: crate::versions::Kind) -> &'static str {
+        use crate::versions::Kind;
+        match kind {
+            Kind::Fiche => tr("online_kind_fiche"),
+            Kind::Codex => tr("online_kind_codex"),
+            Kind::Protocole => tr("online_kind_protocole"),
+            Kind::Trod => tr("online_kind_trod"),
+            Kind::Vaccin => tr("online_kind_vaccin"),
+        }
+    }
+
+    /// **« En ligne »** : what the network's officines have written of one
+    /// kind of entry, searched, compared with this base, and taken in one
+    /// gesture (`Db::adopt_offer`).
+    ///
+    /// The offers are read from the journal already here — nothing is
+    /// asked of anyone while the window is open — and again only when the
+    /// journal changes (`edits_rev`) or an offer is taken.
+    fn online_window(ctx: &egui::Context, session: &mut Session) {
+        use crate::enligne::Here;
+        let Some(mut online) = session.online.take() else {
+            return;
+        };
+        if online.rows_rev != Some(session.edits_rev) {
+            let locals = session.db.offer_locals(online.kind).unwrap_or_default();
+            online.rows = crate::enligne::offers(&session.card_edits, online.kind)
+                .into_iter()
+                .map(|o| {
+                    let here = crate::enligne::here(&o, locals.get(&o.card).map(Vec::as_slice));
+                    (o, here)
+                })
+                .collect();
+            online.rows_rev = Some(session.edits_rev);
+        }
+        let kind = online.kind;
+        let mut take: Option<usize> = None;
+        let mut compare: Option<usize> = None;
+        // Le bouton du réseau n'existe que dans une application qui en a.
+        #[cfg_attr(not(feature = "sync"), allow(unused_mut))]
+        let mut network = false;
+        let mut close = false;
+        let screen = ctx.screen_rect();
+        let win = egui::Window::new(trf("online_title", Self::online_kind_label(kind)))
+            .collapsible(false)
+            .resizable(false)
+            .fixed_size(dialog_size(screen.size(), egui::vec2(760.0, 600.0)))
+            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+            .show(ctx, |ui| {
+                ui.add(
+                    egui::Label::new(
+                        // Sans réseau, ce qu'un réseau d'avant a laissé au
+                        // journal s'offre encore : la phrase ne dit
+                        // « aucun réseau » que sur une liste vide.
+                        egui::RichText::new(tr(if online.network || !online.rows.is_empty() {
+                            "online_scope"
+                        } else {
+                            "online_no_network"
+                        }))
+                        .size(motif::pt(ui, 11.0))
+                        .color(motif::text_dim()),
+                    )
+                    .wrap(),
+                );
+                ui.horizontal_wrapped(|ui| {
+                    motif::field_sized(
+                        ui,
+                        egui::vec2(
+                            Self::field_width(ui, [tr("online_hint")].into_iter())
+                                .max(chars_wide(ui, 28.0)),
+                            Self::button_height(ui),
+                        ),
+                        egui::TextEdit::singleline(&mut online.query)
+                            .hint_text(motif::hint(tr("online_hint"))),
+                    );
+                    #[cfg(feature = "sync")]
+                    if motif::button(ui, tr("online_network")).clicked() {
+                        network = true;
+                    }
+                });
+                if let Some((err, text)) = &online.note {
+                    ui.label(
+                        egui::RichText::new(text.as_str())
+                            .size(motif::pt(ui, 11.0))
+                            .color(if *err {
+                                motif::alert()
+                            } else {
+                                motif::accent()
+                            }),
+                    );
+                }
+                ui.add_space(4.0);
+                let footer = Self::row_height(ui) + ui.spacing().item_spacing.y * 2.0;
+                let body_h = (ui.available_height() - footer).max(Self::row_height(ui) * 4.0);
+                ui.spacing_mut().scroll.floating = false;
+                egui::ScrollArea::vertical()
+                    .id_salt("online_offers")
+                    .max_height(body_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
+                        let mut shown = 0_usize;
+                        for (i, (o, here)) in online.rows.iter().enumerate() {
+                            if !o.matches(&online.query) {
+                                continue;
+                            }
+                            shown += 1;
+                            ui.horizontal_wrapped(|ui| {
+                                let summary: String = o
+                                    .fields
+                                    .iter()
+                                    .filter(|(_, v)| !v.trim().is_empty())
+                                    .map(|(f, v)| {
+                                        let label = if kind == crate::versions::Kind::Fiche {
+                                            Self::field_label(f)
+                                        } else {
+                                            Self::entry_field_label(f)
+                                        };
+                                        let v = if f == "arbre" {
+                                            crate::versions::tree_text(v)
+                                        } else {
+                                            v.clone()
+                                        };
+                                        let v: String = v.chars().take(160).collect();
+                                        format!("{label} : {v}")
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join("\n");
+                                ui.label(
+                                    egui::RichText::new(o.name.as_str())
+                                        .size(motif::pt(ui, 11.5))
+                                        .strong(),
+                                )
+                                .on_hover_text(summary);
+                                let state = match here {
+                                    Here::Absent => tr("online_absent"),
+                                    Here::Same => tr("online_same"),
+                                    Here::Differs => tr("online_differs"),
+                                };
+                                ui.label(
+                                    egui::RichText::new(state)
+                                        .size(motif::pt(ui, 10.5))
+                                        .color(motif::text_dim()),
+                                );
+                                match here {
+                                    Here::Absent => {
+                                        if motif::button(ui, tr("online_take"))
+                                            .on_hover_text(tr("online_take_tooltip"))
+                                            .clicked()
+                                        {
+                                            take = Some(i);
+                                        }
+                                    }
+                                    Here::Differs => {
+                                        if motif::button(ui, tr("online_compare")).clicked() {
+                                            compare = Some(i);
+                                        }
+                                    }
+                                    Here::Same => {}
+                                }
+                            });
+                            ui.label(
+                                egui::RichText::new(trn(
+                                    "online_from",
+                                    &[&o.from.join(", "), &db::format_french_date(&o.day)],
+                                ))
+                                .size(motif::pt(ui, 10.5))
+                                .color(motif::text_dim()),
+                            );
+                            ui.add_space(4.0);
+                        }
+                        if shown == 0 {
+                            ui.label(tr(if online.rows.is_empty() {
+                                "online_none"
+                            } else {
+                                "online_no_match"
+                            }));
+                        }
+                    });
+                if motif::button(ui, tr("online_close")).clicked() {
+                    close = true;
+                }
+            });
+        motif::dialog_relief(ctx, &win);
+        if let Some(i) = take {
+            let offer = online.rows[i].0.clone();
+            online.note = Some(match session.db.adopt_offer(&offer) {
+                Ok(true) => {
+                    session.after_adopt(kind);
+                    online.rows_rev = None;
+                    (false, trf("online_taken", &offer.name))
+                }
+                Ok(false) => (true, trf("online_not_taken", &offer.name)),
+                Err(e) => (true, e),
+            });
+        }
+        if let Some(i) = compare {
+            let name = online.rows[i].0.name.clone();
+            if kind == crate::versions::Kind::Fiche {
+                let k = crate::versions::key(&name);
+                session.versions_open = session
+                    .drugs
+                    .iter()
+                    .find(|d| crate::versions::key(&d.name) == k)
+                    .map(|d| d.id);
+            } else {
+                session.entry_versions = Some((kind, name));
+            }
+            close = true;
+        }
+        if network {
+            session.open_tool(Tool::Reseau);
+            close = true;
+        }
+        if !close {
+            session.online = Some(online);
+        }
+    }
+
     fn entry_field_label(field: &str) -> &'static str {
         match field {
             "form" => tr("codex_form_label"),
@@ -64957,19 +65271,30 @@ impl App {
                 ui.label(tr("drug_no_match"));
                 ui.add_space(8.0);
                 let name = session.drug_query.trim().to_owned();
-                if motif::button(ui, &trf("drug_create", &name)).clicked() {
-                    match session.db.add_drug(&name) {
-                        Ok(id) => {
-                            session.error = None;
-                            session.drug_query.clear();
-                            if let Ok(list) = session.db.drugs() {
-                                session.set_drugs(list);
+                ui.horizontal_wrapped(|ui| {
+                    if motif::button(ui, &trf("drug_create", &name)).clicked() {
+                        match session.db.add_drug(&name) {
+                            Ok(id) => {
+                                session.error = None;
+                                session.drug_query.clear();
+                                if let Ok(list) = session.db.drugs() {
+                                    session.set_drugs(list);
+                                }
+                                open_drug = session.drugs.iter().find(|d| d.id == id).cloned();
                             }
-                            open_drug = session.drugs.iter().find(|d| d.id == id).cloned();
+                            Err(e) => session.error = Some(e),
                         }
-                        Err(e) => session.error = Some(e),
                     }
-                }
+                    // Absente d'ici, elle est peut-être chez un confrère.
+                    if motif::button(ui, &trf("online_search", &name))
+                        .on_hover_text(tr("online_open_tooltip"))
+                        .clicked()
+                    {
+                        session.open_online(crate::versions::Kind::Fiche, &name);
+                    }
+                });
+            } else if idle {
+                Self::online_button(ui, session, crate::versions::Kind::Fiche);
             }
             if session.drug_form.is_none() {
                 if let Some(err) = &session.error {
@@ -80200,6 +80525,7 @@ impl eframe::App for App {
             }
             Self::versions_window(ctx, session);
             Self::entry_versions_window(ctx, session);
+            Self::online_window(ctx, session);
             // The posts: their automatic synchronisation, polled every
             // frame, and their window wherever it was opened from.
             #[cfg(feature = "sync")]

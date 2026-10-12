@@ -8,6 +8,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **« En ligne… » on the content tabs.** The drug list, codex,
+  protocols, TROD lines and vaccine catalogue each get a button that
+  lists what the network's officines have written of that kind (read
+  from the journal already received, so it works offline and instantly):
+  name, which officines, when, and whether the entry is absent, the
+  same or different here. Search covers the name and what describes the
+  entry (DCI, indication, subject). « Prendre » adds an absent entry in
+  one click with every field at its latest version, including one
+  removed here or a shipped vaccine or TROD line that received versions
+  never bring back; « Comparer… » opens the history of one that
+  differs. A drug search with no match also offers « Chercher … en
+  ligne ».
+
 ## [0.412.0] - 2026-10-12
 
 ### Changed

@@ -55071,48 +55071,212 @@ impl Db {
     /// **seulement sur la valeur qu'elle remplaçait**. Une entrée inconnue
     /// ici est créée.
     fn apply_entry_version(&self, e: &crate::versions::Edit) -> Result<bool, String> {
-        use crate::versions::Kind;
         let id = match self.entry_fields(e.kind, &e.card_name)? {
             Some((id, _, _)) => id,
-            None if !e.card_name.trim().is_empty() => match e.kind {
-                Kind::Codex => self.add_preparation(e.card_name.trim())?,
-                Kind::Protocole => self.add_protocol(e.card_name.trim(), "")?,
-                // Une ligne d'un protocole que l'application connaît ; un
-                // nom qui n'en nomme aucun n'invente pas de protocole. **Et
-                // une ligne livrée absente ici ne revient pas** : c'est
-                // que l'officine l'a retirée, et la recréer vide la ferait
-                // reparaître sans posologie sur l'ordonnance.
-                Kind::Trod => match crate::versions::split_trod_entry(&e.card_name) {
-                    Some((protocol, name))
-                        if crate::ordonnance::protocol_keys().contains(&protocol)
-                            && !crate::ordonnance::starters().iter().any(|o| {
-                                crate::versions::trod_entry(&o.protocol, &o.name) == e.card_name
-                            }) =>
-                    {
-                        let id = self.add_trod_line(protocol, name)?;
-                        self.set_origin("trod_lines", id, name)?;
-                        id
-                    }
-                    _ => return Ok(false),
-                },
-                // Même règle : un vaccin livré retiré ici ne revient pas.
-                Kind::Vaccin => {
-                    let label = e.card_name.trim();
-                    if crate::vaccines::starter_catalogue()
-                        .iter()
-                        .any(|v| v.label == label)
-                    {
-                        return Ok(false);
-                    }
-                    let id = self.add_vaccine(label)?;
-                    self.set_origin("vaccine_catalogue", id, label)?;
-                    id
-                }
-                Kind::Fiche => return Ok(false),
+            None => match self.create_entry(e.kind, &e.card_name, false)? {
+                Some(id) => id,
+                None => return Ok(false),
             },
-            None => return Ok(false),
         };
         self.write_entry_field(e.kind, id, &e.field, &e.value, &e.previous)
+    }
+
+    /// Créer ici une entrée du réseau, vide, sous son nom de voyage.
+    /// `None` quand elle ne se crée pas.
+    ///
+    /// Une ligne de TROD ne se crée que sous un protocole que
+    /// l'application connaît : un nom qui n'en nomme aucun n'invente pas
+    /// de protocole. **Une ligne ou un vaccin livrés, absents ici, ne
+    /// reviennent pas d'eux-mêmes** (`asked` faux) : c'est que l'officine
+    /// les a retirés, et une version reçue les ferait reparaître sans
+    /// posologie. Demandés d'un geste (`asked`, « En ligne »), ils
+    /// reviennent — c'est ce qu'on a demandé.
+    fn create_entry(
+        &self,
+        kind: crate::versions::Kind,
+        name: &str,
+        asked: bool,
+    ) -> Result<Option<i64>, String> {
+        use crate::versions::Kind;
+        let name = name.trim();
+        if name.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(match kind {
+            Kind::Codex => self.add_preparation(name)?,
+            Kind::Protocole => self.add_protocol(name, "")?,
+            Kind::Trod => match crate::versions::split_trod_entry(name) {
+                Some((protocol, line))
+                    if crate::ordonnance::protocol_keys().contains(&protocol)
+                        && (asked
+                            || !crate::ordonnance::starters().iter().any(|o| {
+                                crate::versions::trod_entry(&o.protocol, &o.name) == name
+                            })) =>
+                {
+                    let id = self.add_trod_line(protocol, line)?;
+                    self.set_origin("trod_lines", id, line)?;
+                    id
+                }
+                _ => return Ok(None),
+            },
+            Kind::Vaccin => {
+                if !asked
+                    && crate::vaccines::starter_catalogue()
+                        .iter()
+                        .any(|v| v.label == name)
+                {
+                    return Ok(None);
+                }
+                let id = self.add_vaccine(name)?;
+                self.set_origin("vaccine_catalogue", id, name)?;
+                id
+            }
+            // Une fiche reçue se crée dans `receive_card_edits`, qui
+            // a sa propre règle ; ici, seulement d'un geste.
+            Kind::Fiche if !asked => return Ok(None),
+            Kind::Fiche => {
+                if self
+                    .drugs_named()?
+                    .iter()
+                    .any(|(_, n)| crate::versions::key(n) == crate::versions::key(name))
+                {
+                    return Ok(None);
+                }
+                self.add_drug(name)?
+            }
+        }))
+    }
+
+    /// Les fiches, par identifiant et nom.
+    fn drugs_named(&self) -> Result<Vec<(i64, String)>, String> {
+        let mut stmt = self
+            .conn
+            .prepare("SELECT id, name FROM drugs")
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?)))
+            .map_err(|e| e.to_string())?;
+        rows.collect::<Result<_, _>>().map_err(|e| e.to_string())
+    }
+
+    /// Les entrées d'ici d'une sorte, **par clé de voyage**, champ par
+    /// champ : ce qu'« En ligne » compare aux offres. Lu une fois pour
+    /// toute la liste, et non entrée par entrée.
+    pub fn offer_locals(
+        &self,
+        kind: crate::versions::Kind,
+    ) -> Result<std::collections::HashMap<String, EntryLocal>, String> {
+        use crate::versions::{key, Kind};
+        let mut out = std::collections::HashMap::new();
+        match kind {
+            Kind::Fiche => {
+                for d in self.drugs()? {
+                    let fields = crate::versions::SHARED_FIELDS
+                        .iter()
+                        .map(|f| (*f, drug_field(&d, f).unwrap_or_default().to_owned()))
+                        .collect();
+                    out.insert(key(&d.name), fields);
+                }
+            }
+            Kind::Codex => {
+                for p in self.preparations()? {
+                    let fields = crate::versions::CODEX_FIELDS
+                        .iter()
+                        .map(|f| (*f, codex_field(&p, f).unwrap_or_default().to_owned()))
+                        .collect();
+                    out.insert(key(&p.name), fields);
+                }
+            }
+            // Peu d'entrées, et un arbre se lit à part : par la même
+            // lecture que l'historique.
+            Kind::Protocole => {
+                for p in self.protocols()? {
+                    if let Some((_, name, fields)) = self.entry_fields(kind, &p.title)? {
+                        out.insert(key(&name), fields);
+                    }
+                }
+            }
+            Kind::Vaccin => {
+                for (_, entry) in self.vaccine_entries()? {
+                    if let Some((_, name, fields)) = self.entry_fields(kind, &entry)? {
+                        out.insert(key(&name), fields);
+                    }
+                }
+            }
+            Kind::Trod => {
+                for (_, entry) in self.trod_entries()? {
+                    if let Some((_, name, fields)) = self.entry_fields(kind, &entry)? {
+                        out.insert(key(&name), fields);
+                    }
+                }
+            }
+        }
+        Ok(out)
+    }
+
+    /// **Prendre une offre du réseau** : l'entrée est créée ici sous son
+    /// nom de voyage, et chaque champ reçoit sa dernière version.
+    ///
+    /// Rien de neuf ne part : les valeurs sont déjà au journal, et
+    /// l'entrée d'ici les dit désormais, comme si les versions s'étaient
+    /// appliquées à leur arrivée. Rend `false` quand l'entrée existe
+    /// déjà ici — une autre fenêtre l'a prise entre-temps — ou ne se crée
+    /// pas (une ligne de TROD d'un protocole inconnu).
+    pub fn adopt_offer(&self, offer: &crate::enligne::Offer) -> Result<bool, String> {
+        use crate::versions::Kind;
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        let done = (|| -> Result<bool, String> {
+            if offer.kind == Kind::Fiche {
+                let Some(id) = self.create_entry(Kind::Fiche, &offer.name, true)? else {
+                    return Ok(false);
+                };
+                for (field, value) in &offer.fields {
+                    // The column comes from the list, never from the peer;
+                    // the name is the one the card was created under.
+                    let Some(column) = crate::versions::SHARED_FIELDS
+                        .iter()
+                        .find(|f| **f == field.as_str() && **f != "name")
+                    else {
+                        continue;
+                    };
+                    self.conn
+                        .execute(
+                            &format!("UPDATE drugs SET {column} = ?1 WHERE id = ?2"),
+                            (value, id),
+                        )
+                        .map_err(|e| e.to_string())?;
+                }
+                return Ok(true);
+            }
+            if self.entry_fields(offer.kind, &offer.name)?.is_some() {
+                return Ok(false);
+            }
+            let Some(id) = self.create_entry(offer.kind, &offer.name, true)? else {
+                return Ok(false);
+            };
+            let Some((_, _, here)) = self.entry_fields(offer.kind, &offer.name)? else {
+                return Ok(false);
+            };
+            for (field, value) in &offer.fields {
+                let Some((_, now)) = here.iter().find(|(f, _)| *f == field.as_str()) else {
+                    continue;
+                };
+                if now != value {
+                    self.write_entry_field(offer.kind, id, field, value, now)?;
+                }
+            }
+            Ok(true)
+        })();
+        match done {
+            Ok(true) => {
+                tx.commit().map_err(|e| e.to_string())?;
+                Ok(true)
+            }
+            other => {
+                let _ = tx.rollback();
+                other
+            }
+        }
     }
 
     /// Revenir à une valeur, ou adopter une version reçue : la valeur est
@@ -55219,6 +55383,9 @@ impl Db {
         self.mark_published(&[uid])
     }
 }
+
+/// Une entrée d'ici, champ par champ, sous ses noms de voyage.
+pub type EntryLocal = Vec<(&'static str, String)>;
 
 /// Une liste rangée « a,b,c » en base, relue sans les vides.
 fn split_list(text: &str) -> Vec<String> {
@@ -57708,6 +57875,118 @@ mod tests {
             .unwrap()
             .iter()
             .any(|d| d.name == "Médicament du Port" && d.dci == "molécule"));
+    }
+
+    /// **« En ligne » : une entrée d'un confrère se prend d'un geste.**
+    ///
+    /// Reçue, puis supprimée ici, elle reste au journal : c'est une offre
+    /// absente, et la prendre la recrée avec chaque champ à sa dernière
+    /// version. La prendre deux fois ne fait pas deux entrées. Et un
+    /// vaccin livré qu'on a retiré, qu'une version reçue ne fait jamais
+    /// revenir, revient quand on le demande.
+    #[test]
+    fn an_offer_from_the_network_is_adopted_in_one_gesture() {
+        use crate::enligne::{here, offers, Here};
+        use crate::versions::{key, Edit, Kind};
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-enligne-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("enligne.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let theirs = |n: u32, kind: Kind, name: &str, field: &str, value: &str| Edit {
+            kind,
+            uid: format!("port:{n}"),
+            day: "2026-09-01".to_owned(),
+            card: key(name),
+            card_name: name.to_owned(),
+            field: field.to_owned(),
+            value: value.to_owned(),
+            previous: String::new(),
+            corrects: String::new(),
+            revert: false,
+            operator: "AB".to_owned(),
+            source: "Pharmacie du Port".to_owned(),
+        };
+        db.receive_card_edits(&[
+            theirs(1, Kind::Codex, "Sirop du Port", "form", "sirop"),
+            theirs(2, Kind::Codex, "Sirop du Port", "indication", "toux sèche"),
+            theirs(3, Kind::Fiche, "Molécule du Port", "dci", "portine"),
+            theirs(4, Kind::Fiche, "Molécule du Port", "class", "antitussif"),
+        ])
+        .unwrap();
+        let prep = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Sirop du Port")
+            .expect("reçue, créée");
+        assert!(db.delete_preparation(&prep).unwrap());
+        let card = db
+            .drugs()
+            .unwrap()
+            .into_iter()
+            .find(|d| d.name == "Molécule du Port")
+            .expect("reçue, créée");
+        assert!(db.delete_drug(card.id, &card.name).unwrap());
+
+        let edits = db.card_edits().unwrap();
+        for kind in [Kind::Codex, Kind::Fiche] {
+            let o = offers(&edits, kind);
+            assert_eq!(o.len(), 1, "{kind:?}");
+            let locals = db.offer_locals(kind).unwrap();
+            let local = locals.get(&o[0].card).map(Vec::as_slice);
+            assert_eq!(here(&o[0], local), Here::Absent, "{kind:?}");
+            assert!(db.adopt_offer(&o[0]).unwrap(), "{kind:?}");
+            assert!(!db.adopt_offer(&o[0]).unwrap(), "une fois : {kind:?}");
+            let locals = db.offer_locals(kind).unwrap();
+            let local = locals.get(&o[0].card).map(Vec::as_slice);
+            assert_eq!(here(&o[0], local), Here::Same, "{kind:?}");
+        }
+        let prep = db
+            .preparations()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.name == "Sirop du Port")
+            .unwrap();
+        assert_eq!(
+            (prep.form.as_str(), prep.indication.as_str()),
+            ("sirop", "toux sèche")
+        );
+        assert!(db
+            .drugs()
+            .unwrap()
+            .iter()
+            .any(|d| d.name == "Molécule du Port"
+                && d.dci == "portine"
+                && d.class == "antitussif"));
+
+        // Un vaccin livré, retiré ici : une version reçue ne le fait pas
+        // revenir, la demande si.
+        db.seed_vaccine_catalogue().unwrap();
+        let shipped = crate::vaccines::starter_catalogue()[0].label.clone();
+        let v = db
+            .vaccine_catalogue()
+            .unwrap()
+            .into_iter()
+            .find(|v| v.label == shipped)
+            .unwrap();
+        assert!(db.delete_vaccine(v.id, &v.label).unwrap());
+        db.receive_card_edits(&[theirs(5, Kind::Vaccin, &shipped, "code", "XYZ")])
+            .unwrap();
+        assert!(!db
+            .vaccine_catalogue()
+            .unwrap()
+            .iter()
+            .any(|v| v.label == shipped));
+        let o = offers(&db.card_edits().unwrap(), Kind::Vaccin);
+        let offer = o.iter().find(|o| o.name == shipped).unwrap();
+        assert!(db.adopt_offer(offer).unwrap());
+        assert!(db
+            .vaccine_catalogue()
+            .unwrap()
+            .iter()
+            .any(|v| v.label == shipped && v.code == "XYZ"));
     }
 
     /// Deux postes de la même officine, chacun avec sa base, et ce que
@@ -65878,6 +66157,43 @@ mod tests {
                         ..head
                     };
                     db.receive_card_edits(&[applied, waiting]).unwrap();
+                }
+
+                // « En ligne » : deux préparations écrites par une autre
+                // officine — l'une ici telle quelle, l'autre retirée
+                // ici, qui s'offre à reprendre. Sans formule : la
+                // démonstration ne fabrique pas de contenu clinique.
+                {
+                    let port =
+                        |n: u32, name: &str, field: &str, value: &str| crate::versions::Edit {
+                            kind: crate::versions::Kind::Codex,
+                            uid: format!("d3m0:c{n}"),
+                            day: add_days(&today, -2).unwrap_or_default(),
+                            card: crate::versions::key(name),
+                            card_name: name.to_owned(),
+                            field: field.to_owned(),
+                            value: value.to_owned(),
+                            previous: String::new(),
+                            corrects: String::new(),
+                            revert: false,
+                            operator: "AM".to_owned(),
+                            source: "Pharmacie du Port".to_owned(),
+                        };
+                    db.receive_card_edits(&[
+                        port(1, "Bain de bouche du Port", "form", "solution buccale"),
+                        port(2, "Bain de bouche du Port", "indication", "Mucite"),
+                        port(3, "Pommade du Port", "form", "pommade"),
+                        port(4, "Pommade du Port", "indication", "Crevasses"),
+                    ])
+                    .unwrap();
+                    if let Some(p) = db
+                        .preparations()
+                        .unwrap()
+                        .into_iter()
+                        .find(|p| p.name == "Pommade du Port")
+                    {
+                        db.delete_preparation(&p).unwrap();
+                    }
                 }
 
                 // Transmissions: one entry yesterday, two today.

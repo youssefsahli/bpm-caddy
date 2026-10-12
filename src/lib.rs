@@ -34,6 +34,7 @@ pub mod date;
 pub mod db;
 pub mod dosing;
 pub mod elderly;
+pub mod enligne;
 pub mod entretien;
 pub mod facets;
 pub mod favorites;

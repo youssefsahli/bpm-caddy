@@ -1206,6 +1206,20 @@ silencieux. Chaque officine peut revenir à toute version de tout champ.
 Les notes de l'équipe ne sont pas partagées, et aucune fiche ne porte de
 donnée patient.
 
+# En ligne
+
+« En ligne… » — dans la liste des fiches, le codex, les protocoles, les
+lignes de TROD et le catalogue des vaccins — liste ce que les officines
+du réseau ont écrit de cette sorte, reçu à la dernière synchronisation :
+nom, officines, date, et ce que l'entrée est ici (« absente »,
+« identique », « différente »). La recherche porte sur le nom et ce qui
+décrit l'entrée (DCI, indication, sujet). « Prendre » ajoute une entrée
+absente à la base, chaque champ à sa dernière version — y compris une
+entrée qu'on avait retirée ; « Comparer… » ouvre l'historique d'une
+entrée qui diffère, pour adopter ou garder. Une fiche introuvable dans
+la recherche propose aussi « Chercher … en ligne ». Rien n'est demandé
+aux autres officines pendant la recherche : la liste se lit dans la base.
+
 # Ruptures
 
 Une rupture se déclare sur la fiche : « Signaler une rupture », dans la
