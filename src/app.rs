@@ -19330,13 +19330,14 @@ impl App {
         if let State::Unlocked(session) = &self.state {
             let mut changed = false;
             if let Some(body) = add {
-                match session.db.add_note(NoteSubject::Operator, 0, &op, &body) {
-                    Ok(_) => {
-                        changed = true;
-                        self.op_note_text.clear();
-                    }
-                    // Refusée : le texte reste dans le champ, ce qui le dit.
-                    Err(_) => {}
+                // Refusée, le texte reste dans le champ, ce qui le dit.
+                if session
+                    .db
+                    .add_note(NoteSubject::Operator, 0, &op, &body)
+                    .is_ok()
+                {
+                    changed = true;
+                    self.op_note_text.clear();
                 }
             }
             if let Some(id) = delete {
@@ -20489,13 +20490,14 @@ impl App {
                     if let State::Unlocked(session) = &self.state {
                         let mut changed = false;
                         if let Some(body) = add {
-                            match session.db.add_note(NoteSubject::Operator, 0, &op, &body) {
-                                Ok(_) => {
-                                    changed = true;
-                                    self.op_note_text.clear();
-                                }
-                                // Refusée : le texte reste dans le champ, ce qui le dit.
-                                Err(_) => {}
+                            // Refusée, le texte reste dans le champ, ce qui le dit.
+                            if session
+                                .db
+                                .add_note(NoteSubject::Operator, 0, &op, &body)
+                                .is_ok()
+                            {
+                                changed = true;
+                                self.op_note_text.clear();
                             }
                         }
                         if let Some(id) = delete {
