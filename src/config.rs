@@ -2070,12 +2070,12 @@ impl Config {
     /// vaccination, un TROD, un rendez-vous de prévention n'ont pas de
     /// séquence, et leur rang continue de monter dans l'année — la
     /// cinquième vaccination d'un cycle sortait à zéro euro.
+    /// Et au tarif que les options écrivent pour lui — la seule case
+    /// qu'elles montrent, la première.
     pub fn fee(&self, kind: crate::db::InterviewKind, year: usize, rank: usize) -> f64 {
-        let rank = if kind.is_accompaniment() {
-            rank
-        } else {
-            rank.min(ActFees::STEPS - 1)
-        };
+        if !kind.is_accompaniment() {
+            return self.act_fees(kind).amount(0, 0);
+        }
         self.act_fees(kind).amount(year, rank)
     }
 
@@ -2733,6 +2733,10 @@ mod tests {
             assert_eq!(cfg.fee(kind, 0, 4), cfg.fee(kind, 0, 0), "{kind:?}");
             assert_eq!(cfg.fee(kind, 1, 9), cfg.fee(kind, 1, 0), "{kind:?}");
         }
+        // Au tarif que les options écrivent, la première case seule.
+        let mut edited = Config::default();
+        edited.billing.vaccination.annee_1[0] = 12.0;
+        assert_eq!(edited.fee(Vaccination, 1, 5), 12.0);
         // L'accompagnement, lui, n'a rien au-delà de sa séquence.
         assert_eq!(cfg.fee(Bpm, 0, 4), 0.0);
         // Adhésion : le code traceur TAC, 0,01 €.

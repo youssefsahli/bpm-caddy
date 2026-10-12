@@ -56,7 +56,6 @@ fn adopt_officine(config: &mut Config, session: &mut Session) {
     }
 }
 
-/// Les champs de l'officine changés des deux côtés, en une phrase : leur
 /// Les champs d'un acte que la liste tape, dans l'ordre de
 /// `keep_act_edits`.
 const ACT_DATE: usize = 0;
@@ -64,6 +63,21 @@ const ACT_MADE: usize = 1;
 const ACT_BY: usize = 2;
 const ACT_HOUR: usize = 3;
 
+/// Ce que chaque champ tapé d'un acte montre de sa ligne, dans l'ordre
+/// des `ACT_*`.
+fn act_fields_shown(i: &Interview) -> [String; 4] {
+    [
+        i.scheduled_date
+            .as_deref()
+            .map(db::format_french_date)
+            .unwrap_or_default(),
+        db::format_french_date(&i.created_at[..10.min(i.created_at.len())]),
+        i.operator.clone(),
+        i.scheduled_time.clone(),
+    ]
+}
+
+/// Les champs de l'officine changés des deux côtés, en une phrase : leur
 /// nom et, pour un champ simple, ce que l'autre poste y a écrit.
 fn officine_clashes(
     fields: &[crate::config::OfficineField],
@@ -10987,17 +11001,7 @@ impl Session {
                 continue;
             };
             let id = old.id;
-            let shown = |i: &Interview| {
-                [
-                    i.scheduled_date
-                        .as_deref()
-                        .map(db::format_french_date)
-                        .unwrap_or_default(),
-                    db::format_french_date(&i.created_at[..10.min(i.created_at.len())]),
-                    i.operator.clone(),
-                    i.scheduled_time.clone(),
-                ]
-            };
+            let shown = act_fields_shown;
             let stored = |i: &Interview| {
                 [
                     i.scheduled_date.clone().unwrap_or_default(),
@@ -11029,6 +11033,32 @@ impl Session {
                 }
             }
         }
+        self.prune_act_seen();
+    }
+
+    /// Une valeur vue n'a plus lieu d'être quand son champ n'est plus en
+    /// cours, ou qu'il dit déjà ce que la ligne relue dit (on a retapé la
+    /// valeur de l'autre poste) : gardée, elle faisait refuser la frappe
+    /// suivante comme « modifiée ailleurs ».
+    fn prune_act_seen(&mut self) {
+        if self.itv_seen.is_empty() {
+            return;
+        }
+        let maps = [
+            &self.date_edits,
+            &self.made_edits,
+            &self.by_edits,
+            &self.hour_edits,
+        ];
+        let rows = &self.viewing_interviews;
+        self.itv_seen.retain(|(id, field), _| {
+            let Some(text) = maps[*field].get(id) else {
+                return false;
+            };
+            rows.iter()
+                .find(|i| i.id == *id)
+                .is_some_and(|i| act_fields_shown(i)[*field] != *text)
+        });
     }
 
     /// Commit any parseable in-progress RDV field before the patient
@@ -31308,9 +31338,9 @@ impl App {
         row.itv.created_at[..10.min(row.itv.created_at.len())].to_owned()
     }
 
-    /// Le jour où l'acte a été tenu — et non celui où il a été saisi :
-    /// c'est lui qui le place dans son cycle, et le cycle choisit
-    /// l'honoraire. Avec les initiales de qui l'a fait.
+    /// Le jour où l'acte a été tenu — et non celui où il a été saisi ;
+    /// sans rendez-vous, c'est lui qui le place dans son cycle (voir
+    /// `db::act_date`). Avec les initiales de qui l'a fait.
     fn acts_made(
         ui: &mut egui::Ui,
         row: &ActsRow,
@@ -32150,6 +32180,7 @@ impl App {
                 Err(e) => session.error = Some(e),
             }
         }
+        session.prune_act_seen();
         // La fenêtre d'export, et ce qu'elle rend quand on valide.
         let export_now = export_window(ui.ctx(), session);
         // Les deux boutons n'impriment plus : ils ouvrent la fenêtre
@@ -91293,6 +91324,15 @@ mod tests {
                 .unwrap();
         assert_eq!(itv.scheduled_date.as_deref(), Some("2026-11-03"));
         assert_eq!(itv.operator, "MB");
+        assert!(s.itv_seen.is_empty());
+        // Retaper la valeur de l'autre poste efface ce qui était vu : la
+        // frappe suivante n'est pas refusée.
+        s.by_edits.insert(a, "ZZ".to_owned());
+        assert!(s.db.set_interview_operator(a, "XY", "MB").unwrap());
+        s.resync();
+        assert!(s.itv_seen.contains_key(&(a, super::ACT_BY)));
+        s.by_edits.insert(a, "XY".to_owned());
+        s.prune_act_seen();
         assert!(s.itv_seen.is_empty());
     }
 
