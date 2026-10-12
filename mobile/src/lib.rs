@@ -777,9 +777,35 @@ impl Caddy {
             .find(|(f, _)| f.uid == file_uid)
             .ok_or_else(failed)?;
         let bytes = db.file_bytes(&meta)?.ok_or_else(failed)?;
-        let path = PathBuf::from(dir).join(bpm_caddy::messages::safe_name(&meta.name));
-        std::fs::write(&path, bytes).map_err(|e| e.to_string())?;
-        Ok(path.display().to_string())
+        // **Jamais par-dessus un fichier déjà là** : deux pièces du même
+        // nom, « ordonnance.pdf », se remplaçaient sans un mot. La
+        // suivante prend « ordonnance (2).pdf ».
+        let name = bpm_caddy::messages::safe_name(&meta.name);
+        let (stem, ext) = match name.rsplit_once('.') {
+            Some((s, e)) if !s.is_empty() => (s.to_owned(), format!(".{e}")),
+            _ => (name.clone(), String::new()),
+        };
+        for n in 1..1000 {
+            let candidate = if n == 1 {
+                name.clone()
+            } else {
+                format!("{stem} ({n}){ext}")
+            };
+            let path = PathBuf::from(&dir).join(&candidate);
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut f) => {
+                    std::io::Write::write_all(&mut f, &bytes).map_err(|e| e.to_string())?;
+                    return Ok(path.display().to_string());
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(e) => return Err(e.to_string().into()),
+            }
+        }
+        Err(failed())
     }
 
     /// Écrire un message avec un fichier joint (5 Mio au plus, comme sur
@@ -803,13 +829,14 @@ impl Caddy {
             });
         }
         team_only(&db, conversation)?;
-        let Some(id) =
-            db.post_message(conversation, "", author.trim(), body.trim(), None, "", None)?
-        else {
-            return Ok(());
-        };
-        let uid = db.message_uid(id)?;
-        db.attach_file(&uid, &name, &bytes)?;
+        // Le message et son fichier ensemble, comme sur un poste.
+        db.post_message_with_file(
+            conversation,
+            author.trim(),
+            body.trim(),
+            None,
+            Some((&name, &bytes)),
+        )?;
         Ok(())
     }
 
@@ -1165,6 +1192,27 @@ mod tests {
                 vec![0u8; bpm_caddy::messages::MAX_FILE + 1],
             )
             .is_err());
+        // Saved twice, the same file takes a second name instead of
+        // overwriting the first.
+        let photo_uid = phone
+            .messages(talks[0].id)
+            .unwrap()
+            .iter()
+            .flat_map(|m| m.files.iter())
+            .find(|f| f.name == "frigo.jpg")
+            .unwrap()
+            .uid
+            .clone();
+        let out = phone_dir.join("saved");
+        std::fs::create_dir_all(&out).unwrap();
+        let first = phone
+            .save_file(talks[0].id, photo_uid.clone(), out.display().to_string())
+            .unwrap();
+        let second = phone
+            .save_file(talks[0].id, photo_uid, out.display().to_string())
+            .unwrap();
+        assert_ne!(first, second);
+        assert!(second.ends_with("frigo (2).jpg"), "{second}");
 
         // The desktop holds its door; the phone dials it by address.
         let (_auto, poke) = spawn_auto(
