@@ -8,6 +8,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- Unlocking: a base named in `config.toml` and absent (a share mounted
+  late, a mistyped path) is said on the lock screen and nothing is
+  created in its place — the remembered password used to open a new,
+  empty base where the team worked all day, the ordonnancier starting
+  again at one; « Mémoriser » is no longer ticked in advance after an
+  unlock by the environment variable.
+- Password change: the current password is asked again (a post left open
+  was enough to change the key of the whole officine); it is refused
+  while a maintenance runs; the posts' synchronisation starts again with
+  the new key instead of stopping until the next lock.
+
 ## [0.406.0] - 2026-10-12
 
 ### Fixed

@@ -3938,3 +3938,7 @@ posts_err_retire_reference = "C'est le poste de référence : désignez-en un au
 posts_err_reference_unknown = "Ce poste n'est pas dans le groupe, ou il a été retiré."
 posts_err_leave_reference = "Ce poste est la référence du groupe : désignez-en un autre avant de le quitter."
 posts_err_folder_missing = "dossier d'échange introuvable (partage démonté, ou chemin non absolu)"
+lock_db_missing = "Base introuvable à {} — partage non monté, ou chemin à corriger dans config.toml. Rien n'est créé à sa place."
+pw_current = "Mot de passe actuel"
+pw_current_wrong = "Le mot de passe actuel ne correspond pas."
+pw_busy = "Une maintenance est en cours : attendez qu'elle finisse pour changer le mot de passe."

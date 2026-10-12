@@ -58,6 +58,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- **changement de mot de passe interrompu** (coupure de courant entre
+  deux fichiers) : la base et ses fichiers de pièces et de registre
+  restent sous deux clés, et aucune ne les ouvre tous — à prévoir : une
+  marque « changement en cours » et l'ouverture avec l'ancienne clé pour
+  finir ; les autres postes sur la même base reçoivent « file is not a
+  database » sans explication ; mots de passe non effacés de la mémoire
+  (`zeroize`) ; pas d'action « créer une nouvelle base ici » maintenant
+  qu'un chemin écrit et absent est refusé ;
 - postes : deux postes invités en même temps par deux postes différents
   reçoivent le même numéro, donc les mêmes blocs d'identifiants (ne
   laisser inviter que la référence ?) ; deux postes qui se désignent

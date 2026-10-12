@@ -263,6 +263,26 @@ fn next_rdv_text(interviews: &[Interview], after: &str) -> String {
 /// Depuis la dernière version vue par ce poste ; sans version vue — un
 /// poste qui n'a jamais eu la fenêtre —, la version en cours seule, et
 /// `always` la montre même déjà vue (la clé de vue `nouveautes`).
+/// **Une base nommée dans la configuration et absente ne se crée pas**
+/// au déverrouillage : un partage monté en retard, un chemin mal tapé,
+/// et le mot de passe du trousseau ouvrait une base neuve et vide à la
+/// place de celle de l'officine — l'équipe y travaillait la journée, et
+/// l'ordonnancier recommençait à un. Le premier lancement, lui, sans
+/// chemin écrit, crée la sienne comme avant.
+fn missing_base(config: &Config) -> Option<String> {
+    if config.database.path.is_none() || std::env::var("BPM_CADDY_DB").is_ok() {
+        return None;
+    }
+    let path = config.db_path();
+    (!path.exists()).then(|| trf("lock_db_missing", path.display()))
+}
+
+/// Deux secrets égaux, comparés en temps constant.
+fn same_secret(a: &str, b: &str) -> bool {
+    let (a, b) = (a.as_bytes(), b.as_bytes());
+    a.len() == b.len() && a.iter().zip(b).fold(0u8, |acc, (x, y)| acc | (x ^ y)) == 0
+}
+
 fn whatsnew_notes(seen: &str, always: bool) -> Vec<crate::release::Notes> {
     let log = include_str!("../CHANGELOG.md");
     let current = crate::release::current();
@@ -16566,6 +16586,9 @@ impl TplEditor {
 
 #[derive(Default)]
 struct PwChangeForm {
+    /// Le mot de passe actuel, redemandé : un poste resté ouvert ne
+    /// suffit pas à changer la clé de toute l'officine.
+    current: String,
     new1: String,
     new2: String,
     error: Option<String>,
@@ -16741,19 +16764,26 @@ impl App {
         // Un `config.toml` illisible est dit à l'écran de verrouillage, et
         // rien ne s'ouvre seul : le chemin de la base est celui par défaut,
         // peut-être pas celui de l'officine.
+        let missing = missing_base(&config);
         let mut state = State::Locked {
             password: String::new(),
             error: config
                 .unreadable
                 .as_ref()
-                .map(|e| trn("config_unreadable", &[&Config::path().display(), e])),
+                .map(|e| trn("config_unreadable", &[&Config::path().display(), e]))
+                .or_else(|| missing.clone()),
         };
         let mut remember_password = false;
-        // Demo/e2e hook first, then the OS credential manager.
-        let stored_pw = std::env::var("BPM_CADDY_PASSWORD")
-            .ok()
+        // Demo/e2e hook first, then the OS credential manager. **Mémoriser**
+        // n'est coché d'avance que pour un mot de passe que le trousseau
+        // tenait déjà : venu de la variable d'environnement, il partait au
+        // trousseau au déverrouillage suivant sans que personne l'ait
+        // demandé.
+        let from_env = std::env::var("BPM_CADDY_PASSWORD").ok();
+        let from_keyring = from_env.is_none();
+        let stored_pw = from_env
             .or_else(|| keyring_entry().and_then(|e| e.get_password().ok()))
-            .filter(|_| config.unreadable.is_none());
+            .filter(|_| config.unreadable.is_none() && missing.is_none());
         if let Some(pw) = stored_pw {
             match Db::open(&config.db_path(), &pw)
                 .and_then(|db| {
@@ -18559,7 +18589,7 @@ impl App {
                     // Le bandeau tel que le poste l'a laissé.
                     session.patient_band_folded = layout.patient_band_folded;
                     state = State::Unlocked(Box::new(session));
-                    remember_password = true;
+                    remember_password = from_keyring;
                 }
                 Err(e) => {
                     state = State::Locked {
@@ -21019,6 +21049,15 @@ impl App {
         });
 
         self.remember_password = remember;
+        let attempt = match (attempt, missing_base(&self.config)) {
+            (Some(_), Some(why)) => {
+                if let State::Locked { error, .. } = &mut self.state {
+                    *error = Some(why);
+                }
+                None
+            }
+            (attempt, _) => attempt,
+        };
         if let Some(pw) = attempt {
             match Db::open(&self.config.db_path(), &pw)
                 .and_then(|db| {
@@ -80536,6 +80575,9 @@ impl eframe::App for App {
             self.pw_change = None;
         }
         let mut close_pw = false;
+        // Une maintenance en cours tient sa propre connexion : la clé
+        // changée sous elle, elle échoue à mi-chemin.
+        let busy = self.maint_job.is_some();
         if let (State::Unlocked(session), Some(form)) = (&mut self.state, &mut self.pw_change) {
             let shown = egui::Window::new(tr("pw_title"))
                 .collapsible(false)
@@ -80549,6 +80591,13 @@ impl eframe::App for App {
                         .num_columns(2)
                         .spacing([12.0, 8.0])
                         .show(ui, |ui| {
+                            ui.label(tr("pw_current"));
+                            motif::field(
+                                ui,
+                                chars_wide(ui, 25.0),
+                                egui::TextEdit::singleline(&mut form.current).password(true),
+                            );
+                            ui.end_row();
                             ui.label(tr("pw_new"));
                             motif::field(
                                 ui,
@@ -80567,7 +80616,12 @@ impl eframe::App for App {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         if motif::button(ui, tr("pw_change")).clicked() {
-                            if form.new1.is_empty() {
+                            if busy {
+                                form.error = Some(tr("pw_busy").to_owned());
+                            } else if !same_secret(&form.current, &session.password) {
+                                form.current.clear();
+                                form.error = Some(tr("pw_current_wrong").to_owned());
+                            } else if form.new1.is_empty() {
                                 form.error = Some(tr("pw_empty").to_owned());
                             } else if form.new1 != form.new2 {
                                 form.error = Some(tr("pw_mismatch").to_owned());
@@ -80579,6 +80633,19 @@ impl eframe::App for App {
                                         // with — is now the old key, and would
                                         // open nothing.
                                         session.password.clone_from(&form.new1);
+                                        // Les fils de fond ouverts avec
+                                        // l'ancienne clé ne lisent plus rien
+                                        // (« file is not a database ») :
+                                        // la synchronisation des postes
+                                        // repart avec la nouvelle, au lieu
+                                        // de s'arrêter jusqu'au prochain
+                                        // verrouillage.
+                                        #[cfg(feature = "sync")]
+                                        {
+                                            session.stop_posts_auto();
+                                            session.posts_auto_tried = false;
+                                            session.net_auto = None;
+                                        }
                                         // Keep the OS credential manager in sync
                                         // when it holds a remembered copy.
                                         if let Some(entry) = keyring_entry() {
