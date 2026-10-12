@@ -52232,8 +52232,9 @@ impl Db {
         // suivante de ce registre, le 19027. Le tirer ici (le plus haut,
         // plus un) donnait 18401, un numéro que le logiciel avait déjà
         // donné à autre chose. Il est donc **tapé** sur chaque délivrance,
-        // exigé, et refusé s'il désigne déjà une ligne — de n'importe
-        // quelle année : un numéro désigne une délivrance et une seule.
+        // exigé, et refusé s'il désigne déjà une délivrance **en vigueur**
+        // — de n'importe quelle année : un numéro désigne une délivrance et
+        // une seule, et celle qui en remplace une annulée le reprend.
         let (year, no) = if kind.is_dispensing() {
             let year: i64 = day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
             if m.ordo_no <= 0 {

@@ -54869,11 +54869,66 @@ impl App {
         // lorsqu'il y a des numéros : sur un registre neuf, la provision
         // ne couvrait rien et laissait une ligne blanche sous le
         // sous-titre.
-        let seq_h = if session.stup_dispensings.iter().any(|m| m.ordo_no > 0) {
-            Self::label_line(ui)
+        // Ce que la suite des numéros dit d'elle-même.
+        //
+        // Le commentaire de cette vue affirmait depuis toujours que
+        // « c'est la seule vue où le manque d'un numéro se voit » —
+        // et rien ne le marquait : les lignes s'affichaient triées
+        // par numéro et il fallait que le lecteur remarque le saut.
+        // Une suite de deux cents numéros ne se relit pas à l'œil.
+        //
+        // Tous les numéros attribués, annulés compris : une
+        // délivrance annulée garde le sien, et l'omettre ferait
+        // passer chaque correction du registre pour un trou.
+        let used: Vec<u32> = session
+            .stup_dispensings
+            .iter()
+            .filter(|m| m.ordo_no > 0)
+            .map(|m| m.ordo_no as u32)
+            .collect();
+        // **Les trous sont normaux** : le logiciel de l'officine numérote
+        // toutes les lignes de l'ordonnancier, et celles qui ne sont pas
+        // des stupéfiants tombent entre deux numéros d'ici. Seul un
+        // numéro porté par deux délivrances **en vigueur** dit une
+        // anomalie — toutes années confondues, et même une année qui
+        // n'a encore rien délivré. Une délivrance annulée et celle qui
+        // la remplace sous le même numéro n'en font pas une.
+        let said = if session.stup_doubled.is_empty() {
+            crate::ordonnancier::sequence(&used).map(|seq| {
+                (
+                    trn("stup_seq_whole", &[&seq.first, &seq.last, &seq.count]),
+                    motif::text_dim(),
+                )
+            })
         } else {
-            0.0
+            Some((
+                trf(
+                    "stup_seq_doubled",
+                    session
+                        .stup_doubled
+                        .iter()
+                        .map(i64::to_string)
+                        .collect::<Vec<_>>()
+                        .join(", "),
+                ),
+                motif::alert(),
+            ))
         };
+        // **Mesurée telle qu'elle s'écrit** : la phrase de la suite, ou
+        // l'alerte d'un numéro porté deux fois — qui vient aussi d'une
+        // année sans délivrance, et passe sur deux lignes à 1024 × 700.
+        let seq_h = said.as_ref().map_or(0.0, |(text, _)| {
+            ui.fonts(|f| {
+                f.layout(
+                    text.clone(),
+                    egui::FontId::proportional(motif::pt(ui, 11.0)),
+                    egui::Color32::PLACEHOLDER,
+                    body.width(),
+                )
+                .size()
+                .y
+            })
+        });
         let rows = motif::split_rows(body, &[band + seq_h, 0.0], 6.0);
         let mut open_patient: Option<i64> = None;
         let mut pick_year: Option<i64> = None;
@@ -54922,52 +54977,7 @@ impl App {
                 )
                 .wrap(),
             );
-            // Ce que la suite des numéros dit d'elle-même.
-            //
-            // Le commentaire de cette vue affirmait depuis toujours que
-            // « c'est la seule vue où le manque d'un numéro se voit » —
-            // et rien ne le marquait : les lignes s'affichaient triées
-            // par numéro et il fallait que le lecteur remarque le saut.
-            // Une suite de deux cents numéros ne se relit pas à l'œil.
-            //
-            // Tous les numéros attribués, annulés compris : une
-            // délivrance annulée garde le sien, et l'omettre ferait
-            // passer chaque correction du registre pour un trou.
-            let used: Vec<u32> = session
-                .stup_dispensings
-                .iter()
-                .filter(|m| m.ordo_no > 0)
-                .map(|m| m.ordo_no as u32)
-                .collect();
-            // **Les trous sont normaux** : le logiciel de l'officine numérote
-            // toutes les lignes de l'ordonnancier, et celles qui ne sont pas
-            // des stupéfiants tombent entre deux numéros d'ici. Seul un
-            // numéro porté par deux délivrances **en vigueur** dit une
-            // anomalie — toutes années confondues, et même une année qui
-            // n'a encore rien délivré. Une délivrance annulée et celle qui
-            // la remplace sous le même numéro n'en font pas une.
-            let said = if session.stup_doubled.is_empty() {
-                crate::ordonnancier::sequence(&used).map(|seq| {
-                    (
-                        trn("stup_seq_whole", &[&seq.first, &seq.last, &seq.count]),
-                        motif::text_dim(),
-                    )
-                })
-            } else {
-                Some((
-                    trf(
-                        "stup_seq_doubled",
-                        session
-                            .stup_doubled
-                            .iter()
-                            .map(i64::to_string)
-                            .collect::<Vec<_>>()
-                            .join(", "),
-                    ),
-                    motif::alert(),
-                ))
-            };
-            if let Some((text, colour)) = said {
+            if let Some((text, colour)) = said.clone() {
                 ui.add(
                     egui::Label::new(
                         egui::RichText::new(text)
