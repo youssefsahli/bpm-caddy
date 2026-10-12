@@ -29,10 +29,14 @@ tapé d'un autre produit et les adresses des réécritures rénales, sont
 corrigées) — a passé son smoke dans les quatre formes et une passe de
 fuzz sur toutes les vues (d33dbe5) ; la 0.411.0 (numéros
 d'ordonnancier tapés depuis le logiciel de l'officine, téléphone, aide —
-chaque commit relu) a passé son smoke dans les quatre formes (4e6fa5b) :
-**c'est elle à publier** —
-`git tag v0.411.0 4e6fa5b && git push origin v0.411.0` (à défaut, la
-0.410.0 : `git tag v0.410.0 d33dbe5`) ; les étiquettes intermédiaires n'ont jamais été
+chaque commit relu) a passé son smoke dans les quatre formes (4e6fa5b) ;
+la 0.412.0 (saisie groupée de délivrance : numéro manquant ou tapé deux
+fois dit sur sa ligne, « Numéroter à la suite », quantité au-delà du
+solde — relue, corrigée, relue) a passé son smoke dans les quatre formes
+(bdceec1) : **c'est elle à publier** —
+`git tag v0.412.0 bdceec1 && git push origin v0.412.0` (à défaut, la
+0.411.0 : `git tag v0.411.0 4e6fa5b`) ; « En ligne » (après la 0.412.0,
+non publié) attend sa relecture finale et son smoke ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
