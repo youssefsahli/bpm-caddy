@@ -1619,15 +1619,18 @@ Contrairement aux compteurs, le journal nomme la personne : il répond
 Une ligne porte le **numéro** de dossier, jamais le nom. Sans initiales
 déclarées dans Options › Interface, la ligne porte un tiret.
 
-Quatre actions sont tracées : ouverture d'un dossier, export, lecture
-de la liste des patients depuis la console (noms compris), et dossier
-nommé dans un message à une autre officine. Un acte écrit par une version
+Cinq actions sont tracées : ouverture d'un dossier, export, lecture
+de la liste des patients depuis la console (noms compris), dossier
+nommé dans un message à une autre officine, et suppression d'un
+dossier. Un acte écrit par une version
 plus récente de l'application est compté à part. L'impression n'est pas
 tracée.
 
 Durée de conservation : `[audit] keep_days` de `config.toml`, un an par
 défaut ; au-delà, les lignes sont purgées à l'ouverture de session, et
-la purge est elle-même journalisée. `0` désactive la purge.
+la purge est elle-même journalisée. `0` désactive la purge. Quand
+plusieurs postes partagent la base, la durée la plus longue demandée
+par l'un d'eux s'applique.
 
 # Fenêtre d'audit
 

@@ -44465,20 +44465,26 @@ impl Db {
     ///
     /// Un dossier que le registre des stupéfiants cite ne se supprime
     /// pas : le registre se garde dix ans et doit ramener au patient.
-    pub fn delete_patient(&self, shown: &Patient) -> Result<bool, String> {
-        let id = shown.id;
-        let cited: i64 = self
-            .stups
+    /// Le registre des stupéfiants cite-t-il ce dossier ?
+    pub fn register_cites(&self, patient_id: i64) -> bool {
+        self.stups
             .query_row(
                 "SELECT COUNT(*) FROM stup_moves WHERE patient_id = ?1",
-                [id],
-                |r| r.get(0),
+                [patient_id],
+                |r| r.get::<_, i64>(0),
             )
-            .unwrap_or(0);
-        if cited > 0 {
+            .is_ok_and(|n| n > 0)
+    }
+
+    pub fn delete_patient(&self, shown: &Patient) -> Result<bool, String> {
+        let id = shown.id;
+        // Vérifié **une fois la base prise en écriture** : entre une
+        // lecture faite avant et la suppression, un autre poste de la
+        // même base pouvait délivrer à ce dossier.
+        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
+        if self.register_cites(id) {
             return Err(crate::strings::tr("patient_delete_in_register").to_owned());
         }
-        let tx = write_tx(&self.conn).map_err(|e| e.to_string())?;
         let same: i64 = tx
             .query_row(
                 "SELECT COUNT(*) FROM patients
@@ -44513,6 +44519,13 @@ impl Db {
         ] {
             tx.execute(sql, [id]).map_err(|e| e.to_string())?;
         }
+        // Le dossier épinglé garde le nom du patient dans son libellé, et
+        // l'épingle voyage : elle restait, invisible, sur chaque poste.
+        tx.execute(
+            "DELETE FROM favorites WHERE kind = 'patient' AND target = ?1",
+            [id.to_string()],
+        )
+        .map_err(|e| e.to_string())?;
         tx.execute(
             "INSERT INTO settings (key, value) VALUES ('patient_id_high', ?1)
              ON CONFLICT(key) DO UPDATE SET value = CAST(MAX(CAST(value AS INTEGER), ?1) AS TEXT)",
@@ -56091,6 +56104,26 @@ impl Db {
             }
             let mut outcome = decide(op, t.append_only, local.as_ref());
             crate::replica::merge_officine(op, local.as_ref(), &mut outcome);
+            // **Un dossier que le registre de ce poste cite ne part pas**,
+            // même quand la suppression vient d'ailleurs : l'autre poste
+            // n'a vérifié que son propre registre, et une délivrance faite
+            // ici avant que la suppression arrive renvoyait à un dossier
+            // que plus personne n'avait. Le registre se garde dix ans et
+            // doit ramener à la personne.
+            if op.table == "patients"
+                && op.kind == Kind::Delete
+                && matches!(outcome.action, Action::Delete)
+                && op
+                    .key
+                    .get("id")
+                    .and_then(serde_json::Value::as_i64)
+                    .is_some_and(|id| self.register_cites(id))
+            {
+                outcome = crate::replica::Outcome {
+                    action: Action::Refused,
+                    conflicts: Vec::new(),
+                };
+            }
             let kind = match (&outcome.action, op.kind) {
                 (Action::Refused, _) => "REFUS",
                 (_, Kind::Update | Kind::Patch) if local.is_none() => "ABSENT",
@@ -64590,8 +64623,21 @@ mod tests {
             !db.delete_patient(&shown).unwrap(),
             "pas celui qu'on voyait"
         );
+        // Épinglé : l'épingle porte le nom, et part avec le dossier.
+        db.set_favorite(
+            "CL",
+            crate::favorites::Kind::Patient,
+            &pid.to_string(),
+            "Claire Martine",
+            true,
+        )
+        .unwrap();
         let shown = db.patients().unwrap()[0].clone();
         assert!(db.delete_patient(&shown).unwrap());
+        assert!(
+            db.favorites("CL").unwrap().is_empty(),
+            "l'épingle est partie"
+        );
         let next = db.add_patient("Moreau", "Lucie", "1980-02-02").unwrap();
         assert!(next > pid, "le numéro {pid} ne resert pas ({next})");
         assert!(db.vaccinations(next).unwrap().is_empty());
@@ -66933,5 +66979,64 @@ mod tests {
         let all = db.accesses_since("", "").unwrap();
         assert_eq!(all.len(), 2);
         assert_eq!(all[1].file, 0);
+    }
+
+    /// **Une suppression venue d'un autre poste ne retire pas un dossier
+    /// que le registre d'ici cite** : l'autre poste n'a vérifié que le
+    /// sien.
+    #[test]
+    fn a_received_deletion_keeps_a_file_the_register_cites() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-delreg-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let db = Db::open(&dir.join("delreg.db"), "secret").unwrap();
+        let pid = db.add_patient("Dupont", "Jean", "1958-07-03").unwrap();
+        let free = db.add_patient("Libre", "Anne", "1960-01-01").unwrap();
+        let stup = db
+            .add_stupefiant(0, "Actiskenan 10 mg", "gélule", 0.0)
+            .unwrap();
+        let line = |kind: &str, qty: f64| StupMove {
+            id: 0,
+            stup_id: stup,
+            kind: kind.to_owned(),
+            happened_on: "2026-02-10".to_owned(),
+            quantity: qty,
+            ordo_year: 0,
+            ordo_no: 0,
+            patient_id: pid,
+            prescriber: "Dr Martin".to_owned(),
+            supplier: String::new(),
+            reference: String::new(),
+            expected: 0.0,
+            operator: "YS".to_owned(),
+            remark: String::new(),
+            cancels: 0,
+            lot: String::new(),
+            expiry: String::new(),
+        };
+        db.add_stup_moves(&[line("ENTREE", 28.0)]).unwrap();
+        db.add_stup_moves(&[line("SORTIE", 4.0)]).unwrap();
+        assert!(db.register_cites(pid));
+        let delete = |id: i64| crate::replica::Op {
+            file: crate::replica::File::Main,
+            table: "patients".to_owned(),
+            kind: crate::replica::Kind::Delete,
+            key: serde_json::json!({ "id": id }).as_object().unwrap().clone(),
+            old: serde_json::Map::new(),
+            new: serde_json::Map::new(),
+        };
+        db.apply_gated("r1", "ailleurs", "2026-02-11", &[delete(pid)], None)
+            .unwrap();
+        assert!(
+            db.patients().unwrap().iter().any(|p| p.id == pid),
+            "cité : gardé"
+        );
+        db.apply_gated("r2", "ailleurs", "2026-02-11", &[delete(free)], None)
+            .unwrap();
+        assert!(
+            !db.patients().unwrap().iter().any(|p| p.id == free),
+            "libre : parti"
+        );
     }
 }

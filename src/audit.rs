@@ -80,6 +80,11 @@ pub enum Act {
     /// après confirmation — la seule façon dont un patient quitte
     /// l'officine par le réseau.
     Transmis,
+    /// Le dossier a été supprimé. Sans cette ligne, un dossier
+    /// disparaissait sans que personne puisse dire qui l'avait effacé ni
+    /// quand, et les lignes « ouvert » qui le citent parlaient d'un
+    /// dossier évanoui.
+    Supprime,
     /// Un acte qu'une version postérieure a écrit (le journal voyage entre
     /// les postes) : compté à part, jamais pris pour un dossier ouvert.
     /// Jamais écrit par celle-ci, et hors de [`Act::ALL`].
@@ -87,12 +92,13 @@ pub enum Act {
 }
 
 impl Act {
-    pub const ALL: [Act; 5] = [
+    pub const ALL: [Act; 6] = [
         Act::Ouvert,
         Act::Exporte,
         Act::Purge,
         Act::Console,
         Act::Transmis,
+        Act::Supprime,
     ];
 
     /// Ce qui est écrit dans la base. Ne change jamais.
@@ -103,6 +109,7 @@ impl Act {
             Act::Purge => "purge",
             Act::Console => "console",
             Act::Transmis => "transmis",
+            Act::Supprime => "supprime",
             Act::Autre => "autre",
         }
     }
@@ -121,6 +128,7 @@ impl Act {
             Act::Purge => tr("audit_act_purge"),
             Act::Console => tr("audit_act_console"),
             Act::Transmis => tr("audit_act_transmis"),
+            Act::Supprime => tr("audit_act_supprime"),
             Act::Autre => tr("audit_act_autre"),
         }
     }
@@ -664,7 +672,8 @@ mod tests {
                 (Act::Exporte, 1),
                 (Act::Purge, 1),
                 (Act::Console, 0),
-                (Act::Transmis, 0)
+                (Act::Transmis, 0),
+                (Act::Supprime, 0)
             ]
         );
         // Le plus actif d'abord, puis par nom.
@@ -879,7 +888,7 @@ mod tests {
         }
         assert_eq!(
             Act::ALL.map(Act::key),
-            ["ouvert", "exporte", "purge", "console", "transmis"]
+            ["ouvert", "exporte", "purge", "console", "transmis", "supprime"]
         );
         assert_eq!(Act::from_key("ce-que-fera-la-suite"), None);
         assert!(!Act::ALL.contains(&Act::Autre));

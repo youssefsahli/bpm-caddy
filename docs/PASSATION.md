@@ -53,6 +53,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- suppression d'un dossier entre postes : une ligne (biologie, dose,
+  note…) écrite ailleurs avant que la suppression arrive est rangée
+  quand même, orpheline ; une modification du patient arrivée après la
+  suppression garde la ligne entière dans une question « ABSENT » ; et
+  le journal des postes garde tout ce qui a voyagé — supprimer n'est
+  pas effacer (à dire pour une demande d'effacement RGPD) ; les
+  vaccinations et actes facturés partent avec le dossier (obligation de
+  conservation à vérifier) ;
 - réglages par poste qui devraient être de l'officine : facturation,
   règles (dont `enforcement = Block`), mentions et forfaits de location
   vivent dans `config.toml` — deux postes peuvent facturer ou bloquer un

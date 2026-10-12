@@ -18,6 +18,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `config.toml` does not read; a read error is said instead of an empty
   log; the period ends today, and a line with an unreadable file number
   no longer hides the whole log.
+- Patient deletion: a deletion received from another post no longer
+  removes a file this post's narcotics register cites (the other post
+  had only checked its own register); the local check is made once the
+  base is held for writing; a pinned file's favourite, which carried the
+  patient's name to every post, goes with the file; the deletion is
+  written in the access log (« Dossiers supprimés »); plain copies of the
+  file's scanned pieces left in the temporary folder are removed.
 - Options: after a save merged with another post's officine change, this
   post keeps the merged version (closing the window put back the other
   post's older one, without this post's change, on every printed

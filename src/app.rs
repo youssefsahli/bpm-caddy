@@ -31473,6 +31473,15 @@ impl App {
             session.confirm_delete = true;
             return;
         }
+        // Les pièces ouvertes de ce dossier ont laissé une copie en clair
+        // dans le dossier temporaire : elle part avec lui.
+        let pieces: Vec<i64> = session
+            .db
+            .scans("PATIENT", patient.id)
+            .unwrap_or_default()
+            .iter()
+            .map(|s| s.id)
+            .collect();
         match session.db.delete_patient(patient) {
             // Un autre poste a corrigé ce dossier depuis qu'il est
             // affiché : on ne supprime pas ce qu'on n'a pas vu.
@@ -31485,6 +31494,22 @@ impl App {
                 }
             }
             Ok(true) => {
+                // Au journal des accès : qui a supprimé, et quand.
+                session
+                    .db
+                    .log_access(&session.operator, crate::audit::Act::Supprime, patient.id);
+                if let Ok(dir) = std::fs::read_dir(std::env::temp_dir()) {
+                    let prefixes: Vec<String> = pieces
+                        .iter()
+                        .map(|id| format!("bpm-caddy-piece-{id}."))
+                        .collect();
+                    for entry in dir.flatten() {
+                        let name = entry.file_name().to_string_lossy().into_owned();
+                        if prefixes.iter().any(|p| name.starts_with(p.as_str())) {
+                            let _ = std::fs::remove_file(entry.path());
+                        }
+                    }
+                }
                 session.confirm_delete = false;
                 session.edit_patient = None;
                 session.viewing = None;
