@@ -37,9 +37,11 @@ solde — relue, corrigée, relue) a passé son smoke dans les quatre formes
 officines du réseau partagent ; dispositifs, cascades, listes et phrases
 imprimées voyagent, les deux dernières sur demande et jamais appliquées
 d'elles-mêmes — chaque commit relu, quatre relectures) a passé son smoke
-dans les quatre formes (810cb49) : **c'est elle à publier** —
-`git tag v0.413.0 810cb49 && git push origin v0.413.0` (à défaut, la
-0.412.0 : `git tag v0.412.0 bdceec1`) ; les étiquettes intermédiaires n'ont jamais été
+dans les quatre formes (810cb49) ; la 0.414.0 (dispositifs, listes et
+cascades renommés suivis sous une identité figée, unique — relue,
+corrigée) a passé son smoke dans les quatre formes (db9d2da) : **c'est
+elle à publier** — `git tag v0.414.0 db9d2da && git push origin
+v0.414.0` (à défaut, la 0.413.0 : `git tag v0.413.0 810cb49`) ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
