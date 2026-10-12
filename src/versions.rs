@@ -103,6 +103,73 @@ pub const TROD_FIELDS: [&str; 8] = [
 /// reconnaît d'une officine à l'autre ; son rang reste celui de chacune.
 pub const VACCIN_FIELDS: [&str; 3] = ["label", "code", "schedule"];
 
+/// Les champs d'un dispositif que le réseau partage. Son nom est ce qui
+/// le reconnaît d'une officine à l'autre, comme une préparation.
+pub const DISPOSITIF_FIELDS: [&str; 9] = [
+    "family",
+    "indication",
+    "sizes",
+    "application",
+    "renewal",
+    "lpp",
+    "caution",
+    "tags",
+    "sources",
+];
+
+/// Les champs d'une liste de contrôle : son sujet, et **ses lignes
+/// entières**, sous une forme canonique ([`items_json`]) — comme l'arbre
+/// d'un protocole : une ligne déplacée ou ajoutée est une version de la
+/// liste, et elle ne s'applique que sur la liste qu'elle remplaçait.
+pub const LISTE_FIELDS: [&str; 2] = ["subject", "lignes"];
+
+/// Le seul champ d'une cascade : son texte, d'où tout le reste se lit —
+/// son titre, qui la reconnaît, compris.
+pub const CASCADE_FIELDS: [&str; 1] = ["texte"];
+
+/// Les lignes d'une liste de contrôle sous leur forme canonique : texte
+/// et note, dans l'ordre. Les mêmes lignes donnent les mêmes octets.
+pub fn items_json(items: &[(String, String)]) -> String {
+    serde_json::Value::Array(
+        items
+            .iter()
+            .map(|(t, n)| serde_json::json!({ "t": t, "n": n }))
+            .collect(),
+    )
+    .to_string()
+}
+
+/// L'inverse ; `None` pour ce qui ne se lit pas comme des lignes.
+pub fn items_of(json: &str) -> Option<Vec<(String, String)>> {
+    let v: serde_json::Value = serde_json::from_str(json).ok()?;
+    v.as_array()?
+        .iter()
+        .map(|i| {
+            Some((
+                i.get("t")?.as_str()?.to_owned(),
+                i.get("n").and_then(|n| n.as_str()).unwrap_or("").to_owned(),
+            ))
+        })
+        .collect()
+}
+
+/// Les lignes d'une liste, à lire : une par ligne, la note après un
+/// tiret.
+pub fn items_text(json: &str) -> String {
+    items_of(json)
+        .unwrap_or_default()
+        .iter()
+        .map(|(t, n)| {
+            if n.trim().is_empty() {
+                t.clone()
+            } else {
+                format!("{t} — {n}")
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
 /// Le nom sous lequel une ligne de TROD voyage : son protocole et son
 /// nom — « Amoxicilline 1 g » n'est pas la même ligne dans l'angine et
 /// dans une autre indication.
@@ -131,6 +198,12 @@ pub enum Kind {
     Trod,
     /// Un vaccin du catalogue de l'officine.
     Vaccin,
+    /// Un dispositif médical.
+    Dispositif,
+    /// Une liste de contrôle, ses lignes comprises.
+    Liste,
+    /// Une cascade de récepteurs, par son texte.
+    Cascade,
 }
 
 impl Kind {
@@ -141,6 +214,9 @@ impl Kind {
             Kind::Protocole => "protocole",
             Kind::Trod => "trod",
             Kind::Vaccin => "vaccin",
+            Kind::Dispositif => "dispositif",
+            Kind::Liste => "liste",
+            Kind::Cascade => "cascade",
         }
     }
 
@@ -150,8 +226,19 @@ impl Kind {
             "protocole" => Kind::Protocole,
             "trod" => Kind::Trod,
             "vaccin" => Kind::Vaccin,
+            "dispositif" => Kind::Dispositif,
+            "liste" => Kind::Liste,
+            "cascade" => Kind::Cascade,
             _ => Kind::Fiche,
         }
+    }
+
+    /// Une liste de contrôle porte la façon de faire de l'officine — un
+    /// seuil, un numéro, un endroit : elle ne part que si l'officine le
+    /// demande (`NetShares::listes`), quand le reste part avec les
+    /// versions.
+    pub fn is_private(self) -> bool {
+        self == Kind::Liste
     }
 
     /// Le type de charge qui voyage. Une fiche garde `version`, que les
@@ -164,6 +251,9 @@ impl Kind {
             Kind::Protocole => "protocole",
             Kind::Trod => "trod",
             Kind::Vaccin => "vaccin",
+            Kind::Dispositif => "dispositif",
+            Kind::Liste => "liste",
+            Kind::Cascade => "cascade",
         }
     }
 
@@ -174,6 +264,9 @@ impl Kind {
             "protocole" => Some(Kind::Protocole),
             "trod" => Some(Kind::Trod),
             "vaccin" => Some(Kind::Vaccin),
+            "dispositif" => Some(Kind::Dispositif),
+            "liste" => Some(Kind::Liste),
+            "cascade" => Some(Kind::Cascade),
             _ => None,
         }
     }
@@ -186,6 +279,9 @@ impl Kind {
             Kind::Protocole => &PROTOCOL_FIELDS,
             Kind::Trod => &TROD_FIELDS,
             Kind::Vaccin => &VACCIN_FIELDS,
+            Kind::Dispositif => &DISPOSITIF_FIELDS,
+            Kind::Liste => &LISTE_FIELDS,
+            Kind::Cascade => &CASCADE_FIELDS,
         }
     }
 }
@@ -356,6 +452,10 @@ pub fn decode(bytes: &[u8]) -> Option<Edit> {
     }
     // An arbre that does not read as one never enters.
     if field == "arbre" && !text("value").is_empty() && tree_nodes(&text("value")).is_none() {
+        return None;
+    }
+    // Des lignes qui ne se lisent pas comme des lignes non plus.
+    if field == "lignes" && !text("value").is_empty() && items_of(&text("value")).is_none() {
         return None;
     }
     let uid = text("uid");

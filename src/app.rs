@@ -10706,6 +10706,12 @@ impl Session {
                     edit.lines = None;
                 }
             }
+            Kind::Dispositif => self.reload_dispositifs(),
+            Kind::Liste => {
+                self.reload_checklists();
+                self.reload_checklist_items();
+            }
+            Kind::Cascade => self.reload_cascades(),
         }
     }
 
@@ -13756,6 +13762,15 @@ fn network_feed(
                                 crate::versions::Kind::Trod => trf("conn_feed_trod", &e.card_name),
                                 crate::versions::Kind::Vaccin => {
                                     trf("conn_feed_vaccin", &e.card_name)
+                                }
+                                crate::versions::Kind::Dispositif => {
+                                    trf("conn_feed_dispositif", &e.card_name)
+                                }
+                                crate::versions::Kind::Liste => {
+                                    trf("conn_feed_liste", &e.card_name)
+                                }
+                                crate::versions::Kind::Cascade => {
+                                    trf("conn_feed_cascade", &e.card_name)
                                 }
                             },
                             &match e.kind {
@@ -46436,6 +46451,7 @@ impl App {
         };
         let mut open: Option<i64> = None;
         let mut make = false;
+        let mut online = false;
         let mut drop: Option<(i64, String)> = None;
         motif::panel(ui, cols[0], Some(tr("listes_title")), |ui| {
             let inner = ui.max_rect();
@@ -46462,6 +46478,12 @@ impl App {
                             {
                                 make = true;
                             }
+                            if motif::button(ui, tr("online_open"))
+                                .on_hover_text(tr("online_open_tooltip"))
+                                .clicked()
+                            {
+                                online = true;
+                            }
                         });
                         ui.add_space(6.0);
                         if session.checklists.is_empty() {
@@ -46482,6 +46504,9 @@ impl App {
                     });
             });
         });
+        if online {
+            session.open_online(crate::versions::Kind::Liste, "");
+        }
         if make {
             let title = session.checklist_title.trim().to_owned();
             match session.db.add_checklist(&title, "") {
@@ -46846,6 +46871,7 @@ impl App {
             // Le filtre du choix : cinquante-neuf titres ne se parcourent
             // pas dans une liste déroulante.
             Self::field_width(ui, std::iter::once(tr("cascades_filter_hint"))).min(width * 0.7),
+            Self::button_width(ui, tr("online_open")),
         ];
         if let Some(read) = &session.cascade_read {
             if session.cascade_edit.is_none() {
@@ -46894,6 +46920,7 @@ impl App {
     fn cascades_strip(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
         let mut open: Option<i64> = None;
         let mut make = false;
+        let mut online = false;
         let mut flip: Option<usize> = None;
         let mut hover: Option<usize> = None;
         let read = session.cascade_read.clone();
@@ -46952,6 +46979,12 @@ impl App {
                                 .hint_text(motif::hint(tr("cascades_filter_hint"))),
                         )
                         .on_hover_text(tr("cascades_filter_tooltip"));
+                        if motif::button(ui, tr("online_open"))
+                            .on_hover_text(tr("online_open_tooltip"))
+                            .clicked()
+                        {
+                            online = true;
+                        }
                         if let Some(read) = read.as_ref() {
                             let stories = if session.cascade_edit.is_none() {
                                 read.parsed.scenarios.as_slice()
@@ -46989,6 +47022,9 @@ impl App {
                     });
                 });
         });
+        if online {
+            session.open_online(crate::versions::Kind::Cascade, "");
+        }
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
         if give_file {
             Self::cascade_give_file(session, &in_file, now);
@@ -47162,6 +47198,7 @@ impl App {
     fn cascades_side(ui: &mut egui::Ui, session: &mut Session, rect: egui::Rect, now: f64) {
         let mut open: Option<i64> = None;
         let mut make = false;
+        let mut online = false;
         let mut flip: Option<usize> = None;
         let mut hover: Option<usize> = None;
         let read = session.cascade_read.clone();
@@ -47191,12 +47228,47 @@ impl App {
             // Le bouton, puis le filtre sur toute la largeur : côte à côte
             // dans une colonne de trente caractères, le champ ne montrait
             // que « Filtrer : ».
-            let bands = motif::split_rows(inner, &[row_h, row_h, list_cap, 0.0], 6.0);
-            motif::inside(ui, bands[0], |ui| {
-                if motif::button(ui, tr("cascades_new")).clicked() {
-                    make = true;
-                }
+            // « En ligne… » à côté de « Nouvelle » quand les deux
+            // tiennent, sur sa rangée sinon : mesurés, pas devinés.
+            let side_by_side = Self::button_width(ui, tr("cascades_new"))
+                + ui.spacing().item_spacing.x
+                + Self::button_width(ui, tr("online_open"))
+                <= inner.width();
+            let heads: &[f32] = if side_by_side {
+                &[row_h, row_h, list_cap, 0.0]
+            } else {
+                &[row_h, row_h, row_h, list_cap, 0.0]
+            };
+            let carved = motif::split_rows(inner, heads, 6.0);
+            let (buttons, bands): (Vec<egui::Rect>, Vec<egui::Rect>) = if side_by_side {
+                (vec![carved[0]], carved[0..].to_vec())
+            } else {
+                (vec![carved[0], carved[1]], carved[1..].to_vec())
+            };
+            motif::inside(ui, buttons[0], |ui| {
+                ui.horizontal(|ui| {
+                    if motif::button(ui, tr("cascades_new")).clicked() {
+                        make = true;
+                    }
+                    if side_by_side
+                        && motif::button(ui, tr("online_open"))
+                            .on_hover_text(tr("online_open_tooltip"))
+                            .clicked()
+                    {
+                        online = true;
+                    }
+                });
             });
+            if let Some(row) = buttons.get(1) {
+                motif::inside(ui, *row, |ui| {
+                    if motif::button(ui, tr("online_open"))
+                        .on_hover_text(tr("online_open_tooltip"))
+                        .clicked()
+                    {
+                        online = true;
+                    }
+                });
+            }
             motif::inside(ui, bands[1], |ui| {
                 let w = ui.available_width();
                 motif::field(
@@ -47315,6 +47387,9 @@ impl App {
                     });
             });
         });
+        if online {
+            session.open_online(crate::versions::Kind::Cascade, "");
+        }
         Self::cascades_list_gestures(session, open, make, flip, hover, t, now);
         if give_file {
             Self::cascade_give_file(session, &in_file, now);
@@ -59231,6 +59306,7 @@ impl App {
             [
                 Self::heading_width(ui, tr("dispo_title")),
                 Self::button_width(ui, tr("patient_back")),
+                Self::button_width(ui, tr("online_open")),
                 Self::button_width(ui, tr("dash_print")),
                 // Le nom et le bouton qui le crée, **un seul article** : ils
                 // se dessinent d'un seul tenant.
@@ -59254,6 +59330,7 @@ impl App {
                     session.show_dispositifs = false;
                     session.dispo_edit = None;
                 }
+                Self::online_button(ui, session, crate::versions::Kind::Dispositif);
                 if motif::button(ui, tr("dash_print"))
                     .on_hover_text(tr("dispo_print_all_tooltip"))
                     .clicked()
@@ -62073,8 +62150,6 @@ impl App {
         }
     }
 
-    /// Le nom d'un champ de préparation ou de protocole, pour
-    /// l'historique.
     /// The « En ligne » button of a content tab: one gesture to what the
     /// network's officines hold of this kind.
     fn online_button(ui: &mut egui::Ui, session: &mut Session, kind: crate::versions::Kind) {
@@ -62095,6 +62170,9 @@ impl App {
             Kind::Protocole => tr("online_kind_protocole"),
             Kind::Trod => tr("online_kind_trod"),
             Kind::Vaccin => tr("online_kind_vaccin"),
+            Kind::Dispositif => tr("online_kind_dispositif"),
+            Kind::Liste => tr("online_kind_liste"),
+            Kind::Cascade => tr("online_kind_cascade"),
         }
     }
 
@@ -62203,10 +62281,10 @@ impl App {
                                         } else {
                                             Self::entry_field_label(f)
                                         };
-                                        let v = if f == "arbre" {
-                                            crate::versions::tree_text(v)
-                                        } else {
-                                            v.clone()
+                                        let v = match f.as_str() {
+                                            "arbre" => crate::versions::tree_text(v),
+                                            "lignes" => crate::versions::items_text(v),
+                                            _ => v.clone(),
                                         };
                                         let v: String = v.chars().take(160).collect();
                                         format!("{label} : {v}")
@@ -62284,7 +62362,7 @@ impl App {
         if let Some(i) = compare {
             let name = online.rows[i].0.name.clone();
             if kind == crate::versions::Kind::Fiche {
-                let k = crate::versions::key(&name);
+                let k = online.rows[i].0.card.clone();
                 session.versions_open = session
                     .drugs
                     .iter()
@@ -62304,6 +62382,8 @@ impl App {
         }
     }
 
+    /// Le nom d'un champ de préparation ou de protocole, pour
+    /// l'historique.
     fn entry_field_label(field: &str) -> &'static str {
         match field {
             "form" => tr("codex_form_label"),
@@ -62328,6 +62408,14 @@ impl App {
             "code" => tr("ver_f_code"),
             "schedule" => tr("ver_f_schedule"),
             "pregnancy" => tr("trod_edit_pregnancy"),
+            // Un dispositif, sous les mots de sa fiche.
+            "family" => tr("dispo_family"),
+            "sizes" => tr("dispo_sizes"),
+            "application" => tr("dispo_application"),
+            "renewal" => tr("dispo_renewal"),
+            "lpp" => tr("dispo_lpp"),
+            "lignes" => tr("ver_f_lignes"),
+            "texte" => tr("ver_f_texte"),
             _ => tr("ver_f_other"),
         }
     }
@@ -62350,10 +62438,12 @@ impl App {
         };
         let local = |f: &str| fields.iter().find(|(k, _)| *k == f).map(|(_, v)| v.clone());
         let shown = |field: &str, v: &str| -> String {
-            if v.trim().is_empty() || (field == "arbre" && v == "[]") {
+            if v.trim().is_empty() || ((field == "arbre" || field == "lignes") && v == "[]") {
                 tr("ver_empty").to_owned()
             } else if field == "arbre" {
                 crate::versions::tree_text(v)
+            } else if field == "lignes" {
+                crate::versions::items_text(v)
             } else {
                 v.to_owned()
             }
@@ -62561,6 +62651,12 @@ impl App {
                     }
                 }
                 crate::versions::Kind::Vaccin => session.reload_vacc_catalogue(),
+                crate::versions::Kind::Dispositif => session.reload_dispositifs(),
+                crate::versions::Kind::Liste => {
+                    session.reload_checklists();
+                    session.reload_checklist_items();
+                }
+                crate::versions::Kind::Cascade => session.reload_cascades(),
                 crate::versions::Kind::Fiche => {}
             }
             session.conn_dirty = true;
@@ -71784,6 +71880,9 @@ impl App {
                                 motif::checkbox(ui, &mut sh.versions, tr("net_share_versions"))
                                     .changed();
                             moved |= motif::checkbox(ui, &mut sh.pk, tr("net_share_pk")).changed();
+                            moved |= motif::checkbox(ui, &mut sh.listes, tr("net_share_listes"))
+                                .on_hover_text(tr("net_share_listes_tooltip"))
+                                .changed();
                             if moved {
                                 save_shares = Some(sh);
                             }

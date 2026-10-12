@@ -21,6 +21,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   never bring back; « Comparer… » opens the history of one that
   differs. A drug search with no match also offers « Chercher … en
   ligne ».
+- **Dispositifs, checklists and cascades now travel between officines**
+  and have their « En ligne… » button too. Checklists can carry an
+  officine's codes or internal steps, so they are only shared when the
+  new « listes de contrôle » box is ticked in the network window (off
+  by default); a checklist's lines travel as a whole and apply only over
+  the lines they replace. A received cascade is created from its text;
+  a shipped cascade removed here is not brought back by a received
+  version.
+
+### Fixed
+- Taking back a shipped entry removed here (a vaccine, a TROD line, a
+  preparation, a protocol, a drug card) restores it whole — shipped
+  values first, the network's latest versions over them — instead of
+  with only the fields another officine had touched (a TROD line came
+  back without its posologies).
+- A drug card renamed on the network is offered under its new name; its
+  old name no longer showed as « absente ici », and taking it no longer
+  creates a duplicate card.
 
 ## [0.412.0] - 2026-10-12
 

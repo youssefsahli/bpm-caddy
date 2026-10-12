@@ -79,6 +79,61 @@ pub fn offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
             None => o.fields.push((e.field.clone(), e.value.clone())),
         }
     }
+    // **Une fiche renommée se suit jusqu'à son nouveau nom.** Ses
+    // versions d'avant portent l'ancienne clé ; laissées là, elles
+    // faisaient une offre « absente ici » sous un nom que plus personne
+    // ne porte, et la prendre doublait la fiche. Fondue dans l'offre du
+    // nouveau nom, celle-ci garde ses champs les plus récents.
+    if kind == Kind::Fiche {
+        let mut i = 0;
+        while i < out.len() {
+            let target = out[i]
+                .field("name")
+                .map(str::trim)
+                .filter(|n| !n.is_empty() && key(n) != out[i].card)
+                .map(str::to_owned);
+            let Some(name) = target else {
+                i += 1;
+                continue;
+            };
+            let old = out.remove(i);
+            let k = key(&name);
+            match out.iter().position(|o| o.card == k) {
+                Some(j) => {
+                    let o = &mut out[j];
+                    for f in old.from {
+                        if !o.from.contains(&f) {
+                            o.from.push(f);
+                        }
+                    }
+                    if old.day > o.day {
+                        o.day = old.day;
+                    }
+                    for (f, v) in old.fields {
+                        if f != "name" && o.field(&f).is_none() {
+                            o.fields.push((f, v));
+                        }
+                    }
+                    o.name.clone_from(&name);
+                    // A merged offer may now be renamed again: read it anew.
+                    i = 0;
+                }
+                None => {
+                    out.push(Offer {
+                        card: k,
+                        name,
+                        fields: old
+                            .fields
+                            .into_iter()
+                            .filter(|(f, _)| f != "name")
+                            .collect(),
+                        ..old
+                    });
+                    i = 0;
+                }
+            }
+        }
+    }
     out.retain(|o| !o.from.is_empty() && !o.name.is_empty());
     // Les champs dans l'ordre de la sorte, pas dans celui du journal : une
     // adoption les écrit dans cet ordre, et l'écran les lit ainsi.
@@ -115,7 +170,10 @@ impl Offer {
             Kind::Codex => &["indication", "form", "tags"][..],
             Kind::Protocole => &["subject"][..],
             Kind::Trod => &["situation"][..],
-            Kind::Vaccin => &["code"][..],
+            Kind::Vaccin => &["label", "code"][..],
+            Kind::Dispositif => &["family", "indication", "tags"][..],
+            Kind::Liste => &["subject"][..],
+            Kind::Cascade => &["texte"][..],
         };
         described
             .iter()
@@ -239,6 +297,50 @@ mod tests {
         ];
         let o = offers(&edits, Kind::Codex);
         assert_eq!(o[0].fields.len(), 1);
+    }
+
+    /// Une fiche renommée ne laisse pas d'offre sous son ancien nom : elle
+    /// se lit sous le nouveau, avec ses champs d'avant.
+    #[test]
+    fn a_renamed_card_is_offered_under_its_new_name() {
+        let edits = [
+            edit(
+                Kind::Fiche,
+                "Molécule A",
+                "dci",
+                "a-ine",
+                "Port",
+                "2026-09-01",
+            ),
+            edit(
+                Kind::Fiche,
+                "Molécule A",
+                "name",
+                "Molécule B",
+                "Port",
+                "2026-09-02",
+            ),
+            edit(
+                Kind::Fiche,
+                "Molécule B",
+                "class",
+                "classe",
+                "Lac",
+                "2026-09-03",
+            ),
+        ];
+        let o = offers(&edits, Kind::Fiche);
+        assert_eq!(o.len(), 1, "{o:?}");
+        assert_eq!(o[0].name, "Molécule B");
+        assert_eq!(o[0].card, key("Molécule B"));
+        assert_eq!(o[0].field("dci"), Some("a-ine"));
+        assert_eq!(o[0].field("class"), Some("classe"));
+        assert_eq!(o[0].from, vec!["Lac", "Port"]);
+        assert_eq!(o[0].day, "2026-09-03");
+        // Renommée sans version après : l'offre porte le nouveau nom.
+        let alone = offers(&edits[..2], Kind::Fiche);
+        assert_eq!(alone.len(), 1);
+        assert_eq!(alone[0].name, "Molécule B");
     }
 
     #[test]

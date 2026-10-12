@@ -565,6 +565,22 @@ entrée livrée absente chez celle qui reçoit (retirée par elle) n'est pas
 recréée ; deux entrées de même identité ne sont versionnées qu'une fois. Une ligne reçue inconnue est créée dans un protocole que
 l'application connaît, jamais dans un protocole inventé.
 
+Depuis « En ligne » (0.413), trois sortes de plus : **dispositifs**
+(`Kind::Dispositif`, `DISPOSITIF_FIELDS`, par leur nom), **listes de
+contrôle** (`Kind::Liste` : `subject` et `lignes`, les lignes entières
+sous forme canonique `versions::items_json`, appliquées seulement sur la
+liste qu'elles remplacent, comme un arbre de protocole) et **cascades**
+(`Kind::Cascade` : `texte`, reconnues par le titre qu'il porte ; une
+cascade reçue se crée par son texte, et une cascade livrée retirée ici
+ne revient pas d'une version reçue). Une liste de contrôle porte la
+façon de faire de l'officine : ses versions ne partent que si
+`NetShares::listes` est coché (non par défaut, colonne `share_listes`),
+et restent sinon en attente, non marquées parties. « En ligne »
+(`src/enligne.rs`) lit le journal reçu en offres par sorte ;
+`Db::adopt_offer` prend une offre d'un geste — une entrée livrée retirée
+ici revient alors entière (`entry_origin`), la dernière version
+par-dessus, et une fiche renommée s'offre sous son nouveau nom.
+
 Réseau d'officines (`src/network.rs`) : chaque conversation directe
 est notée sur la ligne de l'officine (`net_peers.last_try`, `last_ok`,
 `last_error` — la raison en français, jamais l'erreur brute du lien), et

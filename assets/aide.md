@@ -1209,13 +1209,15 @@ donnée patient.
 # En ligne
 
 « En ligne… » — dans la liste des fiches, le codex, les protocoles, les
-lignes de TROD et le catalogue des vaccins — liste ce que les officines
+lignes de TROD, le catalogue des vaccins, les dispositifs, les listes de
+contrôle et les cascades — liste ce que les officines
 du réseau ont écrit de cette sorte, reçu à la dernière synchronisation :
 nom, officines, date, et ce que l'entrée est ici (« absente »,
 « identique », « différente »). La recherche porte sur le nom et ce qui
 décrit l'entrée (DCI, indication, sujet). « Prendre » ajoute une entrée
 absente à la base, chaque champ à sa dernière version — y compris une
-entrée qu'on avait retirée ; « Comparer… » ouvre l'historique d'une
+entrée qu'on avait retirée, qui revient alors entière ; une fiche
+renommée s'offre sous son nouveau nom ; « Comparer… » ouvre l'historique d'une
 entrée qui diffère, pour adopter ou garder. Une fiche introuvable dans
 la recherche propose aussi « Chercher … en ligne ». Rien n'est demandé
 aux autres officines pendant la recherche : la liste se lit dans la base.
@@ -1252,7 +1254,10 @@ Les officines d'un groupement peuvent partager ce journal : « Réseau
 d'officines… », dans la vue Ruptures. **Sont partagés** les ruptures et
 les substitutions, les valeurs de pharmacocinétique sourcées, et les
 versions des fiches, des préparations, des protocoles, des lignes de
-TROD et des vaccins du catalogue — **jamais un patient**, un dossier, le
+TROD, des vaccins du catalogue, des dispositifs et des cascades — et les
+listes de contrôle si l'officine coche « listes de contrôle » (non par
+défaut : une liste porte parfois un code ou un numéro) — **jamais un
+patient**, un dossier, le
 registre ou la caisse —, chiffrés et signés, sous une clé propre au
 réseau.
 

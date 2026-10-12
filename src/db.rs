@@ -335,6 +335,7 @@ CREATE TABLE IF NOT EXISTS net_networks (
     share_ruptures  INTEGER NOT NULL DEFAULT 1,
     share_versions  INTEGER NOT NULL DEFAULT 1,
     share_pk        INTEGER NOT NULL DEFAULT 1,
+    share_listes    INTEGER NOT NULL DEFAULT 0,
     created         TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS net_memberships (
@@ -1410,6 +1411,7 @@ const MIGRATIONS: &[&str] = &[
         share_ruptures  INTEGER NOT NULL DEFAULT 1,
         share_versions  INTEGER NOT NULL DEFAULT 1,
         share_pk        INTEGER NOT NULL DEFAULT 1,
+        share_listes    INTEGER NOT NULL DEFAULT 0,
         created         TEXT NOT NULL DEFAULT ''
     )",
     "CREATE TABLE IF NOT EXISTS net_memberships (
@@ -1582,6 +1584,9 @@ const MIGRATIONS: &[&str] = &[
     // Un poste de bureau ou un compagnon — voir `SCHEMA`.
     "ALTER TABLE sync_posts ADD COLUMN kind TEXT NOT NULL DEFAULT ''",
     "ALTER TABLE sync_posts ADD COLUMN reach TEXT NOT NULL DEFAULT ''",
+    // Les listes de contrôle, partagées seulement sur demande — voir
+    // `NetShares::listes`.
+    "ALTER TABLE net_networks ADD COLUMN share_listes INTEGER NOT NULL DEFAULT 0",
     // La campagne de vaccination — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS vial_openings (
         id          INTEGER PRIMARY KEY,
@@ -3041,6 +3046,10 @@ pub struct NetShares {
     pub versions: bool,
     /// Valeurs de pharmacocinétique sourcées.
     pub pk: bool,
+    /// Les listes de contrôle : **non, tant que l'officine ne le dit
+    /// pas** — elles portent sa façon de faire, un seuil, un numéro, un
+    /// endroit (`versions::Kind::is_private`).
+    pub listes: bool,
 }
 
 impl Default for NetShares {
@@ -3049,6 +3058,7 @@ impl Default for NetShares {
             ruptures: true,
             versions: true,
             pk: true,
+            listes: false,
         }
     }
 }
@@ -47336,7 +47346,7 @@ impl Db {
             .prepare(
                 "SELECT n.fingerprint, n.secret, n.label,
                         COALESCE((SELECT f.folder FROM net_folders f WHERE f.network = n.fingerprint), ''),
-                        n.share_ruptures, n.share_versions, n.share_pk
+                        n.share_ruptures, n.share_versions, n.share_pk, n.share_listes
                  FROM net_networks n ORDER BY n.created, n.fingerprint",
             )
             .map_err(|e| e.to_string())?;
@@ -47351,6 +47361,7 @@ impl Db {
                         ruptures: r.get::<_, i64>(4)? != 0,
                         versions: r.get::<_, i64>(5)? != 0,
                         pk: r.get::<_, i64>(6)? != 0,
+                        listes: r.get::<_, i64>(7)? != 0,
                     },
                 })
             })
@@ -47396,9 +47407,10 @@ impl Db {
             .conn
             .execute(
                 "UPDATE net_networks SET label = ?2,
-                 share_ruptures = ?3, share_versions = ?4, share_pk = ?5
+                 share_ruptures = ?3, share_versions = ?4, share_pk = ?5, share_listes = ?10
                  WHERE fingerprint = ?1 AND label = ?6
-                   AND share_ruptures = ?7 AND share_versions = ?8 AND share_pk = ?9",
+                   AND share_ruptures = ?7 AND share_versions = ?8 AND share_pk = ?9
+                   AND share_listes = ?11",
                 rusqlite::params![
                     id,
                     label.trim(),
@@ -47409,6 +47421,8 @@ impl Db {
                     i64::from(was.1.ruptures),
                     i64::from(was.1.versions),
                     i64::from(was.1.pk),
+                    i64::from(shares.listes),
+                    i64::from(was.1.listes),
                 ],
             )
             .map_err(|e| e.to_string())?;
@@ -47460,6 +47474,8 @@ impl Db {
             ruptures: on("net_share_ruptures"),
             versions: on("net_share_versions"),
             pk: on("net_share_pk"),
+            // Non tant que rien n'est dit, à l'inverse des autres.
+            listes: self.setting("net_share_listes").is_some_and(|v| v == "1"),
         }
     }
 
@@ -47468,6 +47484,7 @@ impl Db {
             ("net_share_ruptures", shares.ruptures),
             ("net_share_versions", shares.versions),
             ("net_share_pk", shares.pk),
+            ("net_share_listes", shares.listes),
         ] {
             self.conn
                 .execute(
@@ -54652,6 +54669,42 @@ pub fn codex_field<'a>(p: &'a Preparation, field: &str) -> Option<&'a str> {
     })
 }
 
+/// Un champ d'un dispositif, par son nom de voyage.
+pub fn dispositif_field<'a>(d: &'a Dispositif, field: &str) -> Option<&'a str> {
+    Some(match field {
+        "family" => &d.family,
+        "indication" => &d.indication,
+        "sizes" => &d.sizes,
+        "application" => &d.application,
+        "renewal" => &d.renewal,
+        "lpp" => &d.lpp,
+        "caution" => &d.caution,
+        "tags" => &d.tags,
+        "sources" => &d.sources,
+        _ => return None,
+    })
+}
+
+fn starter_dispositif_field(d: &StarterDispositif, field: &str) -> Option<&'static str> {
+    Some(match field {
+        "family" => d.family,
+        "indication" => d.indication,
+        "sizes" => d.sizes,
+        "application" => d.application,
+        "renewal" => d.renewal,
+        "lpp" => d.lpp,
+        "caution" => d.caution,
+        "tags" => d.tags,
+        "sources" => d.sources,
+        _ => return None,
+    })
+}
+
+/// Le titre d'une cascade, lu dans son texte.
+pub fn cascade_title(text: &str) -> String {
+    crate::cascade::parse(text).title
+}
+
 fn starter_codex_field(p: &StarterPreparation, field: &str) -> Option<&'static str> {
     Some(match field {
         "form" => p.form,
@@ -54783,6 +54836,41 @@ impl Db {
                     .collect();
                 Ok(Some((line.id, entry, fields)))
             }
+            Kind::Dispositif => Ok(self
+                .dispositifs()?
+                .into_iter()
+                .find(|d| key(&d.name) == k)
+                .map(|d| {
+                    let fields = crate::versions::DISPOSITIF_FIELDS
+                        .iter()
+                        .map(|f| (*f, dispositif_field(&d, f).unwrap_or_default().to_owned()))
+                        .collect();
+                    (d.id, d.name, fields)
+                })),
+            Kind::Liste => {
+                let Some(l) = self.checklists()?.into_iter().find(|l| key(&l.title) == k) else {
+                    return Ok(None);
+                };
+                let items: Vec<(String, String)> = self
+                    .checklist_items(l.id)?
+                    .into_iter()
+                    .map(|i| (i.text, i.note))
+                    .collect();
+                Ok(Some((
+                    l.id,
+                    l.title,
+                    vec![
+                        ("subject", l.subject),
+                        ("lignes", crate::versions::items_json(&items)),
+                    ],
+                )))
+            }
+            Kind::Cascade => Ok(self
+                .cascades()?
+                .into_iter()
+                .map(|c| (cascade_title(&c.text), c))
+                .find(|(t, _)| !t.trim().is_empty() && key(t) == k)
+                .map(|(t, c)| (c.id, t, vec![("texte", c.text)]))),
         }
     }
 
@@ -54842,6 +54930,20 @@ impl Db {
                     field,
                 ),
             },
+            Kind::Dispositif => STARTER_DISPOSITIFS
+                .iter()
+                .find(|d| d.name == name)
+                .and_then(|d| starter_dispositif_field(d, field))
+                .unwrap_or_default()
+                .to_owned(),
+            // Une liste part sans lignes.
+            Kind::Liste if field == "lignes" => crate::versions::items_json(&[]),
+            Kind::Liste => String::new(),
+            Kind::Cascade => STARTER_CASCADES
+                .iter()
+                .find(|t| cascade_title(t) == name)
+                .map(|t| (*t).to_owned())
+                .unwrap_or_default(),
         }
     }
 
@@ -54926,6 +55028,22 @@ impl Db {
             self.trod_entries()?
                 .into_iter()
                 .map(|(_, e)| (Kind::Trod, e)),
+        );
+        names.extend(
+            self.dispositifs()?
+                .into_iter()
+                .map(|d| (Kind::Dispositif, d.name)),
+        );
+        names.extend(
+            self.checklists()?
+                .into_iter()
+                .map(|l| (Kind::Liste, l.title)),
+        );
+        names.extend(
+            self.cascades()?
+                .into_iter()
+                .map(|c| (Kind::Cascade, cascade_title(&c.text)))
+                .filter(|(_, t)| !t.trim().is_empty()),
         );
         // **Une entrée, une fois.** Deux lignes encore nommées « Nouveau
         // médicament » ont la même identité : la première serait
@@ -55063,6 +55181,62 @@ impl Db {
                 };
                 self.update_trod_line(&new, &line)
             }
+            (Kind::Dispositif, _) => {
+                let Some(column) = crate::versions::DISPOSITIF_FIELDS
+                    .iter()
+                    .find(|f| **f == field)
+                else {
+                    return Ok(false);
+                };
+                self.conn
+                    .execute(
+                        &format!(
+                            "UPDATE dispositifs SET {column} = ?1 WHERE id = ?2 AND {column} = ?3"
+                        ),
+                        (value, id, expected),
+                    )
+                    .map(|n| n == 1)
+                    .map_err(|e| e.to_string())
+            }
+            (Kind::Liste, "subject") => self
+                .conn
+                .execute(
+                    "UPDATE checklists SET subject = ?1 WHERE id = ?2 AND subject = ?3",
+                    (value, id, expected),
+                )
+                .map(|n| n == 1)
+                .map_err(|e| e.to_string()),
+            (Kind::Liste, "lignes") => {
+                let here: Vec<(String, String)> = self
+                    .checklist_items(id)?
+                    .into_iter()
+                    .map(|i| (i.text, i.note))
+                    .collect();
+                let here = crate::versions::items_json(&here);
+                let same = here == expected || (here == "[]" && expected.is_empty());
+                let Some(items) = crate::versions::items_of(value) else {
+                    return Ok(false);
+                };
+                if !same {
+                    return Ok(false);
+                }
+                self.conn
+                    .execute("DELETE FROM checklist_items WHERE checklist_id = ?1", [id])
+                    .map_err(|e| e.to_string())?;
+                for (text, note) in &items {
+                    self.add_checklist_item(id, text, note)?;
+                }
+                Ok(true)
+            }
+            // Un texte reçu doit encore se lire comme une cascade : sans
+            // titre, elle ne se reconnaîtrait plus d'une officine à
+            // l'autre.
+            (Kind::Cascade, "texte") => {
+                if cascade_title(value).trim().is_empty() {
+                    return Ok(false);
+                }
+                self.update_cascade(id, value, expected)
+            }
             _ => Ok(false),
         }
     }
@@ -55073,6 +55247,9 @@ impl Db {
     fn apply_entry_version(&self, e: &crate::versions::Edit) -> Result<bool, String> {
         let id = match self.entry_fields(e.kind, &e.card_name)? {
             Some((id, _, _)) => id,
+            None if e.kind == crate::versions::Kind::Cascade => {
+                return self.create_cascade(&e.card_name, &e.value, false);
+            }
             None => match self.create_entry(e.kind, &e.card_name, false)? {
                 Some(id) => id,
                 None => return Ok(false),
@@ -55131,6 +55308,11 @@ impl Db {
                 self.set_origin("vaccine_catalogue", id, name)?;
                 id
             }
+            Kind::Dispositif => self.add_dispositif(name)?,
+            Kind::Liste => self.add_checklist(name, "")?,
+            // Une cascade se crée **avec son texte** — c'est lui qui la
+            // nomme : voir `create_cascade`.
+            Kind::Cascade => return Ok(None),
             // Une fiche reçue se crée dans `receive_card_edits`, qui
             // a sa propre règle ; ici, seulement d'un geste.
             Kind::Fiche if !asked => return Ok(None),
@@ -55145,6 +55327,22 @@ impl Db {
                 self.add_drug(name)?
             }
         }))
+    }
+
+    /// Créer une cascade du réseau, **par son texte** : il porte son titre,
+    /// qui doit être celui sous lequel elle voyage. Une cascade livrée,
+    /// absente ici, ne revient pas d'une version reçue (`asked` faux) —
+    /// l'officine l'a retirée — mais revient d'un geste.
+    fn create_cascade(&self, name: &str, text: &str, asked: bool) -> Result<bool, String> {
+        let title = cascade_title(text);
+        if title.trim().is_empty() || crate::versions::key(&title) != crate::versions::key(name) {
+            return Ok(false);
+        }
+        if !asked && STARTER_CASCADES.iter().any(|t| cascade_title(t) == title) {
+            return Ok(false);
+        }
+        self.add_cascade(text)?;
+        Ok(true)
     }
 
     /// Les fiches, par identifiant et nom.
@@ -55210,6 +55408,30 @@ impl Db {
                     }
                 }
             }
+            Kind::Dispositif => {
+                for d in self.dispositifs()? {
+                    let fields = crate::versions::DISPOSITIF_FIELDS
+                        .iter()
+                        .map(|f| (*f, dispositif_field(&d, f).unwrap_or_default().to_owned()))
+                        .collect();
+                    out.insert(key(&d.name), fields);
+                }
+            }
+            Kind::Liste => {
+                for l in self.checklists()? {
+                    if let Some((_, name, fields)) = self.entry_fields(kind, &l.title)? {
+                        out.insert(key(&name), fields);
+                    }
+                }
+            }
+            Kind::Cascade => {
+                for c in self.cascades()? {
+                    let title = cascade_title(&c.text);
+                    if !title.trim().is_empty() {
+                        out.insert(key(&title), vec![("texte", c.text)]);
+                    }
+                }
+            }
         }
         Ok(out)
     }
@@ -55230,6 +55452,21 @@ impl Db {
                 let Some(id) = self.create_entry(Kind::Fiche, &offer.name, true)? else {
                     return Ok(false);
                 };
+                // **Une fiche livrée revient entière** : ses colonnes et
+                // ses détails livrés d'abord, puis ce que le réseau en a
+                // changé par-dessus. Sans cela, elle revenait avec les
+                // seuls champs qu'une autre officine avait touchés.
+                if let Some((_, dci, class, antidote)) =
+                    STARTER_DRUGS.iter().find(|(n, ..)| *n == offer.name)
+                {
+                    self.conn
+                        .execute(
+                            "UPDATE drugs SET dci = ?1, class = ?2, antidote = ?3 WHERE id = ?4",
+                            (dci, class, antidote, id),
+                        )
+                        .map_err(|e| e.to_string())?;
+                    self.fill_starter_details()?;
+                }
                 for (field, value) in &offer.fields {
                     // The column comes from the list, never from the peer;
                     // the name is the one the card was created under.
@@ -55251,18 +55488,33 @@ impl Db {
             if self.entry_fields(offer.kind, &offer.name)?.is_some() {
                 return Ok(false);
             }
+            if offer.kind == Kind::Cascade {
+                let text = offer.field("texte").unwrap_or_default();
+                return self.create_cascade(&offer.name, text, true);
+            }
             let Some(id) = self.create_entry(offer.kind, &offer.name, true)? else {
                 return Ok(false);
             };
-            let Some((_, _, here)) = self.entry_fields(offer.kind, &offer.name)? else {
-                return Ok(false);
-            };
-            for (field, value) in &offer.fields {
-                let Some((_, now)) = here.iter().find(|(f, _)| *f == field.as_str()) else {
+            // **Chaque champ**, et pas seulement ceux que le réseau a
+            // touchés : une entrée livrée retirée ici revient avec ce qui
+            // est livré (`entry_origin`) — une ligne de TROD sans ses
+            // posologies, un vaccin sans son schéma, ne doivent pas
+            // reparaître —, et la dernière version par-dessus.
+            for &field in offer.kind.fields() {
+                let wanted = match offer.field(field) {
+                    Some(v) => v.to_owned(),
+                    None => Self::entry_origin(offer.kind, &offer.name, field),
+                };
+                // Relu à chaque champ : un nom ou un libellé écrit change
+                // ce que la ligne dit des autres.
+                let Some((_, _, here)) = self.entry_fields(offer.kind, &offer.name)? else {
+                    return Ok(false);
+                };
+                let Some((_, now)) = here.iter().find(|(f, _)| *f == field) else {
                     continue;
                 };
-                if now != value {
-                    self.write_entry_field(offer.kind, id, field, value, now)?;
+                if *now != wanted && !(wanted.is_empty() && offer.field(field).is_none()) {
+                    self.write_entry_field(offer.kind, id, field, &wanted, now)?;
                 }
             }
             Ok(true)
@@ -57877,6 +58129,108 @@ mod tests {
             .any(|d| d.name == "Médicament du Port" && d.dci == "molécule"));
     }
 
+    /// **Dispositifs, listes de contrôle et cascades voyagent** comme les
+    /// préparations : versionnés ici, reçus ailleurs, créés s'ils
+    /// manquent, et une liste modifiée ensuite ne s'applique que sur les
+    /// lignes qu'elle remplace.
+    #[test]
+    fn dispositifs_lists_and_cascades_travel_between_officines() {
+        use crate::versions::Kind;
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-kinds-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let a = Db::open(&dir.join("a.db"), "secret").unwrap();
+        let b = Db::open(&dir.join("b.db"), "secret").unwrap();
+        let ship = |from: &Db, to: &Db| {
+            let edits: Vec<crate::versions::Edit> = from
+                .card_edits()
+                .unwrap()
+                .into_iter()
+                .filter(|e| e.source.is_empty())
+                .map(|e| crate::versions::Edit {
+                    source: "Pharmacie A".to_owned(),
+                    ..e
+                })
+                .collect();
+            to.receive_card_edits(&edits).unwrap()
+        };
+
+        let d = a.add_dispositif("Pansement du Port").unwrap();
+        let before = a
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.id == d)
+            .unwrap();
+        let after = Dispositif {
+            family: "Pansement".to_owned(),
+            renewal: "Tous les trois jours".to_owned(),
+            ..before.clone()
+        };
+        assert!(a.update_dispositif(&after, &before).unwrap());
+        let l = a.add_checklist("Fermeture du Port", "Le soir").unwrap();
+        a.add_checklist_item(l, "Coffre fermé", "").unwrap();
+        a.add_checklist_item(l, "Alarme", "code au bureau").unwrap();
+        let text = "titre : Cascade du Port\nligand X\nrécepteur Y\nX -> Y";
+        a.add_cascade(text).unwrap();
+        assert!(a.version_shared_entries("AB").unwrap() >= 4);
+        ship(&a, &b);
+
+        let got = b
+            .dispositifs()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.name == "Pansement du Port");
+        let got = got.expect("dispositif reçu, créé");
+        assert_eq!(
+            (got.family.as_str(), got.renewal.as_str()),
+            ("Pansement", "Tous les trois jours")
+        );
+        let list = b
+            .checklists()
+            .unwrap()
+            .into_iter()
+            .find(|x| x.title == "Fermeture du Port");
+        let list = list.expect("liste reçue, créée");
+        assert_eq!(list.subject, "Le soir");
+        let items: Vec<(String, String)> = b
+            .checklist_items(list.id)
+            .unwrap()
+            .into_iter()
+            .map(|i| (i.text, i.note))
+            .collect();
+        assert_eq!(
+            items,
+            vec![
+                ("Coffre fermé".to_owned(), String::new()),
+                ("Alarme".to_owned(), "code au bureau".to_owned())
+            ]
+        );
+        assert!(b.cascades().unwrap().iter().any(|c| c.text == text));
+
+        // Une ligne de plus, là-bas : elle arrive sur la liste d'ici, qui
+        // dit encore ce qu'elle remplaçait.
+        a.add_checklist_item(l, "Lumières", "").unwrap();
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+        assert_eq!(b.checklist_items(list.id).unwrap().len(), 3);
+
+        // Modifiée ici entre-temps, elle attend : rien n'est écrasé.
+        b.add_checklist_item(list.id, "Ici seulement", "").unwrap();
+        a.add_checklist_item(l, "Volets", "").unwrap();
+        a.version_shared_entries("AB").unwrap();
+        ship(&a, &b);
+        let here: Vec<String> = b
+            .checklist_items(list.id)
+            .unwrap()
+            .into_iter()
+            .map(|i| i.text)
+            .collect();
+        assert!(here.contains(&"Ici seulement".to_owned()), "{here:?}");
+        assert!(!here.contains(&"Volets".to_owned()), "{here:?}");
+        assert!(Kind::Liste.is_private() && !Kind::Dispositif.is_private());
+    }
+
     /// **« En ligne » : une entrée d'un confrère se prend d'un geste.**
     ///
     /// Reçue, puis supprimée ici, elle reste au journal : c'est une offre
@@ -57982,11 +58336,44 @@ mod tests {
         let o = offers(&db.card_edits().unwrap(), Kind::Vaccin);
         let offer = o.iter().find(|o| o.name == shipped).unwrap();
         assert!(db.adopt_offer(offer).unwrap());
-        assert!(db
-            .vaccine_catalogue()
+        let schedule = crate::vaccines::starter_catalogue()[0].schedule.clone();
+        assert!(
+            db.vaccine_catalogue()
+                .unwrap()
+                .iter()
+                .any(|v| v.label == shipped && v.code == "XYZ" && v.schedule == schedule),
+            "revenu entier, le schéma livré compris : {:?}",
+            db.vaccine_catalogue().unwrap()
+        );
+
+        // Une ligne de TROD livrée, retirée ici puis demandée : elle
+        // revient avec ses posologies livrées, pas vide sur l'ordonnance.
+        db.seed_trod_lines().unwrap();
+        let starter = crate::ordonnance::starters()
+            .into_iter()
+            .find(|o| !o.posologies.is_empty())
+            .unwrap();
+        let line = db
+            .trod_lines_all()
             .unwrap()
-            .iter()
-            .any(|v| v.label == shipped && v.code == "XYZ"));
+            .into_iter()
+            .find(|o| o.protocol == starter.protocol && o.name == starter.name)
+            .unwrap();
+        assert!(db.delete_trod_line(line.id, &line.name).unwrap());
+        let entry = crate::versions::trod_entry(&starter.protocol, &starter.name);
+        db.receive_card_edits(&[theirs(6, Kind::Trod, &entry, "caution", "Voir le RCP")])
+            .unwrap();
+        let o = offers(&db.card_edits().unwrap(), Kind::Trod);
+        let offer = o.iter().find(|o| o.name == entry).unwrap();
+        assert!(db.adopt_offer(offer).unwrap());
+        let back = db
+            .trod_lines_all()
+            .unwrap()
+            .into_iter()
+            .find(|o| o.protocol == starter.protocol && o.name == starter.name)
+            .unwrap();
+        assert_eq!(back.posologies, starter.posologies);
+        assert_eq!(back.caution, "Voir le RCP");
     }
 
     /// Deux postes de la même officine, chacun avec sa base, et ce que

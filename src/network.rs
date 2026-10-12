@@ -365,6 +365,9 @@ impl Net {
             db.card_edits()?
                 .into_iter()
                 .filter(|e| e.source.is_empty() && !already.contains(&e.uid))
+                // Une liste de contrôle ne part que si l'officine le dit ;
+                // gardée non partie, elle partira le jour où elle le dira.
+                .filter(|e| !e.kind.is_private() || self.shares.listes)
                 .collect()
         } else {
             Vec::new()
