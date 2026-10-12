@@ -98,8 +98,10 @@ cheap reclaim, `cargo clean` the full one. Do not rebuild while
   the schema. Every `INSERT` into a block-numbered table writes its `id`
   from `db::next_id(table)` — a test reads `db.rs`. No `INSERT OR
   REPLACE` on a travelling table (it would travel as a creation).
-- Only the reference post numbers the ordonnancier and seeds shipped
-  content (`numbers_here`, `seeds_here`).
+- Only the reference post seeds shipped content (`seeds_here`). The
+  ordonnancier number of a dispensing comes from the pharmacy software
+  (LGO), typed on the line; the register requires it and refuses one
+  already used (`insert_stup_move`) — BPM-Caddy never generates one.
 
 **Storage**
 - Schema change = `SCHEMA` **and** an idempotent `ALTER TABLE` in

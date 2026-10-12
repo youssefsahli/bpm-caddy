@@ -459,10 +459,10 @@ conseils à tenir à jour deux fois.
   registre dériverait dès le premier comptage qui ne tombe pas juste.
   Annuler un inventaire rend au registre son `expected` — la seule
   raison pour laquelle cette colonne est écrite et non recalculée.
-- **Le numéro d'ordonnancier** est séquentiel dans l'année, attribué par
-  la base dans la transaction qui écrit la ligne, et jamais réattribué.
-  Une délivrance annulée garde le sien : un trou dans la suite se lit,
-  un numéro servi deux fois ne se lit pas.
+- **Le numéro d'ordonnancier** est celui du logiciel de l'officine, tapé
+  sur chaque délivrance : exigé, et refusé s'il désigne déjà une ligne,
+  toutes années confondues. Une délivrance annulée garde le sien ; les
+  écarts entre deux numéros sont les autres lignes du logiciel.
 - **Réglages** : `[stock] suppliers` (les grossistes, le premier étant
   celui qu'on propose — c'est pour la vitesse de saisie) et
   `[stock] count_days` (au bout de combien de jours un produit non

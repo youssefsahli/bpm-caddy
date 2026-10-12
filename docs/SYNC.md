@@ -509,11 +509,11 @@ fondateur garde les siens), le reste des blocs d'un million de millions.
 `replica_inserts_draw_from_the_block` lit `db.rs` et refuse un `INSERT`
 qui oublierait son `id`.
 
-**Un seul poste numérote l'ordonnancier** — le poste de référence,
-réglage `sync_reference` qui voyage. Une délivrance écrite ailleurs part
-sans numéro ; il la numérote en la recevant (`stup_numbers`, en ajout
-seul) et le numéro revient. Le même poste est le seul à semer le contenu
-livré.
+**Les numéros d'ordonnancier viennent du logiciel de l'officine** : tapés
+sur chaque délivrance, sur n'importe quel poste, ils voyagent avec la
+ligne. Aucun poste n'en attribue (`stup_numbers`, en ajout seul, ne garde
+que ceux d'avant). Le poste de référence — réglage `sync_reference` qui
+voyage — est le seul à semer le contenu livré.
 
 ### 7.4 L'écran
 

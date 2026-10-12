@@ -1105,16 +1105,14 @@ les produits effectivement comptés.
 Une ligne porte le **numéro de dossier**, jamais le nom : le registre
 est imprimé et consultable au comptoir.
 
-Le numéro d'ordonnancier est attribué à l'enregistrement et jamais
-réattribué : une ligne annulée conserve le sien.
-
-**Numérotation continue.** Elle ne repart pas au 1er janvier : un numéro
-désigne une seule délivrance, condition pour le reporter sur
-l'ordonnance.
-
-Reprise d'un registre papier : Options › Base, « Premier numéro
-d'ordonnancier », une seule fois. Un numéro inférieur saisi après coup
-est sans effet.
+**Le numéro d'ordonnancier vient du logiciel de l'officine** : il
+numérote toutes les lignes de l'ordonnancier — listes I et II comme
+stupéfiants —, et chaque délivrance inscrite ici porte le sien, recopié
+dans « N° d'ordonnancier » (par exemple 18400 pour seize gélules de
+méthadone, 19027 pour la suivante). Il est exigé sur une délivrance, et
+refusé s'il désigne déjà une ligne du registre, quelle que soit l'année.
+Les écarts entre deux numéros sont normaux : ce sont les autres lignes
+du logiciel. Une ligne annulée conserve son numéro, qui ne resert pas.
 
 Les touches 1 à 8 choisissent la nature, dans l'ordre de la bande ;
 Entrée inscrit la ligne depuis le formulaire. La quantité s'écrit en
@@ -1376,13 +1374,12 @@ deux champs d'un même dossier ne se gênent pas ; le même champ modifié
 des deux côtés est « à arbitrer » — « Garder la mienne » ou « Prendre la
 leur ». Aucun écrasement silencieux.
 
-**Une seule numérotation d'ordonnancier** : seul le poste de référence
-numérote. Une délivrance saisie sur un autre poste est « en attente »
-jusqu'à sa réception, quelques secondes sur le réseau local. Le
-registre, la caisse et les journaux restent en ajout seul : une
-modification reçue pour eux est refusée, et le refus est affiché. Le
-poste de référence installe aussi le contenu livré avec les mises à
-jour. Il ne se retire ni ne quitte le groupe tant que d'autres postes y
+**Les numéros d'ordonnancier** viennent du logiciel de l'officine, tapés
+sur chaque délivrance, quel que soit le poste ; une délivrance voyage
+avec le sien. Le registre, la caisse et les journaux restent en ajout
+seul : une modification reçue pour eux est refusée, et le refus est
+affiché. Le poste de référence installe le contenu livré avec les mises
+à jour. Il ne se retire ni ne quitte le groupe tant que d'autres postes y
 restent : en désigner un autre d'abord.
 
 **L'officine** (nom, adresse, pharmacien, n° AM, équipe, horaires) se

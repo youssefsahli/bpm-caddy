@@ -2069,21 +2069,17 @@ add clicking and typing; it is not the price of entry.
   register and the only reason it proves anything, so it is a test and
   not a convention — `the_register_can_only_ever_be_written_to` reads
   the text of `db.rs` and refuses such a verb (verified by adding one).
-  The dispensing number is assigned **inside** the inserting
-  transaction, never by the caller: two PCs dispensing at once would ask
-  for the same one. It is **one continuous sequence**, not one per year:
-  an ordonnancier is numbered end to end, « le 18950 » has to designate
-  one dispensing and only one — that is the condition for writing it on
-  a prescription and finding it again — and it used to start over every
-  first of January. And an officine installing this software **continues
-  its paper register**: `ordonnancier_start`, declared once in Options ›
-  Base, lives in the register's own file rather than in the base's
-  `settings`, because an inspection asks for that file alone and a
-  register that does not carry the origin of its own numbering does not
-  explain itself. It only ever moves the sequence forward — declared
-  below what is already written it does nothing, because a number that
-  is posted is posted, and two dispensings under one number are a
-  register that proves nothing.
+  The dispensing number **comes from the pharmacy software (LGO)**,
+  which numbers every line of the ordonnancier — lists I and II as well
+  as narcotics — so this register's numbers have gaps (18400 for a
+  methadone, 19027 for the next narcotic). It is typed on each
+  dispensing, required, and refused **inside** the inserting
+  transaction if it already designates a line of any year: « le 18400 »
+  has to designate one dispensing and only one. BPM-Caddy used to
+  generate highest + 1, which handed out numbers the LGO had already
+  given to something else; it never generates one now, and the
+  reference post no longer numbers other posts' lines
+  (`number_pending` is a no-op kept for its caller).
 - **A correction is a `Kind::Annulation` line that names the line it
   cancels**, carries a mandatory reason, and undoes exactly what that
   line did to the stock — read off the *cancelled* line, never off the

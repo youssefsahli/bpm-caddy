@@ -52023,14 +52023,12 @@ impl Db {
 
     /// Écrire une ligne au registre. Le seul verbe d'écriture qu'il ait.
     ///
-    /// Le numéro d'ordonnancier est attribué **ici**, dans la même
-    /// transaction que l'insertion, et jamais calculé par l'appelant :
-    /// deux postes qui délivrent en même temps demanderaient le même
-    /// numéro et l'un des deux écrirait un doublon. Le numéro n'est posé
-    /// que sur une sortie ; il n'est jamais réattribué.
+    /// Le numéro d'ordonnancier d'une délivrance est celui que le logiciel
+    /// de l'officine lui a donné, tapé avec la ligne : exigé, et refusé
+    /// **dans la même transaction** s'il désigne déjà une ligne.
     pub fn add_stup_move(&self, m: &StupMove) -> Result<i64, String> {
         let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
-        let id = Self::insert_stup_move(&tx, m, self.numbers_here())?;
+        let id = Self::insert_stup_move(&tx, m)?;
         tx.commit().map_err(|e| e.to_string())?;
         Ok(id)
     }
@@ -52046,18 +52044,17 @@ impl Db {
     /// porte —, dans une seule transaction : la première qui refuse fait
     /// tout retomber.
     ///
-    /// Les numéros d'ordonnancier restent attribués un par un, et se
-    /// suivent : la deuxième délivrance lit la première dans la
-    /// transaction, avant qu'elle soit validée.
+    /// Chaque délivrance porte son numéro tapé ; deux lignes d'une même
+    /// feuille ne peuvent pas porter le même — la deuxième lit la première
+    /// dans la transaction, avant qu'elle soit validée.
     pub fn add_stup_moves(&self, moves: &[StupMove]) -> Result<Vec<i64>, String> {
         if moves.is_empty() {
             return Ok(Vec::new());
         }
-        let here = self.numbers_here();
         let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
         let mut ids = Vec::with_capacity(moves.len());
         for m in moves {
-            ids.push(Self::insert_stup_move(&tx, m, here)?);
+            ids.push(Self::insert_stup_move(&tx, m)?);
         }
         tx.commit().map_err(|e| e.to_string())?;
         for _ in &ids {
@@ -52114,11 +52111,7 @@ impl Db {
         Ok(crate::ordonnancier::balance(&moves).stock)
     }
 
-    fn insert_stup_move(
-        tx: &rusqlite::Transaction,
-        m: &StupMove,
-        numbers_here: bool,
-    ) -> Result<i64, String> {
+    fn insert_stup_move(tx: &rusqlite::Transaction, m: &StupMove) -> Result<i64, String> {
         let day = m.happened_on.trim();
         if day.is_empty() {
             return Err(crate::strings::tr("stup_err_no_day").to_owned());
@@ -52222,56 +52215,31 @@ impl Db {
                 return Err(crate::strings::tr("stup_err_already_cancelled").to_owned());
             }
         }
-        let (year, no) = if kind.is_dispensing() && !numbers_here {
-            // Un autre poste numérote : l'année est écrite, le numéro
-            // viendra du poste de référence (`stup_numbers`).
-            (day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0), 0)
-        } else if kind.is_dispensing() {
-            // L'année reste **écrite sur la ligne** : c'est celle où la
-            // délivrance a eu lieu, et l'ordonnancier s'imprime par
-            // exercice. Ce qu'elle ne fait plus, c'est borner la suite.
+        // **Le numéro vient du logiciel de l'officine.** Il numérote toutes
+        // les lignes de l'ordonnancier — listes I et II, stupéfiants — et
+        // une délivrance de méthadone y porte, disons, le 18400 ; la
+        // suivante de ce registre, le 19027. Le tirer ici (le plus haut,
+        // plus un) donnait 18401, un numéro que le logiciel avait déjà
+        // donné à autre chose. Il est donc **tapé** sur chaque délivrance,
+        // exigé, et refusé s'il désigne déjà une ligne — de n'importe
+        // quelle année : un numéro désigne une délivrance et une seule.
+        let (year, no) = if kind.is_dispensing() {
             let year: i64 = day.get(..4).and_then(|y| y.parse().ok()).unwrap_or(0);
-            // **Tous** les numéros déjà pris, et non ceux de l'année :
-            // un ordonnancier se numérote d'un bout à l'autre, et « le
-            // 42 » doit désigner une délivrance et une seule. La règle
-            // qui en tire le suivant est celle de `crate::ordonnancier`
-            // — pas un `MAX(…) + 1` écrit ici, qui serait la même règle
-            // dite une seconde fois et un jour différemment.
-            //
-            // La liste entière et non son maximum : l'index partiel
-            // `idx_stup_ordo_unique` la rend sans toucher la table, et
-            // cela n'arrive qu'au moment où quelqu'un délivre.
-            let used: Vec<u32> = {
-                let mut stmt = tx
-                    .prepare(
-                        "SELECT ordo_no FROM stup_moves WHERE ordo_no > 0
-                         UNION ALL SELECT ordo_no FROM stup_numbers",
-                    )
-                    .map_err(|e| e.to_string())?;
-                let rows = stmt
-                    .query_map([], |r| r.get::<_, i64>(0))
-                    .map_err(|e| e.to_string())?;
-                rows.map(|r| r.map(|n| n.max(0) as u32))
-                    .collect::<Result<_, _>>()
-                    .map_err(|e| e.to_string())?
-            };
-            // Là où l'officine a dit que son ordonnancier de papier
-            // s'arrêtait. Lu dans la même transaction que l'écriture :
-            // deux postes qui délivrent au même instant voient le même
-            // registre et la même déclaration.
-            let start: u32 = tx
+            if m.ordo_no <= 0 {
+                return Err(crate::strings::tr("stup_err_no_number").to_owned());
+            }
+            let taken: bool = tx
                 .query_row(
-                    "SELECT value FROM stup_settings WHERE key = 'ordonnancier_start'",
-                    [],
-                    |r| r.get::<_, String>(0),
+                    "SELECT EXISTS (SELECT 1 FROM stup_moves WHERE ordo_no = ?1)
+                         OR EXISTS (SELECT 1 FROM stup_numbers WHERE ordo_no = ?1)",
+                    [m.ordo_no],
+                    |r| r.get(0),
                 )
-                .ok()
-                .and_then(|v| v.trim().parse().ok())
-                .unwrap_or(0);
-            (
-                year,
-                i64::from(crate::ordonnancier::next_number(&used, start)),
-            )
+                .map_err(|e| e.to_string())?;
+            if taken {
+                return Err(crate::strings::trf("stup_err_number_taken", m.ordo_no));
+            }
+            (year, m.ordo_no)
         } else {
             (0, 0)
         };
@@ -55441,96 +55409,14 @@ impl Db {
         self.numbers_here()
     }
 
-    /// Numéroter les délivrances écrites sur d'autres postes et arrivées
-    /// ici sans numéro — **le poste de référence seulement**, dans l'ordre
-    /// où elles ont eu lieu, à la suite de l'ordonnancier. Rend combien.
-    pub fn number_pending(&self, day: &str) -> Result<usize, String> {
-        if !self.numbers_here() {
-            return Ok(0);
-        }
-        // Rien en attente — le cas ordinaire, après chaque
-        // synchronisation : pas de verrou d'écriture sur le registre.
-        //
-        // **Seules les délivrances attendent un numéro** : toute entrée,
-        // tout inventaire porte `ordo_no = 0`, si bien que la question
-        // répondait oui dès le premier, et chaque tour prenait le verrou
-        // du registre contre les autres postes qui y écrivent.
-        let dispensing: Vec<String> = crate::ordonnancier::Kind::ALL
-            .into_iter()
-            .filter(|k| k.is_dispensing())
-            .map(|k| format!("'{}'", k.as_key()))
-            .collect();
-        let any: bool = self
-            .stups
-            .query_row(
-                &format!(
-                    "SELECT EXISTS (SELECT 1 FROM stup_moves m
-                     WHERE m.ordo_no = 0 AND m.kind IN ({})
-                       AND NOT EXISTS (SELECT 1 FROM stup_numbers n WHERE n.move_id = m.id))",
-                    dispensing.join(", ")
-                ),
-                [],
-                |r| r.get(0),
-            )
-            .map_err(|e| e.to_string())?;
-        if !any {
-            return Ok(0);
-        }
-        let tx = write_tx(&self.stups).map_err(|e| e.to_string())?;
-        let waiting: Vec<(i64, String, i64)> = {
-            let mut stmt = tx
-                .prepare(
-                    "SELECT m.id, m.kind, m.ordo_year FROM stup_moves m
-                     WHERE m.ordo_no = 0
-                       AND NOT EXISTS (SELECT 1 FROM stup_numbers n WHERE n.move_id = m.id)
-                     ORDER BY m.happened_on, m.created_at, m.id",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
-                .map_err(|e| e.to_string())?;
-            rows.collect::<Result<_, _>>().map_err(|e| e.to_string())?
-        };
-        let start: u32 = tx
-            .query_row(
-                "SELECT value FROM stup_settings WHERE key = 'ordonnancier_start'",
-                [],
-                |r| r.get::<_, String>(0),
-            )
-            .ok()
-            .and_then(|v| v.trim().parse().ok())
-            .unwrap_or(0);
-        let mut used: Vec<u32> = {
-            let mut stmt = tx
-                .prepare(
-                    "SELECT ordo_no FROM stup_moves WHERE ordo_no > 0
-                     UNION ALL SELECT ordo_no FROM stup_numbers",
-                )
-                .map_err(|e| e.to_string())?;
-            let rows = stmt
-                .query_map([], |r| r.get::<_, i64>(0))
-                .map_err(|e| e.to_string())?;
-            rows.map(|r| r.map(|n| n.max(0) as u32))
-                .collect::<Result<_, _>>()
-                .map_err(|e| e.to_string())?
-        };
-        let mut done = 0;
-        for (id, kind, year) in waiting {
-            if !crate::ordonnancier::Kind::from_key(&kind).is_dispensing() {
-                continue;
-            }
-            let no = crate::ordonnancier::next_number(&used, start);
-            tx.execute(
-                "INSERT INTO stup_numbers (move_id, ordo_year, ordo_no, assigned_on)
-                 VALUES (?1, ?2, ?3, ?4)",
-                rusqlite::params![id, year, i64::from(no), day],
-            )
-            .map_err(|e| e.to_string())?;
-            used.push(no);
-            done += 1;
-        }
-        tx.commit().map_err(|e| e.to_string())?;
-        Ok(done)
+    /// Numéroter les délivrances reçues sans numéro — **plus jamais** :
+    /// le numéro vient du logiciel de l'officine et se tape avec la ligne.
+    /// En inventer un ici en donnerait un que ce logiciel a déjà donné à
+    /// autre chose. Une ligne inscrite sans numéro par une version d'avant
+    /// le reste, et se lit « sans numéro ». Gardée pour qui l'appelle
+    /// encore (la synchronisation des postes).
+    pub fn number_pending(&self, _day: &str) -> Result<usize, String> {
+        Ok(0)
     }
 
     /// Une valeur propre à ce poste — son numéro, son identité, sa clé.
@@ -56515,6 +56401,14 @@ impl Drop for Swept {
 
 #[cfg(test)]
 mod tests {
+    /// Le numéro d'ordonnancier qu'un logiciel d'officine aurait donné :
+    /// une suite croissante, unique dans le processus. Une ligne qui n'est
+    /// pas une délivrance le reçoit sans s'en servir.
+    fn typed_no() -> i64 {
+        static NEXT: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(18_400);
+        NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    }
+
     use super::*;
 
     /// Every section the search reads can be written through
@@ -57986,7 +57880,7 @@ mod tests {
                 happened_on: "2026-09-23".to_owned(),
                 quantity: 14.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: "OCP".to_owned(),
@@ -58067,9 +57961,9 @@ mod tests {
             .unwrap();
         assert!(!at.is_empty(), "datée à l'arrivée");
 
-        // **Seul le poste de référence numérote.** B délivre : sa ligne
-        // part sans numéro ; A, la référence, la numérote en la recevant,
-        // et le numéro revient à B.
+        // **Chaque poste écrit le numéro du logiciel**, tapé avec la
+        // ligne : B délivre sous le 18 400, la ligne arrive chez A avec
+        // ce numéro-là, et A ne peut pas en délivrer une autre sous lui.
         let sortie = StupMove {
             kind: crate::ordonnancier::Kind::Sortie.as_key().to_owned(),
             quantity: 7.0,
@@ -58077,37 +57971,48 @@ mod tests {
             prescriber: "Dr Martin".to_owned(),
             supplier: String::new(),
             reference: String::new(),
+            ordo_no: 4_018_400,
             ..b.stup_moves(sid).unwrap()[0].clone()
         };
-        assert!(!b.numbers_here() && a.numbers_here());
         let out = b.add_stup_move(&sortie).unwrap();
-        assert_eq!(b.stup_dispensings(2026).unwrap().len(), 0, "en attente");
-        assert_eq!(b.stup_unnumbered(2026).unwrap(), 1, "et dit en attente");
+        assert_eq!(
+            b.stup_dispensings(2026).unwrap().len(),
+            1,
+            "numérotée d'emblée"
+        );
+        assert_eq!(b.stup_unnumbered(2026).unwrap(), 0);
         ship(&b, &a, "b2");
-        assert_eq!(a.number_pending("2026-09-23").unwrap(), 1);
-        assert_eq!(a.number_pending("2026-09-23").unwrap(), 0, "une fois");
-        assert_eq!(a.stup_unnumbered(2026).unwrap(), 0, "numérotée ailleurs");
+        assert_eq!(
+            a.number_pending("2026-09-23").unwrap(),
+            0,
+            "rien à numéroter"
+        );
         let numbered = a.stup_dispensings(2026).unwrap();
         assert_eq!(numbered.len(), 1);
         assert_eq!(numbered[0].id, out);
-        assert!(numbered[0].ordo_no > 0);
-        ship(&a, &b, "a1");
         assert_eq!(
-            b.stup_dispensings(2026).unwrap()[0].ordo_no,
-            numbered[0].ordo_no
+            numbered[0].ordo_no, 4_018_400,
+            "le numéro tapé voyage tel quel"
         );
-        assert_eq!(b.stup_unnumbered(2026).unwrap(), 0, "plus en attente");
-        // A's own dispensing follows on.
+        // A ne délivre pas sous un numéro déjà inscrit ailleurs…
+        assert!(a
+            .add_stup_move(&StupMove {
+                quantity: 1.0,
+                ..sortie.clone()
+            })
+            .is_err());
+        // …et délivre sous le sien.
         let own = a
             .add_stup_move(&StupMove {
                 quantity: 1.0,
+                ordo_no: 4_019_027,
                 ..sortie.clone()
             })
             .unwrap();
         let after = a.stup_dispensings(2026).unwrap();
         assert_eq!(after.len(), 2);
         assert_eq!(after[1].id, own);
-        assert_eq!(after[1].ordo_no, numbered[0].ordo_no + 1);
+        assert_eq!(after[1].ordo_no, 4_019_027);
     }
 
     /// **Chaque table voyage ou reste, jamais les deux, et aucune n'est
@@ -60533,7 +60438,7 @@ mod tests {
                 happened_on: day.to_owned(),
                 quantity: 14.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: "OCP".to_owned(),
@@ -60738,7 +60643,7 @@ mod tests {
             happened_on: "2026-01-08".to_owned(),
             quantity: 28.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: "OCP".to_owned(),
@@ -60880,7 +60785,7 @@ mod tests {
                 happened_on: "2026-02-02".to_owned(),
                 quantity: counted,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -60902,7 +60807,7 @@ mod tests {
             happened_on: "2026-02-01".to_owned(),
             quantity: 30.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: "CERP".to_owned(),
@@ -60940,7 +60845,7 @@ mod tests {
             happened_on: "2026-02-10".to_owned(),
             quantity: 4.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 1,
             prescriber: "Dr Morel".to_owned(),
             supplier: String::new(),
@@ -60991,7 +60896,7 @@ mod tests {
                 happened_on: day.to_owned(),
                 quantity: qty,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: patient,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -61043,7 +60948,7 @@ mod tests {
                 happened_on: "2026-03-01".to_owned(),
                 quantity: 9.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: pid,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -61145,7 +61050,7 @@ mod tests {
                 happened_on: day.to_owned(),
                 quantity: qty,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: patient,
                 prescriber: "Dr Martin".to_owned(),
                 supplier: "OCP".to_owned(),
@@ -61166,15 +61071,16 @@ mod tests {
 
         let moves = db.stup_moves(sid).unwrap();
         assert_eq!(moves.len(), 3);
-        // Le numéro est attribué par la base, dans la transaction qui
-        // écrit la ligne : l'appelant en a passé zéro, et deux postes
-        // qui délivrent en même temps ne peuvent pas obtenir le même.
+        // Le numéro est celui que le logiciel de l'officine a donné, tapé
+        // avec la ligne : écrit tel quel, avec l'année de la délivrance.
         let numbered: Vec<(i64, i64)> = moves
             .iter()
             .filter(|m| m.kind == "SORTIE")
             .map(|m| (m.ordo_year, m.ordo_no))
             .collect();
-        assert_eq!(numbered, vec![(2026, 1), (2026, 2)]);
+        assert_eq!(numbered.len(), 2);
+        assert!(numbered.iter().all(|(y, n)| *y == 2026 && *n >= 18_400));
+        assert_ne!(numbered[0].1, numbered[1].1);
         // Une entrée n'en porte pas, et ne porte pas de dossier non
         // plus : une réception n'a pas de patient, et en écrire un
         // serait mettre un nom dans un registre pour rien.
@@ -61225,7 +61131,7 @@ mod tests {
             happened_on: "2026-01-20".to_owned(),
             quantity: 10.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -61246,50 +61152,43 @@ mod tests {
         );
         assert_eq!(summary[0].last_count, "2026-01-20", "le dernier comptage");
 
-        // **L'année suivante ne repart pas à un.** Un ordonnancier se
-        // numérote d'un bout à l'autre : c'est ce que le comptoir écrit
-        // sur l'ordonnance et ce que le prescripteur retrouve, et « le
-        // 3 » doit désigner une délivrance et une seule. La ligne porte
-        // quand même son année, qui est celle où la délivrance a eu
-        // lieu — elle ne borne simplement plus la suite.
-        let before = db
-            .stup_moves(sid)
-            .unwrap()
-            .iter()
-            .map(|m| m.ordo_no)
-            .max()
-            .unwrap_or(0);
-        write(Kind::Sortie, 2.0, "2027-01-03", pid);
+        // **Le numéro du logiciel, tel quel**, de n'importe quelle
+        // grandeur : 18400 pour une méthadone, 19027 pour la suivante —
+        // les numéros entre deux sont ceux des autres lignes de
+        // l'ordonnancier du logiciel.
+        let typed = |no: i64, day: &str| {
+            db.add_stup_move(&StupMove {
+                id: 0,
+                stup_id: sid,
+                kind: Kind::Sortie.as_key().to_owned(),
+                happened_on: day.to_owned(),
+                quantity: 1.0,
+                ordo_year: 0,
+                ordo_no: no,
+                patient_id: pid,
+                prescriber: "Dr Martin".to_owned(),
+                supplier: String::new(),
+                reference: String::new(),
+                expected: 0.0,
+                operator: "YS".to_owned(),
+                remark: String::new(),
+                cancels: 0,
+                lot: String::new(),
+                expiry: String::new(),
+            })
+        };
+        assert!(typed(2_000_001, "2027-01-03").is_ok());
         let last = db.stup_moves(sid).unwrap().pop().unwrap();
-        assert_eq!((last.ordo_year, last.ordo_no), (2027, before + 1));
-
-        // **Et une officine reprend son ordonnancier de papier.**
-        //
-        // Elle en est à dix-huit mille neuf cent cinquante, pas à un, et
-        // le numéro qu'elle écrit sur l'ordonnance doit suivre le
-        // précédent. Déclaré une fois, dans le fichier du registre
-        // lui-même : une inspection demande ce fichier-là seul, et un
-        // registre qui ne porte pas l'origine de sa numérotation ne
-        // s'explique pas tout seul.
-        assert_eq!(db.ordonnancier_start(), 0, "rien de déclaré au départ");
-        db.set_ordonnancier_start(18_950).unwrap();
-        assert_eq!(db.ordonnancier_start(), 18_950);
-        write(Kind::Sortie, 1.0, "2027-02-01", pid);
-        let last = db.stup_moves(sid).unwrap().pop().unwrap();
-        assert_eq!(
-            last.ordo_no, 18_950,
-            "le registre reprend où le papier s'arrête"
+        assert_eq!((last.ordo_year, last.ordo_no), (2027, 2_000_001));
+        assert!(
+            typed(2_000_628, "2027-01-04").is_ok(),
+            "un écart n'est pas une faute"
         );
-        write(Kind::Sortie, 1.0, "2027-02-02", pid);
-        assert_eq!(db.stup_moves(sid).unwrap().pop().unwrap().ordo_no, 18_951);
-
-        // **Un numéro ne recule jamais.** Déclaré trop bas après coup —
-        // une faute de frappe, un second registre repris —, la suite
-        // continue d'avancer : deux délivrances sous un même numéro
-        // feraient un registre qui ne prouve plus rien.
-        db.set_ordonnancier_start(12).unwrap();
-        write(Kind::Sortie, 1.0, "2027-02-03", pid);
-        assert_eq!(db.stup_moves(sid).unwrap().pop().unwrap().ordo_no, 18_952);
+        // **Un numéro désigne une délivrance et une seule**, toutes années
+        // confondues : le même, l'an d'après, est refusé.
+        assert!(typed(2_000_001, "2028-01-05").is_err());
+        // Et une délivrance sans numéro n'est pas écrite.
+        assert!(typed(0, "2027-01-06").is_err());
 
         // Ce qui n'est pas un mouvement est refusé : pas de jour, une
         // quantité négative, une sortie de zéro. Un inventaire de zéro,
@@ -61301,7 +61200,7 @@ mod tests {
             happened_on: day.to_owned(),
             quantity: qty,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -61355,7 +61254,7 @@ mod tests {
                 happened_on: day.to_owned(),
                 quantity: qty,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: patient,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -61407,9 +61306,10 @@ mod tests {
             .cancel_stup_move(annul, "2026-01-10", "je me suis trompé", "YS")
             .is_err());
 
-        // Le numéro d'ordonnancier de la délivrance annulée **ne revient
-        // pas** : le suivant est le troisième, et le deuxième reste un
-        // trou qui se lit. Un numéro servi deux fois, lui, ne se lit pas.
+        // Le numéro d'ordonnancier de la délivrance annulée **reste le
+        // sien** : la ligne d'annulation n'en prend pas, et le même numéro
+        // retapé sur une autre délivrance est refusé — servi deux fois, il
+        // ne désignerait plus rien.
         let next = write(sid, "SORTIE", 7.0, "2026-01-12", pid);
         let moves = db.stup_moves(sid).unwrap();
         let numbered: Vec<i64> = moves
@@ -61417,10 +61317,18 @@ mod tests {
             .filter(|m| m.ordo_no > 0)
             .map(|m| m.ordo_no)
             .collect();
-        assert_eq!(numbered, vec![1, 2, 3]);
-        assert_eq!(
+        assert_eq!(numbered.len(), 3, "la délivrance annulée garde le sien");
+        let cancelled_no = moves.iter().find(|m| m.id == twice).unwrap().ordo_no;
+        assert!(cancelled_no > 0);
+        assert_ne!(
             moves.iter().find(|m| m.id == next).unwrap().ordo_no,
-            3,
+            cancelled_no
+        );
+        let mut reuse = moves.iter().find(|m| m.id == next).unwrap().clone();
+        reuse.id = 0;
+        reuse.ordo_no = cancelled_no;
+        assert!(
+            db.add_stup_move(&reuse).is_err(),
             "le numéro annulé ne revient pas servir"
         );
 
@@ -61435,7 +61343,7 @@ mod tests {
                 happened_on: "2026-01-13".to_owned(),
                 quantity: 0.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -61533,7 +61441,7 @@ mod tests {
                 happened_on: "2026-09-11".to_owned(),
                 quantity: 14.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -61909,7 +61817,7 @@ mod tests {
             happened_on: "2026-02-10".to_owned(),
             quantity: qty,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: pid,
             prescriber: "Dr Martin".to_owned(),
             supplier: String::new(),
@@ -61926,7 +61834,7 @@ mod tests {
             .unwrap();
 
         // Seize Actiskenan et cinq Durogesic, d'un geste : deux lignes,
-        // deux numéros qui se suivent.
+        // chacune avec le numéro que le logiciel lui a donné.
         let ids = db
             .add_stup_moves(&[line(a, "SORTIE", 16.0, ""), line(b, "SORTIE", 5.0, "")])
             .unwrap();
@@ -61937,10 +61845,23 @@ mod tests {
             .iter()
             .map(|m| m.ordo_no)
             .collect();
-        assert_eq!(
-            numbers,
-            vec![1, 2],
+        assert_eq!(numbers.len(), 2);
+        assert_ne!(
+            numbers[0], numbers[1],
             "deux délivrances d'un geste ne portent pas le même numéro"
+        );
+        // Une feuille dont deux lignes portent le même numéro retombe
+        // entière : la seconde lit la première dans la transaction.
+        let mut first = line(a, "SORTIE", 1.0, "");
+        let mut second = line(b, "SORTIE", 1.0, "");
+        first.ordo_no = 3_000_001;
+        second.ordo_no = 3_000_001;
+        let before_twins = db.stup_summary().unwrap();
+        assert!(db.add_stup_moves(&[first, second]).is_err());
+        assert_eq!(
+            db.stup_summary().unwrap(),
+            before_twins,
+            "rien n'est resté écrit"
         );
 
         // Et maintenant une feuille dont la deuxième ligne est refusée :
@@ -62239,7 +62160,7 @@ mod tests {
                 happened_on: "2026-01-05".to_owned(),
                 quantity: 30.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: 0,
                 prescriber: String::new(),
                 supplier: "OCP".to_owned(),
@@ -65181,7 +65102,7 @@ mod tests {
                 happened_on: format!("2026-{:02}-{:02}", 1 + (i % 12), 1 + (i % 28)),
                 quantity: 14.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: if i % 5 == 0 { 0 } else { pid },
                 prescriber: String::new(),
                 supplier: String::new(),
@@ -66178,12 +66099,11 @@ mod tests {
         // tombe pas juste, et un produit sous son seuil. Sans quoi la
         // vue s'ouvrirait sur trois cadres vides et ne montrerait ni la
         // courbe, ni l'écart, ni la liste de contrôle.
-        // **L'officine continue son ordonnancier de papier.** Déclaré
-        // avant la première délivrance, sans quoi la démonstration
-        // montrerait un registre numéroté 1, 2, 3 — ce qu'aucune
-        // officine n'a sous les yeux, et ce qui ne montrerait pas ce
-        // que ce réglage sert à faire.
-        db.set_ordonnancier_start(18_950).unwrap();
+        // **Les numéros du logiciel de l'officine**, tels qu'il les donne :
+        // grands, et avec des écarts — les lignes qui ne sont pas des
+        // stupéfiants tombent entre deux. Un registre numéroté 1, 2, 3
+        // ne ressemblerait à aucun ordonnancier.
+        let next_no = std::cell::Cell::new(18_400_i64);
         let pid = db.patients().unwrap().first().map_or(0, |p| p.id);
         let year: i64 = db
             .conn
@@ -66202,7 +66122,11 @@ mod tests {
                 happened_on: day,
                 quantity: qty,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: {
+                    let n = next_no.get();
+                    next_no.set(n + 211 + n % 7 * 53);
+                    n
+                },
                 patient_id: patient,
                 prescriber: "Dr Morel".to_owned(),
                 supplier: if kind == "ENTREE" {
@@ -66290,7 +66214,7 @@ mod tests {
             happened_on: day(4, 2),
             quantity: 55.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66339,7 +66263,7 @@ mod tests {
             happened_on: day(9, 5),
             quantity: 41.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66365,7 +66289,7 @@ mod tests {
             happened_on: day(3, 1),
             quantity: 2.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66393,7 +66317,7 @@ mod tests {
             happened_on: day(3, 14),
             quantity: 12.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: pid,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66423,7 +66347,7 @@ mod tests {
             happened_on: day(9, 5),
             quantity: 14.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66448,7 +66372,7 @@ mod tests {
             happened_on: day(6, 20),
             quantity: 5.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: pid,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66468,7 +66392,7 @@ mod tests {
             happened_on: day(7, 4),
             quantity: 5.0,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: 0,
             prescriber: String::new(),
             supplier: String::new(),
@@ -66493,7 +66417,7 @@ mod tests {
                 happened_on: day(6, 9),
                 quantity: 7.0,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: typed_no(),
                 patient_id: pid,
                 prescriber: "Dr Morel".to_owned(),
                 supplier: String::new(),
@@ -67090,7 +67014,7 @@ mod tests {
             happened_on: "2026-02-10".to_owned(),
             quantity: qty,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no: typed_no(),
             patient_id: pid,
             prescriber: "Dr Martin".to_owned(),
             supplier: String::new(),

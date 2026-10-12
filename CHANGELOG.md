@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Narcotics register: the ordonnancier number comes from the pharmacy
+  software.** The LGO numbers every line of the ordonnancier — lists I
+  and II as well as narcotics — so a methadone dispensing may carry
+  18400 and the next narcotic 19027. BPM-Caddy used to generate
+  « highest + 1 » (18401), a number the software had already given to
+  something else. Each dispensing now asks for its « N° d'ordonnancier »
+  (single line and batch sheet), requires it, and refuses one already in
+  the register in any year; nothing is generated any more, the reference
+  post no longer numbers other posts' lines, and the « Premier numéro
+  d'ordonnancier » option is gone. Gaps between numbers are no longer
+  reported as missing numbers; a number carried twice still is. Lines
+  written without a number by earlier versions keep none and read « sans
+  numéro ».
+
 ### Fixed
 - Companion phone: « Effacer ce téléphone » and the lock remove the
   attachments opened in clear from the cache (an ordonnance stayed

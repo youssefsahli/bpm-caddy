@@ -1024,6 +1024,24 @@ pub fn next_number(used: &[u32], start: u32) -> u32 {
     highest.max(start.saturating_sub(1)) + 1
 }
 
+/// Le numéro d'ordonnancier **tapé**, tel que le logiciel de l'officine
+/// l'a donné : des chiffres, espaces de milliers admis (« 18 400 »), et
+/// rien d'autre. `None` pour un champ vide, zéro ou illisible — une
+/// délivrance n'en part pas sans.
+pub fn read_number(typed: &str) -> Option<i64> {
+    let digits: String = typed
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '\u{a0}' && *c != '\u{202f}')
+        .collect();
+    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) {
+        return None;
+    }
+    digits
+        .parse::<i64>()
+        .ok()
+        .filter(|n| *n > 0 && *n <= i64::from(u32::MAX))
+}
+
 /// Le numéro tel qu'il s'écrit et se lit : « 18950 ».
 ///
 /// Nu, parce que la suite est continue : l'année devant servait à
@@ -3152,5 +3170,18 @@ mod tests {
         assert_eq!(read_count("3 btes"), None);
         assert_eq!(read_count("2 x 14"), None);
         assert_eq!(read_count("14 comprimés"), Some(14.0));
+    }
+
+    /// Le numéro tapé : celui du logiciel de l'officine, chiffres seuls.
+    #[test]
+    fn a_typed_ordonnancier_number_reads_or_is_refused() {
+        assert_eq!(read_number("18400"), Some(18_400));
+        assert_eq!(read_number(" 18 400 "), Some(18_400));
+        assert_eq!(read_number("19027"), Some(19_027));
+        assert_eq!(read_number(""), None);
+        assert_eq!(read_number("0"), None);
+        assert_eq!(read_number("18400a"), None);
+        assert_eq!(read_number("-5"), None);
+        assert_eq!(read_number("1.5"), None);
     }
 }

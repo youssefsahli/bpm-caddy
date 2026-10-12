@@ -3586,6 +3586,9 @@ struct Batch {
     /// Le motif de l'écart, par identifiant : deux produits qui manquent
     /// ne manquent pas pour la même raison.
     reasons: std::collections::HashMap<i64, String>,
+    /// Sur une feuille de délivrance, le numéro d'ordonnancier que le
+    /// logiciel de l'officine a donné à chaque ligne, par identifiant.
+    numbers: std::collections::HashMap<i64, String>,
     /// Ce qui filtre la liste — un nom, une famille.
     query: String,
     /// Montrer tous les produits, ou seulement ceux dont une case est
@@ -3608,6 +3611,7 @@ impl Default for Batch {
             prescriber: String::new(),
             typed: std::collections::HashMap::new(),
             reasons: std::collections::HashMap::new(),
+            numbers: std::collections::HashMap::new(),
             query: String::new(),
             show_all: true,
         }
@@ -5763,6 +5767,9 @@ struct Session {
     stup_count_of: i64,
     stup_new_day: String,
     stup_new_prescriber: String,
+    /// Le numéro d'ordonnancier que le logiciel de l'officine a donné à
+    /// cette délivrance, tapé.
+    stup_new_ordo: String,
     stup_new_supplier: String,
     stup_new_reference: String,
     /// Le numéro de lot de la boîte, et sa péremption. **Distincts de
@@ -6577,6 +6584,7 @@ impl Session {
             stup_count_of: 0,
             stup_new_day: String::new(),
             stup_new_prescriber: String::new(),
+            stup_new_ordo: String::new(),
             stup_new_supplier: String::new(),
             stup_new_reference: String::new(),
             stup_new_lot: String::new(),
@@ -16576,15 +16584,6 @@ struct OptionsEditor {
     /// secondes : lu à chaque image, c'était un `read_dir` sur un partage
     /// réseau soixante fois par seconde.
     backup_seen: Option<(std::path::PathBuf, std::time::Instant, db::BackupState)>,
-    /// Le premier numéro d'ordonnancier, **tel qu'il est tapé**.
-    ///
-    /// Le texte vit ici jusqu'à ce que le champ perde le foyer, comme
-    /// les forfaits de location et pour la même raison : relu comme un
-    /// nombre et reformaté à chaque frappe, « 189 » deviendrait 189 et
-    /// « 18950 » serait impossible à saisir. `None` veut dire « pas
-    /// encore lu » — la page le remplit en arrivant, et le jette en
-    /// partant.
-    stup_start_text: Option<String>,
     cfg: Config,
     /// Text buffer for `[database] path` ("" = default location).
     db_path_text: String,
@@ -16627,7 +16626,6 @@ impl OptionsEditor {
             confirm_reset: false,
             confirm_telemetry_clear: false,
             backup_seen: None,
-            stup_start_text: None,
         }
     }
 }
@@ -18771,7 +18769,6 @@ impl App {
                 confirm_reset: false,
                 confirm_telemetry_clear: false,
                 backup_seen: None,
-                stup_start_text: None,
             })
         } else {
             None
@@ -51693,7 +51690,17 @@ impl App {
                                     Self::grid_cell(ui, state_w, dim(tr("batch_col_stock")));
                                 }
                                 Self::grid_cell(ui, qty_w, dim(tr("batch_col_qty")));
-                                Self::grid_cell(ui, reason_w, dim(tr("batch_col_reason")));
+                                // Une délivrance demande son numéro
+                                // d'ordonnancier, pas un motif.
+                                Self::grid_cell(
+                                    ui,
+                                    reason_w,
+                                    dim(tr(if kind.is_dispensing() {
+                                        "batch_col_ordo"
+                                    } else {
+                                        "batch_col_reason"
+                                    })),
+                                );
                                 ui.end_row();
                                 for s in &session.stup_summary {
                                     let id = s.product.id;
@@ -51801,7 +51808,17 @@ impl App {
                                     // et c'est le contraire de ce que
                                     // cette colonne dit : une case vide
                                     // n'écrit rien.
-                                    if filled {
+                                    if filled && kind.is_dispensing() {
+                                        motif::field_sized(
+                                            ui,
+                                            egui::vec2(reason_w, Self::button_height(ui)),
+                                            egui::TextEdit::singleline(
+                                                batch.numbers.entry(id).or_default(),
+                                            )
+                                            .hint_text(motif::hint(tr("stup_ordo_hint"))),
+                                        )
+                                        .on_hover_text(tr("stup_ordo_tooltip"));
+                                    } else if filled {
                                         // **Et « obligatoire » ne vaut
                                         // que là où il y a un écart.**
                                         // Un inventaire ne demande un
@@ -52046,6 +52063,28 @@ impl App {
             session.stup_note = Some((true, tr("stup_no_file").to_owned()));
             return;
         }
+        // Chaque délivrance de la feuille porte son numéro, celui du
+        // logiciel de l'officine : exigé ligne par ligne, et deux lignes
+        // ne portent pas le même (la base refuse aussi un numéro déjà
+        // inscrit, et toute la feuille retombe avec lui).
+        let mut numbers: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+        if kind.is_dispensing() {
+            for l in &plan.lines {
+                let read = batch
+                    .numbers
+                    .get(&l.stup_id)
+                    .and_then(|t| crate::ordonnancier::read_number(t));
+                let Some(n) = read else {
+                    session.stup_note = Some((true, tr("stup_err_no_number").to_owned()));
+                    return;
+                };
+                if numbers.values().any(|m| *m == n) {
+                    session.stup_note = Some((true, trf("stup_err_number_taken", n)));
+                    return;
+                }
+                numbers.insert(l.stup_id, n);
+            }
+        }
         let moves: Vec<db::StupMove> = plan
             .lines
             .iter()
@@ -52056,7 +52095,7 @@ impl App {
                 happened_on: day.clone(),
                 quantity: l.quantity,
                 ordo_year: 0,
-                ordo_no: 0,
+                ordo_no: numbers.get(&l.stup_id).copied().unwrap_or(0),
                 patient_id: file.unwrap_or(0),
                 prescriber: batch.prescriber.clone(),
                 // Le grossiste et le bon de livraison ne valent que pour
@@ -52336,6 +52375,7 @@ impl App {
         // registre sur la ligne suivante.
         if k != Kind::Sortie {
             session.stup_new_prescriber.clear();
+            session.stup_new_ordo.clear();
         }
         if k != Kind::Entree {
             session.stup_new_supplier.clear();
@@ -52735,6 +52775,17 @@ impl App {
                             });
                             match kind {
                                 Kind::Sortie => {
+                                    // Le numéro d'abord : c'est celui que
+                                    // le logiciel de l'officine vient de
+                                    // donner, et qu'on recopie.
+                                    focus_here |= motif::field_sized(
+                                        ui,
+                                        egui::vec2(w, Self::button_height(ui)),
+                                        egui::TextEdit::singleline(&mut session.stup_new_ordo)
+                                            .hint_text(motif::hint(tr("stup_ordo_hint"))),
+                                    )
+                                    .on_hover_text(tr("stup_ordo_tooltip"))
+                                    .has_focus();
                                     focus_here |= Self::stup_file_row(ui, session, w, true);
                                     focus_here |= motif::field_sized(
                                         ui,
@@ -53150,6 +53201,19 @@ impl App {
             session.stup_note = Some((true, tr("stup_lot_other_product").to_owned()));
             return;
         }
+        // Le numéro que le logiciel de l'officine a donné : exigé sur une
+        // délivrance, et la base refuse celui qui désigne déjà une ligne.
+        let ordo_no = if kind.is_dispensing() {
+            match crate::ordonnancier::read_number(&session.stup_new_ordo) {
+                Some(n) => n,
+                None => {
+                    session.stup_note = Some((true, tr("stup_err_no_number").to_owned()));
+                    return;
+                }
+            }
+        } else {
+            0
+        };
         let move_ = db::StupMove {
             id: 0,
             stup_id: product.id,
@@ -53157,7 +53221,7 @@ impl App {
             happened_on: day,
             quantity,
             ordo_year: 0,
-            ordo_no: 0,
+            ordo_no,
             patient_id: file.unwrap_or(0),
             prescriber: session.stup_new_prescriber.clone(),
             supplier: session.stup_new_supplier.clone(),
@@ -53184,6 +53248,7 @@ impl App {
         };
         match session.db.add_stup_move(&move_) {
             Ok(_) => {
+                session.stup_new_ordo.clear();
                 session.stup_new_qty.clear();
                 session.stup_new_day.clear();
                 session.stup_new_remark.clear();
@@ -54868,32 +54933,15 @@ impl App {
                 .map(|m| m.ordo_no as u32)
                 .collect();
             if let Some(seq) = crate::ordonnancier::sequence(&used) {
-                let missing: u32 = seq.holes.iter().map(|h| h.count()).sum();
-                let (text, colour) = if missing == 0 && seq.doubled.is_empty() {
+                // **Les trous sont normaux** : le logiciel de l'officine
+                // numérote toutes les lignes de l'ordonnancier, et celles
+                // qui ne sont pas des stupéfiants tombent entre deux
+                // numéros d'ici. Seul un numéro porté deux fois dit une
+                // anomalie.
+                let (text, colour) = if seq.doubled.is_empty() {
                     (
                         trn("stup_seq_whole", &[&seq.first, &seq.last, &seq.count]),
                         motif::text_dim(),
-                    )
-                } else if seq.doubled.is_empty() {
-                    (
-                        trn(
-                            "stup_seq_holes",
-                            &[
-                                &missing,
-                                &seq.holes
-                                    .iter()
-                                    .map(|h| {
-                                        if h.from == h.to {
-                                            h.from.to_string()
-                                        } else {
-                                            format!("{} à {}", h.from, h.to)
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(", "),
-                            ],
-                        ),
-                        motif::alert(),
                     )
                 } else {
                     (
@@ -81245,22 +81293,6 @@ impl eframe::App for App {
             }
             _ => None,
         };
-        // Où l'ordonnancier de papier s'était arrêté. Lu en arrivant
-        // sur la page, et une seule fois : c'est une déclaration, pas
-        // un compteur, et elle ne bouge pas pendant qu'on la regarde.
-        if let (Some(editor), State::Unlocked(s)) = (&mut self.options, &self.state) {
-            if editor.page == OptionsPage::Database && editor.stup_start_text.is_none() {
-                let declared = s.db.ordonnancier_start();
-                editor.stup_start_text = Some(if declared == 0 {
-                    // Rien de déclaré s'écrit vide et non « 0 » : un
-                    // zéro dans un champ se lit comme une valeur posée.
-                    String::new()
-                } else {
-                    declared.to_string()
-                });
-            }
-        }
-        let mut set_stup_start: Option<u32> = None;
         // « Postes de l'officine… », ouvert après l'emprunt.
         #[cfg(feature = "sync")]
         let mut open_posts = false;
@@ -81326,11 +81358,6 @@ impl eframe::App for App {
                         for page in OptionsPage::ALL {
                             if motif::toggle(ui, page.label(), editor.page == page).clicked() {
                                 editor.page = page;
-                                // On quitte la page : ce qu'elle avait
-                                // lu ne vaut plus, et y revenir doit
-                                // relire plutôt que montrer l'état
-                                // d'avant.
-                                editor.stup_start_text = None;
                             }
                         }
                     });
@@ -82848,62 +82875,6 @@ impl eframe::App for App {
                                         );
                                     }
                                 }
-                                // **Où l'ordonnancier de papier s'est
-                                // arrêté.** Une officine qui s'installe
-                                // avec ce logiciel en est à dix-huit
-                                // mille neuf cent cinquante, pas à un,
-                                // et le numéro qu'elle écrit sur
-                                // l'ordonnance doit suivre le précédent.
-                                // Le champ rend deux réponses possibles
-                                // et n'en écrit aucune lui-même : il
-                                // tient le texte de quelqu'un sous les
-                                // doigts, et le relire depuis la base
-                                // au milieu d'une frappe le lui
-                                // arracherait.
-                                let mut reread_start = false;
-                                if let Some(text) = &mut editor.stup_start_text {
-                                    ui.horizontal(|ui| {
-                                        ui.label(dim(tr("opts_stup_start")));
-                                        let field = motif::field(
-                                            ui,
-                                            chars_wide(ui, 8.0),
-                                            egui::TextEdit::singleline(text)
-                                                .hint_text(motif::hint(tr("opts_stup_start_hint"))),
-                                        );
-                                        // Pris quand le champ rend la
-                                        // main, et jamais à la frappe :
-                                        // « 189 » n'est pas ce qu'on
-                                        // voulait déclarer, c'est le
-                                        // début de « 18950 ».
-                                        if field.lost_focus() {
-                                            let typed = text.trim();
-                                            if typed.is_empty() {
-                                                set_stup_start = Some(0);
-                                            } else if let Ok(n) = typed.parse::<u32>() {
-                                                set_stup_start = Some(n);
-                                            } else {
-                                                // Ce qui n'est pas un
-                                                // nombre n'est pas pris,
-                                                // et le champ revient à
-                                                // ce qui est écrit : un
-                                                // refus muet se lirait
-                                                // comme une acceptation.
-                                                reread_start = true;
-                                            }
-                                        }
-                                    });
-                                    ui.add(
-                                        egui::Label::new(
-                                            egui::RichText::new(tr("opts_stup_start_tooltip"))
-                                                .size(motif::pt(ui, 11.0))
-                                                .color(motif::text_dim()),
-                                        )
-                                        .wrap(),
-                                    );
-                                }
-                                if reread_start {
-                                    editor.stup_start_text = None;
-                                }
                                 // File-level tools: consistent encrypted copy
                                 // (VACUUM INTO) to any destination; "move"
                                 // additionally points this post at the copy
@@ -83508,15 +83479,6 @@ impl eframe::App for App {
                         ..PostsWindow::default()
                     });
                 }
-            }
-        }
-        if let (Some(first), State::Unlocked(session)) = (set_stup_start, &self.state) {
-            let _ = session.db.set_ordonnancier_start(first);
-            // Relu : déclaré sous ce qui est déjà écrit, il ne fait
-            // rien, et le champ doit montrer ce que le registre a
-            // vraiment retenu plutôt que ce qu'on a tapé.
-            if let Some(editor) = &mut self.options {
-                editor.stup_start_text = None;
             }
         }
         if let Some(url) = presc_url {
