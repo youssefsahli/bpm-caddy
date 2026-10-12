@@ -17,6 +17,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The history of versions follows when each was written or received here,
   not the posts' number blocks: « garder la mienne » written on the
   founding post now closes a disagreement received on another post.
+- Agenda: an hour that does not read, an end that does not follow the
+  start, or an even/odd-week rhythm on a day of the other week is refused
+  with a message (the entry was saved without its hour, or its end, and
+  the form cleared); « 15 min » is no longer read as 15:00; deleting a
+  repeating entry asks a second click; the grid's entries are read again
+  only when the range or the data changes, not on every frame.
 
 ## [0.400.0] - 2026-10-12
 

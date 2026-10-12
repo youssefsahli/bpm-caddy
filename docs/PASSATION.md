@@ -96,6 +96,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   supprimé ici ; un retour d'ici à la valeur d'avant une version reçue
   appliquée ne se versionne pas ; une valeur TROD que l'écriture
   normalise (espaces, lignes vides) reste à arbitrer pour toujours ;
+- agenda : une entrée ne passe pas minuit (refusée), une série ne peut
+  pas s'arrêter à une date (seule la suppression, qui emporte le passé) ;
+  au passage de minuit du dimanche, la semaine affichée et l'impression
+  du jour peuvent se désaccorder ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

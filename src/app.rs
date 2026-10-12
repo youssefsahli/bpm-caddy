@@ -5254,6 +5254,10 @@ struct Session {
     /// `ACT_DATE`…), quand un autre poste a changé la valeur depuis — voir
     /// `keep_act_edits`.
     itv_seen: std::collections::HashMap<(i64, usize), String>,
+    /// Les entrées de la grille de l'agenda et la plage qu'elles couvrent.
+    grid_events_memo: Option<((String, String), Vec<db::Event>)>,
+    /// La série dont la suppression attend le second clic.
+    confirm_delete_event: Option<i64>,
     /// Voir [`StupEdits`].
     stup_edits: Option<StupEdits>,
     /// Discreet mode: revenue amounts stay masked until explicitly
@@ -6236,6 +6240,8 @@ impl Session {
             by_edits: std::collections::HashMap::new(),
             hour_edits: std::collections::HashMap::new(),
             itv_seen: std::collections::HashMap::new(),
+            grid_events_memo: None,
+            confirm_delete_event: None,
             stup_edits: None,
             show_amounts: false,
             dup_check: None,
@@ -7980,6 +7986,7 @@ impl Session {
         // et les lignes par indication d'une fiche (les calculs).
         self.graph_pair = None;
         self.calc_poso = None;
+        self.grid_events_memo = None;
         if let Ok(list) = self.db.patients() {
             let ddr_before = self.viewing.as_ref().map(|p| p.pregnancy_ddr.clone());
             self.set_patients(list);
@@ -10831,6 +10838,7 @@ impl Session {
     /// Reload what the agenda's day panel shows: the day's entries and
     /// its notes. Called on selection, on refresh and after a write.
     fn load_day(&mut self) {
+        self.grid_events_memo = None;
         if self.agenda_day.is_empty() {
             self.agenda_day = self.today.clone();
         }
@@ -10884,6 +10892,10 @@ impl Session {
     }
 
     /// Reload the events shown on the week or month grid.
+    /// Les entrées de la grille, **relues seulement quand la plage bouge**
+    /// ou qu'une écriture les a changées (`load_day`, `resync` effacent la
+    /// mémoire) : appelée à chaque image, elle relisait et dépliait six
+    /// semaines d'entrées soixante fois par seconde.
     fn load_grid_events(&mut self) -> Vec<db::Event> {
         let range = if self.agenda_month {
             (
@@ -10896,10 +10908,17 @@ impl Session {
                 self.agenda_week.last().cloned(),
             )
         };
-        match range {
-            (Some(from), Some(to)) => self.db.events_between(&from, &to).unwrap_or_default(),
-            _ => Vec::new(),
+        let (Some(from), Some(to)) = range else {
+            return Vec::new();
+        };
+        if let Some(((f, t), list)) = &self.grid_events_memo {
+            if *f == from && *t == to {
+                return list.clone();
+            }
         }
+        let list = self.db.events_between(&from, &to).unwrap_or_default();
+        self.grid_events_memo = Some(((from, to), list.clone()));
+        list
     }
 
     /// The week's shifts, read once per week rather than once per
@@ -34476,15 +34495,30 @@ impl App {
                             .color(motif::text_dim()),
                         );
                     }
-                    if motif::button(ui, tr("itv_delete"))
-                        .on_hover_text(if ev.repeat_days > 0 {
-                            tr("agenda_event_delete_series")
+                    // Une série se supprime en deux clics : elle emporte
+                    // aussi ses jours passés.
+                    let confirming = session.confirm_delete_event == Some(ev.source_id);
+                    if motif::button(
+                        ui,
+                        if confirming {
+                            tr("itv_delete_confirm")
                         } else {
-                            tr("agenda_event_delete")
-                        })
-                        .clicked()
+                            tr("itv_delete")
+                        },
+                    )
+                    .on_hover_text(if ev.repeat_days > 0 {
+                        tr("agenda_event_delete_series")
+                    } else {
+                        tr("agenda_event_delete")
+                    })
+                    .clicked()
                     {
-                        delete_event = Some((ev.source_id, ev.title.clone()));
+                        if ev.repeat_days > 0 && !confirming {
+                            session.confirm_delete_event = Some(ev.source_id);
+                        } else {
+                            session.confirm_delete_event = None;
+                            delete_event = Some((ev.source_id, ev.title.clone()));
+                        }
                     }
                 });
             }
@@ -34638,10 +34672,24 @@ impl App {
             76.0,
             true,
         );
-        if add_event {
+        // **Une heure tapée qui ne se lit pas n'est pas « sans heure »** :
+        // l'entrée s'enregistrait sans elle et le formulaire s'effaçait,
+        // la faute avec. Une fin avant le début, ou un rythme qui ne
+        // tombe pas ce jour-là, se disent de même.
+        let checked = add_event.then(|| {
+            Self::event_times(&session.event_time, &session.event_end).and_then(|times| {
+                if session.event_cadence.accepte(&day) {
+                    Ok(times)
+                } else {
+                    Err("agenda_cadence_off")
+                }
+            })
+        });
+        if let Some(Err(key)) = &checked {
+            session.error = Some(tr(key).to_owned());
+        }
+        if let Some(Ok((time, end))) = checked {
             let title = session.event_title.trim().to_owned();
-            let time = db::parse_hour(&session.event_time).unwrap_or_default();
-            let end = db::parse_hour(&session.event_end).unwrap_or_default();
             match session.db.add_event_span(
                 &day,
                 &time,
@@ -35956,6 +36004,24 @@ impl App {
         }
         resp.on_hover_text(hover);
         8.0
+    }
+
+    /// Les heures d'une entrée de l'agenda, lues : vides si rien n'est
+    /// tapé ; une heure tapée qui ne se lit pas, ou une fin qui ne vient
+    /// pas après le début, est refusée (la clé du message).
+    fn event_times(time: &str, end: &str) -> Result<(String, String), &'static str> {
+        let read = |t: &str| {
+            if t.trim().is_empty() {
+                Ok(String::new())
+            } else {
+                db::parse_hour(t).ok_or("agenda_bad_hour")
+            }
+        };
+        let (time, end) = (read(time)?, read(end)?);
+        if !end.is_empty() && (time.is_empty() || end <= time) {
+            return Err("agenda_end_before");
+        }
+        Ok((time, end))
     }
 
     /// La fin d'un poste qui revient, lue : vide si rien n'est tapé ;
@@ -91344,6 +91410,22 @@ mod tests {
         s.by_edits.insert(a, "XY".to_owned());
         s.prune_act_seen();
         assert!(s.itv_seen.is_empty());
+    }
+
+    /// **Une heure d'agenda illisible est refusée**, pas enregistrée vide,
+    /// et une fin doit suivre son début.
+    #[test]
+    fn an_agenda_entry_refuses_what_its_hours_cannot_say() {
+        let t = super::App::event_times;
+        assert_eq!(t("", ""), Ok((String::new(), String::new())));
+        assert_eq!(
+            t("9h", "10h30"),
+            Ok(("09:00".to_owned(), "10:30".to_owned()))
+        );
+        assert_eq!(t("12:3", ""), Err("agenda_bad_hour"));
+        assert_eq!(t("9h", "15 min"), Err("agenda_bad_hour"));
+        assert_eq!(t("20h", "2h"), Err("agenda_end_before"));
+        assert_eq!(t("", "10h"), Err("agenda_end_before"));
     }
 
     /// **La fin d'un poste qui revient** : illisible, elle est refusée

@@ -54054,11 +54054,18 @@ pub fn parse_hour(text: &str) -> Option<String> {
             break;
         }
     }
+    let mut minutes_named = false;
     for unit in ["minutes", "minute", "min", "mn", "m"] {
         if let Some(rest) = text.strip_suffix(unit) {
             text = rest.trim_end();
+            minutes_named = true;
             break;
         }
+    }
+    // « 15 min » est une durée, pas quinze heures : des minutes nommées
+    // ne se lisent que derrière une heure (« 9h30min »).
+    if minutes_named && !text.contains([':', 'h', '.', ',']) {
+        return None;
     }
     if let Some(at) = text.find([':', 'h', '.', ',']) {
         let (head, tail) = (&text[..at], &text[at + 1..]);
@@ -58191,6 +58198,7 @@ mod tests {
         assert_eq!(parse_hour("9h30m").as_deref(), Some("09:30"));
         assert_eq!(parse_hour("9 heures 30 minutes").as_deref(), Some("09:30"));
         assert_eq!(parse_hour("midi"), None);
+        assert_eq!(parse_hour("15 min"), None, "une durée");
         assert_eq!(parse_hour("midi 15"), None);
         assert_eq!(parse_hour("minuit 5"), None);
         assert_eq!(parse_hour("J+2"), None);
