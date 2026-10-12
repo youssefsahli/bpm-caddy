@@ -11120,7 +11120,9 @@ impl Session {
     fn carte_received(&mut self, address: &str) {
         let now = crate::repertoire::unix_now();
         self.carte_mark(|p| {
-            if p.parue == address && now.saturating_sub(p.parue_le) < 6 * 3600 {
+            if p.parue == address
+                && now.saturating_sub(p.parue_le) < crate::repertoire::PARUE_REFRESH
+            {
                 return false;
             }
             p.parue = address.to_owned();
@@ -11187,6 +11189,7 @@ impl Session {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
             match crate::repertoire::serve(port, std::sync::Arc::clone(&stop)) {
                 Ok(()) => {
+                    HOSTED_PORT.store(port, std::sync::atomic::Ordering::SeqCst);
                     HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                     self.carte.hosting = Some((port, stop));
                     let (tx, rx) = std::sync::mpsc::channel();
@@ -11219,11 +11222,13 @@ impl Session {
         let wanted = p.paraitre.then(|| p.address()).flatten();
         // Un départ dû : à un répertoire qui a reçu une carte (la base le
         // retient, un jour au plus), ou à celui de cette session.
+        // La session seule ne compte que si la base n'a rien pu retenir :
+        // un départ que la base a laissé expirer n'est plus dû.
         let owed = p.owed(crate::repertoire::unix_now()).or_else(|| {
             self.carte
                 .appeared
                 .clone()
-                .filter(|a| wanted.as_ref() != Some(a))
+                .filter(|a| p.parue.is_empty() && wanted.as_ref() != Some(a))
         });
         // **Un départ manqué ne bloque pas la carte** : un répertoire
         // éteint, ou mal écrit — souvent la raison même du changement —
@@ -14746,6 +14751,10 @@ type Announced = (String, bool, Result<(), String>);
 /// port en retard ne défait pas une ouverture plus récente.
 #[cfg(feature = "sync")]
 static HOSTED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+/// Le port de la dernière ouverture : un autre port rouvert ne dispense
+/// pas de fermer l'ancien.
+#[cfg(feature = "sync")]
+static HOSTED_PORT: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(0);
 
 /// **Une session qui s'en va arrête le répertoire qu'elle hébergeait** —
 /// verrouillage, fermeture, changement de base : sans quoi le fil tenait
@@ -14776,7 +14785,9 @@ impl Carte {
             // Rouvert entre-temps — décoché puis recoché, verrouillé puis
             // déverrouillé : le port est de nouveau le sien, on n'y touche
             // pas.
-            if HOSTED.load(std::sync::atomic::Ordering::SeqCst) == generation {
+            let reopened = HOSTED.load(std::sync::atomic::Ordering::SeqCst) != generation
+                && HOSTED_PORT.load(std::sync::atomic::Ordering::SeqCst) == port;
+            if !reopened {
                 crate::reach::close_mapping(port);
             }
         });
