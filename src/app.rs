@@ -10790,7 +10790,12 @@ impl Session {
     /// window counts as looked at, whatever arrives while it is open.
     fn refresh_online_fresh(&mut self) {
         use crate::versions::Kind;
-        let open = self.online.as_ref().map(|o| o.kind);
+        // Parcourir une officine du répertoire ne voit rien du journal.
+        let open = self
+            .online
+            .as_ref()
+            .filter(|o| o.remote.is_none())
+            .map(|o| o.kind);
         let key = (self.edits_rev, open);
         if self.online_fresh_key == Some(key) {
             return;
@@ -10861,14 +10866,36 @@ impl Session {
     fn open_carte(&mut self) {
         self.read_presence();
         self.carte.me = crate::network::device_hex(&self.db).unwrap_or_default();
-        let p = self.carte.presence.clone();
-        self.carte.address.clone_from(&p.adresse);
-        self.carte.paraitre = p.paraitre;
-        self.carte.finess.clone_from(&p.finess);
-        self.carte.commune = (!p.code_postal.is_empty()).then_some((p.code_postal, p.commune));
-        if !self.carte.listed && self.carte.job.is_none() {
+        if self.carte.buffers_from.as_ref() != Some(&self.carte.presence_raw) {
+            let p = self.carte.presence.clone();
+            self.carte.address.clone_from(&p.adresse);
+            self.carte.paraitre = p.paraitre;
+            self.carte.finess.clone_from(&p.finess);
+            self.carte.commune = (!p.code_postal.is_empty()).then_some((p.code_postal, p.commune));
+            self.carte.buffers_from = Some(self.carte.presence_raw.clone());
+            self.locate_me();
+        }
+        let stale = self
+            .carte
+            .listed_at
+            .is_none_or(|t| t.elapsed() > Duration::from_secs(120));
+        if (!self.carte.listed || stale) && self.carte.job.is_none() {
             self.carte_fetch();
         }
+    }
+
+    /// Where this officine's square goes: its chosen commune.
+    #[cfg(feature = "sync")]
+    fn locate_me(&mut self) {
+        self.carte.me_point = self
+            .carte
+            .commune
+            .as_ref()
+            .and_then(|(cp, nom)| crate::geo::commune(cp, nom))
+            .map(|c| {
+                let zone = crate::geo::zone_of(c.dep);
+                (zone, crate::geo::project(zone, c.lon, c.lat))
+            });
     }
 
     #[cfg(not(feature = "sync"))]
@@ -10935,6 +10962,7 @@ impl Session {
         }
         self.carte.list = list;
         self.carte.listed = true;
+        self.carte.listed_at = Some(Instant::now());
     }
 
     /// **Save what the officine decided**, against what this post read.
@@ -10948,13 +10976,25 @@ impl Session {
             return;
         }
         let (code_postal, commune) = self.carte.commune.clone().unwrap_or_default();
-        let next = crate::repertoire::Presence {
+        let mut next = crate::repertoire::Presence {
             adresse: self.carte.address.trim().to_owned(),
             paraitre: self.carte.paraitre,
             code_postal,
             commune,
             finess,
+            parue: self.carte.presence.parue.clone(),
         };
+        // Partir, ou changer de répertoire : le départ est dû à celui où
+        // l'officine paraissait, jusqu'à ce qu'il l'ait reçu.
+        let was = &self.carte.presence;
+        if let Some(old) = was.paraitre.then(|| was.address()).flatten() {
+            if !next.paraitre || next.address().as_ref() != Some(&old) {
+                next.parue = old;
+            }
+        }
+        if next.paraitre && next.address().as_deref() == Some(next.parue.as_str()) {
+            next.parue.clear();
+        }
         if next.paraitre && next.commune.is_empty() {
             self.carte.note = Some((true, tr("carte_need_commune").to_owned()));
             return;
@@ -10976,6 +11016,8 @@ impl Session {
                 let moved = next.adresse != self.carte.presence.adresse;
                 self.carte.presence = next;
                 self.carte.presence_raw = Some(text);
+                self.carte.buffers_from = Some(self.carte.presence_raw.clone());
+                self.locate_me();
                 self.carte.note = Some((false, tr("carte_saved").to_owned()));
                 // Annoncé tout de suite : paraître, changer de commune ou
                 // partir se voit sans attendre dix minutes.
@@ -10984,7 +11026,11 @@ impl Session {
                     self.carte.listed = false;
                     self.carte.list.clear();
                     self.carte.points.clear();
-                    self.carte_fetch();
+                    // Pas par-dessus un partage en cours de lecture : la
+                    // liste se relira au retour à l'onglet.
+                    if self.carte.job.is_none() {
+                        self.carte_fetch();
+                    }
                 }
             }
             Ok(false) => {
@@ -11015,15 +11061,30 @@ impl Session {
         }
         if let Some(rx) = &self.carte.announcing {
             match rx.try_recv() {
-                Ok(said) => {
+                Ok((address, present, said)) => {
                     self.carte.announcing = None;
                     let at = self.db.now_stamp().unwrap_or_default();
-                    if said.is_err() {
+                    match (&said, present) {
+                        (Ok(()), true) => self.carte.appeared = Some(address),
+                        // Partie : ce qui reste à annoncer (une carte à un
+                        // nouveau répertoire) part tout de suite.
+                        (Ok(()), false) => {
+                            self.carte.appeared = None;
+                            self.carte_departed(&address);
+                            self.carte.next_announce = Some(Instant::now());
+                        }
                         // Une minute plutôt que dix : un répertoire qui
-                        // redémarre ne garde pas l'officine absente.
-                        self.carte.next_announce = Some(Instant::now() + Duration::from_secs(60));
+                        // redémarre ne garde pas l'officine absente — sans
+                        // retarder une annonce demandée entre-temps.
+                        (Err(_), _) => {
+                            let soon = Instant::now() + Duration::from_secs(60);
+                            self.carte.next_announce =
+                                Some(self.carte.next_announce.map_or(soon, |t| t.min(soon)));
+                        }
                     }
-                    self.carte.announced = Some((at, said));
+                    if present || said.is_err() {
+                        self.carte.announced = Some((at, said));
+                    }
                 }
                 Err(TryRecvError::Empty) => ctx.request_repaint_after(Duration::from_millis(250)),
                 Err(TryRecvError::Disconnected) => self.carte.announcing = None,
@@ -11037,24 +11098,60 @@ impl Session {
         }
     }
 
+    /// A departure the directory received: no longer owed, in the base —
+    /// written against what was just read, and shown when the screen had
+    /// not moved from it.
+    #[cfg(feature = "sync")]
+    fn carte_departed(&mut self, address: &str) {
+        let raw = self.db.setting(crate::repertoire::SETTING);
+        let mut p = crate::repertoire::Presence::read(raw.as_deref());
+        if p.parue != address {
+            return;
+        }
+        p.parue.clear();
+        let text = p.text();
+        let today = self.today.clone();
+        if let Ok(true) = self.db.set_setting(
+            crate::repertoire::SETTING,
+            &text,
+            raw.as_deref(),
+            &today,
+            "",
+        ) {
+            if self.carte.presence_raw == raw {
+                self.carte.presence = p;
+                self.carte.presence_raw = Some(text.clone());
+                if self.carte.buffers_from == Some(raw) {
+                    self.carte.buffers_from = Some(Some(text));
+                }
+            }
+        }
+    }
+
     /// Start or stop the directory this post hosts, as `config.toml`
     /// says, and ask the router once for a public port.
     #[cfg(feature = "sync")]
     fn poll_carte_host(&mut self, config: &Config) {
-        use std::sync::atomic::Ordering;
         let want = config
             .reseau
             .repertoire
             .then_some(config.reseau.port_repertoire);
-        if let Some((port, stop)) = &self.carte.hosting {
-            if want != Some(*port) {
-                stop.store(true, Ordering::SeqCst);
-                let port = *port;
-                std::thread::spawn(move || crate::reach::close_mapping(port));
-                self.carte.hosting = None;
-                self.carte.host_public = None;
-                self.carte.host_failed = None;
-            }
+        if self
+            .carte
+            .hosting
+            .as_ref()
+            .is_some_and(|(p, _)| want != Some(*p))
+        {
+            self.carte.stop_hosting();
+        }
+        // Un échec ne vaut que pour son port : un autre se réessaie.
+        if self
+            .carte
+            .host_failed
+            .as_ref()
+            .is_some_and(|(p, _)| want != Some(*p))
+        {
+            self.carte.host_failed = None;
         }
         if let (None, Some(port), None) = (&self.carte.hosting, want, &self.carte.host_failed) {
             let stop = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -11067,7 +11164,7 @@ impl Session {
                     });
                     self.carte.host_reach = Some(rx);
                 }
-                Err(e) => self.carte.host_failed = Some(e.to_string()),
+                Err(e) => self.carte.host_failed = Some((port, e.to_string())),
             }
         }
         if let Some(rx) = &self.carte.host_reach {
@@ -11078,20 +11175,30 @@ impl Session {
         }
     }
 
-    /// Sign and send the officine's card — or its departure, once, when
-    /// it stopped appearing during this session.
+    /// Sign and send the officine's card — or its departure from the
+    /// directory where it appears, when it stopped appearing or moved to
+    /// another one. One at a time: a departure first, the card after.
     #[cfg(feature = "sync")]
     fn carte_announce(&mut self, config: &Config) {
-        self.read_presence();
-        let p = self.carte.presence.clone();
-        let Some(address) = p.address() else {
-            return;
+        // Lu pour l'annonce seulement : ce que l'écran a lu, contre quoi
+        // il enregistrera, ne change pas sous lui.
+        let p = crate::repertoire::Presence::read(
+            self.db.setting(crate::repertoire::SETTING).as_deref(),
+        );
+        let wanted = p.paraitre.then(|| p.address()).flatten();
+        // Un départ dû, de cette session ou d'avant (la base le retient).
+        let owed = self
+            .carte
+            .appeared
+            .clone()
+            .or_else(|| (!p.parue.is_empty()).then(|| p.parue.clone()));
+        let (address, present) = match (&owed, &wanted) {
+            (Some(old), w) if w.as_ref() != Some(old) => (old.clone(), false),
+            (_, Some(w)) => (w.clone(), true),
+            (_, None) => return,
         };
-        if !p.paraitre && !self.carte.appeared {
-            return;
-        }
         let name = config.pharmacy.name.trim().to_owned();
-        if p.paraitre && name.is_empty() {
+        if present && name.is_empty() {
             self.carte.announced = Some((
                 self.db.now_stamp().unwrap_or_default(),
                 Err(tr("carte_need_name").to_owned()),
@@ -11101,38 +11208,42 @@ impl Session {
         let Ok(device) = crate::network::device(&self.db) else {
             return;
         };
-        let (catalogue, parts) = if p.paraitre {
-            crate::repertoire::catalogue_of(&self.card_edits)
+        // Le catalogue se compose et se signe sur le fil : un long journal
+        // ne fige pas l'écran toutes les dix minutes.
+        let seed = device.seed();
+        let edits = if present {
+            self.card_edits.clone()
         } else {
-            (Vec::new(), Vec::new())
+            Vec::new()
         };
-        let fiche = crate::repertoire::sign(
-            crate::repertoire::Fiche {
-                seq: crate::repertoire::unix_now(),
-                nom: name.chars().take(crate::repertoire::NAME_MAX).collect(),
-                commune: p.commune.clone(),
-                code_postal: p.code_postal.clone(),
-                finess: p.finess.clone(),
-                parts,
-                catalogue: if p.paraitre {
-                    crate::repertoire::digest(&catalogue)
-                } else {
-                    String::new()
-                },
-                present: p.paraitre,
-                ..crate::repertoire::Fiche::default()
-            },
-            &device,
-        );
-        self.carte.appeared = p.paraitre;
         let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
-            let _ = tx.send(crate::repertoire::announce(
-                &address,
-                &fiche,
-                &catalogue,
-                Duration::from_secs(8),
-            ));
+            let (catalogue, parts) = if present {
+                crate::repertoire::catalogue_of(&edits)
+            } else {
+                (Vec::new(), Vec::new())
+            };
+            let fiche = crate::repertoire::sign(
+                crate::repertoire::Fiche {
+                    seq: crate::repertoire::unix_now(),
+                    nom: name.chars().take(crate::repertoire::NAME_MAX).collect(),
+                    commune: p.commune.clone(),
+                    code_postal: p.code_postal.clone(),
+                    finess: p.finess.clone(),
+                    catalogue: if present {
+                        crate::repertoire::digest(&catalogue)
+                    } else {
+                        String::new()
+                    },
+                    parts,
+                    present,
+                    ..crate::repertoire::Fiche::default()
+                },
+                &bpm_sync::Device::from_seed(seed),
+            );
+            let said =
+                crate::repertoire::announce(&address, &fiche, &catalogue, Duration::from_secs(8));
+            let _ = tx.send((address, present, said));
         });
         self.carte.announcing = Some(rx);
     }
@@ -14547,6 +14658,16 @@ struct Carte {
     list: Vec<crate::repertoire::Fiche>,
     points: Vec<Option<(crate::geo::Zone, [f32; 2])>>,
     listed: bool,
+    /// Quand le répertoire a été lu : revenu à l'onglet après deux
+    /// minutes, on le relit — « ouverte » ne reste pas d'hier.
+    listed_at: Option<Instant>,
+    /// Où se pose cette officine, d'après sa commune choisie — lu quand
+    /// elle change, pas à chaque image.
+    me_point: Option<(crate::geo::Zone, [f32; 2])>,
+    /// Le texte du réglage d'où viennent les tampons : ils ne sont remis
+    /// à neuf que quand la base dit autre chose, jamais en revenant à
+    /// l'onglet sur une saisie en cours.
+    buffers_from: Option<Option<String>>,
     /// Les contours à l'écran, pour le cadre où ils ont été posés.
     outlines: Option<([u32; 4], Vec<Vec<egui::Pos2>>)>,
     pick: Option<String>,
@@ -14554,18 +14675,58 @@ struct Carte {
     me: String,
     note: Option<(bool, String)>,
     job: Option<std::sync::mpsc::Receiver<CarteAnswer>>,
-    /// L'annonce : le fil en cours, la prochaine, la dernière réponse, et
-    /// si cette session a paru (pour annoncer le départ).
-    announcing: Option<std::sync::mpsc::Receiver<Result<(), String>>>,
+    /// L'annonce : le fil en cours (le répertoire, carte ou départ, et sa
+    /// réponse), la prochaine, la dernière réponse, et **où l'officine
+    /// paraît** — le répertoire auquel annoncer son départ, jusqu'à ce
+    /// qu'il l'ait reçu.
+    announcing: Option<std::sync::mpsc::Receiver<Announced>>,
     next_announce: Option<Instant>,
     announced: Option<(String, Result<(), String>)>,
-    appeared: bool,
+    appeared: Option<String>,
     /// Le répertoire que ce poste héberge : son port, de quoi l'arrêter,
     /// et l'adresse publique que le routeur a donnée.
     hosting: Option<(u16, std::sync::Arc<std::sync::atomic::AtomicBool>)>,
-    host_failed: Option<String>,
+    /// Le port qui n'a pas pu s'ouvrir, et pourquoi : réessayé quand le
+    /// réglage nomme un autre port, oublié quand il n'en nomme plus.
+    host_failed: Option<(u16, String)>,
     host_reach: Option<std::sync::mpsc::Receiver<Option<String>>>,
     host_public: Option<String>,
+}
+
+/// Ce qu'une annonce rapporte : le répertoire, carte (`true`) ou départ,
+/// et sa réponse.
+#[cfg(feature = "sync")]
+type Announced = (String, bool, Result<(), String>);
+
+/// **Une session qui s'en va arrête le répertoire qu'elle hébergeait** —
+/// verrouillage, fermeture, changement de base : sans quoi le fil tenait
+/// le port contre la volonté de l'officine, et la session suivante ne
+/// pouvait plus l'ouvrir.
+#[cfg(feature = "sync")]
+impl Drop for Carte {
+    fn drop(&mut self) {
+        self.stop_hosting();
+    }
+}
+
+#[cfg(feature = "sync")]
+impl Carte {
+    /// Arrêter le répertoire hébergé et refermer le port du routeur —
+    /// après son ouverture si elle est encore en cours.
+    fn stop_hosting(&mut self) {
+        let Some((port, stop)) = self.hosting.take() else {
+            return;
+        };
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        let pending = self.host_reach.take();
+        std::thread::spawn(move || {
+            if let Some(rx) = pending {
+                let _ = rx.recv();
+            }
+            crate::reach::close_mapping(port);
+        });
+        self.host_public = None;
+    }
 }
 
 /// La fenêtre du réseau d'officines : ce que la base en dit, une tâche
@@ -18128,7 +18289,7 @@ impl App {
                                 paraitre: false,
                                 code_postal: "88000".to_owned(),
                                 commune: "Épinal".to_owned(),
-                                finess: String::new(),
+                                ..crate::repertoire::Presence::default()
                             };
                             let today = session.today.clone();
                             let _ = session.db.set_setting(
@@ -62966,16 +63127,9 @@ impl App {
                 .max(3.0);
             // Cette officine, là où elle a dit être : un carré, pour qu'il
             // se lise autrement qu'à sa couleur.
-            if let Some(c) = session
-                .carte
-                .commune
-                .as_ref()
-                .and_then(|(cp, nom)| crate::geo::commune(cp, nom))
-            {
-                let zone = crate::geo::zone_of(c.dep);
-                let pos = at(zone, crate::geo::project(zone, c.lon, c.lat));
+            if let Some((zone, p)) = session.carte.me_point {
                 painter.rect_stroke(
-                    egui::Rect::from_center_size(pos, egui::vec2(r * 3.0, r * 3.0)),
+                    egui::Rect::from_center_size(at(zone, p), egui::vec2(r * 3.0, r * 3.0)),
                     0.0,
                     egui::Stroke::new(2.0_f32, motif::text()),
                 );
@@ -63033,6 +63187,24 @@ impl App {
         _config: &Config,
     ) {
         ui.label(tr("carte_no_sync"));
+    }
+
+    /// A label cut to what a button of `width` shows, with « … » — a
+    /// button does not wrap.
+    #[cfg(feature = "sync")]
+    fn carte_elide(ui: &egui::Ui, text: &str, width: f32) -> String {
+        if Self::button_width(ui, text) <= width {
+            return text.to_owned();
+        }
+        // Une mesure, pas une par caractère : la largeur moyenne d'un
+        // caractère dit combien en tiennent.
+        let room = width - Self::button_width(ui, "");
+        let one = chars_wide(ui, 1.0).max(1.0);
+        let keep = ((room / one).floor().max(0.0) as usize)
+            .saturating_sub(1)
+            .max(1);
+        let cut: String = text.chars().take(keep).collect();
+        format!("{}…", cut.trim_end())
     }
 
     /// « Épinal (88000) », or what the card says when the list does not
@@ -63145,7 +63317,14 @@ impl App {
                     }
                     for f in &session.carte.list {
                         let on = session.carte.pick.as_deref() == Some(f.device.as_str());
-                        let label = format!("{} · {}", f.nom, f.commune);
+                        // Coupé à la largeur de la colonne : un bouton ne
+                        // s'enveloppe pas, et un nom de quatre-vingts
+                        // caractères sortait du volet.
+                        let label = Self::carte_elide(
+                            ui,
+                            &format!("{} · {}", f.nom, f.commune),
+                            ui.available_width(),
+                        );
                         if motif::toggle(ui, &label, on)
                             .on_hover_text(Self::carte_status(f, now))
                             .clicked()
@@ -63183,13 +63362,19 @@ impl App {
                     }
                     let mut chose: Option<(String, String)> = None;
                     for c in &session.carte.suggestions {
-                        if motif::button(ui, &format!("{} ({})", c.nom, c.postcode)).clicked() {
+                        let label = Self::carte_elide(
+                            ui,
+                            &format!("{} ({})", c.nom, c.postcode),
+                            ui.available_width(),
+                        );
+                        if motif::button(ui, &label).clicked() {
                             chose = Some((c.postcode.to_owned(), c.nom.to_owned()));
                         }
                     }
                     if let Some(c) = chose {
                         session.carte.commune = Some(c);
                         session.carte.commune_query.clear();
+                        session.locate_me();
                     }
                     motif::field(
                         ui,
@@ -63225,7 +63410,7 @@ impl App {
                             Some(a) => dim(&trf("carte_host_public", a), ui),
                             None => dim(tr("carte_host_private"), ui),
                         }
-                    } else if let Some(e) = &session.carte.host_failed {
+                    } else if let Some((_, e)) = &session.carte.host_failed {
                         dim(&trf("carte_host_failed", e), ui);
                     } else {
                         dim(&trf("carte_host_off", config.reseau.port_repertoire), ui);
@@ -83896,6 +84081,22 @@ impl eframe::App for App {
                                         .range(1024..=65535),
                                     );
                                 });
+                                let r = &editor.cfg.reseau;
+                                if r.repertoire
+                                    && [
+                                        r.port,
+                                        r.port_ecoute,
+                                        r.port_relais,
+                                        editor.cfg.postes.port,
+                                    ]
+                                    .contains(&r.port_repertoire)
+                                {
+                                    ui.label(
+                                        egui::RichText::new(tr("opts_reseau_repertoire_clash"))
+                                            .size(motif::pt(ui, 10.5))
+                                            .color(motif::alert()),
+                                    );
+                                }
                                 // Les postes de l'officine, ce qui en est
                                 // propre à ce poste-ci. La clé et la liste
                                 // des postes sont dans la base.

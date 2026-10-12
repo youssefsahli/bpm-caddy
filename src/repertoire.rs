@@ -79,6 +79,12 @@ pub const CATALOGUE_MAX: usize = 2 * 1024 * 1024;
 /// …et autant d'entrées, d'au plus ceci par valeur.
 pub const ARTICLES_MAX: usize = 5000;
 const VALUE_MAX: usize = 64 * 1024;
+/// Le nom ou la clé d'une entrée, en octets.
+const ENTRY_NAME_MAX: usize = 400;
+/// Combien de connexions une adresse tient à la fois.
+const OPEN_PER_ADDRESS: usize = 4;
+/// Le temps de dire sa préface — la demande entière en a plus.
+const PREFACE_WAIT: Duration = Duration::from_secs(5);
 /// Combien d'officines le répertoire tient, en tout et par adresse, et
 /// ce qu'une adresse peut y occuper.
 const MOST_LISTED: usize = 2000;
@@ -131,6 +137,11 @@ pub struct Presence {
     pub code_postal: String,
     pub commune: String,
     pub finess: String,
+    /// **Le répertoire où l'officine a paru et doit encore annoncer son
+    /// départ** — retenu dans la base, pour qu'un départ manqué, un
+    /// redémarrage ou un autre poste le rattrape. Vide quand rien n'est
+    /// dû.
+    pub parue: String,
 }
 
 /// La clé du réglage.
@@ -248,22 +259,19 @@ pub fn catalogue_of(edits: &[versions::Edit]) -> (Vec<u8>, Vec<(String, u32)>) {
             if articles.len() >= ARTICLES_MAX {
                 break;
             }
-            let fields: Vec<(String, String)> = o
-                .fields
-                .into_iter()
-                .filter(|(f, v)| v.len() <= VALUE_MAX && versions::admissible(kind, f, v))
-                .collect();
-            if fields.is_empty() {
-                continue;
-            }
-            n += 1;
-            articles.push(Article {
+            // La règle de qui lit, appliquée avant d'écrire : un article
+            // qu'un poste écarterait ferait refuser tout le catalogue.
+            let Some(article) = admitted(Article {
                 kind: kind.key().to_owned(),
                 card: o.card,
                 name: o.name,
                 day: o.day,
-                fields,
-            });
+                fields: o.fields,
+            }) else {
+                continue;
+            };
+            n += 1;
+            articles.push(article);
         }
         if n > 0 {
             parts.push((kind.key().to_owned(), n));
@@ -313,12 +321,17 @@ pub fn verify(fiche: &Fiche) -> bool {
 /// Les bornes d'une carte, avant toute signature.
 fn well_formed(f: &Fiche) -> bool {
     let printable = |s: &str| !s.chars().any(char::is_control);
-    // Ce qu'elle partage : des sortes publiques connues, chacune une fois.
-    let parts_ok = f.parts.iter().enumerate().all(|(i, (k, n))| {
-        versions::kind_of_key(k).is_some_and(|k| !k.is_private())
-            && *n as usize <= ARTICLES_MAX
-            && !f.parts[..i].iter().any(|(o, _)| o == k)
-    });
+    // Ce qu'elle partage : chaque sorte une fois, nommée court — une
+    // sorte qu'une version d'après partagera passe, une privée jamais.
+    let parts_ok = f.parts.len() <= 16
+        && f.parts.iter().enumerate().all(|(i, (k, n))| {
+            !k.is_empty()
+                && k.len() <= 32
+                && k.bytes().all(|b| b.is_ascii_lowercase())
+                && versions::kind_of_key(k).is_none_or(|k| !k.is_private())
+                && *n as usize <= ARTICLES_MAX
+                && !f.parts[..i].iter().any(|(o, _)| o == k)
+        });
     f.nom.chars().count() <= NAME_MAX
         && f.commune.chars().count() <= NAME_MAX
         && printable(&f.nom)
@@ -345,18 +358,67 @@ pub fn read_catalogue(fiche: &Fiche, bytes: &[u8]) -> Option<Vec<Article>> {
         articles
             .into_iter()
             .take(ARTICLES_MAX)
-            .filter_map(|mut a| {
-                let kind = versions::kind_of_key(&a.kind).filter(|k| !k.is_private())?;
-                a.fields
-                    .retain(|(f, v)| v.len() <= VALUE_MAX && versions::admissible(kind, f, v));
-                (!a.fields.is_empty()
-                    && !a.card.trim().is_empty()
-                    && !a.name.trim().is_empty()
-                    && a.name.len() <= 400)
-                    .then_some(a)
-            })
+            .filter_map(admitted)
             .collect(),
     )
+}
+
+/// **Ce qu'un article doit être pour entrer chez qui lit** : une sorte
+/// publique que cette version connaît, les champs qu'elle partage et qui
+/// se lisent, un nom et une clé. La même règle pour qui publie et pour qui
+/// lit.
+fn admitted(mut a: Article) -> Option<Article> {
+    let kind = versions::kind_of_key(&a.kind).filter(|k| !k.is_private())?;
+    a.fields
+        .retain(|(f, v)| v.len() <= VALUE_MAX && versions::admissible(kind, f, v));
+    (!a.fields.is_empty()
+        && !a.card.trim().is_empty()
+        && !a.name.trim().is_empty()
+        && a.card.len() <= ENTRY_NAME_MAX
+        && a.name.len() <= ENTRY_NAME_MAX)
+        .then_some(a)
+}
+
+/// **Ce que le répertoire garde, quelle que soit la version** : des
+/// bornes, sans juger ce que l'article dit — une sorte ou un champ
+/// qu'une version d'après partagera ne fait pas disparaître de la carte
+/// les officines qui l'ont. Juger est le travail de qui lit.
+fn bounded(a: &Article) -> bool {
+    a.kind.len() <= 32
+        && a.card.len() <= ENTRY_NAME_MAX
+        && a.name.len() <= ENTRY_NAME_MAX
+        && a.day.len() <= 32
+        && !a.fields.is_empty()
+        && a.fields.len() <= 64
+        && a.fields
+            .iter()
+            .all(|(f, v)| f.len() <= 64 && v.len() <= VALUE_MAX)
+}
+
+/// **Vérifier une annonce avant de prendre le verrou** : sa signature,
+/// son catalogue — lié à la carte, borné, dans sa forme exacte, et compté
+/// comme la carte le dit. Rend ce qu'elle occupera.
+pub fn check(fiche: &Fiche, catalogue: &[u8]) -> Result<usize, &'static str> {
+    if !verify(fiche) {
+        return Err("signature");
+    }
+    if !fiche.present {
+        return Ok(0);
+    }
+    if catalogue.len() > CATALOGUE_MAX || digest(catalogue) != fiche.catalogue {
+        return Err("catalogue");
+    }
+    let raw: Vec<Article> = serde_json::from_slice(catalogue).map_err(|_| "catalogue")?;
+    // Dans sa forme exacte : ce qui ne sert à rien — de l'espace, un
+    // champ en double — n'occupe pas la mémoire de qui héberge.
+    if raw.len() > ARTICLES_MAX
+        || !raw.iter().all(bounded)
+        || serde_json::to_vec(&raw).ok().as_deref() != Some(catalogue)
+        || recount(&raw) != fiche.parts
+    {
+        return Err("catalogue");
+    }
+    Ok(catalogue.len() + serde_json::to_vec(fiche).map_or(CARD_MAX, |b| b.len()))
 }
 
 /// Un article en offre de la fenêtre « En ligne », au nom de l'officine
@@ -462,10 +524,7 @@ impl Store {
         self.gone.retain(|_, seq| seq.saturating_add(FRESH) >= now);
     }
 
-    /// **Garder une annonce** si elle est signée, bien formée, fraîche,
-    /// plus récente que tout ce qu'on a vu de cette officine, que son
-    /// catalogue est celui qu'elle signe et dans sa forme exacte, et que
-    /// les bornes le permettent. Rend le refus en un mot.
+    /// **Garder une annonce** : vérifiée (`check`), puis admise.
     pub fn take(
         &mut self,
         fiche: Fiche,
@@ -473,10 +532,22 @@ impl Store {
         from: IpAddr,
         now: u64,
     ) -> Result<(), &'static str> {
+        let weight = check(&fiche, &catalogue)?;
+        self.admit(fiche, catalogue, weight, from, now)
+    }
+
+    /// **Admettre une annonce déjà vérifiée**, sous le verrou : fraîche,
+    /// plus récente que tout ce qu'on a vu de cette officine, et dans les
+    /// bornes. Rend le refus en un mot.
+    pub fn admit(
+        &mut self,
+        fiche: Fiche,
+        catalogue: Vec<u8>,
+        weight: usize,
+        from: IpAddr,
+        now: u64,
+    ) -> Result<(), &'static str> {
         self.prune(now);
-        if !verify(&fiche) {
-            return Err("signature");
-        }
         // Fraîche, à l'heure de ce poste près : une carte d'hier, sauvée
         // par qui l'a lue, ne se rejoue pas.
         if fiche.seq.saturating_add(FRESH) < now || fiche.seq > now.saturating_add(FRESH) {
@@ -491,25 +562,14 @@ impl Store {
             return Err("ancienne");
         }
         if !fiche.present {
-            self.listed.remove(&fiche.device);
-            if self.gone.len() < MOST_GONE {
+            // Retenue seulement pour qui était là : c'est le seul départ
+            // qu'un rejeu pourrait défaire, et les bornes des cartes
+            // bornent ainsi celles des départs.
+            if self.listed.remove(&fiche.device).is_some() && self.gone.len() < MOST_GONE {
                 self.gone.insert(fiche.device, fiche.seq);
             }
             return Ok(());
         }
-        // **Le catalogue dans sa forme exacte**, celle que `catalogue_of`
-        // écrit : ce qui ne sert à rien — une sorte inconnue, un champ que
-        // personne ne prendrait, de l'espace — n'occupe pas la mémoire de
-        // l'officine qui héberge.
-        let Some(articles) = read_catalogue(&fiche, &catalogue) else {
-            return Err("catalogue");
-        };
-        if serde_json::to_vec(&articles).ok().as_deref() != Some(&catalogue[..])
-            || recount(&articles) != fiche.parts
-        {
-            return Err("catalogue");
-        }
-        let weight = catalogue.len() + serde_json::to_vec(&fiche).map_or(CARD_MAX, |b| b.len());
         // Les bornes par adresse, comptées **à chaque annonce** : une carte
         // qui change d'adresse entre dans le compte de la nouvelle.
         let (mut here, mut here_bytes) = (0_usize, weight);
@@ -566,14 +626,53 @@ pub fn unix_now() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// Qui appelle, et combien de fois dans la minute — borné, et élagué à
+/// la seconde plutôt qu'à chaque appel : une adresse qui martèle ne fait
+/// pas grossir la table, ni travailler le fil qui accepte.
+#[derive(Default)]
+struct Calls {
+    seen: HashMap<IpAddr, Vec<Instant>>,
+    pruned: Option<Instant>,
+}
+
+impl Calls {
+    fn admit(&mut self, ip: IpAddr) -> bool {
+        let now = Instant::now();
+        let minute = Duration::from_secs(60);
+        if self
+            .pruned
+            .is_none_or(|t| now.duration_since(t) >= Duration::from_secs(1))
+        {
+            self.seen.retain(|_, v| {
+                v.retain(|t| now.duration_since(*t) < minute);
+                !v.is_empty()
+            });
+            self.pruned = Some(now);
+        }
+        if self.seen.len() >= 8192 && !self.seen.contains_key(&ip) {
+            return false;
+        }
+        let v = self.seen.entry(ip).or_default();
+        v.retain(|t| now.duration_since(*t) < minute);
+        if v.len() >= CALLS_PER_MINUTE {
+            return false;
+        }
+        v.push(now);
+        true
+    }
+}
+
 /// **Tenir le répertoire** sur `port` jusqu'à ce que `stop` passe à vrai.
 /// Rend tout de suite ; le répertoire vit sur ses propres fils.
 pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
     let listener = TcpListener::bind(("0.0.0.0", port))?;
     listener.set_nonblocking(true)?;
     let store: Arc<Mutex<Store>> = Arc::default();
-    let calls: Arc<Mutex<HashMap<IpAddr, Vec<Instant>>>> = Arc::default();
+    let mut calls = Calls::default();
     let open = Arc::new(AtomicUsize::new(0));
+    // Les connexions ouvertes par adresse : une adresse n'en tient que
+    // quelques-unes, jamais toutes.
+    let by_address: Arc<Mutex<HashMap<IpAddr, usize>>> = Arc::default();
     std::thread::spawn(move || {
         while !stop.load(Ordering::SeqCst) {
             let (stream, from) = match listener.accept() {
@@ -587,36 +686,43 @@ pub fn serve(port: u16, stop: Arc<AtomicBool>) -> std::io::Result<()> {
                     continue;
                 }
             };
-            if !admit(&calls, from.ip()) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+            let ip = from.ip();
+            if !calls.admit(ip) || open.load(Ordering::SeqCst) >= MOST_CONNECTIONS {
+                continue;
+            }
+            let held = by_address.lock().map(|mut m| {
+                let n = m.entry(ip).or_default();
+                if *n >= OPEN_PER_ADDRESS {
+                    false
+                } else {
+                    *n += 1;
+                    true
+                }
+            });
+            if !held.unwrap_or(false) {
                 continue;
             }
             open.fetch_add(1, Ordering::SeqCst);
-            let (store, open) = (Arc::clone(&store), Arc::clone(&open));
+            let (store, open, by_address) = (
+                Arc::clone(&store),
+                Arc::clone(&open),
+                Arc::clone(&by_address),
+            );
             std::thread::spawn(move || {
-                let _ = answer(stream, from.ip(), &store);
+                let _ = answer(stream, ip, &store);
                 open.fetch_sub(1, Ordering::SeqCst);
+                if let Ok(mut m) = by_address.lock() {
+                    if let Some(n) = m.get_mut(&ip) {
+                        *n = n.saturating_sub(1);
+                        if *n == 0 {
+                            m.remove(&ip);
+                        }
+                    }
+                }
             });
         }
     });
     Ok(())
-}
-
-/// Une adresse qui appelle trop souvent est lâchée.
-fn admit(calls: &Mutex<HashMap<IpAddr, Vec<Instant>>>, ip: IpAddr) -> bool {
-    let Ok(mut calls) = calls.lock() else {
-        return false;
-    };
-    let now = Instant::now();
-    calls.retain(|_, v| {
-        v.retain(|t| now.duration_since(*t) < Duration::from_secs(60));
-        !v.is_empty()
-    });
-    if calls.len() >= 8192 && !calls.contains_key(&ip) {
-        return false;
-    }
-    let seen = calls.entry(ip).or_default();
-    seen.push(now);
-    seen.len() <= CALLS_PER_MINUTE
 }
 
 /// Une prise lue et écrite **contre une seule échéance**, celle de
@@ -677,22 +783,29 @@ fn read_line(r: &mut impl Read) -> std::io::Result<String> {
 /// d'une demande.
 fn answer(stream: TcpStream, from: IpAddr, store: &Mutex<Store>) -> std::io::Result<()> {
     stream.set_nonblocking(false)?;
+    let start = Instant::now();
     let mut io = Deadline {
         stream: &stream,
-        until: Instant::now() + REQUEST_WAIT,
+        until: start + PREFACE_WAIT,
     };
     let Some(verbe) = read_preface(&read_line(&mut io)?) else {
         return Ok(());
     };
+    io.until = start + REQUEST_WAIT;
     let now = unix_now();
     match verbe {
         Verbe::Annonce => {
             let fiche = read_block(&mut io, CARD_MAX)?;
             let catalogue = read_block(&mut io, CATALOGUE_MAX)?;
+            // Vérifiée hors du verrou : une signature et deux mégaoctets
+            // à relire ne font pas attendre ceux qui lisent la liste.
             let said = match serde_json::from_slice::<Fiche>(&fiche) {
-                Ok(fiche) => match store.lock() {
-                    Ok(mut s) => s.take(fiche, catalogue, from, now),
-                    Err(_) => Err("plein"),
+                Ok(fiche) => match check(&fiche, &catalogue) {
+                    Ok(weight) => match store.lock() {
+                        Ok(mut s) => s.admit(fiche, catalogue, weight, from, now),
+                        Err(_) => Err("plein"),
+                    },
+                    Err(why) => Err(why),
                 },
                 Err(_) => Err("illisible"),
             };
@@ -1117,6 +1230,100 @@ mod tests {
         let mut upper = card(1, NOW, &bytes, parts);
         upper.device = upper.device.to_uppercase();
         assert!(!verify(&upper), "une clé n'a qu'une écriture");
+    }
+
+    /// **Un catalogue que `catalogue_of` écrit passe toujours** : un nom
+    /// trop long est écarté avant d'écrire, pas reproché au catalogue
+    /// entier.
+    #[test]
+    fn what_catalogue_of_writes_is_always_accepted() {
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let long = "Préparation ".repeat(60);
+        let (bytes, parts) = catalogue_of(&[
+            edit(Kind::Codex, &long, "form", "solution", ""),
+            edit(Kind::Codex, "Lugol", "form", "solution", ""),
+            edit(
+                Kind::Codex,
+                "Échappé \"guillemets\" \\ et\ttab",
+                "form",
+                "sirop",
+                "",
+            ),
+        ]);
+        assert_eq!(parts, vec![("codex".to_owned(), 2)]);
+        let mut store = Store::default();
+        assert_eq!(
+            store.take(card(1, NOW, &bytes, parts), bytes, ip, NOW),
+            Ok(())
+        );
+    }
+
+    /// **Une version d'après reste sur la carte des versions d'avant** :
+    /// une sorte qu'elles ne connaissent pas passe au répertoire, et seul
+    /// qui lit l'écarte.
+    #[test]
+    fn a_newer_kind_does_not_hide_an_officine_from_older_versions() {
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let articles = vec![
+            Article {
+                kind: "codex".to_owned(),
+                card: "lugol".to_owned(),
+                name: "Lugol".to_owned(),
+                day: String::new(),
+                fields: vec![("form".to_owned(), "solution".to_owned())],
+            },
+            Article {
+                kind: "ordonnance".to_owned(),
+                card: "x".to_owned(),
+                name: "X".to_owned(),
+                day: String::new(),
+                fields: vec![("nouveau".to_owned(), "champ".to_owned())],
+            },
+        ];
+        let bytes = serde_json::to_vec(&articles).unwrap();
+        let parts = vec![("codex".to_owned(), 1), ("ordonnance".to_owned(), 1)];
+        let fiche = card(1, NOW, &bytes, parts);
+        assert!(verify(&fiche));
+        let mut store = Store::default();
+        assert_eq!(store.take(fiche.clone(), bytes.clone(), ip, NOW), Ok(()));
+        assert_eq!(
+            read_catalogue(&fiche, &bytes).unwrap().len(),
+            1,
+            "qui lit écarte"
+        );
+    }
+
+    /// **Un départ ne se retient que pour qui était là** : des clés
+    /// jetables qui « partent » sans avoir paru n'occupent rien.
+    #[test]
+    fn a_departure_of_someone_never_listed_leaves_nothing() {
+        let ip: IpAddr = "192.0.2.1".parse().unwrap();
+        let mut store = Store::default();
+        for n in 1..=50 {
+            let mut gone = card(n, NOW, b"", Vec::new());
+            gone.present = false;
+            let gone = sign(gone, &device(n));
+            assert_eq!(store.take(gone, Vec::new(), ip, NOW), Ok(()));
+        }
+        assert!(store.gone.is_empty());
+    }
+
+    /// Le nom qu'une officine appairée a donné à une entrée ne sort pas
+    /// non plus au nom de celle-ci.
+    #[test]
+    fn a_name_a_peer_wrote_is_not_published_as_ours() {
+        let mut renamed = edit(
+            Kind::Codex,
+            "Lugol",
+            "indication",
+            "thyroïde",
+            "Pharmacie B",
+        );
+        renamed.card_name = "Nom de B".to_owned();
+        let edits = [edit(Kind::Codex, "Lugol", "form", "solution", ""), renamed];
+        let (bytes, _) = catalogue_of(&edits);
+        let articles: Vec<Article> = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(articles[0].name, "Lugol");
     }
 
     /// **Ce qu'une officine appairée a réécrit ne sort pas** au nom de

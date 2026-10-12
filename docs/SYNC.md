@@ -889,12 +889,16 @@ clé de réseau n'y passe.
   écrivent celle qu'on leur a donnée.
 * **Paraître** (réglage de l'officine, `settings`, clé `repertoire` :
   adresse, paraître, commune, FINESS — écrit contre ce qui était lu) :
-  toutes les dix minutes, le poste ouvert envoie sa **carte de visite**
+  toutes les dix minutes, le poste ouvert envoie — composée et signée
+  sur son fil — sa **carte de visite**
   signée par la clé de l'officine sur le réseau (la même que
   l'appairage montre) et son **catalogue** — les seuls champs des sortes
   publiques dont la dernière version est d'ici (`enligne::own_offers`) :
   jamais une liste, une phrase, ce qu'une officine appairée a réécrit, ni
-  un patient. Décochée, une carte de départ la retire.
+  un patient, ni un nom qu'elle a reçu. Décochée, ou l'adresse changée,
+  une carte de départ la retire ; tant que le répertoire ne l'a pas
+  reçue, le départ dû reste dans le réglage (`parue`) et n'importe quel
+  poste le rattrape.
 * **Lire** : la liste des cartes, puis le catalogue d'une officine,
   vérifiés **par chaque poste** — la signature, l'empreinte du
   catalogue, et ce qui peut entrer (`versions::admissible`, sortes
@@ -904,14 +908,21 @@ clé de réseau n'y passe.
 
 Ses bornes : une carte de 4 Kio, un catalogue de 2 Mio **dans sa forme
 exacte** (re-sérialisé, il doit redonner les mêmes octets, et le compte
-par sorte de la carte doit être le sien) ; 2 000 officines, 16 et 8 Mio
+par sorte de la carte doit être le sien). Le répertoire n'en juge que la
+forme et les bornes, jamais ce qu'il dit : une sorte ou un champ qu'une
+version d'après partagera passe chez un répertoire d'avant, et c'est
+chaque poste qui écarte ce qu'il ne sait pas prendre — la même règle
+(`repertoire::admitted`) que celle qui compose le catalogue. Le reste,
+vérifié hors du verrou : 2 000 officines, 16 et 8 Mio
 par adresse — comptés à chaque annonce, une carte qui change d'adresse
 entre dans le compte de la nouvelle — et 256 Mio en tout ; 64
-connexions, 30 appels par adresse et par minute ; **une échéance
-unique** de trente secondes pour la demande entière, lecture et
-écriture. Une carte n'est reçue que signée depuis moins d'une demi-heure
+connexions dont 4 par adresse, 30 appels par adresse et par minute
+(une table élaguée à la seconde, qui ne grossit pas sous les coups) ;
+cinq secondes pour dire sa préface, puis **une échéance unique** de
+trente secondes pour la demande entière, lecture et écriture. Une carte n'est reçue que signée depuis moins d'une demi-heure
 (et pas au-delà dans l'avenir) et plus récente que tout ce qu'on a vu de
-cette clé, départ compris : sauvée et rejouée, elle est refusée. Les
+cette clé, départ compris — retenu pour qui était là, et pour lui
+seul : sauvée et rejouée, elle est refusée. Les
 deux horloges doivent s'accorder à une demi-heure près.
 
 Ce qu'il ne garantit pas : **qui est qui**. N'importe quelle clé peut

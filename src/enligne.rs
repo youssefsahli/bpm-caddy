@@ -78,8 +78,30 @@ pub fn own_offers(edits: &[Edit], kind: Kind) -> Vec<Offer> {
             e.source.trim().is_empty(),
         );
     }
+    // Le nom et le jour aussi : ceux qu'on a écrits ici.
+    let mut own: std::collections::HashMap<&str, (&str, &str)> = std::collections::HashMap::new();
+    for e in edits
+        .iter()
+        .filter(|e| e.kind == kind && e.source.trim().is_empty())
+    {
+        let slot = own.entry(e.card.as_str()).or_insert(("", ""));
+        if !e.card_name.trim().is_empty() {
+            slot.0 = e.card_name.trim();
+        }
+        if e.day.as_str() > slot.1 {
+            slot.1 = e.day.as_str();
+        }
+    }
     let mut out = gather(edits, kind);
     out.retain(|o| o.mine);
+    out.retain_mut(|o| match own.get(o.card.as_str()) {
+        Some((name, day)) if !name.is_empty() => {
+            o.name = (*name).to_owned();
+            o.day = (*day).to_owned();
+            true
+        }
+        _ => false,
+    });
     for o in &mut out {
         let card = o.card.clone();
         o.fields
