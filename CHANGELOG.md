@@ -28,6 +28,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Calculations: the per-kilo dose is labelled per dose, and its result is
   given to the tenth under 10 mg (0.3 mg showed « 0 mg »); « Reprendre la
   clairance estimée » copies the rounded value the screen shows.
+- Reference tables: a rewritten cell is filed with the first cell of its
+  line, and follows that line when a shipped line is inserted above it
+  (it moved to the next line). Rewrites made before this version keep
+  their line number.
 
 ## [0.401.0] - 2026-10-12
 

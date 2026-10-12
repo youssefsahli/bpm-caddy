@@ -130,8 +130,10 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   ligne VRS, celle de ROR sur la suivante… Il faudrait les ranger par
   le texte de la première colonne, avec le texte livré vu (comme
   `content_overrides`), et relire les réécritures de « Vaccins » des
-  officines concernées. Les lignes ajoutées aujourd'hui l'ont été en fin
-  de table pour ne rien décaler ;
+  officines concernées. **Fait le 12/10 pour l'avenir** (`row_label`,
+  refile avant écriture) ; les réécritures d'avant, sans étiquette,
+  gardent leur numéro, et celles de « Vaccins » faites avant la 0.371.0
+  restent décalées d'une ligne : à relire chez les officines qui en ont ;
 - l'insuline NPH et NovoMix durent 24 h sur la courbe et 12 à 16 h (10 à
   16 h) dans la table « Insulines » ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que

@@ -549,6 +549,11 @@ CREATE TABLE IF NOT EXISTS table_cells (
     col         INTEGER NOT NULL,
     value       TEXT NOT NULL,
     updated_at  TEXT NOT NULL DEFAULT (datetime('now', 'localtime')),
+    -- La première case de la ligne livrée au moment de la réécriture :
+    -- c'est elle qui désigne la ligne, le numéro ne fait que la
+    -- retrouver vite. Une ligne livrée insérée au milieu décalait sinon
+    -- chaque réécriture sur la ligne suivante.
+    row_label   TEXT NOT NULL DEFAULT '',
     PRIMARY KEY (table_key, row, col)
 );
 -- Les phrases livrées que l'officine a réécrites — voir `content.rs`.
@@ -1384,6 +1389,8 @@ const MIGRATIONS: &[&str] = &[
     "ALTER TABLE card_edits ADD COLUMN kind TEXT NOT NULL DEFAULT 'fiche'",
     // L'ordre de l'historique des versions — voir `SCHEMA`.
     "ALTER TABLE card_edits ADD COLUMN at TEXT NOT NULL DEFAULT ''",
+    // La ligne d'une case réécrite, par sa première case — voir `SCHEMA`.
+    "ALTER TABLE table_cells ADD COLUMN row_label TEXT NOT NULL DEFAULT ''",
     // Le réseau d'officines — voir `SCHEMA`.
     "CREATE TABLE IF NOT EXISTS net_records (id TEXT PRIMARY KEY, bytes BLOB NOT NULL)",
     "CREATE TABLE IF NOT EXISTS net_peers (
@@ -42038,6 +42045,24 @@ fn first_db_in(dirs: impl IntoIterator<Item = PathBuf>) -> Option<PathBuf> {
 /// compare-and-set de la base échouaient ainsi dès que deux connexions
 /// écrivaient ensemble (un poste et la sauvegarde du lancement, deux
 /// postes). Immédiate, la seconde attend que la première ait fini.
+/// La première case de la ligne `row` d'une table de référence livrée.
+fn table_row_label(table_key: &str, row: usize) -> Option<String> {
+    crate::tables::TABLES
+        .iter()
+        .find(|t| t.short == table_key)
+        .and_then(|t| t.rows.get(row))
+        .and_then(|r| r.first())
+        .map(|s| (*s).to_owned())
+}
+
+/// La ligne d'une table livrée dont la première case est `label`.
+fn table_row_of(table_key: &str, label: &str) -> Option<usize> {
+    crate::tables::TABLES
+        .iter()
+        .find(|t| t.short == table_key)
+        .and_then(|t| t.rows.iter().position(|r| r.first() == Some(&label)))
+}
+
 /// L'instant d'une écriture, à la milliseconde, en SQL : l'ordre d'un
 /// historique que plusieurs postes écrivent (`card_edits.at`).
 const AT_NOW: &str = "strftime('%Y-%m-%d %H:%M:%f', 'now')";
@@ -45745,25 +45770,12 @@ impl Db {
         &self,
         table_key: &str,
     ) -> Result<std::collections::HashMap<(usize, usize), String>, String> {
-        let mut stmt = self
-            .conn
-            .prepare("SELECT row, col, value FROM table_cells WHERE table_key = ?1")
-            .map_err(|e| e.to_string())?;
-        let rows = stmt
-            .query_map([table_key], |r| {
-                Ok((
-                    r.get::<_, i64>(0)? as usize,
-                    r.get::<_, i64>(1)? as usize,
-                    r.get::<_, String>(2)?,
-                ))
-            })
-            .map_err(|e| e.to_string())?;
-        let mut out = std::collections::HashMap::new();
-        for row in rows {
-            let (r, c, v) = row.map_err(|e| e.to_string())?;
-            out.insert((r, c), v);
-        }
-        Ok(out)
+        Ok(self
+            .all_table_cells()?
+            .into_iter()
+            .filter(|((k, _, _), _)| k == table_key)
+            .map(|((_, r, c), v)| ((r, c), v))
+            .collect())
     }
 
     /// Every substitution protocol, newest first.
@@ -52382,7 +52394,7 @@ impl Db {
     ) -> Result<std::collections::HashMap<(String, usize, usize), String>, String> {
         let mut stmt = self
             .conn
-            .prepare("SELECT table_key, row, col, value FROM table_cells")
+            .prepare("SELECT table_key, row, col, value, row_label FROM table_cells")
             .map_err(|e| e.to_string())?;
         let rows = stmt
             .query_map([], |r| {
@@ -52391,13 +52403,35 @@ impl Db {
                     r.get::<_, i64>(1)? as usize,
                     r.get::<_, i64>(2)? as usize,
                     r.get::<_, String>(3)?,
+                    r.get::<_, String>(4)?,
                 ))
             })
             .map_err(|e| e.to_string())?;
+        // **La ligne par sa première case** : une réécriture qui porte
+        // son étiquette suit sa ligne si elle a bougé, et se tait si elle
+        // n'existe plus ; une réécriture d'avant l'étiquette garde son
+        // numéro. À place égale, celle qui porte l'étiquette l'emporte.
         let mut out = std::collections::HashMap::new();
+        let mut labelled = std::collections::HashSet::new();
         for row in rows {
-            let (k, r, c, v) = row.map_err(|e| e.to_string())?;
-            out.insert((k, r, c), v);
+            let (k, r, c, v, label) = row.map_err(|e| e.to_string())?;
+            let at =
+                if label.is_empty() || table_row_label(&k, r).as_deref() == Some(label.as_str()) {
+                    Some(r)
+                } else {
+                    table_row_of(&k, &label)
+                };
+            let Some(at) = at else {
+                continue;
+            };
+            let key = (k, at, c);
+            if label.is_empty() && labelled.contains(&key) {
+                continue;
+            }
+            if !label.is_empty() {
+                labelled.insert(key.clone());
+            }
+            out.insert(key, v);
         }
         Ok(out)
     }
@@ -52430,37 +52464,110 @@ impl Db {
         expected: &str,
     ) -> Result<bool, String> {
         // Compare-and-set against what this PC displayed: the stored
-        // override, or the shipped text when there was none.
-        let current: Option<String> = self
-            .conn
-            .query_row(
-                "SELECT value FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
-                (table_key, row as i64, col as i64),
-                |r| r.get(0),
-            )
-            .ok();
+        // override — read as the screen reads it, its line found by its
+        // label — or the shipped text when there was none.
+        let current = self.table_cells(table_key)?.remove(&(row, col));
         let seen = current.as_deref().unwrap_or(shipped);
         if seen != expected {
             return Ok(false);
         }
+        // Les réécritures étiquetées d'abord refiées à leur ligne actuelle
+        // (de la plus basse à la plus haute, pour ne pas se marcher
+        // dessus), puis ce qui tenait cette case part : à ce numéro sans
+        // étiquette ou avec la sienne, ou sous son étiquette ailleurs.
+        self.refile_table_cells(table_key)?;
+        let label = table_row_label(table_key, row).unwrap_or_default();
+        self.conn
+            .execute(
+                "DELETE FROM table_cells WHERE table_key = ?1 AND col = ?3
+                   AND ((row = ?2 AND row_label IN ('', ?4))
+                        OR (row_label = ?4 AND ?4 <> ''))",
+                (table_key, row as i64, col as i64, &label),
+            )
+            .map_err(|e| e.to_string())?;
         if value == shipped {
-            self.conn
-                .execute(
-                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
-                    (table_key, row as i64, col as i64),
-                )
-                .map_err(|e| e.to_string())?;
             return Ok(true);
         }
         self.conn
             .execute(
-                "INSERT INTO table_cells (table_key, row, col, value) VALUES (?1, ?2, ?3, ?4)
-                 ON CONFLICT(table_key, row, col)
-                 DO UPDATE SET value = excluded.value, updated_at = datetime('now', 'localtime')",
-                (table_key, row as i64, col as i64, value),
+                "INSERT INTO table_cells (table_key, row, col, value, row_label)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                (table_key, row as i64, col as i64, value, &label),
             )
             .map_err(|e| e.to_string())?;
         Ok(true)
+    }
+
+    /// Ranger chaque réécriture étiquetée d'une table au numéro actuel
+    /// de sa ligne. Une ligne qui n'existe plus garde la sienne (elle ne
+    /// s'affiche plus, et ne se perd pas).
+    fn refile_table_cells(&self, table_key: &str) -> Result<(), String> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT row, col, row_label FROM table_cells
+                 WHERE table_key = ?1 AND row_label <> ''",
+            )
+            .map_err(|e| e.to_string())?;
+        let rows = stmt
+            .query_map([table_key], |r| {
+                Ok((
+                    r.get::<_, i64>(0)?,
+                    r.get::<_, i64>(1)?,
+                    r.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| e.to_string())?;
+        let mut moves: Vec<(i64, i64, i64)> = Vec::new();
+        for row in rows {
+            let (at, col, label) = row.map_err(|e| e.to_string())?;
+            if let Some(now) = table_row_of(table_key, &label) {
+                if now as i64 != at {
+                    moves.push((at, now as i64, col));
+                }
+            }
+        }
+        // Descendre d'abord ce qui va le plus bas : une suite décalée
+        // d'une ligne se range sans collision.
+        moves.sort_by_key(|m| std::cmp::Reverse(m.1));
+        for (from, to, col) in moves {
+            self.conn
+                .execute(
+                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3
+                       AND row_label = ''",
+                    (table_key, to, col),
+                )
+                .map_err(|e| e.to_string())?;
+            // Effacée puis réécrite, et non renumérotée : ce que les
+            // postes se transmettent désigne une ligne par sa clé, et une
+            // clé qui change sous elle ne se suivrait pas.
+            let moved: Option<(String, String)> = self
+                .conn
+                .query_row(
+                    "SELECT value, row_label FROM table_cells
+                     WHERE table_key = ?1 AND row = ?2 AND col = ?3",
+                    (table_key, from, col),
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .ok();
+            let Some((value, label)) = moved else {
+                continue;
+            };
+            self.conn
+                .execute(
+                    "DELETE FROM table_cells WHERE table_key = ?1 AND row = ?2 AND col = ?3",
+                    (table_key, from, col),
+                )
+                .map_err(|e| e.to_string())?;
+            self.conn
+                .execute(
+                    "INSERT OR IGNORE INTO table_cells (table_key, row, col, value, row_label)
+                     VALUES (?1, ?2, ?3, ?4, ?5)",
+                    (table_key, to, col, &value, &label),
+                )
+                .map_err(|e| e.to_string())?;
+        }
+        Ok(())
     }
 
     /// Toutes les phrases que l'officine a réécrites, lues **une fois**.
@@ -63612,6 +63719,33 @@ mod tests {
         assert_eq!(db.all_table_cells().unwrap().len(), 2);
         assert_eq!(db.reset_table("IPP").unwrap(), 2);
         assert!(db.all_table_cells().unwrap().is_empty());
+
+        // **Une réécriture suit sa ligne** : rangée au numéro 0 sous
+        // l'étiquette de la ligne 1 (une ligne livrée insérée avant elle),
+        // elle s'affiche à la ligne 1 ; écrire la ligne 0 ne l'emporte pas,
+        // et elle se range à son numéro.
+        let second = super::table_row_label("IPP", 1).unwrap();
+        db.conn
+            .execute(
+                "INSERT INTO table_cells (table_key, row, col, value, row_label)
+                 VALUES ('IPP', 0, 2, 'déplacée', ?1)",
+                [&second],
+            )
+            .unwrap();
+        let cells = db.table_cells("IPP").unwrap();
+        assert_eq!(cells.get(&(1, 2)).map(String::as_str), Some("déplacée"));
+        assert!(!cells.contains_key(&(0, 2)));
+        let shipped0 = crate::tables::TABLES
+            .iter()
+            .find(|t| t.short == "IPP")
+            .unwrap()
+            .rows[0][2];
+        assert!(db
+            .set_table_cell("IPP", 0, 2, "la mienne", shipped0, shipped0)
+            .unwrap());
+        let cells = db.table_cells("IPP").unwrap();
+        assert_eq!(cells.get(&(0, 2)).map(String::as_str), Some("la mienne"));
+        assert_eq!(cells.get(&(1, 2)).map(String::as_str), Some("déplacée"));
 
         let _ = std::fs::remove_file(&path);
     }
