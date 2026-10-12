@@ -47,6 +47,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   only acts actually done, a noted act no longer took a file off the
   list; the campaign on screen is read again after another post writes
   and at midnight.
+- Scanned pieces: the date of a piece is edited as JJ/MM/AAAA and read
+  like the one typed when filing it (any text was stored as typed, and
+  sorted among ISO dates); deleting a piece compares the whole row, so a
+  link to a register line made on another post is not deleted unseen.
+- Cash count: an empty morning float is stored as unknown, not as 0 €
+  (the whole drawer counted as takings, and the previous evening's count
+  arriving later no longer filled it in); a negative float or expected
+  amount is refused instead of read as zero; no count for a day still
+  to come; an amount above ten million euros is refused rather than
+  overflowing the takings.
+- Nutrition: the weight loss is read to the tenth, as shown (« 10,0 % »
+  could be 9.96 and miss the criterion); a height typed in metres is
+  read as metres and an impossible one gives no verdict (1.65 cm made
+  every patient obese and dropped all BMI criteria); an oral supplement
+  is deleted against its whole row, a refused save keeps what was typed,
+  and « nan », « inf » or a negative number no longer empties the
+  catalogue on every post.
 - Companion phone: a received file saved under a name already taken gets
   « (2) » instead of replacing the other one; a message and its file are
   written together.

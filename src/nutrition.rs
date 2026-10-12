@@ -90,13 +90,15 @@ pub struct Reading {
     pub lpp: Vec<&'static str>,
 }
 
-/// La perte, en pourcentage, **arrondie au centième** : calculée en
+/// La perte, en pourcentage, **au dixième**, comme l'écran l'écrit : les
+/// seuils (5, 10, 15 %) se lisent sur le chiffre affiché. Calculée en
 /// flottants, une perte de 10 % tout juste (48 kg à 43,2 kg) valait
-/// 9,999 999 999 999 993, l'écran affichait « 10,0 % » et le critère
-/// « 10 % ou plus en six mois » n'était pas retenu.
+/// 9,999 999 999 999 993 ; arrondie au centième, 50 kg à 45,02 kg
+/// donnait 9,96, affiché « 10,0 % » sans que le critère « 10 % ou plus
+/// en six mois » soit retenu.
 fn loss(from: Option<f64>, now: f64) -> Option<f64> {
     let from = from.filter(|w| *w > 0.0)?;
-    Some((((from - now) / from * 100.0) * 100.0).round().max(0.0) / 100.0)
+    Some((((from - now) / from * 100.0) * 10.0).round().max(0.0) / 10.0)
 }
 
 /// L'indice de masse corporelle, kg/m², **au dixième**, comme il s'écrit
@@ -655,6 +657,14 @@ mod tests {
         b.weight_1m = Some(76.0);
         assert!(!assess(&b).lpp.is_empty(), "5 % en un mois");
         assert_eq!(bmi(51.2, 160.0), Some(20.0));
+        // Et ce que l'écran arrondit à « 10,0 % » est 10 % : 50 kg à
+        // 45,02 kg font 9,96.
+        let mut c = base(50);
+        c.weight = 45.02;
+        c.weight_6m = Some(50.0);
+        let r = assess(&c);
+        assert_eq!(r.loss_6m, Some(10.0));
+        assert!(!r.lpp.is_empty(), "affiché 10,0 %, compté 10 %");
     }
 
     #[test]

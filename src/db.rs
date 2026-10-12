@@ -50172,12 +50172,29 @@ impl Db {
         Ok(changed == 1)
     }
 
-    pub fn delete_cno_product(&self, id: i64, expected_name: &str) -> Result<bool, String> {
+    /// Retirer un produit, compare-and-set sur toute la ligne affichée,
+    /// comme la correction.
+    pub fn delete_cno_product(&self, expected: &crate::nutrition::Product) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
-                "DELETE FROM cno_products WHERE id = ?1 AND name = ?2",
-                (id, expected_name),
+                "DELETE FROM cno_products
+                 WHERE id = ?1 AND name = ?2 AND maker = ?3 AND form = ?4 AND portion = ?5
+                   AND unit = ?6 AND kcal = ?7 AND protein = ?8 AND features = ?9
+                   AND caution = ?10 AND source = ?11",
+                rusqlite::params![
+                    expected.id,
+                    &expected.name,
+                    &expected.maker,
+                    &expected.form,
+                    expected.portion,
+                    &expected.unit,
+                    expected.kcal,
+                    expected.protein,
+                    &expected.features,
+                    &expected.caution,
+                    &expected.source
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -51098,17 +51115,30 @@ impl Db {
         Ok(changed == 1)
     }
 
-    /// Retirer une pièce, compare-and-set sur le libellé affiché.
+    /// Retirer une pièce, compare-and-set sur **toute** la fiche
+    /// affichée : sur le seul libellé, un genre, une remarque ou un lien
+    /// au registre posés depuis un autre poste partaient avec elle sans
+    /// que personne l'ait vu — et la pièce qui justifie une ligne de
+    /// stupéfiant avec.
     ///
     /// Une pièce se supprime, contrairement à une ligne du registre des
     /// stupéfiants : elle a pu être numérisée deux fois, ou attachée au
     /// mauvais dossier, et l'y laisser serait pire que l'enlever.
-    pub fn delete_scan(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+    pub fn delete_scan(&self, expected: &Scan) -> Result<bool, String> {
+        let id = expected.id;
         let changed = self
             .conn
             .execute(
-                "DELETE FROM scans WHERE id = ?1 AND label = ?2",
-                (id, expected_label.trim()),
+                "DELETE FROM scans WHERE id = ?1 AND doc_kind = ?2 AND label = ?3
+                    AND taken_on = ?4 AND remark = ?5 AND stup_move = ?6",
+                (
+                    id,
+                    &expected.doc_kind,
+                    expected.label.trim(),
+                    expected.taken_on.trim(),
+                    expected.remark.trim(),
+                    expected.stup_move,
+                ),
             )
             .map_err(|e| e.to_string())?;
         if changed == 1 {
@@ -59499,8 +59529,19 @@ mod tests {
         // Une pièce se retire — contrairement à une ligne du registre
         // des stupéfiants : elle a pu être numérisée deux fois ou
         // attachée au mauvais dossier.
-        assert!(!db.delete_scan(id, "un autre libellé").unwrap());
-        assert!(db.delete_scan(id, "Ordonnance Dr Morel").unwrap());
+        // Retirer compare toute la fiche : celle d'avant la correction
+        // ne vaut plus.
+        let mut gone = shown.clone();
+        gone.label = "un autre libellé".to_owned();
+        assert!(!db.delete_scan(&gone).unwrap());
+        assert!(!db.delete_scan(&shown).unwrap(), "genre changé depuis");
+        let now = db
+            .scans("PATIENT", pid)
+            .unwrap()
+            .into_iter()
+            .find(|sc| sc.id == shown.id)
+            .unwrap();
+        assert!(db.delete_scan(&now).unwrap());
         assert_eq!(db.scans("PATIENT", pid).unwrap().len(), 1);
         // Et une pièce rangée sur l'officine n'est pas sur le dossier.
         db.add_scan(
@@ -59590,7 +59631,7 @@ mod tests {
         assert_eq!(db.scan_bytes(1).unwrap().0, pdf);
 
         for sc in db.scans("PATIENT", pid).unwrap() {
-            assert!(db.delete_scan(sc.id, &sc.label).unwrap());
+            assert!(db.delete_scan(&sc).unwrap());
         }
         assert!(db.scans("PATIENT", pid).unwrap().is_empty());
         // Le fichier n'a pas rétréci : SQLite libère les pages, jamais
@@ -66768,5 +66809,31 @@ mod tests {
              lèvera aucune erreur, il ne sera simplement jamais semé :\n{}",
             orphans.join("\n")
         );
+    }
+
+    /// Un produit de nutrition orale se retire contre **toute** la fiche
+    /// affichée : sur le seul nom, une correction de l'autre poste partait
+    /// avec lui sans avoir été vue.
+    #[test]
+    fn a_cno_product_is_deleted_against_the_whole_row() {
+        let dir = std::env::temp_dir().join(format!("bpm-caddy-cno-del-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let _swept = Swept(dir.clone());
+        let path = dir.join("cno.db");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path, "secret").unwrap();
+        let id = db.add_cno_product("Essai").unwrap();
+        let shown = db
+            .cno_products()
+            .unwrap()
+            .into_iter()
+            .find(|p| p.id == id)
+            .unwrap();
+        let mut theirs = shown.clone();
+        theirs.kcal = 405.0;
+        assert!(db.update_cno_product(&theirs, &shown).unwrap());
+        assert!(!db.delete_cno_product(&shown).unwrap(), "corrigé ailleurs");
+        assert!(db.delete_cno_product(&theirs).unwrap());
+        assert!(db.cno_products().unwrap().iter().all(|p| p.id != id));
     }
 }

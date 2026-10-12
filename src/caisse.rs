@@ -225,17 +225,17 @@ pub fn tally(
     let cash = cash_total(quantities);
     let opening = opening.max(0);
     let float_kept = float_kept.max(0);
-    let other: i64 = others.iter().map(|o| o.cents).sum();
-    let takings = cash - opening + other;
+    let other: i64 = others.iter().map(|o| o.cents).fold(0, i64::saturating_add);
+    let takings = cash.saturating_sub(opening).saturating_add(other);
     Tally {
         cash,
         opening,
         float_kept,
-        banked: cash - float_kept,
+        banked: cash.saturating_sub(float_kept),
         other,
         takings,
         expected,
-        gap: expected.map(|e| takings - e),
+        gap: expected.map(|e| takings.saturating_sub(e)),
     }
 }
 
@@ -314,8 +314,15 @@ pub fn parse_euros(text: &str) -> Option<i64> {
         1 => frac.parse::<i64>().ok()? * 10,
         _ => frac.get(..2)?.parse().ok()?,
     };
-    Some(sign * (whole.checked_mul(100)?.checked_add(frac)?))
+    let cents = whole.checked_mul(100)?.checked_add(frac)?;
+    // Au-delà de dix millions d'euros, ce n'est pas un tiroir-caisse :
+    // c'est une faute de frappe, et l'additionner ferait déborder la
+    // recette.
+    (cents <= MAX_CENTS).then_some(sign * cents)
 }
+
+/// Le plus grand montant qu'une ligne lit : dix millions d'euros.
+pub const MAX_CENTS: i64 = 1_000_000_000;
 
 /// Un comptage déjà rangé, tel que l'historique le relit.
 ///
@@ -614,6 +621,11 @@ mod tests {
         assert_eq!(parse_euros("12,567"), Some(1_256));
         // Et ce qui n'est pas un montant n'en devient pas un.
         assert_eq!(parse_euros(""), None);
+        // Au-delà de dix millions, une faute de frappe — et deux lignes
+        // de ce genre ne font pas déborder la recette.
+        assert_eq!(parse_euros("10000000"), Some(MAX_CENTS));
+        assert_eq!(parse_euros("90000000000000000"), None);
+        assert_eq!(parse_euros("-10000000,01"), None);
         assert_eq!(parse_euros("   "), None);
         assert_eq!(parse_euros("douze"), None);
         assert_eq!(parse_euros("12,x"), None);

@@ -8,11 +8,12 @@ La 0.397.0 est publiée (étiquette `v0.397.0` poussée le 11/10, versions
 construites par la CI) ; la 0.398.0 (relectures du 11 et du 12/10) a passé
 smoke et CI, son étiquette reste à poser ; la 0.399.0 (copies de la base)
 a passé son smoke (fa33b51) ; la 0.400.0 (relecture et frappe, registre,
-actes) a passé son smoke dans les quatre formes (bfffa2d) : c'est elle à
-publier — `git tag v0.400.0 bfffa2d && git push origin v0.400.0` ; les
-autres n'ont pas besoin d'étiquette ; la 0.401.0 (versions, agenda,
-campagne, biologie) a passé son smoke (43d0bd8) ; la 0.402.0 (automesure,
-tables, ruptures, console, dossiers) suit, smoke en cours ; les étiquettes intermédiaires n'ont jamais été
+actes) a passé son smoke dans les quatre formes (bfffa2d) ; la 0.401.0
+(versions, agenda, campagne, biologie) a passé son smoke (43d0bd8) ; la
+0.402.0 (automesure, tables, ruptures, console, dossiers) a passé son
+smoke dans les quatre formes (5012a7a) : c'est elle à publier —
+`git tag v0.402.0 5012a7a && git push origin v0.402.0` ; les autres
+n'ont pas besoin d'étiquette ; les étiquettes intermédiaires n'ont jamais été
 posées, et **la 0.395.0 ne se publie pas** (elle lisait mal les doses de
 charge et les titrations, corrigé dans la 0.396.0).
 
@@ -48,6 +49,15 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- location au mois : une location commencée le 29, le 30 ou le 31
+  janvier atteint son mois le 28 février (`add_months` borne au dernier
+  jour) — du 31/01 au 28/02, deux forfaits ; règle à trancher ;
+- fiches conseils (protections, etc.) : les titres de fiche et de
+  section s'impriment sans passer par `content.rs` — seules les lignes
+  se réécrivent ;
+- tableau de bord : la liste d'appels (biologie) se recalcule après
+  chaque écriture d'un autre poste tant que la vue est ouverte — juste,
+  mais une passe sur la base ;
 - l'oxomémazine (Toplexil) n'est pas dans la table du sujet âgé — à
   vérifier contre la liste de Laroche avant de l'y mettre ;
 - dTcaP : un rappel fait à 64 ans rend celui de 65 ans « dû » un an

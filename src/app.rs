@@ -4159,12 +4159,21 @@ impl NutritionForm {
     fn assessment(&self) -> Option<crate::nutrition::Assessment> {
         let num = |s: &str| -> Option<f64> {
             let v: f64 = s.trim().replace(',', ".").parse().ok()?;
-            (v > 0.0).then_some(v)
+            (v.is_finite() && v > 0.0).then_some(v)
         };
+        // La taille en centimètres, et « 1,65 » lu comme des mètres :
+        // pris pour 1,65 cm, l'IMC passait les deux cent mille, le
+        // patient était « obèse » et tous les critères d'IMC tombaient.
+        // Ce qui reste hors d'une taille humaine n'est pas lu — le
+        // verdict attend une taille, il ne se donne pas sur un chiffre
+        // absurde.
+        let height = num(&self.height)
+            .map(|h| if h < 3.0 { h * 100.0 } else { h })
+            .filter(|h| (50.0..=250.0).contains(h))?;
         Some(crate::nutrition::Assessment {
             age: self.age.trim().parse().ok()?,
-            weight: num(&self.weight)?,
-            height: num(&self.height)?,
+            weight: num(&self.weight).filter(|w| *w <= 400.0)?,
+            height,
             usual_weight: num(&self.usual),
             weight_1m: num(&self.w1m),
             weight_6m: num(&self.w6m),
@@ -48455,7 +48464,7 @@ impl App {
         let mut import = false;
         let mut scan_now = false;
         let mut open_id: Option<i64> = None;
-        let mut drop_id: Option<(i64, String)> = None;
+        let mut drop_id: Option<db::Scan> = None;
         let mut edit: Option<db::Scan> = None;
         // Le lien vers une ligne du registre : ce qu'un clic demande
         // remonte hors du dessin, comme partout ici.
@@ -48693,9 +48702,11 @@ impl App {
                                             // celle du rangement : une pièce
                                             // sans repère temporel ne se
                                             // retrouve pas.
-                                            sc.created_at.get(..10).unwrap_or("").to_owned()
+                                            db::format_french_date(
+                                                sc.created_at.get(..10).unwrap_or(""),
+                                            )
                                         } else {
-                                            sc.taken_on.clone()
+                                            db::format_french_date(&sc.taken_on)
                                         };
                                         let size = crate::scans::human_size(sc.size.max(0) as u64);
                                         // Le libellé ouvre la pièce, et sous lui
@@ -48869,7 +48880,7 @@ impl App {
                                                 .clicked()
                                                 {
                                                     if armed {
-                                                        drop_id = Some((sc.id, sc.label.clone()));
+                                                        drop_id = Some(sc.clone());
                                                     } else {
                                                         session.scan_confirm = Some(sc.id);
                                                     }
@@ -48915,11 +48926,11 @@ impl App {
                     motif::field_sized(
                         ui,
                         egui::vec2(
-                            Self::field_width(ui, [tr("scan_day_iso_hint")].into_iter()).max(320.0),
+                            Self::field_width(ui, [tr("scan_day_hint")].into_iter()).max(320.0),
                             Self::button_height(ui),
                         ),
                         egui::TextEdit::singleline(&mut edited.taken_on)
-                            .hint_text(motif::hint(tr("scan_day_iso_hint"))),
+                            .hint_text(motif::hint(tr("scan_day_hint"))),
                     );
                     motif::field_sized(
                         ui,
@@ -48943,7 +48954,12 @@ impl App {
             edited.doc_kind = kind.as_key().to_owned();
         }
         if let Some(sc) = edit {
-            session.scan_edit = Some((sc.clone(), sc));
+            // La date s'écrit comme partout, JJ/MM/AAAA, et se relit à
+            // l'enregistrement : la fiche gardait le texte tapé tel quel,
+            // et « 12/10/2026 » se rangeait parmi des dates ISO.
+            let mut shown = sc.clone();
+            shown.taken_on = db::format_french_date(&sc.taken_on);
+            session.scan_edit = Some((shown, sc));
         }
         // Choisir la ligne que la pièce justifie : les dernières lignes
         // du registre, qui sont celles qu'on vient d'écrire. Le lien se
@@ -48974,14 +48990,28 @@ impl App {
             session.scan_edit = None;
         }
         if save_edit {
-            if let Some((edited, base)) = session.scan_edit.take() {
+            if let Some((typed, base)) = session.scan_edit.take() {
+                let mut edited = typed.clone();
+                edited.taken_on = if typed.taken_on.trim().is_empty() {
+                    String::new()
+                } else {
+                    match db::parse_event_date(&typed.taken_on, &session.today) {
+                        Ok(iso) => iso,
+                        Err(e) => {
+                            session.scan_note = Some((true, e));
+                            session.scan_edit = Some((typed, base));
+                            return;
+                        }
+                    }
+                };
                 match session.db.update_scan(&edited, &base) {
                     Ok(true) => {
                         session.scan_note = None;
                         session.scans_key = None;
                     }
                     Ok(false) => {
-                        session.scan_note = Some((true, tr("scan_stale_edit").to_owned()));
+                        let said = session.stale_note("scan_stale_edit");
+                        session.scan_note = Some((true, said));
                         session.scans_key = None;
                     }
                     Err(e) => {
@@ -49013,9 +49043,9 @@ impl App {
                 Err(e) => session.scan_note = Some((true, e)),
             }
         }
-        if let Some((id, label)) = drop_id {
+        if let Some(gone) = drop_id {
             session.scan_confirm = None;
-            match session.db.delete_scan(id, &label) {
+            match session.db.delete_scan(&gone) {
                 Ok(true) => session.scan_note = None,
                 Ok(false) => {
                     let said = session.stale_note("scan_stale");
@@ -57761,20 +57791,35 @@ impl App {
                 session.conseil.product_base.clone(),
             ) {
                 // Les nombres tapés, relus une fois : une saisie illisible
-                // garde la valeur d'avant.
-                let num = |s: &str, old: f64| s.trim().replace(',', ".").parse().unwrap_or(old);
+                // garde la valeur d'avant. « nan », « inf » et un négatif
+                // aussi : Rust les lit, SQLite rangeait NaN comme NULL, et
+                // la relecture échouait — tout le catalogue disparaissait
+                // sur chaque poste où la ligne arrivait.
+                let num = |s: &str, old: f64| {
+                    s.trim()
+                        .replace(',', ".")
+                        .parse::<f64>()
+                        .ok()
+                        .filter(|v| v.is_finite() && *v >= 0.0)
+                        .unwrap_or(old)
+                };
                 let [portion, kcal, protein] = &session.conseil.product_numbers;
                 form.portion = num(portion, form.portion);
                 form.kcal = num(kcal, form.kcal);
                 form.protein = num(protein, form.protein);
                 match session.db.update_cno_product(&form, &base) {
-                    Ok(ok) => {
-                        if !ok {
-                            session.stale("conseil_stale");
-                        }
+                    Ok(true) => {
                         session.conseil.product_edit = None;
                         session.conseil.product_base = None;
                         session.reload_conseil();
+                    }
+                    // Modifié ailleurs : la fiche se rebase sur la ligne
+                    // relue et **garde ce qui est tapé** — la fermer
+                    // perdait les dix champs.
+                    Ok(false) => {
+                        session.stale("conseil_stale");
+                        session.reload_conseil();
+                        Self::rebase_product(session, base.id);
                     }
                     Err(e) => session.error = Some(e),
                 }
@@ -57782,20 +57827,39 @@ impl App {
         }
         if delete_product {
             if let Some(base) = session.conseil.product_base.clone() {
-                match session.db.delete_cno_product(base.id, &base.name) {
-                    Ok(ok) => {
-                        if !ok {
-                            session.stale("conseil_stale");
-                        }
+                match session.db.delete_cno_product(&base) {
+                    Ok(true) => {
                         session.conseil.plan.retain(|(id, _)| *id != base.id);
                         session.conseil.product_edit = None;
                         session.conseil.product_base = None;
                         session.reload_conseil();
                     }
+                    Ok(false) => {
+                        session.stale("conseil_stale");
+                        session.reload_conseil();
+                        Self::rebase_product(session, base.id);
+                    }
                     Err(e) => session.error = Some(e),
                 }
             }
         }
+    }
+
+    /// Après un refus, la fiche produit ouverte repart de la ligne relue :
+    /// ce qui est tapé reste, la comparaison suivante se fait contre ce
+    /// que l'autre poste a écrit. Retirée là-bas, la fiche se ferme.
+    fn rebase_product(session: &mut Session, id: i64) {
+        let fresh = session
+            .conseil
+            .products
+            .iter()
+            .find(|p| p.id == id)
+            .cloned();
+        if fresh.is_none() {
+            session.conseil.plan.retain(|(p, _)| *p != id);
+            session.conseil.product_edit = None;
+        }
+        session.conseil.product_base = fresh;
     }
 
     /// La page « Protections périodiques ».
@@ -65222,7 +65286,10 @@ impl App {
                 ]
                 .into_iter()
                 .map(|(t, label)| (t.trim(), label))
-                .find(|(t, _)| !t.is_empty() && crate::caisse::parse_euros(t).is_none())
+                // Un montant négatif non plus : il valait zéro sans un mot.
+                .find(|(t, _)| {
+                    !t.is_empty() && !crate::caisse::parse_euros(t).is_some_and(|c| c >= 0)
+                })
                 .map(|(t, label)| format!("{} : « {t} »", tr(label)))
             })
             .or_else(|| {
@@ -65416,11 +65483,17 @@ impl App {
                         }
                     }
                     ui.label(day).on_hover_text(tr("caisse_day"));
-                    if motif::button(ui, STEP_NEXT).clicked() {
-                        if let Some(d) = db::add_days(&session.caisse_day, 1) {
-                            session.caisse_day = d;
+                    // Pas de comptage pour demain : le registre des
+                    // comptages ne s'efface pas, et un jour à venir
+                    // compté par erreur restait dans le mois.
+                    let ahead = !session.today.is_empty() && session.caisse_day >= session.today;
+                    ui.add_enabled_ui(!ahead, |ui| {
+                        if motif::button(ui, STEP_NEXT).clicked() {
+                            if let Some(d) = db::add_days(&session.caisse_day, 1) {
+                                session.caisse_day = d;
+                            }
                         }
-                    }
+                    });
                 });
             });
             ui.label(
@@ -65894,6 +65967,8 @@ impl App {
         let refused = Self::caisse_unreadable(session);
         if let Some(what) = refused.filter(|_| save) {
             session.caisse_note = Some((true, trf("caisse_unreadable", what)));
+        } else if save && !session.today.is_empty() && session.caisse_day > session.today {
+            session.caisse_note = Some((true, tr("caisse_future").to_owned()));
         } else if save {
             let count = db::CaisseCount {
                 // La base le donne à l'insertion : ce qu'on écrit ici
@@ -65903,7 +65978,11 @@ impl App {
                 quantities,
                 cash: tally.cash,
                 float_kept: tally.float_kept,
-                opening: Some(tally.opening),
+                // Un fond du matin laissé vide n'est pas un fond de zéro :
+                // rangé « 0 », il comptait tout le tiroir comme recette,
+                // et le comptage de la veille arrivé ensuite d'un autre
+                // poste ne le complétait plus (`fill_openings`).
+                opening: crate::caisse::parse_euros(&session.caisse_opening).map(|c| c.max(0)),
                 others: others.iter().map(|o| (o.label.clone(), o.cents)).collect(),
                 expected: tally.expected,
                 operator: operator.to_owned(),
