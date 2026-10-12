@@ -171,8 +171,9 @@ impl Offer {
             Kind::Protocole => &["subject"][..],
             Kind::Trod => &["situation"][..],
             Kind::Vaccin => &["label", "code"][..],
-            Kind::Dispositif => &["family", "indication", "etiquettes"][..],
-            Kind::Liste => &["subject"][..],
+            // Le nom d'aujourd'hui aussi : l'offre s'affiche sous lui.
+            Kind::Dispositif => &["nom", "family", "indication", "etiquettes"][..],
+            Kind::Liste => &["titre", "subject"][..],
             Kind::Cascade => &["texte"][..],
             Kind::Texte => &["value"][..],
         };

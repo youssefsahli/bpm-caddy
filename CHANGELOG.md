@@ -13,7 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   second one at the other officines: like vaccines and TROD lines, they
   now travel under an identity frozen at their first publication, and a
   new name (or a cascade's new title) is a version of the same entry.
-  « En ligne » shows entries under today's name.
+  « En ligne » shows and finds entries under today's name. An identity is
+  given once: a new entry reusing a renamed one's old name gets its own,
+  and a cascade still titled « Nouvelle cascade » is not given one.
 
 ## [0.413.0] - 2026-10-12
 

@@ -48666,23 +48666,111 @@ impl Db {
         for sql in [
             "UPDATE trod_lines SET origin = name WHERE origin = '' AND trim(name) <> ''",
             "UPDATE vaccine_catalogue SET origin = label WHERE origin = '' AND trim(label) <> ''",
-            "UPDATE dispositifs SET origin = name WHERE origin = '' AND trim(name) <> ''",
-            "UPDATE checklists SET origin = title WHERE origin = '' AND trim(title) <> ''",
         ] {
             self.conn.execute(sql, []).map_err(|e| e.to_string())?;
         }
-        // Une cascade, par le titre que son texte porte : SQLite ne le lit
-        // pas.
-        for c in self.cascades()? {
-            let title = cascade_title(&c.text);
-            if !title.trim().is_empty() {
-                self.conn
-                    .execute(
-                        "UPDATE cascades SET origin = ?1 WHERE id = ?2 AND origin = ''",
-                        (title.trim(), c.id),
-                    )
-                    .map_err(|e| e.to_string())?;
+        // Les dispositifs, les listes et les cascades : **une identité ne
+        // se donne qu'une fois**. Un dispositif renommé garde son ancien
+        // nom pour identité ; un nouveau qui reprend ce nom en recevait la
+        // même, et les deux n'en faisaient plus qu'un pour le réseau — le
+        // second jamais versionné, les versions reçues toutes sur le
+        // premier. Il prend le nom suivi d'un rang.
+        let dispositifs = self.dispositifs()?;
+        let rows: Vec<(i64, String)> = self
+            .identities("SELECT id, origin FROM dispositifs ORDER BY id")?
+            .into_iter()
+            .map(|(id, origin)| {
+                let name = dispositifs
+                    .iter()
+                    .find(|d| d.id == id)
+                    .map(|d| d.name.clone());
+                (
+                    id,
+                    if origin.is_empty() {
+                        format!("\u{0}{}", name.unwrap_or_default())
+                    } else {
+                        origin
+                    },
+                )
+            })
+            .collect();
+        self.freeze_unique("dispositifs", rows)?;
+        let lists = self.checklists()?;
+        let rows: Vec<(i64, String)> = self
+            .identities("SELECT id, origin FROM checklists ORDER BY id")?
+            .into_iter()
+            .map(|(id, origin)| {
+                let name = lists.iter().find(|l| l.id == id).map(|l| l.title.clone());
+                (
+                    id,
+                    if origin.is_empty() {
+                        format!("\u{0}{}", name.unwrap_or_default())
+                    } else {
+                        origin
+                    },
+                )
+            })
+            .collect();
+        self.freeze_unique("checklists", rows)?;
+        // Une cascade, par le titre que son texte porte — SQLite ne le lit
+        // pas —, et **jamais sous le titre du modèle** : « Nouvelle
+        // cascade » est écrite à la base dès le clic, avant que l'éditeur
+        // ne lui donne son vrai titre ; figée là, toutes les cascades en
+        // cours d'écriture du réseau n'en faisaient qu'une.
+        let template = cascade_title(crate::strings::tr("cascade_template"));
+        let texts = self.cascades()?;
+        let rows: Vec<(i64, String)> = self
+            .identities("SELECT id, origin FROM cascades ORDER BY id")?
+            .into_iter()
+            .map(|(id, origin)| {
+                let title = texts
+                    .iter()
+                    .find(|c| c.id == id)
+                    .map(|c| cascade_title(&c.text))
+                    .unwrap_or_default();
+                let title = if title.trim() == template.trim() {
+                    String::new()
+                } else {
+                    title
+                };
+                (
+                    id,
+                    if origin.is_empty() {
+                        format!("\u{0}{title}")
+                    } else {
+                        origin
+                    },
+                )
+            })
+            .collect();
+        self.freeze_unique("cascades", rows)
+    }
+
+    /// Figer l'identité des lignes qui n'en ont pas (marquées d'un `\0`
+    /// devant leur nom d'aujourd'hui), **sans en reprendre une déjà
+    /// donnée** : le nom, ou le nom suivi d'un rang.
+    fn freeze_unique(&self, table: &str, rows: Vec<(i64, String)>) -> Result<(), String> {
+        let mut taken: std::collections::HashSet<String> = rows
+            .iter()
+            .filter(|(_, o)| !o.starts_with('\u{0}'))
+            .map(|(_, o)| crate::versions::key(o))
+            .collect();
+        for (id, o) in rows {
+            let Some(name) = o.strip_prefix('\u{0}') else {
+                continue;
+            };
+            let name = name.trim();
+            if name.is_empty() {
+                continue;
             }
+            let mut candidate = name.to_owned();
+            let mut n = 2;
+            while taken.contains(&crate::versions::key(&candidate)) {
+                candidate = format!("{name} ({n})");
+                n += 1;
+            }
+            taken.insert(crate::versions::key(&candidate));
+            self.set_origin(table, id, &candidate)?;
         }
         Ok(())
     }
@@ -48706,7 +48794,13 @@ impl Db {
             .into_iter()
             .filter_map(|(id, origin)| {
                 let name = if origin.trim().is_empty() {
-                    cascade_title(&texts.iter().find(|c| c.id == id)?.text)
+                    let title = cascade_title(&texts.iter().find(|c| c.id == id)?.text);
+                    // Encore sous le titre du modèle : elle n'a pas de nom.
+                    if title.trim() == cascade_title(crate::strings::tr("cascade_template")).trim()
+                    {
+                        return None;
+                    }
+                    title
                 } else {
                     origin
                 };
@@ -58879,6 +58973,26 @@ mod tests {
             .map(|l| l.title)
             .collect();
         assert_eq!(titles, vec!["Liste B"]);
+        // **Une identité ne se donne qu'une fois** : un nouveau dispositif
+        // qui reprend l'ancien nom du renommé en reçoit une autre.
+        a.add_dispositif("Pansement A").unwrap();
+        // Et une cascade encore sous le titre du modèle n'en reçoit pas.
+        a.add_cascade(crate::strings::tr("cascade_template"))
+            .unwrap();
+        a.version_shared_entries("AB").unwrap();
+        let ids: Vec<String> = a
+            .dispositif_entries()
+            .unwrap()
+            .into_iter()
+            .map(|(_, e)| e)
+            .collect();
+        assert_eq!(ids, vec!["Pansement A", "Pansement A (2)"]);
+        let template = cascade_title(crate::strings::tr("cascade_template"));
+        assert!(!a
+            .cascade_entries()
+            .unwrap()
+            .iter()
+            .any(|(_, e)| *e == template));
     }
 
     /// **Une phrase imprimée réécrite voyage**, sous son adresse, et
