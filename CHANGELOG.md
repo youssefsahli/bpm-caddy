@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- Interview printing: the export window belongs to its file and its act —
+  left open while another file was opened, it printed the first file's
+  act (type, date, theme, points, signer) under the second patient's
+  name; the act is read again when printing, so a change or deletion
+  made on another post meanwhile is seen; « next appointment » is never
+  one that has already passed.
+- Vaccination carnet: a dose date is never in the future (« 2012 » typed
+  in October became next December and was counted as this season's
+  flu); a vaccine name typed in full takes its calendar code, and a
+  corrected name takes the new one (« Hépatite B » without a click stayed
+  « dû » for ever, « Grippe » corrected to « ROR » kept the flu code);
+  deleting a dose compares the whole line; a refused correction keeps
+  what was typed; a dose typed and not yet recorded does not follow to
+  the next file; two doses on the same day print in the order they were
+  written.
 - Notes and transmissions: a note or transmission written on another
   post now appears in the side notebook, the open file, the drug card and
   the agenda day (only the Transmissions view re-read them); the side

@@ -49924,12 +49924,29 @@ impl Db {
     }
 
     /// Remove a dose, compare-and-set on the label the UI showed.
-    pub fn delete_vaccination(&self, id: i64, expected_label: &str) -> Result<bool, String> {
+    /// Retirer une ligne du carnet contre **toute** la ligne affichée :
+    /// sur le seul libellé, une dose datée et lotée ailleurs entre-temps
+    /// partait sans avoir été vue.
+    pub fn delete_vaccination(&self, expected: &Vaccination) -> Result<bool, String> {
         let changed = self
             .conn
             .execute(
-                "DELETE FROM vaccinations WHERE id = ?1 AND label = ?2",
-                (id, expected_label),
+                "DELETE FROM vaccinations
+                 WHERE id = ?1 AND label = ?2 AND given_on = ?3 AND code = ?4
+                   AND dose = ?5 AND lot = ?6 AND site = ?7 AND operator = ?8
+                   AND next_due = ?9 AND remark = ?10",
+                rusqlite::params![
+                    expected.id,
+                    &expected.label,
+                    &expected.given_on,
+                    &expected.code,
+                    &expected.dose,
+                    &expected.lot,
+                    &expected.site,
+                    &expected.operator,
+                    &expected.next_due,
+                    &expected.remark,
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -58232,8 +58249,16 @@ mod tests {
         stale.lot = "K0000".to_owned();
         assert!(!db.update_vaccination(id, &stale, &lines[0]).unwrap());
 
-        assert!(!db.delete_vaccination(id, "un autre libellé").unwrap());
-        assert!(db.delete_vaccination(id, &lines[0].label).unwrap());
+        // Retirer compare toute la ligne : celle d'avant la correction
+        // ne vaut plus.
+        assert!(!db.delete_vaccination(&lines[0]).unwrap());
+        let now = db
+            .vaccinations(pid)
+            .unwrap()
+            .into_iter()
+            .find(|v| v.id == id)
+            .unwrap();
+        assert!(db.delete_vaccination(&now).unwrap());
         assert_eq!(db.vaccinations(pid).unwrap().len(), 1);
 
         // Destinations: adding the same country twice moves the date

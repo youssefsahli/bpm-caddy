@@ -3706,10 +3706,10 @@ enum TrodPrint {
 struct ActsOut {
     advance: Option<(i64, db::InterviewState)>,
     regress: Option<(i64, db::InterviewState)>,
-    print_req: Option<(InterviewKind, Option<String>, String, String)>,
-    cr_req: Option<(InterviewKind, Option<String>, String, String)>,
+    print_req: Option<(i64, InterviewKind, Option<String>, String, String)>,
+    cr_req: Option<(i64, InterviewKind, Option<String>, String, String)>,
     /// La liasse de fin d'entretien : fiche, bilan et plan de prise.
-    bundle_req: Option<(InterviewKind, Option<String>, String, String)>,
+    bundle_req: Option<(i64, InterviewKind, Option<String>, String, String)>,
     /// Ce qu'un TROD imprime, par l'identifiant de l'acte.
     trod_req: Option<(i64, TrodPrint)>,
     bulletin_req: Option<InterviewKind>,
@@ -3971,6 +3971,11 @@ impl OrdonnanceBox {
 /// qui est **ajouté** est libre : une ligne, un point.
 struct ExportBox {
     target: ExportTarget,
+    /// Le dossier et l'acte qu'elle imprime. **Sans eux**, la fenêtre
+    /// restée ouverte suivait le dossier suivant, et imprimait l'acte
+    /// de A sous le nom de B.
+    patient_id: i64,
+    interview: i64,
     kind: InterviewKind,
     /// La date prévue de l'acte, telle que la ligne la porte.
     scheduled: Option<String>,
@@ -11039,7 +11044,7 @@ impl Session {
         let given = if self.vacc_new_date.trim().is_empty() {
             self.today.clone()
         } else {
-            App::parse_carnet_date(&self.vacc_new_date, self.year_now(), &self.today)
+            App::parse_carnet_date(&self.vacc_new_date, &self.today)
                 .unwrap_or_else(|_| self.today.clone())
         };
         let carnet: Vec<vaccines::CarnetLine> = self
@@ -11593,6 +11598,13 @@ impl Session {
         self.edit_patient = None;
         self.confirm_delete = false;
         self.confirm_delete_itv = None;
+        // Ce qui appartenait au dossier d'avant n'en suit pas un autre :
+        // la fenêtre d'export (l'acte de A imprimé sous le nom de B) et
+        // la dose tapée et pas encore inscrite (écrite au carnet de B
+        // à la première Entrée).
+        self.export_box = None;
+        self.vacc_new = db::Vaccination::default();
+        self.vacc_new_date.clear();
         self.rule_block = None;
         // A discharge sheet belongs to the file it was pasted on: it
         // must never be read against the next patient's ordonnance.
@@ -15947,6 +15959,7 @@ fn export_window(
     session: &mut Session,
 ) -> Option<(
     ExportTarget,
+    i64,
     InterviewKind,
     Option<String>,
     String,
@@ -16054,7 +16067,15 @@ fn export_window(
     if go {
         let chosen = box_.chosen();
         let b = session.export_box.take()?;
-        return Some((b.target, b.kind, b.scheduled, b.theme, b.by, chosen));
+        return Some((
+            b.target,
+            b.interview,
+            b.kind,
+            b.scheduled,
+            b.theme,
+            b.by,
+            chosen,
+        ));
     }
     if close {
         session.export_box = None;
@@ -17757,7 +17778,10 @@ impl App {
                             if let Some(p) = session.patients.first().cloned() {
                                 session.open_patient(p);
                             }
+                            let patient_id = session.viewing.as_ref().map_or(0, |p| p.id);
                             session.export_box = Some(ExportBox {
+                                patient_id,
+                                interview: 0,
                                 target: ExportTarget::Fiche,
                                 kind: InterviewKind::Prevention,
                                 scheduled: None,
@@ -22453,12 +22477,31 @@ impl App {
     /// can never be *in* the future, so a reading that lands there is
     /// retried as a past date ("230850" is 1950, not 2050) and only
     /// kept when the past reading makes no sense either.
-    fn parse_carnet_date(text: &str, year: u32, today: &str) -> Result<String, String> {
-        let iso = db::parse_french_date(text, year, db::YearHint::Future)?;
-        if iso.as_str() <= today {
-            return Ok(iso);
+    /// Le code du calendrier pour ce nom : celui qu'on avait s'il lui
+    /// appartient encore, sinon celui du catalogue qui porte ce nom,
+    /// sinon aucun.
+    fn catalogue_code(catalogue: &[vaccines::Vaccine], code: &str, label: &str) -> String {
+        let label = label.trim();
+        if catalogue
+            .iter()
+            .any(|v| v.code == code && v.label.eq_ignore_ascii_case(label))
+        {
+            return code.to_owned();
         }
-        Ok(db::parse_french_date(text, year, db::YearHint::Past).unwrap_or(iso))
+        catalogue
+            .iter()
+            .find(|v| v.label.eq_ignore_ascii_case(label))
+            .map(|v| v.code.clone())
+            .unwrap_or_default()
+    }
+
+    fn parse_carnet_date(text: &str, today: &str) -> Result<String, String> {
+        // **Jamais après aujourd'hui** : la lecture « à venir » restait
+        // quand le passé ne lisait pas — « 2012 » tapé en octobre
+        // devenait le 20 décembre suivant, et compté comme la grippe de
+        // la saison, la dose n'était plus « due ». C'est la lecture de
+        // tout ce qui a eu lieu.
+        db::parse_event_date(text, today)
     }
     /// Le fil du dossier : la bande des douze derniers mois, le résumé
     /// « dernier de chaque nature », puis la suite datée.
@@ -22863,13 +22906,10 @@ impl App {
         let editing = session.vacc_edit.as_ref().map(|v| v.id);
         let confirm = session.vacc_confirm;
         let today = session.today.clone();
-        // Read from the date already in hand, not asked of the base:
-        // this is a per-frame path.
-        let year = session.year_now();
         let mut start_edit: Option<db::Vaccination> = None;
         let mut save_edit = false;
         let mut cancel_edit = false;
-        let mut delete: Option<(i64, String)> = None;
+        let mut delete: Option<db::Vaccination> = None;
         let mut add = false;
         let mut print = false;
         let mut bill = false;
@@ -23141,7 +23181,7 @@ impl App {
                                             };
                                             if motif::button(ui, label).clicked() {
                                                 if confirm == Some(line.id) {
-                                                    delete = Some((line.id, line.label.clone()));
+                                                    delete = Some(line.clone());
                                                 } else {
                                                     session.vacc_confirm = Some(line.id);
                                                 }
@@ -23440,11 +23480,16 @@ impl App {
                 let parsed = if session.vacc_edit_date.trim().is_empty() {
                     Ok(String::new())
                 } else {
-                    Self::parse_carnet_date(&session.vacc_edit_date, year, &today)
+                    Self::parse_carnet_date(&session.vacc_edit_date, &today)
                 };
                 match parsed {
                     Ok(iso) => {
                         line.given_on = iso;
+                        // Le nom corrigé emporte son code : « Grippe »
+                        // corrigé en « ROR » gardait le code de la grippe.
+                        line.label = line.label.trim().to_owned();
+                        line.code =
+                            Self::catalogue_code(&session.vacc_catalogue, &line.code, &line.label);
                         let base = session.vacc_edit_base.clone();
                         match session.db.update_vaccination(line.id, &line, &base) {
                             Ok(true) => {
@@ -23457,9 +23502,20 @@ impl App {
                                 session.vacc_edit_date.clear();
                                 session.load_carnet(patient.id);
                             }
+                            // Refusée : la correction tapée reste, et
+                            // se compare désormais à la ligne relue —
+                            // `load_carnet` la vidait.
                             Ok(false) => {
                                 session.stale("vacc_stale");
-                                session.load_carnet(patient.id);
+                                session.vaccinations =
+                                    session.db.vaccinations(patient.id).unwrap_or_default();
+                                match session.vaccinations.iter().find(|v| v.id == line.id) {
+                                    Some(fresh) => session.vacc_edit_base = fresh.clone(),
+                                    None => {
+                                        session.vacc_edit = None;
+                                        session.vacc_edit_date.clear();
+                                    }
+                                }
                             }
                             Err(e) => session.error = Some(e),
                         }
@@ -23468,8 +23524,8 @@ impl App {
                 }
             }
         }
-        if let Some((id, label)) = delete {
-            match session.db.delete_vaccination(id, &label) {
+        if let Some(gone) = delete {
+            match session.db.delete_vaccination(&gone) {
                 Ok(true) => {
                     session.error = None;
                     session.load_carnet(patient.id);
@@ -23488,20 +23544,18 @@ impl App {
             // Le code du calendrier ne vaut que pour le nom qui l'a
             // apporté : le garder après que le nom a été retapé
             // rangerait la dose sous un vaccin qui n'est pas le sien.
-            if !session
-                .vacc_catalogue
-                .iter()
-                .any(|v| v.code == line.code && v.label.eq_ignore_ascii_case(&line.label))
-            {
-                line.code.clear();
-            }
-            // An empty date means "today": recording the dose you have
+            //
+            // **Et un nom tapé en entier prend son code** : sans clic sur
+            // une suggestion, « Hépatite B » s'inscrivait sans code, et
+            // restait « dû » pour toujours.
+            line.code = Self::catalogue_code(&session.vacc_catalogue, &line.code, &line.label);
+            // An empty date means "today"": recording the dose you have
             // just given is the common case, and typing the date again
             // is the step an operator skips.
             let parsed = if session.vacc_new_date.trim().is_empty() {
                 Ok(today.clone())
             } else {
-                Self::parse_carnet_date(&session.vacc_new_date, year, &today)
+                Self::parse_carnet_date(&session.vacc_new_date, &today)
             };
             if line.label.is_empty() {
                 session.error = Some(tr("vacc_needs_label").to_owned());
@@ -32107,6 +32161,7 @@ impl App {
                     out.trod_req = Some((row.itv.id, TrodPrint::Sheet));
                 } else {
                     out.print_req = Some((
+                        row.itv.id,
                         row.itv.kind,
                         row.itv.scheduled_date.clone(),
                         row.itv.theme.clone(),
@@ -32128,6 +32183,7 @@ impl App {
                     out.trod_req = Some((row.itv.id, TrodPrint::Letter));
                 } else {
                     out.cr_req = Some((
+                        row.itv.id,
                         row.itv.kind,
                         row.itv.scheduled_date.clone(),
                         row.itv.theme.clone(),
@@ -32145,6 +32201,7 @@ impl App {
                     out.trod_req = Some((row.itv.id, TrodPrint::Bundle));
                 } else {
                     out.bundle_req = Some((
+                        row.itv.id,
                         row.itv.kind,
                         row.itv.scheduled_date.clone(),
                         row.itv.theme.clone(),
@@ -32745,6 +32802,13 @@ impl App {
         }
         session.prune_act_seen();
         // La fenêtre d'export, et ce qu'elle rend quand on valide.
+        if session
+            .export_box
+            .as_ref()
+            .is_some_and(|b| b.patient_id != patient.id)
+        {
+            session.export_box = None;
+        }
         let export_now = export_window(ui.ctx(), session);
         // Les deux boutons n'impriment plus : ils ouvrent la fenêtre
         // d'export, où l'on choisit ce que la feuille portera. Ce qui
@@ -32755,7 +32819,7 @@ impl App {
             (cr_req.take(), ExportTarget::Cr),
             (bundle_req.take(), ExportTarget::Liasse),
         ] {
-            let Some((kind, scheduled, theme, by)) = req else {
+            let Some((interview, kind, scheduled, theme, by)) = req else {
                 continue;
             };
             let proposed: Vec<String> = if kind.is_prevention() {
@@ -32772,6 +32836,8 @@ impl App {
             // *est* la question.
             let keep = !kind.is_prevention();
             session.export_box = Some(ExportBox {
+                patient_id: patient.id,
+                interview,
                 target,
                 kind,
                 scheduled,
@@ -32784,6 +32850,34 @@ impl App {
         // Une seule sortie pour les deux documents : ce qui a été
         // retenu dans la fenêtre d'export, et le document qu'on avait
         // demandé.
+        // **L'acte relu au moment d'imprimer** : une date, un thème, un
+        // signataire changés sur un autre poste pendant que la fenêtre
+        // était ouverte s'imprimaient tels qu'ils étaient au clic — et
+        // un acte supprimé ailleurs, aussi.
+        let export_now =
+            export_now.and_then(|(target, interview, kind, scheduled, theme, by, points)| {
+                if interview == 0 {
+                    return Some((target, kind, scheduled, theme, by, points));
+                }
+                match session
+                    .viewing_interviews
+                    .iter()
+                    .find(|i| i.id == interview)
+                {
+                    Some(i) => Some((
+                        target,
+                        i.kind,
+                        i.scheduled_date.clone(),
+                        i.theme.clone(),
+                        i.operator.clone(),
+                        points,
+                    )),
+                    None => {
+                        session.stale("itv_stale");
+                        None
+                    }
+                }
+            });
         if let Some((target, kind, scheduled, theme, by, points)) = export_now {
             // The sheet is dated with the planned RDV when one is set,
             // today otherwise (sheets are usually printed just before).
@@ -32806,10 +32900,14 @@ impl App {
                 scheduled.as_deref().unwrap_or(&session.today),
             );
             let table = crate::entretien::resolve_table(kind, &session.content);
-            let next_rdv = next_rdv_text(
-                &session.viewing_interviews,
-                scheduled.as_deref().unwrap_or(&session.today),
-            );
+            // Après l'acte **et** après aujourd'hui : le compte rendu d'un
+            // acte de mars imprimé en octobre annonçait un rendez-vous
+            // d'avril, passé.
+            let after = scheduled
+                .as_deref()
+                .filter(|d| *d > session.today.as_str())
+                .unwrap_or(&session.today);
+            let next_rdv = next_rdv_text(&session.viewing_interviews, after);
             let paper = crate::pdf::InterviewPaper {
                 patient,
                 kind,

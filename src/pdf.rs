@@ -4702,9 +4702,15 @@ fn vaccination_carnet_values(
     let mut ordered: Vec<&crate::db::Vaccination> = lines.iter().collect();
     // Les doses sans date à la fin : une chaîne vide se triait en tête
     // d'une liste qui se lit de la plus ancienne à la plus récente.
+    // Deux doses du même jour dans l'ordre où elles ont été inscrites :
+    // la liste arrive la plus récente d'abord, et le tri stable les
+    // gardait à l'envers sur une feuille qui se lit de haut en bas.
     ordered.sort_by(|a, b| {
-        (a.given_on.trim().is_empty(), &a.given_on)
-            .cmp(&(b.given_on.trim().is_empty(), &b.given_on))
+        (a.given_on.trim().is_empty(), &a.given_on, a.id).cmp(&(
+            b.given_on.trim().is_empty(),
+            &b.given_on,
+            b.id,
+        ))
     });
     for line in ordered {
         let remark = if line.next_due.is_empty() {

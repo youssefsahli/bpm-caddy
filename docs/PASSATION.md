@@ -56,6 +56,14 @@ conciliation, acte de vaccination, retour d'une case de table), ADELI,
 lanceur, relais.
 
 Laissé, relevé par les relectures (à trancher ou à vérifier) :
+- carnet : le lot proposé par un vaccin reste quand on en choisit un
+  autre, et un lot connu mais périmé ou d'un autre vaccin s'inscrit sans
+  avertissement ; un lot reçu avec une péremption passée est accepté ;
+  deux postes peuvent ouvrir le même flacon dans les deux secondes ;
+- impression d'un entretien : une section vide de la fiche s'imprime en
+  titre seul ; « (aucun traitement enregistré) », « Médecin traitant »
+  et « {a} ans » écrits en dur dans `pdf.rs`, et le CR imprime « né(e)
+  le  » sans date ;
 - **le document d'équipe (`notes_equipe.md`) est un fichier en clair**
   à côté de la base, que son modèle invite à remplir de noms
   (« Patients à recontacter ») : hors du chiffrement, hors des copies et
