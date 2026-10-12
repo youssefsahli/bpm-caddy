@@ -1452,6 +1452,10 @@ pub fn recalls(
     };
     let mut out: Vec<(String, Recall)> = Vec::new();
     for p in people {
+        // La dose de printemps du COVID (80 ans et plus, d'avril à juin) :
+        // celle de l'automne ne la règle pas — le calendrier le dit, et le
+        // compte depuis le début de la campagne la croyait faite.
+        let mut spring_from: Option<String> = None;
         let (listed, evoked, mut detail) = match s.rule {
             Rule::Calendar => {
                 let lines = vaccines::due_lines_with(p.birth, at, &p.doses, p.ddr);
@@ -1472,7 +1476,19 @@ pub fn recalls(
                 // Dû par l'âge ou la grossesse ; sinon, si le sujet lit les
                 // traitements, évoqué par l'un d'eux — une question ouverte
                 // que le calendrier laisse en « à demander ».
-                let evoked = line.level == DueLevel::Ask && s.evoked && !p.evoked.is_empty();
+                // **Hors saison, la grippe et le COVID ne s'évoquent pas** :
+                // le calendrier les laisse « à demander » à tout âge, et de
+                // mars à août chaque patient sous metformine ou inhalateur
+                // était listé pour un vaccin qu'on ne fait pas.
+                let seasonal = matches!(code, "GRIPPE" | "COVID");
+                let evoked = line.level == DueLevel::Ask
+                    && s.evoked
+                    && !p.evoked.is_empty()
+                    && (!seasonal || vaccines::in_flu_season(at));
+                let month: u32 = at.get(5..7).and_then(|m| m.parse().ok()).unwrap_or(0);
+                if code == "COVID" && line.level == DueLevel::Due && matches!(month, 4..=6) {
+                    spring_from = at.get(..4).map(|y| format!("{y}-04-01"));
+                }
                 (
                     line.level == DueLevel::Due || evoked,
                     evoked,
@@ -1499,7 +1515,10 @@ pub fn recalls(
         }
         // Ce qui règle le sujet : assez de doses ou d'actes sur la durée,
         // ou, au milieu d'une série, la suivante pas encore due.
-        let done = settled_on(p, s, campaign, today);
+        let mut done = settled_on(p, s, campaign, today);
+        if let Some(from) = &spring_from {
+            done.retain(|d| !d.is_empty() && *d >= from.as_str());
+        }
         if done.len() >= s.doses.max(1) as usize {
             continue;
         }
@@ -1951,6 +1970,20 @@ pub fn rdv_day(parsed: &str, typed: &str, today: &str) -> String {
 /// marque d'ordre des octets, dates en JJ/MM/AAAA, champs entre guillemets
 /// quand ils portent un séparateur. Une ligne par dose, dans l'ordre de
 /// [`crate::db::Db::vaccinations_season`].
+/// Les doses de l'export qui sont celles de la campagne : son vaccin, par
+/// code (ou libellé faute de code). L'export portait toutes les doses de la
+/// période — HPV d'un adolescent, vaccins du voyage — avec nom et
+/// naissance, dans un fichier en clair.
+pub fn campaign_doses(rows: &mut Vec<[String; 10]>, campaign: &Campaign) {
+    let codes: Vec<&str> = campaign
+        .subjects
+        .iter()
+        .filter(|s| s.means == Means::Vaccine)
+        .map(|s| s.code.trim())
+        .collect();
+    rows.retain(|r| codes.contains(&row_key(&r[5], &r[4])));
+}
+
 pub fn season_csv(rows: &[[String; 10]]) -> String {
     // Une cellule, et jamais une formule — voir `db::csv_cell`.
     let field = crate::db::csv_cell;
@@ -2255,6 +2288,26 @@ mod tests {
         assert_eq!(names, ["EARLY", "LATE"]);
     }
 
+    /// L'export ne porte que les doses de la campagne.
+    #[test]
+    fn the_season_export_carries_the_campaign_vaccines_only() {
+        let c = default_campaign("2026-10-20");
+        let row = |label: &str, code: &str| {
+            let mut r: [String; 10] = Default::default();
+            r[4] = label.to_owned();
+            r[5] = code.to_owned();
+            r
+        };
+        let mut rows = vec![
+            row("Efluelda", "GRIPPE"),
+            row("Gardasil", "HPV"),
+            row("Comirnaty", "COVID"),
+        ];
+        campaign_doses(&mut rows, &c);
+        let kept: Vec<&str> = rows.iter().map(|r| r[5].as_str()).collect();
+        assert_eq!(kept, ["GRIPPE", "COVID"]);
+    }
+
     #[test]
     fn the_tally_counts_the_season_the_week_and_the_day() {
         let today = "2026-10-08";
@@ -2514,6 +2567,16 @@ mod tests {
         assert!(recalls(&people, &[], &c, "VRS", today)
             .iter()
             .all(|x| x.patient_id != 1));
+        // Hors saison, la grippe ne s'évoque pas : en mai, personne n'est
+        // listé sur un traitement.
+        let may = "2027-05-10";
+        assert!(recalls(&people, &[], &c, "GRIPPE", may)
+            .iter()
+            .all(|x| !x.evoked));
+        // Au printemps, à 80 ans, la dose de l'automne ne règle pas le COVID.
+        let old = vec![person(9, "1940-03-01", vec![dose("COVID", "2026-10-15")])];
+        assert_eq!(ids(&recalls(&old, &[], &c, "COVID", may)), [9]);
+        assert!(recalls(&old, &[], &c, "COVID", "2026-11-10").is_empty());
     }
 
     #[test]

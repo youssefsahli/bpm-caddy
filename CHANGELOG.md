@@ -23,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the form cleared); « 15 min » is no longer read as 15:00; deleting a
   repeating entry asks a second click; the grid's entries are read again
   only when the range or the data changes, not on every frame.
+- Vaccination campaign: out of season, flu and COVID are no longer
+  suggested from a treatment (from March to August everyone on metformin
+  or an inhaler was listed); from April to June, people of 80 and over
+  are recalled for the spring COVID dose even after an autumn one; the
+  season export carries the campaign's vaccines only; deleting a
+  campaign compares the whole row; the printed summary counts a dose
+  whose file is gone, as the screen does; the age shown is read on the
+  same day as the reason given.
 
 ## [0.400.0] - 2026-10-12
 

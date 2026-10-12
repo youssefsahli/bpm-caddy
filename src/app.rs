@@ -10683,6 +10683,14 @@ impl Session {
         }
         drop(people);
         self.camp.counts = counts;
+        let read_on = self
+            .camp
+            .campaigns
+            .iter()
+            .find(|c| c.key == self.camp.key)
+            .map(|c| c.starts_on.clone())
+            .filter(|start| start.as_str() > today.as_str())
+            .unwrap_or_else(|| today.clone());
         self.camp.recalls = chosen
             .into_iter()
             .filter_map(|r| {
@@ -10691,7 +10699,10 @@ impl Session {
                     evoked: r.evoked,
                     patient_id: p.id,
                     name: format!("{} {}", p.last_name.to_uppercase(), p.first_name),
-                    age: db::age_on(&p.birth_date, &today),
+                    // Au jour où la liste lit les âges : celui de la
+                    // campagne à venir, sinon aujourd'hui — « 64 ans » à
+                    // côté de « 65 ans et plus » se contredisait.
+                    age: db::age_on(&p.birth_date, &read_on),
                     phone: p.phone.clone(),
                     detail: r.detail,
                     last_call: r.last_call,
@@ -55117,6 +55128,7 @@ impl App {
                 Ok(mut rows) => {
                     // Une campagne passée s'arrête à son dernier jour.
                     rows.retain(|r| r[0].as_str() <= campaign.ends_on.as_str());
+                    campagne::campaign_doses(&mut rows, &campaign);
                     let csv = campagne::season_csv(&rows);
                     let dir = config
                         .db_path()
@@ -55629,7 +55641,7 @@ impl App {
         }
         if delete {
             if let Some(c) = &edit.expected {
-                match session.db.delete_campaign(c.id, &c.key, &c.title) {
+                match session.db.delete_campaign(c) {
                     Ok(true) => {}
                     Ok(false) => session.stale("camp_edit_stale"),
                     Err(e) => session.error = Some(e),

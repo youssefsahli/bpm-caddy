@@ -100,6 +100,12 @@ Laissé, relevé par les relectures (à trancher ou à vérifier) :
   pas s'arrêter à une date (seule la suppression, qui emporte le passé) ;
   au passage de minuit du dimanche, la semaine affichée et l'impression
   du jour peuvent se désaccorder ;
+- campagne : un poste d'une version plus ancienne qui enregistre une
+  campagne efface les réglages de sujet qu'il ne connaît pas ; aucun
+  moyen d'écarter d'une campagne à l'autre un patient décédé ou parti ;
+  une dose saisie sans code compte au bilan sous son libellé mais laisse
+  le patient dans la liste de rappel ; l'éditeur accepte doses « 0 »
+  (lu 1), âge au-delà de 120, flacon « 0 » sans le dire ;
 - téléphone : la suppression d'un rendez-vous de l'agenda ne compare que
   le titre ; la base peut s'ouvrir deux fois (deux déverrouillages) et
   n'est jamais refermée en quittant par Retour. Le code Kotlin modifié le

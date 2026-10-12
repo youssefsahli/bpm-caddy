@@ -50202,8 +50202,8 @@ impl Db {
         let mut stmt = self
             .conn
             .prepare(
-                "SELECT p.birth_date, v.code, v.label, v.given_on
-                 FROM vaccinations v JOIN patients p ON p.id = v.patient_id
+                "SELECT COALESCE(p.birth_date, ''), v.code, v.label, v.given_on
+                 FROM vaccinations v LEFT JOIN patients p ON p.id = v.patient_id
                  WHERE v.given_on >= ?1 ORDER BY v.given_on, v.id",
             )
             .map_err(|e| e.to_string())?;
@@ -50449,11 +50449,14 @@ impl Db {
     /// plus jamais juste — chaque enregistrement sur ce poste finirait en
     /// « modifiée ailleurs ». L'écriture, elle, porte sur le texte exact
     /// qu'on vient de relire : rien ne passe entre les deux.
-    pub fn update_campaign(
+    /// La campagne telle qu'elle est rangée, si elle dit encore ce que
+    /// l'écran montrait (`expected`) : ses colonnes brutes, pour que
+    /// l'écriture compare à la lettre.
+    #[allow(clippy::type_complexity)]
+    fn campaign_as_shown(
         &self,
-        c: &crate::campagne::Campaign,
         expected: &crate::campagne::Campaign,
-    ) -> Result<bool, String> {
+    ) -> Result<Option<(String, String, String, String, String, String, String)>, String> {
         use crate::campagne::{decode_settings, decode_subjects, encode_settings, encode_subjects};
         use rusqlite::OptionalExtension;
         let stored: Option<(String, String, String, String, String, String, String)> = self
@@ -50477,7 +50480,7 @@ impl Db {
             .optional()
             .map_err(|e| e.to_string())?;
         let Some((key, title, starts_on, ends_on, subjects, settings, remark)) = stored else {
-            return Ok(false);
+            return Ok(None);
         };
         let mut read = crate::campagne::Campaign {
             id: expected.id,
@@ -50499,9 +50502,20 @@ impl Db {
             && read.remark == expected.remark
             && encode_subjects(&read.subjects) == encode_subjects(&expected.subjects)
             && encode_settings(&read) == encode_settings(expected);
-        if !same {
+        Ok(same.then_some((key, title, starts_on, ends_on, subjects, settings, remark)))
+    }
+
+    pub fn update_campaign(
+        &self,
+        c: &crate::campagne::Campaign,
+        expected: &crate::campagne::Campaign,
+    ) -> Result<bool, String> {
+        use crate::campagne::{encode_settings, encode_subjects};
+        let Some((key, title, starts_on, ends_on, subjects, settings, remark)) =
+            self.campaign_as_shown(expected)?
+        else {
             return Ok(false);
-        }
+        };
         let changed = self
             .conn
             .execute(
@@ -50533,12 +50547,30 @@ impl Db {
     /// Retirer une campagne, compare-and-set sur sa clé et son titre. Ses
     /// appels restent : une campagne de la saison retirée retrouve les
     /// siens dans la campagne livrée, qui porte la même clé.
-    pub fn delete_campaign(&self, id: i64, key: &str, title: &str) -> Result<bool, String> {
+    pub fn delete_campaign(&self, expected: &crate::campagne::Campaign) -> Result<bool, String> {
+        // Comparée en entier, comme à l'écriture : des dates ou des sujets
+        // corrigés sur un autre poste ne partent pas sans un mot.
+        let Some((key, title, starts_on, ends_on, subjects, settings, remark)) =
+            self.campaign_as_shown(expected)?
+        else {
+            return Ok(false);
+        };
         let changed = self
             .conn
             .execute(
-                "DELETE FROM campaigns WHERE id = ?1 AND key = ?2 AND title = ?3",
-                (id, key, title),
+                "DELETE FROM campaigns WHERE id = ?1 AND key = ?2 AND title = ?3
+                   AND starts_on = ?4 AND ends_on = ?5 AND subjects = ?6 AND settings = ?7
+                   AND remark = ?8",
+                rusqlite::params![
+                    expected.id,
+                    key,
+                    title,
+                    starts_on,
+                    ends_on,
+                    subjects,
+                    settings,
+                    remark
+                ],
             )
             .map_err(|e| e.to_string())?;
         Ok(changed == 1)
@@ -58600,8 +58632,20 @@ mod tests {
         assert!(db.update_campaign(&again, &newer).unwrap());
         assert_eq!(db.campaigns().unwrap()[0].remark, "Relu");
         let fixed = again;
-        assert!(!db.delete_campaign(c.id, &c.key, "Autre").unwrap());
-        assert!(db.delete_campaign(c.id, &c.key, &fixed.title).unwrap());
+        let other = crate::campagne::Campaign {
+            title: "Autre".to_owned(),
+            ..fixed.clone()
+        };
+        assert!(!db.delete_campaign(&other).unwrap());
+        let moved = crate::campagne::Campaign {
+            ends_on: "2099-01-01".to_owned(),
+            ..fixed.clone()
+        };
+        assert!(
+            !db.delete_campaign(&moved).unwrap(),
+            "des dates changées ailleurs"
+        );
+        assert!(db.delete_campaign(&fixed).unwrap());
         assert!(db.campaigns().unwrap().is_empty());
         // Les actes : un réalisé compte à son jour, un planifié non.
         let pid = db.add_patient("Martin", "Lucie", "1950-01-01").unwrap();
