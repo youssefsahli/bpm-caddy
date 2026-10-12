@@ -17,11 +17,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   twice, the field cleared in between (pressing Enter again, the natural
   retry before a share is mounted, created it); the access-log retention
   uses a new settings key, so the ratcheted value written by 0.404–0.407
-  is ignored, and Options writes it whenever it differs from the stored
-  one; a DFG typed in the calculator is rounded as shown; correcting a
+  is ignored; a DFG typed in the calculator is rounded as shown; correcting a
   vaccination line without a code gives it one; conciliation skips
-  generic heads (« insuline », « carbonate ») and keeps glargine, lispro
-  or calcium as molecules.
+  the generic head « insuline » (glargine, lispro stay molecules) and
+  never counts a salt or cation (sodium, calcium, potassium, ferreux) as
+  a second molecule — checked against the whole shipped base, where the
+  Microlax's citrate de sodium had brought Dépakine's « stopped » back.
+- Access-log retention has its own field in Options; only a change made
+  there writes the officine's value (any save on any post used to
+  overwrite it). A password kept to confirm creating a missing base is
+  forgotten as soon as the base is found.
 
 ## [0.408.0] - 2026-10-12
 

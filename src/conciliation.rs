@@ -283,7 +283,9 @@ fn scored_match(name: &str, base: &[Known], molecules: &[String]) -> Option<(i32
 /// Les mots qui nomment une molécule, lus dans les DCI connues : ceux
 /// de cinq lettres et plus, moins les sels et les mots de liaison.
 fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
-    const NOT_A_MOLECULE: [&str; 9] = [
+    // Les sels, les cations et ce qui qualifie sans nommer : jamais une
+    // molécule à part entière, quelle que soit leur place dans la DCI.
+    const NOT_A_MOLECULE: [&str; 16] = [
         "acide",
         "sodique",
         "potassique",
@@ -293,6 +295,13 @@ fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
         "monohydrate",
         "anhydre",
         "lysine",
+        "sodium",
+        "potassium",
+        "calcium",
+        "magnesium",
+        "ferreux",
+        "ferrique",
+        "humaine",
     ];
     // **La tête de chaque DCI, pas chacun de ses mots** : « valproate de
     // sodium » nomme le valproate, et son sel n'est pas une seconde
@@ -300,22 +309,11 @@ fn molecule_words<'a>(dcis: impl Iterator<Item = &'a str>) -> Vec<String> {
     // la Dépakine (« sodium » de plus), qui se lisait arrêtée — de même
     // la fluticasone contre « fluticasone furoate ». Une association se
     // coupe à ses « + » et « / », et chaque part donne sa tête.
-    const GENERIC_HEADS: [&str; 14] = [
-        "insuline",
-        "vaccin",
-        "carbonate",
-        "chlorure",
-        "sulfate",
-        "citrate",
-        "acetate",
-        "bromure",
-        "gluconate",
-        "lactate",
-        "phosphate",
-        "oxyde",
-        "hydroxyde",
-        "fumarate",
-    ];
+    // Une tête qui nomme une famille et pas la molécule : « insuline
+    // glargine » est la glargine. Seulement celles-là — sauter les anions
+    // (« carbonate de calcium ») ramenait le cation, et le sodium d'un sel
+    // redevenait une seconde molécule.
+    const GENERIC_HEADS: [&str; 2] = ["insuline", "vaccin"];
     let mut out: Vec<String> = dcis
         .flat_map(|d| {
             crate::fuzzy::sort_key(d)
@@ -1225,33 +1223,37 @@ Vogalène lyoc si nausées
     /// la Dépakine (valproate de sodium), « Fluticasone » à l'Avamys.
     #[test]
     fn a_salt_is_not_a_second_molecule() {
-        let base: Vec<Known> = Vec::new();
-        let held = vec![
-            Held {
-                name: "Dépakine",
-                dci: "valproate de sodium",
-                class: "antiépileptique",
-                posology: "500 mg matin et soir",
-                strength: "",
-            },
-            Held {
-                name: "Avamys",
-                dci: "fluticasone furoate",
-                class: "corticoïde nasal",
-                posology: "2 pulvérisations le matin",
-                strength: "",
-            },
-        ];
-        let rows = compare(
-            &held,
-            "Valproate 500 mg matin et soir\nFluticasone : 2 pulvérisations le matin",
-            &base,
-        );
+        // **Contre toute la base livrée** : vide, elle laissait passer un
+        // « sodium » que le citrate de sodium du Microlax y ajoutait, et
+        // la Dépakine se lisait arrêtée.
+        let shipped: Vec<Known> = crate::db::STARTER_DRUGS
+            .iter()
+            .map(|(name, dci, class, _)| Known { name, dci, class })
+            .collect();
+        let depakine = vec![Held {
+            name: "Dépakine",
+            dci: "valproate de sodium",
+            class: "antiépileptique",
+            posology: "500 mg matin et soir",
+            strength: "",
+        }];
+        let rows = compare(&depakine, "Valproate 500 mg matin et soir", &shipped);
         assert!(
             rows.iter().all(|r| r.kind == Change::Kept),
             "{:?}",
             rows.iter().map(|r| (&r.label, r.kind)).collect::<Vec<_>>()
         );
+        // Et un sel écrit après la molécule (« fluticasone furoate ») ne
+        // l'empêche pas de répondre à son nom.
+        let avamys = vec![Held {
+            name: "Avamys",
+            dci: "fluticasone furoate",
+            class: "corticoïde nasal",
+            posology: "2 pulvérisations le matin",
+            strength: "",
+        }];
+        let rows = compare(&avamys, "Fluticasone : 2 pulvérisations le matin", &[]);
+        assert!(rows.iter().all(|r| r.kind == Change::Kept));
     }
 
     /// Une tête générique ne nomme pas la molécule : la glargine, la
@@ -1264,12 +1266,15 @@ Vogalène lyoc si nausées
                 "insuline lispro",
                 "carbonate de calcium",
                 "valproate de sodium",
+                "citrate de sodium + laurilsulfate de sodium",
             ]
             .into_iter(),
         );
-        for w in ["glargine", "lispro", "calcium", "valproate"] {
+        for w in ["glargine", "lispro", "valproate"] {
             assert!(words.iter().any(|m| m == w), "{w} manque : {words:?}");
         }
-        assert!(!words.iter().any(|m| m == "insuline" || m == "carbonate"));
+        for w in ["insuline", "sodium", "calcium"] {
+            assert!(!words.iter().any(|m| m == w), "{w} n'est pas une molécule");
+        }
     }
 }

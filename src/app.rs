@@ -21149,7 +21149,15 @@ impl App {
                     None
                 }
             }
-            (attempt, _) => attempt,
+            // La base est là (le partage s'est monté) : rien n'est plus à
+            // créer, et le mot de passe gardé pour la confirmation part —
+            // resté, une seule Entrée aurait créé une base au prochain
+            // partage démonté.
+            (attempt, None) => {
+                self.create_armed = None;
+                attempt
+            }
+            (None, Some(_)) => None,
         };
         if let Some(pw) = attempt {
             match Db::open(&self.config.db_path(), &pw)
@@ -81949,6 +81957,17 @@ impl eframe::App for App {
                                     )
                                     .wrap(),
                                 );
+                                // La durée, **pour l'officine** : la changer
+                                // ici l'écrit dans la base, et tous les
+                                // postes purgent à la même.
+                                ui.horizontal(|ui| {
+                                    ui.label(dim(tr("audit_keep_label")));
+                                    ui.add(
+                                        egui::DragValue::new(&mut editor.cfg.audit.keep_days)
+                                            .range(0..=3650)
+                                            .suffix(tr("audit_keep_suffix")),
+                                    );
+                                });
                                 ui.add_space(2.0);
                                 ui.add(
                                     egui::Label::new(
@@ -83712,13 +83731,12 @@ impl eframe::App for App {
                     session.operator.clone_from(&self.config.ui.operator);
                 }
                 session.audit_keep_days = self.config.audit.keep_days;
-                // Enregistrée ici, elle vaut pour l'officine entière — dès
-                // qu'elle diffère de ce que la base tient, et pas seulement
-                // de ce que ce poste avait.
+                // **Changée dans ce champ, et seulement alors**, elle vaut
+                // pour l'officine entière : écrite à chaque enregistrement,
+                // n'importe quel poste qui changeait son thème remettait sa
+                // propre valeur, et deux postes se la disputaient.
                 let was = session.db.setting(AUDIT_KEEP_KEY);
-                if was.as_deref().map(str::trim)
-                    != Some(self.config.audit.keep_days.to_string().as_str())
-                {
+                if self.config.audit.keep_days != before.audit.keep_days {
                     let _ = session.db.set_setting(
                         AUDIT_KEEP_KEY,
                         &self.config.audit.keep_days.to_string(),
